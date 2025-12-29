@@ -61,8 +61,13 @@ export function MessageBubble({ message, onOptionSubmit }: Props) {
   };
 
   const handleSubmitOptions = () => {
-    if (selectedOptions.length > 0 && onOptionSubmit) {
-      onOptionSubmit(selectedOptions);
+    if (selectedOptions.length > 0 && onOptionSubmit && effectiveOptions) {
+      // Get actual labels from selected IDs
+      const selectedLabels = selectedOptions
+        .map(id => effectiveOptions.choices.find(choice => choice.id === id)?.label)
+        .filter(Boolean) as string[];
+
+      onOptionSubmit(selectedLabels);
       setSelectedOptions([]);
     }
   };

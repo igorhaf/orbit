@@ -108,8 +108,87 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     }
   };
 
-  const handleOptionSubmit = async (selectedOptions: string[]) => {
-    await handleSend(selectedOptions);
+  const handleOptionSubmit = async (selectedLabels: string[]) => {
+    // Join labels with comma and send as message content
+    const content = selectedLabels.join(', ');
+
+    // Clear any existing text in the input
+    setMessage('');
+
+    // Send the message with the selected labels as content
+    setSending(true);
+    try {
+      await interviewsApi.sendMessage(interviewId, {
+        content: content,
+        selected_options: selectedLabels
+      });
+
+      // Reload to get AI response
+      const response = await interviewsApi.get(interviewId);
+      const data = response.data || response;
+      setInterview(data || null);
+
+      // Check if we just completed the 4 stack questions (PROMPT #46 - Phase 1)
+      await detectAndSaveStack(data);
+    } catch (error: any) {
+      console.error('Failed to send message:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to send message';
+      alert(`Error: ${errorMessage}`);
+    } finally {
+      setSending(false);
+      textareaRef.current?.focus();
+    }
+  };
+
+  // PROMPT #46 - Phase 1: Auto-detect and save stack configuration
+  const detectAndSaveStack = async (interviewData: Interview) => {
+    if (!interviewData?.conversation_data) return;
+
+    const messages = interviewData.conversation_data;
+
+    // Check if we have exactly 9 messages (1 AI Q1 + 1 User A1 + 1 AI Q2 + 1 User A2 + 1 AI Q3 + 1 User A3 + 1 AI Q4 + 1 User A4 + 1 AI Q5)
+    // Or 8 messages (before AI asks Q5)
+    if (messages.length < 8 || messages.length > 9) return;
+
+    // Verify the messages are stack questions by checking for "Question 1", "Question 2", etc
+    const aiMessages = messages.filter((m: any) => m.role === 'assistant');
+    if (aiMessages.length < 4) return;
+
+    // Check if this looks like stack questions (contains specific keywords)
+    const firstQuestion = aiMessages[0]?.content || '';
+    if (!firstQuestion.includes('backend') && !firstQuestion.includes('Backend')) return;
+
+    // Extract user answers (messages at index 1, 3, 5, 7)
+    const backendAnswer = messages[1]?.content || '';    // Answer to Q1 (Backend)
+    const databaseAnswer = messages[3]?.content || '';   // Answer to Q2 (Database)
+    const frontendAnswer = messages[5]?.content || '';   // Answer to Q3 (Frontend)
+    const cssAnswer = messages[7]?.content || '';        // Answer to Q4 (CSS)
+
+    if (!backendAnswer || !databaseAnswer || !frontendAnswer || !cssAnswer) return;
+
+    // Map answers to stack values (lowercase, remove extra text)
+    const extractStackValue = (answer: string): string => {
+      const lower = answer.toLowerCase();
+      // Extract the framework name before any parentheses or extra text
+      const match = lower.match(/^([a-z\s\-\.]+?)(?:\s*\(|$)/);
+      return match ? match[1].trim().replace(/\s+/g, '') : lower.split(/[\s,]/)[0];
+    };
+
+    const stack = {
+      backend: extractStackValue(backendAnswer),
+      database: extractStackValue(databaseAnswer),
+      frontend: extractStackValue(frontendAnswer),
+      css: extractStackValue(cssAnswer)
+    };
+
+    try {
+      console.log('🎯 Stack detected and saving:', stack);
+      await interviewsApi.saveStack(interviewId, stack);
+      console.log('✅ Stack configuration saved successfully!');
+    } catch (error) {
+      console.error('❌ Failed to save stack:', error);
+      // Don't show error to user - this is automatic
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -154,19 +233,23 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       return;
     }
 
-    if (!confirm('Generate prompts automatically from this interview using AI?\n\nThis will analyze the conversation and create structured prompts for implementation.')) {
+    if (!confirm('Generate tasks automatically from this interview using AI?\n\nThis will analyze the conversation and create micro-tasks that will appear in your Kanban board.')) {
       return;
     }
 
     setGeneratingPrompts(true);
     try {
       const response = await interviewsApi.generatePrompts(interviewId);
-      const data = response.data;
+      // Handle both response formats (direct data or wrapped in .data)
+      const data = response.data || response;
+
+      // Backend should return tasks_created or prompts_generated
+      const tasksCount = data.tasks_created || data.prompts_generated || 0;
 
       alert(
         `✅ Success!\n\n` +
-        `${data.prompts_generated} prompts were generated automatically.\n\n` +
-        `You can now view and edit them in the Prompts section.`
+        `${tasksCount} tasks were created automatically from your interview.\n\n` +
+        `Check your Kanban board to see them in the Backlog column!`
       );
 
       // Optionally reload interview to update any metadata
@@ -258,22 +341,6 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               </Button>
             </>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              try {
-                const response = await interviewsApi.prompts(interviewId);
-                console.log('Generated prompts:', response.data);
-                alert(`Found ${response.data?.length || 0} generated prompts. Check console for details.`);
-              } catch (error) {
-                console.error('Failed to fetch prompts:', error);
-                alert('No prompts generated yet or failed to fetch.');
-              }
-            }}
-          >
-            View Prompts
-          </Button>
         </div>
       </div>
 

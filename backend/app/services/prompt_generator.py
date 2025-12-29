@@ -1,6 +1,7 @@
 """
 Service para gerar prompts automaticamente usando IA
 Analisa entrevistas e gera prompts estruturados para implementação
+Atualizado para criar Tasks ao invés de Prompts (PROMPT #44)
 """
 
 from typing import List, Dict, Any
@@ -10,7 +11,9 @@ import json
 import logging
 
 from app.models.interview import Interview
-from app.models.prompt import Prompt
+from app.models.task import Task, TaskStatus
+from app.models.project import Project
+from app.models.spec import Spec
 from app.services.ai_orchestrator import AIOrchestrator
 
 logger = logging.getLogger(__name__)
@@ -30,26 +33,242 @@ class PromptGenerator:
         """
         self.orchestrator = AIOrchestrator(db)
 
+    def _fetch_stack_specs(self, project: Project, db: Session) -> Dict[str, Any]:
+        """
+        Fetch all relevant specs for project's stack.
+        Returns organized specs by category and type.
+
+        PROMPT #48 - Phase 3: Token Reduction via Specs Integration
+        """
+        specs = {
+            'backend': [],
+            'frontend': [],
+            'database': [],
+            'css': [],
+            'ignore_patterns': set()
+        }
+
+        # Fetch backend specs
+        if project.stack_backend:
+            backend_specs = db.query(Spec).filter(
+                Spec.category == 'backend',
+                Spec.name == project.stack_backend,
+                Spec.is_active == True
+            ).all()
+
+            specs['backend'] = [
+                {
+                    'type': s.spec_type,
+                    'title': s.title,
+                    'content': s.content,
+                    'language': s.language
+                }
+                for s in backend_specs
+            ]
+
+            # Collect ignore patterns
+            for s in backend_specs:
+                if s.ignore_patterns:
+                    specs['ignore_patterns'].update(s.ignore_patterns)
+
+        # Fetch database specs
+        if project.stack_database:
+            db_specs = db.query(Spec).filter(
+                Spec.category == 'database',
+                Spec.name == project.stack_database,
+                Spec.is_active == True
+            ).all()
+
+            specs['database'] = [
+                {
+                    'type': s.spec_type,
+                    'title': s.title,
+                    'content': s.content
+                }
+                for s in db_specs
+            ]
+
+            for s in db_specs:
+                if s.ignore_patterns:
+                    specs['ignore_patterns'].update(s.ignore_patterns)
+
+        # Fetch frontend specs
+        if project.stack_frontend:
+            frontend_specs = db.query(Spec).filter(
+                Spec.category == 'frontend',
+                Spec.name == project.stack_frontend,
+                Spec.is_active == True
+            ).all()
+
+            specs['frontend'] = [
+                {
+                    'type': s.spec_type,
+                    'title': s.title,
+                    'content': s.content,
+                    'language': s.language
+                }
+                for s in frontend_specs
+            ]
+
+            for s in frontend_specs:
+                if s.ignore_patterns:
+                    specs['ignore_patterns'].update(s.ignore_patterns)
+
+        # Fetch CSS specs
+        if project.stack_css:
+            css_specs = db.query(Spec).filter(
+                Spec.category == 'css',
+                Spec.name == project.stack_css,
+                Spec.is_active == True
+            ).all()
+
+            specs['css'] = [
+                {
+                    'type': s.spec_type,
+                    'title': s.title,
+                    'content': s.content
+                }
+                for s in css_specs
+            ]
+
+            for s in css_specs:
+                if s.ignore_patterns:
+                    specs['ignore_patterns'].update(s.ignore_patterns)
+
+        # Convert ignore patterns set to list
+        specs['ignore_patterns'] = list(specs['ignore_patterns'])
+
+        logger.info(f"Fetched specs: {len(specs['backend'])} backend, {len(specs['frontend'])} frontend, "
+                   f"{len(specs['database'])} database, {len(specs['css'])} css")
+
+        return specs
+
+    def _build_specs_context(self, specs: Dict[str, Any], project: Project) -> str:
+        """
+        Format specs into readable context for AI.
+        This is THE KEY to token reduction!
+
+        PROMPT #48 - Phase 3: Build comprehensive specs context
+        """
+        if not any(specs[cat] for cat in ['backend', 'frontend', 'database', 'css']):
+            logger.warning("No specs available for project stack")
+            return ""
+
+        context = "\n" + "="*80 + "\n"
+        context += "FRAMEWORK SPECIFICATIONS (PRE-DEFINED - DO NOT REGENERATE)\n"
+        context += "="*80 + "\n\n"
+
+        context += f"PROJECT STACK:\n"
+        context += f"- Backend: {project.stack_backend or 'None'}\n"
+        context += f"- Database: {project.stack_database or 'None'}\n"
+        context += f"- Frontend: {project.stack_frontend or 'None'}\n"
+        context += f"- CSS Framework: {project.stack_css or 'None'}\n\n"
+
+        # Backend specs
+        if specs['backend']:
+            lang = specs['backend'][0].get('language', 'Backend').upper()
+            context += f"{'-'*80}\n"
+            context += f"{lang} FRAMEWORK SPECIFICATIONS\n"
+            context += f"{'-'*80}\n\n"
+
+            for spec in specs['backend']:
+                context += f"### {spec['title']} ({spec['type']})\n"
+                context += f"{spec['content']}\n\n"
+
+        # Frontend specs
+        if specs['frontend']:
+            context += f"{'-'*80}\n"
+            context += f"FRONTEND FRAMEWORK SPECIFICATIONS\n"
+            context += f"{'-'*80}\n\n"
+
+            for spec in specs['frontend']:
+                context += f"### {spec['title']} ({spec['type']})\n"
+                context += f"{spec['content']}\n\n"
+
+        # Database specs
+        if specs['database']:
+            context += f"{'-'*80}\n"
+            context += f"DATABASE SPECIFICATIONS\n"
+            context += f"{'-'*80}\n\n"
+
+            for spec in specs['database']:
+                context += f"### {spec['title']} ({spec['type']})\n"
+                context += f"{spec['content']}\n\n"
+
+        # CSS specs
+        if specs['css']:
+            context += f"{'-'*80}\n"
+            context += f"CSS FRAMEWORK SPECIFICATIONS\n"
+            context += f"{'-'*80}\n\n"
+
+            for spec in specs['css']:
+                context += f"### {spec['title']} ({spec['type']})\n"
+                context += f"{spec['content']}\n\n"
+
+        # Ignore patterns
+        if specs['ignore_patterns']:
+            context += f"{'-'*80}\n"
+            context += f"FILES/DIRECTORIES TO IGNORE\n"
+            context += f"{'-'*80}\n"
+            context += f"{', '.join(specs['ignore_patterns'])}\n\n"
+
+        context += "="*80 + "\n"
+        context += "END OF FRAMEWORK SPECIFICATIONS\n"
+        context += "="*80 + "\n\n"
+
+        context += """CRITICAL INSTRUCTIONS FOR TASK GENERATION:
+
+1. **The framework structures above are PRE-DEFINED**
+   - DO NOT include them in task descriptions
+   - DO NOT regenerate boilerplate code
+   - DO NOT explain framework conventions
+
+2. **Reference specs instead of reproducing them**
+   - Example: "Follow Laravel controller spec structure"
+   - Example: "Use Next.js page component pattern from spec"
+   - Example: "Apply PostgreSQL table creation spec"
+
+3. **Focus ONLY on business logic and unique features**
+   - What makes THIS project different
+   - Project-specific validations
+   - Custom methods beyond standard patterns
+   - Integration logic between components
+
+4. **Task descriptions should be CONCISE**
+   - 50-150 words maximum per task
+   - Describe WHAT to implement, not HOW the framework works
+   - Reference spec patterns instead of repeating them
+
+5. **Token reduction strategy**
+   - Before: "Create a Laravel controller with methods index(), store(), show()..."  (500 tokens)
+   - After: "Create Product controller following spec. Add inventory tracking logic." (50 tokens)
+   - 90% TOKEN REDUCTION by not repeating framework patterns!
+
+"""
+
+        logger.info(f"Built specs context: {len(context)} characters")
+        return context
+
     async def generate_from_interview(
         self,
         interview_id: str,
         db: Session
-    ) -> List[Prompt]:
+    ) -> List[Task]:
         """
-        Analisa a entrevista e gera prompts estruturados
+        Analisa a entrevista e gera tasks estruturadas para o Kanban board
 
         Args:
             interview_id: UUID da entrevista
             db: Sessão do banco de dados
 
         Returns:
-            Lista de prompts criados
+            Lista de tasks criadas
 
         Raises:
             ValueError: Se a entrevista não for encontrada
             Exception: Se houver erro na geração
         """
-        logger.info(f"Starting prompt generation for interview {interview_id}")
+        logger.info(f"Starting task generation for interview {interview_id}")
 
         # 1. Buscar interview
         interview = db.query(Interview).filter(
@@ -62,12 +281,26 @@ class PromptGenerator:
         if not interview.conversation_data or len(interview.conversation_data) == 0:
             raise ValueError("Interview has no conversation data")
 
-        # 2. Extrair conversa
+        # 2. Buscar project (PROMPT #48 - Phase 3)
+        project = db.query(Project).filter(
+            Project.id == interview.project_id
+        ).first()
+
+        if not project:
+            raise ValueError(f"Project {interview.project_id} not found")
+
+        logger.info(f"Project stack: {project.stack_backend}, {project.stack_database}, "
+                   f"{project.stack_frontend}, {project.stack_css}")
+
+        # 3. Fetch specs for project stack (PROMPT #48 - Phase 3: TOKEN REDUCTION!)
+        specs = self._fetch_stack_specs(project, db)
+
+        # 4. Extrair conversa
         conversation = interview.conversation_data
         logger.info(f"Processing {len(conversation)} messages from interview")
 
-        # 3. Criar prompt para análise
-        analysis_prompt = self._create_analysis_prompt(conversation)
+        # 5. Criar prompt para análise with specs context (PROMPT #48 - Phase 3)
+        analysis_prompt = self._create_analysis_prompt(conversation, project, specs)
 
         # 4. Chamar AI Orchestrator para analisar
         logger.info("Calling AI Orchestrator for prompt generation...")
@@ -82,104 +315,137 @@ class PromptGenerator:
 
         logger.info(f"Received response from {response['provider']} ({response['model']})")
 
-        # 5. Parsear resposta e criar prompts
-        prompts_data = self._parse_ai_response(response['content'])
-        logger.info(f"Parsed {len(prompts_data)} prompts from AI response")
+        # 5. Parsear resposta e criar tasks
+        tasks_data = self._parse_ai_response(response['content'])
+        logger.info(f"Parsed {len(tasks_data)} tasks from AI response")
 
-        # 6. Criar prompts no banco
-        created_prompts = []
-        for i, prompt_data in enumerate(prompts_data):
-            prompt = Prompt(
+        # 6. Criar tasks no banco
+        created_tasks = []
+        for i, task_data in enumerate(tasks_data):
+            task = Task(
                 project_id=interview.project_id,
-                content=prompt_data["content"],
-                type=prompt_data.get("type", "feature"),
-                is_reusable=prompt_data.get("is_reusable", False),
-                components=prompt_data.get("components", []),
-                version=1,
+                title=task_data.get("name", task_data.get("title", f"Task {i+1}")),
+                description=task_data.get("content", task_data.get("description", "")),
+                status=TaskStatus.BACKLOG,
+                column="backlog",
+                order=i,
+                type=task_data.get("type", "feature"),
+                complexity=task_data.get("priority", 1),
                 created_from_interview_id=UUID(interview_id)
             )
-            db.add(prompt)
-            created_prompts.append(prompt)
-            logger.info(f"Created prompt {i+1}: {prompt_data.get('type', 'feature')}")
+            db.add(task)
+            created_tasks.append(task)
+            logger.info(f"Created task {i+1}: {task.title}")
 
         db.commit()
-        logger.info(f"Successfully generated and saved {len(created_prompts)} prompts")
+        logger.info(f"Successfully generated and saved {len(created_tasks)} tasks")
 
-        return created_prompts
+        return created_tasks
 
-    def _create_analysis_prompt(self, conversation: List[Dict[str, Any]]) -> str:
+    def _create_analysis_prompt(
+        self,
+        conversation: List[Dict[str, Any]],
+        project: Project,
+        specs: Dict[str, Any]
+    ) -> str:
         """
-        Cria prompt para Claude analisar a entrevista
+        Cria prompt para Claude analisar a entrevista WITH SPECS CONTEXT
+        PROMPT #48 - Phase 3: This is where token reduction happens!
 
         Args:
             conversation: Lista de mensagens da conversa
+            project: Project object with stack information
+            specs: Dictionary with framework specs
 
         Returns:
-            Prompt formatado para análise
+            Prompt formatado para análise com specs context
         """
         conversation_text = "\n".join([
             f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}"
             for msg in conversation
         ])
 
-        return f"""Analise esta entrevista sobre um projeto de software e gere prompts estruturados para implementação.
+        # Build specs context (THE KEY TO TOKEN REDUCTION!)
+        specs_context = self._build_specs_context(specs, project)
+
+        return f"""Analise esta entrevista sobre um projeto de software e gere tarefas estruturadas para o Kanban board.
 
 CONVERSA DA ENTREVISTA:
 {conversation_text}
 
+{specs_context}
+
 TAREFA:
-Analise a conversa e gere prompts profissionais e detalhados para implementar o projeto descrito. Cada prompt deve ser uma instrução clara e completa que pode ser usada diretamente por desenvolvedores ou IA para implementar uma funcionalidade específica.
+Analise a conversa e gere tarefas (tasks) profissionais e detalhadas para implementar o projeto descrito.
+IMPORTANTE: As especificações de framework fornecidas acima são PRÉ-DEFINIDAS.
+NÃO reproduza código boilerplate. Foque apenas em lógica de negócio e recursos únicos do projeto.
 
 FORMATO DE SAÍDA (JSON):
 {{
-  "prompts": [
+  "tasks": [
     {{
-      "name": "Setup Inicial do Projeto",
-      "type": "setup",
-      "content": "Crie um projeto Next.js 14 com TypeScript, Tailwind CSS e configuração Docker. Inclua: 1) Estrutura de pastas recomendada, 2) Configuração de ambiente, 3) Scripts package.json, 4) Dockerfile e docker-compose.yml...",
-      "is_reusable": false,
-      "components": ["docker", "nextjs", "typescript", "tailwind"],
+      "title": "Create Product model with inventory tracking",
+      "description": "Follow Laravel model spec. Add fields: name, sku, price, quantity, low_stock_threshold. Implement method to check if low on stock. Focus on business logic, not framework structure.",
+      "type": "feature",
       "priority": 1
     }},
     {{
-      "name": "Implementar Sistema de Autenticação",
+      "title": "Implement product search with filters",
+      "description": "Follow Laravel controller spec. Add search endpoint with filters for category, price range, availability. Return paginated results. Business logic only.",
       "type": "feature",
-      "content": "Implemente autenticação completa com: 1) JWT tokens, 2) Login/Register endpoints, 3) Middleware de proteção, 4) Refresh token logic, 5) Password hashing com bcrypt...",
-      "is_reusable": true,
-      "components": ["auth", "jwt", "bcrypt", "middleware"],
       "priority": 2
+    }},
+    {{
+      "title": "Create products page with grid layout",
+      "description": "Follow Next.js page spec. Fetch products from API, display in grid using Tailwind layout spec. Add filters sidebar. Focus on UI logic and data integration.",
+      "type": "feature",
+      "priority": 3
     }}
   ]
 }}
 
-DIRETRIZES PARA GERAÇÃO:
-1. **Clareza**: Cada prompt deve ser específico e executável
-2. **Contexto**: Inclua todo contexto técnico necessário
-3. **Detalhamento**: Seja detalhado sobre o que implementar e como
-4. **Priorização**: Ordene por ordem lógica de implementação
-5. **Reusabilidade**: Marque como reutilizável se o prompt pode ser usado em outros projetos
-6. **Componentes**: Liste todas as tecnologias/bibliotecas envolvidas
-7. **Tipos válidos**: setup, feature, bug_fix, refactor, documentation, test
-8. **Completude**: Cada prompt deve ser auto-contido e completo
+DIRETRIZES PARA GERAÇÃO (TOKEN REDUCTION STRATEGY):
+1. **Clareza**: Cada tarefa deve ter título curto (3-8 palavras) e descrição CONCISA
+2. **Granularidade**: Tarefas pequenas e executáveis (1-4 horas de trabalho)
+3. **Priorização**: Ordene por ordem lógica de implementação (campo priority: 1-10)
+4. **CONCISÃO**: Descrição deve ter 50-150 palavras (NÃO 100-200!)
+5. **Tipos válidos**: setup, feature, bug_fix, refactor, documentation, test, integration
+6. **Actionable**: Use verbos de ação (Create, Implement, Add, Build)
+
+TOKEN REDUCTION - CRITICAL RULES:
+⚠️ DO NOT include framework boilerplate in descriptions
+⚠️ DO NOT explain how frameworks work
+⚠️ DO NOT reproduce spec structures
+✅ DO reference specs: "Follow [framework] [spec type] spec"
+✅ DO focus on business logic: "Add inventory tracking", "Implement search filters"
+✅ DO keep descriptions short: 2-3 sentences maximum
+
+EXAMPLES OF TOKEN REDUCTION:
+❌ BAD (500 tokens): "Create a Laravel controller class that extends Controller. Add index method that returns paginated products with query parameters for filtering by category..."
+✅ GOOD (50 tokens): "Follow Laravel controller spec. Add product search with category and price filters. Return paginated results."
+→ 90% TOKEN REDUCTION!
 
 IMPORTANTE:
-- Gere entre 3 e 10 prompts (depende da complexidade do projeto)
-- Prompts de "setup" geralmente NÃO são reutilizáveis
-- Prompts de features genéricas (auth, pagination, etc) SÃO reutilizáveis
-- O campo "content" deve ter instruções DETALHADAS (200-500 palavras)
-- Inclua exemplos de código quando relevante no content
+- Gere entre 6 e 15 tarefas (depende da complexidade do projeto)
+- Tarefas devem seguir ordem de dependência lógica
+- Cada tarefa deve ser independente quando possível
+- Tarefas de setup vêm primeiro (priority 1-3)
+- Tarefas de features principais vêm depois (priority 4-10)
+- Tarefas de integração e testes vêm por último (priority 11-15)
+- Título deve ser conciso mas descritivo
+- Descrição deve referenciar specs e focar em lógica única
 
 Retorne APENAS o JSON válido, sem texto adicional antes ou depois."""
 
     def _parse_ai_response(self, response_text: str) -> List[Dict[str, Any]]:
         """
-        Parseia a resposta da IA e extrai os prompts
+        Parseia a resposta da IA e extrai as tasks
 
         Args:
             response_text: Texto de resposta da IA
 
         Returns:
-            Lista de dicionários com dados dos prompts
+            Lista de dicionários com dados das tasks
 
         Raises:
             ValueError: Se o JSON for inválido
@@ -196,16 +462,20 @@ Retorne APENAS o JSON válido, sem texto adicional antes ou depois."""
         # Parse JSON
         try:
             data = json.loads(response_text.strip())
-            prompts = data.get("prompts", [])
+            tasks = data.get("tasks", [])
 
             # Validar estrutura básica
-            for prompt in prompts:
-                if "content" not in prompt:
-                    raise ValueError("Prompt missing required 'content' field")
-                if "type" not in prompt:
-                    prompt["type"] = "feature"  # Default type
+            for task in tasks:
+                if "title" not in task and "name" not in task:
+                    raise ValueError("Task missing required 'title' or 'name' field")
+                if "description" not in task and "content" not in task:
+                    task["description"] = task.get("name", task.get("title", ""))
+                if "type" not in task:
+                    task["type"] = "feature"  # Default type
+                if "priority" not in task:
+                    task["priority"] = 1  # Default priority
 
-            return prompts
+            return tasks
 
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")

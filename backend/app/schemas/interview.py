@@ -61,3 +61,11 @@ class InterviewResponse(InterviewBase):
     class Config:
         from_attributes = True
         use_enum_values = True
+
+
+class StackConfiguration(BaseModel):
+    """Schema for project stack configuration (PROMPT #46 - Phase 1)"""
+    backend: str = Field(..., description="Backend framework (laravel, django, fastapi, express, other)")
+    database: str = Field(..., description="Database (postgresql, mysql, mongodb, sqlite)")
+    frontend: str = Field(..., description="Frontend framework (nextjs, react, vue, angular, none)")
+    css: str = Field(..., description="CSS framework (tailwind, bootstrap, materialui, custom)")

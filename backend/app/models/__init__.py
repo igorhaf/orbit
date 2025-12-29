@@ -10,10 +10,14 @@ from app.models.project import Project
 from app.models.interview import Interview, InterviewStatus
 from app.models.prompt import Prompt
 from app.models.task import Task, TaskStatus
+from app.models.task_result import TaskResult
 from app.models.chat_session import ChatSession, ChatSessionStatus
 from app.models.commit import Commit, CommitType
 from app.models.ai_model import AIModel, AIModelUsageType
 from app.models.system_settings import SystemSettings
+from app.models.spec import Spec  # PROMPT #47 - Phase 2
+from app.models.consistency_issue import ConsistencyIssue, IssueSeverity, IssueStatus
+from app.models.project_analysis import ProjectAnalysis
 
 __all__ = [
     # Models
@@ -21,14 +25,20 @@ __all__ = [
     "Interview",
     "Prompt",
     "Task",
+    "TaskResult",
     "ChatSession",
     "Commit",
     "AIModel",
     "SystemSettings",
+    "Spec",  # PROMPT #47 - Phase 2
+    "ConsistencyIssue",
+    "ProjectAnalysis",
     # Enums
     "InterviewStatus",
     "TaskStatus",
     "ChatSessionStatus",
     "CommitType",
     "AIModelUsageType",
+    "IssueSeverity",
+    "IssueStatus",
 ]

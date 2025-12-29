@@ -59,6 +59,13 @@ class Task(Base):
         index=True
     )
 
+    created_from_interview_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("interviews.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
     # Basic fields
     title = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
