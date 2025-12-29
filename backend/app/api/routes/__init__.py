@@ -6,6 +6,7 @@ Exports all route modules for easy importing.
 from . import (
     projects,
     ai_models,
+    ai_executions,  # PROMPT #54 - AI Execution Logging
     tasks,
     interviews,
     prompts,
@@ -17,6 +18,7 @@ from . import (
 __all__ = [
     "projects",
     "ai_models",
+    "ai_executions",  # PROMPT #54 - AI Execution Logging
     "tasks",
     "interviews",
     "prompts",

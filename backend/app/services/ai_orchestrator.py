@@ -6,8 +6,12 @@ Gerencia Anthropic, OpenAI e Google AI de forma inteligente
 from typing import Dict, List, Optional, Literal
 from sqlalchemy.orm import Session
 import logging
+import time
+from datetime import datetime
+from uuid import UUID
 
 from app.models.ai_model import AIModel, AIModelUsageType
+from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +198,7 @@ class AIOrchestrator:
         """
         Executa chamada de IA usando modelo e configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
+        PROMPT #54 - AI Execution Logging
 
         Args:
             usage_type: Tipo de uso para seleção do modelo
@@ -218,6 +223,10 @@ class AIOrchestrator:
 
         logger.info(f"📤 Executing with config: max_tokens={tokens_limit}, temperature={temperature}")
 
+        # PROMPT #54 - Track execution time
+        start_time = time.time()
+        execution_log = None
+
         try:
             if provider == "anthropic":
                 result = await self._execute_anthropic(
@@ -237,10 +246,66 @@ class AIOrchestrator:
             # Adicionar informações do modelo do banco na resposta
             result["db_model_id"] = model_config["db_model_id"]
             result["db_model_name"] = model_config["db_model_name"]
+
+            # PROMPT #54 - Log successful execution to database
+            execution_time_ms = int((time.time() - start_time) * 1000)
+            try:
+                execution_log = AIExecution(
+                    ai_model_id=UUID(model_config["db_model_id"]) if model_config.get("db_model_id") else None,
+                    usage_type=usage_type,
+                    input_messages=messages,
+                    system_prompt=system_prompt,
+                    response_content=result.get("content", ""),
+                    input_tokens=result.get("usage", {}).get("input_tokens"),
+                    output_tokens=result.get("usage", {}).get("output_tokens"),
+                    total_tokens=result.get("usage", {}).get("total_tokens"),
+                    provider=provider,
+                    model_name=model_name,
+                    temperature=str(temperature),
+                    max_tokens=tokens_limit,
+                    execution_time_ms=execution_time_ms,
+                    created_at=datetime.utcnow()
+                )
+                self.db.add(execution_log)
+                self.db.commit()
+                logger.info(f"✅ Logged execution to database: {execution_log.id}")
+            except Exception as log_error:
+                logger.error(f"⚠️  Failed to log execution to database: {log_error}")
+                # Don't fail the request if logging fails
+                self.db.rollback()
+
             return result
 
         except Exception as e:
             logger.error(f"❌ Error with {provider} ({model_name}): {str(e)}")
+
+            # PROMPT #54 - Log failed execution to database
+            execution_time_ms = int((time.time() - start_time) * 1000)
+            try:
+                execution_log = AIExecution(
+                    ai_model_id=UUID(model_config["db_model_id"]) if model_config.get("db_model_id") else None,
+                    usage_type=usage_type,
+                    input_messages=messages,
+                    system_prompt=system_prompt,
+                    response_content=None,
+                    input_tokens=None,
+                    output_tokens=None,
+                    total_tokens=None,
+                    provider=provider,
+                    model_name=model_name,
+                    temperature=str(temperature),
+                    max_tokens=tokens_limit,
+                    error_message=str(e),
+                    execution_time_ms=execution_time_ms,
+                    created_at=datetime.utcnow()
+                )
+                self.db.add(execution_log)
+                self.db.commit()
+                logger.info(f"✅ Logged failed execution to database: {execution_log.id}")
+            except Exception as log_error:
+                logger.error(f"⚠️  Failed to log error to database: {log_error}")
+                self.db.rollback()
+
             # Re-raise - removido fallback automático para garantir uso do modelo configurado
             raise
 

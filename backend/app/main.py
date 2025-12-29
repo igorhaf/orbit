@@ -16,6 +16,7 @@ from app.database import init_db
 from app.api.routes import (
     projects,
     ai_models,
+    ai_executions,  # PROMPT #54 - AI Execution Logging
     tasks,
     interviews,
     prompts,
@@ -172,6 +173,13 @@ app.include_router(
     ai_models.router,
     prefix=f"{API_V1_PREFIX}/ai-models",
     tags=["AI Models"]
+)
+
+# AI Executions (PROMPT #54 - AI Execution Logging)
+app.include_router(
+    ai_executions.router,
+    prefix=f"{API_V1_PREFIX}/ai-executions",
+    tags=["AI Executions"]
 )
 
 # Tasks (Kanban)

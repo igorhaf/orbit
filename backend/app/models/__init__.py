@@ -18,6 +18,7 @@ from app.models.system_settings import SystemSettings
 from app.models.spec import Spec  # PROMPT #47 - Phase 2
 from app.models.consistency_issue import ConsistencyIssue, IssueSeverity, IssueStatus
 from app.models.project_analysis import ProjectAnalysis
+from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
 
 __all__ = [
     # Models
@@ -33,6 +34,7 @@ __all__ = [
     "Spec",  # PROMPT #47 - Phase 2
     "ConsistencyIssue",
     "ProjectAnalysis",
+    "AIExecution",  # PROMPT #54 - AI Execution Logging
     # Enums
     "InterviewStatus",
     "TaskStatus",
