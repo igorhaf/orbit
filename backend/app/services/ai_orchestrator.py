@@ -45,154 +45,203 @@ class AIOrchestrator:
 
     def _initialize_clients(self):
         """
-        Inicializa clientes das 3 APIs disponíveis
+        Inicializa clientes de TODAS as APIs com modelos ativos no banco
+        PROMPT #51 - Dynamic AI Model Integration
         """
-        # Buscar AI Models ativos
+        # Buscar TODOS os AI Models ativos (não apenas o primeiro de cada provider)
         models = self.db.query(AIModel).filter(
             AIModel.is_active == True
         ).all()
 
+        # Armazenar providers únicos já inicializados
+        initialized_providers = set()
+
         for model in models:
             try:
-                if model.provider == "anthropic" and "anthropic" not in self.clients:
-                    from anthropic import Anthropic
-                    self.clients["anthropic"] = Anthropic(api_key=model.api_key)
-                    logger.info(f"✅ Anthropic client initialized (model: {model.name})")
+                provider_key = model.provider.lower()
 
-                elif model.provider == "openai" and "openai" not in self.clients:
-                    from openai import OpenAI
-                    self.clients["openai"] = OpenAI(api_key=model.api_key)
-                    logger.info(f"✅ OpenAI client initialized (model: {model.name})")
+                # Inicializar cada provider apenas uma vez, mas usando API key do primeiro modelo ativo
+                if provider_key not in initialized_providers:
+                    if provider_key == "anthropic":
+                        from anthropic import Anthropic
+                        self.clients["anthropic"] = Anthropic(api_key=model.api_key)
+                        logger.info(f"✅ Anthropic client initialized with API key from: {model.name}")
+                        initialized_providers.add("anthropic")
 
-                elif model.provider == "google" and "google" not in self.clients:
-                    import google.generativeai as genai
-                    genai.configure(api_key=model.api_key)
-                    self.clients["google"] = genai
-                    logger.info(f"✅ Google AI client initialized (model: {model.name})")
+                    elif provider_key == "openai":
+                        from openai import OpenAI
+                        self.clients["openai"] = OpenAI(api_key=model.api_key)
+                        logger.info(f"✅ OpenAI client initialized with API key from: {model.name}")
+                        initialized_providers.add("openai")
+
+                    elif provider_key == "google":
+                        import google.generativeai as genai
+                        genai.configure(api_key=model.api_key)
+                        self.clients["google"] = genai
+                        logger.info(f"✅ Google AI client initialized with API key from: {model.name}")
+                        initialized_providers.add("google")
 
             except Exception as e:
                 logger.error(f"❌ Failed to initialize {model.provider} client: {e}")
 
-    def choose_model(self, usage_type: UsageType) -> Dict[str, str]:
+        logger.info(f"📊 Initialized providers: {list(initialized_providers)}")
+
+    def choose_model(self, usage_type: UsageType) -> Dict[str, any]:
         """
-        Escolhe o melhor modelo baseado no tipo de uso
+        Escolhe modelo dinamicamente do banco baseado no usage_type
+        PROMPT #51 - Dynamic AI Model Integration
 
         Args:
             usage_type: Tipo de uso (prompt_generation, task_execution, etc)
 
         Returns:
-            Dicionário com provider e model
+            Dicionário com provider, model, max_tokens, temperature e config completo
 
         Raises:
-            ValueError: Se nenhum provider estiver disponível
+            ValueError: Se nenhum modelo estiver disponível para o usage_type
         """
-        # Estratégias de seleção otimizadas
-        strategies = {
-            "prompt_generation": {
-                "primary": {"provider": "anthropic", "model": "claude-3-haiku-20240307"},
-                "fallback": {"provider": "openai", "model": "gpt-4o"}
-            },
-            "task_execution": {
-                "primary": {"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
-                "fallback": {"provider": "openai", "model": "gpt-4o"}
-            },
-            "commit_generation": {
-                "primary": {"provider": "google", "model": "gemini-1.5-flash"},
-                "fallback": {"provider": "anthropic", "model": "claude-haiku-3-20250514"}
-            },
-            "interview": {
-                "primary": {"provider": "anthropic", "model": "claude-sonnet-4-20250514"},
-                "fallback": {"provider": "openai", "model": "gpt-4o"}
-            },
-            "general": {
-                "primary": {"provider": "google", "model": "gemini-1.5-flash"},
-                "fallback": {"provider": "anthropic", "model": "claude-haiku-3-20250514"}
+        # 1. Buscar modelo ativo do banco com o usage_type específico
+        db_model = self.db.query(AIModel).filter(
+            AIModel.usage_type == usage_type,
+            AIModel.is_active == True
+        ).first()
+
+        if db_model:
+            provider = db_model.provider.lower()
+
+            # Verificar se o provider está inicializado
+            if provider in self.clients:
+                # Extrair configurações do banco
+                model_name = db_model.config.get("model", "")
+                max_tokens = db_model.config.get("max_tokens", 4096)
+                temperature = db_model.config.get("temperature", 0.7)
+
+                logger.info(
+                    f"🎯 Using {db_model.name} ({provider}/{model_name}) "
+                    f"for {usage_type} [max_tokens={max_tokens}, temp={temperature}]"
+                )
+
+                return {
+                    "provider": provider,
+                    "model": model_name if model_name else self._get_default_model(provider),
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "db_model_id": str(db_model.id),
+                    "db_model_name": db_model.name
+                }
+            else:
+                logger.warning(
+                    f"⚠️  Model '{db_model.name}' configured for {usage_type} but "
+                    f"provider '{provider}' not initialized"
+                )
+
+        # 2. Fallback: buscar QUALQUER modelo ativo que esteja inicializado
+        logger.warning(f"⚠️  No specific model configured for {usage_type}, trying fallback...")
+
+        fallback_model = self.db.query(AIModel).filter(
+            AIModel.is_active == True
+        ).first()
+
+        if fallback_model and fallback_model.provider.lower() in self.clients:
+            provider = fallback_model.provider.lower()
+            model_name = fallback_model.config.get("model", "")
+            max_tokens = fallback_model.config.get("max_tokens", 4096)
+            temperature = fallback_model.config.get("temperature", 0.7)
+
+            logger.info(
+                f"🔄 Fallback to {fallback_model.name} ({provider}/{model_name}) for {usage_type}"
+            )
+
+            return {
+                "provider": provider,
+                "model": model_name if model_name else self._get_default_model(provider),
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "db_model_id": str(fallback_model.id),
+                "db_model_name": fallback_model.name
             }
+
+        # 3. Nenhum modelo disponível
+        raise ValueError(
+            f"❌ No active AI model configured for '{usage_type}'. "
+            f"Please configure an AI model in /ai-models page."
+        )
+
+    def _get_default_model(self, provider: str) -> str:
+        """
+        Retorna modelo padrão caso não esteja configurado no banco
+
+        Args:
+            provider: Nome do provider (anthropic, openai, google)
+
+        Returns:
+            Nome do modelo padrão
+        """
+        defaults = {
+            "anthropic": "claude-sonnet-4-20250514",
+            "openai": "gpt-4o",
+            "google": "gemini-1.5-flash"
         }
-
-        strategy = strategies.get(usage_type, strategies["task_execution"])
-
-        # Verificar se provider primário está disponível
-        if strategy["primary"]["provider"] in self.clients:
-            logger.info(f"🎯 Using {strategy['primary']['provider']} ({strategy['primary']['model']}) for {usage_type}")
-            return strategy["primary"]
-
-        # Tentar fallback
-        if strategy["fallback"]["provider"] in self.clients:
-            logger.warning(f"⚠️  Primary provider unavailable. Fallback to {strategy['fallback']['provider']} for {usage_type}")
-            return strategy["fallback"]
-
-        raise ValueError(f"No AI provider available for {usage_type}. Initialize at least one provider.")
+        return defaults.get(provider, "claude-sonnet-4-20250514")
 
     async def execute(
         self,
         usage_type: UsageType,
         messages: List[Dict],
         system_prompt: Optional[str] = None,
-        max_tokens: int = 4000
+        max_tokens: Optional[int] = None
     ) -> Dict:
         """
-        Executa chamada de IA usando o modelo apropriado
+        Executa chamada de IA usando modelo e configurações do banco
+        PROMPT #51 - Dynamic AI Model Integration
 
         Args:
             usage_type: Tipo de uso para seleção do modelo
             messages: Lista de mensagens no formato [{"role": "user/assistant", "content": "..."}]
             system_prompt: System prompt opcional
-            max_tokens: Máximo de tokens na resposta
+            max_tokens: Máximo de tokens (se None, usa configuração do banco)
 
         Returns:
-            Dicionário com response, usage, provider e model
+            Dicionário com response, usage, provider, model e db_model_info
 
         Raises:
             Exception: Se a execução falhar em todos os providers
         """
+        # Escolher modelo do banco com suas configurações
         model_config = self.choose_model(usage_type)
         provider = model_config["provider"]
         model_name = model_config["model"]
 
+        # Usar max_tokens do banco se não foi especificado
+        tokens_limit = max_tokens if max_tokens is not None else model_config["max_tokens"]
+        temperature = model_config["temperature"]
+
+        logger.info(f"📤 Executing with config: max_tokens={tokens_limit}, temperature={temperature}")
+
         try:
             if provider == "anthropic":
-                return await self._execute_anthropic(
-                    model_name, messages, system_prompt, max_tokens
+                result = await self._execute_anthropic(
+                    model_name, messages, system_prompt, tokens_limit, temperature
                 )
             elif provider == "openai":
-                return await self._execute_openai(
-                    model_name, messages, system_prompt, max_tokens
+                result = await self._execute_openai(
+                    model_name, messages, system_prompt, tokens_limit, temperature
                 )
             elif provider == "google":
-                return await self._execute_google(
-                    model_name, messages, system_prompt, max_tokens
+                result = await self._execute_google(
+                    model_name, messages, system_prompt, tokens_limit, temperature
                 )
             else:
                 raise ValueError(f"Unknown provider: {provider}")
 
+            # Adicionar informações do modelo do banco na resposta
+            result["db_model_id"] = model_config["db_model_id"]
+            result["db_model_name"] = model_config["db_model_name"]
+            return result
+
         except Exception as e:
             logger.error(f"❌ Error with {provider} ({model_name}): {str(e)}")
-
-            # Tentar fallback se ainda não foi usado
-            try:
-                fallback_config = self.choose_model(usage_type)
-                if fallback_config["provider"] != provider and fallback_config["provider"] in self.clients:
-                    logger.info(f"🔄 Trying fallback provider {fallback_config['provider']}...")
-                    provider = fallback_config["provider"]
-                    model_name = fallback_config["model"]
-
-                    if provider == "anthropic":
-                        return await self._execute_anthropic(
-                            model_name, messages, system_prompt, max_tokens
-                        )
-                    elif provider == "openai":
-                        return await self._execute_openai(
-                            model_name, messages, system_prompt, max_tokens
-                        )
-                    elif provider == "google":
-                        return await self._execute_google(
-                            model_name, messages, system_prompt, max_tokens
-                        )
-            except Exception as fallback_error:
-                logger.error(f"❌ Fallback also failed: {str(fallback_error)}")
-
-            # Re-raise original exception if fallback fails
+            # Re-raise - removido fallback automático para garantir uso do modelo configurado
             raise
 
     async def _execute_anthropic(
@@ -200,14 +249,19 @@ class AIOrchestrator:
         model: str,
         messages: List[Dict],
         system_prompt: Optional[str],
-        max_tokens: int
+        max_tokens: int,
+        temperature: float
     ) -> Dict:
-        """Executa com Anthropic Claude"""
+        """
+        Executa com Anthropic Claude usando configurações do banco
+        PROMPT #51 - Dynamic AI Model Integration
+        """
         client = self.clients["anthropic"]
 
         response = client.messages.create(
             model=model,
             max_tokens=max_tokens,
+            temperature=temperature,
             system=system_prompt if system_prompt else "You are a helpful AI assistant.",
             messages=messages
         )
@@ -228,9 +282,13 @@ class AIOrchestrator:
         model: str,
         messages: List[Dict],
         system_prompt: Optional[str],
-        max_tokens: int
+        max_tokens: int,
+        temperature: float
     ) -> Dict:
-        """Executa com OpenAI GPT"""
+        """
+        Executa com OpenAI GPT usando configurações do banco
+        PROMPT #51 - Dynamic AI Model Integration
+        """
         client = self.clients["openai"]
 
         # Adicionar system message se fornecido
@@ -245,7 +303,8 @@ class AIOrchestrator:
         response = client.chat.completions.create(
             model=model,
             messages=openai_messages,
-            max_tokens=max_tokens
+            max_tokens=max_tokens,
+            temperature=temperature
         )
 
         return {
@@ -264,9 +323,13 @@ class AIOrchestrator:
         model: str,
         messages: List[Dict],
         system_prompt: Optional[str],
-        max_tokens: int
+        max_tokens: int,
+        temperature: float
     ) -> Dict:
-        """Executa com Google Gemini"""
+        """
+        Executa com Google Gemini usando configurações do banco
+        PROMPT #51 - Dynamic AI Model Integration
+        """
         genai = self.clients["google"]
 
         # Configurar modelo
@@ -283,12 +346,12 @@ class AIOrchestrator:
 
         prompt = "\n\n".join(conversation)
 
-        # Gerar resposta
+        # Gerar resposta com configurações do banco
         response = model_instance.generate_content(
             prompt,
             generation_config=genai.types.GenerationConfig(
                 max_output_tokens=max_tokens,
-                temperature=0.7
+                temperature=temperature
             )
         )
 
