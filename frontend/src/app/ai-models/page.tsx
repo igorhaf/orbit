@@ -461,7 +461,7 @@ export default function AIModelsPage() {
               <Input
                 label="API Key"
                 type="password"
-                placeholder="sk-..."
+                placeholder="Enter API key (sk-..., AIza..., etc)"
                 required
                 value={createFormData.api_key}
                 onChange={(e) =>
@@ -621,7 +621,7 @@ export default function AIModelsPage() {
               <Input
                 label="API Key (leave empty to keep current)"
                 type="password"
-                placeholder="sk-..."
+                placeholder="Enter API key (sk-..., AIza..., etc)"
                 value={editFormData.api_key || ''}
                 onChange={(e) =>
                   setEditFormData({ ...editFormData, api_key: e.target.value })
