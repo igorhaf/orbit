@@ -56,11 +56,11 @@ class AIModelUpdate(BaseModel):
 
 
 class AIModelResponse(AIModelBase):
-    """Schema for AIModel response (without API key)"""
+    """Schema for AIModel response (includes API key for development)"""
     id: UUID
+    api_key: str  # Included for development/debugging
     created_at: datetime
     updated_at: datetime
-    # api_key is intentionally excluded for security
 
     class Config:
         from_attributes = True
