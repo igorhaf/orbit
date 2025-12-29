@@ -278,6 +278,48 @@ export const aiModelsApi = {
     request<any>(`/api/v1/ai-models/usage/${usageType}`),
 };
 
+// AI Executions API (PROMPT #54 - AI Execution Logging)
+export const aiExecutionsApi = {
+  list: (params?: {
+    skip?: number;
+    limit?: number;
+    usage_type?: string;
+    provider?: string;
+    has_error?: boolean;
+    start_date?: string;
+    end_date?: string;
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.skip !== undefined) queryParams.append('skip', params.skip.toString());
+    if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
+    if (params?.usage_type) queryParams.append('usage_type', params.usage_type);
+    if (params?.provider) queryParams.append('provider', params.provider);
+    if (params?.has_error !== undefined) queryParams.append('has_error', params.has_error.toString());
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+
+    const queryString = queryParams.toString();
+    return request<any>(`/api/v1/ai-executions/${queryString ? '?' + queryString : ''}`);
+  },
+
+  get: (id: string) => request<any>(`/api/v1/ai-executions/${id}`),
+
+  delete: (id: string) =>
+    request<any>(`/api/v1/ai-executions/${id}`, { method: 'DELETE' }),
+
+  deleteOld: (days: number) =>
+    request<any>(`/api/v1/ai-executions/?days=${days}`, { method: 'DELETE' }),
+
+  stats: (params?: { start_date?: string; end_date?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+
+    const queryString = queryParams.toString();
+    return request<any>(`/api/v1/ai-executions/stats${queryString ? '?' + queryString : ''}`);
+  },
+};
+
 // Chat Sessions API
 export const chatSessionsApi = {
   list: (params?: any) => request<any>('/api/v1/chat-sessions/'),
