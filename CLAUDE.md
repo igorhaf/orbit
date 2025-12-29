@@ -15,14 +15,20 @@
 
 #### Estrutura do Arquivo:
 ```
-PROMPT_[NÚMERO]_[TIPO]_REPORT.md
+PROMPT_[NÚMERO]_[DESCRIÇÃO].md
 ```
 
-**Tipos comuns:**
-- `IMPLEMENTATION_REPORT` - Para implementações de features
-- `FIX_REPORT` - Para correções de bugs
-- `PHASE_N_REPORT` - Para fases de projetos grandes
-- `DIAGNOSTIC_REPORT` - Para diagnósticos e análises
+**Exemplos de nomenclatura real do projeto:**
+- `PROMPT_50_IMPLEMENTATION_REPORT.md` - Implementação de feature completa
+- `PROMPT_42_FIX_UNICODE_PARSER.md` - Correção específica (nome descritivo)
+- `PROMPT_42_IMPLEMENTATION_SUMMARY.md` - Resumo de implementação
+- `PROMPT_46_PHASE1_IMPLEMENTATION_REPORT.md` - Fase de projeto
+- `PROMPT_47_PHASE_2_REPORT.md` - Fase de projeto (formato alternativo)
+- `PROMPT_45_DIAGNOSTIC_REPORT.md` - Diagnóstico de problema
+- `PROMPT_37_FIX_REPORT.md` - Correção de bug (genérico)
+- `PROMPT_36_COMPLETION_REPORT.md` - Conclusão de tarefa
+
+**Regra:** Use um nome que descreva claramente o trabalho realizado. Não há formato rígido, adapte ao contexto.
 
 #### Template Obrigatório:
 
