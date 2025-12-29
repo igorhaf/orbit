@@ -23,7 +23,8 @@ from app.api.routes import (
     commits,
     system_settings,
     orchestrators,
-    project_analyses
+    project_analyses,
+    specs
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -227,6 +228,13 @@ app.include_router(
     project_analyses.router,
     prefix=f"{API_V1_PREFIX}/analyzers",
     tags=["Project Analyzers"]
+)
+
+# Specs (Dynamic Specifications System - PROMPT #47 Phase 2)
+app.include_router(
+    specs.router,
+    prefix=f"{API_V1_PREFIX}/specs",
+    tags=["Specs"]
 )
 
 # WebSocket (Real-time updates)

@@ -15,6 +15,12 @@ class ProjectBase(BaseModel):
     description: Optional[str] = Field(None, description="Project description")
     git_repository_info: Optional[dict] = Field(None, description="Git repository information")
 
+    # Stack configuration (PROMPT #46 - Phase 1)
+    stack_backend: Optional[str] = Field(None, description="Backend framework (laravel, django, fastapi, etc)")
+    stack_database: Optional[str] = Field(None, description="Database (postgresql, mysql, mongodb, etc)")
+    stack_frontend: Optional[str] = Field(None, description="Frontend framework (nextjs, react, vue, etc)")
+    stack_css: Optional[str] = Field(None, description="CSS framework (tailwind, bootstrap, etc)")
+
 
 class ProjectCreate(ProjectBase):
     """Schema for creating a new Project"""
@@ -26,6 +32,12 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
     git_repository_info: Optional[dict] = None
+
+    # Stack configuration (PROMPT #46 - Phase 1)
+    stack_backend: Optional[str] = None
+    stack_database: Optional[str] = None
+    stack_frontend: Optional[str] = None
+    stack_css: Optional[str] = None
 
 
 class ProjectResponse(ProjectBase):

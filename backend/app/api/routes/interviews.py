@@ -15,7 +15,7 @@ from app.models.interview import Interview, InterviewStatus
 from app.models.project import Project
 from app.models.prompt import Prompt
 from app.models.ai_model import AIModel, AIModelUsageType
-from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse, InterviewMessageCreate
+from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse, InterviewMessageCreate, StackConfiguration
 from app.schemas.prompt import PromptResponse
 from app.api.dependencies import get_interview_or_404
 
@@ -223,21 +223,21 @@ async def generate_prompts(
     db: Session = Depends(get_db)
 ):
     """
-    Gera prompts automaticamente baseado na entrevista usando IA (Claude API).
+    Gera tasks automaticamente baseado na entrevista usando IA (Claude API).
 
     Este endpoint:
     1. Busca a entrevista pelo ID
     2. Extrai a conversa completa
     3. Envia para Claude API para análise
-    4. Gera prompts estruturados baseados no contexto
-    5. Salva os prompts no banco de dados
+    4. Gera tasks estruturadas baseadas no contexto
+    5. Salva as tasks no banco de dados (Kanban board - coluna Backlog)
 
     - **interview_id**: UUID of the interview
 
     Returns:
         - success: Boolean indicating success
-        - prompts_generated: Number of prompts created
-        - prompts: List of generated prompts
+        - tasks_created: Number of tasks created
+        - message: Success message
     """
     from app.services.prompt_generator import PromptGenerator
 
@@ -249,18 +249,18 @@ async def generate_prompts(
             detail=f"Interview {interview_id} not found"
         )
 
-    # Gerar prompts usando AI Orchestrator
+    # Gerar tasks usando AI Orchestrator
     try:
         generator = PromptGenerator(db=db)
-        prompts = await generator.generate_from_interview(
+        tasks = await generator.generate_from_interview(
             interview_id=str(interview_id),
             db=db
         )
 
         return {
             "success": True,
-            "prompts_generated": len(prompts),
-            "prompts": [PromptResponse.from_orm(p) for p in prompts]
+            "tasks_created": len(tasks),
+            "message": f"Generated {len(tasks)} tasks successfully!"
         }
     except ValueError as e:
         raise HTTPException(
@@ -270,10 +270,10 @@ async def generate_prompts(
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Failed to generate prompts: {e}", exc_info=True)
+        logger.error(f"Failed to generate tasks: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate prompts: {str(e)}"
+            detail=f"Failed to generate tasks: {str(e)}"
         )
 
 
@@ -333,28 +333,31 @@ async def start_interview(
     # Inicializar conversa
     interview.conversation_data = []
 
-    # System prompt com contexto do projeto
+    # System prompt com contexto do projeto (PROMPT #46 - Stack Questions First)
     system_prompt = f"""You are an AI requirements analyst for software projects.
 
 PROJECT CONTEXT (already defined):
 - Title: {project.name}
 - Description: {project.description}
 
-This is the FIRST question. Based on the project context above, ask about the CORE FEATURES needed.
+CRITICAL: This interview must START with 4 FIXED STACK QUESTIONS before asking about features.
 
-Use this EXACT format:
+Ask Question 1 NOW (Stack - Backend):
 
-❓ Question 1: Which core features are essential for {project.name}?
+❓ Question 1: What backend framework will you use for {project.name}?
 
 OPTIONS:
-□ [Relevant option 1 based on project description]
-□ [Relevant option 2 based on project description]
-□ [Relevant option 3 based on project description]
-□ [Relevant option 4 based on project description]
-□ [Relevant option 5 based on project description]
-☑️ Select all that apply
+○ Laravel (PHP)
+○ Django (Python)
+○ FastAPI (Python)
+○ Express.js (Node.js)
+○ Other
 
-Make the options SPECIFIC to the project type mentioned in the description.
+◉ Choose one option
+
+After the user answers, you will ask Questions 2-4 about Database, Frontend, and CSS.
+Then we'll proceed to gather business requirements.
+
 Be direct and professional."""
 
     # Usar orquestrador
@@ -399,6 +402,63 @@ Be direct and professional."""
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to start interview: {str(e)}"
         )
+
+
+@router.post("/{interview_id}/save-stack", status_code=status.HTTP_200_OK)
+async def save_interview_stack(
+    interview_id: UUID,
+    stack: StackConfiguration,
+    db: Session = Depends(get_db)
+):
+    """
+    Saves the tech stack configuration to the project after stack questions are answered.
+
+    This endpoint is called automatically after the user completes the 4 stack questions
+    (backend, database, frontend, css) at the start of the interview.
+
+    - **interview_id**: UUID of the interview
+    - **stack**: Stack configuration with backend, database, frontend, css choices
+
+    Returns:
+        - success: Boolean
+        - message: Confirmation message
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Buscar interview
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview {interview_id} not found"
+        )
+
+    # Buscar projeto
+    project = db.query(Project).filter(Project.id == interview.project_id).first()
+
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+
+    # Salvar stack no projeto
+    project.stack_backend = stack.backend
+    project.stack_database = stack.database
+    project.stack_frontend = stack.frontend
+    project.stack_css = stack.css
+
+    db.commit()
+    db.refresh(project)
+
+    logger.info(f"Stack configuration saved for project {project.id}: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}")
+
+    return {
+        "success": True,
+        "message": f"Stack configuration saved: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}"
+    }
 
 
 @router.post("/{interview_id}/send-message", status_code=status.HTTP_200_OK)
@@ -459,6 +519,7 @@ async def send_message_to_interview(
     ).first()
 
     project_context = ""
+    stack_context = ""
     if project:
         project_context = f"""
 PROJECT INFORMATION (already defined):
@@ -469,11 +530,83 @@ Use this as the foundation. Do NOT ask for title/description again.
 Your questions should dive deeper into technical requirements based on this context.
 """
 
+        # Check if stack is already configured
+        if project.stack_backend:
+            stack_context = f"""
+STACK ALREADY CONFIGURED:
+- Backend: {project.stack_backend}
+- Database: {project.stack_database}
+- Frontend: {project.stack_frontend}
+- CSS: {project.stack_css}
+
+Stack questions are complete. Focus on business requirements now.
+"""
+
+    # Count messages to determine if we're in stack questions phase (Questions 1-4)
+    message_count = len(interview.conversation_data)
+
+    # Determine which question to ask based on message count
+    # Messages 1-2: Backend (Q1), 3-4: Database (Q2), 5-6: Frontend (Q3), 7-8: CSS (Q4), 9+: Business questions
+    if message_count <= 2 and not project.stack_backend:
+        # Still on Question 1 (Backend) - already answered, need to ask Q2
+        next_stack_question = """
+Ask Question 2 NOW (Stack - Database):
+
+❓ Question 2: What database will you use?
+
+OPTIONS:
+○ PostgreSQL
+○ MySQL
+○ MongoDB
+○ SQLite
+
+◉ Choose one option
+"""
+    elif message_count <= 4 and not project.stack_backend:
+        # Question 2 (Database) answered, ask Q3
+        next_stack_question = """
+Ask Question 3 NOW (Stack - Frontend):
+
+❓ Question 3: What frontend framework will you use?
+
+OPTIONS:
+○ Next.js (React)
+○ React
+○ Vue.js
+○ Angular
+○ No frontend / API only
+
+◉ Choose one option
+"""
+    elif message_count <= 6 and not project.stack_backend:
+        # Question 3 (Frontend) answered, ask Q4
+        next_stack_question = """
+Ask Question 4 NOW (Stack - CSS):
+
+❓ Question 4: What CSS framework will you use?
+
+OPTIONS:
+○ Tailwind CSS
+○ Bootstrap
+○ Material UI
+○ Custom CSS
+
+◉ Choose one option
+
+After this answer, we'll move to gathering business requirements.
+"""
+    else:
+        # Stack questions complete or already configured, ask business questions
+        next_stack_question = ""
+
     # Preparar system prompt com formato estruturado
     system_prompt = f"""You are an AI requirements analyst helping to gather detailed technical requirements for a software project.
 
 {project_context}
 
+{stack_context}
+
+{next_stack_question if next_stack_question else '''
 CRITICAL RULES:
 1. **Ask ONE question at a time**
 2. **Always provide CLOSED-ENDED options** (multiple choice or single choice)
@@ -495,7 +628,6 @@ OPTIONS:
 
 EXAMPLE QUESTIONS:
 - "Which core features are essential for your [project type]?"
-- "What tech stack do you prefer for [specific component]?"
 - "Which third-party integrations do you need?"
 - "What level of scalability is required?"
 - "Which deployment platform will you use?"
@@ -503,19 +635,19 @@ EXAMPLE QUESTIONS:
 TOPICS TO COVER (in order):
 1. Core features and functionality
 2. User roles and permissions
-3. Tech stack preferences (frontend, backend, database)
-4. Third-party integrations (payments, auth, etc)
-5. Deployment and infrastructure
-6. Performance and scalability requirements
+3. Third-party integrations (payments, auth, etc)
+4. Deployment and infrastructure
+5. Performance and scalability requirements
 
 REMEMBER:
 - Extract actionable technical details
 - Options should be realistic and common in the industry
 - Questions adapt based on previous answers
 - Increment question number with each new question
-- After 8-12 questions, the interview is complete
+- After 8-12 questions total (including 4 stack questions), the interview is complete
 
-Continue with the next relevant question based on the user's previous response!"""
+Continue with the next relevant question based on the user's previous response!
+'''}"""
 
     # Usar orquestrador para obter resposta
     orchestrator = AIOrchestrator(db)

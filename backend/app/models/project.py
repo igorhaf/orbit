@@ -35,6 +35,12 @@ class Project(Base):
     description = Column(Text, nullable=True)
     git_repository_info = Column(JSON, nullable=True)
 
+    # Stack configuration (PROMPT #46 - Phase 1)
+    stack_backend = Column(String(50), nullable=True)      # 'laravel', 'django', 'fastapi', etc
+    stack_database = Column(String(50), nullable=True)     # 'postgresql', 'mysql', 'mongodb', etc
+    stack_frontend = Column(String(50), nullable=True)     # 'nextjs', 'react', 'vue', etc
+    stack_css = Column(String(50), nullable=True)          # 'tailwind', 'bootstrap', 'materialui', etc
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
