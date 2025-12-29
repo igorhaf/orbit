@@ -53,10 +53,6 @@ async def list_ai_models(
     # Apply pagination and ordering
     models = query.order_by(AIModel.created_at.desc()).offset(skip).limit(limit).all()
 
-    # Mask API keys in response
-    for model in models:
-        model.api_key = mask_api_key(model.api_key)
-
     return models
 
 
@@ -99,9 +95,6 @@ async def create_ai_model(
     db.commit()
     db.refresh(db_model)
 
-    # Mask API key in response
-    db_model.api_key = mask_api_key(db_model.api_key)
-
     return db_model
 
 
@@ -114,8 +107,6 @@ async def get_ai_model(
 
     - **model_id**: UUID of the AI model
     """
-    # Mask API key
-    model.api_key = mask_api_key(model.api_key)
     return model
 
 
@@ -161,9 +152,6 @@ async def update_ai_model(
     db.commit()
     db.refresh(model)
 
-    # Mask API key in response
-    model.api_key = mask_api_key(model.api_key)
-
     return model
 
 
@@ -201,10 +189,6 @@ async def get_models_by_usage_type(
 
     models = query.order_by(AIModel.name).all()
 
-    # Mask API keys
-    for model in models:
-        model.api_key = mask_api_key(model.api_key)
-
     return models
 
 
@@ -223,9 +207,6 @@ async def toggle_ai_model(
 
     db.commit()
     db.refresh(model)
-
-    # Mask API key in response
-    model.api_key = mask_api_key(model.api_key)
 
     return model
 
