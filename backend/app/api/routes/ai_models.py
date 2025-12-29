@@ -148,6 +148,11 @@ async def update_ai_model(
                 detail=f"Model with name '{update_data['name']}' already exists"
             )
 
+    # Special handling for api_key: if empty string, don't update (keep current value)
+    # This allows "leave empty to keep current" behavior in frontend
+    if "api_key" in update_data and update_data["api_key"] == "":
+        del update_data["api_key"]
+
     for field, value in update_data.items():
         setattr(model, field, value)
 
