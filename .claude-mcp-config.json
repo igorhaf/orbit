@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "claude-code-chat-permissions": {
+      "command": "node",
+      "args": [
+        "/home/igorhaf/.vscode-server/extensions/orbit-dev.orbit-vscode-0.41.1/dist/mcp-server.js"
+      ]
+    }
+  }
+}
