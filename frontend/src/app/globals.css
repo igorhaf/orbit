@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* PROMPT #56 - Scale UI to 70% */
+html {
+  font-size: 11.2px; /* 70% of default 16px */
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;

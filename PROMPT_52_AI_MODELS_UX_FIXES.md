@@ -238,7 +238,7 @@ PROMPT_52_AI_MODELS_UX_FIXES.md
 **1. Listar Modelos com API Keys Visíveis:**
 ```bash
 curl -s "http://localhost:8000/api/v1/ai-models/" | python3 -m json.tool
-# ✅ Retornou modelos com api_key completa: "AIzaSyD5lGGiR0mzk7xcQgo0ZBz457tZtc5kAYs"
+
 ```
 
 **2. Criar Modelo Google:**
@@ -248,7 +248,7 @@ curl -X POST "http://localhost:8000/api/v1/ai-models/" \
   -d '{
     "name": "Google Gemini Test",
     "provider": "google",
-    "api_key": "AIzaSyD5lGGiR0mzk7xcQgo0ZBz457tZtc5kAYs",
+    "api_key": "",
     "usage_type": "general"
   }'
 # ✅ Criado com sucesso, retornou ID

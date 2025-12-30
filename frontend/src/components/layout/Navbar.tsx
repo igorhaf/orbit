@@ -15,7 +15,7 @@ export const Navbar: React.FC = () => {
   return (
     <nav className="bg-white border-b border-gray-200 fixed w-full z-30 top-0">
       <div className="px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+        <div className="flex justify-between items-center h-[45px]">
           {/* Logo and Brand */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center space-x-3">

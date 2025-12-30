@@ -121,7 +121,7 @@ export const Sidebar: React.FC = () => {
   const pathname = usePathname();
 
   return (
-    <aside className="fixed inset-y-0 left-0 bg-gray-900 w-64 pt-16 overflow-y-auto">
+    <aside className="fixed inset-y-0 left-0 bg-gray-900 w-[180px] pt-[45px] overflow-y-auto">
       <nav className="px-3 py-4">
         <div className="space-y-1">
           {navigation.map((item) => {
