@@ -105,6 +105,7 @@ export default function AIModelsPage() {
     setEditFormData({
       name: model.name,
       provider: model.provider,
+      api_key: model.api_key,  // ✅ FIX: Include API key from model
       usage_type: model.usage_type,
       is_active: model.is_active,
       config: model.config,
@@ -660,8 +661,8 @@ export default function AIModelsPage() {
 
               {/* API Key */}
               <Input
-                label="API Key (leave empty to keep current)"
-                type="password"
+                label="API Key"
+                type="text"
                 placeholder="Enter API key (sk-..., AIza..., etc)"
                 value={editFormData.api_key || ''}
                 onChange={(e) =>

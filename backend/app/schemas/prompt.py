@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 class PromptBase(BaseModel):
     """Base schema for Prompt"""
-    content: str = Field(..., min_length=1, description="Prompt content")
+    content: str = Field(default="", description="Prompt content (legacy field, use response for AI outputs)")
     type: str = Field(
         default="user",
         max_length=50,
@@ -40,7 +40,7 @@ class PromptUpdate(BaseModel):
 
 
 class PromptResponse(PromptBase):
-    """Schema for Prompt response"""
+    """Schema for Prompt response - PROMPT #58 Enhanced with audit fields"""
     id: UUID
     project_id: UUID
     created_from_interview_id: Optional[UUID]
@@ -48,6 +48,19 @@ class PromptResponse(PromptBase):
     version: int
     created_at: datetime
     updated_at: datetime
+
+    # PROMPT #58 - AI Execution Audit Fields
+    ai_model_used: Optional[str] = None
+    system_prompt: Optional[str] = None
+    user_prompt: Optional[str] = None
+    response: Optional[str] = None
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    total_cost_usd: Optional[float] = None
+    execution_time_ms: Optional[int] = None
+    execution_metadata: Optional[dict] = None
+    status: Optional[str] = None
+    error_message: Optional[str] = None
 
     class Config:
         from_attributes = True

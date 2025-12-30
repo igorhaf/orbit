@@ -310,7 +310,10 @@ class PromptGenerator:
                 "role": "user",
                 "content": analysis_prompt
             }],
-            max_tokens=4000
+            max_tokens=4000,
+            # PROMPT #58 - Add context for prompt logging
+            project_id=interview.project_id,
+            interview_id=interview.id
         )
 
         logger.info(f"Received response from {response['provider']} ({response['model']})")

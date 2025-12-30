@@ -45,11 +45,36 @@ export const ModelForm: React.FC<ModelFormProps> = ({
   const [formData, setFormData] = useState({
     name: model?.name || '',
     provider: model?.provider || 'anthropic',
-    api_key: '',
+    api_key: model?.api_key || '',
     usage_type: model?.usage_type || AIModelUsageType.GENERAL,
     is_active: model?.is_active ?? true,
     config: model?.config || {},
   });
+
+  // Update form data when model prop changes (e.g., when data loads)
+  React.useEffect(() => {
+    if (model) {
+      console.log('🔍 ModelForm: Updating form data with model:', {
+        modelId: model.id,
+        hasApiKey: !!model.api_key,
+        apiKeyLength: model.api_key?.length || 0,
+        apiKeyPreview: model.api_key ? `${model.api_key.substring(0, 10)}...` : 'EMPTY'
+      });
+
+      setFormData({
+        name: model.name,
+        provider: model.provider,
+        api_key: model.api_key || '',
+        usage_type: model.usage_type,
+        is_active: model.is_active,
+        config: model.config || {},
+      });
+
+      console.log('✅ ModelForm: Form data updated');
+    } else {
+      console.log('⚠️ ModelForm: No model provided');
+    }
+  }, [model]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,14 +215,22 @@ export const ModelForm: React.FC<ModelFormProps> = ({
             <Label htmlFor="api_key">
               API Key {!model && '*'}
             </Label>
+            {(() => {
+              console.log('🎨 Rendering ApiKeyInput with value:', {
+                hasValue: !!formData.api_key,
+                valueLength: formData.api_key?.length || 0,
+                valuePreview: formData.api_key ? `${formData.api_key.substring(0, 10)}...` : 'EMPTY'
+              });
+              return null;
+            })()}
             <ApiKeyInput
               value={formData.api_key}
               onChange={(value) => setFormData({ ...formData, api_key: value })}
-              placeholder={model ? 'Enter new API key to update...' : 'Enter API key...'}
+              placeholder={model ? 'API key is filled - edit to change...' : 'Enter API key...'}
             />
             <p className="text-xs text-gray-500 mt-1">
               {model
-                ? 'Leave empty to keep the existing API key'
+                ? 'The current API key is shown above. Edit to change it.'
                 : 'Your API key will be encrypted and stored securely'}
             </p>
           </CardContent>

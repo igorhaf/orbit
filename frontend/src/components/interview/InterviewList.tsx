@@ -7,11 +7,13 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { interviewsApi, projectsApi } from '@/lib/api';
 import { Interview, Project } from '@/lib/types';
 import { Button, Badge, Card, CardHeader, CardTitle, CardContent, Dialog, Select } from '@/components/ui';
 
 export function InterviewList() {
+  const router = useRouter();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,20 +57,25 @@ export function InterviewList() {
 
     setCreating(true);
     try {
-      await interviewsApi.create({
+      // PROMPT #56 - Create and redirect to interview
+      const response = await interviewsApi.create({
         project_id: selectedProject,
         ai_model_used: 'claude-3-sonnet',
         conversation_data: [],
       });
-      setIsCreateOpen(false);
-      setSelectedProject('');
-      await loadData();
+
+      // Get the created interview ID
+      const createdInterview = response.data || response;
+      const interviewId = createdInterview.id;
+
+      // Redirect to the interview page (it will auto-start with fixed questions)
+      router.push(`/interviews/${interviewId}`);
     } catch (error) {
       console.error('Failed to create interview:', error);
       alert('Failed to create interview. Please try again.');
-    } finally {
       setCreating(false);
     }
+    // Note: Don't setCreating(false) on success - we're navigating away
   };
 
   if (loading) {

@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Badge, Card, Button } from '@/components/ui';
+import { Badge, Button } from '@/components/ui';
 import { ConversationMessage } from '@/lib/types';
 import { parseMessage } from './MessageParser';
 
@@ -82,9 +82,9 @@ export function MessageBubble({ message, onOptionSubmit }: Props) {
           </Badge>
         </div>
 
-        {/* Message Card */}
-        <Card
-          className={`p-4 ${
+        {/* Message Card - PROMPT #56: Using div instead of Card to avoid bg-white override */}
+        <div
+          className={`p-4 rounded-lg border ${
             isUser
               ? 'bg-blue-500 text-white border-blue-500'
               : 'bg-gray-100 text-gray-900 border-gray-200'
@@ -179,7 +179,7 @@ export function MessageBubble({ message, onOptionSubmit }: Props) {
               {new Date(message.timestamp).toLocaleTimeString()}
             </div>
           )}
-        </Card>
+        </div>
       </div>
     </div>
   );

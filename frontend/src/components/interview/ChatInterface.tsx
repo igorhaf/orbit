@@ -26,27 +26,75 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // PROMPT #57 - Track pre-filled values for title/description questions
+  const [prefilledValue, setPrefilledValue] = useState<string | null>(null);
+  const [isProjectInfoQuestion, setIsProjectInfoQuestion] = useState(false);
+  const [currentQuestionNumber, setCurrentQuestionNumber] = useState<number | null>(null);
+
   useEffect(() => {
     loadInterview();
   }, [interviewId]);
 
   useEffect(() => {
-    scrollToBottom();
+    // PROMPT #56 - Improved auto-scroll with delay for DOM rendering
+    const timer = setTimeout(() => {
+      scrollToBottom();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [interview?.conversation_data]);
+
+  // PROMPT #57 - Auto-fill textarea when AI asks project info questions (Q1, Q2)
+  useEffect(() => {
+    if (!interview?.conversation_data || interview.conversation_data.length === 0) {
+      setPrefilledValue(null);
+      setIsProjectInfoQuestion(false);
+      setCurrentQuestionNumber(null);
+      return;
+    }
+
+    const lastMessage = interview.conversation_data[interview.conversation_data.length - 1];
+
+    // Only pre-fill if last message is from assistant with prefilled_value
+    if (lastMessage?.role === 'assistant' && lastMessage.prefilled_value) {
+      console.log('🔖 Detected prefilled question:', {
+        questionNumber: lastMessage.question_number,
+        prefilledValue: lastMessage.prefilled_value
+      });
+
+      setMessage(lastMessage.prefilled_value);
+      setPrefilledValue(lastMessage.prefilled_value);
+      setIsProjectInfoQuestion(lastMessage.question_number === 1 || lastMessage.question_number === 2);
+      setCurrentQuestionNumber(lastMessage.question_number || null);
+
+      // Focus textarea for immediate editing
+      setTimeout(() => textareaRef.current?.focus(), 150);
+    } else {
+      // Reset if last message doesn't have prefilled value
+      setPrefilledValue(null);
+      setIsProjectInfoQuestion(false);
+      setCurrentQuestionNumber(null);
+    }
   }, [interview?.conversation_data]);
 
   const loadInterview = async () => {
     setLoading(true);
     try {
+      console.log('📥 Loading interview:', interviewId);
       const response = await interviewsApi.get(interviewId);
       const interviewData = response.data || response;
+      console.log('📄 Interview loaded:', interviewData);
       setInterview(interviewData || null);
 
       // Se não tem mensagens, iniciar automaticamente com IA
-      if (!interviewData?.conversation_data || interviewData.conversation_data.length === 0) {
+      const hasMessages = interviewData?.conversation_data && interviewData.conversation_data.length > 0;
+      console.log('💬 Has messages:', hasMessages, 'Count:', interviewData?.conversation_data?.length);
+
+      if (!hasMessages) {
+        console.log('🎬 No messages found, auto-starting interview with AI...');
         await startInterviewWithAI();
       }
     } catch (error) {
-      console.error('Failed to load interview:', error);
+      console.error('❌ Failed to load interview:', error);
       setInterview(null); // Reset on error
       alert('Failed to load interview');
     } finally {
@@ -57,25 +105,47 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   const startInterviewWithAI = async () => {
     setInitializing(true);
     try {
-      console.log('Starting interview with AI...');
-      await interviewsApi.start(interviewId);
+      console.log('🚀 Starting interview with AI...');
+      console.log('📍 Interview ID:', interviewId);
+
+      const startResponse = await interviewsApi.start(interviewId);
+      console.log('📨 Start response:', startResponse);
 
       // Recarregar para pegar mensagem inicial da IA
+      console.log('🔄 Reloading interview to get AI response...');
       const response = await interviewsApi.get(interviewId);
       const data = response.data || response;
+      console.log('📄 Reloaded interview data:', data);
+      console.log('💬 Conversation messages:', data?.conversation_data?.length);
+
       setInterview(data || null);
 
-      console.log('Interview started successfully!');
-    } catch (error) {
-      console.error('Failed to start interview with AI:', error);
-      // Não mostrar erro ao usuário, apenas log
+      console.log('✅ Interview started successfully!');
+    } catch (error: any) {
+      console.error('❌ Failed to start interview with AI:', error);
+      console.error('❌ Error details:', {
+        message: error.message,
+        response: error.response,
+        status: error.response?.status,
+        data: error.response?.data
+      });
+
+      // PROMPT #56 - Enhanced error reporting
+      const errorMessage = error.response?.data?.detail || error.message || 'Unknown error';
+      alert(
+        `❌ Falha ao iniciar entrevista automaticamente:\n\n${errorMessage}\n\n` +
+        `Você pode enviar uma mensagem manualmente para começar a conversa.`
+      );
     } finally {
       setInitializing(false);
     }
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // PROMPT #56 - More robust scroll with fallback
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
   };
 
   const handleSend = async (selectedOptions?: string[]) => {
@@ -86,7 +156,32 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     setMessage('');
 
     try {
-      // Enviar mensagem e obter resposta da IA
+      // PROMPT #57 - If user edited title/description, update project first
+      if (isProjectInfoQuestion && prefilledValue !== null && userMessage !== prefilledValue) {
+        console.log('📝 User edited project info, updating project...', {
+          questionNumber: currentQuestionNumber,
+          original: prefilledValue,
+          edited: userMessage
+        });
+
+        const updateData: { title?: string; description?: string } = {};
+
+        if (currentQuestionNumber === 1) {
+          updateData.title = userMessage;
+        } else if (currentQuestionNumber === 2) {
+          updateData.description = userMessage;
+        }
+
+        try {
+          await interviewsApi.updateProjectInfo(interviewId, updateData);
+          console.log('✅ Project info updated successfully');
+        } catch (updateError: any) {
+          console.error('❌ Failed to update project info:', updateError);
+          // Continue anyway - we'll still send the message
+        }
+      }
+
+      // Enviar mensagem e obter resposta da IA (ou próxima pergunta fixa)
       await interviewsApi.sendMessage(interviewId, {
         content: userMessage || 'Selected options',
         selected_options: selectedOptions
@@ -96,6 +191,11 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       const response = await interviewsApi.get(interviewId);
       const data = response.data || response;
       setInterview(data || null);
+
+      // Reset project info tracking
+      setPrefilledValue(null);
+      setIsProjectInfoQuestion(false);
+      setCurrentQuestionNumber(null);
 
     } catch (error: any) {
       console.error('Failed to send message:', error);
@@ -140,29 +240,31 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     }
   };
 
-  // PROMPT #46 - Phase 1: Auto-detect and save stack configuration
+  // PROMPT #57 - Auto-detect and save stack configuration (updated for 6 questions)
   const detectAndSaveStack = async (interviewData: Interview) => {
     if (!interviewData?.conversation_data) return;
 
     const messages = interviewData.conversation_data;
 
-    // Check if we have exactly 9 messages (1 AI Q1 + 1 User A1 + 1 AI Q2 + 1 User A2 + 1 AI Q3 + 1 User A3 + 1 AI Q4 + 1 User A4 + 1 AI Q5)
-    // Or 8 messages (before AI asks Q5)
-    if (messages.length < 8 || messages.length > 9) return;
+    // PROMPT #57 - With 6 fixed questions, we need 12 messages total:
+    // Q1 (Title) + A1 + Q2 (Description) + A2 + Q3 (Backend) + A3 + Q4 (Database) + A4 + Q5 (Frontend) + A5 + Q6 (CSS) + A6
+    // Or 13 messages (12 + next question)
+    if (messages.length < 12 || messages.length > 13) return;
 
-    // Verify the messages are stack questions by checking for "Question 1", "Question 2", etc
+    // Verify the messages are stack questions by checking for backend keyword in Q3
     const aiMessages = messages.filter((m: any) => m.role === 'assistant');
-    if (aiMessages.length < 4) return;
+    if (aiMessages.length < 6) return;
 
-    // Check if this looks like stack questions (contains specific keywords)
-    const firstQuestion = aiMessages[0]?.content || '';
-    if (!firstQuestion.includes('backend') && !firstQuestion.includes('Backend')) return;
+    // Check if Q3 (index 4) is the backend question
+    const backendQuestion = aiMessages[2]?.content || '';  // Q3 is the 3rd AI message (index 2)
+    if (!backendQuestion.includes('backend') && !backendQuestion.includes('Backend')) return;
 
-    // Extract user answers (messages at index 1, 3, 5, 7)
-    const backendAnswer = messages[1]?.content || '';    // Answer to Q1 (Backend)
-    const databaseAnswer = messages[3]?.content || '';   // Answer to Q2 (Database)
-    const frontendAnswer = messages[5]?.content || '';   // Answer to Q3 (Frontend)
-    const cssAnswer = messages[7]?.content || '';        // Answer to Q4 (CSS)
+    // Extract user answers (PROMPT #57 - Updated indices for 6 questions)
+    // Stack answers are now at indices 5, 7, 9, 11 (Questions 3, 4, 5, 6)
+    const backendAnswer = messages[5]?.content || '';    // Answer to Q3 (Backend)
+    const databaseAnswer = messages[7]?.content || '';   // Answer to Q4 (Database)
+    const frontendAnswer = messages[9]?.content || '';   // Answer to Q5 (Frontend)
+    const cssAnswer = messages[11]?.content || '';       // Answer to Q6 (CSS)
 
     if (!backendAnswer || !databaseAnswer || !frontendAnswer || !cssAnswer) return;
 
@@ -405,11 +507,11 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               onKeyDown={handleKeyDown}
               placeholder="Type your response... (Shift+Enter for new line, Enter to send)"
               disabled={sending}
-              className="flex-1 border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
+              className="flex-1 border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 bg-white"
               rows={3}
             />
             <Button
-              onClick={handleSend}
+              onClick={() => handleSend()}
               disabled={!message.trim() || sending}
               variant="primary"
               className="px-6 self-end"
