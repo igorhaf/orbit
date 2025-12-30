@@ -67,28 +67,34 @@ class AIModelResponse(AIModelBase):
         use_enum_values = True
 
 
-class AIModelDetailResponse(AIModelResponse):
-    """Schema for detailed AIModel response (includes masked API key)"""
-    api_key_preview: Optional[str] = None
+class AIModelDetailResponse(AIModelBase):
+    """Schema for detailed AIModel response (includes masked API key preview)"""
+    id: UUID
+    api_key_preview: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+        use_enum_values = True
 
     @classmethod
     def from_model(cls, model: Any) -> "AIModelDetailResponse":
         """Create response with masked API key"""
-        data = {
-            "id": model.id,
-            "name": model.name,
-            "provider": model.provider,
-            "usage_type": model.usage_type,
-            "is_active": model.is_active,
-            "config": model.config,
-            "created_at": model.created_at,
-            "updated_at": model.updated_at,
-        }
-
         # Mask API key - show only first 8 and last 4 characters
         if model.api_key and len(model.api_key) > 12:
-            data["api_key_preview"] = f"{model.api_key[:8]}...{model.api_key[-4:]}"
+            api_key_preview = f"{model.api_key[:8]}...{model.api_key[-4:]}"
         else:
-            data["api_key_preview"] = "***"
+            api_key_preview = "***"
 
-        return cls(**data)
+        return cls(
+            id=model.id,
+            name=model.name,
+            provider=model.provider,
+            usage_type=model.usage_type,
+            is_active=model.is_active,
+            config=model.config,
+            created_at=model.created_at,
+            updated_at=model.updated_at,
+            api_key_preview=api_key_preview
+        )

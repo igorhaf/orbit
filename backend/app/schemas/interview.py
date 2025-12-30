@@ -69,3 +69,9 @@ class StackConfiguration(BaseModel):
     database: str = Field(..., description="Database (postgresql, mysql, mongodb, sqlite)")
     frontend: str = Field(..., description="Frontend framework (nextjs, react, vue, angular, none)")
     css: str = Field(..., description="CSS framework (tailwind, bootstrap, materialui, custom)")
+
+
+class ProjectInfoUpdate(BaseModel):
+    """Schema for updating project title and description during interview"""
+    title: Optional[str] = Field(None, description="Updated project title")
+    description: Optional[str] = Field(None, description="Updated project description")

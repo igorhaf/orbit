@@ -12,6 +12,7 @@ from uuid import UUID
 
 from app.models.ai_model import AIModel, AIModelUsageType
 from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
+from app.models.prompt import Prompt  # PROMPT #58 - Prompt Audit Logging
 
 logger = logging.getLogger(__name__)
 
@@ -105,10 +106,11 @@ class AIOrchestrator:
             ValueError: Se nenhum modelo estiver disponível para o usage_type
         """
         # 1. Buscar modelo ativo do banco com o usage_type específico
+        # Order by updated_at DESC para pegar o modelo mais recentemente editado
         db_model = self.db.query(AIModel).filter(
             AIModel.usage_type == usage_type,
             AIModel.is_active == True
-        ).first()
+        ).order_by(AIModel.updated_at.desc()).first()
 
         if db_model:
             provider = db_model.provider.lower()
@@ -193,18 +195,28 @@ class AIOrchestrator:
         usage_type: UsageType,
         messages: List[Dict],
         system_prompt: Optional[str] = None,
-        max_tokens: Optional[int] = None
+        max_tokens: Optional[int] = None,
+        # PROMPT #58 - Additional context for prompt logging
+        project_id: Optional[UUID] = None,
+        interview_id: Optional[UUID] = None,
+        task_id: Optional[UUID] = None,
+        metadata: Optional[Dict] = None
     ) -> Dict:
         """
         Executa chamada de IA usando modelo e configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
         PROMPT #54 - AI Execution Logging
+        PROMPT #58 - Prompt Audit Logging
 
         Args:
             usage_type: Tipo de uso para seleção do modelo
             messages: Lista de mensagens no formato [{"role": "user/assistant", "content": "..."}]
             system_prompt: System prompt opcional
             max_tokens: Máximo de tokens (se None, usa configuração do banco)
+            project_id: ID do projeto (PROMPT #58 - para logging de prompts)
+            interview_id: ID da entrevista (PROMPT #58 - para contexto)
+            task_id: ID da task (PROMPT #58 - para contexto)
+            metadata: Metadados adicionais (PROMPT #58 - para contexto)
 
         Returns:
             Dicionário com response, usage, provider, model e db_model_info
@@ -269,6 +281,52 @@ class AIOrchestrator:
                 self.db.add(execution_log)
                 self.db.commit()
                 logger.info(f"✅ Logged execution to database: {execution_log.id}")
+
+                # PROMPT #58 - Also log to Prompt table for audit page
+                if project_id:  # Only log if project_id is provided
+                    try:
+                        # Extract user prompt from messages (usually the last user message)
+                        user_prompt_text = ""
+                        for msg in reversed(messages):
+                            if msg.get("role") == "user":
+                                user_prompt_text = msg.get("content", "")
+                                break
+
+                        # Calculate cost (rough estimate based on Claude pricing)
+                        input_tokens = result.get("usage", {}).get("input_tokens", 0)
+                        output_tokens = result.get("usage", {}).get("output_tokens", 0)
+                        # Rough estimate: $3/million input, $15/million output for Claude Sonnet
+                        cost = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000)
+
+                        prompt_metadata = metadata or {}
+                        if task_id:
+                            prompt_metadata["task_id"] = str(task_id)
+
+                        prompt_log = Prompt(
+                            project_id=project_id,
+                            created_from_interview_id=interview_id,
+                            content=result.get("content", ""),  # Legacy field - use response
+                            type=usage_type,
+                            ai_model_used=f"{provider}/{model_name}",
+                            system_prompt=system_prompt,
+                            user_prompt=user_prompt_text,
+                            response=result.get("content", ""),
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            total_cost_usd=cost,
+                            execution_time_ms=execution_time_ms,
+                            execution_metadata=prompt_metadata,
+                            status="success",
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow()
+                        )
+                        self.db.add(prompt_log)
+                        self.db.commit()
+                        logger.info(f"✅ Logged prompt to audit: {prompt_log.id}")
+                    except Exception as prompt_error:
+                        logger.error(f"⚠️  Failed to log prompt to audit: {prompt_error}")
+                        self.db.rollback()
+
             except Exception as log_error:
                 logger.error(f"⚠️  Failed to log execution to database: {log_error}")
                 # Don't fail the request if logging fails
@@ -302,6 +360,47 @@ class AIOrchestrator:
                 self.db.add(execution_log)
                 self.db.commit()
                 logger.info(f"✅ Logged failed execution to database: {execution_log.id}")
+
+                # PROMPT #58 - Also log failed execution to Prompt table
+                if project_id:
+                    try:
+                        user_prompt_text = ""
+                        for msg in reversed(messages):
+                            if msg.get("role") == "user":
+                                user_prompt_text = msg.get("content", "")
+                                break
+
+                        prompt_metadata = metadata or {}
+                        if task_id:
+                            prompt_metadata["task_id"] = str(task_id)
+                        prompt_metadata["error"] = str(e)
+
+                        prompt_log = Prompt(
+                            project_id=project_id,
+                            created_from_interview_id=interview_id,
+                            content="",  # No response due to error
+                            type=usage_type,
+                            ai_model_used=f"{provider}/{model_name}",
+                            system_prompt=system_prompt,
+                            user_prompt=user_prompt_text,
+                            response=None,
+                            input_tokens=0,
+                            output_tokens=0,
+                            total_cost_usd=0.0,
+                            execution_time_ms=execution_time_ms,
+                            execution_metadata=prompt_metadata,
+                            status="error",
+                            error_message=str(e),
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow()
+                        )
+                        self.db.add(prompt_log)
+                        self.db.commit()
+                        logger.info(f"✅ Logged failed prompt to audit: {prompt_log.id}")
+                    except Exception as prompt_error:
+                        logger.error(f"⚠️  Failed to log failed prompt: {prompt_error}")
+                        self.db.rollback()
+
             except Exception as log_error:
                 logger.error(f"⚠️  Failed to log error to database: {log_error}")
                 self.db.rollback()

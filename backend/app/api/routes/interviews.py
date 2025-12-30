@@ -15,11 +15,113 @@ from app.models.interview import Interview, InterviewStatus
 from app.models.project import Project
 from app.models.prompt import Prompt
 from app.models.ai_model import AIModel, AIModelUsageType
-from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse, InterviewMessageCreate, StackConfiguration
+from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse, InterviewMessageCreate, StackConfiguration, ProjectInfoUpdate
 from app.schemas.prompt import PromptResponse
 from app.api.dependencies import get_interview_or_404
 
 router = APIRouter()
+
+
+def get_fixed_question(question_number: int, project: Project) -> dict:
+    """
+    Returns hardcoded fixed questions without calling AI.
+    Questions 1-2: Title and Description (text input, prefilled)
+    Questions 3-6: Stack questions (single choice)
+
+    PROMPT #57 - Fixed Questions Without AI
+    """
+    questions = {
+        1: {
+            "role": "assistant",
+            "content": "❓ Pergunta 1: Qual é o título do projeto?\n\nDigite o título do seu projeto.",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question",
+            "question_type": "text",
+            "prefilled_value": project.name,
+            "question_number": 1
+        },
+        2: {
+            "role": "assistant",
+            "content": "❓ Pergunta 2: Descreva brevemente o objetivo do projeto.\n\nForneça uma breve descrição do que o projeto faz.",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question",
+            "question_type": "text",
+            "prefilled_value": project.description,
+            "question_number": 2
+        },
+        3: {
+            "role": "assistant",
+            "content": "❓ Pergunta 3: Qual framework de backend você vai usar?\n\nOPÇÕES:\n○ Laravel (PHP)\n○ Django (Python)\n○ FastAPI (Python)\n○ Express.js (Node.js)\n○ Outro\n\n◉ Escolha uma opção",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question",
+            "question_type": "single_choice",
+            "question_number": 3,
+            "options": {
+                "type": "single",
+                "choices": [
+                    {"id": "laravel", "label": "Laravel (PHP)", "value": "laravel"},
+                    {"id": "django", "label": "Django (Python)", "value": "django"},
+                    {"id": "fastapi", "label": "FastAPI (Python)", "value": "fastapi"},
+                    {"id": "express", "label": "Express.js (Node.js)", "value": "express"},
+                    {"id": "other", "label": "Outro", "value": "other"}
+                ]
+            }
+        },
+        4: {
+            "role": "assistant",
+            "content": "❓ Pergunta 4: Qual banco de dados você vai usar?\n\nOPÇÕES:\n○ PostgreSQL\n○ MySQL\n○ MongoDB\n○ SQLite\n\n◉ Escolha uma opção",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question",
+            "question_type": "single_choice",
+            "question_number": 4,
+            "options": {
+                "type": "single",
+                "choices": [
+                    {"id": "postgresql", "label": "PostgreSQL", "value": "postgresql"},
+                    {"id": "mysql", "label": "MySQL", "value": "mysql"},
+                    {"id": "mongodb", "label": "MongoDB", "value": "mongodb"},
+                    {"id": "sqlite", "label": "SQLite", "value": "sqlite"}
+                ]
+            }
+        },
+        5: {
+            "role": "assistant",
+            "content": "❓ Pergunta 5: Qual framework de frontend você vai usar?\n\nOPÇÕES:\n○ Next.js (React)\n○ React\n○ Vue.js\n○ Angular\n○ Sem frontend / Apenas API\n\n◉ Escolha uma opção",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question",
+            "question_type": "single_choice",
+            "question_number": 5,
+            "options": {
+                "type": "single",
+                "choices": [
+                    {"id": "nextjs", "label": "Next.js (React)", "value": "nextjs"},
+                    {"id": "react", "label": "React", "value": "react"},
+                    {"id": "vue", "label": "Vue.js", "value": "vue"},
+                    {"id": "angular", "label": "Angular", "value": "angular"},
+                    {"id": "none", "label": "Sem frontend / Apenas API", "value": "none"}
+                ]
+            }
+        },
+        6: {
+            "role": "assistant",
+            "content": "❓ Pergunta 6: Qual framework CSS você vai usar?\n\nOPÇÕES:\n○ Tailwind CSS\n○ Bootstrap\n○ Material UI\n○ CSS Customizado\n\n◉ Escolha uma opção",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question",
+            "question_type": "single_choice",
+            "question_number": 6,
+            "options": {
+                "type": "single",
+                "choices": [
+                    {"id": "tailwind", "label": "Tailwind CSS", "value": "tailwind"},
+                    {"id": "bootstrap", "label": "Bootstrap", "value": "bootstrap"},
+                    {"id": "materialui", "label": "Material UI", "value": "materialui"},
+                    {"id": "custom", "label": "CSS Customizado", "value": "custom"}
+                ]
+            }
+        }
+    }
+
+    return questions.get(question_number)
 
 
 class MessageRequest(BaseModel):
@@ -333,75 +435,33 @@ async def start_interview(
     # Inicializar conversa
     interview.conversation_data = []
 
-    # System prompt com contexto do projeto (PROMPT #46 - Stack Questions First)
-    system_prompt = f"""You are an AI requirements analyst for software projects.
+    # PROMPT #57 - Return fixed Question 1 (Title) without calling AI
+    logger.info(f"Starting interview {interview_id} with fixed Question 1 for project: {project.name}")
 
-PROJECT CONTEXT (already defined):
-- Title: {project.name}
-- Description: {project.description}
+    # Get fixed Question 1 (Title)
+    assistant_message = get_fixed_question(1, project)
 
-CRITICAL: This interview must START with 4 FIXED STACK QUESTIONS before asking about features.
-
-Ask Question 1 NOW (Stack - Backend):
-
-❓ Question 1: What backend framework will you use for {project.name}?
-
-OPTIONS:
-○ Laravel (PHP)
-○ Django (Python)
-○ FastAPI (Python)
-○ Express.js (Node.js)
-○ Other
-
-◉ Choose one option
-
-After the user answers, you will ask Questions 2-4 about Database, Frontend, and CSS.
-Then we'll proceed to gather business requirements.
-
-Be direct and professional."""
-
-    # Usar orquestrador
-    orchestrator = AIOrchestrator(db)
-
-    try:
-        logger.info(f"Starting interview {interview_id} with AI for project: {project.name}")
-
-        response = await orchestrator.execute(
-            usage_type="interview",  # Usa Claude para entrevistas
-            messages=[{
-                "role": "user",
-                "content": f"Start interview for project: {project.name}"
-            }],
-            system_prompt=system_prompt,
-            max_tokens=800
-        )
-
-        # Adicionar mensagem inicial da IA
-        assistant_message = {
-            "role": "assistant",
-            "content": response["content"],
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": f"{response['provider']}/{response['model']}"
-        }
-        interview.conversation_data.append(assistant_message)
-
-        interview.ai_model_used = response["model"]
-        db.commit()
-        db.refresh(interview)
-
-        logger.info(f"Interview {interview_id} started successfully")
-
-        return {
-            "success": True,
-            "message": assistant_message
-        }
-
-    except Exception as e:
-        logger.error(f"Error starting interview: {str(e)}", exc_info=True)
+    if not assistant_message:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to start interview: {str(e)}"
+            detail="Failed to get fixed question 1"
         )
+
+    # Add Question 1 to conversation
+    interview.conversation_data.append(assistant_message)
+
+    # Set model to indicate fixed question (no AI)
+    interview.ai_model_used = "system/fixed-questions"
+
+    db.commit()
+    db.refresh(interview)
+
+    logger.info(f"Interview {interview_id} started successfully with fixed Question 1")
+
+    return {
+        "success": True,
+        "message": assistant_message
+    }
 
 
 @router.post("/{interview_id}/save-stack", status_code=status.HTTP_200_OK)
@@ -522,163 +582,62 @@ async def send_message_to_interview(
     stack_context = ""
     if project:
         project_context = f"""
-PROJECT INFORMATION (already defined):
-- Title: {project.name}
-- Description: {project.description}
+INFORMAÇÕES DO PROJETO (já definidas):
+- Título: {project.name}
+- Descrição: {project.description}
 
-Use this as the foundation. Do NOT ask for title/description again.
-Your questions should dive deeper into technical requirements based on this context.
+Use isso como base. NÃO pergunte título/descrição novamente.
+Suas perguntas devem aprofundar nos requisitos técnicos baseados neste contexto.
 """
 
         # Check if stack is already configured
         if project.stack_backend:
             stack_context = f"""
-STACK ALREADY CONFIGURED:
+STACK JÁ CONFIGURADO:
 - Backend: {project.stack_backend}
-- Database: {project.stack_database}
+- Banco de Dados: {project.stack_database}
 - Frontend: {project.stack_frontend}
 - CSS: {project.stack_css}
 
-Stack questions are complete. Focus on business requirements now.
+As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
 """
 
-    # Count messages to determine if we're in stack questions phase (Questions 1-4)
+    # Count messages to determine if we're in fixed questions phase (Questions 1-6)
     message_count = len(interview.conversation_data)
 
-    # Determine which question to ask based on message count
-    # Messages 1-2: Backend (Q1), 3-4: Database (Q2), 5-6: Frontend (Q3), 7-8: CSS (Q4), 9+: Business questions
-    if message_count <= 2 and not project.stack_backend:
-        # Still on Question 1 (Backend) - already answered, need to ask Q2
-        next_stack_question = """
-Ask Question 2 NOW (Stack - Database):
+    # PROMPT #57 - Fixed Questions Without AI
+    # Message count after adding user message:
+    # message_count = 2 (Q1 + A1) → Return Q2 (Description) - Fixed
+    # message_count = 4 (Q1 + A1 + Q2 + A2) → Return Q3 (Backend) - Fixed
+    # message_count = 6 (... + Q3 + A3) → Return Q4 (Database) - Fixed
+    # message_count = 8 (... + Q4 + A4) → Return Q5 (Frontend) - Fixed
+    # message_count = 10 (... + Q5 + A5) → Return Q6 (CSS) - Fixed
+    # message_count >= 12 (... + Q6 + A6) → Return Q7+ (Business) - AI
 
-❓ Question 2: What database will you use?
+    # Map message_count to question number
+    question_map = {
+        2: 2,   # After A1 (Title) → Ask Q2 (Description)
+        4: 3,   # After A2 (Description) → Ask Q3 (Backend)
+        6: 4,   # After A3 (Backend) → Ask Q4 (Database)
+        8: 5,   # After A4 (Database) → Ask Q5 (Frontend)
+        10: 6,  # After A5 (Frontend) → Ask Q6 (CSS)
+    }
 
-OPTIONS:
-○ PostgreSQL
-○ MySQL
-○ MongoDB
-○ SQLite
+    # Check if we should return a fixed question
+    if message_count in question_map:
+        # Return fixed question (no AI)
+        question_number = question_map[message_count]
+        logger.info(f"Returning fixed Question {question_number} for interview {interview_id}")
 
-◉ Choose one option
-"""
-    elif message_count <= 4 and not project.stack_backend:
-        # Question 2 (Database) answered, ask Q3
-        next_stack_question = """
-Ask Question 3 NOW (Stack - Frontend):
+        assistant_message = get_fixed_question(question_number, project)
 
-❓ Question 3: What frontend framework will you use?
+        if not assistant_message:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get fixed question {question_number}"
+            )
 
-OPTIONS:
-○ Next.js (React)
-○ React
-○ Vue.js
-○ Angular
-○ No frontend / API only
-
-◉ Choose one option
-"""
-    elif message_count <= 6 and not project.stack_backend:
-        # Question 3 (Frontend) answered, ask Q4
-        next_stack_question = """
-Ask Question 4 NOW (Stack - CSS):
-
-❓ Question 4: What CSS framework will you use?
-
-OPTIONS:
-○ Tailwind CSS
-○ Bootstrap
-○ Material UI
-○ Custom CSS
-
-◉ Choose one option
-
-After this answer, we'll move to gathering business requirements.
-"""
-    else:
-        # Stack questions complete or already configured, ask business questions
-        next_stack_question = ""
-
-    # Preparar system prompt com formato estruturado
-    system_prompt = f"""You are an AI requirements analyst helping to gather detailed technical requirements for a software project.
-
-{project_context}
-
-{stack_context}
-
-{next_stack_question if next_stack_question else '''
-CRITICAL RULES:
-1. **Ask ONE question at a time**
-2. **Always provide CLOSED-ENDED options** (multiple choice or single choice)
-3. **Stay focused** on the project title and description
-4. **Build context** - each question should relate to previous answers
-5. **Be specific** - avoid vague or open-ended questions
-
-QUESTION FORMAT (use this EXACT structure):
-
-❓ Question [number]: [Your contextual question here]
-
-OPTIONS:
-□ Option 1
-□ Option 2
-□ Option 3
-□ Option 4
-□ Option 5
-☑️ [Select all that apply] OR ◉ [Choose one option]
-
-EXAMPLE QUESTIONS:
-- "Which core features are essential for your [project type]?"
-- "Which third-party integrations do you need?"
-- "What level of scalability is required?"
-- "Which deployment platform will you use?"
-
-TOPICS TO COVER (in order):
-1. Core features and functionality
-2. User roles and permissions
-3. Third-party integrations (payments, auth, etc)
-4. Deployment and infrastructure
-5. Performance and scalability requirements
-
-REMEMBER:
-- Extract actionable technical details
-- Options should be realistic and common in the industry
-- Questions adapt based on previous answers
-- Increment question number with each new question
-- After 8-12 questions total (including 4 stack questions), the interview is complete
-
-Continue with the next relevant question based on the user's previous response!
-'''}"""
-
-    # Usar orquestrador para obter resposta
-    orchestrator = AIOrchestrator(db)
-
-    try:
-        logger.info(f"Sending message to interview {interview_id}")
-
-        # Clean messages - only keep role and content (remove timestamp, model, etc.)
-        clean_messages = [
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in interview.conversation_data
-        ]
-
-        response = await orchestrator.execute(
-            usage_type="interview",  # Usa Claude para entrevistas
-            messages=clean_messages,  # Histórico limpo sem campos extras
-            system_prompt=system_prompt,
-            max_tokens=1000
-        )
-
-        # Adicionar resposta da IA
-        assistant_message = {
-            "role": "assistant",
-            "content": response["content"],
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": f"{response['provider']}/{response['model']}"
-        }
         interview.conversation_data.append(assistant_message)
-
-        # Salvar no banco
-        interview.ai_model_used = response["model"]
 
         # Mark as modified for SQLAlchemy
         from sqlalchemy.orm.attributes import flag_modified
@@ -687,17 +646,220 @@ Continue with the next relevant question based on the user's previous response!
         db.commit()
         db.refresh(interview)
 
-        logger.info(f"AI responded to interview {interview_id}")
+        logger.info(f"Fixed Question {question_number} sent for interview {interview_id}")
 
         return {
             "success": True,
             "message": assistant_message,
-            "usage": response.get("usage", {})
+            "usage": {
+                "model": "system/fixed-question",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_cost_usd": 0.0
+            }
         }
 
-    except Exception as e:
-        logger.error(f"Error in interview AI: {str(e)}", exc_info=True)
+    # If message_count >= 12, use AI for business questions
+    elif message_count >= 12:
+        logger.info(f"Using AI for business question (message_count={message_count}) for interview {interview_id}")
+
+        # Preparar system prompt para perguntas de negócio
+        system_prompt = f"""Você é um analista de requisitos de IA ajudando a coletar requisitos técnicos detalhados para um projeto de software.
+
+IMPORTANTE: Conduza TODA a entrevista em PORTUGUÊS. Todas as perguntas, opções e respostas devem ser em português.
+
+{project_context}
+
+{stack_context}
+
+REGRAS CRÍTICAS PARA PERGUNTAS DE NEGÓCIO:
+1. **Faça UMA pergunta por vez**
+2. **Sempre forneça opções FECHADAS** (múltipla escolha ou escolha única)
+3. **Mantenha o foco** no título e descrição do projeto
+4. **Construa contexto** - cada pergunta deve se relacionar com respostas anteriores
+5. **Seja específico** - evite perguntas vagas ou abertas
+
+FORMATO DA PERGUNTA (use esta estrutura EXATA):
+
+❓ Pergunta [número]: [Sua pergunta contextual aqui]
+
+OPÇÕES:
+□ Opção 1
+□ Opção 2
+□ Opção 3
+□ Opção 4
+□ Opção 5
+☑️ [Selecione todas que se aplicam] OU ◉ [Escolha uma opção]
+
+EXEMPLOS DE PERGUNTAS:
+- "Quais funcionalidades essenciais são necessárias para seu [tipo de projeto]?"
+- "Quais integrações de terceiros você precisa?"
+- "Qual nível de escalabilidade é necessário?"
+- "Qual plataforma de deploy você vai usar?"
+
+TÓPICOS A COBRIR (em ordem):
+1. Funcionalidades e recursos principais
+2. Papéis de usuário e permissões
+3. Integrações de terceiros (pagamentos, autenticação, etc)
+4. Deploy e infraestrutura
+5. Requisitos de performance e escalabilidade
+
+LEMBRE-SE:
+- Extraia detalhes técnicos acionáveis
+- Opções devem ser realistas e comuns na indústria
+- Perguntas se adaptam baseadas em respostas anteriores
+- Incremente o número da pergunta a cada nova pergunta (você está na pergunta 7 ou superior)
+- Após 8-12 perguntas no total (incluindo 6 perguntas fixas), a entrevista está completa
+
+Continue com a próxima pergunta relevante baseada na resposta anterior do usuário!
+"""
+
+        # Usar orquestrador para obter resposta
+        orchestrator = AIOrchestrator(db)
+
+        try:
+            # Clean messages - only keep role and content (remove timestamp, model, etc.)
+            clean_messages = [
+                {"role": msg["role"], "content": msg["content"]}
+                for msg in interview.conversation_data
+            ]
+
+            response = await orchestrator.execute(
+                usage_type="interview",  # Usa Claude para entrevistas
+                messages=clean_messages,  # Histórico limpo sem campos extras
+                system_prompt=system_prompt,
+                max_tokens=1000,
+                # PROMPT #58 - Add context for prompt logging
+                project_id=interview.project_id,
+                interview_id=interview.id
+            )
+
+            # Adicionar resposta da IA
+            assistant_message = {
+                "role": "assistant",
+                "content": response["content"],
+                "timestamp": datetime.utcnow().isoformat(),
+                "model": f"{response['provider']}/{response['model']}"
+            }
+            interview.conversation_data.append(assistant_message)
+
+            # Salvar no banco
+            interview.ai_model_used = response["model"]
+
+            # Mark as modified for SQLAlchemy
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(interview, "conversation_data")
+
+            db.commit()
+            db.refresh(interview)
+
+            logger.info(f"AI responded to interview {interview_id}")
+
+            return {
+                "success": True,
+                "message": assistant_message,
+                "usage": response.get("usage", {})
+            }
+
+        except Exception as ai_error:
+            logger.error(f"AI execution failed: {str(ai_error)}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to get AI response: {str(ai_error)}"
+            )
+
+    else:
+        # Unexpected message_count - should not happen
+        logger.error(f"Unexpected message_count={message_count} for interview {interview_id}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get AI response: {str(e)}"
+            detail=f"Unexpected interview state (message_count={message_count})"
         )
+
+
+@router.patch("/{interview_id}/update-project-info")
+async def update_project_info(
+    interview_id: UUID,
+    data: ProjectInfoUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Update project title and/or description during interview.
+
+    PROMPT #57 - Editable Project Info in Fixed Questions
+
+    This endpoint allows users to update the project's title and description
+    when answering Questions 1 and 2 of the interview. The updates are saved
+    to the project record in the database.
+
+    Args:
+        interview_id: UUID of the interview
+        data: ProjectInfoUpdate schema with optional title and/or description
+        db: Database session
+
+    Returns:
+        Success confirmation with updated project data
+    """
+    logger.info(f"Updating project info for interview {interview_id}")
+
+    # 1. Find interview and associated project
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        logger.error(f"Interview {interview_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found"
+        )
+
+    # Get associated project
+    project = db.query(Project).filter(Project.id == interview.project_id).first()
+    if not project:
+        logger.error(f"Project {interview.project_id} not found for interview {interview_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Associated project not found"
+        )
+
+    # 2. Update project fields if provided
+    updated_fields = []
+
+    if data.title is not None and data.title.strip():
+        project.name = data.title.strip()
+        updated_fields.append("title")
+        logger.info(f"Updated project title to: {project.name}")
+
+    if data.description is not None and data.description.strip():
+        project.description = data.description.strip()
+        updated_fields.append("description")
+        logger.info(f"Updated project description to: {project.description}")
+
+    # Validate that at least one field was provided
+    if not updated_fields:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid title or description provided"
+        )
+
+    # 3. Commit changes to database
+    try:
+        db.commit()
+        db.refresh(project)
+        logger.info(f"Successfully updated project {project.id}: {', '.join(updated_fields)}")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Failed to update project {project.id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update project information"
+        )
+
+    # 4. Return success with updated data
+    return {
+        "success": True,
+        "updated_fields": updated_fields,
+        "project": {
+            "id": str(project.id),
+            "name": project.name,
+            "description": project.description
+        }
+    }

@@ -76,7 +76,11 @@ class CommitGenerator:
                 "role": "user",
                 "content": commit_prompt
             }],
-            max_tokens=500
+            max_tokens=500,
+            # PROMPT #58 - Add context for prompt logging
+            project_id=task.project_id,
+            task_id=task.id,
+            metadata={"chat_session_id": chat_session_id}
         )
 
         logger.info(f"Received commit from {response['provider']} ({response['model']})")
@@ -147,7 +151,11 @@ class CommitGenerator:
                 "role": "user",
                 "content": commit_prompt
             }],
-            max_tokens=500
+            max_tokens=500,
+            # PROMPT #58 - Add context for prompt logging
+            project_id=task.project_id,
+            task_id=task.id,
+            metadata={"manual": True, "changes_description": changes_description}
         )
 
         # Parse e salvar

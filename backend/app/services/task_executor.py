@@ -4,6 +4,7 @@ from app.models.task import Task
 from app.models.task_result import TaskResult
 from app.models.project import Project
 from app.models.spec import Spec
+from app.models.prompt import Prompt  # PROMPT #58 - Audit logging
 from app.orchestrators.registry import OrchestratorRegistry
 from app.services.ai_orchestrator import AIOrchestrator
 from app.api.websocket import broadcast_event
@@ -11,6 +12,7 @@ from app.services.consistency_validator import ConsistencyValidator
 import anthropic
 import time
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -502,6 +504,40 @@ class TaskExecutor:
                     self.db.commit()
                     self.db.refresh(result)
 
+                    # PROMPT #58 - Log successful execution to Prompt table
+                    try:
+                        prompt_log = Prompt(
+                            project_id=project.id,
+                            created_from_interview_id=None,
+                            content=output_code,  # Legacy field - use response
+                            type="task_execution",
+                            ai_model_used=f"anthropic/{model}",
+                            system_prompt=None,  # No system prompt in task execution
+                            user_prompt=context,
+                            response=output_code,
+                            input_tokens=input_tokens,
+                            output_tokens=output_tokens,
+                            total_cost_usd=cost,
+                            execution_time_ms=int(execution_time * 1000),
+                            execution_metadata={
+                                "task_id": str(task_id),
+                                "task_title": task.title,
+                                "task_type": task.type,
+                                "complexity": task.complexity,
+                                "validation_passed": True,
+                                "attempts": attempt
+                            },
+                            status="success",
+                            created_at=datetime.utcnow(),
+                            updated_at=datetime.utcnow()
+                        )
+                        self.db.add(prompt_log)
+                        self.db.commit()
+                        logger.info(f"  ✅ Logged task execution to Prompt audit")
+                    except Exception as prompt_error:
+                        logger.error(f"  ⚠️  Failed to log prompt audit: {prompt_error}")
+                        self.db.rollback()
+
                     # Atualizar status da task
                     task.status = "done"
                     self.db.commit()
@@ -565,6 +601,42 @@ class TaskExecutor:
                         self.db.add(result)
                         self.db.commit()
                         self.db.refresh(result)
+
+                        # PROMPT #58 - Log failed validation to Prompt table
+                        try:
+                            prompt_log = Prompt(
+                                project_id=project.id,
+                                created_from_interview_id=None,
+                                content=output_code,  # Legacy field - use response
+                                type="task_execution",
+                                ai_model_used=f"anthropic/{model}",
+                                system_prompt=None,
+                                user_prompt=context,
+                                response=output_code,
+                                input_tokens=input_tokens,
+                                output_tokens=output_tokens,
+                                total_cost_usd=cost,
+                                execution_time_ms=int(execution_time * 1000),
+                                execution_metadata={
+                                    "task_id": str(task_id),
+                                    "task_title": task.title,
+                                    "task_type": task.type,
+                                    "complexity": task.complexity,
+                                    "validation_passed": False,
+                                    "validation_issues": validation_issues,
+                                    "attempts": attempt
+                                },
+                                status="error",
+                                error_message=f"Validation failed after {attempt} attempts: {validation_issues}",
+                                created_at=datetime.utcnow(),
+                                updated_at=datetime.utcnow()
+                            )
+                            self.db.add(prompt_log)
+                            self.db.commit()
+                            logger.info(f"  ✅ Logged failed validation to Prompt audit")
+                        except Exception as prompt_error:
+                            logger.error(f"  ⚠️  Failed to log prompt audit: {prompt_error}")
+                            self.db.rollback()
 
                         task.status = "review"  # Marcar para revisão
                         self.db.commit()

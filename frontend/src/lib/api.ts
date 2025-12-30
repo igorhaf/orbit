@@ -204,7 +204,7 @@ export const interviewsApi = {
       method: 'POST',
     }),
 
-  sendMessage: (id: string, data: { content: string }) =>
+  sendMessage: (id: string, data: { content: string; selected_options?: string[] }) =>
     request<any>(`/api/v1/interviews/${id}/send-message`, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -214,6 +214,13 @@ export const interviewsApi = {
     request<any>(`/api/v1/interviews/${id}/save-stack`, {
       method: 'POST',
       body: JSON.stringify(stack),
+    }),
+
+  // PROMPT #57 - Update project title/description during interview
+  updateProjectInfo: (id: string, data: { title?: string; description?: string }) =>
+    request<any>(`/api/v1/interviews/${id}/update-project-info`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }),
 };
 
