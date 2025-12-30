@@ -22,20 +22,6 @@ export default function RootLayout({
     <html lang="pt-BR" className={inter.variable}>
       <body className="min-h-screen antialiased">
         <div className="flex min-h-screen flex-col">
-          {/* Header/Navigation will go here */}
-          <header className="sticky top-0 z-50 border-b border-gray-200 bg-white/80 backdrop-blur-sm">
-            <div className="container flex h-16 items-center justify-between">
-              <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold text-primary-600">
-                  {process.env.NEXT_PUBLIC_APP_NAME || 'AI Orchestrator'}
-                </h1>
-              </div>
-              <nav className="flex items-center gap-4">
-                {/* Navigation items will be added here */}
-              </nav>
-            </div>
-          </header>
-
           {/* Main content */}
           <main className="flex-1">{children}</main>
 
