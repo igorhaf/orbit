@@ -23,6 +23,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   const [sending, setSending] = useState(false);
   const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const [initializing, setInitializing] = useState(false);
+  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -42,6 +43,17 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     }, 100);
     return () => clearTimeout(timer);
   }, [interview?.conversation_data]);
+
+  // Auto-resize textarea as user types (WhatsApp-style)
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    // Reset height to auto to get the correct scrollHeight
+    textarea.style.height = 'auto';
+    // Set height based on content, with max of 200px (about 8 lines)
+    textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px';
+  }, [message]);
 
   // PROMPT #57 - Auto-fill textarea when AI asks project info questions (Q1, Q2)
   useEffect(() => {
@@ -148,12 +160,16 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     }
   };
 
-  const handleSend = async (selectedOptions?: string[]) => {
-    if ((!message.trim() && !selectedOptions) || sending) return;
+  const handleSend = async (optionsFromButton?: string[]) => {
+    // Use options from button parameter or from state
+    const optionsToSend = optionsFromButton || selectedOptions;
+
+    if ((!message.trim() && optionsToSend.length === 0) || sending) return;
 
     setSending(true);
     const userMessage = message;
     setMessage('');
+    setSelectedOptions([]); // Clear selected options
 
     try {
       // PROMPT #57 - If user edited title/description, update project first
@@ -183,8 +199,8 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
       // Enviar mensagem e obter resposta da IA (ou próxima pergunta fixa)
       await interviewsApi.sendMessage(interviewId, {
-        content: userMessage || 'Selected options',
-        selected_options: selectedOptions
+        content: userMessage || optionsToSend.join(', '),
+        selected_options: optionsToSend.length > 0 ? optionsToSend : undefined
       });
 
       // Recarregar para pegar resposta da IA
@@ -212,8 +228,9 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     // Join labels with comma and send as message content
     const content = selectedLabels.join(', ');
 
-    // Clear any existing text in the input
+    // Clear any existing text in the input and selected options
     setMessage('');
+    setSelectedOptions([]);
 
     // Send the message with the selected labels as content
     setSending(true);
@@ -468,13 +485,28 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
           </div>
         ) : (
           <>
-            {interview.conversation_data.map((msg, index) => (
-              <MessageBubble
-                key={index}
-                message={msg}
-                onOptionSubmit={handleOptionSubmit}
-              />
-            ))}
+            {interview.conversation_data.map((msg, index) => {
+              // Find the last unanswered assistant message with options
+              // A message is considered "unanswered" if there's no user message after it
+              const hasOptions =
+                msg.role === 'assistant' &&
+                (msg.options?.choices?.length > 0 || msg.content.includes('☐') || msg.content.includes('○'));
+
+              const isUnanswered =
+                hasOptions &&
+                (index === interview.conversation_data.length - 1 ||
+                 interview.conversation_data[index + 1]?.role === 'assistant');
+
+              return (
+                <MessageBubble
+                  key={index}
+                  message={msg}
+                  onOptionSubmit={handleOptionSubmit}
+                  selectedOptions={isUnanswered ? selectedOptions : undefined}
+                  setSelectedOptions={isUnanswered ? setSelectedOptions : undefined}
+                />
+              );
+            })}
             <div ref={messagesEndRef} />
           </>
         )}
@@ -507,12 +539,12 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               onKeyDown={handleKeyDown}
               placeholder="Type your response... (Shift+Enter for new line, Enter to send)"
               disabled={sending}
-              className="flex-1 border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 bg-white"
-              rows={3}
+              className="flex-1 border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 bg-white min-h-[44px] max-h-[200px] overflow-y-auto"
+              rows={1}
             />
             <Button
               onClick={() => handleSend()}
-              disabled={!message.trim() || sending}
+              disabled={(!message.trim() && selectedOptions.length === 0) || sending}
               variant="primary"
               className="px-6 self-end"
             >

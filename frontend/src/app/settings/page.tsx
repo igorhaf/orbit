@@ -23,6 +23,9 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [settingToDelete, setSettingToDelete] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form state for new setting
   const [newKey, setNewKey] = useState('');
@@ -99,15 +102,24 @@ export default function SettingsPage() {
     }
   };
 
-  const handleDeleteSetting = async (key: string) => {
-    const confirmed = confirm(`Are you sure you want to delete setting "${key}"?`);
-    if (!confirmed) return;
+  const handleDeleteSetting = (key: string) => {
+    setSettingToDelete(key);
+    setShowDeleteDialog(true);
+  };
 
+  const confirmDeleteSetting = async () => {
+    if (!settingToDelete) return;
+
+    setIsDeleting(true);
     try {
-      await settingsApi.delete(key);
+      await settingsApi.delete(settingToDelete);
+      setShowDeleteDialog(false);
+      setSettingToDelete(null);
       await loadData();
     } catch (err: any) {
       alert(`Failed to delete setting: ${err.message}`);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -382,6 +394,46 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Setting?</h3>
+            <p className="text-sm text-gray-600 mb-4">Are you sure you want to delete this setting?</p>
+
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="text-red-600 text-2xl">⚠️</div>
+                <div>
+                  <h4 className="font-semibold text-red-900 mb-1">Warning: This action cannot be undone!</h4>
+                  <p className="text-sm text-red-800">
+                    Setting "{settingToDelete}" will be permanently deleted.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDeleteSetting}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Yes, Delete Setting'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

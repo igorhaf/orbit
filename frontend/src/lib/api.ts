@@ -245,6 +245,9 @@ export const promptsApi = {
   delete: (id: string) =>
     request<any>(`/api/v1/prompts/${id}`, { method: 'DELETE' }),
 
+  deleteAll: () =>
+    request<any>('/api/v1/prompts/', { method: 'DELETE' }),
+
   versions: (id: string) =>
     request<any>(`/api/v1/prompts/${id}/versions`),
 

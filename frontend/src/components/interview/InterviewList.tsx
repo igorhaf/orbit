@@ -12,7 +12,17 @@ import { interviewsApi, projectsApi } from '@/lib/api';
 import { Interview, Project } from '@/lib/types';
 import { Button, Badge, Card, CardHeader, CardTitle, CardContent, Dialog, Select } from '@/components/ui';
 
-export function InterviewList() {
+interface InterviewListProps {
+  projectId?: string;
+  showHeader?: boolean;
+  showCreateButton?: boolean;
+}
+
+export function InterviewList({
+  projectId,
+  showHeader = true,
+  showCreateButton = true
+}: InterviewListProps) {
   const router = useRouter();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -23,7 +33,7 @@ export function InterviewList() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [projectId]);
 
   const loadData = async () => {
     setLoading(true);
@@ -37,7 +47,16 @@ export function InterviewList() {
       const interviewsData = interviewsRes.data || interviewsRes;
       const projectsData = projectsRes.data || projectsRes;
 
-      setInterviews(Array.isArray(interviewsData) ? interviewsData : []);
+      let filteredInterviews = Array.isArray(interviewsData) ? interviewsData : [];
+
+      // Filter by project if projectId is provided
+      if (projectId) {
+        filteredInterviews = filteredInterviews.filter(
+          (interview) => interview.project_id === projectId
+        );
+      }
+
+      setInterviews(filteredInterviews);
       setProjects(Array.isArray(projectsData) ? projectsData : []);
     } catch (error) {
       console.error('Failed to load data:', error);
@@ -50,7 +69,10 @@ export function InterviewList() {
   };
 
   const handleCreate = async () => {
-    if (!selectedProject) {
+    // Use the provided projectId or the selected one from the dialog
+    const targetProjectId = projectId || selectedProject;
+
+    if (!targetProjectId) {
       alert('Please select a project');
       return;
     }
@@ -59,7 +81,7 @@ export function InterviewList() {
     try {
       // PROMPT #56 - Create and redirect to interview
       const response = await interviewsApi.create({
-        project_id: selectedProject,
+        project_id: targetProjectId,
         ai_model_used: 'claude-3-sonnet',
         conversation_data: [],
       });
@@ -92,26 +114,47 @@ export function InterviewList() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Interviews</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Conduct AI-powered interviews to gather requirements
-          </p>
-        </div>
+      {showHeader && (
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Interviews</h1>
+            <p className="mt-1 text-sm text-gray-500">
+              Conduct AI-powered interviews to gather requirements
+            </p>
+          </div>
 
-        <Button
-          variant="primary"
-          onClick={() => setIsCreateOpen(true)}
-          leftIcon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-          }
-        >
-          New Interview
-        </Button>
-      </div>
+          {showCreateButton && (
+            <Button
+              variant="primary"
+              onClick={() => setIsCreateOpen(true)}
+              leftIcon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+              }
+            >
+              New Interview
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Create button when header is hidden but button should be shown */}
+      {!showHeader && showCreateButton && (
+        <div className="flex justify-end">
+          <Button
+            variant="primary"
+            onClick={() => setIsCreateOpen(true)}
+            leftIcon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+            }
+          >
+            New Interview
+          </Button>
+        </div>
+      )}
 
       {/* Interviews Grid */}
       {/* ✅ LINE 102 - Safe check with optional chaining */}
@@ -172,8 +215,8 @@ export function InterviewList() {
                 <CardContent>
                   <p className="text-sm text-gray-600 mb-3 line-clamp-3">
                     {interview.conversation_data.length > 0
-                      ? interview.conversation_data[0].content.substring(0, 150) +
-                        (interview.conversation_data[0].content.length > 150 ? '...' : '')
+                      ? interview.conversation_data[interview.conversation_data.length - 1].content.substring(0, 150) +
+                        (interview.conversation_data[interview.conversation_data.length - 1].content.length > 150 ? '...' : '')
                       : 'No messages yet. Click to start the conversation.'}
                   </p>
 

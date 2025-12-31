@@ -17,12 +17,23 @@ interface Message extends ConversationMessage {
 interface Props {
   message: Message;
   onOptionSubmit?: (selectedOptions: string[]) => void;
+  selectedOptions?: string[];
+  setSelectedOptions?: (options: string[]) => void;
 }
 
-export function MessageBubble({ message, onOptionSubmit }: Props) {
+export function MessageBubble({
+  message,
+  onOptionSubmit,
+  selectedOptions: externalSelectedOptions,
+  setSelectedOptions: externalSetSelectedOptions
+}: Props) {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
-  const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
+  const [internalSelectedOptions, setInternalSelectedOptions] = useState<string[]>([]);
+
+  // Use external state if provided, otherwise use internal state
+  const selectedOptions = externalSelectedOptions !== undefined ? externalSelectedOptions : internalSelectedOptions;
+  const setSelectedOptions = externalSetSelectedOptions || setInternalSelectedOptions;
 
   // Parse message content for Unicode options (☐ ☑ ○ ●)
   // This provides backward compatibility with AI responses that include Unicode symbols

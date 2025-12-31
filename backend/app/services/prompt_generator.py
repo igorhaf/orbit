@@ -2,6 +2,7 @@
 Service para gerar prompts automaticamente usando IA
 Analisa entrevistas e gera prompts estruturados para implementação
 Atualizado para criar Tasks ao invés de Prompts (PROMPT #44)
+Integrado com Prompter Architecture (Phase 2: Integration)
 """
 
 from typing import List, Dict, Any
@@ -9,6 +10,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 import json
 import logging
+import os
 
 from app.models.interview import Interview
 from app.models.task import Task, TaskStatus
@@ -16,22 +18,48 @@ from app.models.project import Project
 from app.models.spec import Spec
 from app.services.ai_orchestrator import AIOrchestrator
 
+# Prompter Architecture (gradual migration via feature flags)
+try:
+    from app.prompter.facade import PrompterFacade
+    PROMPTER_AVAILABLE = True
+except ImportError:
+    PROMPTER_AVAILABLE = False
+    logger.warning("PrompterFacade not available - using legacy prompt generation")
+
 logger = logging.getLogger(__name__)
 
 
 class PromptGenerator:
     """
     Serviço para geração automática de prompts usando AI Orchestrator
+    Supports gradual migration to Prompter Architecture via feature flags
     """
 
     def __init__(self, db: Session):
         """
-        Inicializa o gerador com AI Orchestrator
+        Inicializa o gerador com AI Orchestrator e PrompterFacade (if enabled)
 
         Args:
             db: Sessão do banco de dados
         """
+        self.db = db
         self.orchestrator = AIOrchestrator(db)
+
+        # Initialize PrompterFacade if available and enabled
+        self.use_prompter = (
+            PROMPTER_AVAILABLE and
+            os.getenv("PROMPTER_USE_TEMPLATES", "false").lower() == "true"
+        )
+
+        if self.use_prompter:
+            self.prompter = PrompterFacade(db)
+            logger.info("✓ PrompterFacade enabled - using template-based prompts")
+        else:
+            self.prompter = None
+            if PROMPTER_AVAILABLE:
+                logger.info("PrompterFacade available but disabled (PROMPTER_USE_TEMPLATES=false)")
+            else:
+                logger.info("Using legacy hardcoded prompts")
 
     def _fetch_stack_specs(self, project: Project, db: Session) -> Dict[str, Any]:
         """
@@ -354,6 +382,7 @@ class PromptGenerator:
         """
         Cria prompt para Claude analisar a entrevista WITH SPECS CONTEXT
         PROMPT #48 - Phase 3: This is where token reduction happens!
+        Phase 2 Integration: Uses PrompterFacade if enabled, else legacy
 
         Args:
             conversation: Lista de mensagens da conversa
@@ -363,6 +392,28 @@ class PromptGenerator:
         Returns:
             Prompt formatado para análise com specs context
         """
+        # NEW: Use PrompterFacade if enabled
+        if self.use_prompter and self.prompter:
+            logger.info("Using PrompterFacade template-based prompt generation")
+            # Call facade's internal method directly (already feature-flag checked)
+            # Note: Both new and legacy methods are synchronous
+            if self.prompter.use_templates and self.prompter.composer:
+                return self.prompter._generate_task_prompt_new(
+                    conversation=conversation,
+                    project=project,
+                    specs=specs
+                )
+            else:
+                # Fallback within facade
+                return self.prompter._generate_task_prompt_legacy(
+                    conversation=conversation,
+                    project=project,
+                    specs=specs
+                )
+
+        # LEGACY: Fallback to hardcoded prompt
+        logger.info("Using legacy hardcoded prompt generation")
+
         conversation_text = "\n".join([
             f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}"
             for msg in conversation

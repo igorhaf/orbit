@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui';
 
 export const Navbar: React.FC = () => {
-  const appName = process.env.NEXT_PUBLIC_APP_NAME || 'AI Orchestrator';
+  const appName = process.env.NEXT_PUBLIC_APP_NAME || 'Orbit';
 
   return (
     <nav className="bg-white border-b border-gray-200 fixed w-full z-30 top-0">
@@ -19,18 +19,46 @@ export const Navbar: React.FC = () => {
           {/* Logo and Brand */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                 <svg
                   className="w-5 h-5 text-white"
                   fill="none"
                   stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M13 10V3L4 14h7v7l9-11h-7z"
+                  {/* Planet/Core */}
+                  <circle cx="12" cy="12" r="3" strokeWidth="2" fill="currentColor" />
+                  {/* Orbital ring 1 */}
+                  <ellipse
+                    cx="12"
+                    cy="12"
+                    rx="9"
+                    ry="4"
+                    strokeWidth="1.5"
+                    fill="none"
+                    opacity="0.8"
+                  />
+                  {/* Orbital ring 2 */}
+                  <ellipse
+                    cx="12"
+                    cy="12"
+                    rx="9"
+                    ry="4"
+                    strokeWidth="1.5"
+                    fill="none"
+                    opacity="0.6"
+                    transform="rotate(60 12 12)"
+                  />
+                  {/* Orbital ring 3 */}
+                  <ellipse
+                    cx="12"
+                    cy="12"
+                    rx="9"
+                    ry="4"
+                    strokeWidth="1.5"
+                    fill="none"
+                    opacity="0.4"
+                    transform="rotate(-60 12 12)"
                   />
                 </svg>
               </div>
@@ -84,15 +112,6 @@ export const Navbar: React.FC = () => {
                 </svg>
               </Button>
             </Link>
-
-            {/* User Profile */}
-            <div className="relative">
-              <button className="flex items-center space-x-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 rounded-full">
-                <div className="w-8 h-8 bg-gray-200 rounded-full flex items-center justify-center">
-                  <span className="text-gray-600 font-medium">AI</span>
-                </div>
-              </button>
-            </div>
           </div>
         </div>
       </div>

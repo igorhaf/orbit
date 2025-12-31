@@ -1,6 +1,7 @@
 """
 Interviews API Router
 CRUD operations for managing AI-assisted interviews.
+Integrated with Prompter Architecture (Phase 2: Integration)
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
@@ -9,6 +10,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
+import os
 
 from app.database import get_db
 from app.models.interview import Interview, InterviewStatus
@@ -19,19 +21,88 @@ from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewRes
 from app.schemas.prompt import PromptResponse
 from app.api.dependencies import get_interview_or_404
 
+# Prompter Architecture (gradual migration via feature flags)
+try:
+    from app.prompter.facade import PrompterFacade
+    PROMPTER_AVAILABLE = True
+except ImportError:
+    PROMPTER_AVAILABLE = False
+
 router = APIRouter()
 
 
-def get_fixed_question(question_number: int, project: Project) -> dict:
+def get_specs_for_category(db: Session, category: str) -> list:
     """
-    Returns hardcoded fixed questions without calling AI.
+    Get available frameworks from specs for a specific category.
+    Returns list of choices formatted for interview options.
+
+    DYNAMIC SYSTEM: Options come from specs table, not hardcoded.
+    """
+    from app.models.spec import Spec
+    from sqlalchemy import func
+
+    # Query distinct frameworks for this category
+    specs = db.query(
+        Spec.name,
+        func.count(Spec.id).label('count')
+    ).filter(
+        Spec.category == category,
+        Spec.is_active == True
+    ).group_by(Spec.name).all()
+
+    # Label mappings (same as in specs.py for consistency)
+    labels = {
+        # Backend
+        'laravel': 'Laravel (PHP)',
+        'django': 'Django (Python)',
+        'fastapi': 'FastAPI (Python)',
+        'express': 'Express.js (Node.js)',
+
+        # Database
+        'postgresql': 'PostgreSQL',
+        'mysql': 'MySQL',
+        'mongodb': 'MongoDB',
+        'sqlite': 'SQLite',
+
+        # Frontend
+        'nextjs': 'Next.js (React)',
+        'react': 'React',
+        'vue': 'Vue.js',
+        'angular': 'Angular',
+
+        # CSS
+        'tailwind': 'Tailwind CSS',
+        'bootstrap': 'Bootstrap',
+        'materialui': 'Material UI',
+        'custom': 'CSS Customizado',
+    }
+
+    # Format choices
+    choices = []
+    for name, count in specs:
+        label = labels.get(name, name.title())
+        choices.append({
+            "id": name,
+            "label": label,
+            "value": name
+        })
+
+    return choices
+
+
+def get_fixed_question(question_number: int, project: Project, db: Session) -> dict:
+    """
+    Returns fixed questions with DYNAMIC options from specs.
     Questions 1-2: Title and Description (text input, prefilled)
-    Questions 3-6: Stack questions (single choice)
+    Questions 3-6: Stack questions (single choice, OPTIONS FROM SPECS)
 
     PROMPT #57 - Fixed Questions Without AI
+    DYNAMIC SYSTEM: Questions 3-6 pull options from specs table
     """
-    questions = {
-        1: {
+
+    # Questions 1-2: Static (Title and Description)
+    if question_number == 1:
+        return {
             "role": "assistant",
             "content": "❓ Pergunta 1: Qual é o título do projeto?\n\nDigite o título do seu projeto.",
             "timestamp": datetime.utcnow().isoformat(),
@@ -39,8 +110,10 @@ def get_fixed_question(question_number: int, project: Project) -> dict:
             "question_type": "text",
             "prefilled_value": project.name,
             "question_number": 1
-        },
-        2: {
+        }
+
+    if question_number == 2:
+        return {
             "role": "assistant",
             "content": "❓ Pergunta 2: Descreva brevemente o objetivo do projeto.\n\nForneça uma breve descrição do que o projeto faz.",
             "timestamp": datetime.utcnow().isoformat(),
@@ -48,80 +121,39 @@ def get_fixed_question(question_number: int, project: Project) -> dict:
             "question_type": "text",
             "prefilled_value": project.description,
             "question_number": 2
-        },
-        3: {
-            "role": "assistant",
-            "content": "❓ Pergunta 3: Qual framework de backend você vai usar?\n\nOPÇÕES:\n○ Laravel (PHP)\n○ Django (Python)\n○ FastAPI (Python)\n○ Express.js (Node.js)\n○ Outro\n\n◉ Escolha uma opção",
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": "system/fixed-question",
-            "question_type": "single_choice",
-            "question_number": 3,
-            "options": {
-                "type": "single",
-                "choices": [
-                    {"id": "laravel", "label": "Laravel (PHP)", "value": "laravel"},
-                    {"id": "django", "label": "Django (Python)", "value": "django"},
-                    {"id": "fastapi", "label": "FastAPI (Python)", "value": "fastapi"},
-                    {"id": "express", "label": "Express.js (Node.js)", "value": "express"},
-                    {"id": "other", "label": "Outro", "value": "other"}
-                ]
-            }
-        },
-        4: {
-            "role": "assistant",
-            "content": "❓ Pergunta 4: Qual banco de dados você vai usar?\n\nOPÇÕES:\n○ PostgreSQL\n○ MySQL\n○ MongoDB\n○ SQLite\n\n◉ Escolha uma opção",
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": "system/fixed-question",
-            "question_type": "single_choice",
-            "question_number": 4,
-            "options": {
-                "type": "single",
-                "choices": [
-                    {"id": "postgresql", "label": "PostgreSQL", "value": "postgresql"},
-                    {"id": "mysql", "label": "MySQL", "value": "mysql"},
-                    {"id": "mongodb", "label": "MongoDB", "value": "mongodb"},
-                    {"id": "sqlite", "label": "SQLite", "value": "sqlite"}
-                ]
-            }
-        },
-        5: {
-            "role": "assistant",
-            "content": "❓ Pergunta 5: Qual framework de frontend você vai usar?\n\nOPÇÕES:\n○ Next.js (React)\n○ React\n○ Vue.js\n○ Angular\n○ Sem frontend / Apenas API\n\n◉ Escolha uma opção",
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": "system/fixed-question",
-            "question_type": "single_choice",
-            "question_number": 5,
-            "options": {
-                "type": "single",
-                "choices": [
-                    {"id": "nextjs", "label": "Next.js (React)", "value": "nextjs"},
-                    {"id": "react", "label": "React", "value": "react"},
-                    {"id": "vue", "label": "Vue.js", "value": "vue"},
-                    {"id": "angular", "label": "Angular", "value": "angular"},
-                    {"id": "none", "label": "Sem frontend / Apenas API", "value": "none"}
-                ]
-            }
-        },
-        6: {
-            "role": "assistant",
-            "content": "❓ Pergunta 6: Qual framework CSS você vai usar?\n\nOPÇÕES:\n○ Tailwind CSS\n○ Bootstrap\n○ Material UI\n○ CSS Customizado\n\n◉ Escolha uma opção",
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": "system/fixed-question",
-            "question_type": "single_choice",
-            "question_number": 6,
-            "options": {
-                "type": "single",
-                "choices": [
-                    {"id": "tailwind", "label": "Tailwind CSS", "value": "tailwind"},
-                    {"id": "bootstrap", "label": "Bootstrap", "value": "bootstrap"},
-                    {"id": "materialui", "label": "Material UI", "value": "materialui"},
-                    {"id": "custom", "label": "CSS Customizado", "value": "custom"}
-                ]
-            }
         }
+
+    # Questions 3-6: DYNAMIC (Stack - from specs)
+    category_map = {
+        3: ("backend", "❓ Pergunta 3: Qual framework de backend você vai usar?"),
+        4: ("database", "❓ Pergunta 4: Qual banco de dados você vai usar?"),
+        5: ("frontend", "❓ Pergunta 5: Qual framework de frontend você vai usar?"),
+        6: ("css", "❓ Pergunta 6: Qual framework CSS você vai usar?")
     }
 
-    return questions.get(question_number)
+    if question_number in category_map:
+        category, question_text = category_map[question_number]
+
+        # Get dynamic choices from specs
+        choices = get_specs_for_category(db, category)
+
+        # Build options text for display
+        options_text = "\n".join([f"○ {choice['label']}" for choice in choices])
+
+        return {
+            "role": "assistant",
+            "content": f"{question_text}\n\nOPÇÕES:\n{options_text}\n\n◉ Escolha uma opção",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question",
+            "question_type": "single_choice",
+            "question_number": question_number,
+            "options": {
+                "type": "single",
+                "choices": choices
+            }
+        }
+
+    return None
 
 
 class MessageRequest(BaseModel):
@@ -439,7 +471,7 @@ async def start_interview(
     logger.info(f"Starting interview {interview_id} with fixed Question 1 for project: {project.name}")
 
     # Get fixed Question 1 (Title)
-    assistant_message = get_fixed_question(1, project)
+    assistant_message = get_fixed_question(1, project, db)
 
     if not assistant_message:
         raise HTTPException(
@@ -629,7 +661,7 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
         question_number = question_map[message_count]
         logger.info(f"Returning fixed Question {question_number} for interview {interview_id}")
 
-        assistant_message = get_fixed_question(question_number, project)
+        assistant_message = get_fixed_question(question_number, project, db)
 
         if not assistant_message:
             raise HTTPException(
@@ -663,8 +695,31 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
     elif message_count >= 12:
         logger.info(f"Using AI for business question (message_count={message_count}) for interview {interview_id}")
 
-        # Preparar system prompt para perguntas de negócio
-        system_prompt = f"""Você é um analista de requisitos de IA ajudando a coletar requisitos técnicos detalhados para um projeto de software.
+        # Check if PrompterFacade is available and enabled
+        use_prompter = (
+            PROMPTER_AVAILABLE and
+            os.getenv("PROMPTER_USE_TEMPLATES", "false").lower() == "true"
+        )
+
+        # Generate system prompt using PrompterFacade or legacy method
+        if use_prompter:
+            logger.info("Using PrompterFacade for interview question generation")
+            try:
+                prompter = PrompterFacade(db)
+                question_num = (message_count // 2) + 1  # Calculate question number
+                system_prompt = prompter.generate_interview_question(
+                    project=project,
+                    conversation_history=interview.conversation_data,
+                    question_number=question_num
+                )
+            except Exception as e:
+                logger.warning(f"PrompterFacade failed, falling back to legacy: {e}")
+                use_prompter = False
+
+        if not use_prompter:
+            # LEGACY: Hardcoded system prompt
+            logger.info("Using legacy hardcoded interview prompt")
+            system_prompt = f"""Você é um analista de requisitos de IA ajudando a coletar requisitos técnicos detalhados para um projeto de software.
 
 IMPORTANTE: Conduza TODA a entrevista em PORTUGUÊS. Todas as perguntas, opções e respostas devem ser em português.
 

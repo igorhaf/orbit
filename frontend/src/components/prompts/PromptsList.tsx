@@ -192,12 +192,6 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Model
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Input Preview
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Output Preview
-                  </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Tokens
                   </th>
@@ -256,16 +250,6 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                             {prompt.ai_model_used || 'N/A'}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-700 max-w-xs">
-                            {truncateText(prompt.user_prompt || prompt.content || 'N/A')}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="text-sm text-gray-700 max-w-xs">
-                            {truncateText(prompt.response || 'N/A')}
-                          </div>
-                        </td>
                         <td className="px-6 py-4 text-right whitespace-nowrap">
                           <div className="text-sm text-gray-900">
                             {totalTokens.toLocaleString()}
@@ -300,7 +284,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                       {/* Expanded Row */}
                       {isExpanded && (
                         <tr className="bg-blue-50">
-                          <td colSpan={10} className="px-6 py-6">
+                          <td colSpan={8} className="px-6 py-6">
                             <div className="space-y-6">
                               {/* System Prompt */}
                               {prompt.system_prompt && (

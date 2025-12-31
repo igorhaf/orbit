@@ -1,10 +1,10 @@
-# AI Orchestrator - Sistema de Orquestração de IA
+# Orbit - Sistema de Orquestração de IA
 
 Sistema SPA completo para criação e orquestração de aplicações usando IA, focado na API do Claude Code e múltiplos modelos de IA.
 
 ## Descrição do Projeto
 
-O AI Orchestrator é uma plataforma que permite:
+O Orbit é uma plataforma que permite:
 - Realizar entrevistas conversacionais com IA para capturar requisitos
 - Gerar prompts componíveis usando arquitetura Prompter
 - Gerenciar tarefas em um Kanban Board interativo

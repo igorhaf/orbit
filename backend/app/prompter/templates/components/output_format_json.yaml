@@ -1,0 +1,38 @@
+name: "output_format_json"
+version: 1
+category: "component"
+
+description: "Standard JSON output format specification"
+
+# No variables required - this is a static format spec
+
+# Template
+template: |
+  ═══════════════════════════════════════════════════════════════════════
+  OUTPUT FORMAT REQUIREMENTS
+  ═══════════════════════════════════════════════════════════════════════
+
+  CRITICAL: Your response MUST be valid JSON only. No markdown, no explanations.
+
+  ✅ CORRECT:
+  {"tasks": [...]}
+
+  ❌ INCORRECT:
+  ```json
+  {"tasks": [...]}
+  ```
+
+  ❌ INCORRECT:
+  Here are the tasks:
+  {"tasks": [...]}
+
+  JSON VALIDATION RULES:
+  - No trailing commas
+  - All strings in double quotes
+  - Boolean values: true/false (lowercase)
+  - Null values: null (lowercase)
+  - No comments in JSON
+  - UTF-8 encoding
+
+tags: ["component", "formatting", "json"]
+estimated_tokens: 200

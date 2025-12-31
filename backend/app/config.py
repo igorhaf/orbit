@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     """
 
     # Application
-    app_name: str = Field(default="AI Orchestrator API", alias="APP_NAME")
+    app_name: str = Field(default="Orbit API", alias="APP_NAME")
     environment: str = Field(default="development", alias="ENVIRONMENT")
     debug: bool = Field(default=True, alias="DEBUG")
     version: str = "0.1.0"

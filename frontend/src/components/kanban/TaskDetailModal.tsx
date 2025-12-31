@@ -37,6 +37,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }: Props) {
   const [isEditing, setIsEditing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [formData, setFormData] = useState({
     title: task.title,
     description: task.description || '',
@@ -74,14 +75,15 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this task? This action cannot be undone.')) {
-      return;
-    }
+  const handleDelete = () => {
+    setShowDeleteConfirm(true);
+  };
 
+  const confirmDelete = async () => {
     setLoading(true);
     try {
       await tasksApi.delete(task.id);
+      setShowDeleteConfirm(false);
       onDeleted();
       onClose();
     } catch (error) {
@@ -296,6 +298,47 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
           </Button>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Task?</h3>
+            <p className="text-sm text-gray-600 mb-4">Are you sure you want to delete this task?</p>
+
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <div className="flex items-start gap-3">
+                <div className="text-red-600 text-2xl">⚠️</div>
+                <div>
+                  <h4 className="font-semibold text-red-900 mb-1">Warning: This action cannot be undone!</h4>
+                  <p className="text-sm text-red-800">
+                    Task "{task.title}" and all associated data (comments, metadata) will be permanently deleted.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={loading}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDelete}
+                disabled={loading}
+                isLoading={loading}
+              >
+                Yes, Delete Task
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </Dialog>
   );
 }
