@@ -1,0 +1,169 @@
+name: "task_generation"
+version: 2
+category: "system"
+
+description: "Generates structured tasks from interview conversation using AI with token reduction (Structured Format)"
+
+# Variable schema
+variables_schema:
+  required:
+    - conversation_text
+    - project_name
+    - project_stack
+  optional:
+    - specs_context
+    - max_tasks
+    - min_tasks
+
+# System context (optional, rendered before ACTION)
+system_context: |
+  You are a technical project manager specializing in {{project_stack.backend}} development.
+  Your task is to analyze requirements and break them into concrete, implementable tasks.
+
+# ACTION: Main purpose of this prompt
+action:
+  name: "TASK_GENERATION"
+  description: "Generate actionable micro-tasks from interview conversation with token optimization"
+  category: "generation"
+
+# STEPS: Structured execution steps
+steps:
+  - number: 1
+    name: "CONTEXT_ANALYSIS"
+    description: "Extract and analyze project context from conversation"
+    commands:
+      - verb: "EXTRACT"
+        target: "project_requirements and user_needs"
+        source: "conversation"
+      - verb: "IDENTIFY"
+        target: "key_features and functionalities"
+      - verb: "DETECT"
+        target: "technical constraints and dependencies"
+      - verb: "CLASSIFY"
+        target: "requirements by type (setup, feature, testing, deployment)"
+
+  - number: 2
+    name: "SPEC_INTEGRATION"
+    description: "Integrate framework specifications to avoid regenerating boilerplate"
+    commands:
+      - verb: "REFERENCE"
+        target: "framework_patterns"
+        source: "specs"
+        constraints:
+          - "DO NOT reproduce spec content in task descriptions"
+          - "Use references like 'Follow Laravel controller spec'"
+          - "Focus ONLY on business logic and requirements"
+    conditionals:
+      - condition: "specs_context is provided"
+        then_commands:
+          - verb: "APPLY"
+            target: "token_reduction_rules"
+          - verb: "ENSURE"
+            target: "task descriptions are 50-150 words (not 100-200)"
+
+  - number: 3
+    name: "TASK_CREATION"
+    description: "Generate atomic, actionable tasks with proper structure"
+    commands:
+      - verb: "GENERATE"
+        target: "{{min_tasks|default(6)}}-{{max_tasks|default(15)}} micro-tasks"
+        constraints:
+          - "Tasks must be atomic and implementable"
+          - "Each task has clear acceptance criteria"
+      - verb: "PRIORITIZE"
+        target: "tasks by implementation order"
+        constraints:
+          - "Setup tasks first (models, migrations)"
+          - "Core features second"
+          - "Tests, docs, deployment last"
+      - verb: "ASSIGN"
+        target: "priority (1-5) and complexity (1-5)"
+      - verb: "DEFINE"
+        target: "dependencies using depends_on field"
+      - verb: "ENSURE"
+        target: "each task has proper type classification"
+        constraints:
+          - "Valid types: setup, feature, bug_fix, refactor, test, docs, deployment"
+
+  - number: 4
+    name: "TOKEN_OPTIMIZATION"
+    description: "Apply aggressive token reduction strategies"
+    commands:
+      - verb: "FOLLOW"
+        target: "token_reduction_rules"
+      - verb: "VERIFY"
+        target: "task descriptions reference specs instead of reproducing them"
+      - verb: "ENSURE"
+        target: "90% token reduction vs verbose descriptions"
+
+# EXPECTED OUTPUT: Clear specification of output format
+expected_output:
+  format: "json"
+  constraints:
+    - "No markdown code blocks (```json)"
+    - "Clean JSON only"
+    - "Each task must have: title, description, type, priority, complexity, depends_on"
+    - "Task titles: 5-10 words"
+    - "Task descriptions: 50-150 words"
+  schema:
+    type: "object"
+    properties:
+      tasks:
+        type: "array"
+        items:
+          type: "object"
+          required:
+            - "title"
+            - "description"
+            - "type"
+            - "priority"
+            - "complexity"
+            - "depends_on"
+          properties:
+            title:
+              type: "string"
+              description: "Brief task title (5-10 words)"
+            description:
+              type: "string"
+              description: "Task description (50-150 words, reference specs)"
+            type:
+              type: "string"
+              enum: ["setup", "feature", "bug_fix", "refactor", "test", "docs", "deployment"]
+            priority:
+              type: "integer"
+              minimum: 1
+              maximum: 5
+            complexity:
+              type: "integer"
+              minimum: 1
+              maximum: 5
+            depends_on:
+              type: "array"
+              items:
+                type: "string"
+  example: |
+    {
+      "tasks": [
+        {
+          "title": "Create Product Model",
+          "description": "Follow Laravel model spec. Add fields: name (string), sku (unique string), price (decimal), quantity (integer). Include inventory tracking logic.",
+          "type": "setup",
+          "priority": 1,
+          "complexity": 2,
+          "depends_on": []
+        }
+      ]
+    }
+
+# Components to include (for future compatibility)
+components:
+  - "spec_formatter"
+  - "output_format_json"
+
+# Post-processing
+post_process:
+  - type: "trim_whitespace"
+
+tags: ["task-generation", "interview", "ai-orchestrator", "structured-v2"]
+estimated_tokens: 3500
+recommended_model: "claude-sonnet-4"

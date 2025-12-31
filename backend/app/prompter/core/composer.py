@@ -18,6 +18,18 @@ from app.prompter.core.exceptions import (
     TemplateValidationError,
     VariableValidationError
 )
+from app.prompter.core.commands import (
+    StructuredPrompt,
+    Action,
+    Step,
+    ExpectedOutput,
+    Command,
+    Conditional,
+    CommandVerb,
+    parse_action_from_dict,
+    parse_step_from_dict,
+    parse_expected_output_from_dict
+)
 
 
 class PromptComposer:
@@ -113,6 +125,102 @@ class PromptComposer:
 
         # 7. Update usage stats (async in production)
         self._increment_usage(template_name, version)
+
+        return rendered
+
+    def render_structured(
+        self,
+        template_name: str,
+        variables: Dict[str, Any],
+        version: Optional[int] = None
+    ) -> str:
+        """
+        Render template in structured ACTION/STEP/EXPECTED_OUTPUT format
+
+        This method checks if the template uses the new structured format
+        (with 'action', 'steps', 'expected_output' fields). If yes, it renders
+        using the StructuredPrompt class. If no, it falls back to the legacy
+        render() method for backward compatibility.
+
+        Args:
+            template_name: Name of the template
+            variables: Variables to substitute
+            version: Specific version (None = latest active)
+
+        Returns:
+            Rendered prompt string
+
+        Raises:
+            TemplateNotFoundError: Template not found
+            VariableValidationError: Missing/invalid variables
+        """
+
+        # 1. Load template
+        template_def = self._load_template(template_name, version)
+
+        # 2. Check if structured format
+        if 'action' in template_def and 'steps' in template_def and 'expected_output' in template_def:
+            # New structured format
+            return self._render_structured_template(template_def, variables, version)
+        else:
+            # Legacy format - fallback to old render()
+            return self.render(template_name, variables, version)
+
+    def _render_structured_template(
+        self,
+        template_def: Dict,
+        variables: Dict[str, Any],
+        version: Optional[int]
+    ) -> str:
+        """
+        Render structured template using StructuredPrompt class
+
+        Args:
+            template_def: Template definition dictionary
+            variables: Variables to substitute
+            version: Template version
+
+        Returns:
+            Rendered prompt string
+        """
+
+        # 1. Validate variables
+        self._validate_variables(variables, template_def.get('variables_schema', {}))
+
+        # 2. Load components
+        components = self._load_components(template_def.get('components', []))
+        variables['components'] = components
+
+        # 3. Parse structured elements
+        action = parse_action_from_dict(template_def['action'])
+        steps = [parse_step_from_dict(step) for step in template_def['steps']]
+        expected_output = parse_expected_output_from_dict(template_def['expected_output'])
+        system_context = template_def.get('system_context')
+
+        # 4. Create StructuredPrompt
+        structured_prompt = StructuredPrompt(
+            action=action,
+            steps=steps,
+            expected_output=expected_output,
+            system_context=system_context
+        )
+
+        # 5. Render to string
+        rendered = structured_prompt.render()
+
+        # 6. Apply Jinja2 variable substitution
+        try:
+            template = Template(rendered)
+            rendered = template.render(**variables)
+        except TemplateSyntaxError as e:
+            raise TemplateValidationError(f"Template syntax error during variable substitution: {e}")
+
+        # 7. Post-process
+        if 'post_process' in template_def and template_def['post_process']:
+            rendered = self._post_process(rendered, template_def['post_process'])
+
+        # 8. Update usage stats
+        self._increment_usage(template_def['name'], version)
 
         return rendered
 

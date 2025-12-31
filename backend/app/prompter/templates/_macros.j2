@@ -1,0 +1,220 @@
+{#
+  Jinja2 Macros for Structured Prompt Templates
+
+  Provides rendering macros for the ACTION → STEP → EXPECTED_OUTPUT format.
+  These macros are used by the PromptComposer to render structured templates.
+#}
+
+{# ===== ACTION Rendering ===== #}
+
+{% macro render_action(action) %}
+ACTION: {{ action.name }}
+{% if action.description %}
+PURPOSE: {{ action.description }}
+{% endif %}
+{% endmacro %}
+
+
+{# ===== COMMAND Rendering ===== #}
+
+{% macro render_command(command, indent=0) %}
+{% set prefix = ' ' * indent %}
+{{ prefix }}{{ command.verb }} {{ command.target }}{% if command.source %} from {{ command.source }}{% endif %}.
+{% if command.constraints %}
+{{ prefix }}Constraints: {{ command.constraints|join(', ') }}
+{% endif %}
+{% endmacro %}
+
+
+{# ===== CONDITIONAL Rendering ===== #}
+
+{% macro render_conditional(conditional, indent=0) %}
+{% set prefix = ' ' * indent %}
+{{ prefix }}IF {{ conditional.condition }} THEN:
+{% for cmd in conditional.then_commands %}
+{{ prefix }}  - {{ render_command(cmd)|trim }}
+{% endfor %}
+{% if conditional.else_commands %}
+{{ prefix }}ELSE:
+{% for cmd in conditional.else_commands %}
+{{ prefix }}  - {{ render_command(cmd)|trim }}
+{% endfor %}
+{% endif %}
+{% endmacro %}
+
+
+{# ===== STEP Rendering ===== #}
+
+{% macro render_step(step, indent=0) %}
+{% set prefix = ' ' * indent %}
+{{ prefix }}STEP {{ step.number }}: {{ step.name }}
+{% if step.description %}
+{{ prefix }}{{ step.description }}
+
+{% endif %}
+{% for cmd in step.commands %}
+{{ prefix }}{{ cmd.verb }} {{ cmd.target }}{% if cmd.source %} from {{ cmd.source }}{% endif %}.
+{% if cmd.constraints %}
+{{ prefix }}Constraints: {{ cmd.constraints|join(', ') }}
+{% endif %}
+{% endfor %}
+{% if step.conditionals %}
+
+{% for cond in step.conditionals %}
+{{ render_conditional(cond, indent)|trim }}
+{% endfor %}
+{% endif %}
+{% endmacro %}
+
+
+{# ===== EXPECTED OUTPUT Rendering ===== #}
+
+{% macro render_expected_output(output, indent=0) %}
+{% set prefix = ' ' * indent %}
+{{ prefix }}EXPECTED_OUTPUT:
+{% if output.format %}
+{{ prefix }}Format: {{ output.format|upper }}
+{% endif %}
+{% if output.constraints %}
+{{ prefix }}Constraints:
+{% for constraint in output.constraints %}
+{{ prefix }}  - {{ constraint }}
+{% endfor %}
+{% endif %}
+{% if output.schema %}
+{{ prefix }}Schema: {{ output.schema|tojson }}
+{% endif %}
+{% if output.example %}
+{{ prefix }}Example:
+{{ output.example }}
+{% endif %}
+{% endmacro %}
+
+
+{# ===== FULL STRUCTURED PROMPT Rendering ===== #}
+
+{% macro render_structured_prompt(action, steps, expected_output, system_context=None) %}
+{% if system_context %}
+{{ system_context }}
+
+{% endif %}
+{{ render_action(action)|trim }}
+
+{% for step in steps %}
+{{ render_step(step)|trim }}
+
+{% endfor %}
+{{ render_expected_output(expected_output)|trim }}
+{% endmacro %}
+
+
+{# ===== Helper Macros ===== #}
+
+{% macro render_variable_list(variables, title="Variables") %}
+{{ title }}:
+{% for key, value in variables.items() %}
+  - {{ key }}: {{ value }}
+{% endfor %}
+{% endmacro %}
+
+
+{% macro render_context_block(title, content) %}
+{{ title }}:
+{{ content }}
+{% endmacro %}
+
+
+{% macro render_separator(char='-', length=50) %}
+{{ char * length }}
+{% endmacro %}
+
+
+{# ===== Formatting Helpers ===== #}
+
+{% macro indent_block(content, spaces=2) %}
+{% set prefix = ' ' * spaces %}
+{% for line in content.split('\n') %}
+{{ prefix }}{{ line }}
+{% endfor %}
+{% endmacro %}
+
+
+{% macro code_block(content, language='') %}
+```{{ language }}
+{{ content }}
+```
+{% endmacro %}
+
+
+{% macro json_block(data) %}
+```json
+{{ data|tojson(indent=2) }}
+```
+{% endmacro %}
+
+
+{# ===== Conditional Rendering Helpers ===== #}
+
+{% macro if_exists(variable, content) %}
+{% if variable %}
+{{ content }}
+{% endif %}
+{% endmacro %}
+
+
+{% macro if_not_empty(list_var, content) %}
+{% if list_var and list_var|length > 0 %}
+{{ content }}
+{% endif %}
+{% endmacro %}
+
+
+{# ===== List Rendering ===== #}
+
+{% macro render_list(items, bullet='•', indent=0) %}
+{% set prefix = ' ' * indent %}
+{% for item in items %}
+{{ prefix }}{{ bullet }} {{ item }}
+{% endfor %}
+{% endmacro %}
+
+
+{% macro render_numbered_list(items, indent=0) %}
+{% set prefix = ' ' * indent %}
+{% for item in items %}
+{{ prefix }}{{ loop.index }}. {{ item }}
+{% endfor %}
+{% endmacro %}
+
+
+{# ===== Table Rendering ===== #}
+
+{% macro render_table(headers, rows) %}
+| {{ headers|join(' | ') }} |
+| {{ headers|map('length')|map('regex_replace', '.*', '-')|join(' | ') }} |
+{% for row in rows %}
+| {{ row|join(' | ') }} |
+{% endfor %}
+{% endmacro %}
+
+
+{# ===== Section Rendering ===== #}
+
+{% macro render_section(title, content, level=1) %}
+{% if level == 1 %}
+# {{ title }}
+
+{{ content }}
+{% elif level == 2 %}
+## {{ title }}
+
+{{ content }}
+{% elif level == 3 %}
+### {{ title }}
+
+{{ content }}
+{% else %}
+{{ title }}:
+{{ content }}
+{% endif %}
+{% endmacro %}
