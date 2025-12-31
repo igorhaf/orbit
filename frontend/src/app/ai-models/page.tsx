@@ -452,7 +452,7 @@ export default function AIModelsPage() {
                 <li><strong>Code:</strong> Models for executing tasks and writing code</li>
               </ul>
               <p className="pt-2">
-                The AI Orchestrator automatically selects the best model for each task based on configuration and availability.
+                Orbit automatically selects the best model for each task based on configuration and availability.
               </p>
             </div>
           </CardContent>

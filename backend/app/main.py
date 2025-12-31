@@ -1,6 +1,6 @@
 """
 FastAPI Main Application
-Entry point for the AI Orchestrator Backend API
+Entry point for the Orbit Backend API
 """
 
 from fastapi import FastAPI, Request
@@ -25,7 +25,8 @@ from app.api.routes import (
     system_settings,
     orchestrators,
     project_analyses,
-    specs
+    specs,
+    prompter  # Prompter Architecture - Phase 1
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -48,7 +49,7 @@ async def lifespan(app: FastAPI):
     Lifespan context manager for startup and shutdown events
     """
     # Startup
-    logger.info("Starting AI Orchestrator API...")
+    logger.info("Starting Orbit API...")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug mode: {settings.debug}")
 
@@ -84,13 +85,13 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    logger.info("Shutting down AI Orchestrator API...")
+    logger.info("Shutting down Orbit API...")
 
 
 # Create FastAPI application
 app = FastAPI(
     title=settings.app_name,
-    description="Backend API for AI Orchestrator - Sistema de Orquestração de IA",
+    description="Backend API for Orbit - Sistema de Orquestração de IA",
     version=settings.version,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -151,7 +152,7 @@ async def root():
     Returns basic API information
     """
     return {
-        "message": "Welcome to AI Orchestrator API",
+        "message": "Welcome to Orbit API",
         "version": settings.version,
         "docs": "/docs",
         "health": "/health"
@@ -243,6 +244,11 @@ app.include_router(
     specs.router,
     prefix=f"{API_V1_PREFIX}/specs",
     tags=["Specs"]
+)
+
+# Prompter (Prompt Template & Orchestration System - Prompter Architecture Phase 1)
+app.include_router(
+    prompter.router
 )
 
 # WebSocket (Real-time updates)

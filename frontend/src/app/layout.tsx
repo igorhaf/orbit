@@ -8,8 +8,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: 'AI Orchestrator',
-  description: 'Sistema de Orquestração de IA para criação e gerenciamento de aplicações',
+  title: 'Orbit',
+  description: 'AI-powered development orchestration system with dynamic prompting architecture',
   viewport: 'width=device-width, initial-scale=1',
 }
 
@@ -24,13 +24,6 @@ export default function RootLayout({
         <div className="flex min-h-screen flex-col">
           {/* Main content */}
           <main className="flex-1">{children}</main>
-
-          {/* Footer */}
-          <footer className="border-t border-gray-200 bg-gray-50">
-            <div className="container py-6 text-center text-sm text-gray-600">
-              <p>AI Orchestrator v0.1.0 - Sistema de Orquestração de IA</p>
-            </div>
-          </footer>
         </div>
       </body>
     </html>

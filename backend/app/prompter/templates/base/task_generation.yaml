@@ -1,0 +1,106 @@
+name: "task_generation"
+version: 1
+category: "system"
+
+description: "Generates structured tasks from interview conversation using AI with token reduction"
+
+# Components to include
+components:
+  - "spec_formatter"
+  - "output_format_json"
+
+# Variable schema
+variables:
+  required:
+    - conversation_text
+    - project_name
+    - project_stack
+  optional:
+    - specs_context
+    - max_tasks
+
+# System prompt
+system_prompt: |
+  You are a technical project manager specializing in {{project_stack.backend}} development.
+  Your task is to analyze requirements and break them into concrete, implementable tasks.
+
+# Main template (Jinja2)
+template: |
+  Analise esta entrevista sobre um projeto de software e gere tarefas estruturadas.
+
+  PROJETO: {{project_name}}
+  STACK TÉCNICO:
+  - Backend: {{project_stack.backend}}
+  - Database: {{project_stack.database}}
+  - Frontend: {{project_stack.frontend}}
+  - CSS: {{project_stack.css}}
+
+  CONVERSA:
+  {{conversation_text}}
+
+  {% if specs_context %}
+  ═══════════════════════════════════════════════════════════════════════
+  FRAMEWORK SPECIFICATIONS (PRE-DEFINED - DO NOT REGENERATE)
+  ═══════════════════════════════════════════════════════════════════════
+
+  {{specs_context}}
+
+  CRITICAL INSTRUCTIONS FOR TASK GENERATION:
+  1. DO NOT include framework specs in task descriptions
+  2. Reference specs: "Follow {{project_stack.backend}} controller spec"
+  3. Focus ONLY on business logic and requirements
+  4. Keep task descriptions 50-150 words (NOT 100-200!)
+
+  EXAMPLE (GOOD):
+  ✅ "Create Product model following Laravel model spec. Add fields: name (string),
+      sku (unique string), price (decimal), quantity (integer). Include inventory
+      tracking logic."
+
+  EXAMPLE (BAD):
+  ❌ "Create Laravel model extending Eloquent Model class with namespace
+      App\Models, add protected $fillable array with name, sku, price,
+      quantity fields..."
+  {% endif %}
+
+  FORMATO DE SAÍDA (JSON VÁLIDO):
+  {
+    "tasks": [
+      {
+        "title": "Brief task title (5-10 words)",
+        "description": "Task description following the rules above (50-150 words)",
+        "type": "setup|feature|bug_fix|refactor|test|docs|deployment",
+        "priority": 1-5,
+        "complexity": 1-5,
+        "depends_on": []
+      }
+    ]
+  }
+
+  REGRAS DE GERAÇÃO:
+  - Gere entre 6 e {{max_tasks|default(15)}} tarefas
+  - Priorize tarefas de setup primeiro (ex: models, migrations)
+  - Depois features principais
+  - Por último: testes, docs, deployment
+  - Use depends_on para indicar dependências entre tasks
+  - Complexidade: 1=trivial, 2=simples, 3=médio, 4=complexo, 5=muito complexo
+
+  TOKEN REDUCTION RULES:
+  ❌ BAD (500 tokens): "Create Laravel controller extending Controller class with
+  namespace App\\Http\\Controllers, import Request and Response classes, define
+  index() method that returns view('products.index') with Product::all()..."
+
+  ✅ GOOD (50 tokens): "Follow Laravel controller spec. Add product CRUD: index,
+  show, store, update, destroy. Use ProductService for business logic."
+
+  → 90% TOKEN REDUCTION ACHIEVED!
+
+  Gere as tasks em JSON válido agora:
+
+# Post-processing
+post_process:
+  - type: "trim_whitespace"
+  - type: "validate_json"
+
+tags: ["task-generation", "interview", "ai-orchestrator"]
+estimated_tokens: 5000
+recommended_model: "claude-sonnet-4"

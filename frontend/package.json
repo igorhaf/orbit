@@ -1,7 +1,7 @@
 {
-  "name": "ai-orchestrator-frontend",
+  "name": "orbit-frontend",
   "version": "0.1.0",
-  "description": "Frontend for AI Orchestrator - Sistema de Orquestração de IA",
+  "description": "Frontend for Orbit - Sistema de Orquestração de IA",
   "private": true,
   "scripts": {
     "dev": "next dev",
@@ -23,6 +23,7 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-icons": "^5.5.0",
+    "recharts": "^3.6.0",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

@@ -20,32 +20,28 @@ import {
 } from '@/components/ui';
 import { projectsApi } from '@/lib/api';
 import { Project, ProjectCreate } from '@/lib/types';
-import { useDebounce } from '@/hooks/useDebounce';
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [formData, setFormData] = useState<ProjectCreate>({
     name: '',
     description: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Debounce search term to avoid excessive API calls
-  const debouncedSearchTerm = useDebounce(searchTerm, 500);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchProjects();
-  }, [debouncedSearchTerm]); // Reload when debounced search changes
+  }, []);
 
   const fetchProjects = async () => {
     setLoading(true);
     try {
-      const response = await projectsApi.list({
-        search: debouncedSearchTerm || undefined
-      });
+      const response = await projectsApi.list();
       // Ensure we always set an array, even if API returns unexpected structure
       const data = response.data || response;
       setProjects(Array.isArray(data) ? data : []);
@@ -55,11 +51,6 @@ export default function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchProjects();
   };
 
   const handleCreateProject = async (e: React.FormEvent) => {
@@ -78,16 +69,24 @@ export default function ProjectsPage() {
     }
   };
 
-  const handleDeleteProject = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this project?')) {
-      return;
-    }
+  const handleDeleteProject = async (project: Project) => {
+    setProjectToDelete(project);
+    setShowDeleteDialog(true);
+  };
 
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete) return;
+
+    setIsDeleting(true);
     try {
-      await projectsApi.delete(id);
+      await projectsApi.delete(projectToDelete.id);
+      setShowDeleteDialog(false);
+      setProjectToDelete(null);
       fetchProjects();
     } catch (error) {
       console.error('Error deleting project:', error);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -120,23 +119,6 @@ export default function ProjectsPage() {
             New Project
           </Button>
         </div>
-
-        {/* Search Bar */}
-        <Card>
-          <CardContent className="p-4">
-            <form onSubmit={handleSearch} className="flex gap-4">
-              <Input
-                placeholder="Search projects..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="flex-1"
-              />
-              <Button type="submit" variant="primary">
-                Search
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
 
         {/* Projects List */}
         {loading ? (
@@ -193,7 +175,7 @@ export default function ProjectsPage() {
                     <Button
                       variant="danger"
                       size="sm"
-                      onClick={() => handleDeleteProject(project.id)}
+                      onClick={() => handleDeleteProject(project)}
                     >
                       <svg
                         className="w-4 h-4"
@@ -215,6 +197,47 @@ export default function ProjectsPage() {
             ))}
           </div>
         )}
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={showDeleteDialog}
+          onClose={() => setShowDeleteDialog(false)}
+          title="Delete Project?"
+          description="Are you sure you want to delete this project?"
+        >
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-red-600 text-2xl">⚠️</div>
+                <div>
+                  <h4 className="font-semibold text-red-900 mb-1">Warning: This action cannot be undone!</h4>
+                  <p className="text-sm text-red-800">
+                    Project "{projectToDelete?.name}" and all associated data (tasks, interviews, commits) will be permanently deleted.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={isDeleting}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDeleteProject}
+                disabled={isDeleting}
+                isLoading={isDeleting}
+              >
+                Yes, Delete Project
+              </Button>
+            </div>
+          </div>
+        </Dialog>
 
         {/* Create Project Dialog */}
         <Dialog

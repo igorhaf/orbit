@@ -93,5 +93,12 @@ class Project(Base):
         lazy="selectin"
     )
 
+    prompt_templates = relationship(
+        "PromptTemplate",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
     def __repr__(self) -> str:
         return f"<Project(id={self.id}, name='{self.name}')>"

@@ -218,6 +218,20 @@ async def create_new_version(
     return new_prompt
 
 
+@router.delete("/", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_all_prompts(
+    db: Session = Depends(get_db)
+):
+    """
+    Delete all prompts (clear all logs).
+
+    ⚠️ WARNING: This action cannot be undone!
+    """
+    db.query(Prompt).delete()
+    db.commit()
+    return None
+
+
 @router.get("/reusable/all", response_model=List[PromptResponse])
 async def get_reusable_prompts(
     project_id: Optional[UUID] = Query(None, description="Filter by project ID"),

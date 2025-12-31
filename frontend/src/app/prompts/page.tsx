@@ -10,15 +10,18 @@ import { Layout, Breadcrumbs } from '@/components/layout';
 import { PromptsList } from '@/components/prompts';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Dialog } from '@/components/ui/Dialog';
 import { promptsApi } from '@/lib/api';
 import { Prompt } from '@/lib/types';
-import { FileText, Plus, RefreshCw } from 'lucide-react';
+import { FileText, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function PromptsPage() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const loadPrompts = async () => {
     setLoading(true);
@@ -31,6 +34,20 @@ export default function PromptsPage() {
       setError(err.message || 'Failed to load prompts');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleClearAll = async () => {
+    setIsClearing(true);
+    try {
+      await promptsApi.deleteAll();
+      setShowClearConfirm(false);
+      await loadPrompts();
+    } catch (err: any) {
+      console.error('Failed to clear prompts:', err);
+      setError(err.message || 'Failed to clear prompts');
+    } finally {
+      setIsClearing(false);
     }
   };
 
@@ -56,6 +73,14 @@ export default function PromptsPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="danger"
+              onClick={() => setShowClearConfirm(true)}
+              disabled={loading || prompts.length === 0}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Clear All Logs
+            </Button>
             <Button
               variant="outline"
               onClick={loadPrompts}
@@ -113,6 +138,49 @@ export default function PromptsPage() {
 
         {/* Prompts List */}
         {!error && <PromptsList prompts={prompts} loading={loading} />}
+
+        {/* Clear All Confirmation Modal */}
+        <Dialog
+          open={showClearConfirm}
+          onClose={() => setShowClearConfirm(false)}
+          title="Clear All Prompt Logs?"
+          description="This action will permanently delete all prompt logs from the system."
+        >
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-red-600 text-2xl">⚠️</div>
+                <div>
+                  <h4 className="font-semibold text-red-900 mb-1">Warning: This action cannot be undone!</h4>
+                  <p className="text-sm text-red-800">
+                    All {prompts.length} prompt{prompts.length !== 1 ? 's' : ''} will be permanently deleted, including their versions and metadata.
+                    This operation is irreversible.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowClearConfirm(false)}
+                disabled={isClearing}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleClearAll}
+                disabled={isClearing}
+                isLoading={isClearing}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Yes, Clear All Logs
+              </Button>
+            </div>
+          </div>
+        </Dialog>
       </div>
     </Layout>
   );
