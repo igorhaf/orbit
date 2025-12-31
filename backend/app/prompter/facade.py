@@ -23,6 +23,7 @@ class PrompterFacade:
 
     Features enabled via environment variables:
     - PROMPTER_USE_TEMPLATES: Use template system (default: false)
+    - PROMPTER_USE_STRUCTURED_TEMPLATES: Use v2 structured templates (default: false)
     - PROMPTER_USE_CACHE: Use caching layer (default: false)
     - PROMPTER_USE_BATCHING: Use request batching (default: false)
     - PROMPTER_USE_TRACING: Use distributed tracing (default: false)
@@ -42,6 +43,7 @@ class PrompterFacade:
         self.use_cache = os.getenv("PROMPTER_USE_CACHE", "false").lower() == "true"
         self.use_batching = os.getenv("PROMPTER_USE_BATCHING", "false").lower() == "true"
         self.use_tracing = os.getenv("PROMPTER_USE_TRACING", "false").lower() == "true"
+        self.use_structured_templates = os.getenv("PROMPTER_USE_STRUCTURED_TEMPLATES", "false").lower() == "true"
 
         # Initialize composer if templates enabled
         if self.use_templates:
@@ -128,10 +130,18 @@ class PrompterFacade:
                 "css": project.stack_css
             },
             "specs_context": specs_context,
-            "max_tasks": 15
+            "max_tasks": 15,
+            "min_tasks": 6
         }
 
-        return self.composer.render("task_generation", variables)
+        # Use structured templates (v2) if flag enabled, otherwise use v1
+        if self.use_structured_templates:
+            # render_structured() will automatically detect if template is v2 (structured)
+            # or v1 (legacy) and render accordingly
+            return self.composer.render_structured("task_generation", variables, version=2)
+        else:
+            # Use v1 template
+            return self.composer.render("task_generation", variables)
 
     def _generate_task_prompt_legacy(
         self,
@@ -218,7 +228,12 @@ Gere as tasks em JSON válido agora:
                 "conversation_history": self._format_conversation(conversation_history),
                 "current_question_number": question_number
             }
-            return self.composer.render("interview", variables)
+
+            # Use structured templates (v2) if flag enabled, otherwise use v1
+            if self.use_structured_templates:
+                return self.composer.render_structured("interview", variables, version=2)
+            else:
+                return self.composer.render("interview", variables)
         else:
             # OLD: Fallback to legacy
             return self._generate_interview_question_legacy(
