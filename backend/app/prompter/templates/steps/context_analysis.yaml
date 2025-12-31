@@ -1,0 +1,23 @@
+name: "context_analysis"
+version: 1
+category: "component"
+
+description: "Reusable step for analyzing project context and conversation history"
+
+# This is a component step that can be included in other templates
+step:
+  number: 1  # Will be overridden by parent template
+  name: "CONTEXT_ANALYSIS"
+  description: "Extract and analyze project context from conversation and metadata"
+  commands:
+    - verb: "EXTRACT"
+      target: "project_requirements and user_needs"
+      source: "conversation"
+    - verb: "IDENTIFY"
+      target: "key_features and functionalities"
+    - verb: "DETECT"
+      target: "technical_constraints and dependencies"
+    - verb: "CLASSIFY"
+      target: "requirements by type and priority"
+
+tags: ["component", "reusable", "analysis"]

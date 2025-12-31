@@ -1,0 +1,25 @@
+name: "json_output_validation"
+version: 1
+category: "component"
+
+description: "Reusable step for validating and formatting JSON output"
+
+# This is a component step for JSON output validation
+step:
+  number: 99  # Will be overridden by parent template
+  name: "OUTPUT_VALIDATION"
+  description: "Validate and format output as clean JSON"
+  commands:
+    - verb: "VERIFY"
+      target: "all required fields are present"
+    - verb: "VALIDATE"
+      target: "JSON syntax and structure"
+    - verb: "ENSURE"
+      target: "no markdown code blocks (```json)"
+      constraints:
+        - "Clean JSON only"
+        - "No wrappers or formatting"
+    - verb: "FORMAT"
+      target: "output as valid JSON"
+
+tags: ["component", "reusable", "validation", "json"]
