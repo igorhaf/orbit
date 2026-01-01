@@ -153,7 +153,7 @@ export default function ProjectDetailsPage() {
           {/* Action Buttons */}
           <div className="flex items-stretch gap-2 ml-6">
             <Link href={`/projects/${projectId}/analyze`}>
-              <Button variant="outline">
+              <Button variant="outline" className="h-10">
                 <svg
                   className="w-4 h-4 mr-2"
                   fill="none"
@@ -172,7 +172,7 @@ export default function ProjectDetailsPage() {
             </Link>
 
             <Link href={`/projects/${projectId}/consistency`}>
-              <Button variant="outline">
+              <Button variant="outline" className="h-10">
                 <svg
                   className="w-4 h-4 mr-2"
                   fill="none"
@@ -191,7 +191,7 @@ export default function ProjectDetailsPage() {
             </Link>
 
             <Link href={`/projects/${projectId}/execute`}>
-              <Button variant="primary">
+              <Button variant="primary" className="h-10">
                 <svg
                   className="w-4 h-4 mr-2"
                   fill="none"
@@ -219,6 +219,7 @@ export default function ProjectDetailsPage() {
             {activeTab === 'interviews' && (
               <Button
                 variant="primary"
+                className="h-10"
                 onClick={async () => {
                   try {
                     const response = await interviewsApi.create({
