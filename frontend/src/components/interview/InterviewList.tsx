@@ -192,24 +192,13 @@ export function InterviewList({
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardHeader>
                   <div className="flex justify-between items-start mb-2">
-                    <Badge
-                      variant={
-                        interview.status === 'active'
-                          ? 'success'
-                          : interview.status === 'completed'
-                          ? 'default'
-                          : 'danger'
-                      }
-                    >
-                      {interview.status}
-                    </Badge>
+                    <CardTitle className="text-sm text-gray-500">
+                      {interview.ai_model_used}
+                    </CardTitle>
                     <span className="text-xs text-gray-400">
                       {interview.conversation_data.length} messages
                     </span>
                   </div>
-                  <CardTitle className="text-sm text-gray-500">
-                    {interview.ai_model_used}
-                  </CardTitle>
                 </CardHeader>
 
                 <CardContent>
@@ -224,6 +213,17 @@ export function InterviewList({
                     <span>
                       Created: {new Date(interview.created_at).toLocaleDateString()}
                     </span>
+                    <Badge
+                      variant={
+                        interview.status === 'active'
+                          ? 'success'
+                          : interview.status === 'completed'
+                          ? 'default'
+                          : 'danger'
+                      }
+                    >
+                      {interview.status}
+                    </Badge>
                   </div>
                 </CardContent>
               </Card>
