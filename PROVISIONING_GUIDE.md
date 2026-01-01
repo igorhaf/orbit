@@ -1,9 +1,8 @@
-# 🚀 Guia de Provisionamento Manual - ORBIT
+# 🚀 Guia de Provisionamento Automático - ORBIT
 
-## ⚠️ IMPORTANTE: Provisionamento NÃO é Automático!
+## ✅ PROVISIONAMENTO AUTOMÁTICO HABILITADO! (PROMPT #60)
 
-Quando você **cria um projeto** no ORBIT, ele é salvo no **banco de dados PostgreSQL**.
-A **pasta física** em `./projects/` só é criada quando você **provisiona** o projeto.
+Quando você **responde às perguntas de stack** (Q3-Q6) durante a entrevista, o projeto é **automaticamente provisionado** e a pasta é criada em `./backend/projects/`.
 
 ---
 
@@ -23,7 +22,7 @@ VALUES ('uuid', 'Meu Projeto', 'Descrição', NOW());
 ```
 
 ✅ **Projeto criado no banco**
-❌ **Pasta NÃO criada ainda**
+❌ **Pasta NÃO criada ainda** (aguardando stack)
 
 ---
 
@@ -51,7 +50,7 @@ curl -X POST http://localhost:8000/api/v1/interviews/ \
 
 Durante a entrevista, responda:
 
-- **Q3:** Backend framework (Laravel, Django, FastAPI, Express)
+- **Q3:** Backend framework (Laravel, Django, FastAPI, Express, None)
 - **Q4:** Database (PostgreSQL, MySQL, MongoDB, SQLite)
 - **Q5:** Frontend framework (Next.js, React, Vue, Angular, None)
 - **Q6:** CSS framework (Tailwind CSS, Bootstrap, Material UI, Custom)
@@ -67,111 +66,102 @@ POST /api/v1/interviews/{interview_id}/save-stack
 }
 ```
 
-Isso salva em `project.stack` no banco de dados.
+🎉 **PROVISIONAMENTO AUTOMÁTICO É EXECUTADO!**
+
+O endpoint `save-stack` automaticamente:
+1. Salva o stack no banco de dados
+2. Valida a combinação de stack contra specs database
+3. Seleciona o script de provisionamento apropriado
+4. Executa o script e cria a pasta em `./backend/projects/`
+5. Gera credenciais aleatórias do banco de dados
+6. Retorna informações de sucesso com credenciais e próximos passos
 
 ✅ **Stack configurado no banco**
-❌ **Pasta ainda NÃO criada**
+✅ **Pasta CRIADA AUTOMATICAMENTE**
+✅ **Credenciais geradas**
+✅ **Projeto provisionado!**
 
 ---
 
-### 4️⃣ Provisionar o Projeto (CRIAR PASTA)
+## 📁 Estrutura de Pastas Criadas
 
-**Opção A: Via Script de Teste**
-```bash
-cd backend
-./test_provision_manual.sh
+Todos os projetos são criados em:
+```
+orbit-2.1/backend/projects/<project-name>/
 ```
 
-O script vai:
-1. Listar projetos
-2. Pedir para você escolher um
-3. Verificar se tem stack configurado
-4. Chamar endpoint `/provision`
-5. Mostrar credenciais e próximos passos
-
----
-
-**Opção B: Via API Manualmente**
-
-```bash
-# 1. Pegar ID da entrevista
-curl http://localhost:8000/api/v1/interviews/?project_id=SEU_PROJECT_ID
-
-# 2. Chamar endpoint de provisionamento
-curl -X POST http://localhost:8000/api/v1/interviews/SEU_INTERVIEW_ID/provision
+**Exemplo:**
+```
+backend/projects/
+├── meu-projeto-laravel/
+│   ├── docker-compose.yml
+│   ├── Dockerfile
+│   ├── .env
+│   ├── setup.sh
+│   └── README.md
+└── meu-projeto-nextjs/
+    ├── docker-compose.yml
+    ├── Dockerfile
+    ├── .env.local
+    ├── setup.sh
+    └── README.md
 ```
 
----
-
-**Opção C: Via Swagger UI**
-
-1. Abrir http://localhost:8000/docs
-2. Encontrar `POST /api/v1/interviews/{interview_id}/provision`
-3. Clicar "Try it out"
-4. Inserir `interview_id`
-5. Clicar "Execute"
+**Importante:** A pasta `/backend/projects/` está gitignored e não é rastreada pelo controle de versão.
 
 ---
 
-### 5️⃣ Acessar Projeto Provisionado
+## 🔍 Verificar se Provisionamento foi Bem-Sucedido
 
-Após provisionar com sucesso:
-
-```bash
-# Ver projeto criado
-ls projects/
-# meu-projeto/
-
-# Entrar no projeto
-cd projects/meu-projeto
-
-# Rodar setup
-./setup.sh
+### Via Response da API:
+```json
+{
+  "success": true,
+  "message": "Stack configuration saved: laravel + postgresql + none + tailwind",
+  "provisioning": {
+    "attempted": true,
+    "success": true,
+    "project_path": "/app/projects/meu-projeto-laravel",
+    "project_name": "meu-projeto-laravel",
+    "credentials": {
+      "database": "5433",
+      "username": "meu_projeto_laravel_user",
+      "password": "Ab12Cd34Ef56==",
+      "application_port": "8080",
+      "database_port": "5433",
+      "adminer_port": "8081"
+    },
+    "next_steps": [
+      "cd backend/projects/meu-projeto-laravel",
+      "./setup.sh"
+    ],
+    "script_used": "laravel_setup.sh"
+  }
+}
 ```
 
-O `setup.sh` vai:
-- Instalar framework (Laravel, Next.js, etc.)
-- Configurar banco de dados
-- Instalar Tailwind CSS
-- Buildar containers Docker
-- Subir todos os serviços
-
----
-
-## 🔍 Verificar se Provisionamento é Necessário
-
-### Projeto JÁ provisionado?
+### Via Filesystem:
 ```bash
-ls projects/
-# Se aparecer seu projeto → JÁ provisionado ✅
-# Se vazio ou não aparecer → Precisa provisionar ❌
-```
-
-### Projeto tem stack configurado?
-```bash
-# Via API
-curl http://localhost:8000/api/v1/projects/SEU_PROJECT_ID | jq '.stack'
-
-# Se retornar null → Precisa responder perguntas 3-6 primeiro
-# Se retornar {"backend": "...", ...} → Stack configurado ✅
+ls backend/projects/
+# Se aparecer seu projeto → Provisionado ✅
 ```
 
 ---
 
 ## 🐛 Erros Comuns
 
-### Erro: "Project stack not configured"
-**Causa:** Você não respondeu as perguntas 3-6 da entrevista
-**Solução:** Responda as 4 perguntas de stack na entrevista
-
----
-
 ### Erro: "Stack combination not supported"
 **Causa:** Combinação de stack sem script de provisionamento
 **Solução:** Use uma combinação suportada:
-- Laravel + PostgreSQL + Tailwind
-- Next.js + PostgreSQL + Tailwind
-- FastAPI + React + PostgreSQL + Tailwind
+- Laravel + PostgreSQL + None + Tailwind
+- None + PostgreSQL + Next.js + Tailwind
+- FastAPI + PostgreSQL + React + Tailwind
+
+---
+
+### Erro: "Technology 'xxx' not found in yyy specs"
+**Causa:** Tecnologia não cadastrada no banco de specs
+**Solução:** Verifique se a tecnologia existe em `specs` table
 
 ---
 
@@ -180,17 +170,11 @@ curl http://localhost:8000/api/v1/projects/SEU_PROJECT_ID | jq '.stack'
 **Solução:**
 ```bash
 # Remover projeto antigo
-rm -rf projects/meu-projeto
+rm -rf backend/projects/meu-projeto
 
-# Provisionar novamente
-curl -X POST .../provision
+# Salvar stack novamente para reprovisionar
+curl -X POST .../save-stack
 ```
-
----
-
-### Erro: "Interview not found"
-**Causa:** Projeto não tem entrevista associada
-**Solução:** Criar entrevista primeiro (passo 2️⃣)
 
 ---
 
@@ -207,6 +191,7 @@ curl -X POST .../provision
 ```
 → Script: `laravel_setup.sh`
 → Portas: 8080 (app), 5433 (db), 8081 (adminer)
+→ Localização: `backend/projects/<project-name>/`
 
 ---
 
@@ -221,6 +206,7 @@ curl -X POST .../provision
 ```
 → Script: `nextjs_setup.sh`
 → Portas: 3002 (app), 5434 (db), 8082 (adminer)
+→ Localização: `backend/projects/<project-name>/`
 
 ---
 
@@ -235,25 +221,31 @@ curl -X POST .../provision
 ```
 → Script: `fastapi_react_setup.sh`
 → Portas: 3003 (frontend), 8001 (backend), 5435 (db), 8083 (adminer)
+→ Localização: `backend/projects/<project-name>/`
 
 ---
 
-## 🎯 Resumo do Fluxo
+## 🎯 Resumo do Fluxo Automático
 
 ```
-1. Criar Projeto (Web UI)
+1. Criar Projeto (Web UI ou API)
    ↓ (salva no PostgreSQL)
 
-2. Criar Entrevista (Web UI)
+2. Criar Entrevista (Web UI ou API)
    ↓
 
-3. Responder Q3-Q6 (Web UI)
-   ↓ (salva stack em project.stack)
+3. Responder Q3-Q6 (Stack)
+   ↓ (chama /save-stack)
 
-4. Provisionar (Script ou API)
-   ↓ (executa laravel_setup.sh ou nextjs_setup.sh)
+4. 🎉 PROVISIONAMENTO AUTOMÁTICO 🎉
+   ├─ Valida stack contra specs database
+   ├─ Seleciona script apropriado
+   ├─ Executa script de provisionamento
+   ├─ Cria pasta em ./backend/projects/
+   ├─ Gera credenciais aleatórias
+   └─ Retorna sucesso + credenciais
 
-5. Pasta criada em ./projects/
+5. Pasta criada automaticamente!
    ↓
 
 6. Rodar ./setup.sh
@@ -264,13 +256,48 @@ curl -X POST .../provision
 
 ---
 
-## 🔜 Próxima Implementação
+## 🚀 Próximos Passos Após Provisionamento
 
-**UI Integration (PROMPT #60):**
+### 1. Acessar o Projeto Provisionado
 
-Adicionar botão "🚀 Provisionar Projeto" na interface da entrevista que aparece automaticamente após responder as 6 perguntas.
+```bash
+# Ir para o projeto
+cd backend/projects/meu-projeto
 
-Quando implementado, você poderá provisionar com **um clique** ao invés de chamar API manualmente.
+# Ver arquivos criados
+ls -la
+
+# Ver README com instruções
+cat README.md
+```
+
+### 2. Executar Setup
+
+```bash
+# Rodar script de setup (instala dependências, configura Docker, etc)
+./setup.sh
+```
+
+O `setup.sh` vai:
+- Instalar framework (Laravel, Next.js, etc.)
+- Configurar banco de dados
+- Instalar Tailwind CSS
+- Buildar containers Docker
+- Subir todos os serviços
+
+### 3. Acessar Aplicação
+
+```bash
+# Laravel
+open http://localhost:8080
+
+# Next.js
+open http://localhost:3002
+
+# FastAPI + React
+open http://localhost:3003  # Frontend
+open http://localhost:8001  # Backend API
+```
 
 ---
 
@@ -294,7 +321,7 @@ curl -X POST http://localhost:8000/api/v1/interviews/ \
   }'
 # ID retornado: 660f9511-f3ac-52e5-b827-557766551111
 
-# 4. Configurar stack via API
+# 4. Configurar stack (PROVISIONAMENTO AUTOMÁTICO ACONTECE!)
 curl -X POST http://localhost:8000/api/v1/interviews/660f9511-f3ac-52e5-b827-557766551111/save-stack \
   -H "Content-Type: application/json" \
   -d '{
@@ -304,27 +331,31 @@ curl -X POST http://localhost:8000/api/v1/interviews/660f9511-f3ac-52e5-b827-557
     "css": "tailwind"
   }'
 
-# 5. Provisionar projeto
-curl -X POST http://localhost:8000/api/v1/interviews/660f9511-f3ac-52e5-b827-557766551111/provision
-
-# Resposta:
+# Resposta (PROVISIONAMENTO JÁ EXECUTADO!):
 # {
 #   "success": true,
-#   "project_name": "minha-api-laravel",
-#   "project_path": "./projects/minha-api-laravel",
-#   "credentials": {
-#     "database": "minha_api_laravel",
-#     "username": "minha_api_laravel_user",
-#     "password": "Ab12Cd34Ef56=="
-#   },
-#   "next_steps": [
-#     "cd projects/minha-api-laravel",
-#     "./setup.sh"
-#   ]
+#   "provisioning": {
+#     "success": true,
+#     "project_name": "minha-api-laravel",
+#     "project_path": "/app/projects/minha-api-laravel",
+#     "credentials": {
+#       "database": "5433",
+#       "username": "minha_api_laravel_user",
+#       "password": "Ab12Cd34Ef56=="
+#     },
+#     "next_steps": [
+#       "cd backend/projects/minha-api-laravel",
+#       "./setup.sh"
+#     ]
+#   }
 # }
 
+# 5. Verificar pasta criada
+ls backend/projects/
+# minha-api-laravel/  ← CRIADO AUTOMATICAMENTE!
+
 # 6. Setup
-cd projects/minha-api-laravel
+cd backend/projects/minha-api-laravel
 ./setup.sh
 
 # 7. Acessar
@@ -333,6 +364,56 @@ open http://localhost:8080
 
 ---
 
-**Última atualização:** December 31, 2025
-**Versão:** 1.0
-**Relacionado:** PROMPT #59 - Automated Project Provisioning
+## ⚙️ Como Funciona Internamente
+
+### Endpoint: `POST /api/v1/interviews/{interview_id}/save-stack`
+
+**Fluxo:**
+1. Recebe stack configuration (backend, database, frontend, css)
+2. Salva no banco de dados (`project.stack_*` fields)
+3. **AUTOMATICAMENTE** chama `ProvisioningService`
+4. `ProvisioningService.validate_stack()` - Valida contra specs database
+5. `ProvisioningService.get_provisioning_script()` - Seleciona script
+6. `ProvisioningService.provision_project()` - Executa script
+7. Script cria pasta em `./projects/` (Docker: `/app/projects/`)
+8. Retorna sucesso + credenciais
+
+**Se houver erro:**
+```json
+{
+  "success": true,
+  "message": "Stack configuration saved: ...",
+  "provisioning": {
+    "attempted": true,
+    "success": false,
+    "error": "Stack combination not supported for provisioning"
+  }
+}
+```
+
+---
+
+## 🔐 Segurança
+
+### Credenciais do Banco de Dados
+- **Database name:** `<project-name>` (underscored)
+- **Username:** `<project-name>_user`
+- **Password:** Random 16-character base64 string
+
+### Secret Keys
+- **Laravel:** Auto-generated via `php artisan key:generate`
+- **Next.js:** Not required (SSR)
+- **FastAPI:** Random 32-character base64 string (for JWT)
+
+### Sanitização de Nomes
+- Nomes de projeto são sanitizados para prevenir directory traversal
+- Apenas letras, números e hífens são permitidos
+- Espaços e underscores são convertidos para hífens
+
+---
+
+**Última atualização:** December 31, 2025 (PROMPT #60)
+**Versão:** 2.0 - Provisionamento Automático
+**Relacionado:**
+- PROMPT #59 - Automated Project Provisioning (backend service)
+- PROMPT #60 - Automatic Provisioning Integration (auto-trigger on stack save)

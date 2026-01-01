@@ -100,5 +100,24 @@ class Project(Base):
         lazy="selectin"
     )
 
+    @property
+    def stack(self) -> dict:
+        """
+        Returns stack configuration as a dictionary.
+        Built dynamically from stack_* fields.
+        Returns None if no stack is configured.
+
+        PROMPT #60 - Automatic Provisioning Integration
+        """
+        if not self.stack_backend and not self.stack_database and not self.stack_frontend and not self.stack_css:
+            return None
+
+        return {
+            "backend": self.stack_backend,
+            "database": self.stack_database,
+            "frontend": self.stack_frontend,
+            "css": self.stack_css
+        }
+
     def __repr__(self) -> str:
         return f"<Project(id={self.id}, name='{self.name}')>"

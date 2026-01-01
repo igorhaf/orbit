@@ -11,6 +11,7 @@ from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
 import os
+import subprocess
 
 from app.database import get_db
 from app.models.interview import Interview, InterviewStatus
@@ -27,6 +28,9 @@ try:
     PROMPTER_AVAILABLE = True
 except ImportError:
     PROMPTER_AVAILABLE = False
+
+# Provisioning Service (PROMPT #60 - Automatic Provisioning)
+from app.services.provisioning import ProvisioningService
 
 router = APIRouter()
 
@@ -547,10 +551,66 @@ async def save_interview_stack(
 
     logger.info(f"Stack configuration saved for project {project.id}: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}")
 
-    return {
+    # PROMPT #60 - AUTOMATIC PROVISIONING
+    # Automatically provision project after stack is saved
+    provisioning_result = None
+    provisioning_error = None
+
+    try:
+        logger.info(f"Starting automatic provisioning for project {project.name}...")
+        provisioning_service = ProvisioningService(db)
+
+        # Validate stack against database specs
+        is_valid, error_msg = provisioning_service.validate_stack(project.stack)
+        if not is_valid:
+            logger.warning(f"Stack validation failed: {error_msg}")
+            provisioning_error = error_msg
+        else:
+            # Execute provisioning
+            provisioning_result = provisioning_service.provision_project(project)
+            logger.info(f"✅ Project provisioned successfully at: {provisioning_result['project_path']}")
+
+    except ValueError as e:
+        # Stack combination not supported
+        logger.warning(f"Provisioning not available for this stack: {str(e)}")
+        provisioning_error = str(e)
+    except FileNotFoundError as e:
+        # Script not found
+        logger.error(f"Provisioning script not found: {str(e)}")
+        provisioning_error = str(e)
+    except subprocess.TimeoutExpired:
+        # Script timeout
+        logger.error(f"Provisioning timed out after 5 minutes")
+        provisioning_error = "Provisioning timed out after 5 minutes"
+    except subprocess.CalledProcessError as e:
+        # Script execution failed
+        logger.error(f"Provisioning script failed: {e.stderr}")
+        provisioning_error = f"Provisioning script failed: {e.stderr}"
+    except Exception as e:
+        # Unexpected error
+        logger.error(f"Unexpected error during provisioning: {str(e)}")
+        provisioning_error = f"Unexpected error: {str(e)}"
+
+    # Return response with provisioning info
+    response = {
         "success": True,
-        "message": f"Stack configuration saved: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}"
+        "message": f"Stack configuration saved: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}",
+        "provisioning": {
+            "attempted": True,
+            "success": provisioning_result is not None,
+        }
     }
+
+    if provisioning_result:
+        response["provisioning"]["project_path"] = provisioning_result["project_path"]
+        response["provisioning"]["project_name"] = provisioning_result["project_name"]
+        response["provisioning"]["credentials"] = provisioning_result.get("credentials", {})
+        response["provisioning"]["next_steps"] = provisioning_result["next_steps"]
+        response["provisioning"]["script_used"] = provisioning_result["script_used"]
+    elif provisioning_error:
+        response["provisioning"]["error"] = provisioning_error
+
+    return response
 
 
 @router.post("/{interview_id}/send-message", status_code=status.HTTP_200_OK)
