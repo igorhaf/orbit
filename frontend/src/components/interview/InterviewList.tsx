@@ -202,7 +202,7 @@ export function InterviewList({
                     </CardTitle>
                   )}
                   <div className="flex justify-between items-start">
-                    <span className="text-xs text-gray-700 font-bold">
+                    <span className={projectId ? "text-sm text-gray-700 font-bold" : "text-xs text-gray-500"}>
                       {interview.ai_model_used}
                     </span>
                     <span className="text-xs text-gray-400">
