@@ -196,9 +196,11 @@ export function InterviewList({
             <Link key={interview.id} href={`/interviews/${interview.id}`}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardHeader>
-                  <CardTitle className="text-base font-semibold text-gray-900 mb-2">
-                    {getProjectName(interview.project_id)}
-                  </CardTitle>
+                  {!projectId && (
+                    <CardTitle className="text-base font-semibold text-gray-900 mb-2">
+                      {getProjectName(interview.project_id)}
+                    </CardTitle>
+                  )}
                   <div className="flex justify-between items-start">
                     <span className="text-xs text-gray-500">
                       {interview.ai_model_used}
