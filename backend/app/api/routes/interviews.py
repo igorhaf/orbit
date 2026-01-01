@@ -918,3 +918,137 @@ async def update_project_info(
             "description": project.description
         }
     }
+
+
+@router.post("/{interview_id}/provision", status_code=status.HTTP_200_OK)
+async def provision_project(
+    interview_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Provision a project based on stack configuration from interview.
+
+    This endpoint creates a complete project scaffold in ./projects/<project-name>/
+    using the stack technologies selected during the interview (questions 3-6).
+
+    The provisioning system:
+    - Uses specs from database to determine available technologies
+    - Automatically selects appropriate provisioning script based on stack
+    - Creates Docker Compose setup with all services
+    - Generates random database credentials
+    - Configures Tailwind CSS
+    - Provides complete README and setup instructions
+
+    Supported Stack Combinations:
+    - Laravel + PostgreSQL + Tailwind CSS
+    - Next.js + PostgreSQL + Tailwind CSS
+    - FastAPI + React + PostgreSQL + Tailwind CSS
+
+    Args:
+        interview_id: UUID of the interview
+        db: Database session (injected)
+
+    Returns:
+        {
+            "success": bool,
+            "project_name": str,
+            "project_path": str,
+            "stack": dict,
+            "credentials": dict,
+            "next_steps": list[str]
+        }
+
+    Raises:
+        404: Interview or project not found
+        400: Stack not configured or unsupported
+        500: Provisioning script execution failed
+
+    PROMPT #59 - Automated Project Provisioning
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    from app.services.provisioning import get_provisioning_service
+
+    # 1. Find interview and associated project
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        logger.error(f"Interview {interview_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Interview not found"
+        )
+
+    project = db.query(Project).filter(Project.id == interview.project_id).first()
+    if not project:
+        logger.error(f"Project {interview.project_id} not found for interview {interview_id}")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Associated project not found"
+        )
+
+    # 2. Validate stack is configured
+    if not project.stack:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project stack not configured. Complete interview stack questions first (questions 3-6)."
+        )
+
+    logger.info(f"Provisioning project '{project.name}' with stack: {project.stack}")
+
+    # 3. Validate stack configuration
+    provisioning_service = get_provisioning_service(db)
+    is_valid, error_msg = provisioning_service.validate_stack(project.stack)
+
+    if not is_valid:
+        logger.error(f"Invalid stack for project {project.id}: {error_msg}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg
+        )
+
+    # 4. Execute provisioning
+    try:
+        result = provisioning_service.provision_project(project)
+
+        if not result.get("success"):
+            # Provisioning failed but script executed (e.g., project already exists)
+            logger.warning(f"Provisioning failed for project {project.id}: {result.get('error')}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=result.get("error", "Provisioning failed")
+            )
+
+        logger.info(f"✓ Successfully provisioned project '{project.name}' at {result['project_path']}")
+
+        return {
+            "success": True,
+            "message": f"Project '{project.name}' provisioned successfully",
+            "project_name": result["project_name"],
+            "project_path": result["project_path"],
+            "stack": result["stack"],
+            "credentials": result.get("credentials", {}),
+            "next_steps": result["next_steps"],
+            "script_used": result["script_used"]
+        }
+
+    except ValueError as e:
+        logger.error(f"Provisioning validation error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    except FileNotFoundError as e:
+        logger.error(f"Provisioning script not found: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Provisioning script not found. Contact administrator."
+        )
+
+    except Exception as e:
+        logger.error(f"Unexpected error during provisioning: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Provisioning failed: {str(e)}"
+        )

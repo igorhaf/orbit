@@ -222,6 +222,21 @@ export const interviewsApi = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+
+  // PROMPT #59 - Provision project based on stack configuration
+  provision: (id: string) =>
+    request<{
+      success: boolean;
+      message: string;
+      project_name: string;
+      project_path: string;
+      stack: any;
+      credentials: any;
+      next_steps: string[];
+      script_used: string;
+    }>(`/api/v1/interviews/${id}/provision`, {
+      method: 'POST',
+    }),
 };
 
 // Prompts API
