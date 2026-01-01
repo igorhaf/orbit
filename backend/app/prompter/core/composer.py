@@ -256,6 +256,14 @@ class PromptComposer:
             return self._db_template_to_dict(db_template)
 
         # Fallback to filesystem
+        # Try version-specific filename first if version specified
+        if version:
+            versioned_path = self.template_dir / f"{name}_v{version}.yaml"
+            if versioned_path.exists():
+                with open(versioned_path, 'r', encoding='utf-8') as f:
+                    return yaml.safe_load(f)
+
+        # Try base filename
         template_path = self.template_dir / f"{name}.yaml"
         if template_path.exists():
             with open(template_path, 'r', encoding='utf-8') as f:

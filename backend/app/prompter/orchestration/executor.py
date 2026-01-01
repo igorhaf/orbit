@@ -14,12 +14,14 @@ import asyncio
 import time
 import logging
 from typing import Optional, Dict, Any
+from contextlib import contextmanager
 from sqlalchemy.orm import Session
 
 from .context import ExecutionContext
 from .validation import get_pipeline
 from ..core.exceptions import ExecutionError, CacheError
 from app.services.ai_orchestrator import AIOrchestrator
+from app.prompter.observability import get_tracing_service
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ class PromptExecutor:
         db: Session,
         ai_orchestrator: Optional[AIOrchestrator] = None,
         cache_service: Optional[Any] = None,
+        batch_service: Optional[Any] = None,
         enable_cache: bool = True,
         enable_retry: bool = True,
     ):
@@ -52,12 +55,14 @@ class PromptExecutor:
             db: Database session
             ai_orchestrator: AI service (if None, will create default)
             cache_service: Cache service (optional, for optimization)
+            batch_service: Batch service (optional, for request batching)
             enable_cache: Enable caching globally
             enable_retry: Enable retry globally
         """
         self.db = db
         self.ai_orchestrator = ai_orchestrator or AIOrchestrator(db)
         self.cache_service = cache_service
+        self.batch_service = batch_service
         self.enable_cache = enable_cache
         self.enable_retry = enable_retry
 
@@ -74,59 +79,109 @@ class PromptExecutor:
         Raises:
             ExecutionError: If execution fails after all retries
         """
-        try:
-            # Step 1: Run pre-hooks
-            await self._run_pre_hooks(context)
+        # Get tracing service (if enabled)
+        tracing = get_tracing_service()
 
-            # Step 2: Check cache (if enabled)
-            if self.enable_cache and context.enable_cache and self.cache_service:
-                cached_result = await self._check_cache(context)
-                if cached_result:
-                    logger.info(
-                        f"Cache hit ({cached_result['cache_type']}) for "
-                        f"usage_type={context.usage_type}"
-                    )
-                    context.mark_cached(
-                        response=cached_result["response"],
-                        cache_type=cached_result["cache_type"],
-                    )
+        # Create root span for this execution
+        with tracing.start_span(
+            "prompter.execute",
+            {
+                "usage_type": context.usage_type,
+                "model": context.model,
+                "temperature": context.temperature,
+                "max_tokens": context.max_tokens,
+            }
+        ) if tracing else contextmanager(lambda: (yield None))() as root_span:
+
+            try:
+                # Step 1: Run pre-hooks
+                with tracing.start_span("pre_hooks") if tracing else contextmanager(lambda: (yield None))():
+                    await self._run_pre_hooks(context)
+
+                # Step 2: Check cache (if enabled)
+                if self.enable_cache and context.enable_cache and self.cache_service:
+                    with tracing.start_span("cache.check") if tracing else contextmanager(lambda: (yield None))() as cache_span:
+                        cached_result = await self._check_cache(context)
+                        if cached_result:
+                            if tracing and cache_span:
+                                tracing.set_attribute(cache_span, "cache.hit", True)
+                                tracing.set_attribute(cache_span, "cache.type", cached_result['cache_type'])
+
+                            logger.info(
+                                f"Cache hit ({cached_result['cache_type']}) for "
+                                f"usage_type={context.usage_type}"
+                            )
+                            context.mark_cached(
+                                response=cached_result["response"],
+                                cache_type=cached_result["cache_type"],
+                            )
+                            await self._run_post_hooks(context)
+
+                            if tracing and root_span:
+                                tracing.set_status_ok(root_span)
+
+                            return context
+
+                        if tracing and cache_span:
+                            tracing.set_attribute(cache_span, "cache.hit", False)
+
+                # Step 3: Execute with retry
+                with tracing.start_span("ai.execute") if tracing else contextmanager(lambda: (yield None))() as ai_span:
+                    await self._execute_with_retry(context)
+
+                    if tracing and ai_span and context.is_success:
+                        tracing.set_attribute(ai_span, "tokens.input", context.input_tokens)
+                        tracing.set_attribute(ai_span, "tokens.output", context.output_tokens)
+                        tracing.set_attribute(ai_span, "cost.usd", context.cost)
+                        tracing.set_attribute(ai_span, "model.used", context.model)
+
+                # Step 4: Validate response
+                if context.is_success:
+                    with tracing.start_span("validation") if tracing else contextmanager(lambda: (yield None))() as val_span:
+                        validation_result = await self._validate_response(context)
+                        context.validation_passed = validation_result["passed"]
+                        context.quality_score = validation_result.get("quality_score")
+
+                        if tracing and val_span:
+                            tracing.set_attribute(val_span, "validation.passed", validation_result["passed"])
+                            if context.quality_score:
+                                tracing.set_attribute(val_span, "quality.score", context.quality_score)
+
+                        if not validation_result["passed"]:
+                            logger.warning(
+                                f"Validation failed for usage_type={context.usage_type}: "
+                                f"{validation_result.get('errors')}"
+                            )
+
+                # Step 5: Run post-hooks
+                with tracing.start_span("post_hooks") if tracing else contextmanager(lambda: (yield None))():
                     await self._run_post_hooks(context)
-                    return context
 
-            # Step 3: Execute with retry
-            await self._execute_with_retry(context)
+                # Step 6: Cache result (if successful and cache enabled)
+                if (
+                    context.is_success
+                    and self.enable_cache
+                    and context.enable_cache
+                    and self.cache_service
+                ):
+                    with tracing.start_span("cache.store") if tracing else contextmanager(lambda: (yield None))():
+                        await self._cache_result(context)
 
-            # Step 4: Validate response
-            if context.is_success:
-                validation_result = await self._validate_response(context)
-                context.validation_passed = validation_result["passed"]
-                context.quality_score = validation_result.get("quality_score")
+                if tracing and root_span:
+                    tracing.set_status_ok(root_span)
 
-                if not validation_result["passed"]:
-                    logger.warning(
-                        f"Validation failed for usage_type={context.usage_type}: "
-                        f"{validation_result.get('errors')}"
-                    )
+                return context
 
-            # Step 5: Run post-hooks
-            await self._run_post_hooks(context)
+            except Exception as e:
+                logger.error(f"Executor error: {e}", exc_info=True)
 
-            # Step 6: Cache result (if successful and cache enabled)
-            if (
-                context.is_success
-                and self.enable_cache
-                and context.enable_cache
-                and self.cache_service
-            ):
-                await self._cache_result(context)
+                if tracing and root_span:
+                    tracing.record_exception(root_span, e)
 
-            return context
+                if not context.is_failed:
+                    context.mark_failed(e, time.time())
 
-        except Exception as e:
-            logger.error(f"Executor error: {e}", exc_info=True)
-            if not context.is_failed:
-                context.mark_failed(e, time.time())
-            raise ExecutionError(f"Execution failed: {e}") from e
+                raise ExecutionError(f"Execution failed: {e}") from e
 
     async def _execute_with_retry(self, context: ExecutionContext):
         """
@@ -210,15 +265,28 @@ class PromptExecutor:
         context.mark_started(start_time)
 
         try:
-            # Call AI orchestrator
-            result = await self.ai_orchestrator.execute(
-                prompt=context.prompt,
-                system_prompt=context.system_prompt,
-                usage_type=context.usage_type,
-                max_tokens=context.max_tokens,
-                temperature=context.temperature,
-                model=context.model,
-            )
+            # Call AI orchestrator (with batching if available)
+            if self.batch_service:
+                # Submit through batch service for improved throughput
+                result = await self.batch_service.submit(
+                    usage_type=context.usage_type,
+                    execute_fn=self.ai_orchestrator.execute,
+                    prompt=context.prompt,
+                    system_prompt=context.system_prompt,
+                    max_tokens=context.max_tokens,
+                    temperature=context.temperature,
+                    model=context.model,
+                )
+            else:
+                # Direct execution without batching
+                result = await self.ai_orchestrator.execute(
+                    prompt=context.prompt,
+                    system_prompt=context.system_prompt,
+                    usage_type=context.usage_type,
+                    max_tokens=context.max_tokens,
+                    temperature=context.temperature,
+                    model=context.model,
+                )
 
             end_time = time.time()
 
