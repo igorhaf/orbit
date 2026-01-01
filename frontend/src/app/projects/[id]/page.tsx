@@ -151,7 +151,7 @@ export default function ProjectDetailsPage() {
           </div>
 
           {/* Action Buttons */}
-          <div className="flex gap-2 ml-6">
+          <div className="flex items-stretch gap-2 ml-6">
             <Link href={`/projects/${projectId}/analyze`}>
               <Button variant="outline">
                 <svg
