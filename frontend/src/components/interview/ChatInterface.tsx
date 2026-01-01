@@ -10,6 +10,7 @@ import { interviewsApi } from '@/lib/api';
 import { Interview } from '@/lib/types';
 import { Button, Badge } from '@/components/ui';
 import { MessageBubble } from './MessageBubble';
+import { ProvisioningStatusCard } from './ProvisioningStatusCard';
 
 interface Props {
   interviewId: string;
@@ -31,6 +32,9 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   const [prefilledValue, setPrefilledValue] = useState<string | null>(null);
   const [isProjectInfoQuestion, setIsProjectInfoQuestion] = useState(false);
   const [currentQuestionNumber, setCurrentQuestionNumber] = useState<number | null>(null);
+
+  // PROMPT #61 - Track provisioning status for UI feedback
+  const [provisioningStatus, setProvisioningStatus] = useState<any>(null);
 
   useEffect(() => {
     loadInterview();
@@ -302,8 +306,17 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
     try {
       console.log('🎯 Stack detected and saving:', stack);
-      await interviewsApi.saveStack(interviewId, stack);
-      console.log('✅ Stack configuration saved successfully!');
+      const response = await interviewsApi.saveStack(interviewId, stack);
+      console.log('✅ Stack configuration saved successfully!', response);
+
+      // PROMPT #61 - Capture provisioning status from response
+      if (response.provisioning) {
+        console.log('🚀 Provisioning status:', response.provisioning);
+        setProvisioningStatus({
+          ...response.provisioning,
+          projectName: interviewData.project?.name || 'Your Project'
+        });
+      }
     } catch (error) {
       console.error('❌ Failed to save stack:', error);
       // Don't show error to user - this is automatic
@@ -508,6 +521,14 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               );
             })}
             <div ref={messagesEndRef} />
+
+            {/* PROMPT #61 - Show provisioning status after messages */}
+            {provisioningStatus && (
+              <ProvisioningStatusCard
+                provisioning={provisioningStatus}
+                projectName={provisioningStatus.projectName || interview?.project?.name || 'Your Project'}
+              />
+            )}
           </>
         )}
 
