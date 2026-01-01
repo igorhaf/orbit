@@ -247,14 +247,150 @@ class CacheService:
         Returns:
             Cached result or None
         """
-        # TODO: Implement semantic similarity
-        # Requires:
-        # 1. Generate embedding for input prompt
-        # 2. Compare with cached embeddings (cosine similarity)
-        # 3. Return if similarity > threshold (0.95)
+        if not self.enable_semantic:
+            return None
 
-        # For now, return None (not implemented yet)
-        return None
+        try:
+            # Generate embedding for current prompt
+            prompt = cache_input.get("prompt", "")
+            if not prompt:
+                return None
+
+            embedding = self._generate_embedding(prompt)
+            if embedding is None:
+                return None
+
+            # Search for similar prompts in cache
+            usage_type = cache_input.get("usage_type", "")
+            prefix = "semantic:"
+            pattern = f"{prefix}{usage_type}:*"
+
+            best_match = None
+            best_similarity = 0.0
+
+            if self.redis_client:
+                try:
+                    # Get all semantic cache keys for this usage_type
+                    keys = self.redis_client.keys(pattern)
+
+                    for key in keys:
+                        cached_data = self.redis_client.get(key)
+                        if not cached_data:
+                            continue
+
+                        cached = json.loads(cached_data)
+                        cached_embedding = cached.get("embedding")
+
+                        if not cached_embedding:
+                            continue
+
+                        # Calculate cosine similarity
+                        similarity = self._cosine_similarity(embedding, cached_embedding)
+
+                        if similarity > best_similarity and similarity >= self.similarity_threshold:
+                            best_similarity = similarity
+                            best_match = cached
+
+                    if best_match:
+                        logger.info(f"✓ Semantic cache hit (similarity: {best_similarity:.3f})")
+                        return {
+                            "response": best_match["response"],
+                            "cache_type": "semantic",
+                            "model": best_match["model"],
+                            "cost": best_match["cost"],
+                            "similarity": best_similarity,
+                        }
+                except Exception as e:
+                    logger.error(f"Semantic cache search error: {e}")
+                    return None
+            else:
+                # In-memory fallback
+                for key, entry in self._memory_cache.items():
+                    if not key.startswith(prefix):
+                        continue
+
+                    # Check TTL
+                    if time.time() - entry.created_at > self.ttl[CacheLevel.SEMANTIC]:
+                        continue
+
+                    # Get embedding from entry (would need to store it)
+                    # For in-memory, we'd need to add embedding field to CacheEntry
+                    # Skip for now as Redis is the primary storage
+                    pass
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Semantic cache error: {e}")
+            return None
+
+    def _generate_embedding(self, text: str):
+        """
+        Generate embedding vector for text using sentence-transformers
+
+        Uses lazy loading to avoid import errors if library not installed.
+
+        Args:
+            text: Text to embed
+
+        Returns:
+            Embedding list or None if error
+        """
+        try:
+            # Lazy load sentence-transformers
+            if not hasattr(self, '_embedding_model'):
+                try:
+                    from sentence_transformers import SentenceTransformer
+                    self._embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+                    logger.info("✓ Loaded sentence-transformers model: all-MiniLM-L6-v2")
+                except ImportError:
+                    logger.warning("sentence-transformers not installed - semantic cache disabled")
+                    self._embedding_model = None
+                    return None
+
+            if self._embedding_model is None:
+                return None
+
+            # Generate embedding and convert to list for JSON serialization
+            import numpy as np
+            embedding = self._embedding_model.encode(text, normalize_embeddings=True)
+            return embedding.tolist()
+
+        except Exception as e:
+            logger.error(f"Embedding generation error: {e}")
+            return None
+
+    def _cosine_similarity(self, a: List[float], b: List[float]) -> float:
+        """
+        Calculate cosine similarity between two vectors
+
+        Args:
+            a: First vector (list of floats)
+            b: Second vector (list of floats)
+
+        Returns:
+            Similarity score (0-1)
+        """
+        try:
+            import numpy as np
+
+            a_arr = np.array(a)
+            b_arr = np.array(b)
+
+            # Cosine similarity
+            dot_product = np.dot(a_arr, b_arr)
+            norm_a = np.linalg.norm(a_arr)
+            norm_b = np.linalg.norm(b_arr)
+
+            if norm_a == 0 or norm_b == 0:
+                return 0.0
+
+            similarity = dot_product / (norm_a * norm_b)
+            return float(similarity)
+
+        except Exception as e:
+            logger.error(f"Cosine similarity calculation error: {e}")
+            return 0.0
 
     def _get_template(self, cache_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
@@ -327,6 +463,7 @@ class CacheService:
         Store result in cache
 
         Stores in exact match cache by default.
+        If semantic caching enabled, also stores with embedding.
         If temperature=0, also stores in template cache.
 
         Args:
@@ -348,10 +485,19 @@ class CacheService:
             "hits": 0,
         }
 
-        # Store in exact match cache
+        # Store in exact match cache (L1)
         self._set_exact(cache_key, entry_data)
 
-        # Also store in template cache if deterministic
+        # Store in semantic cache (L2) if enabled
+        if self.enable_semantic:
+            prompt = cache_input.get("prompt", "")
+            usage_type = cache_input.get("usage_type", "")
+            if prompt:
+                embedding = self._generate_embedding(prompt)
+                if embedding is not None:
+                    self._set_semantic(usage_type, cache_key, entry_data, embedding)
+
+        # Also store in template cache (L3) if deterministic
         if temperature == 0:
             self._set_template(cache_key, entry_data)
 
@@ -384,6 +530,47 @@ class CacheService:
                 created_at=entry_data["created_at"],
                 hits=0,
             )
+
+    def _set_semantic(
+        self,
+        usage_type: str,
+        cache_key: str,
+        entry_data: Dict[str, Any],
+        embedding: List[float]
+    ):
+        """
+        Store in semantic cache with embedding
+
+        Args:
+            usage_type: Type of usage (for grouping similar prompts)
+            cache_key: Unique cache key
+            entry_data: Cache entry data
+            embedding: Prompt embedding vector
+        """
+        prefix = "semantic:"
+        # Include usage_type in key for efficient filtering
+        semantic_key = f"{prefix}{usage_type}:{cache_key[:16]}"
+
+        # Add embedding to entry data
+        semantic_entry = {
+            **entry_data,
+            "embedding": embedding,
+        }
+
+        if self.redis_client:
+            try:
+                self.redis_client.setex(
+                    semantic_key,
+                    self.ttl[CacheLevel.SEMANTIC],
+                    json.dumps(semantic_entry)
+                )
+                logger.debug(f"Stored semantic cache (ttl={self.ttl[CacheLevel.SEMANTIC]}s)")
+            except Exception as e:
+                logger.error(f"Redis semantic set error: {e}")
+        else:
+            # In-memory fallback (would need to extend CacheEntry to include embedding)
+            # For now, skip as Redis is the primary storage for semantic cache
+            pass
 
     def _set_template(self, cache_key: str, entry_data: Dict[str, Any]):
         """Store in template cache"""

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.prompter.core.composer import PromptComposer
 from app.prompter.orchestration import PromptExecutor, ExecutionContext, apply_strategy
 from app.prompter.optimization import CacheService, ModelSelector
+from app.prompter.observability import get_ab_testing_service
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
 
@@ -47,20 +48,57 @@ class PrompterFacade:
 
         # Initialize composer if templates enabled
         if self.use_templates:
-            template_dir = Path(__file__).parent / "templates"
+            template_dir = Path(__file__).parent / "templates" / "base"
             self.composer = PromptComposer(template_dir, db)
         else:
             self.composer = None
 
-        # Initialize cache service if enabled (Phase 3)
+        # Initialize cache service if enabled (Phase 2/3)
         if self.use_cache:
+            # Initialize Redis client
+            redis_client = None
+            redis_host = os.getenv("REDIS_HOST")
+            if redis_host:
+                try:
+                    import redis
+                    redis_client = redis.Redis(
+                        host=redis_host,
+                        port=int(os.getenv("REDIS_PORT", 6379)),
+                        db=0,
+                        decode_responses=True,
+                        socket_connect_timeout=5,
+                        socket_timeout=5,
+                    )
+                    # Test connection
+                    redis_client.ping()
+                    print(f"✅ Redis connected: {redis_host}:{os.getenv('REDIS_PORT', 6379)}")
+                except Exception as e:
+                    print(f"⚠️  Redis connection failed: {e}. Using in-memory cache.")
+                    redis_client = None
+
+            # Initialize cache service
             self.cache = CacheService(
-                redis_client=None,  # TODO: Initialize Redis client when available
-                enable_semantic=False,  # Will be enabled when embeddings are ready
+                redis_client=redis_client,
+                enable_semantic=True if redis_client else False,  # Only enable if Redis available
                 similarity_threshold=0.95
             )
+
+            if redis_client and self.cache.enable_semantic:
+                print("✅ Semantic caching (L2) enabled")
         else:
             self.cache = None
+
+        # Initialize batch service if enabled (Phase 3)
+        if self.use_batching:
+            from app.prompter.optimization import BatchService
+            self.batch = BatchService(
+                batch_size=10,
+                batch_window_ms=100,
+                max_queue_size=1000
+            )
+            print("✅ Request batching enabled (batch_size=10, window=100ms)")
+        else:
+            self.batch = None
 
         # Initialize prompt executor if orchestration enabled (Phase 3)
         # For now, always initialize (will be controlled by feature flag later)
@@ -68,6 +106,7 @@ class PrompterFacade:
             db=db,
             ai_orchestrator=AIOrchestrator(db),
             cache_service=self.cache,
+            batch_service=self.batch,
             enable_cache=self.use_cache,
             enable_retry=True
         ) if (self.use_cache or self.use_batching) else None
@@ -75,8 +114,46 @@ class PrompterFacade:
         # Initialize model selector (Phase 3)
         self.model_selector = ModelSelector()
 
-        # Batch service (Phase 3 - not yet implemented)
-        self.batch = None
+        # Initialize A/B testing service (Phase 7)
+        self.ab_testing = get_ab_testing_service()
+
+    def _get_template_version(
+        self,
+        template_name: str,
+        project_id: Optional[str] = None,
+        experiment_id: Optional[str] = None
+    ) -> int:
+        """
+        Determine template version to use
+
+        Priority:
+        1. A/B experiment assignment (if active)
+        2. Feature flag (PROMPTER_USE_STRUCTURED_TEMPLATES)
+        3. Default (v1)
+
+        Args:
+            template_name: Name of template
+            project_id: Project ID for A/B assignment
+            experiment_id: Optional specific experiment ID to check
+
+        Returns:
+            Template version number
+        """
+        # Check A/B experiment first (if project_id provided)
+        if project_id and experiment_id:
+            variant = self.ab_testing.get_variant(
+                experiment_id=experiment_id,
+                assignment_key=str(project_id)
+            )
+
+            if variant and variant.template_version:
+                return variant.template_version
+
+        # Fallback to feature flag
+        if self.use_structured_templates:
+            return 2  # v2 structured templates
+        else:
+            return 1  # v1 legacy templates
 
     def generate_task_prompt(
         self,
