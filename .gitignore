@@ -150,3 +150,6 @@ junit.xml
 
 frontend/.next
 frontend/node_modules
+
+# Provisioned projects (test projects only)
+/projects/
