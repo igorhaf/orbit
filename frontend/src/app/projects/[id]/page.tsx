@@ -12,7 +12,7 @@ import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import { InterviewList } from '@/components/interview';
-import { projectsApi, tasksApi } from '@/lib/api';
+import { projectsApi, tasksApi, interviewsApi } from '@/lib/api';
 import { Project, Task } from '@/lib/types';
 
 type Tab = 'kanban' | 'list' | 'overview' | 'interviews';
@@ -214,6 +214,42 @@ export default function ProjectDetailsPage() {
                 Execute All
               </Button>
             </Link>
+
+            {/* New Interview button - only show on interviews tab */}
+            {activeTab === 'interviews' && (
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  try {
+                    const response = await interviewsApi.create({
+                      project_id: projectId,
+                      ai_model_used: 'claude-3-sonnet',
+                      conversation_data: [],
+                    });
+                    const interviewId = response.data?.id || response.id;
+                    router.push(`/interviews/${interviewId}`);
+                  } catch (error) {
+                    console.error('Failed to create interview:', error);
+                    alert('Failed to create interview. Please try again.');
+                  }
+                }}
+              >
+                <svg
+                  className="w-4 h-4 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                New Interview
+              </Button>
+            )}
           </div>
         </div>
 
@@ -311,7 +347,7 @@ export default function ProjectDetailsPage() {
 
         {activeTab === 'interviews' && (
           <div>
-            <InterviewList projectId={projectId} showHeader={false} />
+            <InterviewList projectId={projectId} showHeader={false} showCreateButton={false} />
           </div>
         )}
 
