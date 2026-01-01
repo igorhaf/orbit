@@ -68,6 +68,11 @@ export function InterviewList({
     }
   };
 
+  const getProjectName = (projectId: string): string => {
+    const project = projects.find(p => p.id === projectId);
+    return project?.name || 'Unknown Project';
+  };
+
   const handleCreate = async () => {
     // Use the provided projectId or the selected one from the dialog
     const targetProjectId = projectId || selectedProject;
@@ -191,10 +196,13 @@ export function InterviewList({
             <Link key={interview.id} href={`/interviews/${interview.id}`}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardHeader>
-                  <div className="flex justify-between items-start mb-2">
-                    <CardTitle className="text-sm text-gray-500">
+                  <CardTitle className="text-base font-semibold text-gray-900 mb-2">
+                    {getProjectName(interview.project_id)}
+                  </CardTitle>
+                  <div className="flex justify-between items-start">
+                    <span className="text-xs text-gray-500">
                       {interview.ai_model_used}
-                    </CardTitle>
+                    </span>
                     <span className="text-xs text-gray-400">
                       {interview.conversation_data.length} messages
                     </span>
