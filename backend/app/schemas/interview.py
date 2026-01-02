@@ -65,10 +65,10 @@ class InterviewResponse(InterviewBase):
 
 class StackConfiguration(BaseModel):
     """Schema for project stack configuration (PROMPT #46 - Phase 1)"""
-    backend: str = Field(..., description="Backend framework (laravel, django, fastapi, express, other)")
-    database: str = Field(..., description="Database (postgresql, mysql, mongodb, sqlite)")
-    frontend: str = Field(..., description="Frontend framework (nextjs, react, vue, angular, none)")
-    css: str = Field(..., description="CSS framework (tailwind, bootstrap, materialui, custom)")
+    backend: Optional[str] = Field(None, description="Backend framework (laravel, django, fastapi, express, other)")
+    database: Optional[str] = Field(None, description="Database (postgresql, mysql, mongodb, sqlite)")
+    frontend: Optional[str] = Field(None, description="Frontend framework (nextjs, react, vue, angular, none)")
+    css: Optional[str] = Field(None, description="CSS framework (tailwind, bootstrap, materialui, custom)")
 
 
 class ProjectInfoUpdate(BaseModel):
