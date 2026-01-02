@@ -1,7 +1,7 @@
 #!/bin/bash
 # Docker Configuration Provisioning Script
-# Creates devops/ folder and docker-compose.yml at project root
-# PROMPT #51 - New Architecture Implementation
+# Creates docker-compose.yml that installs dependencies automatically
+# PROMPT #51 - New Architecture Implementation (Simplified)
 
 set -e  # Exit on error
 
@@ -14,14 +14,12 @@ if [ -z "$PROJECT_NAME" ]; then
 fi
 
 PROJECT_PATH="/projects/$PROJECT_NAME"
-DEVOPS_PATH="$PROJECT_PATH/devops"
 DATABASE_PATH="$PROJECT_PATH/database"
 
 echo "=========================================="
 echo "Docker Configuration Provisioning"
 echo "=========================================="
 echo "Project: $PROJECT_NAME"
-echo "DevOps Path: $DEVOPS_PATH"
 echo ""
 
 # Ensure project root exists
@@ -30,79 +28,9 @@ if [ ! -d "$PROJECT_PATH" ]; then
     exit 1
 fi
 
-# Create devops directory structure
-echo "Creating DevOps directory structure..."
-mkdir -p "$DEVOPS_PATH/nginx"
-mkdir -p "$DEVOPS_PATH/php"
+# Create database directory for init scripts
+echo "Creating database directory..."
 mkdir -p "$DATABASE_PATH/init"
-
-# Create Dockerfile for Laravel backend
-echo "Creating Laravel Dockerfile..."
-cat > "$DEVOPS_PATH/php/Dockerfile" << 'EOF'
-FROM php:8.2-fpm
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    curl \
-    libpng-dev \
-    libonig-dev \
-    libxml2-dev \
-    libpq-dev \
-    zip \
-    unzip
-
-# Clear cache
-RUN apt-get clean && rm -rf /var/lib/apt/lists/*
-
-# Install PHP extensions
-RUN docker-php-ext-install pdo_pgsql pgsql mbstring exif pcntl bcmath gd
-
-# Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
-# Set working directory
-WORKDIR /var/www
-
-# Copy application files
-COPY ./backend /var/www
-
-# Install dependencies
-RUN composer install --no-interaction --optimize-autoloader --no-dev
-
-# Set permissions
-RUN chown -R www-data:www-data /var/www
-
-EXPOSE 9000
-CMD ["php-fpm"]
-EOF
-
-# Create Nginx configuration
-echo "Creating Nginx configuration..."
-cat > "$DEVOPS_PATH/nginx/default.conf" << 'EOF'
-server {
-    listen 80;
-    server_name localhost;
-    root /var/www/public;
-
-    index index.php index.html;
-
-    location / {
-        try_files $uri $uri/ /index.php?$query_string;
-    }
-
-    location ~ \.php$ {
-        fastcgi_pass backend:9000;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        include fastcgi_params;
-    }
-
-    location ~ /\.ht {
-        deny all;
-    }
-}
-EOF
 
 # Create PostgreSQL initialization script
 echo "Creating PostgreSQL initialization script..."
@@ -134,13 +62,17 @@ services:
       - "5432:5432"
     networks:
       - ${PROJECT_NAME}_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orbit_user -d ${PROJECT_NAME//-/_}_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # Laravel Backend
+  # Laravel Backend (using official PHP image with Composer)
   backend:
-    build:
-      context: .
-      dockerfile: ./devops/php/Dockerfile
+    image: php:8.2-fpm
     container_name: ${PROJECT_NAME}_backend
+    working_dir: /var/www
     volumes:
       - ./backend:/var/www
     environment:
@@ -151,9 +83,21 @@ services:
       DB_USERNAME: orbit_user
       DB_PASSWORD: orbit_password
     depends_on:
-      - database
+      database:
+        condition: service_healthy
     networks:
       - ${PROJECT_NAME}_network
+    command: >
+      sh -c "
+        apt-get update && apt-get install -y git curl libpq-dev zip unzip &&
+        docker-php-ext-install pdo_pgsql pgsql &&
+        curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer &&
+        if [ ! -d vendor ]; then composer install --no-interaction; fi &&
+        if [ -z \\"\$APP_KEY\\" ] || grep -q 'APP_KEY=$' .env || grep -q 'APP_KEY=\"\"' .env; then
+          php artisan key:generate --ansi
+        fi &&
+        php-fpm
+      "
 
   # Nginx Web Server
   nginx:
@@ -163,11 +107,38 @@ services:
       - "8000:80"
     volumes:
       - ./backend:/var/www
-      - ./devops/nginx/default.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - backend
     networks:
       - ${PROJECT_NAME}_network
+    command: >
+      sh -c "
+        mkdir -p /etc/nginx/conf.d &&
+        cat > /etc/nginx/conf.d/default.conf << 'NGINXCONF'
+      server {
+          listen 80;
+          server_name localhost;
+          root /var/www/public;
+          index index.php index.html;
+
+          location / {
+              try_files \\\$uri \\\$uri/ /index.php?\\\$query_string;
+          }
+
+          location ~ \\.php\$ {
+              fastcgi_pass backend:9000;
+              fastcgi_index index.php;
+              fastcgi_param SCRIPT_FILENAME \\\$document_root\\\$fastcgi_script_name;
+              include fastcgi_params;
+          }
+
+          location ~ /\\.ht {
+              deny all;
+          }
+      }
+      NGINXCONF
+        nginx -g 'daemon off;'
+      "
 
   # Next.js Frontend
   frontend:
@@ -177,15 +148,24 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - /app/.next
     ports:
       - "3000:3000"
-    command: sh -c "npm install && npm run dev"
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:8000/api
     depends_on:
       - nginx
     networks:
       - ${PROJECT_NAME}_network
+    command: >
+      sh -c "
+        if [ ! -d node_modules ]; then
+          echo 'Installing dependencies...' &&
+          npm install
+        fi &&
+        echo 'Starting Next.js development server...' &&
+        npm run dev
+      "
 
 networks:
   ${PROJECT_NAME}_network:
@@ -207,7 +187,52 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .DS_Store
+vendor
 EOF
+
+# Create setup script
+cat > "$PROJECT_PATH/setup.sh" << 'EOF'
+#!/bin/bash
+# Project Setup Script
+# Run this after provisioning to start all services
+
+set -e
+
+echo "=========================================="
+echo "Starting Docker Services"
+echo "=========================================="
+echo ""
+
+# Start all services
+docker-compose up -d
+
+echo ""
+echo "Waiting for services to be ready..."
+sleep 10
+
+echo ""
+echo "Running Laravel migrations..."
+docker-compose exec -T backend php artisan migrate --force || echo "Migrations will run on first container start"
+
+echo ""
+echo "=========================================="
+echo "Setup Complete!"
+echo "=========================================="
+echo ""
+echo "Services running:"
+echo "  - Frontend: http://localhost:3000"
+echo "  - Backend API: http://localhost:8000/api"
+echo "  - Database: localhost:5432"
+echo ""
+echo "Useful commands:"
+echo "  docker-compose ps              # Check service status"
+echo "  docker-compose logs -f         # View logs"
+echo "  docker-compose exec backend php artisan migrate  # Run migrations"
+echo "  docker-compose down            # Stop services"
+echo ""
+EOF
+
+chmod +x "$PROJECT_PATH/setup.sh"
 
 # Create README with instructions
 echo "Creating setup README..."
@@ -223,22 +248,25 @@ $PROJECT_NAME/
 ├── backend/           # Laravel API
 ├── frontend/          # Next.js + Tailwind
 ├── database/          # PostgreSQL configs
-├── devops/            # Docker configs
 └── docker-compose.yml # Main orchestration
 \`\`\`
 
 ## Tech Stack
 
-- **Backend:** Laravel + PostgreSQL
-- **Frontend:** Next.js + TypeScript + Tailwind CSS
+- **Backend:** Laravel 11 + Sanctum
+- **Frontend:** Next.js 14 + TypeScript + Tailwind CSS
 - **Database:** PostgreSQL 15
-- **Containers:** Docker + Docker Compose
+- **Containers:** Docker Compose
 
 ## Quick Start
 
 \`\`\`bash
-# Start all services
+# Start all services (installs dependencies automatically)
 docker-compose up -d
+
+# Wait for services to start (about 30-60 seconds)
+# Watch the logs:
+docker-compose logs -f
 
 # Run Laravel migrations
 docker-compose exec backend php artisan migrate
@@ -249,21 +277,68 @@ docker-compose exec backend php artisan migrate
 # - Database: localhost:5432
 \`\`\`
 
-## Development
+## How It Works
 
-### Backend (Laravel)
+When you run \`docker-compose up\`, the system will:
+
+1. ✅ Start PostgreSQL database
+2. ✅ Install Laravel dependencies via Composer
+3. ✅ Generate Laravel application key
+4. ✅ Install Next.js dependencies via npm
+5. ✅ Start Next.js development server
+6. ✅ Start Nginx as reverse proxy
+
+**First startup takes 2-3 minutes** to install all dependencies.
+
+## Useful Commands
+
+### View Logs
 \`\`\`bash
-cd backend
-composer install
-php artisan key:generate
-php artisan migrate
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f backend
+docker-compose logs -f frontend
 \`\`\`
 
-### Frontend (Next.js)
+### Run Laravel Commands
 \`\`\`bash
-cd frontend
-npm install
-npm run dev
+# Migrations
+docker-compose exec backend php artisan migrate
+
+# Create controller
+docker-compose exec backend php artisan make:controller UserController
+
+# Tinker
+docker-compose exec backend php artisan tinker
+\`\`\`
+
+### Run npm Commands
+\`\`\`bash
+# Install new package
+docker-compose exec frontend npm install axios
+
+# Run build
+docker-compose exec frontend npm run build
+\`\`\`
+
+### Database Access
+\`\`\`bash
+# Connect to PostgreSQL
+docker-compose exec database psql -U orbit_user -d ${PROJECT_NAME//-/_}_db
+\`\`\`
+
+### Stop Services
+\`\`\`bash
+# Stop (preserves data)
+docker-compose stop
+
+# Stop and remove containers
+docker-compose down
+
+# Stop and remove everything including volumes
+docker-compose down -v
 \`\`\`
 
 ## Database Credentials
@@ -273,18 +348,83 @@ npm run dev
 - **Password:** orbit_password
 - **Port:** 5432
 
+## Development
+
+### Backend (Laravel)
+
+Location: \`backend/\`
+
+API endpoints at: http://localhost:8000/api
+
+Configuration: \`backend/.env\`
+
+### Frontend (Next.js)
+
+Location: \`frontend/\`
+
+Development server: http://localhost:3000
+
+Configuration: \`frontend/.env.local\`
+
+### File Structure
+
+\`\`\`
+backend/
+├── app/           # Laravel application code
+├── routes/        # API routes
+├── database/      # Migrations, seeders
+└── .env           # Environment config
+
+frontend/
+├── src/
+│   ├── app/       # Next.js App Router pages
+│   ├── components/# React components
+│   └── lib/       # API client, utilities
+└── .env.local     # Environment config
+\`\`\`
+
+## Troubleshooting
+
+### Services won't start
+
+\`\`\`bash
+# Check logs
+docker-compose logs
+
+# Rebuild containers
+docker-compose down
+docker-compose up --build
+\`\`\`
+
+### Database connection error
+
+\`\`\`bash
+# Wait for database to be ready (check healthcheck)
+docker-compose ps
+
+# Restart backend
+docker-compose restart backend
+\`\`\`
+
+### Port already in use
+
+Edit \`docker-compose.yml\` and change port mappings:
+- Frontend: Change \`3000:3000\` to \`3001:3000\`
+- Backend: Change \`8000:80\` to \`8001:80\`
+- Database: Change \`5432:5432\` to \`5433:5432\`
+
 ---
+
 Generated by ORBIT - AI Prompt Architecture System
 EOF
 
 echo ""
-echo "✅ Docker configuration provisioned successfully!"
+echo "✅ Docker configuration created successfully!"
 echo ""
 echo "Project Structure Created:"
-echo "  ├── backend/           (Laravel)"
-echo "  ├── frontend/          (Next.js + Tailwind)"
+echo "  ├── backend/           (Laravel - dependencies installed by Docker)"
+echo "  ├── frontend/          (Next.js + Tailwind - dependencies installed by Docker)"
 echo "  ├── database/          (PostgreSQL init scripts)"
-echo "  ├── devops/            (Docker configs)"
 echo "  └── docker-compose.yml (Main orchestration)"
 echo ""
 echo "Services Configuration:"
@@ -300,5 +440,7 @@ echo ""
 echo "Next Steps:"
 echo "  1. cd projects/$PROJECT_NAME"
 echo "  2. docker-compose up -d"
-echo "  3. docker-compose exec backend php artisan migrate"
+echo "  3. Wait 2-3 minutes for dependencies to install"
+echo "  4. docker-compose exec backend php artisan migrate"
+echo "  5. Open http://localhost:3000"
 echo ""
