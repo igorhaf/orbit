@@ -22,7 +22,7 @@ print_error() { echo -e "${RED}✗${NC} $1"; }
 # ============================================================================
 
 PROJECT_NAME="$1"
-PROJECT_DIR="./projects/${PROJECT_NAME}"
+PROJECT_DIR="/projects/${PROJECT_NAME}"
 DB_NAME=$(echo "$PROJECT_NAME" | tr '[:upper:]' '[:lower:]' | tr '-' '_')
 DB_USER="${DB_NAME}_user"
 DB_PASSWORD=$(openssl rand -base64 12)
