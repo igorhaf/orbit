@@ -41,6 +41,18 @@ export interface ConversationMessage {
   role: 'user' | 'assistant'
   content: string
   timestamp: string
+  options?: {
+    type: 'single' | 'multiple'
+    choices: Array<{
+      id: string
+      label: string
+      value: string
+    }>
+  }
+  question_number?: number
+  prefilled_value?: string
+  question_type?: string
+  model?: string
 }
 
 // Prompt types
