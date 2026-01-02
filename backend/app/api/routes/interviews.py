@@ -141,12 +141,14 @@ def get_fixed_question(question_number: int, project: Project, db: Session) -> d
         # Get dynamic choices from specs
         choices = get_specs_for_category(db, category)
 
-        # Build options text for display
+        # Build options text for display (for backward compatibility with text parsing)
+        # NOTE: We don't include "◉ Escolha uma opção" anymore because MessageParser
+        # incorrectly treats it as an option (it starts with ◉ symbol)
         options_text = "\n".join([f"○ {choice['label']}" for choice in choices])
 
         return {
             "role": "assistant",
-            "content": f"{question_text}\n\nOPÇÕES:\n{options_text}\n\n◉ Escolha uma opção",
+            "content": f"{question_text}\n\n{options_text}\n\nPor favor, escolha uma das opções acima.",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question",
             "question_type": "single_choice",
@@ -597,18 +599,23 @@ async def save_interview_stack(
         "message": f"Stack configuration saved: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}",
         "provisioning": {
             "attempted": True,
-            "success": provisioning_result is not None,
+            "success": provisioning_result is not None and provisioning_result.get("success", False),
         }
     }
 
-    if provisioning_result:
-        response["provisioning"]["project_path"] = provisioning_result["project_path"]
-        response["provisioning"]["project_name"] = provisioning_result["project_name"]
+    # Add provisioning details if it succeeded
+    if provisioning_result and provisioning_result.get("success"):
+        response["provisioning"]["project_path"] = provisioning_result.get("project_path")
+        response["provisioning"]["project_name"] = provisioning_result.get("project_name")
         response["provisioning"]["credentials"] = provisioning_result.get("credentials", {})
-        response["provisioning"]["next_steps"] = provisioning_result["next_steps"]
-        response["provisioning"]["script_used"] = provisioning_result["script_used"]
-    elif provisioning_error:
-        response["provisioning"]["error"] = provisioning_error
+        response["provisioning"]["next_steps"] = provisioning_result.get("next_steps")
+        response["provisioning"]["scripts_executed"] = provisioning_result.get("scripts_executed", [])
+    # Add error details if provisioning failed or was skipped
+    else:
+        if provisioning_result and provisioning_result.get("error"):
+            response["provisioning"]["error"] = provisioning_result["error"]
+        elif provisioning_error:
+            response["provisioning"]["error"] = provisioning_error
 
     return response
 
@@ -657,6 +664,11 @@ async def send_message_to_interview(
     if not interview.conversation_data:
         interview.conversation_data = []
 
+    # DEBUG: Log state before adding user message
+    logger.info(f"🔍 DEBUG - Before adding user message:")
+    logger.info(f"  - Current conversation_data length: {len(interview.conversation_data)}")
+    logger.info(f"  - User message content: {message.content[:100]}")
+
     # Adicionar mensagem do usuário
     user_message = {
         "role": "user",
@@ -664,6 +676,11 @@ async def send_message_to_interview(
         "timestamp": datetime.utcnow().isoformat()
     }
     interview.conversation_data.append(user_message)
+
+    # DEBUG: Log state after adding user message
+    logger.info(f"🔍 DEBUG - After adding user message:")
+    logger.info(f"  - New conversation_data length: {len(interview.conversation_data)}")
+    logger.info(f"  - Message at index {len(interview.conversation_data)-1}: role={user_message['role']}, content={user_message['content'][:50]}")
 
     # Buscar projeto para pegar título e descrição
     project = db.query(Project).filter(
@@ -694,8 +711,25 @@ STACK JÁ CONFIGURADO:
 As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
 """
 
+    # CRITICAL FIX: Commit user message IMMEDIATELY to prevent loss during orchestrator.execute()
+    # The orchestrator does db.commit() which expires the interview object, causing a reload
+    # that would lose the uncommitted user message
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(interview, "conversation_data")
+    db.commit()
+    logger.info(f"✅ User message committed to database")
+
     # Count messages to determine if we're in fixed questions phase (Questions 1-6)
     message_count = len(interview.conversation_data)
+
+    # DEBUG: Log message count and decision point
+    logger.info(f"🔍 DEBUG - Decision point:")
+    logger.info(f"  - message_count: {message_count}")
+    logger.info(f"  - Last 3 messages:")
+    for i in range(max(0, len(interview.conversation_data) - 3), len(interview.conversation_data)):
+        msg = interview.conversation_data[i]
+        content_preview = msg.get('content', '')[:80]
+        logger.info(f"    - Index {i}: role={msg.get('role')}, content={content_preview}")
 
     # PROMPT #57 - Fixed Questions Without AI
     # Message count after adding user message:
@@ -717,6 +751,7 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
 
     # Check if we should return a fixed question
     if message_count in question_map:
+        logger.info(f"✅ DEBUG - Returning fixed question (message_count={message_count} in question_map)")
         # Return fixed question (no AI)
         question_number = question_map[message_count]
         logger.info(f"Returning fixed Question {question_number} for interview {interview_id}")
@@ -730,6 +765,11 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
             )
 
         interview.conversation_data.append(assistant_message)
+
+        # DEBUG: Log after appending fixed question
+        logger.info(f"🔍 DEBUG - After appending fixed question:")
+        logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
+        logger.info(f"  - Question appended at index {len(interview.conversation_data)-1}")
 
         # Mark as modified for SQLAlchemy
         from sqlalchemy.orm.attributes import flag_modified
@@ -833,6 +873,11 @@ Continue com a próxima pergunta relevante baseada na resposta anterior do usuá
         orchestrator = AIOrchestrator(db)
 
         try:
+            # CRITICAL DEBUG: Log BEFORE calling orchestrator
+            logger.info(f"🚨 BEFORE orchestrator.execute():")
+            logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
+            logger.info(f"  - Last message: [{len(interview.conversation_data)-1}] {interview.conversation_data[-1].get('role')}: {interview.conversation_data[-1].get('content', '')[:50]}")
+
             # Clean messages - only keep role and content (remove timestamp, model, etc.)
             clean_messages = [
                 {"role": msg["role"], "content": msg["content"]}
@@ -849,6 +894,11 @@ Continue com a próxima pergunta relevante baseada na resposta anterior do usuá
                 interview_id=interview.id
             )
 
+            # CRITICAL DEBUG: Log AFTER calling orchestrator
+            logger.info(f"🚨 AFTER orchestrator.execute():")
+            logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
+            logger.info(f"  - Last message: [{len(interview.conversation_data)-1}] {interview.conversation_data[-1].get('role')}: {interview.conversation_data[-1].get('content', '')[:50]}")
+
             # Adicionar resposta da IA
             assistant_message = {
                 "role": "assistant",
@@ -856,7 +906,18 @@ Continue com a próxima pergunta relevante baseada na resposta anterior do usuá
                 "timestamp": datetime.utcnow().isoformat(),
                 "model": f"{response['provider']}/{response['model']}"
             }
+
+            # DEBUG: Log before appending AI business question
+            logger.info(f"🔍 DEBUG - Before appending AI business question:")
+            logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
+            logger.info(f"  - AI response content: {response['content'][:100]}")
+
             interview.conversation_data.append(assistant_message)
+
+            # DEBUG: Log after appending AI business question
+            logger.info(f"🔍 DEBUG - After appending AI business question:")
+            logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
+            logger.info(f"  - Question appended at index {len(interview.conversation_data)-1}")
 
             # Salvar no banco
             interview.ai_model_used = response["model"]
@@ -865,8 +926,29 @@ Continue com a próxima pergunta relevante baseada na resposta anterior do usuá
             from sqlalchemy.orm.attributes import flag_modified
             flag_modified(interview, "conversation_data")
 
+            # CRITICAL DEBUG: Log conversation_data RIGHT BEFORE COMMIT
+            logger.info(f"🚨 CRITICAL - RIGHT BEFORE COMMIT:")
+            logger.info(f"  - Total messages in conversation_data: {len(interview.conversation_data)}")
+            logger.info(f"  - Last 5 messages:")
+            for i in range(max(0, len(interview.conversation_data) - 5), len(interview.conversation_data)):
+                msg = interview.conversation_data[i]
+                logger.info(f"    [{i}] {msg.get('role')}: {msg.get('content', '')[:60]}")
+
             db.commit()
+
+            # CRITICAL DEBUG: Log conversation_data RIGHT AFTER COMMIT
+            logger.info(f"🚨 CRITICAL - RIGHT AFTER COMMIT:")
+            logger.info(f"  - Total messages: {len(interview.conversation_data)}")
+
             db.refresh(interview)
+
+            # CRITICAL DEBUG: Log conversation_data AFTER REFRESH
+            logger.info(f"🚨 CRITICAL - AFTER REFRESH:")
+            logger.info(f"  - Total messages: {len(interview.conversation_data)}")
+            logger.info(f"  - Last 5 messages:")
+            for i in range(max(0, len(interview.conversation_data) - 5), len(interview.conversation_data)):
+                msg = interview.conversation_data[i]
+                logger.info(f"    [{i}] {msg.get('role')}: {msg.get('content', '')[:60]}")
 
             logger.info(f"AI responded to interview {interview_id}")
 
