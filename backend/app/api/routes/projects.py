@@ -106,7 +106,8 @@ async def create_project(
     # Create project folder (empty, will be populated during provisioning)
     try:
         sanitized_name = _sanitize_project_name(project.name)
-        projects_dir = Path(__file__).parent.parent.parent.parent / "projects"
+        # Projects created in /projects/ (mounted from ./projects/ on host)
+        projects_dir = Path("/projects")
         projects_dir.mkdir(exist_ok=True)
 
         project_path = projects_dir / sanitized_name
@@ -178,7 +179,8 @@ async def delete_project(
     try:
         import shutil
         sanitized_name = _sanitize_project_name(project.name)
-        projects_dir = Path(__file__).parent.parent.parent.parent / "projects"
+        # Projects are in /projects/ (mounted from ./projects/ on host)
+        projects_dir = Path("/projects")
         project_path = projects_dir / sanitized_name
 
         if project_path.exists():

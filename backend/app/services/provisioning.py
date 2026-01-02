@@ -29,9 +29,9 @@ class ProvisioningService:
     def __init__(self, db: Session):
         self.db = db
         self.scripts_dir = Path(__file__).parent.parent.parent / "provisioning"
-        # Projects created in backend/projects/ so they're visible on host via volume mapping
-        # Docker volume: ./backend:/app → projects go to /app/projects (host: ./backend/projects)
-        self.projects_dir = Path(__file__).parent.parent.parent / "projects"
+        # Projects created in /projects/ which is mounted from ./projects/ on host
+        # Docker volume: ./projects:/projects → projects go to /projects/ (host: ./projects/)
+        self.projects_dir = Path("/projects")
 
     def get_provisioning_script(self, stack: Dict[str, str]) -> Optional[str]:
         """
@@ -123,8 +123,8 @@ class ProvisioningService:
         logger.info(f"Provisioning project '{project_name}' with script: {script_name}")
 
         try:
-            # Execute from backend root (/app/) so scripts can create ./projects/
-            # Docker mapping: ./backend:/app → script creates /app/projects/ (host: ./backend/projects/)
+            # Execute from backend root (/app/) so scripts can access provisioning files
+            # Projects are created in /projects/ (host: ./projects/)
             backend_root = self.scripts_dir.parent  # /app/provisioning -> /app/
 
             result = subprocess.run(
