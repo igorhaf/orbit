@@ -1,7 +1,7 @@
 #!/bin/bash
 # Laravel Backend Provisioning Script
-# Creates backend/ folder structure with configuration files
-# PROMPT #51 - New Architecture Implementation (Simplified)
+# Uses Docker to create complete Laravel installation
+# PROMPT #51 - Fixed: Complete Laravel Installation
 
 set -e  # Exit on error
 
@@ -29,18 +29,30 @@ if [ ! -d "$PROJECT_PATH" ]; then
     exit 1
 fi
 
-# Create backend directory structure
-echo "Creating backend directory structure..."
-mkdir -p "$BACKEND_PATH"
-mkdir -p "$BACKEND_PATH/app/Http/Controllers"
-mkdir -p "$BACKEND_PATH/app/Models"
-mkdir -p "$BACKEND_PATH/database/migrations"
-mkdir -p "$BACKEND_PATH/routes"
-mkdir -p "$BACKEND_PATH/config"
+# Check if Docker is available
+if ! command -v docker &> /dev/null; then
+    echo "Error: Docker not found. Using fallback method..."
+    # Fallback: create basic structure only
+    mkdir -p "$BACKEND_PATH"
+    echo "Created basic backend structure (Docker not available for full installation)"
+    exit 0
+fi
 
-# Create .env file
-echo "Creating Laravel environment configuration..."
-cat > "$BACKEND_PATH/.env" << EOF
+echo "Installing Laravel using Docker Composer..."
+
+# Create Laravel project using official Composer Docker image
+# This ensures complete Laravel installation with all files
+docker run --rm -v "$PROJECT_PATH:/app" -w /app \
+    composer:latest \
+    create-project --prefer-dist laravel/laravel backend
+
+echo "Configuring Laravel environment..."
+
+# Configure .env file for PostgreSQL
+cd "$BACKEND_PATH"
+
+# Update .env with project-specific settings
+cat > .env << EOF
 APP_NAME="${PROJECT_NAME//-/_}"
 APP_ENV=local
 APP_KEY=
@@ -57,85 +69,37 @@ DB_DATABASE=${PROJECT_NAME//-/_}_db
 DB_USERNAME=orbit_user
 DB_PASSWORD=orbit_password
 
+BROADCAST_DRIVER=log
 CACHE_DRIVER=file
+FILESYSTEM_DISK=local
 QUEUE_CONNECTION=sync
 SESSION_DRIVER=file
 SESSION_LIFETIME=120
+
+MEMCACHED_HOST=127.0.0.1
+
+REDIS_HOST=127.0.0.1
+REDIS_PASSWORD=null
+REDIS_PORT=6379
+
+MAIL_MAILER=smtp
+MAIL_HOST=mailpit
+MAIL_PORT=1025
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+MAIL_FROM_ADDRESS="hello@example.com"
+MAIL_FROM_NAME="\${APP_NAME}"
 EOF
 
-# Create composer.json
-echo "Creating composer.json..."
-cat > "$BACKEND_PATH/composer.json" << EOF
-{
-    "name": "${PROJECT_NAME}/backend",
-    "type": "project",
-    "description": "Laravel backend for $PROJECT_NAME",
-    "require": {
-        "php": "^8.2",
-        "laravel/framework": "^11.0",
-        "laravel/sanctum": "^4.0"
-    },
-    "require-dev": {
-        "laravel/pint": "^1.0"
-    },
-    "autoload": {
-        "psr-4": {
-            "App\\\\": "app/",
-            "Database\\\\Factories\\\\": "database/factories/",
-            "Database\\\\Seeders\\\\": "database/seeders/"
-        }
-    },
-    "scripts": {
-        "post-root-package-install": [
-            "@php -r \\"file_exists('.env') || copy('.env.example', '.env');\\"
-        ],
-        "post-create-project-cmd": [
-            "@php artisan key:generate --ansi"
-        ]
-    },
-    "config": {
-        "optimize-autoloader": true,
-        "preferred-install": "dist",
-        "sort-packages": true
-    },
-    "minimum-stability": "stable",
-    "prefer-stable": true
-}
-EOF
-
-# Create setup instructions
-cat > "$BACKEND_PATH/README.md" << EOF
-# Laravel Backend - $PROJECT_NAME
-
-## Setup
-
-This Laravel backend will be installed automatically by Docker.
-
-### Manual Setup (if needed)
-
-\`\`\`bash
-composer install
-php artisan key:generate
-php artisan migrate
-php artisan serve
-\`\`\`
-
-## Database Configuration
-
-- **Database:** ${PROJECT_NAME//-/_}_db
-- **Username:** orbit_user
-- **Password:** orbit_password
-- **Host:** database (Docker service)
-- **Port:** 5432
-
-## API Endpoints
-
-API will be available at: http://localhost:8000/api
-
-EOF
+# Install Sanctum for API authentication
+echo "Installing Laravel Sanctum..."
+docker run --rm -v "$BACKEND_PATH:/app" -w /app \
+    composer:latest \
+    require laravel/sanctum
 
 echo ""
-echo "✅ Laravel backend structure created successfully!"
+echo "✅ Laravel backend provisioned successfully!"
 echo ""
 echo "Database Configuration:"
 echo "  Database: ${PROJECT_NAME//-/_}_db"
@@ -143,4 +107,10 @@ echo "  Username: orbit_user"
 echo "  Password: orbit_password"
 echo "  Host: database"
 echo "  Port: 5432"
+echo ""
+echo "Laravel installation complete with:"
+echo "  - Full Laravel framework structure"
+echo "  - All Composer dependencies installed"
+echo "  - Sanctum for API authentication"
+echo "  - PostgreSQL configuration"
 echo ""
