@@ -182,9 +182,13 @@ class ProvisioningService:
                 "credentials": credentials,
                 "next_steps": [
                     f"cd projects/{project_name}",
-                    "docker-compose up -d",
-                    "docker-compose exec backend php artisan migrate"
+                    "docker-compose up -d  # Dependencies install automatically (2-3 min)",
+                    "# Wait for installation to complete, then:",
+                    "docker-compose exec backend php artisan migrate",
+                    "# Frontend: http://localhost:3000",
+                    "# Backend API: http://localhost:8000/api"
                 ],
+                "installation_note": "Dependencies will be installed automatically on first docker-compose up. First startup takes 2-3 minutes.",
                 "output": combined_output
             }
 

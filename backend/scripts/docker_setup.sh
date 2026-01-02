@@ -89,13 +89,24 @@ services:
       - ${PROJECT_NAME}_network
     command: >
       sh -c "
+        echo 'Setting up Laravel backend...' &&
         apt-get update && apt-get install -y git curl libpq-dev zip unzip &&
         docker-php-ext-install pdo_pgsql pgsql &&
         curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer &&
-        if [ ! -d vendor ]; then composer install --no-interaction; fi &&
+
+        if [ ! -d vendor ]; then
+          echo 'Installing Composer dependencies (this may take 2-3 minutes)...' &&
+          composer install --no-interaction --optimize-autoloader
+        else
+          echo 'Composer dependencies already installed.'
+        fi &&
+
         if [ -z \\"\$APP_KEY\\" ] || grep -q 'APP_KEY=$' .env || grep -q 'APP_KEY=\"\"' .env; then
+          echo 'Generating Laravel application key...' &&
           php artisan key:generate --ansi
         fi &&
+
+        echo 'Laravel backend ready! Starting PHP-FPM...' &&
         php-fpm
       "
 
@@ -159,11 +170,16 @@ services:
       - ${PROJECT_NAME}_network
     command: >
       sh -c "
+        echo 'Setting up Next.js frontend...' &&
+
         if [ ! -d node_modules ]; then
-          echo 'Installing dependencies...' &&
+          echo 'Installing npm dependencies (this may take 2-3 minutes)...' &&
           npm install
+        else
+          echo 'npm dependencies already installed.'
         fi &&
-        echo 'Starting Next.js development server...' &&
+
+        echo 'Next.js frontend ready! Starting development server...' &&
         npm run dev
       "
 
