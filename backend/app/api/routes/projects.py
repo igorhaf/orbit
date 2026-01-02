@@ -113,6 +113,11 @@ async def create_project(
         project_path = projects_dir / sanitized_name
         project_path.mkdir(exist_ok=True)
 
+        # Save folder path to database
+        db_project.project_folder = sanitized_name
+        db.commit()
+        db.refresh(db_project)
+
         logger.info(f"✅ Created project folder: {project_path}")
     except Exception as e:
         logger.warning(f"Failed to create project folder: {e}")
@@ -178,14 +183,14 @@ async def delete_project(
     # Delete project folder
     try:
         import shutil
-        sanitized_name = _sanitize_project_name(project.name)
-        # Projects are in /projects/ (mounted from ./projects/ on host)
-        projects_dir = Path("/projects")
-        project_path = projects_dir / sanitized_name
+        # Use stored folder path from database
+        if project.project_folder:
+            projects_dir = Path("/projects")
+            project_path = projects_dir / project.project_folder
 
-        if project_path.exists():
-            shutil.rmtree(project_path)
-            logger.info(f"✅ Deleted project folder: {project_path}")
+            if project_path.exists():
+                shutil.rmtree(project_path)
+                logger.info(f"✅ Deleted project folder: {project_path}")
     except Exception as e:
         logger.warning(f"Failed to delete project folder: {e}")
         # Don't fail the request if folder deletion fails

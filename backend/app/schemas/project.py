@@ -21,6 +21,9 @@ class ProjectBase(BaseModel):
     stack_frontend: Optional[str] = Field(None, description="Frontend framework (nextjs, react, vue, etc)")
     stack_css: Optional[str] = Field(None, description="CSS framework (tailwind, bootstrap, etc)")
 
+    # Project folder path
+    project_folder: Optional[str] = Field(None, description="Sanitized project folder name")
+
 
 class ProjectCreate(ProjectBase):
     """Schema for creating a new Project"""

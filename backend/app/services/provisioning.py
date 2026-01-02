@@ -106,18 +106,21 @@ class ProvisioningService:
         # Ensure projects directory exists
         self.projects_dir.mkdir(parents=True, exist_ok=True)
 
-        # Project name (sanitized)
-        project_name = self._sanitize_project_name(project.name)
+        # Use project folder from database (already sanitized and stored)
+        if not project.project_folder:
+            raise ValueError(
+                f"Project '{project.name}' has no folder path defined in database"
+            )
+
+        project_name = project.project_folder
         project_path = self.projects_dir / project_name
 
-        # Check if project already exists
-        if project_path.exists():
-            logger.warning(f"Project directory already exists: {project_path}")
-            return {
-                "success": False,
-                "error": f"Project directory '{project_name}' already exists",
-                "project_path": str(project_path),
-            }
+        # Check if project folder exists (it should, created during project creation)
+        if not project_path.exists():
+            logger.error(f"Project directory not found: {project_path}")
+            # Create it if missing (fallback)
+            project_path.mkdir(parents=True, exist_ok=True)
+            logger.info(f"Created missing project directory: {project_path}")
 
         # Execute provisioning script
         logger.info(f"Provisioning project '{project_name}' with script: {script_name}")
