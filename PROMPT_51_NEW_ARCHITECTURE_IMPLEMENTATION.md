@@ -70,34 +70,34 @@ projeto/
 - Package installation (Sanctum, Pint)
 
 #### **[backend/scripts/nextjs_setup.sh](backend/scripts/nextjs_setup.sh)**
-- Creates `frontend/` folder with Next.js + TypeScript
-- **Automatically installs Tailwind CSS** (component of frontend)
-- Configures API client for Laravel backend
-- Sets up environment variables
-- Creates basic project structure
+- Creates `frontend/` folder structure with Next.js app
+- Generates `package.json` with Next.js + TypeScript + Tailwind dependencies
+- Creates complete Next.js App Router structure
+- Generates Tailwind configuration files
+- Creates API client for Laravel backend
 
-**Lines:** 130
+**Lines:** 360
 **Key Features:**
-- Next.js 14+ with App Router
-- TypeScript configuration
-- Tailwind CSS automatic installation
-- Axios + SWR for API calls
-- API client with interceptors
+- Complete Next.js 14 structure (src/app/, components/, lib/)
+- TypeScript + Tailwind configuration
+- Homepage with Tailwind styling
+- API client with auth interceptors
+- **Dependencies installed by Docker Compose, not by script**
 
 #### **[backend/scripts/docker_setup.sh](backend/scripts/docker_setup.sh)**
-- Creates `devops/` folder with Docker configurations
-- Generates Dockerfiles for each service
-- Creates Nginx configuration
-- Creates PostgreSQL init scripts
+- Creates `database/` folder with PostgreSQL init scripts
 - **Generates `docker-compose.yml` at PROJECT ROOT**
+- Creates setup.sh script for easy deployment
+- Generates comprehensive README
 
-**Lines:** 280
+**Lines:** 447
 **Key Features:**
-- Multi-service Docker Compose
-- Nginx reverse proxy
-- PostgreSQL with init scripts
-- Network configuration
-- Volume management
+- Docker Compose with automatic dependency installation
+- PostgreSQL 15 with healthcheck
+- PHP 8.2 container installs Composer + Laravel dependencies
+- Node 18 container installs npm + Next.js dependencies
+- Nginx configuration (inline, no separate files needed)
+- **First run: 2-3 minutes to install all dependencies**
 
 ### 3. **ProvisioningService Refactored**
 
@@ -257,17 +257,24 @@ CSS          : tailwind
 
 ## 💡 Key Insights
 
-### 1. **Components vs Services**
-Tailwind is NOT a service - it's a component that depends on a frontend framework. The new architecture reflects this by installing Tailwind automatically during Next.js setup.
+### 1. **Simplified Approach: Configuration, Not Installation**
+The scripts create **folder structures and configuration files only**. Actual dependency installation (composer install, npm install) happens automatically when the user runs `docker-compose up`. This approach:
+- ✅ Works in any environment (no need for Composer/npm on host)
+- ✅ Leverages Docker's built-in package managers
+- ✅ Consistent across all machines
+- ✅ Faster script execution (no heavy installations)
 
-### 2. **Sequential Script Execution**
+### 2. **Components vs Services**
+Tailwind is NOT a service - it's a component that depends on a frontend framework. The new architecture reflects this by including Tailwind in package.json, not as a separate service.
+
+### 3. **Sequential Script Execution**
 Breaking provisioning into 3 scripts (Laravel, Next.js, Docker) makes each script:
 - Focused on one responsibility
 - Easier to maintain
 - Easier to debug
 - More reusable
 
-### 3. **Folder Structure Clarity**
+### 4. **Folder Structure Clarity**
 ```
 backend/    → All Laravel files
 frontend/   → All Next.js files (includes Tailwind)
@@ -276,14 +283,14 @@ devops/     → Docker configs
 ```
 This is much clearer than mixing everything in the root or having unclear boundaries.
 
-### 4. **Docker Compose at Root Only**
+### 5. **Docker Compose at Root Only**
 Having `docker-compose.yml` only at project root simplifies orchestration:
 ```bash
 cd projects/my-project
 docker-compose up -d
 ```
 
-### 5. **Script Output Aggregation**
+### 6. **Script Output Aggregation**
 The service now collects outputs from all 3 scripts and returns:
 ```json
 {
