@@ -30,6 +30,7 @@ export function InterviewList({
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedProject, setSelectedProject] = useState('');
   const [creating, setCreating] = useState(false);
+  const [statusFilter, setStatusFilter] = useState('active'); // Default: only open/active interviews
 
   useEffect(() => {
     loadData();
@@ -105,6 +106,11 @@ export function InterviewList({
     // Note: Don't setCreating(false) on success - we're navigating away
   };
 
+  // Filter interviews by status
+  const filteredInterviews = statusFilter === 'all'
+    ? interviews
+    : interviews.filter(interview => interview.status === statusFilter);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -161,9 +167,29 @@ export function InterviewList({
         </div>
       )}
 
+      {/* Status Filter */}
+      <div className="flex items-center gap-3">
+        <label htmlFor="status-filter" className="text-sm font-medium text-gray-700">
+          Filter by status:
+        </label>
+        <select
+          id="status-filter"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="block w-48 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        >
+          <option value="active">Open interviews</option>
+          <option value="completed">Completed interviews</option>
+          <option value="all">All interviews</option>
+        </select>
+        <span className="text-sm text-gray-500">
+          ({filteredInterviews.length} {filteredInterviews.length === 1 ? 'interview' : 'interviews'})
+        </span>
+      </div>
+
       {/* Interviews Grid */}
-      {/* ✅ LINE 102 - Safe check with optional chaining */}
-      {(interviews || []).length === 0 ? (
+      {/* ✅ Safe check with optional chaining */}
+      {(filteredInterviews || []).length === 0 ? (
         <Card>
           <CardContent className="p-12 text-center">
             <svg
@@ -179,20 +205,31 @@ export function InterviewList({
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               />
             </svg>
-            <h3 className="mt-2 text-sm font-medium text-gray-900">No interviews</h3>
+            <h3 className="mt-2 text-sm font-medium text-gray-900">
+              {interviews.length === 0 ? 'No interviews' : `No ${statusFilter === 'all' ? '' : statusFilter} interviews`}
+            </h3>
             <p className="mt-1 text-sm text-gray-500">
-              Get started by creating a new interview session.
+              {interviews.length === 0
+                ? 'Get started by creating a new interview session.'
+                : `No interviews with status "${statusFilter}". Try changing the filter or create a new interview.`
+              }
             </p>
             <div className="mt-6">
-              <Button variant="primary" onClick={() => setIsCreateOpen(true)}>
-                Create Your First Interview
-              </Button>
+              {interviews.length === 0 ? (
+                <Button variant="primary" onClick={() => setIsCreateOpen(true)}>
+                  Create Your First Interview
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => setStatusFilter('all')}>
+                  Show All Interviews
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {(interviews || []).map((interview) => (
+          {(filteredInterviews || []).map((interview) => (
             <Link key={interview.id} href={`/interviews/${interview.id}`}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardHeader>
