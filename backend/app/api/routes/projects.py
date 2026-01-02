@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
+from pathlib import Path
+import re
+import logging
 
 from app.database import get_db
 from app.models.project import Project
@@ -18,7 +21,21 @@ from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
 from app.api.dependencies import get_project_or_404
 from app.services.consistency_validator import ConsistencyValidator
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+
+
+def _sanitize_project_name(name: str) -> str:
+    """
+    Sanitize project name for filesystem usage.
+    Converts to lowercase, replaces spaces/special chars with hyphens.
+    """
+    sanitized = name.lower()
+    sanitized = re.sub(r'[^\w\s-]', '', sanitized)
+    sanitized = re.sub(r'[\s_]+', '-', sanitized)
+    sanitized = sanitized.strip('-')
+    return sanitized or 'project'
 
 
 @router.get("/", response_model=List[ProjectResponse])
@@ -68,6 +85,10 @@ async def create_project(
     - **name**: Project name (required, max 255 characters)
     - **description**: Project description (optional)
     - **git_repository_info**: Git repository information as JSON (optional)
+
+    Creates:
+    - Database record for the project
+    - Empty project folder in backend/projects/{sanitized-name}/
     """
     # Create new project instance
     db_project = Project(
@@ -81,6 +102,20 @@ async def create_project(
     db.add(db_project)
     db.commit()
     db.refresh(db_project)
+
+    # Create project folder (empty, will be populated during provisioning)
+    try:
+        sanitized_name = _sanitize_project_name(project.name)
+        projects_dir = Path(__file__).parent.parent.parent.parent / "projects"
+        projects_dir.mkdir(exist_ok=True)
+
+        project_path = projects_dir / sanitized_name
+        project_path.mkdir(exist_ok=True)
+
+        logger.info(f"✅ Created project folder: {project_path}")
+    except Exception as e:
+        logger.warning(f"Failed to create project folder: {e}")
+        # Don't fail the request if folder creation fails
 
     return db_project
 
@@ -137,7 +172,22 @@ async def delete_project(
     - **project_id**: UUID of the project to delete
 
     Note: This will cascade delete all related interviews, prompts, and tasks.
+    Also deletes the project folder from backend/projects/
     """
+    # Delete project folder
+    try:
+        import shutil
+        sanitized_name = _sanitize_project_name(project.name)
+        projects_dir = Path(__file__).parent.parent.parent.parent / "projects"
+        project_path = projects_dir / sanitized_name
+
+        if project_path.exists():
+            shutil.rmtree(project_path)
+            logger.info(f"✅ Deleted project folder: {project_path}")
+    except Exception as e:
+        logger.warning(f"Failed to delete project folder: {e}")
+        # Don't fail the request if folder deletion fails
+
     db.delete(project)
     db.commit()
     return None
