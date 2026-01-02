@@ -294,7 +294,8 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       const lower = answer.toLowerCase();
       // Extract the framework name before any parentheses or extra text
       const match = lower.match(/^([a-z\s\-\.]+?)(?:\s*\(|$)/);
-      return match ? match[1].trim().replace(/\s+/g, '') : lower.split(/[\s,]/)[0];
+      // Remove spaces, periods, and hyphens: "next.js" → "nextjs", "vue.js" → "vuejs"
+      return match ? match[1].trim().replace(/[\s\.\-]+/g, '') : lower.split(/[\s,]/)[0];
     };
 
     const stack = {
