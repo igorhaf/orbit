@@ -244,6 +244,11 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     // Join labels with comma and send as message content
     const content = selectedLabels.join(', ');
 
+    // DEBUG: Log what's being sent to backend
+    console.log('🔍 ChatInterface - Sending option selection to backend:');
+    console.log('  - Content:', content);
+    console.log('  - Selected Options:', selectedLabels);
+
     // Clear any existing text in the input and selected options
     setMessage('');
     setSelectedOptions([]);
@@ -255,6 +260,8 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         content: content,
         selected_options: selectedLabels
       });
+
+      console.log('✅ ChatInterface - Message sent successfully');
 
       // Reload to get AI response
       const response = await interviewsApi.get(interviewId);
@@ -330,8 +337,17 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
       // Extract the framework name before any parentheses or extra text
       const match = lower.match(/^([a-z\s\-\.]+?)(?:\s*\(|$)/);
-      // Remove spaces, periods, and hyphens: "next.js" → "nextjs", "vue.js" → "vuejs"
-      const extracted = match ? match[1].trim().replace(/[\s\.\-]+/g, '') : lower.split(/[\s,]/)[0];
+      let extracted = match ? match[1].trim() : lower.trim();
+
+      // For multi-word frameworks, take only the first word (e.g., "tailwind css" → "tailwind")
+      // UNLESS it contains dots/hyphens which indicate a version (e.g., "next.js" → "nextjs")
+      if (extracted.includes('.') || extracted.includes('-')) {
+        // Remove dots and hyphens: "next.js" → "nextjs", "vue.js" → "vuejs"
+        extracted = extracted.replace(/[\.\-]+/g, '');
+      } else {
+        // Take only first word: "tailwind css" → "tailwind", "material ui" → "material"
+        extracted = extracted.split(/\s+/)[0];
+      }
 
       console.log('✅ extractStackValue - extracted value:', extracted);
       return extracted;
