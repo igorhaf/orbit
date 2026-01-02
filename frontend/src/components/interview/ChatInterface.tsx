@@ -6,6 +6,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { interviewsApi } from '@/lib/api';
 import { Interview } from '@/lib/types';
 import { Button, Badge } from '@/components/ui';
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function ChatInterface({ interviewId, onStatusChange }: Props) {
+  const router = useRouter();
   const [interview, setInterview] = useState<Interview | null>(null);
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
@@ -25,6 +27,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   const [generatingPrompts, setGeneratingPrompts] = useState(false);
   const [initializing, setInitializing] = useState(false);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
+  const [notFound, setNotFound] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -94,6 +97,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
   const loadInterview = async () => {
     setLoading(true);
+    setNotFound(false);
     try {
       console.log('📥 Loading interview:', interviewId);
       const response = await interviewsApi.get(interviewId);
@@ -109,10 +113,18 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         console.log('🎬 No messages found, auto-starting interview with AI...');
         await startInterviewWithAI();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Failed to load interview:', error);
       setInterview(null); // Reset on error
-      alert('Failed to load interview');
+
+      // Check if it's a 404 error (interview not found)
+      if (error.response?.status === 404) {
+        console.log('🔍 Interview not found (404)');
+        setNotFound(true);
+      } else {
+        // For other errors, show generic alert
+        alert('Failed to load interview');
+      }
     } finally {
       setLoading(false);
     }
@@ -412,7 +424,54 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   if (!interview) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-gray-500">Interview not found</div>
+        <div className="max-w-md text-center">
+          <div className="mb-6">
+            <svg
+              className="w-20 h-20 mx-auto text-gray-300 mb-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              {notFound ? 'Interview Not Found' : 'Failed to Load Interview'}
+            </h3>
+            <p className="text-gray-600 mb-6">
+              {notFound
+                ? 'The interview you are looking for does not exist or may have been deleted.'
+                : 'An unexpected error occurred while loading the interview.'}
+            </p>
+          </div>
+
+          <div className="flex gap-3 justify-center">
+            <Button
+              variant="primary"
+              onClick={() => router.push('/interviews')}
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Go to Interviews
+            </Button>
+            {!notFound && (
+              <Button
+                variant="outline"
+                onClick={() => loadInterview()}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Try Again
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     );
   }
