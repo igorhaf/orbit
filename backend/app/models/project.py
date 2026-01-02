@@ -41,6 +41,9 @@ class Project(Base):
     stack_frontend = Column(String(50), nullable=True)     # 'nextjs', 'react', 'vue', etc
     stack_css = Column(String(50), nullable=True)          # 'tailwind', 'bootstrap', 'materialui', etc
 
+    # Project folder path (stores the sanitized folder name)
+    project_folder = Column(String(255), nullable=True)    # 'my-project-name' (sanitized)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
