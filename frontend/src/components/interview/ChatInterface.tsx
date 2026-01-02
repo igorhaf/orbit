@@ -302,8 +302,22 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     if (!backendAnswer || !databaseAnswer || !frontendAnswer || !cssAnswer) return;
 
     // Map answers to stack values (lowercase, remove extra text)
-    const extractStackValue = (answer: string): string => {
+    const extractStackValue = (answer: string): string | null => {
       const lower = answer.toLowerCase();
+
+      // Check if answer indicates "I don't know" or "None" - return null for these cases
+      if (
+        lower.includes("don't know") ||
+        lower.includes('dont know') ||
+        lower.includes('❓') ||
+        lower.includes('none') ||
+        lower.includes('skip') ||
+        lower.includes('not sure') ||
+        lower.trim() === ''
+      ) {
+        return null;
+      }
+
       // Extract the framework name before any parentheses or extra text
       const match = lower.match(/^([a-z\s\-\.]+?)(?:\s*\(|$)/);
       // Remove spaces, periods, and hyphens: "next.js" → "nextjs", "vue.js" → "vuejs"

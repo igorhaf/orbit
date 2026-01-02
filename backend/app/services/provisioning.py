@@ -216,8 +216,11 @@ class ProvisioningService:
 
         # Check required keys
         for key in required_keys:
-            if key not in stack or not stack[key]:
-                return False, f"Missing required key: {key}"
+            if key not in stack or stack[key] is None or not stack[key]:
+                return False, (
+                    f"Automatic provisioning skipped - '{key}' not specified. "
+                    f"User can provision manually or restart interview with stack choices."
+                )
 
         # Check if stack has a provisioning script
         script = self.get_provisioning_script(stack)
