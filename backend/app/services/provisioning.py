@@ -28,51 +28,69 @@ class ProvisioningService:
 
     def __init__(self, db: Session):
         self.db = db
-        self.scripts_dir = Path(__file__).parent.parent.parent / "provisioning"
+        self.scripts_dir = Path(__file__).parent.parent.parent / "scripts"
         # Projects created in /projects/ which is mounted from ./projects/ on host
         # Docker volume: ./projects:/projects → projects go to /projects/ (host: ./projects/)
         self.projects_dir = Path("/projects")
 
-    def get_provisioning_script(self, stack: Dict[str, str]) -> Optional[str]:
+    def get_provisioning_scripts(self, stack: Dict[str, str]) -> list[str]:
         """
-        Determine which provisioning script to use based on stack configuration
+        Determine which provisioning scripts to run based on stack configuration
+
+        New Architecture (PROMPT #51):
+        - Each technology has its own script
+        - Scripts are executed in sequence
+        - Tailwind is handled within Next.js script (component, not service)
 
         Args:
             stack: Stack configuration dict with backend, database, frontend, css
 
         Returns:
-            Script filename or None if no matching script
+            List of script filenames to execute in order
         """
+        scripts = []
+
         backend = stack.get("backend", "").lower()
         frontend = stack.get("frontend", "").lower()
         database = stack.get("database", "").lower()
+        css = stack.get("css", "").lower()
 
-        # Laravel stack
-        if backend == "laravel" and database == "postgresql":
-            return "laravel_setup.sh"
-
-        # Next.js stack
-        elif frontend == "nextjs" and database == "postgresql":
-            return "nextjs_setup.sh"
-
-        # FastAPI + React stack
-        elif backend == "fastapi" and frontend == "react" and database == "postgresql":
-            return "fastapi_react_setup.sh"
-
-        # FastAPI + Next.js (use Next.js script with API integration)
-        elif backend == "fastapi" and frontend == "nextjs" and database == "postgresql":
-            return "nextjs_setup.sh"  # Can be extended to integrate FastAPI
-
-        else:
+        # Validate supported stack
+        if backend != "laravel" or frontend != "nextjs" or database != "postgresql":
             logger.warning(
-                f"No provisioning script found for stack: {stack}. "
-                f"Supported combinations: Laravel+PostgreSQL, Next.js+PostgreSQL, FastAPI+React+PostgreSQL"
+                f"Unsupported stack combination: {stack}. "
+                f"Only Laravel + Next.js + PostgreSQL is currently supported."
             )
-            return None
+            return []
+
+        # Tailwind is a component of frontend, not a separate service
+        # It's installed automatically by nextjs_setup.sh
+        if css != "tailwind":
+            logger.warning(
+                f"CSS framework '{css}' not supported. Only Tailwind CSS is supported (installed with Next.js)."
+            )
+
+        # Scripts executed in order:
+        # 1. Laravel backend
+        scripts.append("laravel_setup.sh")
+
+        # 2. Next.js frontend (includes Tailwind installation)
+        scripts.append("nextjs_setup.sh")
+
+        # 3. Docker configuration
+        scripts.append("docker_setup.sh")
+
+        logger.info(f"Provisioning scripts for {stack}: {scripts}")
+        return scripts
 
     def provision_project(self, project: Project) -> Dict[str, any]:
         """
         Provision a project based on its stack configuration
+
+        New Architecture (PROMPT #51):
+        - Executes multiple scripts in sequence (Laravel, Next.js, Docker)
+        - Each script creates its own folder (backend/, frontend/, devops/)
+        - Aggregates outputs from all scripts
 
         Args:
             project: Project model instance with stack configuration
@@ -81,26 +99,17 @@ class ProvisioningService:
             Dict with provisioning results
 
         Raises:
-            ValueError: If stack is not set or script not found
-            subprocess.CalledProcessError: If provisioning script fails
+            ValueError: If stack is not set or scripts not found
         """
         # Validate stack exists
         if not project.stack:
             raise ValueError(f"Project {project.id} has no stack configuration set")
 
-        # Get script
-        script_name = self.get_provisioning_script(project.stack)
-        if not script_name:
+        # Get scripts to execute
+        script_names = self.get_provisioning_scripts(project.stack)
+        if not script_names:
             raise ValueError(
-                f"No provisioning script available for stack: {project.stack}"
-            )
-
-        script_path = self.scripts_dir / script_name
-
-        # Validate script exists
-        if not script_path.exists():
-            raise FileNotFoundError(
-                f"Provisioning script not found: {script_path}"
+                f"No provisioning scripts available for stack: {project.stack}"
             )
 
         # Ensure projects directory exists
@@ -122,57 +131,84 @@ class ProvisioningService:
             project_path.mkdir(parents=True, exist_ok=True)
             logger.info(f"Created missing project directory: {project_path}")
 
-        # Execute provisioning script
-        logger.info(f"Provisioning project '{project_name}' with script: {script_name}")
+        # Execute all provisioning scripts in sequence
+        logger.info(f"Provisioning project '{project_name}' with {len(script_names)} scripts")
+
+        all_outputs = []
+        credentials = {}
 
         try:
-            # Execute from backend root (/app/) so scripts can access provisioning files
-            # Projects are created in /projects/ (host: ./projects/)
-            backend_root = self.scripts_dir.parent  # /app/provisioning -> /app/
+            for script_name in script_names:
+                script_path = self.scripts_dir / script_name
 
-            result = subprocess.run(
-                [str(script_path), project_name],
-                cwd=backend_root,
-                capture_output=True,
-                text=True,
-                timeout=300,  # 5 minutes timeout
-                check=True
-            )
+                # Validate script exists
+                if not script_path.exists():
+                    raise FileNotFoundError(
+                        f"Provisioning script not found: {script_path}"
+                    )
 
-            logger.info(f"✓ Project '{project_name}' provisioned successfully")
-            logger.debug(f"Script output:\n{result.stdout}")
+                logger.info(f"Executing script: {script_name}")
 
-            # Parse credentials from script output (if available)
-            credentials = self._parse_credentials(result.stdout)
+                # Execute from backend root (/app/) so scripts can access files
+                backend_root = self.scripts_dir.parent  # /app/scripts -> /app/
+
+                result = subprocess.run(
+                    [str(script_path), project_name],
+                    cwd=backend_root,
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 minutes timeout per script
+                    check=True
+                )
+
+                logger.info(f"✓ Script '{script_name}' completed successfully")
+                logger.debug(f"Script output:\n{result.stdout}")
+
+                all_outputs.append(f"=== {script_name} ===\n{result.stdout}")
+
+                # Parse credentials from script output
+                script_credentials = self._parse_credentials(result.stdout)
+                credentials.update(script_credentials)
+
+            # All scripts succeeded
+            combined_output = "\n\n".join(all_outputs)
 
             return {
                 "success": True,
                 "project_name": project_name,
                 "project_path": str(project_path),
-                "script_used": script_name,
+                "scripts_executed": script_names,
                 "stack": project.stack,
                 "credentials": credentials,
                 "next_steps": [
                     f"cd projects/{project_name}",
-                    "./setup.sh"
+                    "docker-compose up -d",
+                    "docker-compose exec backend php artisan migrate"
                 ],
-                "output": result.stdout
+                "output": combined_output
             }
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"✗ Provisioning failed: {e.stderr}")
+            logger.error(f"✗ Provisioning failed during {script_name}: {e.stderr}")
             return {
                 "success": False,
-                "error": f"Provisioning script failed: {e.stderr}",
+                "error": f"Script '{script_name}' failed: {e.stderr}",
                 "output": e.stdout,
                 "returncode": e.returncode
             }
 
         except subprocess.TimeoutExpired:
-            logger.error(f"✗ Provisioning timeout after 5 minutes")
+            logger.error(f"✗ Script '{script_name}' timeout after 5 minutes")
             return {
                 "success": False,
-                "error": "Provisioning script timeout (exceeded 5 minutes)",
+                "error": f"Script '{script_name}' timeout (exceeded 5 minutes)",
+            }
+
+        except FileNotFoundError as e:
+            logger.error(f"✗ {e}")
+            return {
+                "success": False,
+                "error": str(e)
             }
 
         except Exception as e:
@@ -222,12 +258,12 @@ class ProvisioningService:
                     f"User can provision manually or restart interview with stack choices."
                 )
 
-        # Check if stack has a provisioning script
-        script = self.get_provisioning_script(stack)
-        if not script:
+        # Check if stack has provisioning scripts
+        scripts = self.get_provisioning_scripts(stack)
+        if not scripts:
             return False, (
                 f"Stack combination not supported for provisioning: {stack}. "
-                f"Supported: Laravel+PostgreSQL, Next.js+PostgreSQL, FastAPI+React+PostgreSQL"
+                f"Supported: Laravel + Next.js + PostgreSQL + Tailwind"
             )
 
         # Check if technologies exist in specs
