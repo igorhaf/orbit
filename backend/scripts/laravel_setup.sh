@@ -1,7 +1,7 @@
 #!/bin/bash
 # Laravel Backend Provisioning Script
-# Creates backend/ folder with Laravel installation
-# PROMPT #51 - New Architecture Implementation
+# Creates backend/ folder structure with configuration files
+# PROMPT #51 - New Architecture Implementation (Simplified)
 
 set -e  # Exit on error
 
@@ -29,45 +29,113 @@ if [ ! -d "$PROJECT_PATH" ]; then
     exit 1
 fi
 
-# Create backend directory
-echo "Creating backend directory..."
+# Create backend directory structure
+echo "Creating backend directory structure..."
 mkdir -p "$BACKEND_PATH"
+mkdir -p "$BACKEND_PATH/app/Http/Controllers"
+mkdir -p "$BACKEND_PATH/app/Models"
+mkdir -p "$BACKEND_PATH/database/migrations"
+mkdir -p "$BACKEND_PATH/routes"
+mkdir -p "$BACKEND_PATH/config"
 
-# Install Laravel using Composer
-echo "Installing Laravel..."
-cd "$PROJECT_PATH"
+# Create .env file
+echo "Creating Laravel environment configuration..."
+cat > "$BACKEND_PATH/.env" << EOF
+APP_NAME="${PROJECT_NAME//-/_}"
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://localhost:8000
 
-# Use Laravel installer or Composer create-project
-composer create-project --prefer-dist laravel/laravel backend
+LOG_CHANNEL=stack
+LOG_LEVEL=debug
 
-cd "$BACKEND_PATH"
+DB_CONNECTION=pgsql
+DB_HOST=database
+DB_PORT=5432
+DB_DATABASE=${PROJECT_NAME//-/_}_db
+DB_USERNAME=orbit_user
+DB_PASSWORD=orbit_password
 
-# Configure environment
-echo "Configuring Laravel environment..."
-cp .env.example .env
+CACHE_DRIVER=file
+QUEUE_CONNECTION=sync
+SESSION_DRIVER=file
+SESSION_LIFETIME=120
+EOF
 
-# Generate application key
+# Create composer.json
+echo "Creating composer.json..."
+cat > "$BACKEND_PATH/composer.json" << EOF
+{
+    "name": "${PROJECT_NAME}/backend",
+    "type": "project",
+    "description": "Laravel backend for $PROJECT_NAME",
+    "require": {
+        "php": "^8.2",
+        "laravel/framework": "^11.0",
+        "laravel/sanctum": "^4.0"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\\\": "app/",
+            "Database\\\\Factories\\\\": "database/factories/",
+            "Database\\\\Seeders\\\\": "database/seeders/"
+        }
+    },
+    "scripts": {
+        "post-root-package-install": [
+            "@php -r \\"file_exists('.env') || copy('.env.example', '.env');\\"
+        ],
+        "post-create-project-cmd": [
+            "@php artisan key:generate --ansi"
+        ]
+    },
+    "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
+EOF
+
+# Create setup instructions
+cat > "$BACKEND_PATH/README.md" << EOF
+# Laravel Backend - $PROJECT_NAME
+
+## Setup
+
+This Laravel backend will be installed automatically by Docker.
+
+### Manual Setup (if needed)
+
+\`\`\`bash
+composer install
 php artisan key:generate
+php artisan migrate
+php artisan serve
+\`\`\`
 
-# Configure database connection for PostgreSQL
-echo "Configuring PostgreSQL database..."
-sed -i 's/DB_CONNECTION=.*/DB_CONNECTION=pgsql/' .env
-sed -i "s/DB_DATABASE=.*/DB_DATABASE=${PROJECT_NAME//-/_}_db/" .env
-sed -i 's/DB_USERNAME=.*/DB_USERNAME=orbit_user/' .env
-sed -i 's/DB_PASSWORD=.*/DB_PASSWORD=orbit_password/' .env
-sed -i 's/DB_HOST=.*/DB_HOST=database/' .env  # Docker service name
-sed -i 's/DB_PORT=.*/DB_PORT=5432/' .env
+## Database Configuration
 
-# Install additional packages
-echo "Installing additional Laravel packages..."
-composer require laravel/sanctum
-composer require --dev laravel/pint
+- **Database:** ${PROJECT_NAME//-/_}_db
+- **Username:** orbit_user
+- **Password:** orbit_password
+- **Host:** database (Docker service)
+- **Port:** 5432
 
-# Publish Sanctum configuration
-php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
+## API Endpoints
+
+API will be available at: http://localhost:8000/api
+
+EOF
 
 echo ""
-echo "✅ Laravel backend provisioned successfully!"
+echo "✅ Laravel backend structure created successfully!"
 echo ""
 echo "Database Configuration:"
 echo "  Database: ${PROJECT_NAME//-/_}_db"
@@ -75,9 +143,4 @@ echo "  Username: orbit_user"
 echo "  Password: orbit_password"
 echo "  Host: database"
 echo "  Port: 5432"
-echo ""
-echo "Next Steps:"
-echo "  1. cd projects/$PROJECT_NAME/backend"
-echo "  2. php artisan migrate"
-echo "  3. php artisan serve"
 echo ""
