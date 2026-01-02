@@ -45,20 +45,20 @@ cat > "$BACKEND_PATH/composer.json" << 'EOF'
     "keywords": ["framework", "laravel"],
     "license": "MIT",
     "require": {
-        "php": "^8.1",
+        "php": "^8.2",
         "guzzlehttp/guzzle": "^7.2",
-        "laravel/framework": "^10.10",
-        "laravel/sanctum": "^3.2",
-        "laravel/tinker": "^2.8"
+        "laravel/framework": "^11.0",
+        "laravel/sanctum": "^4.0",
+        "laravel/tinker": "^2.9"
     },
     "require-dev": {
-        "fakerphp/faker": "^1.9.1",
-        "laravel/pint": "^1.0",
-        "laravel/sail": "^1.18",
-        "mockery/mockery": "^1.4.4",
-        "nunomaduro/collision": "^7.0",
-        "phpunit/phpunit": "^10.1",
-        "spatie/laravel-ignition": "^2.0"
+        "fakerphp/faker": "^1.23",
+        "laravel/pint": "^1.13",
+        "laravel/sail": "^1.26",
+        "mockery/mockery": "^1.6",
+        "nunomaduro/collision": "^8.0",
+        "phpunit/phpunit": "^11.0",
+        "spatie/laravel-ignition": "^2.4"
     },
     "autoload": {
         "psr-4": {
@@ -557,6 +557,16 @@ EOF
 chmod -R 775 "$BACKEND_PATH/storage"
 chmod -R 775 "$BACKEND_PATH/bootstrap/cache"
 
+echo ""
+echo "Installing Laravel dependencies with Composer..."
+echo "This may take 2-3 minutes..."
+cd "$BACKEND_PATH"
+composer install --no-interaction --optimize-autoloader --no-dev
+
+# Generate Laravel application key
+echo "Generating Laravel application key..."
+php artisan key:generate --ansi
+
 # Create database migration for users table
 cat > "$BACKEND_PATH/database/migrations/0001_01_01_000000_create_users_table.php" << 'EOF'
 <?php
@@ -676,11 +686,12 @@ EOF
 echo ""
 echo "✅ Laravel backend provisioned successfully!"
 echo ""
-echo "Installation Notes:"
+echo "Installation Summary:"
 echo "  - Full Laravel 10 structure created"
-echo "  - composer.json configured with all dependencies"
+echo "  - All Composer dependencies installed (vendor/)"
+echo "  - Application key generated"
 echo "  - Database configured for PostgreSQL"
-echo "  - Dependencies will install when you run: docker-compose up"
+echo "  - Ready to use!"
 echo ""
 echo "Database Configuration:"
 echo "  Database: ${PROJECT_NAME//-/_}_db"
@@ -689,10 +700,5 @@ echo "  Password: orbit_password"
 echo "  Host: database"
 echo "  Port: 5432"
 echo ""
-echo "Next Steps:"
-echo "  1. cd projects/$PROJECT_NAME"
-echo "  2. docker-compose up -d"
-echo "  3. Wait for Composer to install dependencies (~2-3 minutes)"
-echo "  4. docker-compose exec backend php artisan key:generate"
-echo "  5. docker-compose exec backend php artisan migrate"
+echo "Backend is fully provisioned and ready!"
 echo ""

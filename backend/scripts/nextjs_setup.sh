@@ -346,6 +346,12 @@ cat > "$FRONTEND_PATH/next-env.d.ts" << 'EOF'
 // see https://nextjs.org/docs/basic-features/typescript for more information.
 EOF
 
+echo ""
+echo "Installing Next.js dependencies with npm..."
+echo "This may take 2-3 minutes..."
+cd "$FRONTEND_PATH"
+npm install --legacy-peer-deps
+
 # Create README.md
 cat > "$FRONTEND_PATH/README.md" << 'EOF'
 # Next.js Frontend
@@ -411,12 +417,13 @@ EOF
 echo ""
 echo "✅ Next.js + Tailwind frontend provisioned successfully!"
 echo ""
-echo "Installation Notes:"
+echo "Installation Summary:"
 echo "  - Full Next.js 14 structure created"
-echo "  - package.json configured for Next.js 14 with App Router"
+echo "  - All npm dependencies installed (node_modules/)"
 echo "  - TypeScript configuration complete"
 echo "  - Tailwind CSS pre-configured"
-echo "  - Dependencies will install when you run: docker-compose up"
+echo "  - API client configured for Laravel backend"
+echo "  - Ready to use!"
 echo ""
 echo "Frontend Configuration:"
 echo "  Framework: Next.js 14 (App Router)"
@@ -428,9 +435,5 @@ echo "Environment:"
 echo "  API URL: http://localhost:8000/api"
 echo "  Frontend URL: http://localhost:3000"
 echo ""
-echo "Next Steps:"
-echo "  1. cd projects/$PROJECT_NAME"
-echo "  2. docker-compose up -d"
-echo "  3. Wait for npm install to complete (~2-3 minutes)"
-echo "  4. Open http://localhost:3000"
+echo "Frontend is fully provisioned and ready!"
 echo ""
