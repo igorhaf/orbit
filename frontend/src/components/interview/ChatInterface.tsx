@@ -303,25 +303,38 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
     // Map answers to stack values (lowercase, remove extra text)
     const extractStackValue = (answer: string): string | null => {
-      const lower = answer.toLowerCase();
+      console.log('🔍 extractStackValue - raw answer:', answer);
+
+      // Remove leading symbols (○, ●, ◉, etc.) that come from option formatting
+      const cleaned = answer.replace(/^[○●◉☐■□▪▫•‣⁃]+\s*/, '').trim();
+      const lower = cleaned.toLowerCase();
+
+      console.log('🔍 extractStackValue - cleaned:', cleaned, '| lower:', lower);
 
       // Check if answer indicates "I don't know" or "None" - return null for these cases
-      if (
-        lower.includes("don't know") ||
-        lower.includes('dont know') ||
-        lower.includes('❓') ||
-        lower.includes('none') ||
-        lower.includes('skip') ||
-        lower.includes('not sure') ||
-        lower.trim() === ''
-      ) {
-        return null;
+      // Be more specific: check if it STARTS with these terms or is EXACTLY these terms
+      const dontKnowPatterns = [
+        /^i\s*don'?t\s*know/i,
+        /^not\s*sure/i,
+        /^skip/i,
+        /^none$/i,
+        /^❓/,
+      ];
+
+      for (const pattern of dontKnowPatterns) {
+        if (pattern.test(cleaned)) {
+          console.log('🚫 extractStackValue - matched "don\'t know" pattern:', pattern);
+          return null;
+        }
       }
 
       // Extract the framework name before any parentheses or extra text
       const match = lower.match(/^([a-z\s\-\.]+?)(?:\s*\(|$)/);
       // Remove spaces, periods, and hyphens: "next.js" → "nextjs", "vue.js" → "vuejs"
-      return match ? match[1].trim().replace(/[\s\.\-]+/g, '') : lower.split(/[\s,]/)[0];
+      const extracted = match ? match[1].trim().replace(/[\s\.\-]+/g, '') : lower.split(/[\s,]/)[0];
+
+      console.log('✅ extractStackValue - extracted value:', extracted);
+      return extracted;
     };
 
     const stack = {
