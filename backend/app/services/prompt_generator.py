@@ -17,6 +17,7 @@ from app.models.task import Task, TaskStatus
 from app.models.project import Project
 from app.models.spec import Spec
 from app.services.ai_orchestrator import AIOrchestrator
+from app.services.spec_loader import get_spec_loader
 
 # Prompter Architecture (gradual migration via feature flags)
 try:
@@ -67,6 +68,7 @@ class PromptGenerator:
         Returns organized specs by category and type.
 
         PROMPT #48 - Phase 3: Token Reduction via Specs Integration
+        PROMPT #61 - Week 2: Migrated to use SpecLoader instead of database queries
         """
         specs = {
             'backend': [],
@@ -76,13 +78,16 @@ class PromptGenerator:
             'ignore_patterns': set()
         }
 
+        # Get SpecLoader instance
+        spec_loader = get_spec_loader()
+
         # Fetch backend specs
         if project.stack_backend:
-            backend_specs = db.query(Spec).filter(
-                Spec.category == 'backend',
-                Spec.name == project.stack_backend,
-                Spec.is_active == True
-            ).all()
+            backend_specs = spec_loader.get_specs_by_framework(
+                'backend',
+                project.stack_backend,
+                only_active=True
+            )
 
             specs['backend'] = [
                 {
@@ -101,11 +106,11 @@ class PromptGenerator:
 
         # Fetch database specs
         if project.stack_database:
-            db_specs = db.query(Spec).filter(
-                Spec.category == 'database',
-                Spec.name == project.stack_database,
-                Spec.is_active == True
-            ).all()
+            db_specs = spec_loader.get_specs_by_framework(
+                'database',
+                project.stack_database,
+                only_active=True
+            )
 
             specs['database'] = [
                 {
@@ -122,11 +127,11 @@ class PromptGenerator:
 
         # Fetch frontend specs
         if project.stack_frontend:
-            frontend_specs = db.query(Spec).filter(
-                Spec.category == 'frontend',
-                Spec.name == project.stack_frontend,
-                Spec.is_active == True
-            ).all()
+            frontend_specs = spec_loader.get_specs_by_framework(
+                'frontend',
+                project.stack_frontend,
+                only_active=True
+            )
 
             specs['frontend'] = [
                 {
@@ -144,11 +149,11 @@ class PromptGenerator:
 
         # Fetch CSS specs
         if project.stack_css:
-            css_specs = db.query(Spec).filter(
-                Spec.category == 'css',
-                Spec.name == project.stack_css,
-                Spec.is_active == True
-            ).all()
+            css_specs = spec_loader.get_specs_by_framework(
+                'css',
+                project.stack_css,
+                only_active=True
+            )
 
             specs['css'] = [
                 {
@@ -166,7 +171,7 @@ class PromptGenerator:
         # Convert ignore patterns set to list
         specs['ignore_patterns'] = list(specs['ignore_patterns'])
 
-        logger.info(f"Fetched specs: {len(specs['backend'])} backend, {len(specs['frontend'])} frontend, "
+        logger.info(f"Fetched specs from JSON files: {len(specs['backend'])} backend, {len(specs['frontend'])} frontend, "
                    f"{len(specs['database'])} database, {len(specs['css'])} css")
 
         return specs
