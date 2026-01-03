@@ -1,0 +1,20 @@
+{
+  "id": "postgresql-query",
+  "category": "database",
+  "name": "postgresql",
+  "spec_type": "query",
+  "title": "SELECT Query",
+  "description": "Optimized SELECT query with joins",
+  "content": "SELECT\n  u.id,\n  u.name,\n  u.email,\n  COUNT(o.id) as order_count\nFROM users u\nLEFT JOIN orders o ON o.user_id = u.id\nWHERE u.is_active = true\n  AND u.created_at >= NOW() - INTERVAL '30 days'\nGROUP BY u.id, u.name, u.email\nHAVING COUNT(o.id) > 0\nORDER BY order_count DESC\nLIMIT 100;",
+  "language": "sql",
+  "framework_version": null,
+  "ignore_patterns": [],
+  "file_extensions": [
+    "sql"
+  ],
+  "is_active": true,
+  "metadata": {
+    "created_at": "2025-12-29T10:01:26.982994Z",
+    "updated_at": "2025-12-29T10:01:26.982995Z"
+  }
+}

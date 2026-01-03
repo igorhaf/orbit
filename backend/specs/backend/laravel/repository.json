@@ -1,0 +1,22 @@
+{
+  "id": "laravel-repository",
+  "category": "backend",
+  "name": "laravel",
+  "spec_type": "repository",
+  "title": "Repository Pattern",
+  "description": "Laravel repository for data access abstraction",
+  "content": "<?php\n\nnamespace App\\Repositories;\n\nuse App\\Models\\{ModelName};\nuse Illuminate\\Database\\Eloquent\\Collection;\n\nclass {ModelName}Repository\n{\n    public function all(): Collection\n    {\n        return {ModelName}::all();\n    }\n\n    public function find(int $id): ?{ModelName}\n    {\n        return {ModelName}::find($id);\n    }\n\n    public function create(array $data): {ModelName}\n    {\n        return {ModelName}::create($data);\n    }\n\n    public function update({ModelName} ${model}, array $data): {ModelName}\n    {\n        ${model}->update($data);\n        return ${model}->fresh();\n    }\n\n    public function delete({ModelName} ${model}): bool\n    {\n        return ${model}->delete();\n    }\n\n    public function findByEmail(string $email): ?{ModelName}\n    {\n        return {ModelName}::where('email', $email)->first();\n    }\n\n    public function getActive(): Collection\n    {\n        return {ModelName}::where('is_active', true)->get();\n    }\n}",
+  "language": "php",
+  "framework_version": null,
+  "ignore_patterns": [
+    "vendor/*"
+  ],
+  "file_extensions": [
+    "php"
+  ],
+  "is_active": true,
+  "metadata": {
+    "created_at": "2025-12-29T09:58:45.175664Z",
+    "updated_at": "2025-12-29T09:58:45.175665Z"
+  }
+}

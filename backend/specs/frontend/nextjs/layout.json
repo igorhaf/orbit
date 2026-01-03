@@ -1,0 +1,23 @@
+{
+  "id": "nextjs-layout",
+  "category": "frontend",
+  "name": "nextjs",
+  "spec_type": "layout",
+  "title": "Layout Component",
+  "description": "Next.js App Router layout with providers",
+  "content": "import { Inter } from 'next/font/google'\nimport { Metadata } from 'next'\nimport './globals.css'\n\nconst inter = Inter({ subsets: ['latin'] })\n\nexport const metadata: Metadata = {\n  title: {\n    default: '{App Name}',\n    template: '%s | {App Name}',\n  },\n  description: '{App Description}',\n}\n\nexport default function RootLayout({\n  children,\n}: {\n  children: React.ReactNode\n}) {\n  return (\n    <html lang=\"en\">\n      <body className={inter.className}>\n        <div className=\"min-h-screen flex flex-col\">\n          <header>{/* Header */}</header>\n          <main className=\"flex-1\">{children}</main>\n          <footer>{/* Footer */}</footer>\n        </div>\n      </body>\n    </html>\n  )\n}",
+  "language": "typescript",
+  "framework_version": null,
+  "ignore_patterns": [
+    "node_modules/*",
+    ".next/*"
+  ],
+  "file_extensions": [
+    "tsx"
+  ],
+  "is_active": true,
+  "metadata": {
+    "created_at": "2025-12-29T10:00:32.556876Z",
+    "updated_at": "2025-12-29T10:00:32.556876Z"
+  }
+}
