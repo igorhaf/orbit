@@ -1,0 +1,48 @@
+{
+  "frameworks": [
+    {
+      "category": "backend",
+      "name": "laravel",
+      "display_name": "Laravel (PHP)",
+      "description": "PHP framework for web artisans",
+      "language": "php",
+      "default_version": null,
+      "is_active": true,
+      "spec_count": 22,
+      "icon": "database"
+    },
+    {
+      "category": "database",
+      "name": "postgresql",
+      "display_name": "PostgreSQL",
+      "description": "Advanced open source database",
+      "language": "sql",
+      "default_version": null,
+      "is_active": true,
+      "spec_count": 4,
+      "icon": "database"
+    },
+    {
+      "category": "frontend",
+      "name": "nextjs",
+      "display_name": "Next.js (React)",
+      "description": "React framework for production",
+      "language": "typescript",
+      "default_version": null,
+      "is_active": true,
+      "spec_count": 17,
+      "icon": "layout"
+    },
+    {
+      "category": "css",
+      "name": "tailwind",
+      "display_name": "Tailwind CSS",
+      "description": "Utility-first CSS framework",
+      "language": "jsx",
+      "default_version": null,
+      "is_active": true,
+      "spec_count": 4,
+      "icon": "palette"
+    }
+  ]
+}

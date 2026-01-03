@@ -1,0 +1,23 @@
+{
+  "id": "nextjs-server_action",
+  "category": "frontend",
+  "name": "nextjs",
+  "spec_type": "server_action",
+  "title": "Server Action",
+  "description": "Next.js Server Action for form handling",
+  "content": "'use server'\n\nimport { revalidatePath, revalidateTag } from 'next/cache'\nimport { redirect } from 'next/navigation'\nimport { z } from 'zod'\n\nconst schema = z.object({\n  name: z.string().min(1, 'Name is required'),\n  email: z.string().email('Invalid email'),\n  message: z.string().min(10, 'Message must be at least 10 characters'),\n})\n\nexport async function submitForm(prevState: any, formData: FormData) {\n  try {\n    // Validate form data\n    const validatedFields = schema.safeParse({\n      name: formData.get('name'),\n      email: formData.get('email'),\n      message: formData.get('message'),\n    })\n\n    if (!validatedFields.success) {\n      return {\n        errors: validatedFields.error.flatten().fieldErrors,\n        message: 'Validation failed',\n      }\n    }\n\n    const { name, email, message } = validatedFields.data\n\n    // Save to database\n    await saveToDatabase({ name, email, message })\n\n    // Revalidate cache\n    revalidatePath('/submissions')\n    revalidateTag('submissions')\n\n  } catch (error) {\n    return {\n      message: 'Failed to submit form',\n    }\n  }\n\n  redirect('/submissions/success')\n}\n\nasync function saveToDatabase(data: any) {\n  // Database logic\n}",
+  "language": "typescript",
+  "framework_version": null,
+  "ignore_patterns": [
+    "node_modules/*",
+    ".next/*"
+  ],
+  "file_extensions": [
+    "ts"
+  ],
+  "is_active": true,
+  "metadata": {
+    "created_at": "2025-12-29T10:00:32.556880Z",
+    "updated_at": "2025-12-29T10:00:32.556880Z"
+  }
+}
