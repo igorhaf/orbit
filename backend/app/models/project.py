@@ -44,6 +44,11 @@ class Project(Base):
     # Project folder path (stores the sanitized folder name)
     project_folder = Column(String(255), nullable=True)    # 'my-project-name' (sanitized)
 
+    # Pattern Discovery (PROMPT #62 - Week 1)
+    code_path = Column(String(500), nullable=True, index=True)  # Path to project code in Docker container
+    # Example: "/app/projects/legacy-app"
+    # Required for AI-powered pattern discovery
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
@@ -98,6 +103,13 @@ class Project(Base):
 
     prompt_templates = relationship(
         "PromptTemplate",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
+    discovered_specs = relationship(
+        "Spec",
         back_populates="project",
         cascade="all, delete-orphan",
         lazy="selectin"
