@@ -2,6 +2,9 @@
 SpecWriter Service
 Writes framework specifications to JSON files.
 Handles Create, Update, Delete operations for Admin UI.
+
+PROMPT #62 - Week 1 Day 5-6: Added support for project-specific specs
+- create_project_spec(): Write specs to /app/specs/projects/{project_id}/
 """
 
 import json
@@ -9,6 +12,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Optional, List
 from datetime import datetime
+from uuid import UUID
 
 from app.services.spec_loader import get_spec_loader, SpecData
 
@@ -83,6 +87,23 @@ class SpecWriter:
             Path to spec JSON file
         """
         return self.specs_dir / category / name / f"{spec_type}.json"
+
+    def _get_project_spec_file_path(self, project_id: UUID, category: str, spec_type: str) -> Path:
+        """
+        Get file path for a project-specific spec (PROMPT #62)
+
+        Args:
+            project_id: Project UUID
+            category: Spec category (custom, service, component, etc.)
+            spec_type: Spec type (api_endpoint, data_model, etc.)
+
+        Returns:
+            Path to project spec JSON file
+
+        Example:
+            /app/specs/projects/{project-uuid}/custom/api_endpoint.json
+        """
+        return self.specs_dir / "projects" / str(project_id) / category / f"{spec_type}.json"
 
     def create_spec(self, spec_data: Dict) -> bool:
         """
@@ -159,6 +180,94 @@ class SpecWriter:
 
         except Exception as e:
             logger.error(f"❌ Failed to create spec {category}/{name}/{spec_type}: {e}")
+            # Clean up file if it was created
+            if spec_file.exists():
+                spec_file.unlink()
+            raise
+
+    def create_project_spec(self, spec_data: Dict, project_id: UUID) -> bool:
+        """
+        Create a project-specific spec JSON file (PROMPT #62)
+
+        Project specs are stored separately from framework specs:
+        /app/specs/projects/{project_id}/{category}/{spec_type}.json
+
+        Args:
+            spec_data: Dictionary with spec data (must include: category, name,
+                      spec_type, title, description, content, language)
+            project_id: Project UUID
+
+        Returns:
+            True if successful
+
+        Raises:
+            ValueError: If required fields are missing
+            FileExistsError: If spec file already exists
+        """
+        # Validate required fields
+        required_fields = ["category", "name", "spec_type", "title", "content", "language"]
+        missing_fields = [f for f in required_fields if f not in spec_data]
+
+        if missing_fields:
+            raise ValueError(f"Missing required fields: {', '.join(missing_fields)}")
+
+        category = spec_data["category"]
+        spec_type = spec_data["spec_type"]
+
+        # Get project spec file path
+        spec_file = self._get_project_spec_file_path(project_id, category, spec_type)
+
+        # Check if file already exists
+        if spec_file.exists():
+            raise FileExistsError(
+                f"Project spec already exists: projects/{project_id}/{category}/{spec_type}"
+            )
+
+        # Create directory if needed
+        spec_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Build spec JSON structure (similar to framework specs)
+        now = datetime.utcnow().isoformat() + "Z"
+
+        spec_json = {
+            "id": f"{spec_data['name']}-{spec_type}",
+            "category": category,
+            "name": spec_data["name"],
+            "spec_type": spec_type,
+            "title": spec_data["title"],
+            "description": spec_data.get("description", ""),
+            "content": spec_data["content"],
+            "language": spec_data["language"],
+            "framework_version": spec_data.get("framework_version"),
+            "ignore_patterns": spec_data.get("ignore_patterns", []),
+            "file_extensions": spec_data.get("file_extensions", []),
+            "is_active": spec_data.get("is_active", True),
+            "project_id": str(project_id),
+            "scope": "project",
+            "discovery_metadata": spec_data.get("discovery_metadata"),
+            "metadata": {
+                "created_at": now,
+                "updated_at": now
+            }
+        }
+
+        # Write JSON file
+        try:
+            with open(spec_file, 'w', encoding='utf-8') as f:
+                json.dump(spec_json, f, indent=2, ensure_ascii=False)
+
+            logger.info(f"✅ Created project spec: projects/{project_id}/{category}/{spec_type}")
+
+            # Reload SpecLoader cache
+            self._reload_cache()
+
+            return True
+
+        except Exception as e:
+            logger.error(
+                f"❌ Failed to create project spec "
+                f"projects/{project_id}/{category}/{spec_type}: {e}"
+            )
             # Clean up file if it was created
             if spec_file.exists():
                 spec_file.unlink()

@@ -21,6 +21,7 @@ UsageType = Literal[
     "task_execution",
     "commit_generation",
     "interview",
+    "pattern_discovery",  # PROMPT #62 - AI-powered pattern discovery
     "general"
 ]
 
