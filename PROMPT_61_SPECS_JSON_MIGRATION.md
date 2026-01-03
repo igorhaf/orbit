@@ -415,18 +415,59 @@ Phase 3 & 4 are now using SpecLoader from JSON files!
 Database queries for specs have been eliminated.
 ```
 
+4. **SpecWriter Service ([spec_writer.py](backend/app/services/spec_writer.py))**
+   - `create_spec()`: Write new spec to JSON file
+   - `update_spec()`: Modify existing spec JSON file
+   - `delete_spec()`: Remove spec JSON file
+   - Auto-updates frameworks.json spec counts
+   - Auto-reloads SpecLoader cache after writes
+
+5. **Admin UI Integration ([routes/specs.py](backend/app/api/routes/specs.py))**
+   - All CRUD endpoints updated to use SpecLoader/SpecWriter
+   - GET /specs: Reads from JSON files
+   - POST /specs: Writes to JSON + DB
+   - PATCH /specs/{id}: Updates JSON + DB
+   - DELETE /specs/{id}: Deletes JSON + DB
+   - Maintains backwards compatibility with UUID-based API
+
 **Git Commits (Week 2):**
 1. `af2cb9a` - feat(specs): integrate SpecLoader with Phase 3 & 4
 2. `4a32a1e` - test(specs): add Phase 3 & 4 integration tests
+3. `4191313` - feat(specs): implement SpecWriter and update Admin UI routes
 
 **Impact:**
 - 🚀 **Performance:** 100x faster (0.012ms vs 50-100ms)
-- 🗄️ **Database:** Zero queries to database for specs
-- 📝 **Editability:** Specs editable via text editor (main goal achieved!)
-- 🔄 **Git:** Full version control for specs
+- 🗄️ **Database:** Zero queries for reading specs
+- 📝 **Editability:** Specs editable via Admin UI OR text editor!
+- 🔄 **Git:** Full version control for specs (commit/push/revert)
 - 💯 **Token Reduction:** 70-85% reduction maintained
+- ✅ **CRUD Complete:** Admin UI fully functional with JSON files
 
 ---
 
-**Next Session:** Week 3 tasks (optional SpecWriter, database cleanup, documentation)
+## 🎉 Status: WEEK 2 COMPLETE!
+
+Successfully completed Week 2! The system now has **complete CRUD functionality** for specs via JSON files.
+
+**What Works:**
+- ✅ Admin UI can Create/Read/Update/Delete specs
+- ✅ All writes go to JSON files (Git-versionable)
+- ✅ All reads come from JSON files (fast cache)
+- ✅ Phase 3 & 4 use JSON files
+- ✅ Specs editable via UI OR text editor
+- ✅ Changes automatically tracked in Git
+
+**Main Goal Achieved:**
+> "construir uma grande biblioteca de specs versionados via git e persistidos para serem manipulados, tanto pela UI quanto por um editor de texto normal"
+
+✅ **DONE!** You can now:
+- Edit specs via Admin UI (writes to JSON)
+- Edit specs via text editor (modify JSON directly)
+- Git commit/push your changes
+- Revert to previous versions
+- Build a versionable specs library
+
+---
+
+**Next Session:** Week 3 tasks (database cleanup, documentation) - OPTIONAL
 
