@@ -9,6 +9,7 @@ from app.orchestrators.registry import OrchestratorRegistry
 from app.services.ai_orchestrator import AIOrchestrator
 from app.api.websocket import broadcast_event
 from app.services.consistency_validator import ConsistencyValidator
+from app.services.spec_loader import get_spec_loader
 import anthropic
 import time
 import logging
@@ -136,12 +137,14 @@ class TaskExecutor:
             ]
 
             if needed_types:
-                backend_specs = self.db.query(Spec).filter(
-                    Spec.category == 'backend',
-                    Spec.name == project.stack_backend,
-                    Spec.spec_type.in_(needed_types),
-                    Spec.is_active == True
-                ).all()
+                # PROMPT #61 - Week 2: Use SpecLoader instead of database
+                spec_loader = get_spec_loader()
+                backend_specs = spec_loader.get_specs_by_types(
+                    'backend',
+                    project.stack_backend,
+                    needed_types,
+                    only_active=True
+                )
 
                 specs['backend'] = [
                     {
@@ -165,12 +168,14 @@ class TaskExecutor:
             ]
 
             if needed_types:
-                frontend_specs = self.db.query(Spec).filter(
-                    Spec.category == 'frontend',
-                    Spec.name == project.stack_frontend,
-                    Spec.spec_type.in_(needed_types),
-                    Spec.is_active == True
-                ).all()
+                # PROMPT #61 - Week 2: Use SpecLoader instead of database
+                spec_loader = get_spec_loader()
+                frontend_specs = spec_loader.get_specs_by_types(
+                    'frontend',
+                    project.stack_frontend,
+                    needed_types,
+                    only_active=True
+                )
 
                 specs['frontend'] = [
                     {
@@ -194,12 +199,14 @@ class TaskExecutor:
             ]
 
             if needed_types:
-                db_specs = self.db.query(Spec).filter(
-                    Spec.category == 'database',
-                    Spec.name == project.stack_database,
-                    Spec.spec_type.in_(needed_types),
-                    Spec.is_active == True
-                ).all()
+                # PROMPT #61 - Week 2: Use SpecLoader instead of database
+                spec_loader = get_spec_loader()
+                db_specs = spec_loader.get_specs_by_types(
+                    'database',
+                    project.stack_database,
+                    needed_types,
+                    only_active=True
+                )
 
                 specs['database'] = [
                     {
@@ -222,12 +229,14 @@ class TaskExecutor:
             ]
 
             if needed_types:
-                css_specs = self.db.query(Spec).filter(
-                    Spec.category == 'css',
-                    Spec.name == project.stack_css,
-                    Spec.spec_type.in_(needed_types),
-                    Spec.is_active == True
-                ).all()
+                # PROMPT #61 - Week 2: Use SpecLoader instead of database
+                spec_loader = get_spec_loader()
+                css_specs = spec_loader.get_specs_by_types(
+                    'css',
+                    project.stack_css,
+                    needed_types,
+                    only_active=True
+                )
 
                 specs['css'] = [
                     {
