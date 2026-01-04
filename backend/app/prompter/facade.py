@@ -398,9 +398,19 @@ Gere a pergunta agora:
                 lines.append("───────────────────────────────────────────────────")
 
                 for spec in spec_list:
-                    title = spec.get('title', 'Untitled')
-                    content = spec.get('content', '')
-                    spec_type = spec.get('spec_type', 'general')
+                    # Handle both dict and string formats
+                    if isinstance(spec, dict):
+                        title = spec.get('title', 'Untitled')
+                        content = spec.get('content', '')
+                        spec_type = spec.get('spec_type', spec.get('type', 'general'))
+                    elif isinstance(spec, str):
+                        # If spec is a string, treat it as content
+                        title = category.title()
+                        content = spec
+                        spec_type = 'general'
+                    else:
+                        # Skip invalid types
+                        continue
 
                     lines.append(f"\n### {title} ({spec_type})")
                     lines.append(content)
