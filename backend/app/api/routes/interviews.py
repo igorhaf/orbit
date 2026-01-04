@@ -35,6 +35,102 @@ from app.services.provisioning import ProvisioningService
 router = APIRouter()
 
 
+def _clean_ai_response(content: str) -> str:
+    """
+    Remove internal analysis blocks from AI response before showing to user.
+
+    PROMPT #53 - Clean Interview Responses
+
+    Removes blocks like:
+    - CONTEXT_ANALYSIS: {...}
+    - STEP 1: CONTEXT_ANALYSIS
+    - Any internal structured analysis that shouldn't be visible
+
+    Args:
+        content: Raw AI response content
+
+    Returns:
+        Cleaned content with only user-facing question
+    """
+    import re
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.info(f"🧹 Cleaning AI response (length: {len(content)} chars)")
+
+    # Pattern 1: Remove "CONTEXT_ANALYSIS:" block (multi-line YAML-like structure)
+    # Matches from "CONTEXT_ANALYSIS:" until the next question (❓) or end
+    content = re.sub(
+        r'CONTEXT_ANALYSIS:.*?(?=❓|$)',
+        '',
+        content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # Pattern 2: Remove "STEP N: CONTEXT_ANALYSIS" blocks
+    content = re.sub(
+        r'STEP\s+\d+:\s*CONTEXT_ANALYSIS.*?(?=❓|STEP|$)',
+        '',
+        content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # Pattern 3: Remove standalone analysis sections with structured data
+    # (project_context:, conversation_history:, etc.)
+    content = re.sub(
+        r'^\s*(project_context|conversation_history|already_covered|missing_info|question_priority):.*?(?=^[A-Z❓]|\Z)',
+        '',
+        content,
+        flags=re.MULTILINE | re.DOTALL
+    )
+
+    # Pattern 4: Remove lines that are clearly internal structure
+    lines = content.split('\n')
+    cleaned_lines = []
+    skip_block = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Skip empty lines at start
+        if not stripped and not cleaned_lines:
+            continue
+
+        # Detect start of internal analysis block
+        if any(marker in stripped.lower() for marker in [
+            'context_analysis',
+            'project_context:',
+            'conversation_history:',
+            'already_covered_topics:',
+            'missing_information:',
+            'question_priority:',
+            'core features:',
+            'business rules:',
+            'integrations and users:',
+            'performance and security:'
+        ]):
+            skip_block = True
+            continue
+
+        # Detect end of internal block (when we hit actual question)
+        if stripped.startswith('❓') or stripped.startswith('Pergunta'):
+            skip_block = False
+
+        # Keep line if not in skip block
+        if not skip_block:
+            cleaned_lines.append(line)
+
+    content = '\n'.join(cleaned_lines)
+
+    # Clean up excessive whitespace
+    content = re.sub(r'\n{3,}', '\n\n', content)
+    content = content.strip()
+
+    logger.info(f"✨ Cleaned response (new length: {len(content)} chars)")
+
+    return content
+
+
 def get_specs_for_category(db: Session, category: str) -> list:
     """
     Get available frameworks from specs for a specific category.
@@ -1041,10 +1137,13 @@ Continue com a próxima pergunta relevante baseada na resposta anterior do usuá
             logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
             logger.info(f"  - Last message: [{len(interview.conversation_data)-1}] {interview.conversation_data[-1].get('role')}: {interview.conversation_data[-1].get('content', '')[:50]}")
 
+            # Clean AI response - remove internal analysis blocks
+            cleaned_content = _clean_ai_response(response["content"])
+
             # Adicionar resposta da IA
             assistant_message = {
                 "role": "assistant",
-                "content": response["content"],
+                "content": cleaned_content,
                 "timestamp": datetime.utcnow().isoformat(),
                 "model": f"{response['provider']}/{response['model']}"
             }
