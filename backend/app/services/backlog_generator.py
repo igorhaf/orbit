@@ -18,6 +18,28 @@ from app.services.ai_orchestrator import AIOrchestrator
 logger = logging.getLogger(__name__)
 
 
+def _strip_markdown_json(content: str) -> str:
+    """
+    Remove markdown code blocks from JSON response.
+
+    AI sometimes returns JSON wrapped in ```json ... ``` blocks.
+    This function strips those markers to get pure JSON.
+
+    Args:
+        content: Raw AI response that may contain markdown
+
+    Returns:
+        Clean JSON string without markdown markers
+    """
+    import re
+
+    # Remove ```json and ``` markers
+    content = re.sub(r'^```json\s*\n?', '', content, flags=re.MULTILINE)
+    content = re.sub(r'\n?```\s*$', '', content, flags=re.MULTILINE)
+
+    return content.strip()
+
+
 class BacklogGeneratorService:
     """Service for AI-powered backlog generation with user approval"""
 
@@ -133,7 +155,9 @@ Return the Epic as JSON following the schema provided in the system prompt."""
 
         # 4. Parse AI response
         try:
-            epic_suggestion = json.loads(result["content"])
+            # Strip markdown code blocks if present
+            clean_json = _strip_markdown_json(result["content"])
+            epic_suggestion = json.loads(clean_json)
 
             # Add metadata
             epic_suggestion["_metadata"] = {
@@ -264,7 +288,9 @@ Return 3-7 Stories as JSON array following the schema provided."""
 
         # 4. Parse AI response
         try:
-            stories_suggestions = json.loads(result["content"])
+            # Strip markdown code blocks if present
+            clean_json = _strip_markdown_json(result["content"])
+            stories_suggestions = json.loads(clean_json)
 
             if not isinstance(stories_suggestions, list):
                 raise ValueError("AI response is not a list")
@@ -410,7 +436,9 @@ Return 3-10 technical Tasks as JSON array following the schema provided."""
 
         # 5. Parse AI response
         try:
-            tasks_suggestions = json.loads(result["content"])
+            # Strip markdown code blocks if present
+            clean_json = _strip_markdown_json(result["content"])
+            tasks_suggestions = json.loads(clean_json)
 
             if not isinstance(tasks_suggestions, list):
                 raise ValueError("AI response is not a list")
