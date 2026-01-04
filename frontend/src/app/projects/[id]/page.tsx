@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
@@ -31,11 +31,7 @@ export default function ProjectDetailsPage() {
   const [editedDescription, setEditedDescription] = useState('');
   const [isFormattingDescription, setIsFormattingDescription] = useState(false);
 
-  useEffect(() => {
-    loadProjectData();
-  }, [projectId]);
-
-  const loadProjectData = async () => {
+  const loadProjectData = useCallback(async () => {
     console.log('📋 Loading project data for ID:', projectId);
     try {
       const [projectRes, tasksRes] = await Promise.all([
@@ -57,26 +53,18 @@ export default function ProjectDetailsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [projectId]);
+
+  useEffect(() => {
+    loadProjectData();
+  }, [loadProjectData]);
 
   const handleTasksUpdate = () => {
     loadProjectData();
   };
 
-  // Format description to Markdown if needed
-  useEffect(() => {
-    if (project?.description && !isFormattingDescription) {
-      const isMarkdown = checkIfMarkdown(project.description);
-      if (!isMarkdown) {
-        formatDescriptionToMarkdown(project.description);
-      } else {
-        setEditedDescription(project.description);
-      }
-    }
-  }, [project?.description]);
-
   // Check if text is already in Markdown format
-  const checkIfMarkdown = (text: string): boolean => {
+  const checkIfMarkdown = useCallback((text: string): boolean => {
     const markdownPatterns = [
       /^#{1,6}\s/m,           // Headers
       /\*\*.*\*\*/,            // Bold
@@ -89,10 +77,11 @@ export default function ProjectDetailsPage() {
     ];
 
     return markdownPatterns.some(pattern => pattern.test(text));
-  };
+  }, []);
 
   // Format plain text to Markdown using AI
-  const formatDescriptionToMarkdown = async (text: string) => {
+  const formatDescriptionToMarkdown = useCallback(async (text: string) => {
+    console.log('🚀 Starting markdown formatting...');
     setIsFormattingDescription(true);
     try {
       const response = await fetch('/api/format-markdown', {
@@ -103,6 +92,7 @@ export default function ProjectDetailsPage() {
 
       if (response.ok) {
         const data = await response.json();
+        console.log('✅ Formatting successful, saving to database...');
         setEditedDescription(data.markdown);
 
         // Auto-save formatted description
@@ -110,19 +100,43 @@ export default function ProjectDetailsPage() {
           description: data.markdown,
         });
 
+        console.log('✅ Saved to database, reloading project data...');
         // Reload project data
         await loadProjectData();
       } else {
+        console.error('❌ Formatting API returned error:', response.status);
         // Fallback: use original text
         setEditedDescription(text);
       }
     } catch (error) {
-      console.error('Error formatting to Markdown:', error);
+      console.error('❌ Error formatting to Markdown:', error);
       setEditedDescription(text);
     } finally {
       setIsFormattingDescription(false);
     }
-  };
+  }, [projectId, loadProjectData]);
+
+  // Format description to Markdown if needed
+  useEffect(() => {
+    console.log('🔄 Format effect running...', {
+      hasDescription: !!project?.description,
+      isFormatting: isFormattingDescription,
+      hasEdited: !!editedDescription,
+    });
+
+    if (project?.description && !isFormattingDescription && !editedDescription) {
+      const isMarkdown = checkIfMarkdown(project.description);
+      console.log('🔍 Checking if description is Markdown:', isMarkdown);
+
+      if (!isMarkdown) {
+        console.log('📝 Description is plain text, formatting to Markdown...');
+        formatDescriptionToMarkdown(project.description);
+      } else {
+        console.log('✅ Description is already Markdown');
+        setEditedDescription(project.description);
+      }
+    }
+  }, [project?.description, isFormattingDescription, editedDescription, checkIfMarkdown, formatDescriptionToMarkdown]);
 
   const handleEditDescription = () => {
     setEditedDescription(project?.description || '');
