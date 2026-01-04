@@ -721,6 +721,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               )}
             </Button>
           </div>
+          </div>
         ) : (
           <div className="text-center text-gray-400 py-4 bg-gray-100 rounded-lg">
             <p className="text-sm font-medium">
