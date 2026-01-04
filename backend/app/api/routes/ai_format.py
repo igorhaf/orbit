@@ -77,10 +77,12 @@ Return ONLY the Markdown-formatted text, no explanations."""
 
         # Execute AI request
         response = await orchestrator.execute(
-            model_name=ai_model.name,
-            prompt=prompt,
-            max_tokens=2000,
-            temperature=0.7
+            usage_type=AIModelUsageType.INTERVIEW,
+            messages=[{
+                "role": "user",
+                "content": prompt
+            }],
+            max_tokens=2000
         )
 
         if response and response.get("content"):
