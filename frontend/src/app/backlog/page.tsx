@@ -8,8 +8,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Button, Dialog } from '@/components/ui';
-import { BacklogListView, BacklogFilters, BulkActionBar } from '@/components/backlog';
+import { Button } from '@/components/ui';
+import { BacklogListView, BacklogFilters, BulkActionBar, ItemDetailPanel } from '@/components/backlog';
 import { projectsApi, tasksApi } from '@/lib/api';
 import { BacklogFilters as IBacklogFilters, BacklogItem, Project, PriorityLevel, TaskStatus } from '@/lib/types';
 
@@ -251,74 +251,16 @@ export default function BacklogPage() {
           onClearSelection={handleClearSelection}
         />
 
-        {/* Item Detail Dialog */}
+        {/* Item Detail Panel */}
         {selectedItem && (
-          <Dialog
-            open={!!selectedItem}
+          <ItemDetailPanel
+            item={selectedItem}
             onClose={() => setSelectedItem(null)}
-            title={selectedItem.title}
-            description={`${selectedItem.item_type} • ${selectedItem.priority} priority`}
-          >
-            <div className="space-y-4">
-              {/* Description */}
-              {selectedItem.description && (
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-1">Description</h4>
-                  <p className="text-sm text-gray-700">{selectedItem.description}</p>
-                </div>
-              )}
-
-              {/* Metadata */}
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
-                  <span className="font-semibold text-gray-700">Status:</span>
-                  <span className="ml-2 text-gray-600">{selectedItem.workflow_state}</span>
-                </div>
-                <div>
-                  <span className="font-semibold text-gray-700">Priority:</span>
-                  <span className="ml-2 text-gray-600">{selectedItem.priority}</span>
-                </div>
-                {selectedItem.story_points && (
-                  <div>
-                    <span className="font-semibold text-gray-700">Story Points:</span>
-                    <span className="ml-2 text-gray-600">{selectedItem.story_points}</span>
-                  </div>
-                )}
-                {selectedItem.assignee && (
-                  <div>
-                    <span className="font-semibold text-gray-700">Assignee:</span>
-                    <span className="ml-2 text-gray-600">{selectedItem.assignee}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Labels */}
-              {selectedItem.labels && selectedItem.labels.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Labels</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {selectedItem.labels.map((label, idx) => (
-                      <span key={idx} className="px-2 py-1 text-xs rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Acceptance Criteria */}
-              {selectedItem.acceptance_criteria && selectedItem.acceptance_criteria.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Acceptance Criteria</h4>
-                  <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-                    {selectedItem.acceptance_criteria.map((criterion, idx) => (
-                      <li key={idx}>{criterion}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          </Dialog>
+            onUpdate={() => {
+              // Refresh the backlog after updates
+              window.location.reload();
+            }}
+          />
         )}
       </div>
     </Layout>
