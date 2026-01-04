@@ -17,6 +17,7 @@ from app.database import get_db
 from app.models.interview import Interview, InterviewStatus
 from app.models.project import Project
 from app.models.prompt import Prompt
+from app.models.task import Task
 from app.models.ai_model import AIModel, AIModelUsageType
 from app.schemas.interview import InterviewCreate, InterviewUpdate, InterviewResponse, InterviewMessageCreate, StackConfiguration, ProjectInfoUpdate
 from app.schemas.prompt import PromptResponse
