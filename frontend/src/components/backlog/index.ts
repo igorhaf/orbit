@@ -1,8 +1,9 @@
 /**
  * Backlog Components Export
- * JIRA Transformation - PROMPT #62 - Phase 3
+ * JIRA Transformation - PROMPT #62 - Phase 3 & 4
  */
 
 export { default as BacklogListView } from './BacklogListView';
 export { default as BacklogFilters } from './BacklogFilters';
 export { default as BulkActionBar } from './BulkActionBar';
+export { default as ItemDetailPanel } from './ItemDetailPanel';
