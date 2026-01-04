@@ -122,9 +122,11 @@ export default function ProjectDetailsPage() {
       hasDescription: !!project?.description,
       isFormatting: isFormattingDescription,
       hasEdited: !!editedDescription,
+      isEditing: isEditingDescription,
     });
 
-    if (project?.description && !isFormattingDescription && !editedDescription) {
+    // Don't auto-format while user is manually editing
+    if (project?.description && !isFormattingDescription && !editedDescription && !isEditingDescription) {
       const isMarkdown = checkIfMarkdown(project.description);
       console.log('🔍 Checking if description is Markdown:', isMarkdown);
 
@@ -136,7 +138,7 @@ export default function ProjectDetailsPage() {
         setEditedDescription(project.description);
       }
     }
-  }, [project?.description, isFormattingDescription, editedDescription, checkIfMarkdown, formatDescriptionToMarkdown]);
+  }, [project?.description, isFormattingDescription, editedDescription, isEditingDescription, checkIfMarkdown, formatDescriptionToMarkdown]);
 
   const handleEditDescription = () => {
     setEditedDescription(project?.description || '');
