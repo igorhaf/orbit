@@ -515,8 +515,38 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       await loadInterview();
     } catch (error: any) {
       console.error('Failed to generate prompts:', error);
-      const errorMessage = error.response?.data?.detail || 'Failed to generate prompts. Please try again.';
-      alert(`❌ Error:\n\n${errorMessage}`);
+      const errorDetail = error.response?.data?.detail || error.message || 'Failed to generate prompts. Please try again.';
+      const errorLower = errorDetail.toLowerCase();
+
+      // Detect AI-specific errors (credits, authentication, etc.)
+      if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota') || errorLower.includes('insufficient_quota')) {
+        setAiError({
+          type: 'credits',
+          message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
+          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
+                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
+                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
+        });
+      } else if (errorLower.includes('authentication') || errorLower.includes('api key') || errorLower.includes('invalid x-api-key') || errorLower.includes('unauthorized')) {
+        setAiError({
+          type: 'auth',
+          message: 'API key inválida ou expirada. Por favor, configure uma API key válida nas configurações.',
+          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
+                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
+                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
+        });
+      } else if (errorLower.includes('rate limit')) {
+        setAiError({
+          type: 'rate_limit',
+          message: 'Limite de requisições excedido. Por favor, aguarde alguns minutos antes de tentar novamente.',
+          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
+                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
+                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
+        });
+      } else {
+        // Generic error - show alert
+        alert(`❌ Error:\n\n${errorDetail}`);
+      }
     } finally {
       setGeneratingPrompts(false);
     }
