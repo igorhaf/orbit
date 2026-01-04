@@ -132,6 +132,9 @@ class TaskExecutor:
             'responsive': ['responsive', 'mobile']
         }
 
+        # PROMPT #54 - Token Optimization: Get SpecLoader once instead of 4 times
+        spec_loader = get_spec_loader()
+
         # Fetch backend specs
         if project.stack_backend:
             needed_types = [
@@ -140,8 +143,6 @@ class TaskExecutor:
             ]
 
             if needed_types:
-                # PROMPT #61 - Week 2: Use SpecLoader instead of database
-                spec_loader = get_spec_loader()
                 backend_specs = spec_loader.get_specs_by_types(
                     'backend',
                     project.stack_backend,
@@ -171,8 +172,6 @@ class TaskExecutor:
             ]
 
             if needed_types:
-                # PROMPT #61 - Week 2: Use SpecLoader instead of database
-                spec_loader = get_spec_loader()
                 frontend_specs = spec_loader.get_specs_by_types(
                     'frontend',
                     project.stack_frontend,
@@ -202,8 +201,6 @@ class TaskExecutor:
             ]
 
             if needed_types:
-                # PROMPT #61 - Week 2: Use SpecLoader instead of database
-                spec_loader = get_spec_loader()
                 db_specs = spec_loader.get_specs_by_types(
                     'database',
                     project.stack_database,
@@ -232,8 +229,6 @@ class TaskExecutor:
             ]
 
             if needed_types:
-                # PROMPT #61 - Week 2: Use SpecLoader instead of database
-                spec_loader = get_spec_loader()
                 css_specs = spec_loader.get_specs_by_types(
                     'css',
                     project.stack_css,
