@@ -85,13 +85,20 @@ export function parseMessage(content: string): ParsedMessage {
     const startsWithRadio = /^[\s]*[\u25CB\u25CF\u25C9\u25C8○●◯◉]/.test(trimmed);
     const startsWithDash = /^[\s]*[\-=][\s]+/.test(trimmed); // Handle "- Option" or "= Option"
 
-    if (startsWithCheckbox || startsWithRadio || startsWithDash) {
+    // Skip indicator lines like "☑️ [Selecione todas que se aplicam]" or "◉ [Escolha uma opção]"
+    // These start with symbols but contain brackets, so they're instructions, not options
+    const isIndicatorLine = /[\[\]]/.test(trimmed);
+
+    if ((startsWithCheckbox || startsWithRadio || startsWithDash) && !isIndicatorLine) {
       console.log('🔍 MessageParser: Found option line:', trimmed);
       foundOptions = true;
       optionLines.push(trimmed);
     } else if (!foundOptions) {
       // Lines before options are part of the question
       questionLines.push(line);
+    } else if (isIndicatorLine) {
+      console.log('🔍 MessageParser: Skipping indicator line:', trimmed);
+      // Indicator lines are ignored (not added to question or options)
     }
     // Lines after options are ignored
   }
