@@ -9,6 +9,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input } from '@/components/ui';
 import { tasksApi } from '@/lib/api';
+import WorkflowActions from './WorkflowActions';
 import {
   BacklogItem,
   ItemType,
@@ -429,43 +430,60 @@ export default function ItemDetailPanel({ item, onClose, onUpdate }: ItemDetailP
 
               {/* Transitions Tab */}
               {activeTab === 'transitions' && (
-                <div className="space-y-3">
-                  <h3 className="text-sm font-semibold text-gray-900">
-                    Status History ({transitions.length})
-                  </h3>
+                <div className="space-y-6">
+                  {/* Workflow Actions */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                      Transition Status
+                    </h3>
+                    <WorkflowActions
+                      item={item}
+                      onTransition={() => {
+                        fetchItemDetails();
+                        if (onUpdate) onUpdate();
+                      }}
+                    />
+                  </div>
 
-                  {transitions.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">No status transitions yet</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {transitions.map((transition, idx) => (
-                        <div key={transition.id} className="border-l-4 border-blue-500 bg-blue-50 p-4 rounded">
-                          <div className="flex items-center justify-between mb-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm font-medium text-gray-700">
-                                {transition.from_status}
-                              </span>
-                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-                              </svg>
-                              <span className="text-sm font-medium text-blue-700">
-                                {transition.to_status}
+                  {/* Status History */}
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                      Status History ({transitions.length})
+                    </h3>
+
+                    {transitions.length === 0 ? (
+                      <p className="text-sm text-gray-500 italic">No status transitions yet</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {transitions.map((transition, idx) => (
+                          <div key={transition.id} className="border-l-4 border-blue-500 bg-blue-50 p-4 rounded">
+                            <div className="flex items-center justify-between mb-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-700">
+                                  {transition.from_status}
+                                </span>
+                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                </svg>
+                                <span className="text-sm font-medium text-blue-700">
+                                  {transition.to_status}
+                                </span>
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                {new Date(transition.created_at).toLocaleString()}
                               </span>
                             </div>
-                            <span className="text-xs text-gray-500">
-                              {new Date(transition.created_at).toLocaleString()}
-                            </span>
+                            {transition.transitioned_by && (
+                              <p className="text-xs text-gray-600">by {transition.transitioned_by}</p>
+                            )}
+                            {transition.transition_reason && (
+                              <p className="text-sm text-gray-700 mt-2">{transition.transition_reason}</p>
+                            )}
                           </div>
-                          {transition.transitioned_by && (
-                            <p className="text-xs text-gray-600">by {transition.transitioned_by}</p>
-                          )}
-                          {transition.transition_reason && (
-                            <p className="text-sm text-gray-700 mt-2">{transition.transition_reason}</p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
