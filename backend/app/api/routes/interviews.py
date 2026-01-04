@@ -844,13 +844,24 @@ Para perguntas de ESCOLHA ÚNICA (apenas uma resposta):
 ○ Opção 1
 ○ Opção 2
 ○ Opção 3
+○ Opção 4
+○ Opção 5
 ◉ [Escolha uma opção]
 
 Para perguntas de MÚLTIPLA ESCOLHA (várias respostas):
 ☐ Opção 1
 ☐ Opção 2
 ☐ Opção 3
+☐ Opção 4
+☐ Opção 5
 ☑️ [Selecione todas que se aplicam]
+
+**REGRAS OBRIGATÓRIAS PARA OPÇÕES:**
+1. SEMPRE forneça PELO MENOS 3-5 opções por pergunta
+2. NUNCA crie pergunta com apenas 1 ou 2 opções (sem sentido!)
+3. Se não conseguir 3+ opções, reformule como pergunta aberta (texto livre)
+4. Opções devem ser realistas, relevantes e mutuamente exclusivas (para single choice)
+5. Sempre inclua uma opção "Outro" ou "Nenhuma das anteriores" quando apropriado
 
 Use ○ para escolha única (radio) e ☐ para múltipla escolha (checkbox).
 
