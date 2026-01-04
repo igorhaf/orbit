@@ -180,13 +180,13 @@ class CommentCreate(BaseModel):
     author: str = Field(..., max_length=100, description="Author username")
     content: str = Field(..., min_length=1, description="Comment content")
     comment_type: CommentType = Field(default=CommentType.COMMENT, description="Comment type")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    comment_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class CommentUpdate(BaseModel):
     """Schema for updating a comment"""
     content: Optional[str] = Field(None, min_length=1)
-    metadata: Optional[Dict[str, Any]] = None
+    comment_metadata: Optional[Dict[str, Any]] = None
 
 
 class CommentResponse(BaseModel):
@@ -196,7 +196,7 @@ class CommentResponse(BaseModel):
     author: str
     content: str
     comment_type: CommentType
-    metadata: Optional[Dict[str, Any]]
+    comment_metadata: Optional[Dict[str, Any]]
     created_at: datetime
     updated_at: datetime
 
