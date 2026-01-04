@@ -11,8 +11,11 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from app.database import get_db
-from app.models.task import Task, TaskStatus
+from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
 from app.models.task_result import TaskResult
+from app.models.task_relationship import TaskRelationship, RelationshipType
+from app.models.task_comment import TaskComment, CommentType
+from app.models.status_transition import StatusTransition
 from app.schemas.task import (
     TaskCreate,
     TaskUpdate,
@@ -20,10 +23,23 @@ from app.schemas.task import (
     TaskExecuteRequest,
     TaskResultResponse,
     BatchExecuteRequest,
-    BatchExecuteResponse
+    BatchExecuteResponse,
+    RelationshipCreate,
+    RelationshipResponse,
+    CommentCreate,
+    CommentUpdate,
+    CommentResponse,
+    StatusTransitionCreate,
+    StatusTransitionResponse,
+    TaskWithRelations,
+    HierarchyMoveRequest,
+    HierarchyValidationResponse
 )
 from app.api.dependencies import get_task_or_404, get_project_or_404
 from app.services.task_executor import TaskExecutor
+from app.services.task_hierarchy import TaskHierarchyService
+from app.services.backlog_view import BacklogViewService
+from app.services.workflow_validator import WorkflowValidator
 import logging
 
 logger = logging.getLogger(__name__)
@@ -444,3 +460,530 @@ async def get_task_result(
         raise HTTPException(status_code=404, detail="Result not found. Task may not have been executed yet.")
 
     return result
+
+
+# ============================================================================
+# JIRA TRANSFORMATION - HIERARCHY ENDPOINTS
+# ============================================================================
+
+@router.get("/{task_id}/children", response_model=List[TaskResponse])
+async def get_task_children(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get direct children of a task.
+
+    GET /api/v1/tasks/{task_id}/children
+
+    Returns list of tasks that have this task as parent.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    children = db.query(Task).filter(Task.parent_id == task_id).order_by(Task.order).all()
+
+    return children
+
+
+@router.get("/{task_id}/descendants", response_model=List[TaskResponse])
+async def get_task_descendants(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all descendants of a task (recursive: children, grandchildren, etc.).
+
+    GET /api/v1/tasks/{task_id}/descendants
+
+    Returns flat list of all descendant tasks.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    hierarchy_service = TaskHierarchyService(db)
+    descendants = hierarchy_service.get_all_descendants(task_id)
+
+    return descendants
+
+
+@router.get("/{task_id}/ancestors", response_model=List[TaskResponse])
+async def get_task_ancestors(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all ancestors of a task (parent, grandparent, etc. up to root).
+
+    GET /api/v1/tasks/{task_id}/ancestors
+
+    Returns list ordered from immediate parent to root.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    hierarchy_service = TaskHierarchyService(db)
+    ancestors = hierarchy_service.get_all_ancestors(task_id)
+
+    return ancestors
+
+
+@router.post("/{task_id}/move", response_model=TaskResponse)
+async def move_task_in_hierarchy(
+    task_id: UUID,
+    move_request: HierarchyMoveRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Move task to a new parent in hierarchy.
+
+    POST /api/v1/tasks/{task_id}/move
+    Body: {"new_parent_id": "uuid" or null, "validate_rules": true}
+
+    - new_parent_id: New parent UUID (null = make root)
+    - validate_rules: Whether to validate Epic→Story→Task rules (default: true)
+
+    Raises 400 if move would create cycle or violate hierarchy rules.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    hierarchy_service = TaskHierarchyService(db)
+
+    try:
+        success = hierarchy_service.move_task(
+            task_id=task_id,
+            new_parent_id=move_request.new_parent_id,
+            validate_rules=move_request.validate_rules
+        )
+
+        if success:
+            db.refresh(task)
+            return task
+        else:
+            raise HTTPException(status_code=400, detail="Move failed")
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{task_id}/validate-child/{child_type}", response_model=HierarchyValidationResponse)
+async def validate_hierarchy(
+    task_id: UUID,
+    child_type: ItemType,
+    db: Session = Depends(get_db)
+):
+    """
+    Validate if a child type can be added to this task.
+
+    GET /api/v1/tasks/{task_id}/validate-child/{child_type}
+
+    Returns:
+    - valid: bool
+    - message: str
+    - allowed_children: list of allowed child types
+
+    Useful for UI to show/hide "Add Child" buttons.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    hierarchy_service = TaskHierarchyService(db)
+    valid = hierarchy_service.validate_hierarchy_rules(child_type, task.item_type)
+
+    allowed_children = []
+    if task.item_type == ItemType.EPIC:
+        allowed_children = ["story"]
+    elif task.item_type == ItemType.STORY:
+        allowed_children = ["task", "bug"]
+    elif task.item_type == ItemType.TASK:
+        allowed_children = ["subtask"]
+
+    return HierarchyValidationResponse(
+        valid=valid,
+        message=f"{'Valid' if valid else 'Invalid'}: {task.item_type.value} cannot contain {child_type.value}" if not valid else f"{task.item_type.value} can contain {child_type.value}",
+        allowed_children=allowed_children
+    )
+
+
+# ============================================================================
+# JIRA TRANSFORMATION - RELATIONSHIP ENDPOINTS
+# ============================================================================
+
+@router.post("/{task_id}/relationships", response_model=RelationshipResponse, status_code=status.HTTP_201_CREATED)
+async def create_relationship(
+    task_id: UUID,
+    relationship_data: RelationshipCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a task relationship (blocks, depends_on, relates_to, etc.).
+
+    POST /api/v1/tasks/{task_id}/relationships
+    Body: {"source_task_id": "uuid", "target_task_id": "uuid", "relationship_type": "blocks"}
+
+    Relationship types:
+    - blocks: This task blocks the target
+    - blocked_by: This task is blocked by the target
+    - depends_on: This task depends on the target
+    - relates_to: This task relates to the target
+    - duplicates: This task duplicates the target
+    - clones: This task clones the target
+    """
+    # Verify both tasks exist
+    source_task = db.query(Task).filter(Task.id == relationship_data.source_task_id).first()
+    target_task = db.query(Task).filter(Task.id == relationship_data.target_task_id).first()
+
+    if not source_task:
+        raise HTTPException(status_code=404, detail=f"Source task {relationship_data.source_task_id} not found")
+    if not target_task:
+        raise HTTPException(status_code=404, detail=f"Target task {relationship_data.target_task_id} not found")
+
+    # Check for existing relationship
+    existing = db.query(TaskRelationship).filter(
+        TaskRelationship.source_task_id == relationship_data.source_task_id,
+        TaskRelationship.target_task_id == relationship_data.target_task_id,
+        TaskRelationship.relationship_type == relationship_data.relationship_type
+    ).first()
+
+    if existing:
+        raise HTTPException(status_code=400, detail="Relationship already exists")
+
+    # Create relationship
+    from uuid import uuid4
+    relationship = TaskRelationship(
+        id=uuid4(),
+        source_task_id=relationship_data.source_task_id,
+        target_task_id=relationship_data.target_task_id,
+        relationship_type=relationship_data.relationship_type,
+        created_at=datetime.utcnow()
+    )
+
+    db.add(relationship)
+    db.commit()
+    db.refresh(relationship)
+
+    return relationship
+
+
+@router.get("/{task_id}/relationships", response_model=List[RelationshipResponse])
+async def get_task_relationships(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get all relationships for a task (both as source and target).
+
+    GET /api/v1/tasks/{task_id}/relationships
+
+    Returns all relationships where task is either source or target.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Get relationships where task is source OR target
+    relationships = db.query(TaskRelationship).filter(
+        (TaskRelationship.source_task_id == task_id) |
+        (TaskRelationship.target_task_id == task_id)
+    ).all()
+
+    return relationships
+
+
+@router.delete("/relationships/{relationship_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_relationship(
+    relationship_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a task relationship.
+
+    DELETE /api/v1/tasks/relationships/{relationship_id}
+
+    Returns 204 No Content on success.
+    """
+    relationship = db.query(TaskRelationship).filter(TaskRelationship.id == relationship_id).first()
+
+    if not relationship:
+        raise HTTPException(status_code=404, detail="Relationship not found")
+
+    db.delete(relationship)
+    db.commit()
+
+    return None
+
+
+# ============================================================================
+# JIRA TRANSFORMATION - COMMENT ENDPOINTS
+# ============================================================================
+
+@router.post("/{task_id}/comments", response_model=CommentResponse, status_code=status.HTTP_201_CREATED)
+async def create_comment(
+    task_id: UUID,
+    comment_data: CommentCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Add a comment to a task.
+
+    POST /api/v1/tasks/{task_id}/comments
+    Body: {"author": "username", "content": "comment text", "comment_type": "comment"}
+
+    Comment types:
+    - comment: Regular comment
+    - system: System-generated comment
+    - ai_insight: AI-generated insight
+    - validation: Validation message
+    - code_snippet: Code snippet
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    from uuid import uuid4
+    comment = TaskComment(
+        id=uuid4(),
+        task_id=task_id,
+        author=comment_data.author,
+        content=comment_data.content,
+        comment_type=comment_data.comment_type,
+        metadata=comment_data.metadata,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+
+    return comment
+
+
+@router.get("/{task_id}/comments", response_model=List[CommentResponse])
+async def get_task_comments(
+    task_id: UUID,
+    comment_type: Optional[CommentType] = Query(None, description="Filter by comment type"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all comments for a task.
+
+    GET /api/v1/tasks/{task_id}/comments?comment_type=comment
+
+    Optionally filter by comment_type.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    query = db.query(TaskComment).filter(TaskComment.task_id == task_id)
+
+    if comment_type:
+        query = query.filter(TaskComment.comment_type == comment_type)
+
+    comments = query.order_by(TaskComment.created_at).all()
+
+    return comments
+
+
+@router.patch("/comments/{comment_id}", response_model=CommentResponse)
+async def update_comment(
+    comment_id: UUID,
+    comment_data: CommentUpdate,
+    db: Session = Depends(get_db)
+):
+    """
+    Update a comment.
+
+    PATCH /api/v1/tasks/comments/{comment_id}
+    Body: {"content": "updated text", "metadata": {...}}
+
+    Only content and metadata can be updated.
+    """
+    comment = db.query(TaskComment).filter(TaskComment.id == comment_id).first()
+
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    if comment_data.content is not None:
+        comment.content = comment_data.content
+    if comment_data.metadata is not None:
+        comment.metadata = comment_data.metadata
+
+    comment.updated_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(comment)
+
+    return comment
+
+
+@router.delete("/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_comment(
+    comment_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a comment.
+
+    DELETE /api/v1/tasks/comments/{comment_id}
+
+    Returns 204 No Content on success.
+    """
+    comment = db.query(TaskComment).filter(TaskComment.id == comment_id).first()
+
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    db.delete(comment)
+    db.commit()
+
+    return None
+
+
+# ============================================================================
+# JIRA TRANSFORMATION - STATUS TRANSITION ENDPOINTS
+# ============================================================================
+
+@router.post("/{task_id}/transition", response_model=StatusTransitionResponse)
+async def transition_task_status(
+    task_id: UUID,
+    transition_data: StatusTransitionCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Transition task to a new status with validation.
+
+    POST /api/v1/tasks/{task_id}/transition
+    Body: {"to_status": "in_progress", "transitioned_by": "username", "transition_reason": "Starting work"}
+
+    Validates transition against workflow rules.
+    Raises 400 if transition is invalid for the task's item_type.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    workflow_validator = WorkflowValidator(db)
+
+    try:
+        workflow_validator.validate_and_transition(
+            task=task,
+            to_status=transition_data.to_status,
+            transitioned_by=transition_data.transitioned_by,
+            transition_reason=transition_data.transition_reason
+        )
+
+        # Get the created transition
+        latest_transition = db.query(StatusTransition).filter(
+            StatusTransition.task_id == task_id
+        ).order_by(StatusTransition.created_at.desc()).first()
+
+        return latest_transition
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{task_id}/transitions", response_model=List[StatusTransitionResponse])
+async def get_task_transitions(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get status transition history for a task.
+
+    GET /api/v1/tasks/{task_id}/transitions
+
+    Returns all status transitions ordered by created_at (oldest first).
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    transitions = db.query(StatusTransition).filter(
+        StatusTransition.task_id == task_id
+    ).order_by(StatusTransition.created_at).all()
+
+    return transitions
+
+
+@router.get("/{task_id}/valid-transitions", response_model=List[str])
+async def get_valid_transitions(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get list of valid next statuses for a task.
+
+    GET /api/v1/tasks/{task_id}/valid-transitions
+
+    Returns array of status strings that are valid from current state.
+    Useful for UI to show available status buttons.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    workflow_validator = WorkflowValidator(db)
+    current_status = task.workflow_state or "backlog"
+
+    valid_statuses = workflow_validator.get_valid_next_statuses(
+        item_type=task.item_type or ItemType.TASK,
+        current_status=current_status
+    )
+
+    return valid_statuses
+
+
+# ============================================================================
+# JIRA TRANSFORMATION - BACKLOG VIEW ENDPOINTS
+# ============================================================================
+
+@router.get("/projects/{project_id}/backlog")
+async def get_project_backlog(
+    project_id: UUID,
+    item_type: Optional[List[ItemType]] = Query(None, description="Filter by item types"),
+    priority: Optional[List[PriorityLevel]] = Query(None, description="Filter by priorities"),
+    assignee: Optional[str] = Query(None, description="Filter by assignee"),
+    labels: Optional[List[str]] = Query(None, description="Filter by labels (match ANY)"),
+    status: Optional[List[TaskStatus]] = Query(None, description="Filter by statuses"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get hierarchical backlog for a project with filters.
+
+    GET /api/v1/tasks/projects/{project_id}/backlog?item_type=epic&item_type=story&priority=high
+
+    Filters:
+    - item_type: List of ItemType values
+    - priority: List of PriorityLevel values
+    - assignee: Username string
+    - labels: List of label strings (match ANY)
+    - status: List of TaskStatus values
+
+    Returns hierarchical tree structure: Epic → Story → Task → Subtask
+    """
+    backlog_service = BacklogViewService(db)
+
+    filters = {}
+    if item_type:
+        filters["item_type"] = item_type
+    if priority:
+        filters["priority"] = priority
+    if assignee:
+        filters["assignee"] = assignee
+    if labels:
+        filters["labels"] = labels
+    if status:
+        filters["status"] = status
+
+    backlog = backlog_service.get_project_backlog(project_id, filters)
+
+    return backlog
