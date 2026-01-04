@@ -520,11 +520,8 @@ async def discover_patterns(
         # TODO: Track which AI model was actually used
         ai_model = "anthropic/claude-sonnet-4"
 
-        # Count total files analyzed
-        total_files = sum(len(group.file_paths) for group in discovery_service._build_file_inventory(project_path).values() if hasattr(group, 'file_paths'))
-
         # For now, use a placeholder for total files
-        # This will be improved in Week 2
+        # This will be improved in Week 2 to track actual files analyzed
         total_files_count = len(discovered_patterns) * 3 if discovered_patterns else 0
 
         return PatternDiscoveryResponse(
