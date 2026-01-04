@@ -13,6 +13,7 @@ from uuid import UUID
 from app.models.ai_model import AIModel, AIModelUsageType
 from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
 from app.models.prompt import Prompt  # PROMPT #58 - Prompt Audit Logging
+from app.models.task import Task, ItemType, PriorityLevel  # JIRA Transformation - Multi-dimensional model selection
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +191,115 @@ class AIOrchestrator:
             "google": "gemini-1.5-flash"
         }
         return defaults.get(provider, "claude-sonnet-4-20250514")
+
+    def choose_model_for_task(self, task: Task) -> Dict[str, any]:
+        """
+        Multi-dimensional model selection for task execution
+        JIRA Transformation - Phase 2
+
+        Strategy:
+        1. If task has explicit target_ai_model_id, use that (override)
+        2. Otherwise, calculate complexity score from:
+           - Priority: critical=5, high=4, medium=3, low=2, trivial=1
+           - Item Type: Epic=5, Story=4, Task=3, Subtask=2, Bug=2
+           - Story Points: 1-21 → 0-5 scale (Fibonacci normalized)
+        3. Total score: 0-15
+           - 0-5: Haiku (fast, cheap)
+           - 6-10: Sonnet (balanced)
+           - 11+: Opus (powerful, expensive)
+
+        Args:
+            task: Task object with priority, item_type, story_points
+
+        Returns:
+            Dict with provider, model, max_tokens, temperature, db_model_id, db_model_name
+
+        Example:
+            config = orchestrator.choose_model_for_task(task)
+            # Returns: {"provider": "anthropic", "model": "claude-sonnet-4", ...}
+        """
+        # 1. Check for explicit override
+        if task.target_ai_model_id:
+            logger.info(f"🎯 Using explicit model override: {task.target_ai_model_id}")
+            db_model = self.db.query(AIModel).filter(
+                AIModel.id == task.target_ai_model_id,
+                AIModel.is_active == True
+            ).first()
+
+            if db_model:
+                provider = db_model.provider.lower()
+                if provider in self.clients:
+                    return {
+                        "provider": provider,
+                        "model": db_model.config.get("model", self._get_default_model(provider)),
+                        "max_tokens": db_model.config.get("max_tokens", 4096),
+                        "temperature": db_model.config.get("temperature", 0.7),
+                        "db_model_id": str(db_model.id),
+                        "db_model_name": db_model.name
+                    }
+                else:
+                    logger.warning(f"⚠️  Explicit model {db_model.name} not initialized, falling back to scoring")
+            else:
+                logger.warning(f"⚠️  Explicit model {task.target_ai_model_id} not found, falling back to scoring")
+
+        # 2. Calculate complexity score
+        score = 0
+
+        # Priority score (0-5)
+        priority_scores = {
+            PriorityLevel.CRITICAL: 5,
+            PriorityLevel.HIGH: 4,
+            PriorityLevel.MEDIUM: 3,
+            PriorityLevel.LOW: 2,
+            PriorityLevel.TRIVIAL: 1
+        }
+        score += priority_scores.get(task.priority, 3)  # Default to medium
+
+        # Item type complexity (0-5)
+        item_type_scores = {
+            ItemType.EPIC: 5,
+            ItemType.STORY: 4,
+            ItemType.TASK: 3,
+            ItemType.SUBTASK: 2,
+            ItemType.BUG: 2
+        }
+        score += item_type_scores.get(task.item_type, 3)  # Default to task
+
+        # Story points normalized to 0-5 scale
+        if task.story_points:
+            # Fibonacci: 1,2,3,5,8,13,21 → map to 0-5
+            story_point_scores = {
+                1: 1, 2: 1, 3: 2, 5: 3, 8: 4, 13: 5, 21: 5
+            }
+            # Find closest Fibonacci number
+            closest = min(story_point_scores.keys(), key=lambda x: abs(x - task.story_points))
+            score += story_point_scores[closest]
+        else:
+            score += 2  # Default to medium if no story points
+
+        logger.info(
+            f"📊 Task complexity score: {score}/15 "
+            f"(priority={task.priority.value if task.priority else 'medium'}, "
+            f"type={task.item_type.value}, "
+            f"points={task.story_points or 'none'})"
+        )
+
+        # 3. Select model based on score
+        if score <= 5:
+            # Low complexity: Haiku (fast, cheap)
+            target_usage = "general"  # Typically uses cheaper models
+            logger.info(f"🚀 Low complexity ({score}) → Using Haiku-tier model")
+        elif score <= 10:
+            # Medium complexity: Sonnet (balanced)
+            target_usage = "task_execution"  # Balanced model
+            logger.info(f"⚖️  Medium complexity ({score}) → Using Sonnet-tier model")
+        else:
+            # High complexity: Opus (powerful)
+            target_usage = "prompt_generation"  # Typically uses most powerful models
+            logger.info(f"🎯 High complexity ({score}) → Using Opus-tier model")
+
+        # 4. Get model config from database using usage_type
+        return self.choose_model(target_usage)
 
     async def execute(
         self,
