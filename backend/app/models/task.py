@@ -1,11 +1,12 @@
 """
 Task Model
-Represents a task in the Kanban board
+Represents a task/item in the backlog (Epic, Story, Task, Subtask, Bug)
+Extended for JIRA-like functionality with hierarchy, relationships, and AI orchestration
 """
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, Enum as SQLEnum, JSON
+from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, Enum as SQLEnum, JSON, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
@@ -20,6 +21,42 @@ class TaskStatus(str, enum.Enum):
     IN_PROGRESS = "in_progress"
     REVIEW = "review"
     DONE = "done"
+
+
+class ItemType(str, enum.Enum):
+    """Item type enum - JIRA-like hierarchy"""
+    EPIC = "epic"
+    STORY = "story"
+    TASK = "task"
+    SUBTASK = "subtask"
+    BUG = "bug"
+
+
+class PriorityLevel(str, enum.Enum):
+    """Priority level enum"""
+    CRITICAL = "critical"
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+    TRIVIAL = "trivial"
+
+
+class SeverityLevel(str, enum.Enum):
+    """Severity level enum (for bugs)"""
+    BLOCKER = "blocker"
+    CRITICAL = "critical"
+    MAJOR = "major"
+    MINOR = "minor"
+    TRIVIAL = "trivial"
+
+
+class ResolutionType(str, enum.Enum):
+    """Resolution type enum"""
+    FIXED = "fixed"
+    WONT_FIX = "wont_fix"
+    DUPLICATE = "duplicate"
+    WORKS_AS_DESIGNED = "works_as_designed"
+    CANNOT_REPRODUCE = "cannot_reproduce"
 
 
 class Task(Base):
@@ -95,9 +132,126 @@ class Task(Base):
         nullable=False
     )
 
+    # ===== JIRA TRANSFORMATION FIELDS =====
+
+    # Classification & Hierarchy
+    item_type = Column(
+        SQLEnum(ItemType, name="item_type", values_callable=lambda x: [e.value for e in x]),
+        default=ItemType.TASK,
+        nullable=False,
+        index=True
+    )
+    parent_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
+    # Priority & Planning
+    priority = Column(
+        SQLEnum(PriorityLevel, name="priority_level", values_callable=lambda x: [e.value for e in x]),
+        default=PriorityLevel.MEDIUM,
+        nullable=False,
+        index=True
+    )
+    severity = Column(
+        SQLEnum(SeverityLevel, name="severity_level", values_callable=lambda x: [e.value for e in x]),
+        nullable=True  # Only for bugs
+    )
+    story_points = Column(Integer, nullable=True)  # Fibonacci: 1, 2, 3, 5, 8, 13, 21
+    sprint_id = Column(UUID(as_uuid=True), nullable=True)  # Future feature
+
+    # Ownership (strings for now, FK to users later)
+    reporter = Column(String(100), nullable=True, default="system")
+    assignee = Column(String(100), nullable=True)
+
+    # Categorization (JSON arrays)
+    labels = Column(JSON, nullable=True, default=list)  # ["frontend", "urgent", "api"]
+    components = Column(JSON, nullable=True, default=list)  # ["Authentication", "API"]
+
+    # Workflow
+    workflow_state = Column(String(50), default="open", nullable=False)  # open/in_progress/resolved/closed
+    resolution = Column(
+        SQLEnum(ResolutionType, name="resolution_type", values_callable=lambda x: [e.value for e in x]),
+        nullable=True
+    )
+    resolution_comment = Column(Text, nullable=True)
+    status_history = Column(JSON, nullable=True, default=list)  # [{from, to, at, by}]
+
+    # AI Orchestration
+    prompt_template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("prompt_templates.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    target_ai_model_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("ai_models.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    generation_context = Column(JSON, nullable=True, default=dict)
+    acceptance_criteria = Column(JSON, nullable=True, default=list)  # [{text, completed}]
+    token_budget = Column(Integer, nullable=True)
+    actual_tokens_used = Column(Integer, nullable=True)
+
+    # Interview Traceability
+    interview_question_ids = Column(JSON, nullable=True, default=list)  # ["q1", "q5", "q7"]
+    interview_insights = Column(JSON, nullable=True, default=dict)
+
+    # ===== END JIRA TRANSFORMATION FIELDS =====
+
     # Relationships
     prompt = relationship("Prompt", back_populates="tasks")
     project = relationship("Project", back_populates="tasks")
+
+    # JIRA Transformation: Hierarchy
+    parent = relationship(
+        "Task",
+        remote_side=[id],
+        back_populates="children",
+        uselist=False
+    )
+    children = relationship(
+        "Task",
+        back_populates="parent",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
+    # JIRA Transformation: Relationships
+    relationships_as_source = relationship(
+        "TaskRelationship",
+        foreign_keys="TaskRelationship.source_task_id",
+        back_populates="source_task",
+        cascade="all, delete-orphan"
+    )
+    relationships_as_target = relationship(
+        "TaskRelationship",
+        foreign_keys="TaskRelationship.target_task_id",
+        back_populates="target_task",
+        cascade="all, delete-orphan"
+    )
+
+    # JIRA Transformation: Structured Comments
+    task_comments = relationship(
+        "TaskComment",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="TaskComment.created_at.desc()"
+    )
+
+    # JIRA Transformation: Status Transitions
+    transitions = relationship(
+        "StatusTransition",
+        back_populates="task",
+        cascade="all, delete-orphan",
+        order_by="StatusTransition.created_at.desc()"
+    )
+
+    # JIRA Transformation: AI Model & Template
+    prompt_template = relationship("PromptTemplate", back_populates="tasks")
+    target_ai_model = relationship("AIModel", foreign_keys=[target_ai_model_id])
 
     chat_sessions = relationship(
         "ChatSession",
@@ -118,6 +272,13 @@ class Task(Base):
         back_populates="task",
         uselist=False,
         cascade="all, delete-orphan"
+    )
+
+    # Composite indexes for performance (JIRA Transformation)
+    __table_args__ = (
+        Index('ix_tasks_item_type_project', 'item_type', 'project_id'),
+        Index('ix_tasks_parent_project', 'parent_id', 'project_id'),
+        Index('ix_tasks_priority_status', 'priority', 'status'),
     )
 
     def to_dict(self) -> dict:
