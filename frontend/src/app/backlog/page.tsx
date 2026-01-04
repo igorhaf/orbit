@@ -9,7 +9,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Button } from '@/components/ui';
-import { BacklogListView, BacklogFilters, BulkActionBar, ItemDetailPanel } from '@/components/backlog';
+import { BacklogListView, BacklogFilters, BulkActionBar, ItemDetailPanel, GenerationWizard } from '@/components/backlog';
 import { projectsApi, tasksApi } from '@/lib/api';
 import { BacklogFilters as IBacklogFilters, BacklogItem, Project, PriorityLevel, TaskStatus } from '@/lib/types';
 
@@ -20,6 +20,7 @@ export default function BacklogPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [filters, setFilters] = useState<IBacklogFilters>({});
   const [showFilters, setShowFilters] = useState(true);
+  const [showWizard, setShowWizard] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -193,17 +194,17 @@ export default function BacklogPage() {
               {showFilters ? 'Hide Filters' : 'Show Filters'}
             </Button>
 
-            {/* Create Item Button */}
+            {/* Generate with AI Button */}
             <Button
               variant="primary"
-              onClick={() => {/* TODO: Open create dialog */}}
+              onClick={() => setShowWizard(true)}
               leftIcon={
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               }
             >
-              New Item
+              Generate with AI
             </Button>
           </div>
         </div>
@@ -258,6 +259,19 @@ export default function BacklogPage() {
             onClose={() => setSelectedItem(null)}
             onUpdate={() => {
               // Refresh the backlog after updates
+              window.location.reload();
+            }}
+          />
+        )}
+
+        {/* Generation Wizard */}
+        {showWizard && (
+          <GenerationWizard
+            projectId={selectedProjectId}
+            onClose={() => setShowWizard(false)}
+            onComplete={() => {
+              setShowWizard(false);
+              // Refresh the backlog
               window.location.reload();
             }}
           />
