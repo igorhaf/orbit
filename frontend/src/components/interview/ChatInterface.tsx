@@ -31,6 +31,11 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Debug: Log selectedOptions changes
+  useEffect(() => {
+    console.log('🔍 ChatInterface - selectedOptions changed:', selectedOptions);
+  }, [selectedOptions]);
+
   // PROMPT #57 - Track pre-filled values for title/description questions
   const [prefilledValue, setPrefilledValue] = useState<string | null>(null);
   const [isProjectInfoQuestion, setIsProjectInfoQuestion] = useState(false);
@@ -655,17 +660,39 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       {/* Input Area */}
       <div className="border-t p-4 bg-gray-50 rounded-b-lg">
         {isActive ? (
-          <div className="flex gap-2">
-            <textarea
-              ref={textareaRef}
-              value={message}
-              onChange={(e) => setMessage(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Type your response... (Shift+Enter for new line, Enter to send)"
-              disabled={sending}
-              className="flex-1 border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 bg-white min-h-[44px] max-h-[200px] overflow-y-auto"
-              rows={1}
-            />
+          <div className="flex flex-col gap-2">
+            {/* Show selected options indicator */}
+            {selectedOptions.length > 0 && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <span className="text-sm text-blue-800 font-medium">
+                  {selectedOptions.length} option{selectedOptions.length > 1 ? 's' : ''} selected
+                </span>
+                <button
+                  onClick={() => setSelectedOptions([])}
+                  className="ml-auto text-blue-600 hover:text-blue-800"
+                  title="Clear selection"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <textarea
+                ref={textareaRef}
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={selectedOptions.length > 0 ? "Or type a custom response..." : "Type your response... (Shift+Enter for new line, Enter to send)"}
+                disabled={sending}
+                className="flex-1 border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 bg-white min-h-[44px] max-h-[200px] overflow-y-auto"
+                rows={1}
+              />
             <Button
               onClick={() => handleSend()}
               disabled={(!message.trim() && selectedOptions.length === 0) || sending}
@@ -676,6 +703,13 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   Sending...
+                </>
+              ) : selectedOptions.length > 0 ? (
+                <>
+                  <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Send Selected ({selectedOptions.length})
                 </>
               ) : (
                 <>
