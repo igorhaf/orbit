@@ -150,6 +150,8 @@ export default function ProjectDetailsPage() {
       });
 
       setIsEditingDescription(false);
+      // Reset editedDescription to allow auto-formatting to run again
+      setEditedDescription('');
       await loadProjectData();
     } catch (error) {
       console.error('Error saving description:', error);
