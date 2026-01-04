@@ -351,44 +351,60 @@ export default function ProjectDetailsPage() {
         )}
 
         {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Statistics */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Statistics</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm text-gray-500">Total Tasks</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {tasks.length}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Completed</p>
-                  <p className="text-2xl font-bold text-green-600">
-                    {tasksByStatus.done.length}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">In Progress</p>
-                  <p className="text-2xl font-bold text-blue-600">
-                    {tasksByStatus.in_progress.length}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Pending</p>
-                  <p className="text-2xl font-bold text-gray-600">
-                    {tasksByStatus.todo.length + tasksByStatus.backlog.length}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Right Column */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Progress */}
+          <div className="space-y-6">
+            {/* Project Description - Full Width */}
+            {project.description && (
               <Card>
+                <CardHeader>
+                  <CardTitle>Project Description</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="prose prose-sm max-w-none">
+                    <ReactMarkdown>
+                      {project.description}
+                    </ReactMarkdown>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Statistics and Progress */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              {/* Statistics */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Statistics</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <p className="text-sm text-gray-500">Total Tasks</p>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {tasks.length}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Completed</p>
+                    <p className="text-2xl font-bold text-green-600">
+                      {tasksByStatus.done.length}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">In Progress</p>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {tasksByStatus.in_progress.length}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Pending</p>
+                    <p className="text-2xl font-bold text-gray-600">
+                      {tasksByStatus.todo.length + tasksByStatus.backlog.length}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Progress */}
+              <Card className="lg:col-span-2">
                 <CardHeader>
                   <CardTitle>Progress by Status</CardTitle>
                 </CardHeader>
@@ -427,22 +443,6 @@ export default function ProjectDetailsPage() {
                   })}
                 </CardContent>
               </Card>
-
-              {/* Project Description */}
-              {project.description && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Project Description</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="prose prose-sm max-w-none">
-                      <ReactMarkdown>
-                        {project.description}
-                      </ReactMarkdown>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
             </div>
           </div>
         )}
