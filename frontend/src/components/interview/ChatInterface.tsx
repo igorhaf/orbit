@@ -44,6 +44,9 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   // PROMPT #61 - Track provisioning status for UI feedback
   const [provisioningStatus, setProvisioningStatus] = useState<any>(null);
 
+  // PROMPT #51 - Track AI errors (credits, authentication, etc.)
+  const [aiError, setAiError] = useState<{ type: string; message: string; provider?: string } | null>(null);
+
   useEffect(() => {
     loadInterview();
   }, [interviewId]);
@@ -236,8 +239,40 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
     } catch (error: any) {
       console.error('Failed to send message:', error);
-      const errorMessage = error.response?.data?.detail || 'Failed to send message';
-      alert(`Error: ${errorMessage}`);
+      const errorDetail = error.response?.data?.detail || error.message || 'Failed to send message';
+
+      // Detect AI-specific errors (credits, authentication, etc.)
+      const errorLower = errorDetail.toLowerCase();
+
+      if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota')) {
+        setAiError({
+          type: 'credits',
+          message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
+          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
+                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
+                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
+        });
+      } else if (errorLower.includes('authentication') || errorLower.includes('api key') || errorLower.includes('invalid x-api-key') || errorLower.includes('unauthorized')) {
+        setAiError({
+          type: 'auth',
+          message: 'API key inválida ou expirada. Por favor, configure uma API key válida nas configurações.',
+          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
+                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
+                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
+        });
+      } else if (errorLower.includes('rate limit')) {
+        setAiError({
+          type: 'rate_limit',
+          message: 'Limite de requisições excedido. Por favor, aguarde alguns minutos antes de tentar novamente.',
+          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
+                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
+                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
+        });
+      } else {
+        // Generic error - show alert
+        alert(`Error: ${errorDetail}`);
+      }
+
       setMessage(userMessage); // Restaurar mensagem em caso de erro
     } finally {
       setSending(false);
@@ -277,8 +312,39 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       await detectAndSaveStack(data);
     } catch (error: any) {
       console.error('Failed to send message:', error);
-      const errorMessage = error.response?.data?.detail || 'Failed to send message';
-      alert(`Error: ${errorMessage}`);
+      const errorDetail = error.response?.data?.detail || error.message || 'Failed to send message';
+
+      // Detect AI-specific errors (credits, authentication, etc.)
+      const errorLower = errorDetail.toLowerCase();
+
+      if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota')) {
+        setAiError({
+          type: 'credits',
+          message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
+          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
+                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
+                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
+        });
+      } else if (errorLower.includes('authentication') || errorLower.includes('api key') || errorLower.includes('invalid x-api-key') || errorLower.includes('unauthorized')) {
+        setAiError({
+          type: 'auth',
+          message: 'API key inválida ou expirada. Por favor, configure uma API key válida nas configurações.',
+          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
+                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
+                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
+        });
+      } else if (errorLower.includes('rate limit')) {
+        setAiError({
+          type: 'rate_limit',
+          message: 'Limite de requisições excedido. Por favor, aguarde alguns minutos antes de tentar novamente.',
+          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
+                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
+                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
+        });
+      } else {
+        // Generic error - show alert
+        alert(`Error: ${errorDetail}`);
+      }
     } finally {
       setSending(false);
       textareaRef.current?.focus();
@@ -583,6 +649,70 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
           )}
         </div>
       </div>
+
+      {/* AI Error Banner */}
+      {aiError && (
+        <div className={`mx-4 mt-4 p-4 rounded-lg border-2 ${
+          aiError.type === 'credits' ? 'bg-red-50 border-red-300' :
+          aiError.type === 'auth' ? 'bg-yellow-50 border-yellow-300' :
+          'bg-orange-50 border-orange-300'
+        }`}>
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0">
+              {aiError.type === 'credits' ? (
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : aiError.type === 'auth' ? (
+                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+              ) : (
+                <svg className="w-6 h-6 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              )}
+            </div>
+            <div className="flex-1">
+              <h3 className={`font-semibold mb-1 ${
+                aiError.type === 'credits' ? 'text-red-900' :
+                aiError.type === 'auth' ? 'text-yellow-900' :
+                'text-orange-900'
+              }`}>
+                {aiError.type === 'credits' ? '💳 Créditos Esgotados' :
+                 aiError.type === 'auth' ? '🔒 Erro de Autenticação' :
+                 '⚠️ Limite de Requisições'}
+                {aiError.provider && ` - ${aiError.provider}`}
+              </h3>
+              <p className={`text-sm ${
+                aiError.type === 'credits' ? 'text-red-800' :
+                aiError.type === 'auth' ? 'text-yellow-800' :
+                'text-orange-800'
+              }`}>
+                {aiError.message}
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => router.push('/ai-models')}
+                  className={`text-sm px-3 py-1 rounded font-medium ${
+                    aiError.type === 'credits' ? 'bg-red-600 hover:bg-red-700 text-white' :
+                    aiError.type === 'auth' ? 'bg-yellow-600 hover:bg-yellow-700 text-white' :
+                    'bg-orange-600 hover:bg-orange-700 text-white'
+                  }`}
+                >
+                  Configurar API Keys
+                </button>
+                <button
+                  onClick={() => setAiError(null)}
+                  className="text-sm px-3 py-1 rounded font-medium bg-gray-200 hover:bg-gray-300 text-gray-700"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-50 to-white">
