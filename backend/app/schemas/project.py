@@ -24,6 +24,9 @@ class ProjectBase(BaseModel):
     # Project folder path
     project_folder: Optional[str] = Field(None, description="Sanitized project folder name")
 
+    # Pattern Discovery (PROMPT #62 - Week 1)
+    code_path: Optional[str] = Field(None, description="Path to project code in Docker container (required for pattern discovery)")
+
 
 class ProjectCreate(ProjectBase):
     """Schema for creating a new Project"""
@@ -41,6 +44,9 @@ class ProjectUpdate(BaseModel):
     stack_database: Optional[str] = None
     stack_frontend: Optional[str] = None
     stack_css: Optional[str] = None
+
+    # Pattern Discovery (PROMPT #62 - Week 1)
+    code_path: Optional[str] = None
 
 
 class ProjectResponse(ProjectBase):

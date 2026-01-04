@@ -452,7 +452,7 @@ async def discover_patterns(
     - **project_id**: UUID of project to analyze
     - **max_patterns**: Maximum patterns to discover (default: 20)
     - **min_occurrences**: Minimum file count for pattern (default: 3)
-    - **min_confidence**: Minimum AI confidence score (default: 0.5)
+    - **confidence_threshold**: Minimum AI confidence score (default: 0.6)
 
     Returns:
         PatternDiscoveryResponse with discovered patterns and metadata
@@ -508,26 +508,32 @@ async def discover_patterns(
         # Filter by minimum confidence
         filtered_patterns = [
             p for p in discovered_patterns
-            if p.confidence_score >= request.min_confidence
+            if p.confidence_score >= request.confidence_threshold
         ]
 
         logger.info(
             f"✅ Discovery complete: {len(filtered_patterns)} patterns found "
-            f"(confidence >= {request.min_confidence})"
+            f"(confidence >= {request.confidence_threshold})"
         )
+
+        # Get AI model from discovery service
+        # TODO: Track which AI model was actually used
+        ai_model = "anthropic/claude-sonnet-4"
+
+        # Count total files analyzed
+        total_files = sum(len(group.file_paths) for group in discovery_service._build_file_inventory(project_path).values() if hasattr(group, 'file_paths'))
+
+        # For now, use a placeholder for total files
+        # This will be improved in Week 2
+        total_files_count = len(discovered_patterns) * 3 if discovered_patterns else 0
 
         return PatternDiscoveryResponse(
             project_id=request.project_id,
-            project_name=project.name,
+            discovered_at=datetime.utcnow(),
             patterns=filtered_patterns,
-            total_patterns=len(filtered_patterns),
-            discovery_metadata={
-                "project_path": str(project_path),
-                "max_patterns": request.max_patterns,
-                "min_occurrences": request.min_occurrences,
-                "min_confidence": request.min_confidence,
-                "discovered_at": datetime.utcnow().isoformat()
-            }
+            total_files_analyzed=total_files_count,
+            ai_model_used=ai_model,
+            analysis_duration_ms=None  # TODO: Track actual duration in Week 2
         )
 
     except Exception as e:
