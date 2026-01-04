@@ -1,12 +1,15 @@
 from typing import Dict, List, Optional, Any
+from uuid import uuid4
 from sqlalchemy.orm import Session
 from app.models.task import Task
 from app.models.task_result import TaskResult
 from app.models.project import Project
 from app.models.spec import Spec
 from app.models.prompt import Prompt  # PROMPT #58 - Audit logging
+from app.models.task_comment import TaskComment, CommentType  # JIRA Transformation - Token budget warnings
 from app.orchestrators.registry import OrchestratorRegistry
 from app.services.ai_orchestrator import AIOrchestrator
+from app.services.task_hierarchy import TaskHierarchyService  # JIRA Transformation - Parent context
 from app.api.websocket import broadcast_event
 from app.services.consistency_validator import ConsistencyValidator
 from app.services.spec_loader import get_spec_loader
@@ -850,6 +853,272 @@ class TaskExecutor:
             logger.info("No specs found for task, using orchestrator context only")
 
         return context
+
+    def _build_jira_task_context(
+        self,
+        task: Task,
+        project: Project
+    ) -> str:
+        """
+        Build enhanced context with JIRA hierarchy, interview insights, and acceptance criteria
+        JIRA Transformation - Phase 2
+
+        Extends _build_context() with:
+        - Parent hierarchy context (Epic → Story → Task)
+        - Interview insights traceability
+        - Acceptance criteria
+        - Generation context from AI decomposition
+
+        Args:
+            task: Task object with JIRA fields
+            project: Project object
+
+        Returns:
+            Enhanced context string for AI execution
+        """
+        context_parts = []
+
+        # 1. Hierarchy Context (Epic → Story → Task)
+        if task.parent_id:
+            hierarchy_service = TaskHierarchyService(self.db)
+            hierarchy_path = hierarchy_service.get_hierarchy_path(task.id)
+
+            if len(hierarchy_path) > 1:  # Has parents
+                context_parts.append("=" * 80)
+                context_parts.append("HIERARCHY CONTEXT")
+                context_parts.append("=" * 80)
+                context_parts.append("")
+
+                # Show path: Epic → Story → Task
+                path_display = " → ".join([
+                    f"{item.item_type.value.upper()}: {item.title}"
+                    for item in hierarchy_path
+                ])
+                context_parts.append(f"Path: {path_display}")
+                context_parts.append("")
+
+                # Include parent descriptions for context
+                for i, parent in enumerate(hierarchy_path[:-1]):  # Exclude current task
+                    context_parts.append(f"--- {parent.item_type.value.upper()}: {parent.title} ---")
+                    context_parts.append(parent.description or "No description")
+
+                    if parent.acceptance_criteria:
+                        context_parts.append(f"\nAcceptance Criteria:")
+                        for criterion in parent.acceptance_criteria:
+                            context_parts.append(f"  - {criterion}")
+
+                    context_parts.append("")
+
+                context_parts.append("This task is part of the above hierarchy. Ensure your implementation")
+                context_parts.append("aligns with the parent Epic/Story goals and acceptance criteria.")
+                context_parts.append("")
+
+        # 2. Interview Insights
+        if task.interview_insights and task.interview_insights:
+            context_parts.append("=" * 80)
+            context_parts.append("INTERVIEW INSIGHTS")
+            context_parts.append("=" * 80)
+            context_parts.append("")
+
+            for key, value in task.interview_insights.items():
+                context_parts.append(f"{key.replace('_', ' ').title()}:")
+                if isinstance(value, list):
+                    for item in value:
+                        context_parts.append(f"  - {item}")
+                else:
+                    context_parts.append(f"  {value}")
+                context_parts.append("")
+
+            context_parts.append("These insights were extracted from stakeholder interviews.")
+            context_parts.append("Your implementation should address these requirements.")
+            context_parts.append("")
+
+        # 3. Acceptance Criteria
+        if task.acceptance_criteria:
+            context_parts.append("=" * 80)
+            context_parts.append("ACCEPTANCE CRITERIA (MUST SATISFY ALL)")
+            context_parts.append("=" * 80)
+            context_parts.append("")
+
+            for i, criterion in enumerate(task.acceptance_criteria, 1):
+                context_parts.append(f"{i}. {criterion}")
+
+            context_parts.append("")
+            context_parts.append("Your code MUST satisfy ALL acceptance criteria above.")
+            context_parts.append("")
+
+        # 4. Generation Context (from AI decomposition)
+        if task.generation_context:
+            context_parts.append("=" * 80)
+            context_parts.append("AI GENERATION CONTEXT")
+            context_parts.append("=" * 80)
+            context_parts.append("")
+
+            for key, value in task.generation_context.items():
+                context_parts.append(f"{key}: {value}")
+
+            context_parts.append("")
+
+        # 5. Priority and Complexity Signals
+        context_parts.append("=" * 80)
+        context_parts.append("TASK METADATA")
+        context_parts.append("=" * 80)
+        context_parts.append(f"Type: {task.item_type.value if task.item_type else 'task'}")
+        context_parts.append(f"Priority: {task.priority.value if task.priority else 'medium'}")
+        if task.story_points:
+            context_parts.append(f"Story Points: {task.story_points}")
+        if task.severity:
+            context_parts.append(f"Severity: {task.severity.value}")
+        context_parts.append("")
+
+        return "\n".join(context_parts)
+
+    async def execute_task_with_budget(
+        self,
+        task_id: str,
+        project_id: str,
+        max_attempts: int = 3
+    ) -> TaskResult:
+        """
+        Execute task with token budget tracking and warnings
+        JIRA Transformation - Phase 2
+
+        Features:
+        - Sets token_budget if not set (based on complexity/story_points)
+        - Monitors actual token usage
+        - Creates system comment if budget exceeded
+        - Updates actual_tokens_used field
+        - Uses multi-dimensional model selection
+
+        Args:
+            task_id: Task ID (UUID)
+            project_id: Project ID (UUID)
+            max_attempts: Maximum retry attempts
+
+        Returns:
+            TaskResult with budget tracking
+        """
+        # 1. Fetch task
+        task = self.db.query(Task).filter(Task.id == task_id).first()
+        if not task:
+            raise ValueError(f"Task {task_id} not found")
+
+        # 2. Set token budget if not set
+        if not task.token_budget:
+            # Calculate budget based on story points and item type
+            budget = self._calculate_token_budget(task)
+            task.token_budget = budget
+            self.db.commit()
+            logger.info(f"💰 Set token budget for task {task_id}: {budget} tokens")
+        else:
+            logger.info(f"💰 Using existing token budget: {task.token_budget} tokens")
+
+        # 3. Execute task normally
+        result = await self.execute_task(task_id, project_id, max_attempts)
+
+        # 4. Update actual_tokens_used
+        total_tokens = result.input_tokens + result.output_tokens
+        task.actual_tokens_used = total_tokens
+        self.db.commit()
+
+        # 5. Check if budget exceeded
+        if total_tokens > task.token_budget:
+            overage = total_tokens - task.token_budget
+            overage_pct = (overage / task.token_budget) * 100
+
+            logger.warning(
+                f"⚠️  Token budget exceeded! "
+                f"Used: {total_tokens}, Budget: {task.token_budget}, "
+                f"Overage: {overage} ({overage_pct:.1f}%)"
+            )
+
+            # Create system comment
+            comment = TaskComment(
+                id=uuid4(),
+                task_id=task.id,
+                author="system",
+                content=(
+                    f"⚠️ Token Budget Exceeded\n\n"
+                    f"Budget: {task.token_budget:,} tokens\n"
+                    f"Used: {total_tokens:,} tokens\n"
+                    f"Overage: {overage:,} tokens ({overage_pct:.1f}%)\n\n"
+                    f"Consider:\n"
+                    f"- Simplifying task description\n"
+                    f"- Breaking into smaller subtasks\n"
+                    f"- Increasing token budget if complexity is justified"
+                ),
+                comment_type=CommentType.SYSTEM,
+                metadata={
+                    "budget": task.token_budget,
+                    "actual": total_tokens,
+                    "overage": overage,
+                    "overage_percentage": round(overage_pct, 2)
+                },
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+
+            self.db.add(comment)
+            self.db.commit()
+
+            logger.info(f"📝 Created system comment about token budget overage")
+
+        else:
+            under_budget = task.token_budget - total_tokens
+            logger.info(
+                f"✅ Within budget! "
+                f"Used: {total_tokens}/{task.token_budget} "
+                f"({under_budget} tokens remaining)"
+            )
+
+        return result
+
+    def _calculate_token_budget(self, task: Task) -> int:
+        """
+        Calculate token budget based on task complexity
+        JIRA Transformation - Phase 2
+
+        Budget calculation:
+        - Story Points: 1-3=2000, 5=3000, 8=4000, 13=5000, 21=6000
+        - Item Type: Subtask=1500, Task=2500, Story=4000, Epic=6000, Bug=2000
+        - Uses whichever is higher
+
+        Args:
+            task: Task object
+
+        Returns:
+            Token budget (int)
+        """
+        budget = 2500  # Default base budget
+
+        # Budget from story points
+        if task.story_points:
+            story_point_budgets = {
+                1: 2000, 2: 2000, 3: 2500,
+                5: 3000, 8: 4000, 13: 5000, 21: 6000
+            }
+            # Find closest Fibonacci
+            closest = min(story_point_budgets.keys(), key=lambda x: abs(x - task.story_points))
+            budget = max(budget, story_point_budgets[closest])
+
+        # Budget from item type
+        if task.item_type:
+            from app.models.task import ItemType
+            type_budgets = {
+                ItemType.SUBTASK: 1500,
+                ItemType.TASK: 2500,
+                ItemType.BUG: 2000,
+                ItemType.STORY: 4000,
+                ItemType.EPIC: 6000
+            }
+            budget = max(budget, type_budgets.get(task.item_type, 2500))
+
+        logger.info(
+            f"💰 Calculated budget: {budget} tokens "
+            f"(story_points={task.story_points}, type={task.item_type.value if task.item_type else 'task'})"
+        )
+
+        return budget
 
     def _calculate_cost(
         self,
