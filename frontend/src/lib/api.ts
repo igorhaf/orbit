@@ -159,6 +159,127 @@ export const tasksApi = {
 
   kanban: (projectId: string) =>
     request<any>(`/api/v1/tasks/kanban/${projectId}`),
+
+  // JIRA Transformation - Hierarchy (PROMPT #62)
+  getChildren: (taskId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/children`),
+
+  getDescendants: (taskId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/descendants`),
+
+  getAncestors: (taskId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/ancestors`),
+
+  moveInHierarchy: (taskId: string, data: { new_parent_id?: string | null; validate_rules?: boolean }) =>
+    request<any>(`/api/v1/tasks/${taskId}/move-hierarchy`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  validateChild: (taskId: string, childType: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/validate-child?child_type=${childType}`),
+
+  // JIRA Transformation - Relationships (PROMPT #62)
+  createRelationship: (taskId: string, data: any) =>
+    request<any>(`/api/v1/tasks/${taskId}/relationships`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getRelationships: (taskId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/relationships`),
+
+  deleteRelationship: (relationshipId: string) =>
+    request<any>(`/api/v1/relationships/${relationshipId}`, { method: 'DELETE' }),
+
+  // JIRA Transformation - Comments (PROMPT #62)
+  createComment: (taskId: string, data: any) =>
+    request<any>(`/api/v1/tasks/${taskId}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getComments: (taskId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/comments`),
+
+  updateComment: (commentId: string, data: any) =>
+    request<any>(`/api/v1/comments/${commentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+
+  deleteComment: (commentId: string) =>
+    request<any>(`/api/v1/comments/${commentId}`, { method: 'DELETE' }),
+
+  // JIRA Transformation - Status Transitions (PROMPT #62)
+  transitionStatus: (taskId: string, data: any) =>
+    request<any>(`/api/v1/tasks/${taskId}/transition`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  getTransitions: (taskId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/transitions`),
+
+  getValidTransitions: (taskId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/valid-transitions`),
+
+  // JIRA Transformation - Backlog View (PROMPT #62)
+  getBacklog: (projectId: string, filters?: any) => {
+    const queryParams = new URLSearchParams();
+    if (filters?.item_type) {
+      filters.item_type.forEach((type: string) => queryParams.append('item_type', type));
+    }
+    if (filters?.priority) {
+      filters.priority.forEach((priority: string) => queryParams.append('priority', priority));
+    }
+    if (filters?.assignee) queryParams.append('assignee', filters.assignee);
+    if (filters?.labels) {
+      filters.labels.forEach((label: string) => queryParams.append('labels', label));
+    }
+    if (filters?.status) {
+      filters.status.forEach((status: string) => queryParams.append('status', status));
+    }
+
+    const queryString = queryParams.toString();
+    return request<any>(`/api/v1/tasks/projects/${projectId}/backlog${queryString ? '?' + queryString : ''}`);
+  },
+};
+
+// Backlog Generation API (JIRA Transformation - PROMPT #62)
+export const backlogGenerationApi = {
+  generateEpic: (interviewId: string, projectId: string) =>
+    request<any>(`/api/v1/backlog/interview/${interviewId}/generate-epic?project_id=${projectId}`, {
+      method: 'POST',
+    }),
+
+  generateStories: (epicId: string, projectId: string) =>
+    request<any>(`/api/v1/backlog/epic/${epicId}/generate-stories?project_id=${projectId}`, {
+      method: 'POST',
+    }),
+
+  generateTasks: (storyId: string, projectId: string) =>
+    request<any>(`/api/v1/backlog/story/${storyId}/generate-tasks?project_id=${projectId}`, {
+      method: 'POST',
+    }),
+
+  approveEpic: (suggestion: any, projectId: string, interviewId: string) =>
+    request<any>(`/api/v1/backlog/approve-epic?project_id=${projectId}&interview_id=${interviewId}`, {
+      method: 'POST',
+      body: JSON.stringify(suggestion),
+    }),
+
+  approveStories: (suggestions: any[], projectId: string) =>
+    request<any>(`/api/v1/backlog/approve-stories?project_id=${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify(suggestions),
+    }),
+
+  approveTasks: (suggestions: any[], projectId: string) =>
+    request<any>(`/api/v1/backlog/approve-tasks?project_id=${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify(suggestions),
+    }),
 };
 
 // Interviews API
