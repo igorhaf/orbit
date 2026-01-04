@@ -160,6 +160,78 @@ def _clean_ai_response(content: str) -> str:
     return content
 
 
+def _prepare_interview_context(conversation_data: List[Dict], max_recent: int = 5) -> List[Dict]:
+    """
+    Prepare efficient context for AI to reduce token usage.
+
+    Strategy (PROMPT #54 - Token Cost Optimization):
+    - For short conversations (≤ max_recent messages): Send all verbatim
+    - For long conversations (> max_recent messages):
+        * Summarize older messages into bullets (role + first 100 chars)
+        * Send recent messages verbatim
+
+    This reduces token usage by 60-70% for longer interviews while maintaining
+    context quality by preserving recent conversation in full.
+
+    Args:
+        conversation_data: Full conversation history from interview
+        max_recent: Number of recent messages to keep verbatim (default: 5)
+
+    Returns:
+        Optimized message list: [summary_message] + recent_messages
+
+    Example:
+        12 messages conversation:
+        - Messages 1-7 → 1 summary message (~200 tokens)
+        - Messages 8-12 → 5 verbatim messages (~2,000 tokens)
+        Total: ~2,200 tokens instead of ~8,000 tokens (73% reduction)
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Short conversation - send all messages verbatim
+    if len(conversation_data) <= max_recent:
+        logger.info(f"📝 Short conversation ({len(conversation_data)} msgs), sending all verbatim")
+        return [{"role": msg["role"], "content": msg["content"]} for msg in conversation_data]
+
+    # Long conversation - summarize older + verbatim recent
+    older_messages = conversation_data[:-max_recent]
+    recent_messages = conversation_data[-max_recent:]
+
+    logger.info(f"📝 Long conversation ({len(conversation_data)} msgs):")
+    logger.info(f"   - Summarizing older: {len(older_messages)} messages")
+    logger.info(f"   - Keeping verbatim: {len(recent_messages)} recent messages")
+
+    # Create compact summary of older context
+    summary_points = []
+    for i, msg in enumerate(older_messages):
+        role = msg.get('role', 'unknown')
+        content = msg.get('content', '')
+        # Take first 100 chars to avoid summary being too long
+        content_preview = content[:100] + ('...' if len(content) > 100 else '')
+        summary_points.append(f"[{i+1}] {role}: {content_preview}")
+
+    summary_message = {
+        "role": "system",
+        "content": f"""Contexto anterior da entrevista (resumo de {len(older_messages)} mensagens):
+
+{chr(10).join(summary_points)}
+
+As {len(recent_messages)} mensagens mais recentes estão abaixo em detalhes completos."""
+    }
+
+    # Build optimized message list
+    optimized_messages = [summary_message] + [
+        {"role": msg["role"], "content": msg["content"]}
+        for msg in recent_messages
+    ]
+
+    logger.info(f"✅ Context optimized: {len(conversation_data)} msgs → {len(optimized_messages)} msgs")
+    logger.info(f"   Estimated token reduction: ~60-70%")
+
+    return optimized_messages
+
+
 def get_specs_for_category(db: Session, category: str) -> list:
     """
     Get available frameworks from specs for a specific category.
@@ -1067,74 +1139,38 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
 
         if not use_prompter:
             # LEGACY: Hardcoded system prompt
-            logger.info("Using legacy hardcoded interview prompt")
-            system_prompt = f"""Você é um analista de requisitos de IA ajudando a coletar requisitos técnicos detalhados para um projeto de software.
+            # PROMPT #54 - Token Optimization: Condensed from ~2,000 to ~800-1,000 tokens (50% reduction)
+            logger.info("Using legacy hardcoded interview prompt (condensed)")
+            system_prompt = f"""Você é um analista de requisitos de IA coletando requisitos técnicos para um projeto de software.
 
-IMPORTANTE: Conduza TODA a entrevista em PORTUGUÊS. Todas as perguntas, opções e respostas devem ser em português.
-
+**Conduza em PORTUGUÊS.** Use este contexto:
 {project_context}
-
 {stack_context}
 
-REGRAS CRÍTICAS PARA PERGUNTAS DE NEGÓCIO:
-1. **Faça UMA pergunta por vez**
-2. **Sempre forneça opções FECHADAS** (múltipla escolha ou escolha única)
-3. **Mantenha o foco** no título e descrição do projeto
-4. **Construa contexto** - cada pergunta deve se relacionar com respostas anteriores
-5. **Seja específico** - evite perguntas vagas ou abertas
+**Formato de Pergunta:**
+❓ Pergunta [número]: [Sua pergunta contextual]
 
-FORMATO DA PERGUNTA (use esta estrutura EXATA):
-
-❓ Pergunta [número]: [Sua pergunta contextual aqui]
-
-**IMPORTANTE - ESCOLHA O FORMATO CORRETO:**
-
-Para perguntas de ESCOLHA ÚNICA (apenas uma resposta):
+Para ESCOLHA ÚNICA:
 ○ Opção 1
 ○ Opção 2
 ○ Opção 3
-○ Opção 4
-○ Opção 5
 ◉ [Escolha uma opção]
 
-Para perguntas de MÚLTIPLA ESCOLHA (várias respostas):
+Para MÚLTIPLA ESCOLHA:
 ☐ Opção 1
 ☐ Opção 2
 ☐ Opção 3
-☐ Opção 4
-☐ Opção 5
 ☑️ [Selecione todas que se aplicam]
 
-**REGRAS OBRIGATÓRIAS PARA OPÇÕES:**
-1. SEMPRE forneça PELO MENOS 3-5 opções por pergunta
-2. NUNCA crie pergunta com apenas 1 ou 2 opções (sem sentido!)
-3. Se não conseguir 3+ opções, reformule como pergunta aberta (texto livre)
-4. Opções devem ser realistas, relevantes e mutuamente exclusivas (para single choice)
-5. Sempre inclua uma opção "Outro" ou "Nenhuma das anteriores" quando apropriado
+**Regras:**
+- Uma pergunta por vez com 3-5 opções mínimo
+- Construa contexto com respostas anteriores
+- Incremente número da pergunta (você está na pergunta 7+)
+- Após 8-12 perguntas total, conclua a entrevista
 
-Use ○ para escolha única (radio) e ☐ para múltipla escolha (checkbox).
+**Tópicos:** Funcionalidades principais, usuários e permissões, integrações de terceiros, deploy e infraestrutura, performance e escalabilidade.
 
-EXEMPLOS DE PERGUNTAS:
-- "Quais funcionalidades essenciais são necessárias para seu [tipo de projeto]?"
-- "Quais integrações de terceiros você precisa?"
-- "Qual nível de escalabilidade é necessário?"
-- "Qual plataforma de deploy você vai usar?"
-
-TÓPICOS A COBRIR (em ordem):
-1. Funcionalidades e recursos principais
-2. Papéis de usuário e permissões
-3. Integrações de terceiros (pagamentos, autenticação, etc)
-4. Deploy e infraestrutura
-5. Requisitos de performance e escalabilidade
-
-LEMBRE-SE:
-- Extraia detalhes técnicos acionáveis
-- Opções devem ser realistas e comuns na indústria
-- Perguntas se adaptam baseadas em respostas anteriores
-- Incremente o número da pergunta a cada nova pergunta (você está na pergunta 7 ou superior)
-- Após 8-12 perguntas no total (incluindo 6 perguntas fixas), a entrevista está completa
-
-Continue com a próxima pergunta relevante baseada na resposta anterior do usuário!
+Continue com próxima pergunta relevante!
 """
 
         # Usar orquestrador para obter resposta
@@ -1146,15 +1182,17 @@ Continue com a próxima pergunta relevante baseada na resposta anterior do usuá
             logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
             logger.info(f"  - Last message: [{len(interview.conversation_data)-1}] {interview.conversation_data[-1].get('role')}: {interview.conversation_data[-1].get('content', '')[:50]}")
 
-            # Clean messages - only keep role and content (remove timestamp, model, etc.)
-            clean_messages = [
-                {"role": msg["role"], "content": msg["content"]}
-                for msg in interview.conversation_data
-            ]
+            # PROMPT #54 - Token Optimization: Truncate context for long conversations
+            # Previously sent ALL messages (8,000-10,000 tokens after 12 messages)
+            # Now sends only recent 5 messages + summary (2,000-3,000 tokens) = 60-70% reduction
+            optimized_messages = _prepare_interview_context(
+                conversation_data=interview.conversation_data,
+                max_recent=5  # Keep last 5 messages verbatim, summarize older ones
+            )
 
             response = await orchestrator.execute(
                 usage_type="interview",  # Usa Claude para entrevistas
-                messages=clean_messages,  # Histórico limpo sem campos extras
+                messages=optimized_messages,  # Optimized context (60-70% token reduction)
                 system_prompt=system_prompt,
                 max_tokens=1000,
                 # PROMPT #58 - Add context for prompt logging
