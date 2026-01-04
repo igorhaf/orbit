@@ -19,6 +19,7 @@ from app.api.routes import (
     ai_models,
     ai_executions,  # PROMPT #54 - AI Execution Logging
     tasks,
+    backlog_generation,  # JIRA Transformation - AI-powered backlog generation
     interviews,
     prompts,
     chat_sessions,
@@ -193,6 +194,13 @@ app.include_router(
     tasks.router,
     prefix=f"{API_V1_PREFIX}/tasks",
     tags=["Tasks"]
+)
+
+# Backlog Generation (JIRA Transformation - AI-powered backlog generation)
+app.include_router(
+    backlog_generation.router,
+    prefix=f"{API_V1_PREFIX}/backlog",
+    tags=["Backlog Generation"]
 )
 
 # Interviews
