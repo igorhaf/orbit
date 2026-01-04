@@ -813,8 +813,8 @@ async def update_comment(
 
     if comment_data.content is not None:
         comment.content = comment_data.content
-    if comment_data.metadata is not None:
-        comment.metadata = comment_data.metadata
+    if comment_data.comment_metadata is not None:
+        comment.comment_metadata = comment_data.comment_metadata
 
     comment.updated_at = datetime.utcnow()
 

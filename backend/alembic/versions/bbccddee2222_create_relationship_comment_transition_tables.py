@@ -24,18 +24,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Create relationship_type ENUM
+    # 1. Create relationship_type ENUM (IF NOT EXISTS to handle idempotency)
     op.execute("""
-        CREATE TYPE relationship_type AS ENUM (
-            'blocks', 'blocked_by', 'depends_on', 'relates_to', 'duplicates', 'clones'
-        )
+        DO $$ BEGIN
+            CREATE TYPE relationship_type AS ENUM (
+                'blocks', 'blocked_by', 'depends_on', 'relates_to', 'duplicates', 'clones'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
 
-    # 2. Create comment_type ENUM
+    # 2. Create comment_type ENUM (IF NOT EXISTS to handle idempotency)
     op.execute("""
-        CREATE TYPE comment_type AS ENUM (
-            'comment', 'system', 'ai_insight', 'validation', 'code_snippet'
-        )
+        DO $$ BEGIN
+            CREATE TYPE comment_type AS ENUM (
+                'comment', 'system', 'ai_insight', 'validation', 'code_snippet'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
 
     # 3. Create task_relationships table

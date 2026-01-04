@@ -58,14 +58,14 @@ class TaskComment(Base):
         default=CommentType.COMMENT,
         nullable=False
     )
-    metadata = Column(JSON, nullable=True, default=dict)  # {ai_model, execution_id, etc.}
+    comment_metadata = Column(JSON, nullable=True, default=dict)  # {ai_model, execution_id, etc.}
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     # Relationships
-    task = relationship("Task", back_populates="comments")
+    task = relationship("Task", back_populates="task_comments")
 
     def __repr__(self) -> str:
         return f"<TaskComment(task_id={self.task_id}, author='{self.author}', type={self.comment_type})>"

@@ -86,6 +86,9 @@ class PromptTemplate(Base):
 
     project = relationship("Project", back_populates="prompt_templates")
 
+    # Back-reference from Task model
+    tasks = relationship("Task", back_populates="prompt_template")
+
     def __repr__(self):
         return f"<PromptTemplate(name='{self.name}', version={self.version}, category='{self.category}')>"
 

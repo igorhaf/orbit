@@ -25,23 +25,39 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Create new ENUM types
+    # 1. Create new ENUM types (IF NOT EXISTS to handle idempotency)
     op.execute("""
-        CREATE TYPE item_type AS ENUM ('epic', 'story', 'task', 'subtask', 'bug')
+        DO $$ BEGIN
+            CREATE TYPE item_type AS ENUM ('epic', 'story', 'task', 'subtask', 'bug');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
 
     op.execute("""
-        CREATE TYPE priority_level AS ENUM ('critical', 'high', 'medium', 'low', 'trivial')
+        DO $$ BEGIN
+            CREATE TYPE priority_level AS ENUM ('critical', 'high', 'medium', 'low', 'trivial');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
 
     op.execute("""
-        CREATE TYPE severity_level AS ENUM ('blocker', 'critical', 'major', 'minor', 'trivial')
+        DO $$ BEGIN
+            CREATE TYPE severity_level AS ENUM ('blocker', 'critical', 'major', 'minor', 'trivial');
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
 
     op.execute("""
-        CREATE TYPE resolution_type AS ENUM (
-            'fixed', 'wont_fix', 'duplicate', 'works_as_designed', 'cannot_reproduce'
-        )
+        DO $$ BEGIN
+            CREATE TYPE resolution_type AS ENUM (
+                'fixed', 'wont_fix', 'duplicate', 'works_as_designed', 'cannot_reproduce'
+            );
+        EXCEPTION
+            WHEN duplicate_object THEN null;
+        END $$;
     """)
 
     # 2. Add Classification & Hierarchy columns
