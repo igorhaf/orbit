@@ -363,23 +363,31 @@ async def generate_prompts(
     db: Session = Depends(get_db)
 ):
     """
-    Gera tasks automaticamente baseado na entrevista usando IA (Claude API).
+    Gera backlog hierárquico (Epic → Stories → Tasks) automaticamente baseado na entrevista.
+
+    PROMPT #52 - Hierarchical Backlog Generation from Interview
 
     Este endpoint:
     1. Busca a entrevista pelo ID
-    2. Extrai a conversa completa
-    3. Envia para Claude API para análise
-    4. Gera tasks estruturadas baseadas no contexto
-    5. Salva as tasks no banco de dados (Kanban board - coluna Backlog)
+    2. Gera 1 Epic baseado na entrevista completa
+    3. Decompõe o Epic em 3-7 Stories
+    4. Decompõe cada Story em 3-10 Tasks técnicas
+    5. Salva toda a hierarquia no banco de dados com relacionamentos parent_id
 
     - **interview_id**: UUID of the interview
 
     Returns:
         - success: Boolean indicating success
+        - epic_created: Epic details
+        - stories_created: Number of stories created
         - tasks_created: Number of tasks created
+        - total_items: Total items in hierarchy
         - message: Success message
     """
-    from app.services.prompt_generator import PromptGenerator
+    from app.services.backlog_generator import BacklogGeneratorService
+    from app.models.task import ItemType, PriorityLevel, TaskStatus
+    from uuid import uuid4
+    from datetime import datetime
 
     # Verificar se a entrevista existe
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
@@ -389,18 +397,133 @@ async def generate_prompts(
             detail=f"Interview {interview_id} not found"
         )
 
-    # Gerar tasks usando AI Orchestrator
+    # Gerar hierarquia Epic → Stories → Tasks
     try:
-        generator = PromptGenerator(db=db)
-        tasks = await generator.generate_from_interview(
-            interview_id=str(interview_id),
-            db=db
+        generator = BacklogGeneratorService(db=db)
+
+        # Step 1: Generate Epic from interview
+        logger.info(f"🎯 PROMPT #52: Generating hierarchical backlog from interview {interview_id}")
+        epic_suggestion = await generator.generate_epic_from_interview(
+            interview_id=interview_id,
+            project_id=interview.project_id
         )
+
+        # Step 2: Create Epic in database
+        epic = Task(
+            id=uuid4(),
+            project_id=interview.project_id,
+            created_from_interview_id=interview_id,
+            title=epic_suggestion["title"],
+            description=epic_suggestion["description"],
+            item_type=ItemType.EPIC,
+            priority=PriorityLevel[epic_suggestion["priority"].upper()],
+            story_points=epic_suggestion.get("story_points"),
+            acceptance_criteria=epic_suggestion.get("acceptance_criteria", []),
+            interview_insights=epic_suggestion.get("interview_insights", {}),
+            interview_question_ids=epic_suggestion.get("interview_question_ids", []),
+            generation_context=epic_suggestion.get("_metadata", {}),
+            reporter="system",
+            workflow_state="backlog",
+            status=TaskStatus.BACKLOG,
+            order=0,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        db.add(epic)
+        db.commit()
+        db.refresh(epic)
+        logger.info(f"✅ Created Epic: {epic.title} (id: {epic.id})")
+
+        # Step 3: Decompose Epic into Stories
+        stories_suggestions = await generator.decompose_epic_to_stories(
+            epic_id=epic.id,
+            project_id=interview.project_id
+        )
+
+        # Step 4: Create Stories in database
+        created_stories = []
+        for i, story_suggestion in enumerate(stories_suggestions):
+            story = Task(
+                id=uuid4(),
+                project_id=interview.project_id,
+                created_from_interview_id=interview_id,
+                parent_id=epic.id,  # Link to Epic
+                title=story_suggestion["title"],
+                description=story_suggestion["description"],
+                item_type=ItemType.STORY,
+                priority=PriorityLevel[story_suggestion["priority"].upper()],
+                story_points=story_suggestion.get("story_points"),
+                acceptance_criteria=story_suggestion.get("acceptance_criteria", []),
+                interview_insights=story_suggestion.get("interview_insights", {}),
+                generation_context=story_suggestion.get("_metadata", {}),
+                reporter="system",
+                workflow_state="backlog",
+                status=TaskStatus.BACKLOG,
+                order=i,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.add(story)
+            created_stories.append(story)
+
+        db.commit()
+        for story in created_stories:
+            db.refresh(story)
+        logger.info(f"✅ Created {len(created_stories)} Stories under Epic {epic.id}")
+
+        # Step 5: Decompose each Story into Tasks
+        all_created_tasks = []
+        for story in created_stories:
+            tasks_suggestions = await generator.decompose_story_to_tasks(
+                story_id=story.id,
+                project_id=interview.project_id
+            )
+
+            # Step 6: Create Tasks in database
+            for i, task_suggestion in enumerate(tasks_suggestions):
+                task = Task(
+                    id=uuid4(),
+                    project_id=interview.project_id,
+                    created_from_interview_id=interview_id,
+                    parent_id=story.id,  # Link to Story
+                    title=task_suggestion["title"],
+                    description=task_suggestion["description"],
+                    item_type=ItemType.TASK,
+                    priority=PriorityLevel[task_suggestion["priority"].upper()],
+                    story_points=task_suggestion.get("story_points"),
+                    acceptance_criteria=task_suggestion.get("acceptance_criteria", []),
+                    generation_context=task_suggestion.get("_metadata", {}),
+                    reporter="system",
+                    workflow_state="backlog",
+                    status=TaskStatus.BACKLOG,
+                    order=i,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.add(task)
+                all_created_tasks.append(task)
+
+        db.commit()
+        for task in all_created_tasks:
+            db.refresh(task)
+        logger.info(f"✅ Created {len(all_created_tasks)} Tasks across all Stories")
+
+        total_items = 1 + len(created_stories) + len(all_created_tasks)  # Epic + Stories + Tasks
+
+        logger.info(f"🎉 PROMPT #52 SUCCESS: Created hierarchical backlog with {total_items} items "
+                   f"(1 Epic → {len(created_stories)} Stories → {len(all_created_tasks)} Tasks)")
 
         return {
             "success": True,
-            "tasks_created": len(tasks),
-            "message": f"Generated {len(tasks)} tasks successfully!"
+            "epic_created": {
+                "id": str(epic.id),
+                "title": epic.title,
+                "item_type": "epic"
+            },
+            "stories_created": len(created_stories),
+            "tasks_created": len(all_created_tasks),
+            "total_items": total_items,
+            "message": f"Generated hierarchical backlog: 1 Epic → {len(created_stories)} Stories → {len(all_created_tasks)} Tasks!"
         }
     except ValueError as e:
         raise HTTPException(
@@ -410,10 +533,10 @@ async def generate_prompts(
     except Exception as e:
         import logging
         logger = logging.getLogger(__name__)
-        logger.error(f"Failed to generate tasks: {e}", exc_info=True)
+        logger.error(f"Failed to generate hierarchical backlog: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate tasks: {str(e)}"
+            detail=f"Failed to generate hierarchical backlog: {str(e)}"
         )
 
 
