@@ -18,6 +18,7 @@ from app.api.routes import (
     projects,
     ai_models,
     ai_executions,  # PROMPT #54 - AI Execution Logging
+    ai_format,  # AI text formatting
     tasks,
     backlog_generation,  # JIRA Transformation - AI-powered backlog generation
     interviews,
@@ -187,6 +188,13 @@ app.include_router(
     ai_executions.router,
     prefix=f"{API_V1_PREFIX}/ai-executions",
     tags=["AI Executions"]
+)
+
+# AI Format (Text formatting)
+app.include_router(
+    ai_format.router,
+    prefix=f"{API_V1_PREFIX}/ai",
+    tags=["AI Format"]
 )
 
 # Tasks (Kanban)
