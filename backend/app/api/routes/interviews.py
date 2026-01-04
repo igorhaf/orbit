@@ -58,8 +58,23 @@ def _clean_ai_response(content: str) -> str:
     logger = logging.getLogger(__name__)
     logger.info(f"🧹 Cleaning AI response (length: {len(content)} chars)")
 
-    # Pattern 1: Remove "CONTEXT_ANALYSIS:" block (multi-line YAML-like structure)
-    # Matches from "CONTEXT_ANALYSIS:" until the next question (❓) or end
+    # Pattern 1: Remove entire ACTION blocks (e.g., "ACTION: REQUIREMENTS_INTERVIEW")
+    content = re.sub(
+        r'ACTION:\s*\w+.*?(?=❓|$)',
+        '',
+        content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # Pattern 2: Remove all STEP blocks (STEP 1, STEP 2, etc.)
+    content = re.sub(
+        r'STEP\s+\d+:.*?(?=❓|STEP|$)',
+        '',
+        content,
+        flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # Pattern 3: Remove CONTEXT_ANALYSIS blocks
     content = re.sub(
         r'CONTEXT_ANALYSIS:.*?(?=❓|$)',
         '',
@@ -67,18 +82,17 @@ def _clean_ai_response(content: str) -> str:
         flags=re.DOTALL | re.IGNORECASE
     )
 
-    # Pattern 2: Remove "STEP N: CONTEXT_ANALYSIS" blocks
+    # Pattern 4: Remove command-style lines (CLASSIFY, SELECT, EXTRACT, ANALYZE, etc.)
     content = re.sub(
-        r'STEP\s+\d+:\s*CONTEXT_ANALYSIS.*?(?=❓|STEP|$)',
+        r'^\s*(CLASSIFY|SELECT|EXTRACT|ANALYZE|IDENTIFY|DETECT|CREATE|GENERATE|PRIORITIZE|EVALUATE)\s+.*?$',
         '',
         content,
-        flags=re.DOTALL | re.IGNORECASE
+        flags=re.MULTILINE | re.IGNORECASE
     )
 
-    # Pattern 3: Remove standalone analysis sections with structured data
-    # (project_context:, conversation_history:, etc.)
+    # Pattern 5: Remove structured data sections
     content = re.sub(
-        r'^\s*(project_context|conversation_history|already_covered|missing_info|question_priority):.*?(?=^[A-Z❓]|\Z)',
+        r'^\s*(project_context|conversation_history|already_covered|missing_info|question_priority|remaining_topics|single_most_relevant|Constraints):.*?(?=^❓|^[A-Z]|\Z)',
         '',
         content,
         flags=re.MULTILINE | re.DOTALL
@@ -98,12 +112,26 @@ def _clean_ai_response(content: str) -> str:
 
         # Detect start of internal analysis block
         if any(marker in stripped.lower() for marker in [
+            'action:',
+            'step 1:',
+            'step 2:',
+            'step 3:',
             'context_analysis',
+            'question_prioritization',
             'project_context:',
             'conversation_history:',
             'already_covered_topics:',
+            'remaining_topics',
             'missing_information:',
             'question_priority:',
+            'single_most_relevant',
+            'constraints:',
+            'classify ',
+            'select ',
+            'extract ',
+            'analyze ',
+            'identify ',
+            'detect ',
             'core features:',
             'business rules:',
             'integrations and users:',
