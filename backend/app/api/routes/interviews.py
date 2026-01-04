@@ -512,6 +512,9 @@ async def generate_prompts(
     from app.models.task import ItemType, PriorityLevel, TaskStatus
     from uuid import uuid4
     from datetime import datetime
+    import logging
+
+    logger = logging.getLogger(__name__)
 
     # Verificar se a entrevista existe
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
@@ -655,8 +658,6 @@ async def generate_prompts(
             detail=str(e)
         )
     except Exception as e:
-        import logging
-        logger = logging.getLogger(__name__)
         logger.error(f"Failed to generate hierarchical backlog: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
