@@ -143,10 +143,11 @@ class AIOrchestrator:
                     f"provider '{provider}' not initialized"
                 )
 
-        # 2. Fallback: buscar QUALQUER modelo ativo que esteja inicializado
-        logger.warning(f"⚠️  No specific model configured for {usage_type}, trying fallback...")
+        # 2. Fallback: buscar modelo GENERAL como padrão
+        logger.warning(f"⚠️  No specific model configured for {usage_type}, trying GENERAL fallback...")
 
         fallback_model = self.db.query(AIModel).filter(
+            AIModel.usage_type == AIModelUsageType.GENERAL,
             AIModel.is_active == True
         ).first()
 
