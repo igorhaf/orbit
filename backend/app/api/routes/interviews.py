@@ -838,13 +838,21 @@ FORMATO DA PERGUNTA (use esta estrutura EXATA):
 
 ❓ Pergunta [número]: [Sua pergunta contextual aqui]
 
-OPÇÕES:
-□ Opção 1
-□ Opção 2
-□ Opção 3
-□ Opção 4
-□ Opção 5
-☑️ [Selecione todas que se aplicam] OU ◉ [Escolha uma opção]
+**IMPORTANTE - ESCOLHA O FORMATO CORRETO:**
+
+Para perguntas de ESCOLHA ÚNICA (apenas uma resposta):
+○ Opção 1
+○ Opção 2
+○ Opção 3
+◉ [Escolha uma opção]
+
+Para perguntas de MÚLTIPLA ESCOLHA (várias respostas):
+☐ Opção 1
+☐ Opção 2
+☐ Opção 3
+☑️ [Selecione todas que se aplicam]
+
+Use ○ para escolha única (radio) e ☐ para múltipla escolha (checkbox).
 
 EXEMPLOS DE PERGUNTAS:
 - "Quais funcionalidades essenciais são necessárias para seu [tipo de projeto]?"
