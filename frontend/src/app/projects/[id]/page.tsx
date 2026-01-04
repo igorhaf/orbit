@@ -27,6 +27,9 @@ export default function ProjectDetailsPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(true);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editedDescription, setEditedDescription] = useState('');
+  const [isFormattingDescription, setIsFormattingDescription] = useState(false);
 
   useEffect(() => {
     loadProjectData();
@@ -58,6 +61,91 @@ export default function ProjectDetailsPage() {
 
   const handleTasksUpdate = () => {
     loadProjectData();
+  };
+
+  // Format description to Markdown if needed
+  useEffect(() => {
+    if (project?.description && !isFormattingDescription) {
+      const isMarkdown = checkIfMarkdown(project.description);
+      if (!isMarkdown) {
+        formatDescriptionToMarkdown(project.description);
+      } else {
+        setEditedDescription(project.description);
+      }
+    }
+  }, [project?.description]);
+
+  // Check if text is already in Markdown format
+  const checkIfMarkdown = (text: string): boolean => {
+    const markdownPatterns = [
+      /^#{1,6}\s/m,           // Headers
+      /\*\*.*\*\*/,            // Bold
+      /\*.*\*/,                // Italic
+      /\[.*\]\(.*\)/,          // Links
+      /^[-*+]\s/m,             // Lists
+      /^\d+\.\s/m,             // Numbered lists
+      /```[\s\S]*```/,         // Code blocks
+      /^>\s/m,                 // Blockquotes
+    ];
+
+    return markdownPatterns.some(pattern => pattern.test(text));
+  };
+
+  // Format plain text to Markdown using AI
+  const formatDescriptionToMarkdown = async (text: string) => {
+    setIsFormattingDescription(true);
+    try {
+      const response = await fetch('/api/format-markdown', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setEditedDescription(data.markdown);
+
+        // Auto-save formatted description
+        await projectsApi.update(projectId, {
+          description: data.markdown,
+        });
+
+        // Reload project data
+        await loadProjectData();
+      } else {
+        // Fallback: use original text
+        setEditedDescription(text);
+      }
+    } catch (error) {
+      console.error('Error formatting to Markdown:', error);
+      setEditedDescription(text);
+    } finally {
+      setIsFormattingDescription(false);
+    }
+  };
+
+  const handleEditDescription = () => {
+    setEditedDescription(project?.description || '');
+    setIsEditingDescription(true);
+  };
+
+  const handleSaveDescription = async () => {
+    try {
+      await projectsApi.update(projectId, {
+        description: editedDescription,
+      });
+
+      setIsEditingDescription(false);
+      await loadProjectData();
+    } catch (error) {
+      console.error('Error saving description:', error);
+      alert('Failed to save description. Please try again.');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedDescription(project?.description || '');
+    setIsEditingDescription(false);
   };
 
   if (loading) {
@@ -355,15 +443,61 @@ export default function ProjectDetailsPage() {
             {/* Project Description - Full Width */}
             {project.description && (
               <Card>
-                <CardHeader>
+                <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Project Description</CardTitle>
+                  <div className="flex gap-2">
+                    {isFormattingDescription && (
+                      <span className="text-xs text-gray-500 italic">Formatting to Markdown...</span>
+                    )}
+                    {!isEditingDescription ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleEditDescription}
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Edit
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={handleCancelEdit}
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={handleSaveDescription}
+                        >
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                          </svg>
+                          Save
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="prose prose-sm max-w-none">
-                    <ReactMarkdown>
-                      {project.description}
-                    </ReactMarkdown>
-                  </div>
+                  {isEditingDescription ? (
+                    <textarea
+                      value={editedDescription}
+                      onChange={(e) => setEditedDescription(e.target.value)}
+                      className="w-full min-h-[300px] p-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                      placeholder="Enter project description in Markdown format..."
+                    />
+                  ) : (
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown>
+                        {editedDescription || project.description}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}

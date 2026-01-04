@@ -1,0 +1,134 @@
+"""
+AI Format Routes
+Endpoints for AI-powered text formatting
+"""
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import Optional
+import anthropic
+import os
+
+router = APIRouter()
+
+
+class FormatMarkdownRequest(BaseModel):
+    """Request model for formatting text to Markdown"""
+    text: str
+
+
+class FormatMarkdownResponse(BaseModel):
+    """Response model for formatted Markdown"""
+    markdown: str
+
+
+@router.post("/format-markdown", response_model=FormatMarkdownResponse)
+async def format_to_markdown(request: FormatMarkdownRequest):
+    """
+    Format plain text to Markdown using AI
+
+    The AI will analyze the text structure and convert it to proper Markdown format:
+    - Headings
+    - Lists (ordered and unordered)
+    - Paragraphs
+    - Emphasis (bold, italic)
+    - Code blocks if detected
+    """
+    try:
+        # Get API key from environment
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+
+        if not api_key:
+            # Fallback to simple formatting if no API key
+            return FormatMarkdownResponse(
+                markdown=simple_format_to_markdown(request.text)
+            )
+
+        # Use Claude to format the text
+        client = anthropic.Anthropic(api_key=api_key)
+
+        message = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=2000,
+            messages=[{
+                "role": "user",
+                "content": f"""Convert the following text to well-structured Markdown format.
+
+Guidelines:
+- Use # for main title (if identifiable)
+- Use ## for section headers
+- Use ### for subsections
+- Convert numbered items to proper Markdown lists (1. 2. 3.)
+- Convert bullet points to Markdown lists (-)
+- Add emphasis (**bold**, *italic*) where appropriate
+- Maintain paragraph breaks
+- Keep the original meaning and content
+- Do NOT add extra content, only format what's there
+
+Text to format:
+{request.text}
+
+Return ONLY the Markdown-formatted text, no explanations."""
+            }]
+        )
+
+        # Extract the formatted markdown from Claude's response
+        markdown_text = message.content[0].text.strip()
+
+        return FormatMarkdownResponse(markdown=markdown_text)
+
+    except Exception as e:
+        print(f"Error formatting to Markdown with AI: {e}")
+
+        # Fallback to simple formatting
+        return FormatMarkdownResponse(
+            markdown=simple_format_to_markdown(request.text)
+        )
+
+
+def simple_format_to_markdown(text: str) -> str:
+    """
+    Simple fallback formatting when AI is unavailable
+    Uses basic heuristics
+    """
+    lines = text.split('\n')
+    formatted_lines = []
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+
+        if not stripped:
+            formatted_lines.append('')
+            continue
+
+        # First non-empty line might be title
+        if i == 0 and len(stripped) < 100:
+            formatted_lines.append(f"# {stripped}")
+            continue
+
+        # Lines ending with : might be headers
+        if stripped.endswith(':') and len(stripped) < 80:
+            formatted_lines.append(f"## {stripped[:-1]}")
+            continue
+
+        # Numbered items
+        if stripped[:1].isdigit() and (stripped[1:2] == ')' or stripped[1:2] == '.'):
+            # Already numbered
+            if stripped[1:2] == ')':
+                formatted_lines.append(stripped.replace(')', '.', 1))
+            else:
+                formatted_lines.append(stripped)
+            continue
+
+        # Bullet points
+        if stripped.startswith(('-', '•', '*')) and len(stripped) > 2:
+            if not stripped.startswith('- '):
+                formatted_lines.append(f"- {stripped[1:].lstrip()}")
+            else:
+                formatted_lines.append(stripped)
+            continue
+
+        # Regular paragraph
+        formatted_lines.append(stripped)
+
+    return '\n'.join(formatted_lines)
