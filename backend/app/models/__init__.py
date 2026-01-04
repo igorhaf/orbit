@@ -9,8 +9,11 @@ and detected by Alembic for migrations.
 from app.models.project import Project
 from app.models.interview import Interview, InterviewStatus
 from app.models.prompt import Prompt
-from app.models.task import Task, TaskStatus
+from app.models.task import Task, TaskStatus, ItemType, PriorityLevel, SeverityLevel, ResolutionType
 from app.models.task_result import TaskResult
+from app.models.task_relationship import TaskRelationship, RelationshipType  # JIRA Transformation
+from app.models.task_comment import TaskComment, CommentType  # JIRA Transformation
+from app.models.status_transition import StatusTransition  # JIRA Transformation
 from app.models.chat_session import ChatSession, ChatSessionStatus
 from app.models.commit import Commit, CommitType
 from app.models.ai_model import AIModel, AIModelUsageType
@@ -28,6 +31,9 @@ __all__ = [
     "Prompt",
     "Task",
     "TaskResult",
+    "TaskRelationship",  # JIRA Transformation
+    "TaskComment",  # JIRA Transformation
+    "StatusTransition",  # JIRA Transformation
     "ChatSession",
     "Commit",
     "AIModel",
@@ -40,9 +46,15 @@ __all__ = [
     # Enums
     "InterviewStatus",
     "TaskStatus",
+    "ItemType",  # JIRA Transformation
+    "PriorityLevel",  # JIRA Transformation
+    "SeverityLevel",  # JIRA Transformation
+    "ResolutionType",  # JIRA Transformation
     "ChatSessionStatus",
     "CommitType",
     "AIModelUsageType",
     "IssueSeverity",
     "IssueStatus",
+    "RelationshipType",  # JIRA Transformation
+    "CommentType",  # JIRA Transformation
 ]
