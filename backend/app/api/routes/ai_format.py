@@ -3,11 +3,14 @@ AI Format Routes
 Endpoints for AI-powered text formatting
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
-import anthropic
-import os
+
+from app.database import get_db
+from app.models.ai_model import AIModel, AIModelUsageType
+from app.services.ai_orchestrator import AIOrchestrator
 
 router = APIRouter()
 
@@ -23,10 +26,14 @@ class FormatMarkdownResponse(BaseModel):
 
 
 @router.post("/format-markdown", response_model=FormatMarkdownResponse)
-async def format_to_markdown(request: FormatMarkdownRequest):
+async def format_to_markdown(
+    request: FormatMarkdownRequest,
+    db: Session = Depends(get_db)
+):
     """
     Format plain text to Markdown using AI
 
+    Uses the AI model configured for interviews to format text.
     The AI will analyze the text structure and convert it to proper Markdown format:
     - Headings
     - Lists (ordered and unordered)
@@ -35,24 +42,22 @@ async def format_to_markdown(request: FormatMarkdownRequest):
     - Code blocks if detected
     """
     try:
-        # Get API key from environment
-        api_key = os.getenv("ANTHROPIC_API_KEY")
+        # Get AI model configured for interviews
+        ai_model = db.query(AIModel).filter(
+            AIModel.usage_type == AIModelUsageType.INTERVIEW,
+            AIModel.is_active == True
+        ).first()
 
-        if not api_key:
-            # Fallback to simple formatting if no API key
+        if not ai_model:
+            # Fallback to simple formatting if no AI model configured
             return FormatMarkdownResponse(
                 markdown=simple_format_to_markdown(request.text)
             )
 
-        # Use Claude to format the text
-        client = anthropic.Anthropic(api_key=api_key)
+        # Use AI Orchestrator to format the text
+        orchestrator = AIOrchestrator(db)
 
-        message = client.messages.create(
-            model="claude-3-5-sonnet-20241022",
-            max_tokens=2000,
-            messages=[{
-                "role": "user",
-                "content": f"""Convert the following text to well-structured Markdown format.
+        prompt = f"""Convert the following text to well-structured Markdown format.
 
 Guidelines:
 - Use # for main title (if identifiable)
@@ -69,13 +74,23 @@ Text to format:
 {request.text}
 
 Return ONLY the Markdown-formatted text, no explanations."""
-            }]
+
+        # Execute AI request
+        response = await orchestrator.execute(
+            model_name=ai_model.name,
+            prompt=prompt,
+            max_tokens=2000,
+            temperature=0.7
         )
 
-        # Extract the formatted markdown from Claude's response
-        markdown_text = message.content[0].text.strip()
-
-        return FormatMarkdownResponse(markdown=markdown_text)
+        if response and response.get("content"):
+            markdown_text = response["content"].strip()
+            return FormatMarkdownResponse(markdown=markdown_text)
+        else:
+            # Fallback to simple formatting
+            return FormatMarkdownResponse(
+                markdown=simple_format_to_markdown(request.text)
+            )
 
     except Exception as e:
         print(f"Error formatting to Markdown with AI: {e}")

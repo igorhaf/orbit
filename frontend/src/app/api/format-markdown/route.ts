@@ -6,18 +6,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
+  // Read body once at the beginning
+  let text: string;
+
   try {
-    const { text } = await request.json();
+    const body = await request.json();
+    text = body.text;
+  } catch (error) {
+    return NextResponse.json(
+      { error: 'Invalid request body' },
+      { status: 400 }
+    );
+  }
 
-    if (!text) {
-      return NextResponse.json(
-        { error: 'Text is required' },
-        { status: 400 }
-      );
-    }
+  if (!text) {
+    return NextResponse.json(
+      { error: 'Text is required' },
+      { status: 400 }
+    );
+  }
 
+  try {
     // Call backend AI service to format text to Markdown
-    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    // Use Docker service name for server-side calls, fallback to localhost
+    const backendUrl = process.env.BACKEND_URL || 'http://backend:8000';
 
     const response = await fetch(`${backendUrl}/api/v1/ai/format-markdown`, {
       method: 'POST',
@@ -39,8 +51,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error formatting to Markdown:', error);
 
-    // Fallback: simple formatting rules
-    const { text } = await request.json();
+    // Fallback: simple formatting rules (text already extracted above)
     const fallbackMarkdown = autoFormatToMarkdown(text);
 
     return NextResponse.json({
