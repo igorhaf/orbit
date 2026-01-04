@@ -795,6 +795,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               <ProvisioningStatusCard
                 provisioning={provisioningStatus}
                 projectName={provisioningStatus.projectName || interview?.project?.name || 'Your Project'}
+                onClose={() => setProvisioningStatus(null)}
               />
             )}
           </>

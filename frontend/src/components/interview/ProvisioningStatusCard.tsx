@@ -29,9 +29,10 @@ interface ProvisioningStatus {
 interface Props {
   provisioning: ProvisioningStatus;
   projectName: string;
+  onClose?: () => void;
 }
 
-export function ProvisioningStatusCard({ provisioning, projectName }: Props) {
+export function ProvisioningStatusCard({ provisioning, projectName, onClose }: Props) {
   const [showCredentials, setShowCredentials] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -89,14 +90,27 @@ ${provisioning.next_steps?.join('\n')}
   }
 
   return (
-    <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-md my-4">
+    <div className="bg-green-50 border-l-4 border-green-400 p-4 rounded-md my-4 relative">
+      {/* Close Button */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 text-green-600 hover:text-green-800 transition-colors"
+          aria-label="Close provisioning status"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      )}
+
       <div className="flex items-start">
         <div className="flex-shrink-0">
           <svg className="h-6 w-6 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-        <div className="ml-3 flex-1">
+        <div className="ml-3 flex-1 pr-6">
           <h3 className="text-sm font-medium text-green-800">
             Project Provisioned Successfully!
           </h3>
