@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import ReactMarkdown from 'react-markdown';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
@@ -24,7 +25,7 @@ export default function ProjectDetailsPage() {
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [activeTab, setActiveTab] = useState<Tab>('kanban');
+  const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -107,9 +108,6 @@ export default function ProjectDetailsPage() {
         <div className="flex justify-between items-start">
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
-            {project.description && (
-              <p className="mt-2 text-gray-600">{project.description}</p>
-            )}
 
             {/* Stack Configuration Badges (PROMPT #46 - Phase 1) */}
             {(project.stack_backend || project.stack_database || project.stack_frontend || project.stack_css) && (
@@ -258,10 +256,10 @@ export default function ProjectDetailsPage() {
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             {[
+              { id: 'overview', label: 'Overview' },
               { id: 'kanban', label: 'Kanban Board' },
               { id: 'list', label: 'Tasks List' },
               { id: 'interviews', label: 'Interviews' },
-              { id: 'overview', label: 'Overview' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -387,46 +385,65 @@ export default function ProjectDetailsPage() {
               </CardContent>
             </Card>
 
-            {/* Progress */}
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Progress by Status</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {Object.entries(tasksByStatus).map(([status, statusTasks]) => {
-                  const percentage = tasks.length
-                    ? (statusTasks.length / tasks.length) * 100
-                    : 0;
+            {/* Right Column */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Progress */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Progress by Status</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {Object.entries(tasksByStatus).map(([status, statusTasks]) => {
+                    const percentage = tasks.length
+                      ? (statusTasks.length / tasks.length) * 100
+                      : 0;
 
-                  return (
-                    <div key={status}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="font-medium text-gray-700 capitalize">
-                          {status.replace('_', ' ')}
-                        </span>
-                        <span className="text-gray-500">
-                          {statusTasks.length} ({percentage.toFixed(0)}%)
-                        </span>
+                    return (
+                      <div key={status}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="font-medium text-gray-700 capitalize">
+                            {status.replace('_', ' ')}
+                          </span>
+                          <span className="text-gray-500">
+                            {statusTasks.length} ({percentage.toFixed(0)}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className={`h-2 rounded-full ${
+                              status === 'done'
+                                ? 'bg-green-500'
+                                : status === 'in_progress'
+                                ? 'bg-blue-500'
+                                : status === 'review'
+                                ? 'bg-purple-500'
+                                : 'bg-gray-400'
+                            }`}
+                            style={{ width: `${percentage}%` }}
+                          />
+                        </div>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full ${
-                            status === 'done'
-                              ? 'bg-green-500'
-                              : status === 'in_progress'
-                              ? 'bg-blue-500'
-                              : status === 'review'
-                              ? 'bg-purple-500'
-                              : 'bg-gray-400'
-                          }`}
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+
+              {/* Project Description */}
+              {project.description && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Project Description</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown>
+                        {project.description}
+                      </ReactMarkdown>
                     </div>
-                  );
-                })}
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
           </div>
         )}
       </div>
