@@ -25,11 +25,14 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
   const [formData, setFormData] = useState<ProjectCreate>({
     name: '',
     description: '',
+    code_path: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -60,10 +63,39 @@ export default function ProjectsPage() {
     try {
       await projectsApi.create(formData);
       setShowCreateDialog(false);
-      setFormData({ name: '', description: '' });
+      setFormData({ name: '', description: '', code_path: '' });
       fetchProjects();
     } catch (error) {
       console.error('Error creating project:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleOpenEdit = (project: Project) => {
+    setProjectToEdit(project);
+    setFormData({
+      name: project.name,
+      description: project.description || '',
+      code_path: project.code_path || '',
+    });
+    setShowEditDialog(true);
+  };
+
+  const handleUpdateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!projectToEdit) return;
+
+    setIsSubmitting(true);
+
+    try {
+      await projectsApi.update(projectToEdit.id, formData);
+      setShowEditDialog(false);
+      setProjectToEdit(null);
+      setFormData({ name: '', description: '', code_path: '' });
+      fetchProjects();
+    } catch (error) {
+      console.error('Error updating project:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -199,6 +231,25 @@ export default function ProjectsPage() {
                       </Button>
                     </Link>
                     <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenEdit(project)}
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                        />
+                      </svg>
+                    </Button>
+                    <Button
                       variant="danger"
                       size="sm"
                       onClick={() => handleDeleteProject(project)}
@@ -291,6 +342,19 @@ export default function ProjectsPage() {
                   setFormData({ ...formData, description: e.target.value })
                 }
               />
+              <div>
+                <Input
+                  label="Code Path (Optional)"
+                  placeholder="/app/projects/my-legacy-app"
+                  value={formData.code_path || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, code_path: e.target.value })
+                  }
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Path to project code in Docker container. Required for AI-powered pattern discovery.
+                </p>
+              </div>
             </div>
             <DialogFooter>
               <Button
@@ -302,6 +366,61 @@ export default function ProjectsPage() {
               </Button>
               <Button type="submit" variant="primary" isLoading={isSubmitting}>
                 Create Project
+              </Button>
+            </DialogFooter>
+          </form>
+        </Dialog>
+
+        {/* Edit Project Dialog */}
+        <Dialog
+          open={showEditDialog}
+          onClose={() => setShowEditDialog(false)}
+          title="Edit Project"
+          description="Update project information"
+        >
+          <form onSubmit={handleUpdateProject}>
+            <div className="space-y-4">
+              <Input
+                label="Project Name"
+                placeholder="My AI Project"
+                required
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+              />
+              <Input
+                label="Description"
+                placeholder="Project description..."
+                value={formData.description || ''}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
+              />
+              <div>
+                <Input
+                  label="Code Path"
+                  placeholder="/app/projects/my-legacy-app"
+                  value={formData.code_path || ''}
+                  onChange={(e) =>
+                    setFormData({ ...formData, code_path: e.target.value })
+                  }
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Path to project code in Docker container. Required for AI-powered pattern discovery.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowEditDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" variant="primary" isLoading={isSubmitting}>
+                Update Project
               </Button>
             </DialogFooter>
           </form>

@@ -6,9 +6,10 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Badge, Dialog } from '@/components/ui';
-import { Plus, Edit, Trash2, Filter, X, FileCode, Database, Layout as LayoutIcon, Palette } from 'lucide-react';
+import { Plus, Edit, Trash2, Filter, X, FileCode, Database, Layout as LayoutIcon, Palette, Sparkles } from 'lucide-react';
 
 interface Spec {
   id: string;
@@ -36,6 +37,7 @@ const CATEGORIES = [
 ];
 
 export default function SpecsAdminPage() {
+  const router = useRouter();
   const [specs, setSpecs] = useState<Spec[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -218,10 +220,16 @@ export default function SpecsAdminPage() {
       {/* Breadcrumb and action button aligned on same row */}
       <div className="flex justify-between items-center mb-6">
         <Breadcrumbs />
-        <Button variant="primary" onClick={handleOpenCreate}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Spec
-        </Button>
+        <div className="flex gap-3">
+          <Button variant="secondary" onClick={() => router.push('/specs/generate')}>
+            <Sparkles className="w-4 h-4 mr-2" />
+            Generate from Code
+          </Button>
+          <Button variant="primary" onClick={handleOpenCreate}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Spec
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-6">

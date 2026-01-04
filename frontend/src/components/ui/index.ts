@@ -34,3 +34,6 @@ export { Select } from './Select';
 export type { SelectProps } from './Select';
 
 export { Label } from './Label';
+
+export { Checkbox } from './Checkbox';
+export type { CheckboxProps } from './Checkbox';
