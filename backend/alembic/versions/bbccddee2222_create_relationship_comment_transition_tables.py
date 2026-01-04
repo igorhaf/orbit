@@ -24,29 +24,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # 1. Create relationship_type ENUM (IF NOT EXISTS to handle idempotency)
-    op.execute("""
-        DO $$ BEGIN
-            CREATE TYPE relationship_type AS ENUM (
-                'blocks', 'blocked_by', 'depends_on', 'relates_to', 'duplicates', 'clones'
-            );
-        EXCEPTION
-            WHEN duplicate_object THEN null;
-        END $$;
-    """)
+    # Note: ENUMs are created automatically by SQLAlchemy when creating tables with Enum columns
+    # No need for manual op.execute() CREATE TYPE commands
 
-    # 2. Create comment_type ENUM (IF NOT EXISTS to handle idempotency)
-    op.execute("""
-        DO $$ BEGIN
-            CREATE TYPE comment_type AS ENUM (
-                'comment', 'system', 'ai_insight', 'validation', 'code_snippet'
-            );
-        EXCEPTION
-            WHEN duplicate_object THEN null;
-        END $$;
-    """)
-
-    # 3. Create task_relationships table
+    # 1. Create task_relationships table
     op.create_table(
         'task_relationships',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
@@ -63,7 +44,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['target_task_id'], ['tasks.id'], ondelete='CASCADE'),
     )
 
-    # 4. Create task_comments table
+    # 2. Create task_comments table
     op.create_table(
         'task_comments',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
@@ -83,7 +64,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ondelete='CASCADE'),
     )
 
-    # 5. Create status_transitions table
+    # 3. Create status_transitions table
     op.create_table(
         'status_transitions',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
@@ -97,7 +78,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ondelete='CASCADE'),
     )
 
-    # 6. Create Indexes for task_relationships
+    # 4. Create Indexes for task_relationships
     op.create_index('ix_task_relationships_id', 'task_relationships', ['id'])
     op.create_index('ix_task_relationships_source', 'task_relationships', ['source_task_id'])
     op.create_index('ix_task_relationships_target', 'task_relationships', ['target_task_id'])
@@ -105,12 +86,12 @@ def upgrade() -> None:
     op.create_index('ix_task_rel_source_target', 'task_relationships', ['source_task_id', 'target_task_id'])
     op.create_index('ix_task_rel_type_source', 'task_relationships', ['relationship_type', 'source_task_id'])
 
-    # 7. Create Indexes for task_comments
+    # 5. Create Indexes for task_comments
     op.create_index('ix_task_comments_id', 'task_comments', ['id'])
     op.create_index('ix_task_comments_task', 'task_comments', ['task_id'])
     op.create_index('ix_task_comments_created', 'task_comments', ['created_at'])
 
-    # 8. Create Indexes for status_transitions
+    # 6. Create Indexes for status_transitions
     op.create_index('ix_status_transitions_id', 'status_transitions', ['id'])
     op.create_index('ix_status_transitions_task', 'status_transitions', ['task_id'])
     op.create_index('ix_status_transitions_created', 'status_transitions', ['created_at'])
