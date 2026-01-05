@@ -2,8 +2,8 @@
 ## Arquivo de Instruções Permanentes para Claude Code
 
 **Data de Criação:** December 29, 2025
-**Última Atualização:** January 4, 2026
-**Versão:** 1.1
+**Última Atualização:** January 5, 2026
+**Versão:** 1.2
 
 ---
 
@@ -49,6 +49,126 @@ api_key = os.getenv('ANTHROPIC_API_KEY')
 1. Verificar se as keys estão corretas na tabela `ai_models` do banco
 2. Sugerir que ele configure via interface web em `/ai-models`
 3. NUNCA sugerir adicionar no .env
+
+---
+
+### 0.1. COMPATIBILIDADE MULTI-PROVIDER (CRÍTICO) 🌐
+
+**⚠️ ATENÇÃO: ORBIT ORQUESTRA 3 PROVIDERS DE IA SIMULTANEAMENTE ⚠️**
+
+**REGRA FUNDAMENTAL:**
+O ORBIT não é apenas para Anthropic Claude - é um **sistema de orquestração** que suporta **3 providers diferentes**:
+
+1. **🤖 Anthropic (Claude)**
+   - Claude Sonnet 4.5, Claude Opus 4.5, Claude Haiku 4
+
+2. **🔷 OpenAI (GPT)**
+   - GPT-4o, GPT-4 Turbo, GPT-3.5 Turbo
+
+3. **🔶 Google (Gemini)**
+   - Gemini 1.5 Pro, Gemini 2.0 Flash, Gemini 1.5 Flash
+
+**SEMPRE que implementar código relacionado a chamadas de IA:**
+
+✅ **CORRETO - Compatível com todos:**
+```python
+# Messages com apenas roles "user" e "assistant"
+messages = [
+    {"role": "user", "content": "..."},
+    {"role": "assistant", "content": "..."},
+    {"role": "user", "content": "..."}
+]
+
+# System prompt separado (AIOrchestrator trata isso)
+system_prompt = "Você é um assistente..."
+```
+
+❌ **ERRADO - Pode quebrar com alguns providers:**
+```python
+# ❌ NUNCA usar role "system" em messages
+messages = [
+    {"role": "system", "content": "..."},  # ❌ Anthropic rejeita!
+    {"role": "user", "content": "..."}
+]
+
+# ❌ NUNCA assumir comportamento específico de um provider
+messages = [
+    {"role": "model", "content": "..."}  # ❌ Apenas Gemini usa "model"!
+]
+```
+
+**Compatibilidade de Roles:**
+
+| Provider | Roles Aceitos | System Prompt | Notes |
+|----------|---------------|---------------|-------|
+| **Anthropic** | `user`, `assistant` | Parâmetro `system` separado | ❌ Rejeita role `system` em messages |
+| **OpenAI** | `system`, `user`, `assistant` | Message com role `system` | ✅ Aceita `system` em messages |
+| **Google Gemini** | `user`, `model` | System instructions separadas | `model` = equivalente a `assistant` |
+
+**Como o AIOrchestrator resolve isso:**
+
+O `AIOrchestrator` (`backend/app/services/ai_orchestrator.py`) é responsável por:
+1. Receber messages padronizadas (apenas `user` e `assistant`)
+2. Receber system_prompt como parâmetro separado
+3. Converter para o formato específico de cada provider
+4. Fazer a chamada correta para cada API
+
+**Ao implementar features:**
+
+1. ✅ **Use apenas roles "user" e "assistant"** nas mensagens
+2. ✅ **Passe system prompt separadamente** (não como mensagem)
+3. ✅ **Deixe o AIOrchestrator fazer a conversão** para cada provider
+4. ✅ **Teste com PELO MENOS 2 providers diferentes** (não apenas Claude)
+5. ✅ **Documente qual provider você testou** nos PROMPT reports
+
+**Exemplo de implementação correta:**
+
+```python
+# ✅ CORRETO - Compatível com Anthropic, OpenAI e Gemini
+from app.services.ai_orchestrator import AIOrchestrator
+
+orchestrator = AIOrchestrator(db)
+
+# Mensagens padronizadas (apenas user/assistant)
+messages = [
+    {"role": "user", "content": "Olá"},
+    {"role": "assistant", "content": "Oi! Como posso ajudar?"},
+    {"role": "user", "content": "Me explique IA"}
+]
+
+# System prompt separado
+system_prompt = "Você é um assistente especializado em IA."
+
+# AIOrchestrator cuida da compatibilidade
+response = await orchestrator.execute(
+    usage_type="interview",  # Escolhe provider baseado em usage_type
+    messages=messages,       # Messages padronizadas
+    system_prompt=system_prompt,  # System prompt separado
+    max_tokens=1000
+)
+```
+
+**Se você ver código fazendo chamadas diretas à API:**
+- 🚨 **ALERTA!** Código deve usar AIOrchestrator, não chamadas diretas
+- Apenas o AIOrchestrator deve fazer chamadas diretas às APIs
+- Isso garante compatibilidade, logging, cost tracking, etc.
+
+**Quando otimizar prompts/contexto (como PROMPT #54):**
+- ✅ Otimizações devem funcionar para **todos os 3 providers**
+- ✅ Teste redução de tokens com diferentes providers (custos variam)
+- ✅ Documente economia de tokens/custo para cada provider
+
+**Providers e Usage Types (configurados em ai_models):**
+
+| Usage Type | Provider Padrão | Pode Usar Outros? |
+|------------|-----------------|-------------------|
+| `task_execution` | Anthropic (Claude Sonnet 4.5) | ✅ Sim |
+| `interview` | Anthropic (Claude Haiku 4) | ✅ Sim |
+| `prompt_generation` | OpenAI (GPT-4o) | ✅ Sim |
+| `commit_generation` | Google (Gemini 1.5 Pro) | ✅ Sim |
+| `general` | Anthropic (padrão) | ✅ Sim |
+
+**Usuário pode configurar qualquer provider para qualquer usage type via `/ai-models`!**
 
 ---
 
