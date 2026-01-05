@@ -37,3 +37,5 @@ export { Label } from './Label';
 
 export { Checkbox } from './Checkbox';
 export type { CheckboxProps } from './Checkbox';
+
+export { JobProgressBar } from './JobProgressBar'; // PROMPT #65 - Async Job System
