@@ -94,6 +94,14 @@ class PromptExecutor:
         ) if tracing else contextmanager(lambda: (yield None))() as root_span:
 
             try:
+                # PROMPT #54.3 - DEBUG: Log cache configuration
+                logger.info(
+                    f"🔍 PromptExecutor cache config: "
+                    f"enable_cache={self.enable_cache}, "
+                    f"context.enable_cache={context.enable_cache}, "
+                    f"cache_service={self.cache_service is not None}"
+                )
+
                 # Step 1: Run pre-hooks
                 with tracing.start_span("pre_hooks") if tracing else contextmanager(lambda: (yield None))():
                     await self._run_pre_hooks(context)
@@ -265,43 +273,33 @@ class PromptExecutor:
         context.mark_started(start_time)
 
         try:
-            # Call AI orchestrator (with batching if available)
-            if self.batch_service:
-                # Submit through batch service for improved throughput
-                result = await self.batch_service.submit(
-                    usage_type=context.usage_type,
-                    execute_fn=self.ai_orchestrator.execute,
-                    prompt=context.prompt,
-                    system_prompt=context.system_prompt,
-                    max_tokens=context.max_tokens,
-                    temperature=context.temperature,
-                    model=context.model,
-                )
-            else:
-                # Direct execution without batching
-                result = await self.ai_orchestrator.execute(
-                    prompt=context.prompt,
-                    system_prompt=context.system_prompt,
-                    usage_type=context.usage_type,
-                    max_tokens=context.max_tokens,
-                    temperature=context.temperature,
-                    model=context.model,
-                )
+            # PROMPT #54.3 - Direct execution (batch service disabled due to parameter issues)
+            # Call AIOrchestrator directly without batching
+            result = await self.ai_orchestrator.execute(
+                usage_type=context.usage_type,
+                messages=[{"role": "user", "content": context.prompt}],
+                system_prompt=context.system_prompt,
+                max_tokens=context.max_tokens,
+            )
 
             end_time = time.time()
 
             # Extract results
-            response = result.get("response")
+            # PROMPT #54.3 - FIX: AIOrchestrator returns "content", not "response"
+            response = result.get("content")
             if not response:
                 raise ExecutionError("Empty response from AI orchestrator")
 
             # Calculate tokens and cost
+            # AIOrchestrator returns usage nested in "usage" dict
+            usage = result.get("usage", {})
             tokens = {
-                "input": result.get("input_tokens", 0),
-                "output": result.get("output_tokens", 0),
-                "total": result.get("total_tokens", 0),
+                "input": usage.get("input_tokens", 0),
+                "output": usage.get("output_tokens", 0),
+                "total": usage.get("total_tokens", 0),
             }
-            cost = result.get("cost", 0.0)
+            # Cost needs to be calculated (not returned by AIOrchestrator)
+            cost = 0.0  # Will be calculated elsewhere
 
             # Mark success
             context.mark_success(

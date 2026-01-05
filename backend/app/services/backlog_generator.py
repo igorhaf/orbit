@@ -15,6 +15,7 @@ from app.models.interview import Interview
 from app.models.spec import Spec, SpecScope
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
+from app.prompter.facade import PrompterFacade
 from app.services.spec_loader import get_spec_loader
 
 logger = logging.getLogger(__name__)
@@ -47,6 +48,9 @@ class BacklogGeneratorService:
 
     def __init__(self, db: Session):
         self.db = db
+        # PROMPT #54.3 - Use PrompterFacade for cache support
+        self.prompter = PrompterFacade(db)
+        # Keep orchestrator as fallback
         self.orchestrator = AIOrchestrator(db)
 
     async def generate_epic_from_interview(
@@ -143,39 +147,55 @@ CONVERSATION:
 
 Return the Epic as JSON following the schema provided in the system prompt."""
 
-        # 3. Call AI
+        # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Generating Epic from Interview {interview_id}...")
 
-        result = await self.orchestrator.execute(
-            usage_type="prompt_generation",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=system_prompt,
-            project_id=project_id,
-            interview_id=interview_id,
-            metadata={"operation": "generate_epic_from_interview"}
-        )
+        try:
+            result = await self.prompter.execute_prompt(
+                prompt=user_prompt,
+                usage_type="prompt_generation",
+                system_prompt=system_prompt,
+                project_id=str(project_id),
+                interview_id=str(interview_id),
+                metadata={"operation": "generate_epic_from_interview"}
+            )
+        except RuntimeError:
+            # Fallback to direct orchestrator if PrompterFacade not initialized
+            logger.warning("PrompterFacade not available, using direct AIOrchestrator")
+            result = await self.orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                project_id=project_id,
+                interview_id=interview_id,
+                metadata={"operation": "generate_epic_from_interview"}
+            )
+            # Normalize result format
+            result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
 
         # 4. Parse AI response
         try:
             # Strip markdown code blocks if present
-            clean_json = _strip_markdown_json(result["content"])
+            clean_json = _strip_markdown_json(result["response"])
             epic_suggestion = json.loads(clean_json)
 
             # Add metadata
             epic_suggestion["_metadata"] = {
                 "source": "interview",
                 "interview_id": str(interview_id),
-                "ai_model": result.get("db_model_name", "unknown"),
-                "input_tokens": result.get("usage", {}).get("input_tokens", 0),
-                "output_tokens": result.get("usage", {}).get("output_tokens", 0)
+                "ai_model": result.get("model", "unknown"),
+                "input_tokens": result.get("input_tokens", 0),
+                "output_tokens": result.get("output_tokens", 0),
+                "cache_hit": result.get("cache_hit", False),
+                "cache_type": result.get("cache_type", None)
             }
 
-            logger.info(f"✅ Epic generated: {epic_suggestion['title']}")
+            logger.info(f"✅ Epic generated: {epic_suggestion['title']} (cache: {result.get('cache_hit', False)})")
             return epic_suggestion
 
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
-            logger.error(f"AI response: {result['content']}")
+            logger.error(f"AI response: {result.get('response', result.get('content', ''))}")
             raise ValueError(f"AI did not return valid JSON: {str(e)}")
 
     async def decompose_epic_to_stories(
@@ -274,24 +294,40 @@ Interview Insights:
 
 Return 3-7 Stories as JSON array following the schema provided."""
 
-        # 3. Call AI
+        # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Decomposing Epic {epic_id} into Stories...")
 
-        result = await self.orchestrator.execute(
-            usage_type="prompt_generation",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=system_prompt,
-            project_id=project_id,
-            metadata={
-                "operation": "decompose_epic_to_stories",
-                "epic_id": str(epic_id)
-            }
-        )
+        try:
+            result = await self.prompter.execute_prompt(
+                prompt=user_prompt,
+                usage_type="prompt_generation",
+                system_prompt=system_prompt,
+                project_id=str(project_id),
+                metadata={
+                    "operation": "decompose_epic_to_stories",
+                    "epic_id": str(epic_id)
+                }
+            )
+        except RuntimeError:
+            # Fallback to direct orchestrator if PrompterFacade not initialized
+            logger.warning("PrompterFacade not available, using direct AIOrchestrator")
+            result = await self.orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                project_id=project_id,
+                metadata={
+                    "operation": "decompose_epic_to_stories",
+                    "epic_id": str(epic_id)
+                }
+            )
+            # Normalize result format
+            result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
 
         # 4. Parse AI response
         try:
             # Strip markdown code blocks if present
-            clean_json = _strip_markdown_json(result["content"])
+            clean_json = _strip_markdown_json(result["response"])
             stories_suggestions = json.loads(clean_json)
 
             if not isinstance(stories_suggestions, list):
@@ -303,17 +339,19 @@ Return 3-7 Stories as JSON array following the schema provided."""
                 story["_metadata"] = {
                     "source": "epic_decomposition",
                     "epic_id": str(epic_id),
-                    "ai_model": result.get("db_model_name", "unknown"),
-                    "input_tokens": result.get("usage", {}).get("input_tokens", 0),
-                    "output_tokens": result.get("usage", {}).get("output_tokens", 0)
+                    "ai_model": result.get("model", "unknown"),
+                    "input_tokens": result.get("input_tokens", 0),
+                    "output_tokens": result.get("output_tokens", 0),
+                    "cache_hit": result.get("cache_hit", False),
+                    "cache_type": result.get("cache_type", None)
                 }
 
-            logger.info(f"✅ Generated {len(stories_suggestions)} Stories from Epic")
+            logger.info(f"✅ Generated {len(stories_suggestions)} Stories from Epic (cache: {result.get('cache_hit', False)})")
             return stories_suggestions
 
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
-            logger.error(f"AI response: {result['content']}")
+            logger.error(f"AI response: {result.get('response', result.get('content', ''))}")
             raise ValueError(f"AI did not return valid JSON: {str(e)}")
 
     async def decompose_story_to_tasks(
@@ -409,24 +447,40 @@ Acceptance Criteria:
 
 Return 3-10 Tasks as JSON array following the schema provided."""
 
-        # 4. Call AI
+        # 4. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Decomposing Story {story_id} into Tasks...")
 
-        result = await self.orchestrator.execute(
-            usage_type="prompt_generation",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=system_prompt,
-            project_id=project_id,
-            metadata={
-                "operation": "decompose_story_to_tasks",
-                "story_id": str(story_id)
-            }
-        )
+        try:
+            result = await self.prompter.execute_prompt(
+                prompt=user_prompt,
+                usage_type="prompt_generation",
+                system_prompt=system_prompt,
+                project_id=str(project_id),
+                metadata={
+                    "operation": "decompose_story_to_tasks",
+                    "story_id": str(story_id)
+                }
+            )
+        except RuntimeError:
+            # Fallback to direct orchestrator if PrompterFacade not initialized
+            logger.warning("PrompterFacade not available, using direct AIOrchestrator")
+            result = await self.orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                project_id=project_id,
+                metadata={
+                    "operation": "decompose_story_to_tasks",
+                    "story_id": str(story_id)
+                }
+            )
+            # Normalize result format
+            result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
 
         # 5. Parse AI response
         try:
             # Strip markdown code blocks if present
-            clean_json = _strip_markdown_json(result["content"])
+            clean_json = _strip_markdown_json(result["response"])
             tasks_suggestions = json.loads(clean_json)
 
             if not isinstance(tasks_suggestions, list):
@@ -438,17 +492,19 @@ Return 3-10 Tasks as JSON array following the schema provided."""
                 task["_metadata"] = {
                     "source": "story_decomposition",
                     "story_id": str(story_id),
-                    "ai_model": result.get("db_model_name", "unknown"),
-                    "input_tokens": result.get("usage", {}).get("input_tokens", 0),
-                    "output_tokens": result.get("usage", {}).get("output_tokens", 0)
+                    "ai_model": result.get("model", "unknown"),
+                    "input_tokens": result.get("input_tokens", 0),
+                    "output_tokens": result.get("output_tokens", 0),
+                    "cache_hit": result.get("cache_hit", False),
+                    "cache_type": result.get("cache_type", None)
                 }
 
-            logger.info(f"✅ Generated {len(tasks_suggestions)} Tasks from Story")
+            logger.info(f"✅ Generated {len(tasks_suggestions)} Tasks from Story (cache: {result.get('cache_hit', False)})")
             return tasks_suggestions
 
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
-            logger.error(f"AI response: {result['content']}")
+            logger.error(f"AI response: {result.get('response', result.get('content', ''))}")
             raise ValueError(f"AI did not return valid JSON: {str(e)}")
 
     def _format_conversation(self, conversation: List[Dict]) -> str:
