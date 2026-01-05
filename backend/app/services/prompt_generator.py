@@ -451,15 +451,13 @@ class PromptGenerator:
         logger.info(f"Project stack: {project.stack_backend}, {project.stack_database}, "
                    f"{project.stack_frontend}, {project.stack_css}")
 
-        # 3. Fetch specs for project stack (PROMPT #48 - Phase 3: TOKEN REDUCTION!)
-        specs = self._fetch_stack_specs(project, db)
-
-        # 4. Extrair conversa
+        # 3. Extract conversation (FUNCTIONAL ONLY - no specs)
+        # PROMPT #54.2 - FIX: Specs removed from task generation
         conversation = interview.conversation_data
         logger.info(f"Processing {len(conversation)} messages from interview")
 
-        # 5. Criar prompt para análise with specs context (PROMPT #48 - Phase 3)
-        analysis_prompt = self._create_analysis_prompt(conversation, project, specs)
+        # 4. Create functional prompt for analysis (WITHOUT specs)
+        analysis_prompt = self._create_analysis_prompt(conversation, project)
 
         # 4. Chamar AI Orchestrator para analisar
         logger.info("Calling AI Orchestrator for prompt generation...")
@@ -507,72 +505,66 @@ class PromptGenerator:
     def _create_analysis_prompt(
         self,
         conversation: List[Dict[str, Any]],
-        project: Project,
-        specs: Dict[str, Any]
+        project: Project
     ) -> str:
         """
-        Cria prompt para Claude analisar a entrevista WITH SPECS CONTEXT
-        PROMPT #48 - Phase 3: This is where token reduction happens!
-        Phase 2 Integration: Uses PrompterFacade if enabled, else legacy
+        Create functional prompt for interview analysis (NO SPECS)
+
+        PROMPT #54.2 - FIX: Specs removed from task generation
+        - This stage is FUNCTIONAL (WHAT needs to be done)
+        - Specs are only used during EXECUTION (HOW to implement)
 
         Args:
-            conversation: Lista de mensagens da conversa
+            conversation: Interview conversation messages
             project: Project object with stack information
-            specs: Dictionary with framework specs
 
         Returns:
-            Prompt formatado para análise com specs context
+            Functional prompt for task generation (no technical details)
         """
-        # NEW: Use PrompterFacade if enabled
+        # NEW: Use PrompterFacade if enabled (but WITHOUT specs)
         if self.use_prompter and self.prompter:
-            logger.info("Using PrompterFacade template-based prompt generation")
+            logger.info("Using PrompterFacade template-based prompt generation (functional only)")
 
-            # PROMPT #54.2 - FIX: Extract keywords for spec filtering
-            keywords = self._extract_keywords_from_conversation(conversation)
-
+            # PROMPT #54.2 - FIX: NO keywords, NO specs for functional generation
             # Call facade's internal method directly (already feature-flag checked)
             # Note: Both new and legacy methods are synchronous
             if self.prompter.use_templates and self.prompter.composer:
                 return self.prompter._generate_task_prompt_new(
                     conversation=conversation,
                     project=project,
-                    specs=specs,
-                    keywords=keywords  # Pass keywords for filtering
+                    specs={},  # Empty specs - functional only
+                    keywords=set()  # Empty keywords - no filtering needed
                 )
             else:
                 # Fallback within facade
                 return self.prompter._generate_task_prompt_legacy(
                     conversation=conversation,
                     project=project,
-                    specs=specs,
-                    keywords=keywords  # Pass keywords for filtering
+                    specs={},  # Empty specs - functional only
+                    keywords=set()  # Empty keywords - no filtering needed
                 )
 
-        # LEGACY: Fallback to hardcoded prompt
-        logger.info("Using legacy hardcoded prompt generation")
+        # LEGACY: Fallback to hardcoded prompt (FUNCTIONAL ONLY)
+        logger.info("Using legacy hardcoded prompt generation (functional only)")
 
         conversation_text = "\n".join([
             f"{msg.get('role', 'unknown').upper()}: {msg.get('content', '')}"
             for msg in conversation
         ])
 
-        # PROMPT #54 - Token Optimization: Extract keywords for selective spec loading
-        keywords = self._extract_keywords_from_conversation(conversation)
-
-        # Build specs context with keyword filtering (70-80% token reduction!)
-        specs_context = self._build_specs_context(specs, project, keywords)
-
         return f"""Analise esta entrevista sobre um projeto de software e gere tarefas estruturadas para o Kanban board.
 
 CONVERSA DA ENTREVISTA:
 {conversation_text}
 
-{specs_context}
-
 TAREFA:
-Analise a conversa e gere tarefas (tasks) profissionais e detalhadas para implementar o projeto descrito.
-IMPORTANTE: As especificações de framework fornecidas acima são PRÉ-DEFINIDAS.
-NÃO reproduza código boilerplate. Foque apenas em lógica de negócio e recursos únicos do projeto.
+Analise a conversa e gere tarefas (tasks) FUNCIONAIS e detalhadas para implementar o projeto descrito.
+
+IMPORTANTE:
+- Foque no QUE precisa ser feito, não COMO implementar
+- Evite detalhes técnicos específicos de frameworks
+- Descreva funcionalidades e features do ponto de vista do usuário
+- As tasks devem ser compreensíveis sem conhecimento técnico do stack
 
 FORMATO DE SAÍDA (JSON):
 {{
