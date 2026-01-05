@@ -13,10 +13,10 @@ import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
-import { BacklogFilters } from '@/components/backlog';
+import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 import { InterviewList } from '@/components/interview';
 import { projectsApi, tasksApi, interviewsApi } from '@/lib/api';
-import { Project, Task, BacklogFilters as IBacklogFilters } from '@/lib/types';
+import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem } from '@/lib/types';
 
 type Tab = 'kanban' | 'list' | 'overview' | 'interviews' | 'backlog';
 
@@ -36,6 +36,7 @@ export default function ProjectDetailsPage() {
   // Backlog states
   const [backlogFilters, setBacklogFilters] = useState<IBacklogFilters>({});
   const [showBacklogFilters, setShowBacklogFilters] = useState(true);
+  const [selectedBacklogItem, setSelectedBacklogItem] = useState<BacklogItem | null>(null);
 
   const loadProjectData = useCallback(async () => {
     console.log('📋 Loading project data for ID:', projectId);
@@ -432,9 +433,19 @@ export default function ProjectDetailsPage() {
                 <BacklogListView
                   projectId={projectId}
                   filters={backlogFilters}
+                  onItemSelect={setSelectedBacklogItem}
                 />
               </div>
             </div>
+
+            {/* Item Detail Panel */}
+            {selectedBacklogItem && (
+              <ItemDetailPanel
+                item={selectedBacklogItem}
+                onClose={() => setSelectedBacklogItem(null)}
+                onUpdate={handleTasksUpdate}
+              />
+            )}
           </div>
         )}
 
