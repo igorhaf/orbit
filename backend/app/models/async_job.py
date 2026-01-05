@@ -20,6 +20,7 @@ class JobStatus(str, enum.Enum):
     RUNNING = "running"      # Job is currently executing
     COMPLETED = "completed"  # Job finished successfully
     FAILED = "failed"        # Job failed with error
+    CANCELLED = "cancelled"  # Job was cancelled by user
 
 
 class JobType(str, enum.Enum):

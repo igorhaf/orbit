@@ -23,7 +23,7 @@ import { jobsApi } from '@/lib/api';
 export interface AsyncJob {
   id: string;
   job_type: string;
-  status: 'pending' | 'running' | 'completed' | 'failed';
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
   progress_percent: number | null;
   progress_message: string | null;
   result: any | null;
@@ -55,6 +55,11 @@ interface UseJobPollingOptions {
    * Callback when job fails
    */
   onError?: (error: string) => void;
+
+  /**
+   * Callback when job is cancelled
+   */
+  onCancelled?: () => void;
 }
 
 export function useJobPolling(
@@ -66,6 +71,7 @@ export function useJobPolling(
     enabled = true,
     onComplete,
     onError,
+    onCancelled,
   } = options;
 
   const [job, setJob] = useState<AsyncJob | null>(null);
@@ -80,7 +86,7 @@ export function useJobPolling(
       const data = response.data || response;
       setJob(data);
 
-      // If job is completed or failed, stop polling
+      // If job is completed, failed, or cancelled, stop polling
       if (data.status === 'completed') {
         setIsPolling(false);
         onComplete?.(data.result);
@@ -88,13 +94,16 @@ export function useJobPolling(
         setIsPolling(false);
         setError(data.error);
         onError?.(data.error);
+      } else if (data.status === 'cancelled') {
+        setIsPolling(false);
+        onCancelled?.();
       }
     } catch (err: any) {
       console.error('Failed to fetch job status:', err);
       setError(err.message || 'Failed to fetch job status');
       setIsPolling(false);
     }
-  }, [jobId, onComplete, onError]);
+  }, [jobId, onComplete, onError, onCancelled]);
 
   useEffect(() => {
     if (!jobId || !enabled) {

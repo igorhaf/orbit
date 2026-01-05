@@ -370,6 +370,12 @@ export const interviewsApi = {
     request<{ job_id: string; status: string; message: string }>(`/api/v1/interviews/${id}/generate-prompts-async`, {
       method: 'POST',
     }),
+
+  saveStackAsync: (id: string, stack: { backend: string | null; database: string | null; frontend: string | null; css: string | null }) =>
+    request<{ job_id: string; status: string; message: string }>(`/api/v1/interviews/${id}/save-stack-async`, {
+      method: 'POST',
+      body: JSON.stringify(stack),
+    }),
 };
 
 // Prompts API
@@ -647,7 +653,7 @@ export const jobsApi = {
     request<{
       id: string;
       job_type: string;
-      status: 'pending' | 'running' | 'completed' | 'failed';
+      status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
       progress_percent: number | null;
       progress_message: string | null;
       result: any | null;
@@ -659,6 +665,12 @@ export const jobsApi = {
 
   delete: (jobId: string) =>
     request<void>(`/api/v1/jobs/${jobId}`, { method: 'DELETE' }),
+
+  // PROMPT #65 - Cancel a running or pending job
+  cancel: (jobId: string) =>
+    request<{ id: string; status: string; message: string }>(`/api/v1/jobs/${jobId}/cancel`, {
+      method: 'PATCH',
+    }),
 };
 
 // Consistency Issues API
