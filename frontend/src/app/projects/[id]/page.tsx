@@ -12,11 +12,12 @@ import ReactMarkdown from 'react-markdown';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
+import { BacklogListView } from '@/components/backlog/BacklogListView';
 import { InterviewList } from '@/components/interview';
 import { projectsApi, tasksApi, interviewsApi } from '@/lib/api';
 import { Project, Task } from '@/lib/types';
 
-type Tab = 'kanban' | 'list' | 'overview' | 'interviews';
+type Tab = 'kanban' | 'list' | 'overview' | 'interviews' | 'backlog';
 
 export default function ProjectDetailsPage() {
   const params = useParams();
@@ -363,6 +364,7 @@ export default function ProjectDetailsPage() {
           <nav className="-mb-px flex space-x-8">
             {[
               { id: 'overview', label: 'Overview' },
+              { id: 'backlog', label: 'Backlog' },
               { id: 'kanban', label: 'Kanban Board' },
               { id: 'list', label: 'Tasks List' },
               { id: 'interviews', label: 'Interviews' },
@@ -386,6 +388,12 @@ export default function ProjectDetailsPage() {
         </div>
 
         {/* Tab Content */}
+        {activeTab === 'backlog' && (
+          <div>
+            <BacklogListView projectId={projectId} />
+          </div>
+        )}
+
         {activeTab === 'kanban' && (
           <div>
             <KanbanBoard projectId={projectId} />
