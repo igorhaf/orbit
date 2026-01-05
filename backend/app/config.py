@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # Database
     database_url: str = Field(
-        default="postgresql://aiorch:aiorch_dev_password@localhost:5432/ai_orchestrator",
+        default="postgresql://orbit:orbit_password@postgres:5432/orbit",
         alias="DATABASE_URL"
     )
 
