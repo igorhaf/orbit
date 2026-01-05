@@ -79,9 +79,29 @@ interface ExecutionWithCost {
   created_at: string;
 }
 
+interface CacheStats {
+  enabled: boolean;
+  backend: string;
+  message?: string;
+  statistics?: {
+    l1_exact_match: { hits: number; misses: number; hit_rate: number };
+    l2_semantic: { hits: number; misses: number; hit_rate: number; enabled: boolean };
+    l3_template: { hits: number; misses: number; hit_rate: number };
+    total: {
+      hits: number;
+      misses: number;
+      requests: number;
+      hit_rate: number;
+      tokens_saved: number;
+      estimated_cost_saved: number;
+    };
+  };
+}
+
 export default function CostAnalyticsPage() {
   const [analytics, setAnalytics] = useState<CostAnalytics | null>(null);
   const [executions, setExecutions] = useState<ExecutionWithCost[]>([]);
+  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
   const [selectedUsageType, setSelectedUsageType] = useState<string | null>(null);
@@ -90,6 +110,7 @@ export default function CostAnalyticsPage() {
   useEffect(() => {
     fetchAnalytics();
     fetchExecutions();
+    fetchCacheStats();
   }, [selectedProvider, selectedUsageType, dateRange]);
 
   const fetchAnalytics = async () => {
@@ -133,6 +154,18 @@ export default function CostAnalyticsPage() {
       setExecutions(data);
     } catch (error) {
       console.error('Error fetching executions:', error);
+    }
+  };
+
+  const fetchCacheStats = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/cache/stats');
+      if (!response.ok) throw new Error('Failed to fetch cache stats');
+
+      const data = await response.json();
+      setCacheStats(data);
+    } catch (error) {
+      console.error('Error fetching cache stats:', error);
     }
   };
 
@@ -202,7 +235,7 @@ export default function CostAnalyticsPage() {
               <option value={90}>Last 90 days</option>
             </select>
 
-            <Button onClick={() => { fetchAnalytics(); fetchExecutions(); }}>
+            <Button onClick={() => { fetchAnalytics(); fetchExecutions(); fetchCacheStats(); }}>
               Refresh
             </Button>
           </div>
@@ -260,6 +293,153 @@ export default function CostAnalyticsPage() {
                 </div>
               </Card>
             </div>
+
+            {/* Cache Performance */}
+            {cacheStats && (
+              <Card>
+                <div className="p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-semibold text-gray-900">Cache Performance</h2>
+                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                      cacheStats.enabled
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {cacheStats.enabled ? `✓ ${cacheStats.backend.toUpperCase()}` : '✗ Disabled'}
+                    </span>
+                  </div>
+
+                  {!cacheStats.enabled ? (
+                    <div className="text-sm text-gray-500">
+                      {cacheStats.message || 'Cache is not enabled'}
+                    </div>
+                  ) : cacheStats.statistics && (
+                    <>
+                      {/* Overall Cache Stats */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                        <div>
+                          <div className="text-sm text-gray-500">Overall Hit Rate</div>
+                          <div className="text-2xl font-bold text-green-600">
+                            {(cacheStats.statistics.total.hit_rate * 100).toFixed(1)}%
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            {formatNumber(cacheStats.statistics.total.hits)} hits / {formatNumber(cacheStats.statistics.total.requests)} requests
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-500">Cost Saved</div>
+                          <div className="text-2xl font-bold text-blue-600">
+                            {formatCost(cacheStats.statistics.total.estimated_cost_saved)}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            From cached responses
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-500">Tokens Saved</div>
+                          <div className="text-xl font-semibold text-purple-600">
+                            {formatNumber(cacheStats.statistics.total.tokens_saved)}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Not sent to AI
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-sm text-gray-500">Cache Hits</div>
+                          <div className="text-xl font-semibold text-gray-900">
+                            {formatNumber(cacheStats.statistics.total.hits)}
+                          </div>
+                          <div className="text-xs text-gray-500 mt-1">
+                            Successful retrievals
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Multi-Level Cache Breakdown */}
+                      <div className="border-t pt-4">
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Cache Levels</h3>
+                        <div className="space-y-3">
+                          {/* L1 - Exact Match */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900">L1 - Exact Match</span>
+                                <span className="text-xs text-gray-500">(SHA256 hash, 7 days TTL)</span>
+                              </div>
+                              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className="bg-green-500 h-2 rounded-full"
+                                  style={{ width: `${cacheStats.statistics.l1_exact_match.hit_rate * 100}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                            <div className="ml-4 text-right">
+                              <div className="text-sm font-semibold text-gray-900">
+                                {(cacheStats.statistics.l1_exact_match.hit_rate * 100).toFixed(1)}%
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {formatNumber(cacheStats.statistics.l1_exact_match.hits)} hits
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* L2 - Semantic Similarity */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900">L2 - Semantic</span>
+                                <span className="text-xs text-gray-500">(95% similarity, 1 day TTL)</span>
+                                {!cacheStats.statistics.l2_semantic.enabled && (
+                                  <span className="text-xs text-orange-600">(needs Redis)</span>
+                                )}
+                              </div>
+                              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className="bg-blue-500 h-2 rounded-full"
+                                  style={{ width: `${cacheStats.statistics.l2_semantic.hit_rate * 100}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                            <div className="ml-4 text-right">
+                              <div className="text-sm font-semibold text-gray-900">
+                                {(cacheStats.statistics.l2_semantic.hit_rate * 100).toFixed(1)}%
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {formatNumber(cacheStats.statistics.l2_semantic.hits)} hits
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* L3 - Template Cache */}
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900">L3 - Template</span>
+                                <span className="text-xs text-gray-500">(Deterministic, 30 days TTL)</span>
+                              </div>
+                              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
+                                <div
+                                  className="bg-purple-500 h-2 rounded-full"
+                                  style={{ width: `${cacheStats.statistics.l3_template.hit_rate * 100}%` }}
+                                ></div>
+                              </div>
+                            </div>
+                            <div className="ml-4 text-right">
+                              <div className="text-sm font-semibold text-gray-900">
+                                {(cacheStats.statistics.l3_template.hit_rate * 100).toFixed(1)}%
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {formatNumber(cacheStats.statistics.l3_template.hits)} hits
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </Card>
+            )}
 
             {/* Cost by Provider */}
             <Card>

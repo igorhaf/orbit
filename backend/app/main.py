@@ -19,6 +19,7 @@ from app.api.routes import (
     ai_models,
     ai_executions,  # PROMPT #54 - AI Execution Logging
     cost_analytics,  # PROMPT #54.2 - Cost Analytics Dashboard
+    cache_stats,  # PROMPT #54.3 - Cache Statistics and Monitoring
     ai_format,  # AI text formatting
     tasks,
     backlog_generation,  # JIRA Transformation - AI-powered backlog generation
@@ -196,6 +197,13 @@ app.include_router(
     cost_analytics.router,
     prefix=f"{API_V1_PREFIX}/cost",
     tags=["Cost Analytics"]
+)
+
+# Cache Statistics (PROMPT #54.3 - Cache Activation and Monitoring)
+app.include_router(
+    cache_stats.router,
+    prefix=f"{API_V1_PREFIX}",
+    tags=["Cache"]
 )
 
 # AI Format (Text formatting)
