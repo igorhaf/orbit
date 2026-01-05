@@ -14,8 +14,8 @@
  */
 
 import { useState, useEffect } from 'react';
-import Layout from '@/components/layout/Layout';
-import Breadcrumbs from '@/components/layout/Breadcrumbs';
+import { Layout } from '@/components/layout/Layout';
+import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 
@@ -168,12 +168,7 @@ export default function CostAnalyticsPage() {
   if (loading && !analytics) {
     return (
       <Layout>
-        <Breadcrumbs
-          items={[
-            { label: 'Home', href: '/' },
-            { label: 'Cost Analytics', href: '/cost-analytics' }
-          ]}
-        />
+        <Breadcrumbs />
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
@@ -183,12 +178,7 @@ export default function CostAnalyticsPage() {
 
   return (
     <Layout>
-      <Breadcrumbs
-        items={[
-          { label: 'Home', href: '/' },
-          { label: 'Cost Analytics', href: '/cost-analytics' }
-        ]}
-      />
+      <Breadcrumbs />
 
       <div className="space-y-6">
         {/* Header */}
