@@ -2,12 +2,55 @@
 ## Arquivo de Instruções Permanentes para Claude Code
 
 **Data de Criação:** December 29, 2025
-**Última Atualização:** December 29, 2025
-**Versão:** 1.0
+**Última Atualização:** January 4, 2026
+**Versão:** 1.1
 
 ---
 
 ## 🎯 INSTRUÇÕES CRÍTICAS - SEMPRE SEGUIR
+
+### 0. API KEYS E CONFIGURAÇÕES (CRÍTICO - NUNCA ESQUECER) ⚠️
+
+**⚠️ ATENÇÃO: AS API KEYS NUNCA SÃO ARMAZENADAS NO .ENV ⚠️**
+
+**REGRA FUNDAMENTAL:**
+- ✅ **API Keys são armazenadas NO BANCO DE DADOS** (tabela `ai_models`)
+- ❌ **API Keys NUNCA são usadas no arquivo .env**
+- ❌ **NUNCA sugira ao usuário adicionar API keys no .env**
+- ❌ **NUNCA crie scripts que leiam API keys de environment variables**
+
+**Como funciona no ORBIT:**
+1. O usuário configura as API keys diretamente na interface web (`/ai-models`)
+2. As keys ficam armazenadas na tabela `ai_models` do PostgreSQL
+3. O `AIOrchestrator` busca as keys do banco de dados quando precisa fazer chamadas
+4. O arquivo `.env` contém APENAS configurações gerais (DATABASE_URL, SECRET_KEY, etc.)
+
+**Quando popular o banco de dados:**
+- Use placeholders como `'configure-via-web-interface'` ou `'set-in-ai-models-page'`
+- NUNCA tente ler de `settings.anthropic_api_key` ou variáveis de ambiente
+- As keys reais serão configuradas pelo usuário via interface web
+
+**Exemplos CORRETOS de população:**
+```sql
+INSERT INTO ai_models (name, provider, api_key, ...)
+VALUES ('Claude Sonnet 4', 'anthropic', 'configure-via-web-interface', ...);
+```
+
+**Exemplos INCORRETOS (NUNCA FAZER):**
+```python
+# ❌ ERRADO - não ler de environment
+api_key = settings.anthropic_api_key
+
+# ❌ ERRADO - não ler de .env
+api_key = os.getenv('ANTHROPIC_API_KEY')
+```
+
+**Se o usuário mencionar problemas com API keys:**
+1. Verificar se as keys estão corretas na tabela `ai_models` do banco
+2. Sugerir que ele configure via interface web em `/ai-models`
+3. NUNCA sugerir adicionar no .env
+
+---
 
 ### 1. DOCUMENTAÇÃO DE PROMPTS (OBRIGATÓRIO)
 
