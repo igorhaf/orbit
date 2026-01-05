@@ -13,9 +13,10 @@ import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
+import { BacklogFilters } from '@/components/backlog';
 import { InterviewList } from '@/components/interview';
 import { projectsApi, tasksApi, interviewsApi } from '@/lib/api';
-import { Project, Task } from '@/lib/types';
+import { Project, Task, BacklogFilters as IBacklogFilters } from '@/lib/types';
 
 type Tab = 'kanban' | 'list' | 'overview' | 'interviews' | 'backlog';
 
@@ -31,6 +32,10 @@ export default function ProjectDetailsPage() {
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [editedDescription, setEditedDescription] = useState('');
   const [isFormattingDescription, setIsFormattingDescription] = useState(false);
+
+  // Backlog states
+  const [backlogFilters, setBacklogFilters] = useState<IBacklogFilters>({});
+  const [showBacklogFilters, setShowBacklogFilters] = useState(true);
 
   const loadProjectData = useCallback(async () => {
     console.log('📋 Loading project data for ID:', projectId);
@@ -389,8 +394,47 @@ export default function ProjectDetailsPage() {
 
         {/* Tab Content */}
         {activeTab === 'backlog' && (
-          <div>
-            <BacklogListView projectId={projectId} />
+          <div className="space-y-6">
+            {/* Backlog Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-500">
+                  Hierarchical view of Epics, Stories, Tasks, and Bugs
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowBacklogFilters(!showBacklogFilters)}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                {showBacklogFilters ? 'Hide Filters' : 'Show Filters'}
+              </Button>
+            </div>
+
+            {/* Backlog Content */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+              {/* Filters Sidebar */}
+              {showBacklogFilters && (
+                <div className="lg:col-span-1">
+                  <BacklogFilters
+                    filters={backlogFilters}
+                    onFiltersChange={setBacklogFilters}
+                    onClearFilters={() => setBacklogFilters({})}
+                  />
+                </div>
+              )}
+
+              {/* Backlog List */}
+              <div className={showBacklogFilters ? 'lg:col-span-3' : 'lg:col-span-4'}>
+                <BacklogListView
+                  projectId={projectId}
+                  filters={backlogFilters}
+                />
+              </div>
+            </div>
           </div>
         )}
 
