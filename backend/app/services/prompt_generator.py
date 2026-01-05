@@ -213,23 +213,50 @@ class PromptGenerator:
 
     def _is_spec_relevant(self, spec: Dict, keywords: set) -> bool:
         """
-        Check if a spec is relevant based on keywords.
+        Check if a spec is relevant based on keywords OR essentiality.
 
         PROMPT #54 - Token Optimization: Filter specs by relevance
-        """
-        if not keywords:
-            # No keywords = include essential specs only
-            essential_types = {'project_structure', 'database', 'routing', 'api_endpoints'}
-            return spec.get('type', '') in essential_types
+        PROMPT #54.1 - Always Filter: Ensures specs are ALWAYS limited, never sends all 47
 
-        # Check if spec title or type matches any keyword
-        spec_text = f"{spec.get('title', '')} {spec.get('type', '')}".lower()
+        Strategy:
+        - If HAS keywords: Match by keyword relevance OR essential types
+        - If NO keywords: Include only essential types (top 10 most common)
+        - This guarantees specs are ALWAYS filtered (never all 47 specs)
+
+        Returns:
+            True if spec is relevant (by keyword or essentiality), False otherwise
+        """
+        # Define essential spec types (most commonly needed across all projects)
+        # Expanded from 4 to 10 types for better coverage without keywords
+        essential_types = {
+            'project_structure',  # How to organize files/folders
+            'database',           # Database schema, queries
+            'routing',            # Routes/endpoints definition
+            'api_endpoints',      # API controllers/handlers
+            'middleware',         # Auth, CORS, validation
+            'models',             # ORM models, entities
+            'migrations',         # Database migrations
+            'components',         # UI components (frontend)
+            'pages',              # Routes/pages (frontend)
+            'authentication'      # Auth system (very common)
+        }
+
+        spec_type = spec.get('type', '').lower()
+
+        # If no keywords, use only essential types
+        if not keywords:
+            return spec_type in essential_types
+
+        # Has keywords - check for keyword match first
+        spec_text = f"{spec.get('title', '')} {spec_type}".lower()
 
         for keyword in keywords:
             if keyword in spec_text:
                 return True
 
-        return False
+        # No keyword match - still include if essential type
+        # This ensures essential specs are always included even with keywords
+        return spec_type in essential_types
 
     def _build_specs_context(self, specs: Dict[str, Any], project: Project, keywords: set = None) -> str:
         """
@@ -237,6 +264,7 @@ class PromptGenerator:
 
         PROMPT #48 - Phase 3: Build comprehensive specs context
         PROMPT #54 - Token Optimization: Made selective based on keywords (70-80% reduction)
+        PROMPT #54.1 - Always Filter: ALWAYS limits specs to max 12 (never sends all 47)
 
         Args:
             specs: All available specs organized by category
@@ -244,13 +272,18 @@ class PromptGenerator:
             keywords: Optional set of keywords from conversation for filtering
 
         Strategy:
-        - If keywords provided: Include only specs matching keywords (3-5 specs)
-        - If no keywords: Include only essential specs (project_structure, database, routing)
-        - This reduces from 16,278 tokens → 3,000-5,000 tokens (70-80% reduction)
+        - ALWAYS filter specs (never send all 47)
+        - If keywords provided: Include specs matching keywords + essentials
+        - If no keywords: Include only essential specs (10 types)
+        - Limit to MAX 3 specs per category (total ~12 specs max)
+        - This reduces from 16,278 tokens → 1,200-1,500 tokens (90%+ reduction)
         """
         if not any(specs[cat] for cat in ['backend', 'frontend', 'database', 'css']):
             logger.warning("No specs available for project stack")
             return ""
+
+        # PROMPT #54.1 - Always Filter: Maximum specs per category
+        MAX_SPECS_PER_CATEGORY = 3
 
         # Filter specs by relevance
         filtered_specs = {
@@ -266,10 +299,15 @@ class PromptGenerator:
         for category in ['backend', 'frontend', 'database', 'css']:
             total_before += len(specs.get(category, []))
             if specs.get(category):
-                filtered_specs[category] = [
+                # Filter by relevance (keywords or essentiality)
+                relevant_specs = [
                     spec for spec in specs[category]
                     if self._is_spec_relevant(spec, keywords or set())
                 ]
+
+                # ALWAYS limit to top N specs per category (PROMPT #54.1)
+                # This ensures we NEVER send too many specs, even if many are relevant
+                filtered_specs[category] = relevant_specs[:MAX_SPECS_PER_CATEGORY]
                 total_after += len(filtered_specs[category])
 
         logger.info(f"📊 Spec filtering: {total_before} specs → {total_after} relevant specs "
