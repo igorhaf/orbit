@@ -22,28 +22,18 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create job_status enum
-    job_status_enum = postgresql.ENUM(
-        'pending', 'running', 'completed', 'failed',
-        name='jobstatus',
-        create_type=False
-    )
-    job_status_enum.create(op.get_bind(), checkfirst=True)
+    # Create job_status enum using raw SQL
+    op.execute("CREATE TYPE jobstatus AS ENUM ('pending', 'running', 'completed', 'failed')")
 
-    # Create job_type enum
-    job_type_enum = postgresql.ENUM(
-        'interview_message', 'backlog_generation', 'project_provisioning',
-        name='jobtype',
-        create_type=False
-    )
-    job_type_enum.create(op.get_bind(), checkfirst=True)
+    # Create job_type enum using raw SQL
+    op.execute("CREATE TYPE jobtype AS ENUM ('interview_message', 'backlog_generation', 'project_provisioning')")
 
     # Create async_jobs table
     op.create_table(
         'async_jobs',
         sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('job_type', postgresql.ENUM('interview_message', 'backlog_generation', 'project_provisioning', name='jobtype'), nullable=False),
-        sa.Column('status', postgresql.ENUM('pending', 'running', 'completed', 'failed', name='jobstatus'), nullable=False),
+        sa.Column('job_type', postgresql.ENUM('interview_message', 'backlog_generation', 'project_provisioning', name='jobtype', create_type=False), nullable=False),
+        sa.Column('status', postgresql.ENUM('pending', 'running', 'completed', 'failed', name='jobstatus', create_type=False), nullable=False),
         sa.Column('input_data', postgresql.JSON(astext_type=sa.Text()), nullable=False, server_default='{}'),
         sa.Column('result', postgresql.JSON(astext_type=sa.Text()), nullable=True),
         sa.Column('error', sa.Text(), nullable=True),
