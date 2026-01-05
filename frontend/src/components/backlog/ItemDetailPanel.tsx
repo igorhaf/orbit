@@ -132,7 +132,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate }: ItemDetailP
 
   return (
     <div className="fixed inset-0 z-50 overflow-hidden bg-black bg-opacity-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl h-[90vh] flex flex-col">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-[90%] h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b">
           <div className="flex-1">
