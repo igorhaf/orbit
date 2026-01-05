@@ -18,7 +18,7 @@ import { InterviewList } from '@/components/interview';
 import { projectsApi, tasksApi, interviewsApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem } from '@/lib/types';
 
-type Tab = 'kanban' | 'list' | 'overview' | 'interviews' | 'backlog';
+type Tab = 'kanban' | 'overview' | 'interviews' | 'backlog';
 
 export default function ProjectDetailsPage() {
   const params = useParams();
@@ -372,7 +372,6 @@ export default function ProjectDetailsPage() {
               { id: 'overview', label: 'Overview' },
               { id: 'backlog', label: 'Backlog' },
               { id: 'kanban', label: 'Kanban Board' },
-              { id: 'list', label: 'Tasks List' },
               { id: 'interviews', label: 'Interviews' },
             ].map((tab) => (
               <button
@@ -453,64 +452,6 @@ export default function ProjectDetailsPage() {
           <div>
             <KanbanBoard projectId={projectId} />
           </div>
-        )}
-
-        {activeTab === 'list' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>All Tasks ({tasks.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {tasks.length === 0 ? (
-                <div className="text-center py-12">
-                  <p className="text-gray-500">No tasks yet</p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Create an interview or add tasks manually
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {tasks.map((task) => (
-                    <div
-                      key={task.id}
-                      className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-900">
-                            {task.title}
-                          </h3>
-                          {task.description && (
-                            <p className="mt-1 text-sm text-gray-600">
-                              {task.description}
-                            </p>
-                          )}
-                        </div>
-                        <Badge
-                          variant={
-                            task.status === 'done'
-                              ? 'success'
-                              : task.status === 'in_progress'
-                              ? 'info'
-                              : 'default'
-                          }
-                        >
-                          {task.status.replace('_', ' ')}
-                        </Badge>
-                      </div>
-                      <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
-                        <span>Column: {task.column}</span>
-                        <span>Order: {task.order}</span>
-                        <span>
-                          Created: {new Date(task.created_at).toLocaleDateString()}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
         )}
 
         {activeTab === 'interviews' && (
