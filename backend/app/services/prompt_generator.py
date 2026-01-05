@@ -13,11 +13,12 @@ import logging
 import os
 
 from app.models.interview import Interview
-from app.models.task import Task, TaskStatus
+from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
 from app.models.project import Project
 from app.models.spec import Spec
 from app.services.ai_orchestrator import AIOrchestrator
 from app.services.spec_loader import get_spec_loader
+from app.services.backlog_generator import BacklogGeneratorService
 
 # Prompter Architecture (gradual migration via feature flags)
 try:
@@ -414,22 +415,28 @@ class PromptGenerator:
         db: Session
     ) -> List[Task]:
         """
-        Analisa a entrevista e gera tasks estruturadas para o Kanban board
+        Analisa a entrevista e gera hierarquia completa de Backlog (Epic → Stories → Tasks)
+
+        PROMPT #64 - JIRA Backlog Generation (EM PORTUGUÊS)
+        - Substitui geração de tasks simples por hierarquia JIRA-like rica
+        - Gera Epic → decompõe em Stories → decompõe em Tasks
+        - Todo conteúdo gerado em PORTUGUÊS
+        - Itens criados no Backlog (não diretamente no Kanban)
 
         Args:
             interview_id: UUID da entrevista
             db: Sessão do banco de dados
 
         Returns:
-            Lista de tasks criadas
+            Lista de todos os itens criados (Epic + Stories + Tasks)
 
         Raises:
             ValueError: Se a entrevista não for encontrada
             Exception: Se houver erro na geração
         """
-        logger.info(f"Starting task generation for interview {interview_id}")
+        logger.info(f"🚀 PROMPT #64: Starting JIRA Backlog generation (PT-BR) for interview {interview_id}")
 
-        # 1. Buscar interview
+        # 1. Buscar interview e validar
         interview = db.query(Interview).filter(
             Interview.id == UUID(interview_id)
         ).first()
@@ -440,67 +447,116 @@ class PromptGenerator:
         if not interview.conversation_data or len(interview.conversation_data) == 0:
             raise ValueError("Interview has no conversation data")
 
-        # 2. Buscar project (PROMPT #48 - Phase 3)
-        project = db.query(Project).filter(
-            Project.id == interview.project_id
-        ).first()
+        project_id = interview.project_id
+        logger.info(f"📋 Interview found for project {project_id}")
 
-        if not project:
-            raise ValueError(f"Project {interview.project_id} not found")
+        # 2. Initialize BacklogGeneratorService
+        backlog_service = BacklogGeneratorService(db)
+        all_created_items = []
 
-        logger.info(f"Project stack: {project.stack_backend}, {project.stack_database}, "
-                   f"{project.stack_frontend}, {project.stack_css}")
-
-        # 3. Extract conversation (FUNCTIONAL ONLY - no specs)
-        # PROMPT #54.2 - FIX: Specs removed from task generation
-        conversation = interview.conversation_data
-        logger.info(f"Processing {len(conversation)} messages from interview")
-
-        # 4. Create functional prompt for analysis (WITHOUT specs)
-        analysis_prompt = self._create_analysis_prompt(conversation, project)
-
-        # 4. Chamar AI Orchestrator para analisar
-        logger.info("Calling AI Orchestrator for prompt generation...")
-        response = await self.orchestrator.execute(
-            usage_type="prompt_generation",
-            messages=[{
-                "role": "user",
-                "content": analysis_prompt
-            }],
-            max_tokens=4000,
-            # PROMPT #58 - Add context for prompt logging
-            project_id=interview.project_id,
-            interview_id=interview.id
+        # 3. STEP 1: Generate Epic from Interview (EM PORTUGUÊS)
+        logger.info("🎯 STEP 1: Generating Epic from interview conversation...")
+        epic_suggestion = await backlog_service.generate_epic_from_interview(
+            interview_id=UUID(interview_id),
+            project_id=project_id
         )
 
-        logger.info(f"Received response from {response['provider']} ({response['model']})")
+        # Create Epic in database
+        epic = Task(
+            project_id=project_id,
+            item_type=ItemType.EPIC,
+            title=epic_suggestion["title"],
+            description=epic_suggestion["description"],
+            story_points=epic_suggestion.get("story_points", 13),
+            priority=PriorityLevel(epic_suggestion.get("priority", "medium")),
+            acceptance_criteria=epic_suggestion.get("acceptance_criteria", []),
+            interview_insights=epic_suggestion.get("interview_insights", {}),
+            interview_question_ids=epic_suggestion.get("interview_question_ids", []),
+            status=TaskStatus.BACKLOG,
+            workflow_state="backlog",
+            column="backlog",
+            order=0,
+            reporter="system",
+            created_from_interview_id=UUID(interview_id)
+        )
+        db.add(epic)
+        db.flush()  # Get Epic ID without committing
+        all_created_items.append(epic)
+        logger.info(f"✅ Epic created: {epic.title} (ID: {epic.id})")
 
-        # 5. Parsear resposta e criar tasks
-        tasks_data = self._parse_ai_response(response['content'])
-        logger.info(f"Parsed {len(tasks_data)} tasks from AI response")
+        # 4. STEP 2: Decompose Epic into Stories (EM PORTUGUÊS)
+        logger.info(f"📖 STEP 2: Decomposing Epic into Stories...")
+        stories_suggestions = await backlog_service.decompose_epic_to_stories(
+            epic_id=epic.id,
+            project_id=project_id
+        )
 
-        # 6. Criar tasks no banco
-        created_tasks = []
-        for i, task_data in enumerate(tasks_data):
-            task = Task(
-                project_id=interview.project_id,
-                title=task_data.get("name", task_data.get("title", f"Task {i+1}")),
-                description=task_data.get("content", task_data.get("description", "")),
+        stories = []
+        for i, story_suggestion in enumerate(stories_suggestions):
+            story = Task(
+                project_id=project_id,
+                item_type=ItemType.STORY,
+                parent_id=epic.id,
+                title=story_suggestion["title"],
+                description=story_suggestion["description"],
+                story_points=story_suggestion.get("story_points", 5),
+                priority=PriorityLevel(story_suggestion.get("priority", "medium")),
+                acceptance_criteria=story_suggestion.get("acceptance_criteria", []),
+                interview_insights=story_suggestion.get("interview_insights", {}),
                 status=TaskStatus.BACKLOG,
+                workflow_state="backlog",
                 column="backlog",
                 order=i,
-                type=task_data.get("type", "feature"),
-                complexity=task_data.get("priority", 1),
+                reporter="system",
                 created_from_interview_id=UUID(interview_id)
             )
-            db.add(task)
-            created_tasks.append(task)
-            logger.info(f"Created task {i+1}: {task.title}")
+            db.add(story)
+            db.flush()  # Get Story ID
+            stories.append(story)
+            all_created_items.append(story)
+            logger.info(f"✅ Story {i+1} created: {story.title} (ID: {story.id})")
 
+        # 5. STEP 3: Decompose each Story into Tasks (EM PORTUGUÊS)
+        logger.info(f"✓ STEP 3: Decomposing each Story into Tasks...")
+        task_order = 0
+        for story in stories:
+            logger.info(f"  📝 Decomposing Story: {story.title}...")
+            tasks_suggestions = await backlog_service.decompose_story_to_tasks(
+                story_id=story.id,
+                project_id=project_id
+            )
+
+            for i, task_suggestion in enumerate(tasks_suggestions):
+                task = Task(
+                    project_id=project_id,
+                    item_type=ItemType.TASK,
+                    parent_id=story.id,
+                    title=task_suggestion["title"],
+                    description=task_suggestion["description"],
+                    story_points=task_suggestion.get("story_points", 2),
+                    priority=PriorityLevel(task_suggestion.get("priority", "medium")),
+                    acceptance_criteria=task_suggestion.get("acceptance_criteria", []),
+                    status=TaskStatus.BACKLOG,
+                    workflow_state="backlog",
+                    column="backlog",
+                    order=task_order,
+                    reporter="system",
+                    created_from_interview_id=UUID(interview_id)
+                )
+                db.add(task)
+                all_created_items.append(task)
+                task_order += 1
+                logger.info(f"  ✅ Task {i+1} created: {task.title}")
+
+        # 6. Commit everything
         db.commit()
-        logger.info(f"Successfully generated and saved {len(created_tasks)} tasks")
+        logger.info(f"🎉 Successfully generated complete Backlog hierarchy (PT-BR)!")
+        logger.info(f"   Epic: 1")
+        logger.info(f"   Stories: {len(stories)}")
+        logger.info(f"   Tasks: {len(all_created_items) - len(stories) - 1}")
+        logger.info(f"   Total items: {len(all_created_items)}")
 
-        return created_tasks
+        return all_created_items
 
     def _create_analysis_prompt(
         self,
