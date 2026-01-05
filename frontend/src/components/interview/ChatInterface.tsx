@@ -9,9 +9,10 @@ import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { interviewsApi } from '@/lib/api';
 import { Interview } from '@/lib/types';
-import { Button, Badge } from '@/components/ui';
+import { Button, Badge, JobProgressBar } from '@/components/ui';
 import { MessageBubble } from './MessageBubble';
 import { ProvisioningStatusCard } from './ProvisioningStatusCard';
+import { useJobPolling } from '@/hooks';
 
 interface Props {
   interviewId: string;
@@ -46,6 +47,60 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
   // PROMPT #51 - Track AI errors (credits, authentication, etc.)
   const [aiError, setAiError] = useState<{ type: string; message: string; provider?: string } | null>(null);
+
+  // PROMPT #65 - Async job tracking
+  const [sendMessageJobId, setSendMessageJobId] = useState<string | null>(null);
+  const [generatePromptsJobId, setGeneratePromptsJobId] = useState<string | null>(null);
+
+  // PROMPT #65 - Poll job status for send message
+  const { job: sendMessageJob, isPolling: isSendingMessage } = useJobPolling(sendMessageJobId, {
+    enabled: !!sendMessageJobId,
+    onComplete: (result) => {
+      console.log('✅ Send message job completed:', result);
+      setSendMessageJobId(null);
+      loadInterview(); // Reload to get new message
+    },
+    onError: (error) => {
+      console.error('❌ Send message job failed:', error);
+      setSendMessageJobId(null);
+      alert(`Failed to send message: ${error}`);
+    },
+  });
+
+  // PROMPT #65 - Poll job status for prompt generation
+  const { job: generatePromptsJob, isPolling: isGeneratingPrompts } = useJobPolling(generatePromptsJobId, {
+    enabled: !!generatePromptsJobId,
+    onComplete: (result) => {
+      console.log('✅ Generate prompts job completed:', result);
+      setGeneratePromptsJobId(null);
+
+      const tasksCount = result?.total_items || result?.tasks_created || 0;
+      const storiesCount = result?.stories_created || 0;
+
+      alert(
+        `✅ Success!\n\n` +
+        `${storiesCount} stories and ${tasksCount} tasks were created automatically from your interview.\n\n` +
+        `Check your Backlog to see them!`
+      );
+
+      loadInterview();
+    },
+    onError: (error) => {
+      console.error('❌ Generate prompts job failed:', error);
+      setGeneratePromptsJobId(null);
+
+      // Detect AI-specific errors
+      const errorLower = error.toLowerCase();
+      if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota')) {
+        setAiError({
+          type: 'credits',
+          message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
+        });
+      } else {
+        alert(`❌ Error generating prompts:\n\n${error}`);
+      }
+    },
+  });
 
   useEffect(() => {
     loadInterview();
@@ -221,16 +276,18 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         }
       }
 
-      // Enviar mensagem e obter resposta da IA (ou próxima pergunta fixa)
-      await interviewsApi.sendMessage(interviewId, {
+      // PROMPT #65 - Enviar mensagem ASYNC (não bloqueia UI)
+      console.log('🚀 Sending message async...');
+      const response = await interviewsApi.sendMessageAsync(interviewId, {
         content: userMessage || optionsToSend.join(', '),
         selected_options: optionsToSend.length > 0 ? optionsToSend : undefined
       });
 
-      // Recarregar para pegar resposta da IA
-      const response = await interviewsApi.get(interviewId);
       const data = response.data || response;
-      setInterview(data || null);
+      const jobId = data.job_id;
+
+      console.log('✅ Message job created:', jobId);
+      setSendMessageJobId(jobId); // Start polling for job status
 
       // Reset project info tracking
       setPrefilledValue(null);
@@ -492,63 +549,23 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       return;
     }
 
-    if (!confirm('Generate tasks automatically from this interview using AI?\n\nThis will analyze the conversation and create micro-tasks that will appear in your Kanban board.')) {
+    if (!confirm('Generate Backlog (Epic → Stories → Tasks) from this interview using AI?\n\nThis may take 2-5 minutes. You\'ll see real-time progress updates.')) {
       return;
     }
 
-    setGeneratingPrompts(true);
     try {
-      const response = await interviewsApi.generatePrompts(interviewId);
-      // Handle both response formats (direct data or wrapped in .data)
+      // PROMPT #65 - Generate prompts ASYNC (non-blocking)
+      console.log('🚀 Starting async backlog generation...');
+      const response = await interviewsApi.generatePromptsAsync(interviewId);
       const data = response.data || response;
+      const jobId = data.job_id;
 
-      // Backend should return tasks_created or prompts_generated
-      const tasksCount = data.tasks_created || data.prompts_generated || 0;
-
-      alert(
-        `✅ Success!\n\n` +
-        `${tasksCount} tasks were created automatically from your interview.\n\n` +
-        `Check your Kanban board to see them in the Backlog column!`
-      );
-
-      // Optionally reload interview to update any metadata
-      await loadInterview();
+      console.log('✅ Backlog generation job created:', jobId);
+      setGeneratePromptsJobId(jobId); // Start polling for job status
     } catch (error: any) {
-      console.error('Failed to generate prompts:', error);
-      const errorDetail = error.response?.data?.detail || error.message || 'Failed to generate prompts. Please try again.';
-      const errorLower = errorDetail.toLowerCase();
-
-      // Detect AI-specific errors (credits, authentication, etc.)
-      if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota') || errorLower.includes('insufficient_quota')) {
-        setAiError({
-          type: 'credits',
-          message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
-          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
-                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
-                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
-        });
-      } else if (errorLower.includes('authentication') || errorLower.includes('api key') || errorLower.includes('invalid x-api-key') || errorLower.includes('unauthorized')) {
-        setAiError({
-          type: 'auth',
-          message: 'API key inválida ou expirada. Por favor, configure uma API key válida nas configurações.',
-          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
-                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
-                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
-        });
-      } else if (errorLower.includes('rate limit')) {
-        setAiError({
-          type: 'rate_limit',
-          message: 'Limite de requisições excedido. Por favor, aguarde alguns minutos antes de tentar novamente.',
-          provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
-                   errorLower.includes('openai') ? 'OpenAI (GPT)' :
-                   errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
-        });
-      } else {
-        // Generic error - show alert
-        alert(`❌ Error:\n\n${errorDetail}`);
-      }
-    } finally {
-      setGeneratingPrompts(false);
+      console.error('Failed to create backlog generation job:', error);
+      const errorDetail = error.response?.data?.detail || error.message || 'Failed to start backlog generation.';
+      alert(`❌ Error:\n\n${errorDetail}`);
     }
   };
 
@@ -647,9 +664,9 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
             variant="primary"
             size="sm"
             onClick={handleGeneratePrompts}
-            disabled={generatingPrompts || !interview || interview.conversation_data.length === 0}
+            disabled={isGeneratingPrompts || !interview || interview.conversation_data.length === 0}
           >
-            {generatingPrompts ? (
+            {isGeneratingPrompts ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
                 Generating...
@@ -659,7 +676,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                🤖 Generate Prompts
+                🤖 Generate Backlog
               </>
             )}
           </Button>
@@ -801,8 +818,35 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
           </>
         )}
 
-        {/* AI Thinking indicator */}
-        {sending && (
+        {/* PROMPT #65 - Send Message Progress */}
+        {isSendingMessage && sendMessageJob && (
+          <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <h4 className="text-sm font-semibold text-blue-900 mb-2">🤖 Processing your message...</h4>
+            <JobProgressBar
+              percent={sendMessageJob.progress_percent}
+              message={sendMessageJob.progress_message}
+              status={sendMessageJob.status}
+            />
+          </div>
+        )}
+
+        {/* PROMPT #65 - Backlog Generation Progress */}
+        {isGeneratingPrompts && generatePromptsJob && (
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <h4 className="text-sm font-semibold text-green-900 mb-2">⚡ Generating Backlog...</h4>
+            <JobProgressBar
+              percent={generatePromptsJob.progress_percent}
+              message={generatePromptsJob.progress_message}
+              status={generatePromptsJob.status}
+            />
+            <p className="text-xs text-green-700 mt-2">
+              This may take 2-5 minutes. You can continue working while we generate your Epic → Stories → Tasks.
+            </p>
+          </div>
+        )}
+
+        {/* AI Thinking indicator (for non-async operations) */}
+        {sending && !isSendingMessage && (
           <div className="flex justify-start mb-4">
             <div className="bg-gray-200 rounded-lg px-4 py-3">
               <div className="flex items-center gap-2">
@@ -850,17 +894,17 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={selectedOptions.length > 0 ? "Or type a custom response..." : "Type your response... (Shift+Enter for new line, Enter to send)"}
-                disabled={sending}
+                disabled={sending || isSendingMessage}
                 className="flex-1 border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 bg-white min-h-[44px] max-h-[200px] overflow-y-auto"
                 rows={1}
               />
             <Button
               onClick={() => handleSend()}
-              disabled={(!message.trim() && selectedOptions.length === 0) || sending}
+              disabled={(!message.trim() && selectedOptions.length === 0) || sending || isSendingMessage}
               variant="primary"
               className="px-6 self-end"
             >
-              {sending ? (
+              {(sending || isSendingMessage) ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                   Sending...

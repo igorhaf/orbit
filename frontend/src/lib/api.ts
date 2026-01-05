@@ -358,6 +358,18 @@ export const interviewsApi = {
     }>(`/api/v1/interviews/${id}/provision`, {
       method: 'POST',
     }),
+
+  // PROMPT #65 - Async endpoints (non-blocking)
+  sendMessageAsync: (id: string, data: { content: string; selected_options?: string[] }) =>
+    request<{ job_id: string; status: string; message: string }>(`/api/v1/interviews/${id}/send-message-async`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  generatePromptsAsync: (id: string) =>
+    request<{ job_id: string; status: string; message: string }>(`/api/v1/interviews/${id}/generate-prompts-async`, {
+      method: 'POST',
+    }),
 };
 
 // Prompts API
@@ -627,6 +639,26 @@ export const analyzersApi = {
 
   getOrchestratorCode: (id: string) =>
     request<any>(`/api/v1/analyzers/${id}/orchestrator-code`),
+};
+
+// Jobs API (PROMPT #65 - Async Job System)
+export const jobsApi = {
+  get: (jobId: string) =>
+    request<{
+      id: string;
+      job_type: string;
+      status: 'pending' | 'running' | 'completed' | 'failed';
+      progress_percent: number | null;
+      progress_message: string | null;
+      result: any | null;
+      error: string | null;
+      created_at: string;
+      started_at: string | null;
+      completed_at: string | null;
+    }>(`/api/v1/jobs/${jobId}`),
+
+  delete: (jobId: string) =>
+    request<void>(`/api/v1/jobs/${jobId}`, { method: 'DELETE' }),
 };
 
 // Consistency Issues API
