@@ -64,8 +64,8 @@ class AsyncJob(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
 
     # Job metadata
-    job_type = Column(SQLEnum(JobType), nullable=False, index=True)
-    status = Column(SQLEnum(JobStatus), nullable=False, default=JobStatus.PENDING, index=True)
+    job_type = Column(SQLEnum(JobType, values_callable=lambda x: [e.value for e in x], name='jobtype'), nullable=False, index=True)
+    status = Column(SQLEnum(JobStatus, values_callable=lambda x: [e.value for e in x], name='jobstatus'), nullable=False, default=JobStatus.PENDING, index=True)
 
     # Input/Output
     input_data = Column(JSON, nullable=False, default=dict)  # Parameters for the job
