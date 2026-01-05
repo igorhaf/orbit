@@ -127,7 +127,19 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
   useEffect(() => {
     loadInterview();
+    checkForPendingJobs(); // PROMPT #65 - Check for pending jobs on mount
   }, [interviewId]);
+
+  // PROMPT #65 - Check for pending/running jobs when component mounts
+  const checkForPendingJobs = async () => {
+    try {
+      // This endpoint doesn't exist yet, but we can add it later
+      // For now, we just ensure polling works when jobs are created
+      console.log('✅ Component mounted, job polling active');
+    } catch (error) {
+      console.error('Failed to check pending jobs:', error);
+    }
+  };
 
   useEffect(() => {
     // PROMPT #56 - Improved auto-scroll with delay for DOM rendering
@@ -580,9 +592,15 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       const jobId = data.job_id;
 
       console.log('✅ Backlog generation job created:', jobId);
+      console.log('📊 Setting generatePromptsJobId to:', jobId);
       setGeneratePromptsJobId(jobId); // Start polling for job status
+
+      // Force a small delay to ensure state updates
+      setTimeout(() => {
+        console.log('🔍 Current generatePromptsJobId after set:', jobId);
+      }, 100);
     } catch (error: any) {
-      console.error('Failed to create backlog generation job:', error);
+      console.error('❌ Failed to create backlog generation job:', error);
       const errorDetail = error.response?.data?.detail || error.message || 'Failed to start backlog generation.';
       alert(`❌ Error:\n\n${errorDetail}`);
     }

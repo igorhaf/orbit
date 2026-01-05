@@ -106,11 +106,15 @@ export function useJobPolling(
   }, [jobId, onComplete, onError, onCancelled]);
 
   useEffect(() => {
+    console.log('🔄 useJobPolling effect triggered:', { jobId, enabled });
+
     if (!jobId || !enabled) {
+      console.log('⏹️ Stopping polling (no jobId or disabled)');
       setIsPolling(false);
       return;
     }
 
+    console.log('▶️ Starting polling for job:', jobId);
     setIsPolling(true);
     setError(null);
 
@@ -123,6 +127,7 @@ export function useJobPolling(
     }, interval);
 
     return () => {
+      console.log('🛑 Cleaning up polling for job:', jobId);
       clearInterval(pollInterval);
     };
   }, [jobId, enabled, interval, fetchJobStatus]);
