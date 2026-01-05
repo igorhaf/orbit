@@ -238,7 +238,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
   };
 
   return (
-    <Dialog open={isOpen} onClose={onClose} title="Task Details">
+    <Dialog open={isOpen} onClose={onClose} title="Task Details" size="full">
       <div className="space-y-6">
         {/* Header with Item Type and Priority */}
         <div className="flex items-start gap-3 pb-4 border-b border-gray-200">

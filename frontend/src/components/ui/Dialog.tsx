@@ -14,7 +14,7 @@ export interface DialogProps {
   title?: string;
   description?: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
   showCloseButton?: boolean;
 }
 
@@ -54,6 +54,8 @@ export const Dialog: React.FC<DialogProps> = ({
     md: 'max-w-md',
     lg: 'max-w-lg',
     xl: 'max-w-xl',
+    '2xl': 'max-w-6xl',
+    full: 'max-w-[90%]',
   };
 
   return (
