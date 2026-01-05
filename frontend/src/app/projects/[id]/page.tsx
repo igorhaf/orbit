@@ -12,7 +12,7 @@ import ReactMarkdown from 'react-markdown';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
-import { BacklogListView } from '@/components/backlog/BacklogListView';
+import BacklogListView from '@/components/backlog/BacklogListView';
 import { InterviewList } from '@/components/interview';
 import { projectsApi, tasksApi, interviewsApi } from '@/lib/api';
 import { Project, Task } from '@/lib/types';
