@@ -526,20 +526,26 @@ class PromptGenerator:
         # NEW: Use PrompterFacade if enabled
         if self.use_prompter and self.prompter:
             logger.info("Using PrompterFacade template-based prompt generation")
+
+            # PROMPT #54.2 - FIX: Extract keywords for spec filtering
+            keywords = self._extract_keywords_from_conversation(conversation)
+
             # Call facade's internal method directly (already feature-flag checked)
             # Note: Both new and legacy methods are synchronous
             if self.prompter.use_templates and self.prompter.composer:
                 return self.prompter._generate_task_prompt_new(
                     conversation=conversation,
                     project=project,
-                    specs=specs
+                    specs=specs,
+                    keywords=keywords  # Pass keywords for filtering
                 )
             else:
                 # Fallback within facade
                 return self.prompter._generate_task_prompt_legacy(
                     conversation=conversation,
                     project=project,
-                    specs=specs
+                    specs=specs,
+                    keywords=keywords  # Pass keywords for filtering
                 )
 
         # LEGACY: Fallback to hardcoded prompt

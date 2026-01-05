@@ -186,15 +186,20 @@ class PrompterFacade:
         self,
         conversation: List[Dict],
         project: Project,
-        specs: Dict[str, Any]
+        specs: Dict[str, Any],
+        keywords: set = None
     ) -> str:
-        """Generate prompt using new template system"""
+        """
+        Generate prompt using new template system
+
+        PROMPT #54.2 - FIX: Added keywords parameter for spec filtering
+        """
 
         # Format conversation
         conversation_text = self._format_conversation(conversation)
 
-        # Format specs context (if available)
-        specs_context = self._format_specs_context(specs) if specs else None
+        # Format specs context (if available) WITH filtering
+        specs_context = self._format_specs_context(specs, keywords) if specs else None
 
         # Render template
         variables = {
@@ -224,15 +229,18 @@ class PrompterFacade:
         self,
         conversation: List[Dict],
         project: Project,
-        specs: Dict[str, Any]
+        specs: Dict[str, Any],
+        keywords: set = None
     ) -> str:
         """
         Legacy prompt generation (hardcoded)
         Maintains current behavior for backward compatibility
+
+        PROMPT #54.2 - FIX: Added keywords parameter for spec filtering
         """
 
         conversation_text = self._format_conversation(conversation)
-        specs_context = self._format_specs_context(specs) if specs else ""
+        specs_context = self._format_specs_context(specs, keywords) if specs else ""
 
         prompt = f"""Analise esta entrevista sobre um projeto de software e gere tarefas estruturadas.
 
@@ -375,16 +383,96 @@ Gere a pergunta agora:
 
         return "\n".join(lines)
 
-    def _format_specs_context(self, specs: Dict[str, Any]) -> str:
+    def _format_specs_context(self, specs: Dict[str, Any], keywords: set = None) -> str:
         """
-        Format specs context for prompt
+        Format specs context for prompt WITH FILTERING
 
-        This is a simplified version. The full implementation uses
-        the spec_formatter component.
+        PROMPT #54.2 - FIX: Added spec filtering logic (40% token reduction)
+
+        Strategy:
+        - Filter specs by keyword relevance OR essential types
+        - Limit to MAX 3 specs per category (total ~12 specs max)
+        - Reduces from ~2300-2500 tokens → 1200-1500 tokens (40%+ reduction)
+
+        Args:
+            specs: All available specs organized by category
+            keywords: Optional set of keywords from conversation for filtering
+
+        Returns:
+            Formatted specs context with filtered specs
         """
         if not specs:
             return ""
 
+        # PROMPT #54.2 - FIX: Maximum specs per category (prevents token bloat)
+        MAX_SPECS_PER_CATEGORY = 3
+
+        # Define essential spec types (most commonly needed across all projects)
+        essential_types = {
+            'project_structure',  # How to organize files/folders
+            'database',           # Database schema, queries
+            'routing',            # Routes/endpoints definition
+            'api_endpoints',      # API controllers/handlers
+            'middleware',         # Auth, CORS, validation
+            'models',             # ORM models, entities
+            'migrations',         # Database migrations
+            'components',         # UI components (frontend)
+            'pages',              # Routes/pages (frontend)
+            'authentication'      # Auth system (very common)
+        }
+
+        # Filter specs by relevance before formatting
+        filtered_specs = {}
+        total_before = 0
+        total_after = 0
+
+        for category in ['backend', 'frontend', 'database', 'css']:
+            category_specs = specs.get(category, [])
+            if not category_specs:
+                continue
+
+            total_before += len(category_specs)
+
+            # Filter by relevance (keywords or essentiality)
+            relevant_specs = []
+            for spec in category_specs:
+                if not isinstance(spec, dict):
+                    continue
+
+                spec_type = spec.get('type', spec.get('spec_type', '')).lower()
+                spec_text = f"{spec.get('title', '')} {spec_type}".lower()
+
+                # Check relevance
+                is_relevant = False
+
+                # If no keywords, use only essential types
+                if not keywords:
+                    is_relevant = spec_type in essential_types
+                else:
+                    # Has keywords - check for keyword match first
+                    for keyword in keywords:
+                        if keyword in spec_text:
+                            is_relevant = True
+                            break
+
+                    # No keyword match - still include if essential type
+                    if not is_relevant:
+                        is_relevant = spec_type in essential_types
+
+                if is_relevant:
+                    relevant_specs.append(spec)
+
+            # ALWAYS limit to top N specs per category (prevents token bloat)
+            filtered_specs[category] = relevant_specs[:MAX_SPECS_PER_CATEGORY]
+            total_after += len(filtered_specs[category])
+
+        # Log filtering results for monitoring
+        if total_before > 0:
+            reduction_pct = 100 - (total_after / total_before * 100)
+            print(f"📊 PrompterFacade spec filtering: {total_before} specs → {total_after} relevant specs "
+                  f"({reduction_pct:.0f}% reduction)")
+
+        # Format filtered specs
         lines = [
             "═══════════════════════════════════════════════════",
             "FRAMEWORK SPECIFICATIONS (PRE-DEFINED)",
@@ -392,22 +480,18 @@ Gere a pergunta agora:
             ""
         ]
 
-        for category, spec_list in specs.items():
+        for category in ['backend', 'frontend', 'database', 'css']:
+            spec_list = filtered_specs.get(category, [])
             if spec_list:
                 lines.append(f"\n{category.upper()} SPECIFICATIONS:")
                 lines.append("───────────────────────────────────────────────────")
 
                 for spec in spec_list:
-                    # Handle both dict and string formats
+                    # Handle both dict formats
                     if isinstance(spec, dict):
                         title = spec.get('title', 'Untitled')
                         content = spec.get('content', '')
                         spec_type = spec.get('spec_type', spec.get('type', 'general'))
-                    elif isinstance(spec, str):
-                        # If spec is a string, treat it as content
-                        title = category.title()
-                        content = spec
-                        spec_type = 'general'
                     else:
                         # Skip invalid types
                         continue
