@@ -18,6 +18,7 @@ from app.api.routes import (
     projects,
     ai_models,
     ai_executions,  # PROMPT #54 - AI Execution Logging
+    cost_analytics,  # PROMPT #54.2 - Cost Analytics Dashboard
     ai_format,  # AI text formatting
     tasks,
     backlog_generation,  # JIRA Transformation - AI-powered backlog generation
@@ -188,6 +189,13 @@ app.include_router(
     ai_executions.router,
     prefix=f"{API_V1_PREFIX}/ai-executions",
     tags=["AI Executions"]
+)
+
+# Cost Analytics (PROMPT #54.2 - Cost Analytics Dashboard)
+app.include_router(
+    cost_analytics.router,
+    prefix=f"{API_V1_PREFIX}/cost",
+    tags=["Cost Analytics"]
 )
 
 # AI Format (Text formatting)

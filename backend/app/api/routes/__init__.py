@@ -7,6 +7,7 @@ from . import (
     projects,
     ai_models,
     ai_executions,  # PROMPT #54 - AI Execution Logging
+    cost_analytics,  # PROMPT #54.2 - Cost Analytics Dashboard
     tasks,
     interviews,
     prompts,
@@ -20,6 +21,7 @@ __all__ = [
     "projects",
     "ai_models",
     "ai_executions",  # PROMPT #54 - AI Execution Logging
+    "cost_analytics",  # PROMPT #54.2 - Cost Analytics Dashboard
     "tasks",
     "interviews",
     "prompts",
