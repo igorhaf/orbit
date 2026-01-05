@@ -36,6 +36,13 @@ const PRIORITY_COLORS: Record<PriorityLevel, string> = {
 export function TaskCard({ task, onDeleted, onUpdated }: Props) {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
 
+  // Provide defaults for legacy tasks (backward compatibility)
+  const itemType = task.item_type || ItemType.TASK;
+  const priority = task.priority || PriorityLevel.MEDIUM;
+  const labels = task.labels || [];
+  const assignee = task.assignee || null;
+  const storyPoints = task.story_points || null;
+
   const handleClick = (e: React.MouseEvent) => {
     // Only open modal on direct click, not on drag
     if (e.defaultPrevented) return;
@@ -52,20 +59,20 @@ export function TaskCard({ task, onDeleted, onUpdated }: Props) {
           {/* Header with Badges */}
           <div className="flex items-start gap-2 mb-2">
             {/* Item Type Icon */}
-            <span className="text-lg flex-shrink-0">{ITEM_TYPE_ICONS[task.item_type]}</span>
+            <span className="text-lg flex-shrink-0">{ITEM_TYPE_ICONS[itemType]}</span>
 
             <div className="flex-1 min-w-0">
               {/* Item Type and Priority Badges */}
               <div className="flex items-center gap-1 mb-1 flex-wrap">
                 <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-gray-100 text-gray-600">
-                  {task.item_type.toUpperCase()}
+                  {itemType.toUpperCase()}
                 </span>
-                <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${PRIORITY_COLORS[task.priority]}`}>
-                  {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                <span className={`px-1.5 py-0.5 text-[10px] font-medium rounded border ${PRIORITY_COLORS[priority]}`}>
+                  {priority.charAt(0).toUpperCase() + priority.slice(1)}
                 </span>
-                {task.story_points && (
+                {storyPoints && (
                   <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-purple-50 text-purple-700 border border-purple-200">
-                    {task.story_points} pts
+                    {storyPoints} pts
                   </span>
                 )}
               </div>
@@ -85,16 +92,16 @@ export function TaskCard({ task, onDeleted, onUpdated }: Props) {
           )}
 
           {/* Labels */}
-          {task.labels && task.labels.length > 0 && (
+          {labels.length > 0 && (
             <div className="flex flex-wrap gap-1 mb-3">
-              {task.labels.slice(0, 2).map((label, idx) => (
+              {labels.slice(0, 2).map((label, idx) => (
                 <span key={idx} className="px-2 py-0.5 text-[10px] rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
                   {label}
                 </span>
               ))}
-              {task.labels.length > 2 && (
+              {labels.length > 2 && (
                 <span className="px-2 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600 border border-gray-200">
-                  +{task.labels.length - 2}
+                  +{labels.length - 2}
                 </span>
               )}
             </div>
@@ -104,13 +111,13 @@ export function TaskCard({ task, onDeleted, onUpdated }: Props) {
           <div className="flex items-center justify-between pt-2 border-t border-gray-100">
             {/* Assignee */}
             <div className="flex items-center gap-1">
-              {task.assignee ? (
+              {assignee ? (
                 <>
                   <div className="w-5 h-5 rounded-full bg-blue-500 text-white text-[10px] flex items-center justify-center font-medium">
-                    {task.assignee.charAt(0).toUpperCase()}
+                    {assignee.charAt(0).toUpperCase()}
                   </div>
                   <span className="text-xs text-gray-600 truncate max-w-[80px]">
-                    {task.assignee}
+                    {assignee}
                   </span>
                 </>
               ) : (
