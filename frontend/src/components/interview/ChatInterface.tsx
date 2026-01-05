@@ -51,6 +51,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   // PROMPT #65 - Async job tracking
   const [sendMessageJobId, setSendMessageJobId] = useState<string | null>(null);
   const [generatePromptsJobId, setGeneratePromptsJobId] = useState<string | null>(null);
+  const [provisioningJobId, setProvisioningJobId] = useState<string | null>(null);
 
   // PROMPT #65 - Poll job status for send message
   const { job: sendMessageJob, isPolling: isSendingMessage } = useJobPolling(sendMessageJobId, {
@@ -99,6 +100,28 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       } else {
         alert(`❌ Error generating prompts:\n\n${error}`);
       }
+    },
+  });
+
+  // PROMPT #65 - Poll job status for provisioning
+  const { job: provisioningJob, isPolling: isProvisioning } = useJobPolling(provisioningJobId, {
+    enabled: !!provisioningJobId,
+    onComplete: (result) => {
+      console.log('✅ Provisioning job completed:', result);
+      setProvisioningJobId(null);
+
+      // Display provisioning status card
+      setProvisioningStatus({
+        ...result,
+        projectName: interview?.project?.name || 'Your Project'
+      });
+
+      loadInterview();
+    },
+    onError: (error) => {
+      console.error('❌ Provisioning job failed:', error);
+      setProvisioningJobId(null);
+      alert(`❌ Error provisioning project:\n\n${error}`);
     },
   });
 
@@ -489,18 +512,14 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     };
 
     try {
-      console.log('🎯 Stack detected and saving:', stack);
-      const response = await interviewsApi.saveStack(interviewId, stack);
-      console.log('✅ Stack configuration saved successfully!', response);
+      // PROMPT #65 - Save stack ASYNC (non-blocking provisioning)
+      console.log('🎯 Stack detected, saving async:', stack);
+      const response = await interviewsApi.saveStackAsync(interviewId, stack);
+      const data = response.data || response;
+      const jobId = data.job_id;
 
-      // PROMPT #61 - Capture provisioning status from response
-      if (response.provisioning) {
-        console.log('🚀 Provisioning status:', response.provisioning);
-        setProvisioningStatus({
-          ...response.provisioning,
-          projectName: interviewData.project?.name || 'Your Project'
-        });
-      }
+      console.log('✅ Stack saved, provisioning job created:', jobId);
+      setProvisioningJobId(jobId); // Start polling for provisioning status
     } catch (error) {
       console.error('❌ Failed to save stack:', error);
       // Don't show error to user - this is automatic
@@ -841,6 +860,21 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
             />
             <p className="text-xs text-green-700 mt-2">
               This may take 2-5 minutes. You can continue working while we generate your Epic → Stories → Tasks.
+            </p>
+          </div>
+        )}
+
+        {/* PROMPT #65 - Provisioning Progress */}
+        {isProvisioning && provisioningJob && (
+          <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
+            <h4 className="text-sm font-semibold text-purple-900 mb-2">🏗️ Provisioning Project...</h4>
+            <JobProgressBar
+              percent={provisioningJob.progress_percent}
+              message={provisioningJob.progress_message}
+              status={provisioningJob.status}
+            />
+            <p className="text-xs text-purple-700 mt-2">
+              Creating project structure, installing dependencies, and configuring environment. This may take 1-3 minutes.
             </p>
           </div>
         )}

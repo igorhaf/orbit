@@ -1046,6 +1046,226 @@ async def save_interview_stack(
     return response
 
 
+@router.post("/{interview_id}/save-stack-async", status_code=status.HTTP_202_ACCEPTED)
+async def save_interview_stack_async(
+    interview_id: UUID,
+    stack: StackConfiguration,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Saves tech stack and provisions project ASYNCHRONOUSLY.
+
+    PROMPT #65 - Async Job System (Expansion)
+
+    This endpoint prevents UI blocking during project provisioning which can take 1-5 minutes:
+    1. Saves stack configuration immediately
+    2. Returns job_id
+    3. Provisions project in background (runs bash scripts, installs dependencies, etc.)
+    4. Client polls GET /jobs/{job_id} for progress
+
+    Workflow:
+        POST /interviews/{id}/save-stack-async
+        → {job_id: "abc-123", status: "pending"}  ⚡ IMMEDIATE
+
+        GET /jobs/abc-123
+        → {status: "running", progress: 25, message: "Validating stack..."}
+
+        GET /jobs/abc-123
+        → {status: "running", progress: 50, message: "Creating project structure..."}
+
+        GET /jobs/abc-123
+        → {status: "completed", result: {project_path: "...", credentials: {...}}}
+
+    Args:
+        interview_id: UUID of the interview
+        stack: Stack configuration (backend, database, frontend, css)
+        background_tasks: FastAPI BackgroundTasks
+        db: Database session
+
+    Returns:
+        {
+            "job_id": "...",
+            "status": "pending",
+            "message": "Project provisioning started. This may take 1-5 minutes."
+        }
+    """
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Validate interview exists
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview {interview_id} not found"
+        )
+
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == interview.project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+
+    # Save stack configuration immediately (synchronous, fast)
+    project.stack_backend = stack.backend
+    project.stack_database = stack.database
+    project.stack_frontend = stack.frontend
+    project.stack_css = stack.css
+    db.commit()
+    db.refresh(project)
+
+    logger.info(f"Stack saved for project {project.id}: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}")
+
+    # Create async job for provisioning
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.PROJECT_PROVISIONING,
+        input_data={
+            "interview_id": str(interview_id),
+            "project_id": str(project.id),
+            "stack": {
+                "backend": stack.backend,
+                "database": stack.database,
+                "frontend": stack.frontend,
+                "css": stack.css
+            }
+        },
+        project_id=project.id,
+        interview_id=interview_id
+    )
+
+    logger.info(f"Created provisioning job {job.id} for project {project.name}")
+
+    # Schedule background provisioning
+    background_tasks.add_task(
+        _provision_project_async,
+        job_id=job.id,
+        project_id=project.id
+    )
+
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": f"Project provisioning started. This may take 1-5 minutes. Poll GET /api/v1/jobs/{job.id} for progress."
+    }
+
+
+async def _provision_project_async(
+    job_id: UUID,
+    project_id: UUID
+):
+    """
+    Background task to provision project (create files, install dependencies, etc.).
+
+    This can take 1-5 minutes depending on the stack:
+    - Validate stack: ~5s
+    - Execute provisioning script: ~30s-5min
+    - Install dependencies, setup database, etc.
+
+    Updates job progress at each step.
+    """
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.services.provisioning_service import ProvisioningService
+    import logging
+    import subprocess
+
+    logger = logging.getLogger(__name__)
+
+    # Create new DB session
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Starting project provisioning for job {job_id}")
+
+        # Get project
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            job_manager.fail_job(job_id, f"Project {project_id} not found")
+            return
+
+        provisioning_service = ProvisioningService(db)
+
+        # STEP 1: Validate stack (0-20%)
+        job_manager.update_progress(job_id, 10.0, "Validating stack configuration...")
+        logger.info(f"📋 Validating stack: {project.stack}")
+
+        is_valid, error_msg = provisioning_service.validate_stack(project.stack)
+        if not is_valid:
+            logger.warning(f"Stack validation failed: {error_msg}")
+            job_manager.fail_job(job_id, f"Stack validation failed: {error_msg}")
+            return
+
+        job_manager.update_progress(job_id, 20.0, "Stack validated successfully")
+
+        # STEP 2: Execute provisioning (20-90%)
+        job_manager.update_progress(job_id, 30.0, f"Creating project structure for {project.name}...")
+        logger.info(f"🏗️  Provisioning project {project.name}...")
+
+        try:
+            provisioning_result = provisioning_service.provision_project(project)
+
+            if not provisioning_result or not provisioning_result.get("success"):
+                error = provisioning_result.get("error", "Unknown provisioning error") if provisioning_result else "Provisioning returned no result"
+                job_manager.fail_job(job_id, error)
+                return
+
+            job_manager.update_progress(job_id, 90.0, "Project created successfully")
+            logger.info(f"✅ Project provisioned at: {provisioning_result.get('project_path')}")
+
+        except ValueError as e:
+            # Stack combination not supported
+            logger.warning(f"Stack not supported: {str(e)}")
+            job_manager.fail_job(job_id, f"Stack combination not supported: {str(e)}")
+            return
+        except FileNotFoundError as e:
+            # Script not found
+            logger.error(f"Provisioning script not found: {str(e)}")
+            job_manager.fail_job(job_id, f"Provisioning script not found: {str(e)}")
+            return
+        except subprocess.TimeoutExpired:
+            # Script timeout
+            logger.error("Provisioning timed out after 5 minutes")
+            job_manager.fail_job(job_id, "Provisioning timed out after 5 minutes. The project may be partially created.")
+            return
+        except subprocess.CalledProcessError as e:
+            # Script execution failed
+            logger.error(f"Provisioning script failed: {e.stderr}")
+            job_manager.fail_job(job_id, f"Provisioning script failed: {e.stderr}")
+            return
+
+        # STEP 3: Complete (90-100%)
+        job_manager.update_progress(job_id, 95.0, "Finalizing project setup...")
+
+        # Complete job with result
+        job_manager.complete_job(job_id, {
+            "success": True,
+            "project_name": provisioning_result.get("project_name"),
+            "project_path": provisioning_result.get("project_path"),
+            "credentials": provisioning_result.get("credentials", {}),
+            "next_steps": provisioning_result.get("next_steps", []),
+            "scripts_executed": provisioning_result.get("scripts_executed", []),
+            "message": f"Project '{project.name}' provisioned successfully!"
+        })
+
+        logger.info(f"✅ Provisioning job {job_id} completed successfully")
+
+    except Exception as e:
+        logger.error(f"❌ Provisioning job {job_id} failed: {str(e)}", exc_info=True)
+        job_manager.fail_job(job_id, f"Unexpected error: {str(e)}")
+
+    finally:
+        db.close()
+
+
 @router.post("/{interview_id}/send-message", status_code=status.HTTP_200_OK)
 async def send_message_to_interview(
     interview_id: UUID,

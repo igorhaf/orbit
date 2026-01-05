@@ -178,3 +178,49 @@ class JobManager:
             AsyncJob instance or None
         """
         return self.db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+
+    def cancel_job(self, job_id: UUID) -> bool:
+        """
+        Cancel a running or pending job.
+
+        Args:
+            job_id: UUID of the job
+
+        Returns:
+            True if job was cancelled, False if job couldn't be cancelled
+            (e.g., already completed or failed)
+        """
+        job = self.db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if not job:
+            logger.error(f"Job {job_id} not found")
+            return False
+
+        # Can only cancel pending or running jobs
+        if job.status not in [JobStatus.PENDING, JobStatus.RUNNING]:
+            logger.warning(f"Cannot cancel job {job_id} with status {job.status.value}")
+            return False
+
+        job.status = JobStatus.CANCELLED
+        job.completed_at = datetime.utcnow()
+        job.error = "Job was cancelled by user"
+
+        self.db.commit()
+        logger.info(f"Cancelled job {job_id}")
+        return True
+
+    def is_cancelled(self, job_id: UUID) -> bool:
+        """
+        Check if a job has been cancelled.
+        Background tasks should call this periodically to detect cancellation.
+
+        Args:
+            job_id: UUID of the job
+
+        Returns:
+            True if job was cancelled, False otherwise
+        """
+        job = self.db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if not job:
+            return False
+
+        return job.status == JobStatus.CANCELLED
