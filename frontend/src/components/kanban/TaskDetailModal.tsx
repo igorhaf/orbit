@@ -55,15 +55,24 @@ const PRIORITY_COLORS: Record<PriorityLevel, string> = {
 export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  // Provide defaults for legacy tasks (backward compatibility)
+  const itemType = task.item_type || ItemType.TASK;
+  const priority = task.priority || PriorityLevel.MEDIUM;
+  const storyPoints = task.story_points || null;
+  const assignee = task.assignee || '';
+  const labels = task.labels || [];
+  const acceptanceCriteria = task.acceptance_criteria || [];
+
   const [formData, setFormData] = useState({
     title: task.title,
     description: task.description || '',
-    item_type: task.item_type,
-    priority: task.priority,
-    story_points: task.story_points || null,
-    assignee: task.assignee || '',
-    labels: task.labels || [],
-    acceptance_criteria: task.acceptance_criteria || [],
+    item_type: itemType,
+    priority: priority,
+    story_points: storyPoints,
+    assignee: assignee,
+    labels: labels,
+    acceptance_criteria: acceptanceCriteria,
   });
   const [loading, setLoading] = useState(false);
   const [comments, setComments] = useState<TaskComment[]>([]);
@@ -78,11 +87,14 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
 
   // Update form data when task changes
   useEffect(() => {
+    const itemType = task.item_type || ItemType.TASK;
+    const priority = task.priority || PriorityLevel.MEDIUM;
+
     setFormData({
       title: task.title,
       description: task.description || '',
-      item_type: task.item_type,
-      priority: task.priority,
+      item_type: itemType,
+      priority: priority,
       story_points: task.story_points || null,
       assignee: task.assignee || '',
       labels: task.labels || [],
@@ -139,11 +151,14 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
 
   const handleCancel = () => {
     setIsEditing(false);
+    const itemType = task.item_type || ItemType.TASK;
+    const priority = task.priority || PriorityLevel.MEDIUM;
+
     setFormData({
       title: task.title,
       description: task.description || '',
-      item_type: task.item_type,
-      priority: task.priority,
+      item_type: itemType,
+      priority: priority,
       story_points: task.story_points || null,
       assignee: task.assignee || '',
       labels: task.labels || [],
@@ -227,18 +242,18 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
       <div className="space-y-6">
         {/* Header with Item Type and Priority */}
         <div className="flex items-start gap-3 pb-4 border-b border-gray-200">
-          <span className="text-3xl">{ITEM_TYPE_ICONS[task.item_type]}</span>
+          <span className="text-3xl">{ITEM_TYPE_ICONS[itemType]}</span>
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-2">
               <span className="px-2 py-0.5 text-xs font-medium rounded bg-gray-100 text-gray-700">
-                {task.item_type.toUpperCase()}
+                {itemType.toUpperCase()}
               </span>
-              <span className={`px-2 py-0.5 text-xs font-medium rounded border ${PRIORITY_COLORS[task.priority]}`}>
-                {task.priority}
+              <span className={`px-2 py-0.5 text-xs font-medium rounded border ${PRIORITY_COLORS[priority]}`}>
+                {priority}
               </span>
-              {task.story_points && (
+              {storyPoints && (
                 <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-50 text-purple-700 border border-purple-200">
-                  {task.story_points} pts
+                  {storyPoints} pts
                 </span>
               )}
             </div>
@@ -315,8 +330,8 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {task.acceptance_criteria && task.acceptance_criteria.length > 0 ? (
-                    task.acceptance_criteria.map((criteria, idx) => (
+                  {acceptanceCriteria.length > 0 ? (
+                    acceptanceCriteria.map((criteria, idx) => (
                       <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded border border-gray-200">
                         <input type="checkbox" className="rounded text-blue-600" />
                         <span className="text-sm text-gray-700">{criteria}</span>
@@ -405,12 +420,12 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
                   />
                 ) : (
                   <div className="flex items-center gap-2">
-                    {task.assignee ? (
+                    {assignee ? (
                       <>
                         <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-medium">
-                          {task.assignee.charAt(0).toUpperCase()}
+                          {assignee.charAt(0).toUpperCase()}
                         </div>
-                        <span className="text-sm text-gray-900">{task.assignee}</span>
+                        <span className="text-sm text-gray-900">{assignee}</span>
                       </>
                     ) : (
                       <span className="text-sm text-gray-400 italic">Unassigned</span>
@@ -454,8 +469,8 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-1">
-                    {task.labels && task.labels.length > 0 ? (
-                      task.labels.map((label, idx) => (
+                    {labels.length > 0 ? (
+                      labels.map((label, idx) => (
                         <span key={idx} className="px-2 py-1 text-xs rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
                           {label}
                         </span>
