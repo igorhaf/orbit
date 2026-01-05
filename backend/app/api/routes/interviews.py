@@ -4,7 +4,7 @@ CRUD operations for managing AI-assisted interviews.
 Integrated with Prompter Architecture (Phase 2: Integration)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Body, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
 from uuid import UUID
@@ -558,42 +558,65 @@ async def get_interview_prompts(
     return prompts
 
 
-@router.post("/{interview_id}/generate-prompts", status_code=status.HTTP_201_CREATED)
-async def generate_prompts(
+@router.post("/{interview_id}/generate-prompts-async", status_code=status.HTTP_202_ACCEPTED)
+async def generate_prompts_async(
     interview_id: UUID,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
-    Gera backlog hierárquico (Epic → Stories → Tasks) automaticamente baseado na entrevista.
+    Generate backlog hierarchy (Epic → Stories → Tasks) ASYNCHRONOUSLY.
 
-    PROMPT #52 - Hierarchical Backlog Generation from Interview
+    PROMPT #65 - Async Job System
 
-    Este endpoint:
-    1. Busca a entrevista pelo ID
-    2. Gera 1 Epic baseado na entrevista completa
-    3. Decompõe o Epic em 3-7 Stories
-    4. Decompõe cada Story em 3-10 Tasks técnicas
-    5. Salva toda a hierarquia no banco de dados com relacionamentos parent_id
+    This endpoint was previously blocking for 2-5 minutes while generating:
+    - 1 Epic (30s)
+    - 3-7 Stories (1-2 min)
+    - 15-50 Tasks (1-3 min)
 
-    - **interview_id**: UUID of the interview
+    Now it returns immediately and processes in background:
+    1. Creates async job with status=PENDING
+    2. Returns job_id immediately (HTTP 202 Accepted)
+    3. Generates Epic → Stories → Tasks in background
+    4. Client polls GET /jobs/{job_id} for progress and result
+
+    Workflow:
+        # Client requests generation
+        POST /interviews/{id}/generate-prompts-async
+        → {job_id: "abc-123", status: "pending"}  ⚡ IMMEDIATE
+
+        # Client polls for progress (every 2-3 seconds)
+        GET /jobs/abc-123
+        → {status: "running", progress: 20, message: "Generating Epic..."}
+
+        GET /jobs/abc-123
+        → {status: "running", progress: 50, message: "Decomposing Epic to Stories (3/7)..."}
+
+        GET /jobs/abc-123
+        → {status: "running", progress: 80, message: "Creating Tasks (25/40)..."}
+
+        GET /jobs/abc-123
+        → {status: "completed", result: {epic_id: "...", stories: 7, tasks: 42}}
+
+    Args:
+        interview_id: UUID of the interview
+        background_tasks: FastAPI BackgroundTasks
+        db: Database session
 
     Returns:
-        - success: Boolean indicating success
-        - epic_created: Epic details
-        - stories_created: Number of stories created
-        - tasks_created: Number of tasks created
-        - total_items: Total items in hierarchy
-        - message: Success message
+        {
+            "job_id": "...",
+            "status": "pending",
+            "message": "Backlog generation started. This may take 2-5 minutes."
+        }
     """
-    from app.services.backlog_generator import BacklogGeneratorService
-    from app.models.task import ItemType, PriorityLevel, TaskStatus
-    from uuid import uuid4
-    from datetime import datetime
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
     import logging
 
     logger = logging.getLogger(__name__)
 
-    # Verificar se a entrevista existe
+    # Validate interview exists
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
     if not interview:
         raise HTTPException(
@@ -601,21 +624,83 @@ async def generate_prompts(
             detail=f"Interview {interview_id} not found"
         )
 
-    # Gerar hierarquia Epic → Stories → Tasks
+    # Create async job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.BACKLOG_GENERATION,
+        input_data={
+            "interview_id": str(interview_id),
+            "project_id": str(interview.project_id)
+        },
+        project_id=interview.project_id,
+        interview_id=interview_id
+    )
+
+    logger.info(f"Created async job {job.id} for backlog generation from interview {interview_id}")
+
+    # Schedule background task
+    background_tasks.add_task(
+        _generate_backlog_async,
+        job_id=job.id,
+        interview_id=interview_id,
+        project_id=interview.project_id
+    )
+
+    # Return job_id immediately
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Backlog generation started. This may take 2-5 minutes. Poll GET /api/v1/jobs/{} for progress.".format(job.id)
+    }
+
+
+async def _generate_backlog_async(
+    job_id: UUID,
+    interview_id: UUID,
+    project_id: UUID
+):
+    """
+    Background task to generate Epic → Stories → Tasks hierarchy.
+
+    This can take 2-5 minutes for complex projects:
+    - Generate Epic: ~30s
+    - Decompose to Stories (3-7): ~1-2 min
+    - Decompose to Tasks (15-50): ~1-3 min
+
+    Updates job progress at each step.
+    """
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.services.backlog_generator import BacklogGeneratorService
+    from app.models.task import Task, ItemType, PriorityLevel, TaskStatus
+    from uuid import uuid4
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Create new DB session
+    db = SessionLocal()
+
     try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Starting backlog generation for job {job_id}")
+
         generator = BacklogGeneratorService(db=db)
 
-        # Step 1: Generate Epic from interview
-        logger.info(f"🎯 PROMPT #52: Generating hierarchical backlog from interview {interview_id}")
+        # STEP 1: Generate Epic (0-30%)
+        job_manager.update_progress(job_id, 10.0, "Generating Epic from interview...")
+        logger.info(f"🎯 Generating Epic from interview {interview_id}")
+
         epic_suggestion = await generator.generate_epic_from_interview(
             interview_id=interview_id,
-            project_id=interview.project_id
+            project_id=project_id
         )
 
-        # Step 2: Create Epic in database
+        # Create Epic
         epic = Task(
             id=uuid4(),
-            project_id=interview.project_id,
+            project_id=project_id,
             created_from_interview_id=interview_id,
             title=epic_suggestion["title"],
             description=epic_suggestion["description"],
@@ -636,22 +721,26 @@ async def generate_prompts(
         db.add(epic)
         db.commit()
         db.refresh(epic)
-        logger.info(f"✅ Created Epic: {epic.title} (id: {epic.id})")
 
-        # Step 3: Decompose Epic into Stories
+        logger.info(f"✅ Created Epic: {epic.title}")
+        job_manager.update_progress(job_id, 30.0, f"Epic created: {epic.title}")
+
+        # STEP 2: Decompose to Stories (30-60%)
+        job_manager.update_progress(job_id, 35.0, "Decomposing Epic into Stories...")
+        logger.info(f"📋 Decomposing Epic {epic.id} into Stories")
+
         stories_suggestions = await generator.decompose_epic_to_stories(
             epic_id=epic.id,
-            project_id=interview.project_id
+            project_id=project_id
         )
 
-        # Step 4: Create Stories in database
         created_stories = []
         for i, story_suggestion in enumerate(stories_suggestions):
             story = Task(
                 id=uuid4(),
-                project_id=interview.project_id,
+                project_id=project_id,
                 created_from_interview_id=interview_id,
-                parent_id=epic.id,  # Link to Epic
+                parent_id=epic.id,
                 title=story_suggestion["title"],
                 description=story_suggestion["description"],
                 item_type=ItemType.STORY,
@@ -670,26 +759,40 @@ async def generate_prompts(
             db.add(story)
             created_stories.append(story)
 
+            # Update progress after each story
+            progress = 35.0 + (i + 1) / len(stories_suggestions) * 25.0
+            job_manager.update_progress(job_id, progress, f"Created Story {i+1}/{len(stories_suggestions)}")
+
         db.commit()
         for story in created_stories:
             db.refresh(story)
-        logger.info(f"✅ Created {len(created_stories)} Stories under Epic {epic.id}")
 
-        # Step 5: Decompose each Story into Tasks
+        logger.info(f"✅ Created {len(created_stories)} Stories")
+        job_manager.update_progress(job_id, 60.0, f"Created {len(created_stories)} Stories")
+
+        # STEP 3: Decompose Stories to Tasks (60-100%)
         all_created_tasks = []
-        for story in created_stories:
-            tasks_suggestions = await generator.decompose_story_to_tasks(
-                story_id=story.id,
-                project_id=interview.project_id
+        total_stories = len(created_stories)
+
+        for story_idx, story in enumerate(created_stories):
+            story_progress_start = 60.0 + (story_idx / total_stories) * 35.0
+            job_manager.update_progress(
+                job_id,
+                story_progress_start,
+                f"Decomposing Story {story_idx+1}/{total_stories} into Tasks..."
             )
 
-            # Step 6: Create Tasks in database
+            tasks_suggestions = await generator.decompose_story_to_tasks(
+                story_id=story.id,
+                project_id=project_id
+            )
+
             for i, task_suggestion in enumerate(tasks_suggestions):
                 task = Task(
                     id=uuid4(),
-                    project_id=interview.project_id,
+                    project_id=project_id,
                     created_from_interview_id=interview_id,
-                    parent_id=story.id,  # Link to Story
+                    parent_id=story.id,
                     title=task_suggestion["title"],
                     description=task_suggestion["description"],
                     item_type=ItemType.TASK,
@@ -707,17 +810,17 @@ async def generate_prompts(
                 db.add(task)
                 all_created_tasks.append(task)
 
-        db.commit()
+            db.commit()
+
         for task in all_created_tasks:
             db.refresh(task)
-        logger.info(f"✅ Created {len(all_created_tasks)} Tasks across all Stories")
 
-        total_items = 1 + len(created_stories) + len(all_created_tasks)  # Epic + Stories + Tasks
+        total_items = 1 + len(created_stories) + len(all_created_tasks)
 
-        logger.info(f"🎉 PROMPT #52 SUCCESS: Created hierarchical backlog with {total_items} items "
-                   f"(1 Epic → {len(created_stories)} Stories → {len(all_created_tasks)} Tasks)")
+        logger.info(f"🎉 Backlog generation complete: {total_items} items created")
 
-        return {
+        # Complete job with result
+        job_manager.complete_job(job_id, {
             "success": True,
             "epic_created": {
                 "id": str(epic.id),
@@ -728,18 +831,16 @@ async def generate_prompts(
             "tasks_created": len(all_created_tasks),
             "total_items": total_items,
             "message": f"Generated hierarchical backlog: 1 Epic → {len(created_stories)} Stories → {len(all_created_tasks)} Tasks!"
-        }
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        })
+
+        logger.info(f"✅ Job {job_id} completed successfully")
+
     except Exception as e:
-        logger.error(f"Failed to generate hierarchical backlog: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate hierarchical backlog: {str(e)}"
-        )
+        logger.error(f"❌ Backlog generation failed for job {job_id}: {str(e)}", exc_info=True)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
 
 
 @router.post("/{interview_id}/start", status_code=status.HTTP_200_OK)
@@ -1507,3 +1608,273 @@ async def provision_project(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Provisioning failed: {str(e)}"
         )
+
+
+@router.post("/{interview_id}/send-message-async", status_code=status.HTTP_202_ACCEPTED)
+async def send_message_async(
+    interview_id: UUID,
+    message: InterviewMessageCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Send message to interview and get AI response ASYNCHRONOUSLY.
+
+    PROMPT #65 - Async Job System
+
+    This endpoint prevents UI blocking by:
+    1. Creating an async job with status=PENDING
+    2. Returning job_id immediately (HTTP 202 Accepted)
+    3. Processing AI call in background
+    4. Client polls GET /jobs/{job_id} for result
+
+    Workflow:
+        # Client sends message
+        POST /interviews/{id}/send-message-async
+        → {job_id: "abc-123", status: "pending"}  ⚡ IMMEDIATE RESPONSE
+
+        # Client polls for result (every 1-2 seconds)
+        GET /jobs/abc-123
+        → {status: "running", progress: 50}
+
+        GET /jobs/abc-123
+        → {status: "completed", result: {message: {...}}}
+
+        # Client displays AI response
+        Show result.message content in chat
+
+    Args:
+        interview_id: UUID of the interview
+        message: User message content
+        background_tasks: FastAPI BackgroundTasks
+        db: Database session
+
+    Returns:
+        {
+            "job_id": "...",
+            "status": "pending",
+            "message": "Job created, poll /jobs/{job_id} for result"
+        }
+    """
+    from fastapi import BackgroundTasks
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Validate interview exists
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview {interview_id} not found"
+        )
+
+    # Create async job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.INTERVIEW_MESSAGE,
+        input_data={
+            "interview_id": str(interview_id),
+            "message_content": message.content
+        },
+        project_id=interview.project_id,
+        interview_id=interview_id
+    )
+
+    logger.info(f"Created async job {job.id} for interview {interview_id}")
+
+    # Schedule background task to process AI response
+    background_tasks.add_task(
+        _process_interview_message_async,
+        job_id=job.id,
+        interview_id=interview_id,
+        message_content=message.content
+    )
+
+    # Return job_id immediately (client will poll for result)
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": f"Job created successfully. Poll GET /api/v1/jobs/{job.id} for result."
+    }
+
+
+async def _process_interview_message_async(
+    job_id: UUID,
+    interview_id: UUID,
+    message_content: str
+):
+    """
+    Background task to process AI response for interview message.
+
+    This function runs asynchronously in the background and:
+    1. Marks job as RUNNING
+    2. Adds user message to conversation
+    3. Calls AI for response
+    4. Saves AI response to conversation
+    5. Marks job as COMPLETED with result
+
+    Args:
+        job_id: UUID of the async job
+        interview_id: UUID of the interview
+        message_content: User message content
+    """
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.services.ai_orchestrator import AIOrchestrator
+    from sqlalchemy.orm.attributes import flag_modified
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Create new DB session for background task
+    db = SessionLocal()
+
+    try:
+        # Initialize job manager
+        job_manager = JobManager(db)
+
+        # Mark job as running
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Background task started for job {job_id}")
+
+        # Get interview
+        interview = db.query(Interview).filter(Interview.id == interview_id).first()
+        if not interview:
+            job_manager.fail_job(job_id, f"Interview {interview_id} not found")
+            return
+
+        # Initialize conversation_data if empty
+        if not interview.conversation_data:
+            interview.conversation_data = []
+
+        # Add user message
+        user_message = {
+            "role": "user",
+            "content": message_content,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        interview.conversation_data.append(user_message)
+        flag_modified(interview, "conversation_data")
+        db.commit()
+
+        logger.info(f"Added user message to interview {interview_id}")
+
+        # Update progress: 30% (message added)
+        job_manager.update_progress(job_id, 30.0, "User message added, calling AI...")
+
+        # Get project for context
+        project = db.query(Project).filter(Project.id == interview.project_id).first()
+
+        # Count messages to determine question type
+        message_count = len(interview.conversation_data)
+
+        # Check if fixed question or AI question
+        if message_count in [2, 4, 6, 8, 10]:
+            # Fixed question
+            question_map = {2: 2, 4: 3, 6: 4, 8: 5, 10: 6}
+            question_number = question_map[message_count]
+
+            logger.info(f"Returning fixed Question {question_number}")
+            assistant_message = get_fixed_question(question_number, project, db)
+
+            if not assistant_message:
+                job_manager.fail_job(job_id, f"Failed to get fixed question {question_number}")
+                return
+
+            interview.conversation_data.append(assistant_message)
+            flag_modified(interview, "conversation_data")
+            db.commit()
+
+            # Complete job with result
+            job_manager.complete_job(job_id, {
+                "success": True,
+                "message": assistant_message,
+                "usage": {
+                    "model": "system/fixed-question",
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_cost_usd": 0.0
+                }
+            })
+
+            logger.info(f"✅ Job {job_id} completed (fixed question)")
+
+        elif message_count >= 12:
+            # AI business question
+            logger.info(f"Calling AI for business question (message_count={message_count})")
+
+            # Update progress: 40% (preparing AI call)
+            job_manager.update_progress(job_id, 40.0, "Preparing AI call...")
+
+            # Build system prompt (simplified for now)
+            system_prompt = """Você é um analista de requisitos de IA coletando requisitos técnicos para um projeto de software.
+
+**Conduza em PORTUGUÊS.** Faça perguntas relevantes sobre funcionalidades, integrações, usuários, performance, etc.
+
+**Formato de Pergunta:**
+❓ Pergunta [número]: [Sua pergunta contextual]
+
+Continue com próxima pergunta relevante!
+"""
+
+            # Prepare optimized context
+            optimized_messages = _prepare_interview_context(
+                conversation_data=interview.conversation_data,
+                max_recent=5
+            )
+
+            # Update progress: 50% (calling AI)
+            job_manager.update_progress(job_id, 50.0, "Calling AI...")
+
+            # Call AI
+            orchestrator = AIOrchestrator(db)
+            response = await orchestrator.execute(
+                usage_type="interview",
+                messages=optimized_messages,
+                system_prompt=system_prompt,
+                max_tokens=1000,
+                project_id=interview.project_id,
+                interview_id=interview.id
+            )
+
+            # Update progress: 80% (AI responded, cleaning response)
+            job_manager.update_progress(job_id, 80.0, "Processing AI response...")
+
+            # Clean AI response
+            cleaned_content = _clean_ai_response(response["content"])
+
+            # Add assistant message
+            assistant_message = {
+                "role": "assistant",
+                "content": cleaned_content,
+                "timestamp": datetime.utcnow().isoformat(),
+                "model": f"{response['provider']}/{response['model']}"
+            }
+
+            interview.conversation_data.append(assistant_message)
+            interview.ai_model_used = response["model"]
+            flag_modified(interview, "conversation_data")
+            db.commit()
+
+            # Complete job with result
+            job_manager.complete_job(job_id, {
+                "success": True,
+                "message": assistant_message,
+                "usage": response.get("usage", {})
+            })
+
+            logger.info(f"✅ Job {job_id} completed (AI question)")
+
+        else:
+            # Unexpected state
+            job_manager.fail_job(job_id, f"Unexpected interview state (message_count={message_count})")
+
+    except Exception as e:
+        logger.error(f"❌ Job {job_id} failed: {str(e)}", exc_info=True)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()

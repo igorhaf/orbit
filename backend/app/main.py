@@ -31,7 +31,8 @@ from app.api.routes import (
     orchestrators,
     project_analyses,
     specs,
-    prompter  # Prompter Architecture - Phase 1
+    prompter,  # Prompter Architecture - Phase 1
+    jobs  # PROMPT #65 - Async Job System
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -286,6 +287,13 @@ app.include_router(
 # Prompter (Prompt Template & Orchestration System - Prompter Architecture Phase 1)
 app.include_router(
     prompter.router
+)
+
+# Jobs (Async Job Tracking - PROMPT #65)
+app.include_router(
+    jobs.router,
+    prefix=f"{API_V1_PREFIX}/jobs",
+    tags=["Jobs"]
 )
 
 # WebSocket (Real-time updates)
