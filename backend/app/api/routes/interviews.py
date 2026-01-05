@@ -6,7 +6,7 @@ Integrated with Prompter Architecture (Phase 2: Integration)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
