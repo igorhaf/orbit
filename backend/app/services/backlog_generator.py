@@ -99,53 +99,54 @@ class BacklogGeneratorService:
         if not conversation or len(conversation) == 0:
             raise ValueError(f"Interview {interview_id} has no conversation data")
 
-        # 2. Build AI prompt
-        system_prompt = """You are an expert Product Owner analyzing interview conversations to extract Epic-level requirements.
+        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #64)
+        system_prompt = """Você é um Product Owner especialista analisando conversas de entrevistas para extrair requisitos de nível Epic.
 
-Your task:
-1. Analyze the entire conversation and identify the main EPIC (high-level business goal)
-2. Extract acceptance criteria (what defines "done" for this Epic)
-3. Extract key insights: requirements, business goals, technical constraints
-4. Estimate story points (1-21, Fibonacci scale) based on Epic complexity
-5. Suggest priority (critical, high, medium, low, trivial)
+Sua tarefa:
+1. Analise toda a conversa e identifique o EPIC principal (objetivo de negócio de alto nível)
+2. Extraia critérios de aceitação (o que define que este Epic está "completo")
+3. Extraia insights chave: requisitos, objetivos de negócio, restrições técnicas
+4. Estime story points (1-21, escala Fibonacci) baseado na complexidade do Epic
+5. Sugira prioridade (critical, high, medium, low, trivial)
 
-IMPORTANT:
-- An Epic represents a large body of work (multiple Stories)
-- Focus on BUSINESS VALUE and USER OUTCOMES
-- Be specific and actionable in acceptance criteria
-- Extract actual quotes/insights from the conversation
+IMPORTANTE:
+- Um Epic representa um grande corpo de trabalho (múltiplas Stories)
+- Foque em VALOR DE NEGÓCIO e RESULTADOS PARA O USUÁRIO
+- Seja específico e acionável nos critérios de aceitação
+- Extraia citações/insights reais da conversa
+- TUDO DEVE SER EM PORTUGUÊS (título, descrição, critérios)
 
-Return ONLY valid JSON (no markdown, no explanation):
+Retorne APENAS JSON válido (sem markdown, sem explicação):
 {
-    "title": "Epic Title (concise, business-focused)",
-    "description": "Detailed Epic description explaining the business goal and user value",
+    "title": "Título do Epic (conciso, focado em negócio) - EM PORTUGUÊS",
+    "description": "Descrição detalhada do Epic explicando o objetivo de negócio e valor para o usuário - EM PORTUGUÊS",
     "story_points": 13,
     "priority": "high",
     "acceptance_criteria": [
-        "Specific measurable criterion 1",
-        "Specific measurable criterion 2",
-        "Specific measurable criterion 3"
+        "Critério específico mensurável 1 - EM PORTUGUÊS",
+        "Critério específico mensurável 2 - EM PORTUGUÊS",
+        "Critério específico mensurável 3 - EM PORTUGUÊS"
     ],
     "interview_insights": {
-        "key_requirements": ["requirement 1", "requirement 2"],
-        "business_goals": ["goal 1", "goal 2"],
-        "technical_constraints": ["constraint 1", "constraint 2"]
+        "key_requirements": ["requisito 1 - EM PORTUGUÊS", "requisito 2 - EM PORTUGUÊS"],
+        "business_goals": ["objetivo 1 - EM PORTUGUÊS", "objetivo 2 - EM PORTUGUÊS"],
+        "technical_constraints": ["restrição 1 - EM PORTUGUÊS", "restrição 2 - EM PORTUGUÊS"]
     },
     "interview_question_ids": [0, 2, 5]
 }
 
-interview_question_ids should be the indexes of conversation messages that are most relevant to this Epic.
+interview_question_ids deve conter os índices das mensagens da conversa mais relevantes para este Epic.
 """
 
         # Convert conversation to readable format
         conversation_text = self._format_conversation(conversation)
 
-        user_prompt = f"""Analyze this interview conversation and extract the main Epic:
+        user_prompt = f"""Analise esta conversa de entrevista e extraia o Epic principal:
 
-CONVERSATION:
+CONVERSA:
 {conversation_text}
 
-Return the Epic as JSON following the schema provided in the system prompt."""
+Retorne o Epic como JSON seguindo o schema fornecido no system prompt. LEMBRE-SE: TODO O CONTEÚDO DEVE SER EM PORTUGUÊS."""
 
         # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Generating Epic from Interview {interview_id}...")
@@ -243,56 +244,57 @@ Return the Epic as JSON following the schema provided in the system prompt."""
         if not epic:
             raise ValueError(f"Epic {epic_id} not found or is not an Epic")
 
-        # 2. Build AI prompt
-        system_prompt = """You are an expert Product Owner decomposing Epics into Stories.
+        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #64)
+        system_prompt = """Você é um Product Owner especialista decompondo Epics em Stories.
 
-Your task:
-1. Break down the Epic into 3-7 STORIES (user-facing features)
-2. Each Story should be independently deliverable
-3. Each Story should deliver user value
-4. Stories should be estimated in story points (1-8, Fibonacci)
-5. Inherit priority from Epic (adjust if needed)
+Sua tarefa:
+1. Divida o Epic em 3-7 STORIES (funcionalidades voltadas ao usuário)
+2. Cada Story deve ser entregável de forma independente
+3. Cada Story deve entregar valor ao usuário
+4. Stories devem ser estimadas em story points (1-8, Fibonacci)
+5. Herde a prioridade do Epic (ajuste se necessário)
 
-IMPORTANT:
-- A Story represents a user-facing feature (can be completed in 1-2 weeks)
-- Follow User Story format: "As a [user], I want [feature] so that [benefit]"
-- Each Story must have clear acceptance criteria
-- Stories should be independent (minimal dependencies)
+IMPORTANTE:
+- Uma Story representa uma funcionalidade para o usuário (pode ser completada em 1-2 semanas)
+- Siga o formato de User Story: "Como [usuário], eu quero [funcionalidade] para que [benefício]"
+- Cada Story deve ter critérios de aceitação claros
+- Stories devem ser independentes (mínimas dependências)
+- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
 
-Return ONLY valid JSON array (no markdown, no explanation):
+Retorne APENAS array JSON válido (sem markdown, sem explicação):
 [
     {
-        "title": "Story Title (User Story format)",
-        "description": "As a [user], I want [feature] so that [benefit]. Include implementation details here.",
+        "title": "Título da Story (formato User Story) - EM PORTUGUÊS",
+        "description": "Como [usuário], eu quero [funcionalidade] para que [benefício]. Inclua detalhes de implementação aqui. - EM PORTUGUÊS",
         "story_points": 5,
         "priority": "high",
         "acceptance_criteria": [
-            "Criterion 1",
-            "Criterion 2"
+            "Critério 1 - EM PORTUGUÊS",
+            "Critério 2 - EM PORTUGUÊS"
         ],
         "interview_insights": {
             "derived_from_epic": true,
-            "epic_requirements": ["requirement this story addresses"]
+            "epic_requirements": ["requisito que esta story aborda - EM PORTUGUÊS"]
         }
     }
 ]
 """
 
-        user_prompt = f"""Decompose this Epic into Stories:
+        user_prompt = f"""Decomponha este Epic em Stories:
 
-EPIC DETAILS:
-Title: {epic.title}
-Description: {epic.description}
+DETALHES DO EPIC:
+Título: {epic.title}
+Descrição: {epic.description}
 Story Points: {epic.story_points}
-Priority: {epic.priority.value if epic.priority else 'medium'}
+Prioridade: {epic.priority.value if epic.priority else 'medium'}
 
-Acceptance Criteria:
-{json.dumps(epic.acceptance_criteria, indent=2) if epic.acceptance_criteria else 'None'}
+Critérios de Aceitação:
+{json.dumps(epic.acceptance_criteria, indent=2) if epic.acceptance_criteria else 'Nenhum'}
 
-Interview Insights:
-{json.dumps(epic.interview_insights, indent=2) if epic.interview_insights else 'None'}
+Insights da Entrevista:
+{json.dumps(epic.interview_insights, indent=2) if epic.interview_insights else 'Nenhum'}
 
-Return 3-7 Stories as JSON array following the schema provided."""
+Retorne 3-7 Stories como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO O CONTEÚDO DEVE SER EM PORTUGUÊS."""
 
         # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Decomposing Epic {epic_id} into Stories...")
@@ -402,50 +404,51 @@ Return 3-7 Stories as JSON array following the schema provided."""
         if not story:
             raise ValueError(f"Story {story_id} not found or is not a Story")
 
-        # 2. Build AI prompt (FUNCTIONAL ONLY - no specs at this stage)
+        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #64)
         # PROMPT #54.2 - FIX: Specs removed from decomposition (only for execution)
-        system_prompt = """You are an expert Product Owner decomposing Stories into Tasks.
+        system_prompt = """Você é um Product Owner especialista decompondo Stories em Tasks.
 
-Your task:
-1. Break down the Story into 3-10 TASKS (implementation steps)
-2. Each Task should be specific and actionable (completable in 1-3 days)
-3. Estimate story points for each Task (1-3, Fibonacci)
-4. Maintain priority from Story
+Sua tarefa:
+1. Divida a Story em 3-10 TASKS (passos de implementação)
+2. Cada Task deve ser específica e acionável (completável em 1-3 dias)
+3. Estime story points para cada Task (1-3, Fibonacci)
+4. Mantenha a prioridade da Story
 
-IMPORTANT:
-- A Task is a concrete implementation step (what needs to be built)
-- Be SPECIFIC: "Create User CRUD API endpoints" not "Create backend"
-- Focus on WHAT needs to be done, not HOW (technical details come during execution)
-- Tasks should have clear acceptance criteria (testable outcomes)
-- Avoid framework-specific details (e.g., don't mention Laravel/React/etc.)
+IMPORTANTE:
+- Uma Task é um passo concreto de implementação (o que precisa ser construído)
+- Seja ESPECÍFICO: "Criar endpoints CRUD da API de Usuário" não "Criar backend"
+- Foque em O QUE precisa ser feito, não COMO (detalhes técnicos vêm durante a execução)
+- Tasks devem ter critérios de aceitação claros (resultados testáveis)
+- Evite detalhes específicos de framework (ex: não mencione Laravel/React/etc.)
+- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
 
-Return ONLY valid JSON array (no markdown, no explanation):
+Retorne APENAS array JSON válido (sem markdown, sem explicação):
 [
     {
-        "title": "Specific Task Title",
-        "description": "What needs to be implemented (functional description, not technical).",
+        "title": "Título Específico da Task - EM PORTUGUÊS",
+        "description": "O que precisa ser implementado (descrição funcional, não técnica). - EM PORTUGUÊS",
         "story_points": 2,
         "priority": "high",
         "acceptance_criteria": [
-            "Testable criterion 1",
-            "Testable criterion 2"
+            "Critério testável 1 - EM PORTUGUÊS",
+            "Critério testável 2 - EM PORTUGUÊS"
         ]
     }
 ]
 """
 
-        user_prompt = f"""Decompose this Story into Tasks:
+        user_prompt = f"""Decomponha esta Story em Tasks:
 
-STORY DETAILS:
-Title: {story.title}
-Description: {story.description}
+DETALHES DA STORY:
+Título: {story.title}
+Descrição: {story.description}
 Story Points: {story.story_points}
-Priority: {story.priority.value if story.priority else 'medium'}
+Prioridade: {story.priority.value if story.priority else 'medium'}
 
-Acceptance Criteria:
-{json.dumps(story.acceptance_criteria, indent=2) if story.acceptance_criteria else 'None'}
+Critérios de Aceitação:
+{json.dumps(story.acceptance_criteria, indent=2) if story.acceptance_criteria else 'Nenhum'}
 
-Return 3-10 Tasks as JSON array following the schema provided."""
+Retorne 3-10 Tasks como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO O CONTEÚDO DEVE SER EM PORTUGUÊS."""
 
         # 4. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Decomposing Story {story_id} into Tasks...")
