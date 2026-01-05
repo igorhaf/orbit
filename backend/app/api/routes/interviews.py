@@ -211,13 +211,17 @@ def _prepare_interview_context(conversation_data: List[Dict], max_recent: int = 
         content_preview = content[:100] + ('...' if len(content) > 100 else '')
         summary_points.append(f"[{i+1}] {role}: {content_preview}")
 
+    # IMPORTANT: Anthropic API only accepts "user" and "assistant" roles
+    # Cannot use "system" role in messages array - it must be in system parameter
     summary_message = {
-        "role": "system",
-        "content": f"""Contexto anterior da entrevista (resumo de {len(older_messages)} mensagens):
+        "role": "user",
+        "content": f"""[CONTEXTO ANTERIOR - RESUMO]
+
+Resumo das {len(older_messages)} mensagens anteriores desta entrevista:
 
 {chr(10).join(summary_points)}
 
-As {len(recent_messages)} mensagens mais recentes estão abaixo em detalhes completos."""
+As {len(recent_messages)} mensagens mais recentes seguem abaixo com conteúdo completo."""
     }
 
     # Build optimized message list
