@@ -322,14 +322,17 @@ Return 3-7 Stories as JSON array following the schema provided."""
         project_id: UUID
     ) -> List[Dict]:
         """
-        Decompose Story into Task suggestions using AI with Spec context
+        Decompose Story into Task suggestions using AI (FUNCTIONAL ONLY)
+
+        PROMPT #54.2 - FIX: Specs removed from decomposition
+        - This stage is FUNCTIONAL (WHAT needs to be done)
+        - Specs are only used during EXECUTION (HOW to implement)
 
         Flow:
         1. Fetch Story details
-        2. Fetch relevant Specs (framework + project-specific)
-        3. AI decomposes Story into Tasks with Spec context
-        4. Returns array of Task suggestions (NOT created in DB)
-        5. User reviews and approves via API
+        2. AI decomposes Story into Tasks (functional description)
+        3. Returns array of Task suggestions (NOT created in DB)
+        4. User reviews and approves via API
 
         Args:
             story_id: Story ID to decompose
@@ -361,77 +364,28 @@ Return 3-7 Stories as JSON array following the schema provided."""
         if not story:
             raise ValueError(f"Story {story_id} not found or is not a Story")
 
-        # 2. Fetch project to get stack information
-        project = self.db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            raise ValueError(f"Project {project_id} not found")
-
-        # 3. Fetch relevant Specs using SpecLoader (PROMPT #54 - Optimization)
-        # Previously: Queried database directly (slower, less efficient)
-        # Now: Use SpecLoader (10-15% faster, consistent with rest of codebase)
-        spec_loader = get_spec_loader()
-        specs = []
-
-        # Fetch specs for each stack component
-        if project.stack_backend:
-            backend_specs = spec_loader.get_specs_by_framework(
-                'backend',
-                project.stack_backend,
-                only_active=True
-            )
-            specs.extend(backend_specs)
-
-        if project.stack_frontend:
-            frontend_specs = spec_loader.get_specs_by_framework(
-                'frontend',
-                project.stack_frontend,
-                only_active=True
-            )
-            specs.extend(frontend_specs)
-
-        if project.stack_database:
-            database_specs = spec_loader.get_specs_by_framework(
-                'database',
-                project.stack_database,
-                only_active=True
-            )
-            specs.extend(database_specs)
-
-        if project.stack_css:
-            css_specs = spec_loader.get_specs_by_framework(
-                'css',
-                project.stack_css,
-                only_active=True
-            )
-            specs.extend(css_specs)
-
-        logger.info(f"📚 Loaded {len(specs)} specs via SpecLoader for Story → Tasks decomposition")
-
-        # Build Specs context (limit to 10 most relevant to avoid token bloat)
-        specs_context = self._build_specs_context(specs, story, max_specs=10)
-
-        # 3. Build AI prompt
-        system_prompt = """You are an expert Software Architect decomposing Stories into technical Tasks.
+        # 2. Build AI prompt (FUNCTIONAL ONLY - no specs at this stage)
+        # PROMPT #54.2 - FIX: Specs removed from decomposition (only for execution)
+        system_prompt = """You are an expert Product Owner decomposing Stories into Tasks.
 
 Your task:
-1. Break down the Story into 3-10 TASKS (technical implementation steps)
+1. Break down the Story into 3-10 TASKS (implementation steps)
 2. Each Task should be specific and actionable (completable in 1-3 days)
-3. Tasks should follow the provided framework specifications
-4. Estimate story points for each Task (1-3, Fibonacci)
-5. Maintain priority from Story
+3. Estimate story points for each Task (1-3, Fibonacci)
+4. Maintain priority from Story
 
 IMPORTANT:
-- A Task is a technical implementation step (backend endpoint, frontend component, database migration, etc.)
-- Follow framework conventions from provided Specs
-- Be SPECIFIC: "Create UserController with CRUD endpoints" not "Create backend"
-- Include technical details in description
+- A Task is a concrete implementation step (what needs to be built)
+- Be SPECIFIC: "Create User CRUD API endpoints" not "Create backend"
+- Focus on WHAT needs to be done, not HOW (technical details come during execution)
 - Tasks should have clear acceptance criteria (testable outcomes)
+- Avoid framework-specific details (e.g., don't mention Laravel/React/etc.)
 
 Return ONLY valid JSON array (no markdown, no explanation):
 [
     {
         "title": "Specific Task Title",
-        "description": "Technical implementation details. Include file paths, endpoints, components to create.",
+        "description": "What needs to be implemented (functional description, not technical).",
         "story_points": 2,
         "priority": "high",
         "acceptance_criteria": [
@@ -453,9 +407,7 @@ Priority: {story.priority.value if story.priority else 'medium'}
 Acceptance Criteria:
 {json.dumps(story.acceptance_criteria, indent=2) if story.acceptance_criteria else 'None'}
 
-{specs_context}
-
-Return 3-10 technical Tasks as JSON array following the schema provided."""
+Return 3-10 Tasks as JSON array following the schema provided."""
 
         # 4. Call AI
         logger.info(f"🎯 Decomposing Story {story_id} into Tasks...")
@@ -467,8 +419,7 @@ Return 3-10 technical Tasks as JSON array following the schema provided."""
             project_id=project_id,
             metadata={
                 "operation": "decompose_story_to_tasks",
-                "story_id": str(story_id),
-                "specs_used": len(specs)
+                "story_id": str(story_id)
             }
         )
 
@@ -487,7 +438,6 @@ Return 3-10 technical Tasks as JSON array following the schema provided."""
                 task["_metadata"] = {
                     "source": "story_decomposition",
                     "story_id": str(story_id),
-                    "specs_used": len(specs),
                     "ai_model": result.get("db_model_name", "unknown"),
                     "input_tokens": result.get("usage", {}).get("input_tokens", 0),
                     "output_tokens": result.get("usage", {}).get("output_tokens", 0)
