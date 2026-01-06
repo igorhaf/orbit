@@ -42,8 +42,12 @@ class ProvisioningService:
         - Scripts are executed in sequence
         - Tailwind is handled within Next.js script (component, not service)
 
+        PROMPT #67 - Mobile Support:
+        - Mobile is OPTIONAL (can be None)
+        - If mobile == 'react-native', adds mobile/react_native_setup.sh
+
         Args:
-            stack: Stack configuration dict with backend, database, frontend, css
+            stack: Stack configuration dict with backend, database, frontend, css, mobile (optional)
 
         Returns:
             List of script filenames to execute in order
@@ -54,6 +58,7 @@ class ProvisioningService:
         frontend = stack.get("frontend", "").lower()
         database = stack.get("database", "").lower()
         css = stack.get("css", "").lower()
+        mobile = stack.get("mobile", "").lower() if stack.get("mobile") else None  # PROMPT #67
 
         # Validate supported stack
         if backend != "laravel" or frontend != "nextjs" or database != "postgresql":
@@ -77,7 +82,12 @@ class ProvisioningService:
         # 2. Next.js frontend (includes Tailwind installation)
         scripts.append("nextjs_setup.sh")
 
-        # 3. Docker configuration
+        # 3. React Native mobile (OPTIONAL) - PROMPT #67
+        if mobile == "react-native":
+            scripts.append("mobile/react_native_setup.sh")
+            logger.info(f"✅ Mobile framework detected: {mobile} - Adding mobile provisioning")
+
+        # 4. Docker configuration (always last)
         scripts.append("docker_setup.sh")
 
         logger.info(f"Provisioning scripts for {stack}: {scripts}")
@@ -246,13 +256,16 @@ class ProvisioningService:
         """
         Validate if stack configuration is supported
 
+        PROMPT #67 - Mobile support added (optional)
+
         Args:
-            stack: Stack configuration dict
+            stack: Stack configuration dict (backend, database, frontend, css, mobile=optional)
 
         Returns:
             Tuple of (is_valid, error_message)
         """
         required_keys = ["backend", "database", "frontend", "css"]
+        # PROMPT #67 - mobile is OPTIONAL, not required
 
         # Check required keys
         for key in required_keys:
@@ -267,7 +280,7 @@ class ProvisioningService:
         if not scripts:
             return False, (
                 f"Stack combination not supported for provisioning: {stack}. "
-                f"Supported: Laravel + Next.js + PostgreSQL + Tailwind"
+                f"Supported: Laravel + Next.js + PostgreSQL + Tailwind (+ React Native mobile optional)"
             )
 
         # Check if technologies exist in specs
@@ -275,6 +288,10 @@ class ProvisioningService:
         available = self.get_available_stacks()
 
         for key, value in stack.items():
+            # Skip validation for None/empty values (e.g., mobile=None is valid)
+            if value is None or not value:
+                continue
+
             # Skip validation for "none" - it's a valid special value
             if value.lower() == "none":
                 continue

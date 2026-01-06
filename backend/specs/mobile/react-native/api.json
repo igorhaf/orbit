@@ -1,0 +1,18 @@
+{
+  "id": "react-native-api",
+  "category": "mobile",
+  "name": "react-native",
+  "spec_type": "api",
+  "title": "API Service Layer",
+  "description": "Template for API client with axios",
+  "content": "import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';\nimport { API_URL } from '../config';\n\nclass {service_name}Service {\n  private client: AxiosInstance;\n\n  constructor() {\n    this.client = axios.create({\n      baseURL: API_URL,\n      timeout: 10000,\n      headers: {\n        'Content-Type': 'application/json',\n      },\n    });\n\n    // Request interceptor for adding auth token\n    this.client.interceptors.request.use(\n      (config) => {\n        // TODO: Add authentication token from storage\n        // const token = await AsyncStorage.getItem('auth_token');\n        // if (token) {\n        //   config.headers.Authorization = `Bearer ${token}`;\n        // }\n        return config;\n      },\n      (error) => Promise.reject(error)\n    );\n\n    // Response interceptor for handling errors\n    this.client.interceptors.response.use(\n      (response) => response,\n      (error) => {\n        if (error.response?.status === 401) {\n          // Handle unauthorized access\n          console.log('Unauthorized - redirect to login');\n        }\n        return Promise.reject(error);\n      }\n    );\n  }\n\n  async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {\n    const response = await this.client.get<T>(url, config);\n    return response.data;\n  }\n\n  async post<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {\n    const response = await this.client.post<T>(url, data, config);\n    return response.data;\n  }\n\n  async put<T>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T> {\n    const response = await this.client.put<T>(url, data, config);\n    return response.data;\n  }\n\n  async delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {\n    const response = await this.client.delete<T>(url, config);\n    return response.data;\n  }\n}\n\nexport default new {service_name}Service();",
+  "language": "ts",
+  "framework_version": null,
+  "ignore_patterns": ["node_modules/*", ".expo/*", "ios/*", "android/*"],
+  "file_extensions": [".ts"],
+  "is_active": true,
+  "metadata": {
+    "created_at": "2026-01-06T01:40:00Z",
+    "updated_at": "2026-01-06T01:40:00Z"
+  }
+}

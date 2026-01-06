@@ -4,7 +4,7 @@ CRUD operations for managing AI-assisted interviews.
 Integrated with Prompter Architecture (Phase 2: Integration)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Body, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict
 from uuid import UUID
@@ -299,10 +299,11 @@ def get_fixed_question(question_number: int, project: Project, db: Session) -> d
     """
     Returns fixed questions with DYNAMIC options from specs.
     Questions 1-2: Title and Description (text input, prefilled)
-    Questions 3-6: Stack questions (single choice, OPTIONS FROM SPECS)
+    Questions 3-7: Stack questions (single choice, OPTIONS FROM SPECS)
 
     PROMPT #57 - Fixed Questions Without AI
-    DYNAMIC SYSTEM: Questions 3-6 pull options from specs table
+    PROMPT #67 - Mobile Support (Q7 added)
+    DYNAMIC SYSTEM: Questions 3-7 pull options from specs table
     """
 
     # Questions 1-2: Static (Title and Description)
@@ -328,12 +329,13 @@ def get_fixed_question(question_number: int, project: Project, db: Session) -> d
             "question_number": 2
         }
 
-    # Questions 3-6: DYNAMIC (Stack - from specs)
+    # Questions 3-7: DYNAMIC (Stack - from specs)
     category_map = {
         3: ("backend", "❓ Pergunta 3: Qual framework de backend você vai usar?"),
         4: ("database", "❓ Pergunta 4: Qual banco de dados você vai usar?"),
         5: ("frontend", "❓ Pergunta 5: Qual framework de frontend você vai usar?"),
-        6: ("css", "❓ Pergunta 6: Qual framework CSS você vai usar?")
+        6: ("css", "❓ Pergunta 6: Qual framework CSS você vai usar?"),
+        7: ("mobile", "📱 Pergunta 7: Qual framework mobile você deseja usar?")
     }
 
     if question_number in category_map:
@@ -561,7 +563,6 @@ async def get_interview_prompts(
 @router.post("/{interview_id}/generate-prompts-async", status_code=status.HTTP_202_ACCEPTED)
 async def generate_prompts_async(
     interview_id: UUID,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
@@ -638,12 +639,15 @@ async def generate_prompts_async(
 
     logger.info(f"Created async job {job.id} for backlog generation from interview {interview_id}")
 
-    # Schedule background task
-    background_tasks.add_task(
-        _generate_backlog_async,
-        job_id=job.id,
-        interview_id=interview_id,
-        project_id=interview.project_id
+    # IMPORTANT: Use asyncio.create_task() instead of BackgroundTasks for long-running operations
+    # BackgroundTasks blocks the worker until completion, which defeats the purpose of async
+    import asyncio
+    asyncio.create_task(
+        _generate_backlog_async(
+            job_id=job.id,
+            interview_id=interview_id,
+            project_id=interview.project_id
+        )
     )
 
     # Return job_id immediately
@@ -937,15 +941,17 @@ async def save_interview_stack(
     """
     Saves the tech stack configuration to the project after stack questions are answered.
 
-    This endpoint is called automatically after the user completes the 4 stack questions
-    (backend, database, frontend, css) at the start of the interview.
+    This endpoint is called automatically after the user completes the stack questions
+    (backend, database, frontend, css, mobile) at the start of the interview.
 
     - **interview_id**: UUID of the interview
-    - **stack**: Stack configuration with backend, database, frontend, css choices
+    - **stack**: Stack configuration with backend, database, frontend, css, mobile choices
 
     Returns:
         - success: Boolean
         - message: Confirmation message
+
+    PROMPT #67 - Mobile support added
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -973,11 +979,17 @@ async def save_interview_stack(
     project.stack_database = stack.database
     project.stack_frontend = stack.frontend
     project.stack_css = stack.css
+    project.stack_mobile = stack.mobile  # PROMPT #67 - Mobile support
 
     db.commit()
     db.refresh(project)
 
-    logger.info(f"Stack configuration saved for project {project.id}: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}")
+    # Build stack description for logging
+    stack_parts = [stack.backend, stack.database, stack.frontend, stack.css]
+    if stack.mobile:
+        stack_parts.append(stack.mobile)
+    stack_description = " + ".join(stack_parts)
+    logger.info(f"Stack configuration saved for project {project.id}: {stack_description}")
 
     # PROMPT #60 - AUTOMATIC PROVISIONING
     # Automatically provision project after stack is saved
@@ -1022,7 +1034,7 @@ async def save_interview_stack(
     # Return response with provisioning info
     response = {
         "success": True,
-        "message": f"Stack configuration saved: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}",
+        "message": f"Stack configuration saved: {stack_description}",  # PROMPT #67 - Includes mobile if set
         "provisioning": {
             "attempted": True,
             "success": provisioning_result is not None and provisioning_result.get("success", False),
@@ -1050,7 +1062,6 @@ async def save_interview_stack(
 async def save_interview_stack_async(
     interview_id: UUID,
     stack: StackConfiguration,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
@@ -1079,7 +1090,7 @@ async def save_interview_stack_async(
 
     Args:
         interview_id: UUID of the interview
-        stack: Stack configuration (backend, database, frontend, css)
+        stack: Stack configuration (backend, database, frontend, css, mobile) - PROMPT #67
         background_tasks: FastAPI BackgroundTasks
         db: Database session
 
@@ -1117,10 +1128,16 @@ async def save_interview_stack_async(
     project.stack_database = stack.database
     project.stack_frontend = stack.frontend
     project.stack_css = stack.css
+    project.stack_mobile = stack.mobile  # PROMPT #67 - Mobile support
     db.commit()
     db.refresh(project)
 
-    logger.info(f"Stack saved for project {project.id}: {stack.backend} + {stack.database} + {stack.frontend} + {stack.css}")
+    # Build stack description for logging
+    stack_parts = [stack.backend, stack.database, stack.frontend, stack.css]
+    if stack.mobile:
+        stack_parts.append(stack.mobile)
+    stack_description = " + ".join(stack_parts)
+    logger.info(f"Stack saved for project {project.id}: {stack_description}")
 
     # Create async job for provisioning
     job_manager = JobManager(db)
@@ -1133,7 +1150,8 @@ async def save_interview_stack_async(
                 "backend": stack.backend,
                 "database": stack.database,
                 "frontend": stack.frontend,
-                "css": stack.css
+                "css": stack.css,
+                "mobile": stack.mobile  # PROMPT #67 - Mobile support
             }
         },
         project_id=project.id,
@@ -1142,11 +1160,13 @@ async def save_interview_stack_async(
 
     logger.info(f"Created provisioning job {job.id} for project {project.name}")
 
-    # Schedule background provisioning
-    background_tasks.add_task(
-        _provision_project_async,
-        job_id=job.id,
-        project_id=project.id
+    # IMPORTANT: Use asyncio.create_task() instead of BackgroundTasks for long-running operations
+    import asyncio
+    asyncio.create_task(
+        _provision_project_async(
+            job_id=job.id,
+            project_id=project.id
+        )
     )
 
     return {
@@ -1384,7 +1404,8 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
     # message_count = 6 (... + Q3 + A3) → Return Q4 (Database) - Fixed
     # message_count = 8 (... + Q4 + A4) → Return Q5 (Frontend) - Fixed
     # message_count = 10 (... + Q5 + A5) → Return Q6 (CSS) - Fixed
-    # message_count >= 12 (... + Q6 + A6) → Return Q7+ (Business) - AI
+    # message_count = 12 (... + Q6 + A6) → Return Q7 (Mobile) - Fixed - PROMPT #67
+    # message_count >= 14 (... + Q7 + A7) → Return Q8+ (Business) - AI
 
     # Map message_count to question number
     question_map = {
@@ -1393,6 +1414,7 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
         6: 4,   # After A3 (Backend) → Ask Q4 (Database)
         8: 5,   # After A4 (Database) → Ask Q5 (Frontend)
         10: 6,  # After A5 (Frontend) → Ask Q6 (CSS)
+        12: 7,  # After A6 (CSS) → Ask Q7 (Mobile) - PROMPT #67
     }
 
     # Check if we should return a fixed question
@@ -1437,8 +1459,8 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
             }
         }
 
-    # If message_count >= 12, use AI for business questions
-    elif message_count >= 12:
+    # If message_count >= 14, use AI for business questions (after Q1-Q7) - PROMPT #67
+    elif message_count >= 14:
         logger.info(f"Using AI for business question (message_count={message_count}) for interview {interview_id}")
 
         # Check if PrompterFacade is available and enabled
@@ -1834,7 +1856,6 @@ async def provision_project(
 async def send_message_async(
     interview_id: UUID,
     message: InterviewMessageCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """
@@ -1876,7 +1897,6 @@ async def send_message_async(
             "message": "Job created, poll /jobs/{job_id} for result"
         }
     """
-    from fastapi import BackgroundTasks
     from app.services.job_manager import JobManager
     from app.models.async_job import JobType
     import logging
@@ -1905,12 +1925,14 @@ async def send_message_async(
 
     logger.info(f"Created async job {job.id} for interview {interview_id}")
 
-    # Schedule background task to process AI response
-    background_tasks.add_task(
-        _process_interview_message_async,
-        job_id=job.id,
-        interview_id=interview_id,
-        message_content=message.content
+    # IMPORTANT: Use asyncio.create_task() instead of BackgroundTasks for long-running operations
+    import asyncio
+    asyncio.create_task(
+        _process_interview_message_async(
+            job_id=job.id,
+            interview_id=interview_id,
+            message_content=message.content
+        )
     )
 
     # Return job_id immediately (client will poll for result)

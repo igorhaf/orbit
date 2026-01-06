@@ -1,0 +1,18 @@
+{
+  "id": "react-native-config",
+  "category": "mobile",
+  "name": "react-native",
+  "spec_type": "config",
+  "title": "Configuration File",
+  "description": "Template for app configuration and environment variables",
+  "content": "/**\n * App Configuration\n * PROMPT #67 - React Native Mobile Support\n */\n\nimport { Platform } from 'react-native';\n\n// Environment variables (from .env)\nexport const API_URL = process.env.API_URL || 'http://localhost:8000/api/v1';\nexport const APP_NAME = process.env.APP_NAME || 'MyApp';\nexport const APP_VERSION = process.env.APP_VERSION || '1.0.0';\n\n// Platform-specific configuration\nexport const config = {\n  api: {\n    baseURL: API_URL,\n    timeout: 10000,\n    retryAttempts: 3,\n  },\n  \n  storage: {\n    prefix: '@myapp:',\n  },\n  \n  navigation: {\n    initialRouteName: 'Home',\n  },\n  \n  theme: {\n    colors: {\n      primary: '#007AFF',\n      secondary: '#34C759',\n      error: '#FF3B30',\n      background: '#FFFFFF',\n      text: '#000000',\n    },\n    spacing: {\n      xs: 4,\n      sm: 8,\n      md: 16,\n      lg: 24,\n      xl: 32,\n    },\n  },\n  \n  features: {\n    enableAnalytics: true,\n    enableCrashReporting: true,\n    enableDebugMode: __DEV__,\n  },\n};\n\n// Platform utilities\nexport const isIOS = Platform.OS === 'ios';\nexport const isAndroid = Platform.OS === 'android';\nexport const isWeb = Platform.OS === 'web';\n\nexport default config;",
+  "language": "ts",
+  "framework_version": null,
+  "ignore_patterns": ["node_modules/*", ".expo/*", "ios/*", "android/*"],
+  "file_extensions": [".ts"],
+  "is_active": true,
+  "metadata": {
+    "created_at": "2026-01-06T01:40:00Z",
+    "updated_at": "2026-01-06T01:40:00Z"
+  }
+}

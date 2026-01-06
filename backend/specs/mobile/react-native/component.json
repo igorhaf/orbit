@@ -1,0 +1,18 @@
+{
+  "id": "react-native-component",
+  "category": "mobile",
+  "name": "react-native",
+  "spec_type": "component",
+  "title": "React Native Reusable Component",
+  "description": "Template for a reusable UI component",
+  "content": "import React from 'react';\nimport {\n  View,\n  Text,\n  TouchableOpacity,\n  StyleSheet,\n} from 'react-native';\n\ninterface {component_name}Props {\n  title: string;\n  onPress?: () => void;\n  disabled?: boolean;\n  variant?: 'primary' | 'secondary' | 'outline';\n}\n\nexport default function {component_name}({\n  title,\n  onPress,\n  disabled = false,\n  variant = 'primary',\n}: {component_name}Props) {\n  const buttonStyle = [\n    styles.button,\n    variant === 'primary' && styles.primaryButton,\n    variant === 'secondary' && styles.secondaryButton,\n    variant === 'outline' && styles.outlineButton,\n    disabled && styles.disabledButton,\n  ];\n\n  const textStyle = [\n    styles.text,\n    variant === 'primary' && styles.primaryText,\n    variant === 'secondary' && styles.secondaryText,\n    variant === 'outline' && styles.outlineText,\n  ];\n\n  return (\n    <TouchableOpacity\n      style={buttonStyle}\n      onPress={onPress}\n      disabled={disabled}\n      activeOpacity={0.7}\n    >\n      <Text style={textStyle}>{title}</Text>\n    </TouchableOpacity>\n  );\n}\n\nconst styles = StyleSheet.create({\n  button: {\n    paddingVertical: 12,\n    paddingHorizontal: 24,\n    borderRadius: 8,\n    alignItems: 'center',\n    justifyContent: 'center',\n  },\n  primaryButton: {\n    backgroundColor: '#007AFF',\n  },\n  secondaryButton: {\n    backgroundColor: '#34C759',\n  },\n  outlineButton: {\n    backgroundColor: 'transparent',\n    borderWidth: 1,\n    borderColor: '#007AFF',\n  },\n  disabledButton: {\n    opacity: 0.5,\n  },\n  text: {\n    fontSize: 16,\n    fontWeight: '600',\n  },\n  primaryText: {\n    color: '#FFFFFF',\n  },\n  secondaryText: {\n    color: '#FFFFFF',\n  },\n  outlineText: {\n    color: '#007AFF',\n  },\n});",
+  "language": "tsx",
+  "framework_version": null,
+  "ignore_patterns": ["node_modules/*", ".expo/*", "ios/*", "android/*"],
+  "file_extensions": [".tsx", ".ts"],
+  "is_active": true,
+  "metadata": {
+    "created_at": "2026-01-06T01:40:00Z",
+    "updated_at": "2026-01-06T01:40:00Z"
+  }
+}
