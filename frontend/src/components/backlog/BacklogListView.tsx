@@ -119,12 +119,48 @@ export default function BacklogListView({
     try {
       const data = await tasksApi.getBacklog(projectId, filters);
       setBacklog(data || []);
+
+      // Auto-expand all items on load
+      if (data && data.length > 0) {
+        expandAllItems(data);
+      }
     } catch (error) {
       console.error('Error fetching backlog:', error);
       setBacklog([]);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Recursively collect all item IDs for expansion
+  const collectAllIds = (items: BacklogItem[]): string[] => {
+    const ids: string[] = [];
+
+    const traverse = (item: BacklogItem) => {
+      if (item.children && item.children.length > 0) {
+        ids.push(item.id);
+        item.children.forEach(child => traverse(child as BacklogItem));
+      }
+    };
+
+    items.forEach(traverse);
+    return ids;
+  };
+
+  // Expand all items in the tree
+  const expandAllItems = (items: BacklogItem[]) => {
+    const allIds = collectAllIds(items);
+    setExpandedIds(new Set(allIds));
+  };
+
+  // Collapse all items
+  const collapseAll = () => {
+    setExpandedIds(new Set());
+  };
+
+  // Expand all items (public function for button)
+  const expandAll = () => {
+    expandAllItems(backlog);
   };
 
   const toggleExpanded = (id: string) => {
@@ -311,12 +347,32 @@ export default function BacklogListView({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>Backlog</CardTitle>
-          <div className="text-sm text-gray-500">
-            {backlog.length} item{backlog.length !== 1 ? 's' : ''}
-            {selectedIds.size > 0 && (
-              <span className="ml-2 text-blue-600 font-medium">
-                ({selectedIds.size} selected)
-              </span>
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-500">
+              {backlog.length} item{backlog.length !== 1 ? 's' : ''}
+              {selectedIds.size > 0 && (
+                <span className="ml-2 text-blue-600 font-medium">
+                  ({selectedIds.size} selected)
+                </span>
+              )}
+            </div>
+            {backlog.length > 0 && (
+              <div className="flex gap-2">
+                <button
+                  onClick={expandAll}
+                  className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                  title="Expand all items"
+                >
+                  Expand All
+                </button>
+                <button
+                  onClick={collapseAll}
+                  className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                  title="Collapse all items"
+                >
+                  Collapse All
+                </button>
+              </div>
             )}
           </div>
         </div>
