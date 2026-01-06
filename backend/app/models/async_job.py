@@ -27,6 +27,7 @@ class JobType(str, enum.Enum):
     """Type of async job."""
     INTERVIEW_MESSAGE = "interview_message"        # AI response for interview
     BACKLOG_GENERATION = "backlog_generation"      # Epic → Stories → Tasks generation
+    TASK_GENERATION = "task_generation"            # PROMPT #68: Direct task from task-focused interview
     PROJECT_PROVISIONING = "project_provisioning"  # Project scaffolding
 
 

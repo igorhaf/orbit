@@ -199,6 +199,13 @@ class Task(Base):
     interview_question_ids = Column(JSON, nullable=True, default=list)  # ["q1", "q5", "q7"]
     interview_insights = Column(JSON, nullable=True, default=dict)
 
+    # PROMPT #68 - Dual-Mode Interview System: AI-suggested subtasks
+    subtask_suggestions = Column(
+        JSON,
+        nullable=True,
+        default=list  # [{"title": "...", "description": "...", "story_points": 2}]
+    )
+
     # ===== END JIRA TRANSFORMATION FIELDS =====
 
     # Relationships
@@ -271,6 +278,14 @@ class Task(Base):
         "TaskResult",
         back_populates="task",
         uselist=False,
+        cascade="all, delete-orphan"
+    )
+
+    # PROMPT #68 - Dual-Mode Interview System: Sub-interviews for task exploration
+    exploration_interviews = relationship(
+        "Interview",
+        foreign_keys="Interview.parent_task_id",
+        back_populates="parent_task",
         cascade="all, delete-orphan"
     )
 

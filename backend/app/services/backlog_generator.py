@@ -595,3 +595,215 @@ Specification:
 """)
 
         return "\n".join(formatted)
+
+    async def generate_task_from_interview_direct(
+        self,
+        interview: Interview,
+        project: Project
+    ) -> Task:
+        """
+        Generate SINGLE TASK directly from task-focused interview.
+
+        PROMPT #68 - Dual-Mode Interview System (FASE 4)
+
+        For task-focused interviews (existing projects), generates ONE task directly
+        without Epic→Story→Task hierarchy.
+
+        The task includes:
+        - Title, description, acceptance criteria
+        - Story points, priority, labels
+        - suggested_subtasks (AI suggestions, not created yet)
+        - interview_insights (context from interview)
+
+        Args:
+            interview: Task-focused interview instance
+            project: Project instance
+
+        Returns:
+            Task instance (created in DB)
+
+        Raises:
+            ValueError: If interview is not task-focused or has no data
+        """
+        logger.info(f"🎯 Generating direct task from task-focused interview {interview.id}")
+
+        # Validate interview mode
+        if interview.interview_mode != "task_focused":
+            raise ValueError(f"Interview {interview.id} is not task-focused (mode: {interview.interview_mode})")
+
+        conversation = interview.conversation_data
+        if not conversation or len(conversation) == 0:
+            raise ValueError(f"Interview {interview.id} has no conversation data")
+
+        # Extract task type from interview
+        task_type = interview.task_type_selection or "feature"
+        logger.info(f"Task type: {task_type}")
+
+        # Build AI prompt for task generation
+        system_prompt = self._build_task_generation_prompt(project, task_type)
+
+        # Build conversation summary
+        conversation_text = self._format_conversation_for_task(conversation)
+
+        # Call AI to generate task
+        messages = [
+            {
+                "role": "user",
+                "content": f"""Analyze this task-focused interview and generate a SINGLE task.
+
+**PROJECT CONTEXT:**
+- Name: {project.name}
+- Description: {project.description}
+- Stack: {project.stack_backend}, {project.stack_database}, {project.stack_frontend}
+
+**TASK TYPE:** {task_type.upper()}
+
+**INTERVIEW CONVERSATION:**
+{conversation_text}
+
+**INSTRUCTIONS:**
+Generate a SINGLE task with:
+1. Clear title and description
+2. Acceptance criteria (list of conditions)
+3. Story points (Fibonacci: 1, 2, 3, 5, 8, 13)
+4. Priority (critical/high/medium/low)
+5. Labels (array of tags: backend, frontend, database, bugfix, feature, etc.)
+6. Suggested subtasks (array of optional sub-tasks if task is complex)
+
+Return ONLY valid JSON in this format:
+{{
+  "title": "Clear, actionable title",
+  "description": "Detailed description with context",
+  "acceptance_criteria": ["Criterion 1", "Criterion 2", "Criterion 3"],
+  "story_points": 5,
+  "priority": "high",
+  "labels": ["backend", "{task_type}"],
+  "suggested_subtasks": [
+    {{"title": "Subtask 1", "description": "Details", "story_points": 2}},
+    {{"title": "Subtask 2", "description": "Details", "story_points": 3}}
+  ],
+  "interview_insights": {{
+    "key_requirements": ["Req 1", "Req 2"],
+    "technical_notes": ["Note 1", "Note 2"],
+    "business_context": "Why this task matters"
+  }}
+}}
+"""
+            }
+        ]
+
+        response = await self.orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=messages,
+            system_prompt=system_prompt,
+            max_tokens=2000,
+            project_id=project.id,
+            interview_id=interview.id
+        )
+
+        # Parse AI response
+        content = _strip_markdown_json(response["content"])
+        try:
+            task_data = json.loads(content)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse task JSON: {content[:200]}")
+            raise ValueError(f"AI returned invalid JSON: {str(e)}")
+
+        # Create Task record
+        task = Task(
+            project_id=project.id,
+            created_from_interview_id=interview.id,
+            item_type=ItemType.TASK,
+            title=task_data["title"],
+            description=task_data["description"],
+            acceptance_criteria=task_data.get("acceptance_criteria", []),
+            story_points=task_data.get("story_points"),
+            priority=self._parse_priority(task_data.get("priority", "medium")),
+            labels=task_data.get("labels", [task_type]),
+            subtask_suggestions=task_data.get("suggested_subtasks", []),  # PROMPT #68
+            interview_insights=task_data.get("interview_insights", {}),
+            status="backlog",
+            workflow_state="open",
+            reporter="system"
+        )
+
+        self.db.add(task)
+        self.db.commit()
+        self.db.refresh(task)
+
+        logger.info(f"✅ Task created: {task.id} - {task.title} (suggested subtasks: {len(task.subtask_suggestions or [])})")
+
+        return task
+
+    def _build_task_generation_prompt(self, project: Project, task_type: str) -> str:
+        """Build system prompt for task generation based on task type."""
+        base_prompt = f"""You are an AI product manager generating actionable tasks for a software project.
+
+PROJECT: {project.name}
+TASK TYPE: {task_type.upper()}
+
+Your task:
+1. Analyze the interview conversation
+2. Extract ONE clear, actionable task
+3. Include acceptance criteria (measurable conditions)
+4. Suggest story points (Fibonacci scale)
+5. Assign appropriate priority and labels
+6. Optionally suggest subtasks if task is complex (>5 points)
+
+Output ONLY valid JSON. Be concise but complete.
+"""
+
+        if task_type == "bug":
+            return base_prompt + """
+For BUG tasks, focus on:
+- Clear reproduction steps
+- Expected vs actual behavior
+- Root cause if mentioned
+- Fix approach
+"""
+        elif task_type == "feature":
+            return base_prompt + """
+For FEATURE tasks, focus on:
+- User story (who, what, why)
+- Functional requirements
+- Acceptance criteria (how to test)
+- Integration points
+"""
+        elif task_type == "refactor":
+            return base_prompt + """
+For REFACTOR tasks, focus on:
+- Current code problems
+- Desired outcome
+- Behavior preservation (no functionality changes)
+- Testing strategy
+"""
+        elif task_type == "enhancement":
+            return base_prompt + """
+For ENHANCEMENT tasks, focus on:
+- Existing functionality
+- Proposed improvements
+- Benefits and value
+- Backward compatibility
+"""
+        else:
+            return base_prompt
+
+    def _format_conversation_for_task(self, conversation: list) -> str:
+        """Format conversation for AI analysis."""
+        formatted = []
+        for i, msg in enumerate(conversation, 1):
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            formatted.append(f"[{i}] {role.upper()}: {content}")
+        return "\n\n".join(formatted)
+
+    def _parse_priority(self, priority_str: str) -> PriorityLevel:
+        """Parse priority string to enum."""
+        priority_map = {
+            "critical": PriorityLevel.CRITICAL,
+            "high": PriorityLevel.HIGH,
+            "medium": PriorityLevel.MEDIUM,
+            "low": PriorityLevel.LOW,
+            "trivial": PriorityLevel.TRIVIAL
+        }
+        return priority_map.get(priority_str.lower(), PriorityLevel.MEDIUM)

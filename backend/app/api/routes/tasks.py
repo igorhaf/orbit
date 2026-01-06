@@ -987,3 +987,121 @@ async def get_project_backlog(
     backlog = backlog_service.get_project_backlog(project_id, filters)
 
     return backlog
+
+
+# ============================================================================
+# PROMPT #68 - TASK EXPLORATION ENDPOINT
+# ============================================================================
+
+@router.post("/{task_id}/create-interview")
+async def create_interview_from_task(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Create task-focused interview to explore task deeper.
+
+    POST /api/v1/tasks/{task_id}/create-interview
+
+    Use cases:
+    - Task has suggested subtasks → explore with AI
+    - Task is complex → break down further
+    - Task needs clarification
+
+    Returns:
+    - Interview instance with pre-filled conversation
+    - interview_mode: "task_focused"
+    - parent_task_id: Links back to this task
+
+    Example response:
+    {
+        "id": "uuid",
+        "project_id": "uuid",
+        "interview_mode": "task_focused",
+        "parent_task_id": "uuid",
+        "conversation_data": [...],
+        "ai_model_used": "system",
+        "status": "active",
+        "created_at": "2026-01-06T..."
+    }
+    """
+    # Get task
+    task = db.query(Task).filter(Task.id == task_id).first()
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found"
+        )
+
+    # Build initial context message
+    acceptance_criteria_text = ""
+    if task.acceptance_criteria:
+        criteria_lines = "\n".join([f"  - {criterion}" for criterion in task.acceptance_criteria])
+        acceptance_criteria_text = f"\n- Critérios de Aceitação:\n{criteria_lines}"
+
+    subtasks_text = ""
+    if task.subtask_suggestions and len(task.subtask_suggestions) > 0:
+        subtask_lines = "\n".join([
+            f"  {i+1}. {st.get('title', 'Sem título')} ({st.get('story_points', '?')} pts)"
+            for i, st in enumerate(task.subtask_suggestions)
+        ])
+        subtasks_text = f"\n- Subtasks Sugeridas:\n{subtask_lines}"
+
+    initial_message = {
+        "role": "assistant",
+        "content": f"""👋 Vou ajudá-lo a explorar a task "{task.title}".
+
+CONTEXTO DA TASK:
+- Título: {task.title}
+- Descrição: {task.description or 'Sem descrição'}
+- Tipo: {task.item_type.value if task.item_type else 'task'}
+- Story Points: {task.story_points or 'Não estimado'}
+- Prioridade: {task.priority.value if task.priority else 'medium'}{acceptance_criteria_text}{subtasks_text}
+
+O que deseja fazer com esta task?
+- Explorar mais detalhes sobre a implementação?
+- Quebrar em subtasks menores?
+- Esclarecer requisitos?
+- Adicionar mais critérios de aceitação?
+
+Me diga como posso ajudar!""",
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    # Import Interview model
+    from app.models.interview import Interview, InterviewStatus
+
+    # Create interview
+    interview = Interview(
+        project_id=task.project_id,
+        conversation_data=[initial_message],
+        ai_model_used="system",
+        interview_mode="task_focused",
+        parent_task_id=task_id,
+        status=InterviewStatus.ACTIVE,
+        created_at=datetime.utcnow()
+    )
+
+    db.add(interview)
+    db.commit()
+    db.refresh(interview)
+
+    logger.info(f"Created task exploration interview {interview.id} for task {task_id}")
+
+    return {
+        "id": str(interview.id),
+        "project_id": str(interview.project_id),
+        "interview_mode": interview.interview_mode,
+        "parent_task_id": str(interview.parent_task_id) if interview.parent_task_id else None,
+        "conversation_data": interview.conversation_data,
+        "ai_model_used": interview.ai_model_used,
+        "status": interview.status.value,
+        "created_at": interview.created_at.isoformat(),
+        "task_context": {
+            "task_id": str(task.id),
+            "task_title": task.title,
+            "task_type": task.item_type.value if task.item_type else "task",
+            "has_subtask_suggestions": len(task.subtask_suggestions) > 0 if task.subtask_suggestions else False
+        }
+    }

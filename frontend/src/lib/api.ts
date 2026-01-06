@@ -244,6 +244,12 @@ export const tasksApi = {
     const queryString = queryParams.toString();
     return request<any>(`/api/v1/tasks/projects/${projectId}/backlog${queryString ? '?' + queryString : ''}`);
   },
+
+  // PROMPT #68 - Task Exploration: Create sub-interview from task
+  createInterview: (taskId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/create-interview`, {
+      method: 'POST',
+    }),
 };
 
 // Backlog Generation API (JIRA Transformation - PROMPT #62)
