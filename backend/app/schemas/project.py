@@ -15,11 +15,12 @@ class ProjectBase(BaseModel):
     description: Optional[str] = Field(None, description="Project description")
     git_repository_info: Optional[dict] = Field(None, description="Git repository information")
 
-    # Stack configuration (PROMPT #46 - Phase 1)
+    # Stack configuration (PROMPT #46 - Phase 1, PROMPT #67 - Mobile)
     stack_backend: Optional[str] = Field(None, description="Backend framework (laravel, django, fastapi, etc)")
     stack_database: Optional[str] = Field(None, description="Database (postgresql, mysql, mongodb, etc)")
     stack_frontend: Optional[str] = Field(None, description="Frontend framework (nextjs, react, vue, etc)")
     stack_css: Optional[str] = Field(None, description="CSS framework (tailwind, bootstrap, etc)")
+    stack_mobile: Optional[str] = Field(None, description="Mobile framework (react-native, flutter, expo, etc) - PROMPT #67")
 
     # Project folder path
     project_folder: Optional[str] = Field(None, description="Sanitized project folder name")
@@ -39,11 +40,12 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     git_repository_info: Optional[dict] = None
 
-    # Stack configuration (PROMPT #46 - Phase 1)
+    # Stack configuration (PROMPT #46 - Phase 1, PROMPT #67 - Mobile)
     stack_backend: Optional[str] = None
     stack_database: Optional[str] = None
     stack_frontend: Optional[str] = None
     stack_css: Optional[str] = None
+    stack_mobile: Optional[str] = None  # PROMPT #67
 
     # Pattern Discovery (PROMPT #62 - Week 1)
     code_path: Optional[str] = None

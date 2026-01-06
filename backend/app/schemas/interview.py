@@ -64,11 +64,12 @@ class InterviewResponse(InterviewBase):
 
 
 class StackConfiguration(BaseModel):
-    """Schema for project stack configuration (PROMPT #46 - Phase 1)"""
+    """Schema for project stack configuration (PROMPT #46 - Phase 1, PROMPT #67 - Mobile)"""
     backend: Optional[str] = Field(None, description="Backend framework (laravel, django, fastapi, express, other)")
     database: Optional[str] = Field(None, description="Database (postgresql, mysql, mongodb, sqlite)")
     frontend: Optional[str] = Field(None, description="Frontend framework (nextjs, react, vue, angular, none)")
     css: Optional[str] = Field(None, description="CSS framework (tailwind, bootstrap, materialui, custom)")
+    mobile: Optional[str] = Field(None, description="Mobile framework (react-native, flutter, expo, none) - PROMPT #67")
 
 
 class ProjectInfoUpdate(BaseModel):

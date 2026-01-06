@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { interviewsApi } from '@/lib/api';
 import { Interview } from '@/lib/types';
@@ -53,76 +53,122 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   const [generatePromptsJobId, setGeneratePromptsJobId] = useState<string | null>(null);
   const [provisioningJobId, setProvisioningJobId] = useState<string | null>(null);
 
+  // PROMPT #65 - Stable callbacks for send message polling (prevents re-renders)
+  const handleSendMessageComplete = useCallback((result: any) => {
+    console.log('✅ Send message job completed:', result);
+
+    // PROMPT #65 - Clear from localStorage on completion
+    localStorage.removeItem(`sendMessageJob_${interviewId}`);
+
+    setSendMessageJobId(null);
+    loadInterview(); // Reload to get new message
+  }, [interviewId]);
+
+  const handleSendMessageError = useCallback((error: string) => {
+    console.error('❌ Send message job failed:', error);
+
+    // PROMPT #65 - Clear from localStorage on error
+    localStorage.removeItem(`sendMessageJob_${interviewId}`);
+
+    setSendMessageJobId(null);
+    alert(`Failed to send message: ${error}`);
+  }, [interviewId]);
+
   // PROMPT #65 - Poll job status for send message
   const { job: sendMessageJob, isPolling: isSendingMessage } = useJobPolling(sendMessageJobId, {
     enabled: !!sendMessageJobId,
-    onComplete: (result) => {
-      console.log('✅ Send message job completed:', result);
-      setSendMessageJobId(null);
-      loadInterview(); // Reload to get new message
-    },
-    onError: (error) => {
-      console.error('❌ Send message job failed:', error);
-      setSendMessageJobId(null);
-      alert(`Failed to send message: ${error}`);
-    },
+    onComplete: handleSendMessageComplete,
+    onError: handleSendMessageError,
   });
+
+  // PROMPT #65 - Stable callbacks for generate prompts polling (prevents re-renders)
+  const handleGeneratePromptsComplete = useCallback((result: any) => {
+    console.log('✅ Generate prompts job completed:', result);
+
+    // PROMPT #65 - Clear from localStorage on completion
+    localStorage.removeItem(`generateJob_${interviewId}`);
+
+    setGeneratePromptsJobId(null);
+
+    const tasksCount = result?.total_items || result?.tasks_created || 0;
+    const storiesCount = result?.stories_created || 0;
+
+    alert(
+      `✅ Success!\n\n` +
+      `${storiesCount} stories and ${tasksCount} tasks were created automatically from your interview.\n\n` +
+      `Check your Backlog to see them!`
+    );
+
+    loadInterview();
+  }, [interviewId]);
+
+  const handleGeneratePromptsError = useCallback((error: string) => {
+    console.error('❌ Generate prompts job failed:', error);
+
+    // PROMPT #65 - Clear from localStorage on error
+    localStorage.removeItem(`generateJob_${interviewId}`);
+
+    setGeneratePromptsJobId(null);
+
+    // Detect AI-specific errors
+    const errorLower = error.toLowerCase();
+    if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota')) {
+      setAiError({
+        type: 'credits',
+        message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
+      });
+    } else {
+      alert(`❌ Error generating prompts:\n\n${error}`);
+    }
+  }, [interviewId]);
 
   // PROMPT #65 - Poll job status for prompt generation
   const { job: generatePromptsJob, isPolling: isGeneratingPrompts } = useJobPolling(generatePromptsJobId, {
     enabled: !!generatePromptsJobId,
-    onComplete: (result) => {
-      console.log('✅ Generate prompts job completed:', result);
-      setGeneratePromptsJobId(null);
-
-      const tasksCount = result?.total_items || result?.tasks_created || 0;
-      const storiesCount = result?.stories_created || 0;
-
-      alert(
-        `✅ Success!\n\n` +
-        `${storiesCount} stories and ${tasksCount} tasks were created automatically from your interview.\n\n` +
-        `Check your Backlog to see them!`
-      );
-
-      loadInterview();
-    },
-    onError: (error) => {
-      console.error('❌ Generate prompts job failed:', error);
-      setGeneratePromptsJobId(null);
-
-      // Detect AI-specific errors
-      const errorLower = error.toLowerCase();
-      if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota')) {
-        setAiError({
-          type: 'credits',
-          message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
-        });
-      } else {
-        alert(`❌ Error generating prompts:\n\n${error}`);
-      }
-    },
+    onComplete: handleGeneratePromptsComplete,
+    onError: handleGeneratePromptsError,
   });
+
+  // PROMPT #65 - Debug: Log isGeneratingPrompts changes
+  useEffect(() => {
+    console.log('🎯 isGeneratingPrompts changed:', isGeneratingPrompts);
+    console.log('🎯 generatePromptsJobId:', generatePromptsJobId);
+    console.log('🎯 generatePromptsJob:', generatePromptsJob);
+  }, [isGeneratingPrompts, generatePromptsJobId, generatePromptsJob]);
+
+  // PROMPT #65 - Stable callbacks for provisioning polling (prevents re-renders)
+  const handleProvisioningComplete = useCallback((result: any) => {
+    console.log('✅ Provisioning job completed:', result);
+
+    // PROMPT #65 - Clear from localStorage on completion
+    localStorage.removeItem(`provisioningJob_${interviewId}`);
+
+    setProvisioningJobId(null);
+
+    // Display provisioning status card
+    setProvisioningStatus({
+      ...result,
+      projectName: interview?.project?.name || 'Your Project'
+    });
+
+    loadInterview();
+  }, [interviewId, interview?.project?.name]);
+
+  const handleProvisioningError = useCallback((error: string) => {
+    console.error('❌ Provisioning job failed:', error);
+
+    // PROMPT #65 - Clear from localStorage on error
+    localStorage.removeItem(`provisioningJob_${interviewId}`);
+
+    setProvisioningJobId(null);
+    alert(`❌ Error provisioning project:\n\n${error}`);
+  }, [interviewId]);
 
   // PROMPT #65 - Poll job status for provisioning
   const { job: provisioningJob, isPolling: isProvisioning } = useJobPolling(provisioningJobId, {
     enabled: !!provisioningJobId,
-    onComplete: (result) => {
-      console.log('✅ Provisioning job completed:', result);
-      setProvisioningJobId(null);
-
-      // Display provisioning status card
-      setProvisioningStatus({
-        ...result,
-        projectName: interview?.project?.name || 'Your Project'
-      });
-
-      loadInterview();
-    },
-    onError: (error) => {
-      console.error('❌ Provisioning job failed:', error);
-      setProvisioningJobId(null);
-      alert(`❌ Error provisioning project:\n\n${error}`);
-    },
+    onComplete: handleProvisioningComplete,
+    onError: handleProvisioningError,
   });
 
   useEffect(() => {
@@ -130,11 +176,58 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     checkForPendingJobs(); // PROMPT #65 - Check for pending jobs on mount
   }, [interviewId]);
 
+  // PROMPT #65 - Continuously sync jobIds from localStorage (survives Fast Refresh)
+  // This catches jobIds that were saved AFTER component mounted (due to Fast Refresh timing)
+  useEffect(() => {
+    const syncInterval = setInterval(() => {
+      // Check for generatePromptsJobId
+      const savedGenerateJobId = localStorage.getItem(`generateJob_${interviewId}`);
+      if (savedGenerateJobId && savedGenerateJobId !== generatePromptsJobId) {
+        console.log('🔄 Syncing generatePromptsJobId from localStorage:', savedGenerateJobId);
+        setGeneratePromptsJobId(savedGenerateJobId);
+      }
+
+      // Check for provisioningJobId
+      const savedProvisioningJobId = localStorage.getItem(`provisioningJob_${interviewId}`);
+      if (savedProvisioningJobId && savedProvisioningJobId !== provisioningJobId) {
+        console.log('🔄 Syncing provisioningJobId from localStorage:', savedProvisioningJobId);
+        setProvisioningJobId(savedProvisioningJobId);
+      }
+
+      // Check for sendMessageJobId
+      const savedSendMessageJobId = localStorage.getItem(`sendMessageJob_${interviewId}`);
+      if (savedSendMessageJobId && savedSendMessageJobId !== sendMessageJobId) {
+        console.log('🔄 Syncing sendMessageJobId from localStorage:', savedSendMessageJobId);
+        setSendMessageJobId(savedSendMessageJobId);
+      }
+    }, 100); // Check every 100ms
+
+    return () => clearInterval(syncInterval);
+  }, [interviewId, generatePromptsJobId, provisioningJobId, sendMessageJobId]);
+
   // PROMPT #65 - Check for pending/running jobs when component mounts
   const checkForPendingJobs = async () => {
     try {
-      // This endpoint doesn't exist yet, but we can add it later
-      // For now, we just ensure polling works when jobs are created
+      // Restore job IDs from localStorage (survives Fast Refresh)
+      const savedGenerateJobId = localStorage.getItem(`generateJob_${interviewId}`);
+      const savedProvisioningJobId = localStorage.getItem(`provisioningJob_${interviewId}`);
+      const savedSendMessageJobId = localStorage.getItem(`sendMessageJob_${interviewId}`);
+
+      if (savedGenerateJobId) {
+        console.log('🔄 Restoring generatePromptsJobId from localStorage:', savedGenerateJobId);
+        setGeneratePromptsJobId(savedGenerateJobId);
+      }
+
+      if (savedProvisioningJobId) {
+        console.log('🔄 Restoring provisioningJobId from localStorage:', savedProvisioningJobId);
+        setProvisioningJobId(savedProvisioningJobId);
+      }
+
+      if (savedSendMessageJobId) {
+        console.log('🔄 Restoring sendMessageJobId from localStorage:', savedSendMessageJobId);
+        setSendMessageJobId(savedSendMessageJobId);
+      }
+
       console.log('✅ Component mounted, job polling active');
     } catch (error) {
       console.error('Failed to check pending jobs:', error);
@@ -322,6 +415,10 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       const jobId = data.job_id;
 
       console.log('✅ Message job created:', jobId);
+
+      // PROMPT #65 - Save to localStorage (survives Fast Refresh)
+      localStorage.setItem(`sendMessageJob_${interviewId}`, jobId);
+
       setSendMessageJobId(jobId); // Start polling for job status
 
       // Reset project info tracking
@@ -443,31 +540,33 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     }
   };
 
-  // PROMPT #57 - Auto-detect and save stack configuration (updated for 6 questions)
+  // PROMPT #57 - Auto-detect and save stack configuration (updated for 7 questions)
+  // PROMPT #67 - Mobile support (Q7 added)
   const detectAndSaveStack = async (interviewData: Interview) => {
     if (!interviewData?.conversation_data) return;
 
     const messages = interviewData.conversation_data;
 
-    // PROMPT #57 - With 6 fixed questions, we need 12 messages total:
-    // Q1 (Title) + A1 + Q2 (Description) + A2 + Q3 (Backend) + A3 + Q4 (Database) + A4 + Q5 (Frontend) + A5 + Q6 (CSS) + A6
-    // Or 13 messages (12 + next question)
-    if (messages.length < 12 || messages.length > 13) return;
+    // PROMPT #67 - With 7 fixed questions, we need 14 messages total:
+    // Q1 (Title) + A1 + Q2 (Description) + A2 + Q3 (Backend) + A3 + Q4 (Database) + A4 + Q5 (Frontend) + A5 + Q6 (CSS) + A6 + Q7 (Mobile) + A7
+    // Or 15 messages (14 + next question)
+    if (messages.length < 14 || messages.length > 15) return;
 
     // Verify the messages are stack questions by checking for backend keyword in Q3
     const aiMessages = messages.filter((m: any) => m.role === 'assistant');
-    if (aiMessages.length < 6) return;
+    if (aiMessages.length < 7) return;
 
     // Check if Q3 (index 4) is the backend question
     const backendQuestion = aiMessages[2]?.content || '';  // Q3 is the 3rd AI message (index 2)
     if (!backendQuestion.includes('backend') && !backendQuestion.includes('Backend')) return;
 
-    // Extract user answers (PROMPT #57 - Updated indices for 6 questions)
-    // Stack answers are now at indices 5, 7, 9, 11 (Questions 3, 4, 5, 6)
+    // Extract user answers (PROMPT #67 - Updated indices for 7 questions)
+    // Stack answers are now at indices 5, 7, 9, 11, 13 (Questions 3, 4, 5, 6, 7)
     const backendAnswer = messages[5]?.content || '';    // Answer to Q3 (Backend)
     const databaseAnswer = messages[7]?.content || '';   // Answer to Q4 (Database)
     const frontendAnswer = messages[9]?.content || '';   // Answer to Q5 (Frontend)
     const cssAnswer = messages[11]?.content || '';       // Answer to Q6 (CSS)
+    const mobileAnswer = messages[13]?.content || '';    // Answer to Q7 (Mobile) - PROMPT #67
 
     if (!backendAnswer || !databaseAnswer || !frontendAnswer || !cssAnswer) return;
 
@@ -520,7 +619,8 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       backend: extractStackValue(backendAnswer),
       database: extractStackValue(databaseAnswer),
       frontend: extractStackValue(frontendAnswer),
-      css: extractStackValue(cssAnswer)
+      css: extractStackValue(cssAnswer),
+      mobile: extractStackValue(mobileAnswer) || null  // PROMPT #67 - Mobile is optional
     };
 
     try {
@@ -531,6 +631,10 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       const jobId = data.job_id;
 
       console.log('✅ Stack saved, provisioning job created:', jobId);
+
+      // PROMPT #65 - Save to localStorage (survives Fast Refresh)
+      localStorage.setItem(`provisioningJob_${interviewId}`, jobId);
+
       setProvisioningJobId(jobId); // Start polling for provisioning status
     } catch (error) {
       console.error('❌ Failed to save stack:', error);
@@ -593,6 +697,11 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
       console.log('✅ Backlog generation job created:', jobId);
       console.log('📊 Setting generatePromptsJobId to:', jobId);
+
+      // PROMPT #65 - Save to localStorage (survives Fast Refresh)
+      localStorage.setItem(`generateJob_${interviewId}`, jobId);
+      console.log('💾 Saved generateJob to localStorage:', jobId);
+
       setGeneratePromptsJobId(jobId); // Start polling for job status
 
       // Force a small delay to ensure state updates

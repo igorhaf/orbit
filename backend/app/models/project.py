@@ -35,11 +35,12 @@ class Project(Base):
     description = Column(Text, nullable=True)
     git_repository_info = Column(JSON, nullable=True)
 
-    # Stack configuration (PROMPT #46 - Phase 1)
+    # Stack configuration (PROMPT #46 - Phase 1, PROMPT #67 - Mobile)
     stack_backend = Column(String(50), nullable=True)      # 'laravel', 'django', 'fastapi', etc
     stack_database = Column(String(50), nullable=True)     # 'postgresql', 'mysql', 'mongodb', etc
     stack_frontend = Column(String(50), nullable=True)     # 'nextjs', 'react', 'vue', etc
     stack_css = Column(String(50), nullable=True)          # 'tailwind', 'bootstrap', 'materialui', etc
+    stack_mobile = Column(String(50), nullable=True)       # 'react-native', 'flutter', 'expo', etc (PROMPT #67)
 
     # Project folder path (stores the sanitized folder name)
     project_folder = Column(String(255), nullable=True)    # 'my-project-name' (sanitized)
@@ -123,6 +124,7 @@ class Project(Base):
         Returns None if no stack is configured.
 
         PROMPT #60 - Automatic Provisioning Integration
+        PROMPT #67 - Mobile Support (stack_mobile optional)
         """
         if not self.stack_backend and not self.stack_database and not self.stack_frontend and not self.stack_css:
             return None
@@ -131,7 +133,8 @@ class Project(Base):
             "backend": self.stack_backend,
             "database": self.stack_database,
             "frontend": self.stack_frontend,
-            "css": self.stack_css
+            "css": self.stack_css,
+            "mobile": self.stack_mobile  # PROMPT #67 - Optional mobile framework
         }
 
     def __repr__(self) -> str:

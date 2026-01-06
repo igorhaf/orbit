@@ -1,0 +1,18 @@
+{
+  "id": "react-native-test",
+  "category": "mobile",
+  "name": "react-native",
+  "spec_type": "test",
+  "title": "Jest Test Template",
+  "description": "Template for testing React Native components with Jest and React Native Testing Library",
+  "content": "import React from 'react';\nimport { render, fireEvent, waitFor } from '@testing-library/react-native';\nimport {component_name} from '../{component_name}';\n\ndescribe('{component_name}', () => {\n  it('renders correctly', () => {\n    const { getByText } = render(<{component_name} />);\n    expect(getByText('Expected text')).toBeTruthy();\n  });\n\n  it('handles user interaction', () => {\n    const mockOnPress = jest.fn();\n    const { getByTestId } = render(\n      <{component_name} onPress={mockOnPress} testID=\"button\" />\n    );\n    \n    fireEvent.press(getByTestId('button'));\n    expect(mockOnPress).toHaveBeenCalledTimes(1);\n  });\n\n  it('updates state correctly', async () => {\n    const { getByText, getByTestId } = render(<{component_name} />);\n    \n    fireEvent.changeText(getByTestId('input'), 'New value');\n    \n    await waitFor(() => {\n      expect(getByText('New value')).toBeTruthy();\n    });\n  });\n\n  it('handles loading state', () => {\n    const { getByTestId } = render(<{component_name} loading={true} />);\n    expect(getByTestId('loading-indicator')).toBeTruthy();\n  });\n\n  it('handles error state', () => {\n    const error = { message: 'Something went wrong' };\n    const { getByText } = render(<{component_name} error={error} />);\n    expect(getByText('Something went wrong')).toBeTruthy();\n  });\n\n  it('matches snapshot', () => {\n    const tree = render(<{component_name} />).toJSON();\n    expect(tree).toMatchSnapshot();\n  });\n});",
+  "language": "tsx",
+  "framework_version": null,
+  "ignore_patterns": ["node_modules/*", ".expo/*", "ios/*", "android/*"],
+  "file_extensions": [".test.tsx", ".spec.tsx", ".test.ts", ".spec.ts"],
+  "is_active": true,
+  "metadata": {
+    "created_at": "2026-01-06T01:40:00Z",
+    "updated_at": "2026-01-06T01:40:00Z"
+  }
+}

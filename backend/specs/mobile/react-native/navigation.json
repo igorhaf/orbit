@@ -1,0 +1,18 @@
+{
+  "id": "react-native-navigation",
+  "category": "mobile",
+  "name": "react-native",
+  "spec_type": "navigation",
+  "title": "React Navigation Setup",
+  "description": "Template for setting up React Navigation with stack navigator",
+  "content": "import React from 'react';\nimport { NavigationContainer } from '@react-navigation/native';\nimport { createNativeStackNavigator } from '@react-navigation/native-stack';\nimport HomeScreen from './screens/HomeScreen';\n// Import other screens here\n\nexport type RootStackParamList = {\n  Home: undefined;\n  // Add other routes here\n  // Example: Profile: { userId: string };\n};\n\nconst Stack = createNativeStackNavigator<RootStackParamList>();\n\nexport default function AppNavigator() {\n  return (\n    <NavigationContainer>\n      <Stack.Navigator\n        initialRouteName=\"Home\"\n        screenOptions={{\n          headerStyle: {\n            backgroundColor: '#007AFF',\n          },\n          headerTintColor: '#FFFFFF',\n          headerTitleStyle: {\n            fontWeight: 'bold',\n          },\n        }}\n      >\n        <Stack.Screen\n          name=\"Home\"\n          component={HomeScreen}\n          options={{ title: 'Home' }}\n        />\n        {/* Add other screens here */}\n      </Stack.Navigator>\n    </NavigationContainer>\n  );\n}",
+  "language": "tsx",
+  "framework_version": null,
+  "ignore_patterns": ["node_modules/*", ".expo/*", "ios/*", "android/*"],
+  "file_extensions": [".tsx", ".ts"],
+  "is_active": true,
+  "metadata": {
+    "created_at": "2026-01-06T01:40:00Z",
+    "updated_at": "2026-01-06T01:40:00Z"
+  }
+}
