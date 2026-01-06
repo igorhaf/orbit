@@ -31,6 +31,9 @@ class Interview(Base):
         ai_model_used: Name of the AI model used for the interview
         status: Current status of the interview
         created_at: Timestamp of creation
+        interview_mode: Mode of interview ("requirements" or "task_focused")
+        parent_task_id: If task-focused, reference to the task being explored
+        task_type_selection: Selected task type (bug/feature/refactor/enhancement)
     """
 
     __tablename__ = "interviews"
@@ -46,6 +49,14 @@ class Interview(Base):
         index=True
     )
 
+    # PROMPT #68 - Dual-Mode Interview System
+    parent_task_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True
+    )
+
     # Basic fields
     conversation_data = Column(JSON, nullable=False, default=list)
     ai_model_used = Column(String(100), nullable=False)
@@ -56,11 +67,31 @@ class Interview(Base):
         index=True
     )
 
+    # PROMPT #68 - Dual-Mode Interview System
+    interview_mode = Column(
+        String(50),
+        default="requirements",  # "requirements" | "task_focused"
+        nullable=False,
+        index=True
+    )
+
+    task_type_selection = Column(
+        String(50),  # "bug" | "feature" | "refactor" | "enhancement"
+        nullable=True
+    )
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
     project = relationship("Project", back_populates="interviews")
+
+    # PROMPT #68 - Dual-Mode Interview System
+    parent_task = relationship(
+        "Task",
+        foreign_keys=[parent_task_id],
+        back_populates="exploration_interviews"
+    )
 
     prompts = relationship(
         "Prompt",

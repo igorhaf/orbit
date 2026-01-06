@@ -10,6 +10,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
 import { tasksApi } from '@/lib/api';
 import { BacklogItem, ItemType, PriorityLevel, TaskStatus } from '@/lib/types';
+import { TaskCard } from './TaskCard'; // PROMPT #68
 
 interface BacklogListViewProps {
   projectId: string;
@@ -109,6 +110,7 @@ export default function BacklogListView({
   const [backlog, setBacklog] = useState<BacklogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree'); // PROMPT #68
 
   useEffect(() => {
     fetchBacklog();
@@ -189,6 +191,21 @@ export default function BacklogListView({
     if (onItemSelect) {
       onItemSelect(item);
     }
+  };
+
+  // PROMPT #68 - Flatten hierarchy for Card View
+  const flattenBacklog = (items: BacklogItem[]): BacklogItem[] => {
+    const flattened: BacklogItem[] = [];
+
+    const traverse = (item: BacklogItem) => {
+      flattened.push(item);
+      if (item.children && item.children.length > 0) {
+        item.children.forEach(child => traverse(child as BacklogItem));
+      }
+    };
+
+    items.forEach(traverse);
+    return flattened;
   };
 
   // Recursive function to render tree items
@@ -358,29 +375,76 @@ export default function BacklogListView({
             </div>
             {backlog.length > 0 && (
               <div className="flex gap-2">
-                <button
-                  onClick={expandAll}
-                  className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                  title="Expand all items"
-                >
-                  Expand All
-                </button>
-                <button
-                  onClick={collapseAll}
-                  className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                  title="Collapse all items"
-                >
-                  Collapse All
-                </button>
+                {/* PROMPT #68 - View Mode Toggle */}
+                <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                  <button
+                    onClick={() => setViewMode('tree')}
+                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                      viewMode === 'tree'
+                        ? 'bg-white text-blue-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    title="Tree View"
+                  >
+                    🌲 Tree
+                  </button>
+                  <button
+                    onClick={() => setViewMode('card')}
+                    className={`px-3 py-1 text-xs font-medium rounded transition-colors ${
+                      viewMode === 'card'
+                        ? 'bg-white text-blue-600 shadow-sm'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                    title="Card View"
+                  >
+                    🃏 Cards
+                  </button>
+                </div>
+
+                {/* Tree View Controls */}
+                {viewMode === 'tree' && (
+                  <>
+                    <button
+                      onClick={expandAll}
+                      className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                      title="Expand all items"
+                    >
+                      Expand All
+                    </button>
+                    <button
+                      onClick={collapseAll}
+                      className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
+                      title="Collapse all items"
+                    >
+                      Collapse All
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>
         </div>
       </CardHeader>
-      <CardContent className="p-0">
-        <div className="divide-y divide-gray-100">
-          {backlog.map((item) => renderTreeItem(item, 0))}
-        </div>
+      <CardContent className={viewMode === 'card' ? 'p-6' : 'p-0'}>
+        {/* Tree View (Original) */}
+        {viewMode === 'tree' && (
+          <div className="divide-y divide-gray-100">
+            {backlog.map((item) => renderTreeItem(item, 0))}
+          </div>
+        )}
+
+        {/* Card View (PROMPT #68) */}
+        {viewMode === 'card' && (
+          <div className="space-y-4">
+            {flattenBacklog(backlog).map((item) => (
+              <TaskCard
+                key={item.id}
+                task={item}
+                onUpdate={fetchBacklog}
+              />
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -1,6 +1,7 @@
 /**
  * Backlog Components Export
  * JIRA Transformation - PROMPT #62 - Phase 3, 4, 5 & 6
+ * PROMPT #68 - Dual-Mode Interview System: TaskCard
  */
 
 export { default as BacklogListView } from './BacklogListView';
@@ -9,3 +10,4 @@ export { default as BulkActionBar } from './BulkActionBar';
 export { default as ItemDetailPanel } from './ItemDetailPanel';
 export { default as GenerationWizard } from './GenerationWizard';
 export { default as WorkflowActions } from './WorkflowActions';
+export { TaskCard } from './TaskCard'; // PROMPT #68

@@ -33,6 +33,13 @@ except ImportError:
 # Provisioning Service (PROMPT #60 - Automatic Provisioning)
 from app.services.provisioning import ProvisioningService
 
+# PROMPT #68 - Dual-Mode Interview System
+from app.services.project_state_detector import ProjectStateDetector
+from app.api.routes.interview_handlers import (
+    handle_requirements_interview,
+    handle_task_focused_interview
+)
+
 router = APIRouter()
 
 
@@ -236,6 +243,249 @@ As {len(recent_messages)} mensagens mais recentes seguem abaixo com conteúdo co
     return optimized_messages
 
 
+def _extract_task_type_from_answer(user_answer: str) -> Optional[str]:
+    """
+    Extract task type from user's answer to Q1 in task-focused interview.
+    PROMPT #68 - Dual-Mode Interview System
+
+    Args:
+        user_answer: User's text answer
+
+    Returns:
+        Task type ("bug" | "feature" | "refactor" | "enhancement") or None
+    """
+    import re
+    import logging
+    logger = logging.getLogger(__name__)
+
+    answer_lower = user_answer.lower()
+
+    # Match against task type keywords
+    if re.search(r'\b(bug|bugfix|bug fix|erro|error)\b', answer_lower):
+        logger.info(f"Detected task type: bug")
+        return "bug"
+    elif re.search(r'\b(feature|funcionalidade|nova feature|new feature)\b', answer_lower):
+        logger.info(f"Detected task type: feature")
+        return "feature"
+    elif re.search(r'\b(refactor|refatorar|refactoring)\b', answer_lower):
+        logger.info(f"Detected task type: refactor")
+        return "refactor"
+    elif re.search(r'\b(enhancement|melhoria|improve|improvement|aprimorar)\b', answer_lower):
+        logger.info(f"Detected task type: enhancement")
+        return "enhancement"
+    else:
+        logger.warning(f"Could not detect task type from answer: {user_answer[:50]}")
+        return "feature"  # Default fallback
+
+
+def _build_task_focused_prompt(project: Project, task_type: str, message_count: int, stack_context: str = "") -> str:
+    """
+    Build AI prompt for task-focused interviews based on task type.
+    PROMPT #68 - Dual-Mode Interview System
+
+    4 different prompts tailored for:
+    - bug: Reproduction, environment, expected vs actual behavior
+    - feature: User story, acceptance criteria, integrations
+    - refactor: Current code, problems, desired outcome
+    - enhancement: Existing functionality, desired improvement
+
+    Args:
+        project: Project instance
+        task_type: Task type ("bug" | "feature" | "refactor" | "enhancement")
+        message_count: Current message count (for question numbering)
+        stack_context: Optional stack context from project
+
+    Returns:
+        System prompt string
+    """
+    question_num = (message_count // 2) + 1
+
+    # Base context about project
+    project_context = f"""
+INFORMAÇÕES DO PROJETO:
+- Nome: {project.name}
+- Descrição: {project.description}
+{stack_context}
+
+Este é um projeto EXISTENTE com código. O stack já está configurado.
+"""
+
+    # Task type-specific prompts
+    if task_type == "bug":
+        return f"""{project_context}
+
+**TIPO DE TRABALHO: BUG FIX 🐛**
+
+Você está coletando informações para corrigir um bug/erro.
+
+**Foque nestas áreas (não pergunte tudo de uma vez):**
+1. **Reprodução**: Como reproduzir o bug? Passos específicos
+2. **Ambiente**: Onde acontece? (dev/staging/production, browser, OS)
+3. **Comportamento Esperado**: O que DEVERIA acontecer?
+4. **Comportamento Atual**: O que ESTÁ acontecendo? (erros, screenshots, logs)
+5. **Impacto**: Quem é afetado? Frequência? Urgência?
+6. **Contexto Adicional**: Quando começou? Mudanças recentes?
+
+**Formato de Pergunta:**
+❓ Pergunta {question_num}: [Sua pergunta focada em BUG FIX]
+
+Para ESCOLHA ÚNICA:
+○ Opção 1
+○ Opção 2
+○ Opção 3
+
+Para MÚLTIPLA ESCOLHA:
+☐ Opção 1
+☐ Opção 2
+☐ Opção 3
+☑️ [Selecione todas que se aplicam]
+
+**Regras:**
+- Uma pergunta por vez, FOCADA em bug fix
+- Construa contexto com respostas anteriores
+- Após 5-8 perguntas, conclua com resumo do bug
+- Se resposta for genérica/vaga, peça especificidade
+
+Continue com a próxima pergunta relevante para entender o BUG!
+"""
+
+    elif task_type == "feature":
+        return f"""{project_context}
+
+**TIPO DE TRABALHO: NEW FEATURE ✨**
+
+Você está coletando informações para criar uma nova funcionalidade.
+
+**Foque nestas áreas (não pergunte tudo de uma vez):**
+1. **User Story**: Quem precisa? Para que? Qual benefício?
+2. **Funcionalidade**: O que a feature FAZ exatamente?
+3. **Critérios de Aceitação**: Como saber que está completa/funcionando?
+4. **Entrada/Saída**: Que dados recebe? Que dados retorna?
+5. **Integrações**: Depende de outras features? APIs externas?
+6. **Edge Cases**: Casos especiais? Validações? Erros possíveis?
+7. **UI/UX**: Como usuário interage? (se aplicável)
+
+**Formato de Pergunta:**
+❓ Pergunta {question_num}: [Sua pergunta focada em NEW FEATURE]
+
+Para ESCOLHA ÚNICA:
+○ Opção 1
+○ Opção 2
+○ Opção 3
+
+Para MÚLTIPLA ESCOLHA:
+☐ Opção 1
+☐ Opção 2
+☐ Opção 3
+☑️ [Selecione todas que se aplicam]
+
+**Regras:**
+- Uma pergunta por vez, FOCADA em nova feature
+- Construa contexto com respostas anteriores
+- Após 6-10 perguntas, conclua com resumo da feature
+- Se resposta for genérica/vaga, peça especificidade
+
+Continue com a próxima pergunta relevante para definir a FEATURE!
+"""
+
+    elif task_type == "refactor":
+        return f"""{project_context}
+
+**TIPO DE TRABALHO: REFACTORING 🔧**
+
+Você está coletando informações para refatorar código existente.
+
+**Foque nestas áreas (não pergunte tudo de uma vez):**
+1. **Código Atual**: Que parte do código será refatorada? (arquivo, classe, função)
+2. **Problemas**: O que está ruim? (duplicação, complexidade, performance, testes)
+3. **Objetivo**: Como o código deve ficar após refactor?
+4. **Comportamento**: Funcionalidade deve permanecer EXATA (sem mudanças)?
+5. **Escopo**: Apenas refatorar ou incluir melhorias?
+6. **Testes**: Testes existentes? Precisam ser ajustados?
+7. **Impacto**: Outras partes dependem deste código?
+
+**Formato de Pergunta:**
+❓ Pergunta {question_num}: [Sua pergunta focada em REFACTORING]
+
+Para ESCOLHA ÚNICA:
+○ Opção 1
+○ Opção 2
+○ Opção 3
+
+Para MÚLTIPLA ESCOLHA:
+☐ Opção 1
+☐ Opção 2
+☐ Opção 3
+☑️ [Selecione todas que se aplicam]
+
+**Regras:**
+- Uma pergunta por vez, FOCADA em refatoração
+- Construa contexto com respostas anteriores
+- Após 5-7 perguntas, conclua com resumo do refactor
+- Se resposta for genérica/vaga, peça especificidade
+
+Continue com a próxima pergunta relevante para planejar o REFACTOR!
+"""
+
+    elif task_type == "enhancement":
+        return f"""{project_context}
+
+**TIPO DE TRABALHO: ENHANCEMENT ⚡**
+
+Você está coletando informações para melhorar uma funcionalidade existente.
+
+**Foque nestas áreas (não pergunte tudo de uma vez):**
+1. **Funcionalidade Atual**: O que existe hoje? Como funciona?
+2. **Limitação/Problema**: O que precisa ser melhorado? Por quê?
+3. **Melhoria Desejada**: Como deve funcionar após melhoria?
+4. **Benefícios**: Que problema resolve? Que valor agrega?
+5. **Comportamento Preservado**: O que NÃO deve mudar?
+6. **Casos de Uso**: Novos cenários suportados?
+7. **Retrocompatibilidade**: Usuários/sistemas existentes afetados?
+
+**Formato de Pergunta:**
+❓ Pergunta {question_num}: [Sua pergunta focada em ENHANCEMENT]
+
+Para ESCOLHA ÚNICA:
+○ Opção 1
+○ Opção 2
+○ Opção 3
+
+Para MÚLTIPLA ESCOLHA:
+☐ Opção 1
+☐ Opção 2
+☐ Opção 3
+☑️ [Selecione todas que se aplicam]
+
+**Regras:**
+- Uma pergunta por vez, FOCADA em enhancement
+- Construa contexto com respostas anteriores
+- Após 5-8 perguntas, conclua com resumo da melhoria
+- Se resposta for genérica/vaga, peça especificidade
+
+Continue com a próxima pergunta relevante para definir o ENHANCEMENT!
+"""
+
+    else:
+        # Fallback: Generic task-focused prompt
+        return f"""{project_context}
+
+**TIPO DE TRABALHO: TAREFA TÉCNICA**
+
+Você está coletando informações para uma tarefa técnica.
+
+**Formato de Pergunta:**
+❓ Pergunta {question_num}: [Sua pergunta]
+
+**Regras:**
+- Uma pergunta por vez
+- Construa contexto com respostas anteriores
+- Após 5-8 perguntas, conclua
+
+Continue com a próxima pergunta relevante!
+"""
+
+
 def get_specs_for_category(db: Session, category: str) -> list:
     """
     Get available frameworks from specs for a specific category.
@@ -365,6 +615,66 @@ def get_fixed_question(question_number: int, project: Project, db: Session) -> d
     return None
 
 
+def get_fixed_question_task_focused(question_number: int, project: Project, db: Session) -> dict:
+    """
+    Returns fixed questions for TASK-FOCUSED interviews.
+    PROMPT #68 - Dual-Mode Interview System
+
+    Task-focused interviews skip stack questions and focus on task details.
+    Q1: Task Type Selection (bug/feature/refactor/enhancement)
+    Q2+: AI-generated based on selected task type
+
+    Args:
+        question_number: Question number (only Q1 is fixed for task-focused)
+        project: Project instance
+        db: Database session
+
+    Returns:
+        Message dict with question, or None if not a fixed question
+    """
+    if question_number == 1:
+        return {
+            "role": "assistant",
+            "content": "❓ Que tipo de trabalho você precisa fazer?\n\nSelecione o tipo de tarefa:",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-task-focused",
+            "question_type": "single_choice",
+            "question_number": 1,
+            "options": {
+                "type": "single",
+                "choices": [
+                    {
+                        "id": "bug",
+                        "label": "🐛 Bug Fix",
+                        "value": "bug",
+                        "description": "Corrigir um problema ou erro existente"
+                    },
+                    {
+                        "id": "feature",
+                        "label": "✨ New Feature",
+                        "value": "feature",
+                        "description": "Adicionar uma nova funcionalidade"
+                    },
+                    {
+                        "id": "refactor",
+                        "label": "🔧 Refactoring",
+                        "value": "refactor",
+                        "description": "Melhorar a estrutura do código sem alterar funcionalidade"
+                    },
+                    {
+                        "id": "enhancement",
+                        "label": "⚡ Enhancement",
+                        "value": "enhancement",
+                        "description": "Melhorar uma funcionalidade existente"
+                    }
+                ]
+            }
+        }
+
+    # Q2+ are AI-generated, not fixed
+    return None
+
+
 class MessageRequest(BaseModel):
     """Request model for adding a message to an interview."""
     message: dict
@@ -409,11 +719,20 @@ async def create_interview(
     """
     Create a new interview (start a new AI interview session).
 
+    PROMPT #68 - Dual-Mode Interview System:
+    - Automatically detects project state (new vs existing with code)
+    - Sets interview_mode ("requirements" or "task_focused")
+    - New projects: Q1-Q7 stack questions → AI business questions
+    - Existing projects: Skip stack, ask task type → Focused questions
+
     - **project_id**: Project this interview belongs to (required)
     - **conversation_data**: Initial conversation data as JSON array (required)
     - **ai_model_used**: Name/ID of AI model used (required)
     - **status**: Interview status (default: active)
     """
+    import logging
+    logger = logging.getLogger(__name__)
+
     # Validate conversation_data is a list
     if not isinstance(interview_data.conversation_data, list):
         raise HTTPException(
@@ -421,10 +740,29 @@ async def create_interview(
             detail="conversation_data must be an array of messages"
         )
 
+    # PROMPT #68 - Detect project state and set interview mode
+    project = db.query(Project).filter(Project.id == interview_data.project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {interview_data.project_id} not found"
+        )
+
+    detector = ProjectStateDetector(db)
+    should_skip_stack = detector.should_skip_stack_questions(project)
+    interview_mode = "task_focused" if should_skip_stack else "requirements"
+
+    logger.info(f"Creating interview for project {project.name}:")
+    logger.info(f"  - interview_mode: {interview_mode}")
+    logger.info(f"  - should_skip_stack: {should_skip_stack}")
+    logger.info(f"  - has_stack: {bool(project.stack_backend and project.stack_database)}")
+    logger.info(f"  - Project state: {detector.detect_state(project).value}")
+
     db_interview = Interview(
         project_id=interview_data.project_id,
         conversation_data=interview_data.conversation_data,
         ai_model_used=interview_data.ai_model_used,
+        interview_mode=interview_mode,  # PROMPT #68
         created_at=datetime.utcnow()
     )
 
@@ -841,6 +1179,204 @@ async def _generate_backlog_async(
 
     except Exception as e:
         logger.error(f"❌ Backlog generation failed for job {job_id}: {str(e)}", exc_info=True)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
+@router.post("/{interview_id}/generate-task-direct", status_code=status.HTTP_202_ACCEPTED)
+async def generate_task_direct(
+    interview_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate SINGLE TASK directly from task-focused interview (ASYNC).
+
+    PROMPT #68 - Dual-Mode Interview System (FASE 4)
+
+    For task-focused interviews (existing projects), this endpoint generates
+    a SINGLE task directly without Epic→Story→Task hierarchy.
+
+    The task includes:
+    - Title, description, acceptance criteria
+    - Story points, priority, labels
+    - suggested_subtasks (AI suggestions, not created yet)
+    - interview_insights (context from interview)
+
+    Workflow:
+        # Client requests task generation
+        POST /interviews/{id}/generate-task-direct
+        → {job_id: "abc-123", status: "pending"}  ⚡ IMMEDIATE
+
+        # Client polls for progress (every 2-3 seconds)
+        GET /jobs/abc-123
+        → {status: "running", progress: 50, message: "Analyzing interview..."}
+
+        GET /jobs/abc-123
+        → {status: "completed", result: {task_id: "...", title: "..."}}
+
+    Args:
+        interview_id: UUID of the task-focused interview
+        db: Database session
+
+    Returns:
+        {
+            "job_id": "...",
+            "status": "pending",
+            "message": "Task generation started. This may take 30-60 seconds."
+        }
+
+    Raises:
+        400: If interview is not task-focused mode
+        404: If interview not found
+    """
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    # Validate interview exists
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview {interview_id} not found"
+        )
+
+    # Validate task-focused mode
+    if interview.interview_mode != "task_focused":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only task-focused interviews can generate direct tasks. "
+                   "This interview is in 'requirements' mode (use generate-prompts-async instead)."
+        )
+
+    # Create async job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.TASK_GENERATION,  # New job type
+        input_data={
+            "interview_id": str(interview_id),
+            "project_id": str(interview.project_id),
+            "task_type": interview.task_type_selection or "feature"
+        },
+        project_id=interview.project_id,
+        interview_id=interview_id
+    )
+
+    logger.info(f"Created async job {job.id} for direct task generation from interview {interview_id}")
+
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _generate_task_direct_async(
+            job_id=job.id,
+            interview_id=interview_id,
+            project_id=interview.project_id
+        )
+    )
+
+    # Return job_id immediately
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": f"Task generation started. This may take 30-60 seconds. Poll GET /api/v1/jobs/{job.id} for progress."
+    }
+
+
+async def _generate_task_direct_async(
+    job_id: UUID,
+    interview_id: UUID,
+    project_id: UUID
+):
+    """
+    Background task to generate single task from task-focused interview.
+
+    PROMPT #68 - FASE 4
+
+    Steps:
+    1. Load interview and project
+    2. Call BacklogGeneratorService.generate_task_from_interview_direct()
+    3. AI analyzes interview and extracts task
+    4. Create Task record with suggested_subtasks
+    5. Update job status
+
+    Args:
+        job_id: Async job ID
+        interview_id: Interview ID
+        project_id: Project ID
+    """
+    from app.services.job_manager import JobManager
+    from app.services.backlog_generator import BacklogGeneratorService
+    from app.database import SessionLocal
+    import logging
+
+    logger = logging.getLogger(__name__)
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+
+        logger.info(f"🚀 Starting direct task generation for interview {interview_id}")
+
+        # Update progress: Loading interview
+        job_manager.update_progress(
+            job_id=job_id,
+            progress=10,
+            message="Loading interview..."
+        )
+
+        # Load interview and project
+        interview = db.query(Interview).filter(Interview.id == interview_id).first()
+        project = db.query(Project).filter(Project.id == project_id).first()
+
+        if not interview or not project:
+            raise Exception("Interview or project not found")
+
+        # Update progress: Analyzing conversation
+        job_manager.update_progress(
+            job_id=job_id,
+            progress=30,
+            message=f"Analyzing interview (task type: {interview.task_type_selection})..."
+        )
+
+        # Generate task via BacklogGeneratorService
+        backlog_service = BacklogGeneratorService(db)
+        task = await backlog_service.generate_task_from_interview_direct(
+            interview=interview,
+            project=project
+        )
+
+        logger.info(f"✅ Task generated: {task.id} - {task.title}")
+
+        # Update progress: Complete
+        job_manager.update_progress(
+            job_id=job_id,
+            progress=100,
+            message="Task created successfully!"
+        )
+
+        # Complete job
+        result = {
+            "task_id": str(task.id),
+            "title": task.title,
+            "description": task.description,
+            "story_points": task.story_points,
+            "priority": task.priority.value if task.priority else None,
+            "labels": task.labels or [],
+            "suggested_subtasks_count": len(task.subtask_suggestions or []),
+            "created_at": task.created_at.isoformat()
+        }
+
+        job_manager.complete_job(job_id, result)
+
+        logger.info(f"🎉 Direct task generation completed for job {job_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Direct task generation failed for job {job_id}: {str(e)}", exc_info=True)
         job_manager.fail_job(job_id, str(e))
 
     finally:
@@ -1390,6 +1926,7 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
 
     # DEBUG: Log message count and decision point
     logger.info(f"🔍 DEBUG - Decision point:")
+    logger.info(f"  - interview_mode: {interview.interview_mode}")
     logger.info(f"  - message_count: {message_count}")
     logger.info(f"  - Last 3 messages:")
     for i in range(max(0, len(interview.conversation_data) - 3), len(interview.conversation_data)):
@@ -1397,236 +1934,41 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
         content_preview = msg.get('content', '')[:80]
         logger.info(f"    - Index {i}: role={msg.get('role')}, content={content_preview}")
 
-    # PROMPT #57 - Fixed Questions Without AI
-    # Message count after adding user message:
-    # message_count = 2 (Q1 + A1) → Return Q2 (Description) - Fixed
-    # message_count = 4 (Q1 + A1 + Q2 + A2) → Return Q3 (Backend) - Fixed
-    # message_count = 6 (... + Q3 + A3) → Return Q4 (Database) - Fixed
-    # message_count = 8 (... + Q4 + A4) → Return Q5 (Frontend) - Fixed
-    # message_count = 10 (... + Q5 + A5) → Return Q6 (CSS) - Fixed
-    # message_count = 12 (... + Q6 + A6) → Return Q7 (Mobile) - Fixed - PROMPT #67
-    # message_count >= 14 (... + Q7 + A7) → Return Q8+ (Business) - AI
-
-    # Map message_count to question number
-    question_map = {
-        2: 2,   # After A1 (Title) → Ask Q2 (Description)
-        4: 3,   # After A2 (Description) → Ask Q3 (Backend)
-        6: 4,   # After A3 (Backend) → Ask Q4 (Database)
-        8: 5,   # After A4 (Database) → Ask Q5 (Frontend)
-        10: 6,  # After A5 (Frontend) → Ask Q6 (CSS)
-        12: 7,  # After A6 (CSS) → Ask Q7 (Mobile) - PROMPT #67
-    }
-
-    # Check if we should return a fixed question
-    if message_count in question_map:
-        logger.info(f"✅ DEBUG - Returning fixed question (message_count={message_count} in question_map)")
-        # Return fixed question (no AI)
-        question_number = question_map[message_count]
-        logger.info(f"Returning fixed Question {question_number} for interview {interview_id}")
-
-        assistant_message = get_fixed_question(question_number, project, db)
-
-        if not assistant_message:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to get fixed question {question_number}"
-            )
-
-        interview.conversation_data.append(assistant_message)
-
-        # DEBUG: Log after appending fixed question
-        logger.info(f"🔍 DEBUG - After appending fixed question:")
-        logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
-        logger.info(f"  - Question appended at index {len(interview.conversation_data)-1}")
-
-        # Mark as modified for SQLAlchemy
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(interview, "conversation_data")
-
-        db.commit()
-        db.refresh(interview)
-
-        logger.info(f"Fixed Question {question_number} sent for interview {interview_id}")
-
-        return {
-            "success": True,
-            "message": assistant_message,
-            "usage": {
-                "model": "system/fixed-question",
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "total_cost_usd": 0.0
-            }
-        }
-
-    # If message_count >= 14, use AI for business questions (after Q1-Q7) - PROMPT #67
-    elif message_count >= 14:
-        logger.info(f"Using AI for business question (message_count={message_count}) for interview {interview_id}")
-
-        # Check if PrompterFacade is available and enabled
-        use_prompter = (
-            PROMPTER_AVAILABLE and
-            os.getenv("PROMPTER_USE_TEMPLATES", "false").lower() == "true"
+    # PROMPT #68 - Dual-Mode Interview System
+    # Route based on interview mode
+    if interview.interview_mode == "requirements":
+        # Requirements interview (new projects): Q1-Q7 stack → AI business questions
+        return await handle_requirements_interview(
+            interview=interview,
+            project=project,
+            message_count=message_count,
+            project_context=project_context,
+            stack_context=stack_context,
+            db=db,
+            get_fixed_question_func=get_fixed_question,
+            clean_ai_response_func=_clean_ai_response,
+            prepare_context_func=_prepare_interview_context
         )
-
-        # Generate system prompt using PrompterFacade or legacy method
-        if use_prompter:
-            logger.info("Using PrompterFacade for interview question generation")
-            try:
-                prompter = PrompterFacade(db)
-                question_num = (message_count // 2) + 1  # Calculate question number
-                system_prompt = prompter.generate_interview_question(
-                    project=project,
-                    conversation_history=interview.conversation_data,
-                    question_number=question_num
-                )
-            except Exception as e:
-                logger.warning(f"PrompterFacade failed, falling back to legacy: {e}")
-                use_prompter = False
-
-        if not use_prompter:
-            # LEGACY: Hardcoded system prompt
-            # PROMPT #54 - Token Optimization: Condensed from ~2,000 to ~800-1,000 tokens (50% reduction)
-            logger.info("Using legacy hardcoded interview prompt (condensed)")
-            system_prompt = f"""Você é um analista de requisitos de IA coletando requisitos técnicos para um projeto de software.
-
-**Conduza em PORTUGUÊS.** Use este contexto:
-{project_context}
-{stack_context}
-
-**Formato de Pergunta:**
-❓ Pergunta [número]: [Sua pergunta contextual]
-
-Para ESCOLHA ÚNICA:
-○ Opção 1
-○ Opção 2
-○ Opção 3
-◉ [Escolha uma opção]
-
-Para MÚLTIPLA ESCOLHA:
-☐ Opção 1
-☐ Opção 2
-☐ Opção 3
-☑️ [Selecione todas que se aplicam]
-
-**Regras:**
-- Uma pergunta por vez com 3-5 opções mínimo
-- Construa contexto com respostas anteriores
-- Incremente número da pergunta (você está na pergunta 7+)
-- Após 8-12 perguntas total, conclua a entrevista
-
-**Tópicos:** Funcionalidades principais, usuários e permissões, integrações de terceiros, deploy e infraestrutura, performance e escalabilidade.
-
-Continue com próxima pergunta relevante!
-"""
-
-        # Usar orquestrador para obter resposta
-        orchestrator = AIOrchestrator(db)
-
-        try:
-            # CRITICAL DEBUG: Log BEFORE calling orchestrator
-            logger.info(f"🚨 BEFORE orchestrator.execute():")
-            logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
-            logger.info(f"  - Last message: [{len(interview.conversation_data)-1}] {interview.conversation_data[-1].get('role')}: {interview.conversation_data[-1].get('content', '')[:50]}")
-
-            # PROMPT #54 - Token Optimization: Truncate context for long conversations
-            # Previously sent ALL messages (8,000-10,000 tokens after 12 messages)
-            # Now sends only recent 5 messages + summary (2,000-3,000 tokens) = 60-70% reduction
-            optimized_messages = _prepare_interview_context(
-                conversation_data=interview.conversation_data,
-                max_recent=5  # Keep last 5 messages verbatim, summarize older ones
-            )
-
-            response = await orchestrator.execute(
-                usage_type="interview",  # Usa Claude para entrevistas
-                messages=optimized_messages,  # Optimized context (60-70% token reduction)
-                system_prompt=system_prompt,
-                max_tokens=1000,
-                # PROMPT #58 - Add context for prompt logging
-                project_id=interview.project_id,
-                interview_id=interview.id
-            )
-
-            # CRITICAL DEBUG: Log AFTER calling orchestrator
-            logger.info(f"🚨 AFTER orchestrator.execute():")
-            logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
-            logger.info(f"  - Last message: [{len(interview.conversation_data)-1}] {interview.conversation_data[-1].get('role')}: {interview.conversation_data[-1].get('content', '')[:50]}")
-
-            # Clean AI response - remove internal analysis blocks
-            cleaned_content = _clean_ai_response(response["content"])
-
-            # Adicionar resposta da IA
-            assistant_message = {
-                "role": "assistant",
-                "content": cleaned_content,
-                "timestamp": datetime.utcnow().isoformat(),
-                "model": f"{response['provider']}/{response['model']}"
-            }
-
-            # DEBUG: Log before appending AI business question
-            logger.info(f"🔍 DEBUG - Before appending AI business question:")
-            logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
-            logger.info(f"  - AI response content: {response['content'][:100]}")
-
-            interview.conversation_data.append(assistant_message)
-
-            # DEBUG: Log after appending AI business question
-            logger.info(f"🔍 DEBUG - After appending AI business question:")
-            logger.info(f"  - conversation_data length: {len(interview.conversation_data)}")
-            logger.info(f"  - Question appended at index {len(interview.conversation_data)-1}")
-
-            # Salvar no banco
-            interview.ai_model_used = response["model"]
-
-            # Mark as modified for SQLAlchemy
-            from sqlalchemy.orm.attributes import flag_modified
-            flag_modified(interview, "conversation_data")
-
-            # CRITICAL DEBUG: Log conversation_data RIGHT BEFORE COMMIT
-            logger.info(f"🚨 CRITICAL - RIGHT BEFORE COMMIT:")
-            logger.info(f"  - Total messages in conversation_data: {len(interview.conversation_data)}")
-            logger.info(f"  - Last 5 messages:")
-            for i in range(max(0, len(interview.conversation_data) - 5), len(interview.conversation_data)):
-                msg = interview.conversation_data[i]
-                logger.info(f"    [{i}] {msg.get('role')}: {msg.get('content', '')[:60]}")
-
-            db.commit()
-
-            # CRITICAL DEBUG: Log conversation_data RIGHT AFTER COMMIT
-            logger.info(f"🚨 CRITICAL - RIGHT AFTER COMMIT:")
-            logger.info(f"  - Total messages: {len(interview.conversation_data)}")
-
-            db.refresh(interview)
-
-            # CRITICAL DEBUG: Log conversation_data AFTER REFRESH
-            logger.info(f"🚨 CRITICAL - AFTER REFRESH:")
-            logger.info(f"  - Total messages: {len(interview.conversation_data)}")
-            logger.info(f"  - Last 5 messages:")
-            for i in range(max(0, len(interview.conversation_data) - 5), len(interview.conversation_data)):
-                msg = interview.conversation_data[i]
-                logger.info(f"    [{i}] {msg.get('role')}: {msg.get('content', '')[:60]}")
-
-            logger.info(f"AI responded to interview {interview_id}")
-
-            return {
-                "success": True,
-                "message": assistant_message,
-                "usage": response.get("usage", {})
-            }
-
-        except Exception as ai_error:
-            logger.error(f"AI execution failed: {str(ai_error)}", exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to get AI response: {str(ai_error)}"
-            )
-
+    elif interview.interview_mode == "task_focused":
+        # Task-focused interview (existing projects): Q1 task type → AI focused questions
+        return await handle_task_focused_interview(
+            interview=interview,
+            project=project,
+            message_count=message_count,
+            stack_context=stack_context,
+            db=db,
+            get_fixed_question_task_focused_func=get_fixed_question_task_focused,
+            extract_task_type_func=_extract_task_type_from_answer,
+            build_task_focused_prompt_func=_build_task_focused_prompt,
+            clean_ai_response_func=_clean_ai_response,
+            prepare_context_func=_prepare_interview_context
+        )
     else:
-        # Unexpected message_count - should not happen
-        logger.error(f"Unexpected message_count={message_count} for interview {interview_id}")
+        # Unknown interview mode
+        logger.error(f"Unknown interview_mode: {interview.interview_mode}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected interview state (message_count={message_count})"
+            detail=f"Unknown interview mode: {interview.interview_mode}"
         )
 
 

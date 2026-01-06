@@ -148,6 +148,13 @@ export interface ProjectWithRelations extends Project {
 // TASK (JIRA Transformation - Extended)
 // ============================================================================
 
+// PROMPT #68 - Dual-Mode Interview System: Subtask Suggestion
+export interface SubtaskSuggestion {
+  title: string;
+  description: string;
+  story_points?: number;
+}
+
 export interface Task {
   id: string;
   project_id: string;
@@ -189,6 +196,9 @@ export interface Task {
   // JIRA Transformation - Interview Traceability
   interview_question_ids: number[];
   interview_insights: Record<string, any>;
+
+  // PROMPT #68 - Dual-Mode Interview System: AI-suggested subtasks
+  subtask_suggestions?: SubtaskSuggestion[];
 
   // Legacy Kanban fields (for backward compatibility)
   status: TaskStatus;
