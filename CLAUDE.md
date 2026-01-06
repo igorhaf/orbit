@@ -520,19 +520,22 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #68 (Dual-Mode Interview System with Task Exploration)
-**Próximo prompt:** PROMPT #69
+**Último prompt:** PROMPT #69 (Refactor interviews.py - Modularization)
+**Próximo prompt:** PROMPT #70
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
 - PROMPT_42 (gap em #41)
 - PROMPT_44 (gap em #43)
 - PROMPT_45 → PROMPT_46 → PROMPT_47 → PROMPT_48 → PROMPT_49 → PROMPT_50
-- PROMPT_68 (gap em #51-#67)
+- (gap em #51-#67)
+- PROMPT_68 (Dual-Mode Interview System)
+- PROMPT_69 (Refactor interviews.py - Modularization)
 
 **Principais Marcos:**
 - **PROMPT #50**: AI Models Management Page
 - **PROMPT #68**: Dual-Mode Interview System - Auto-detecção de estado do projeto (novo vs existente), entrevistas focadas em tasks, AI subtask suggestions, task exploration
+- **PROMPT #69**: Refactor interviews.py - Modularização (2464 → 2366 linhas distribuídas em 6 módulos focados)
 
 ---
 
