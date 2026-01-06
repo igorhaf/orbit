@@ -133,7 +133,25 @@ orbit-2.1/
 - `poetry run uvicorn app.main:app --reload` - Inicia o servidor de desenvolvimento
 - `poetry run alembic upgrade head` - Aplica migrações do banco
 - `poetry run alembic revision --autogenerate -m "message"` - Cria nova migração
+- `poetry run alembic current` - Verifica a versão atual do banco
+- `poetry run alembic history` - Lista todas as migrações
 - `poetry run pytest` - Executa os testes
+
+### Aplicando Migrations (Importante!)
+
+Após baixar o código ou mudar de branch, **sempre aplique as migrations**:
+
+```bash
+cd backend
+poetry run alembic upgrade head
+```
+
+**Docker:** As migrations são aplicadas automaticamente no `docker-compose up`.
+
+**Troubleshooting:**
+- Se houver erro de "relation does not exist", aplique as migrations
+- Se houver conflito de migrations, verifique com `poetry run alembic current`
+- Para reverter uma migration: `poetry run alembic downgrade -1`
 
 ### Frontend
 - `npm run dev` - Inicia o servidor de desenvolvimento
