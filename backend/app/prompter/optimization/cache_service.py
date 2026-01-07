@@ -89,7 +89,28 @@ class CacheService:
             logger.warning("Redis not configured - using in-memory cache (not production-ready)")
             self._memory_cache: Dict[str, CacheEntry] = {}
 
-        # Cache statistics
+        # PROMPT #74 - Cache statistics (persisted in Redis if available)
+        # Redis keys for stats
+        self.stats_keys = {
+            "hits": "cache:stats:hits",
+            "misses": "cache:stats:misses",
+            "exact_hits": "cache:stats:exact_hits",
+            "semantic_hits": "cache:stats:semantic_hits",
+            "template_hits": "cache:stats:template_hits",
+            "total_requests": "cache:stats:total_requests",
+        }
+
+        # Initialize stats (from Redis or in-memory)
+        if self.redis_client:
+            # Load stats from Redis (or initialize to 0)
+            try:
+                for key in self.stats_keys.keys():
+                    if not self.redis_client.exists(self.stats_keys[key]):
+                        self.redis_client.set(self.stats_keys[key], 0)
+            except Exception as e:
+                logger.warning(f"Failed to initialize Redis stats: {e}")
+
+        # In-memory stats (fallback when Redis unavailable)
         self.stats = {
             "hits": 0,
             "misses": 0,
@@ -131,6 +152,27 @@ class CacheService:
         # Hash it
         return hashlib.sha256(key_string.encode()).hexdigest()
 
+    def _increment_stat(self, stat_name: str, amount: int = 1):
+        """
+        Increment a statistic counter (in Redis if available, else in-memory)
+
+        PROMPT #74 - Redis-persisted stats
+
+        Args:
+            stat_name: Name of stat to increment (hits, misses, etc.)
+            amount: Amount to increment by (default 1)
+        """
+        if self.redis_client and stat_name in self.stats_keys:
+            try:
+                self.redis_client.incr(self.stats_keys[stat_name], amount)
+            except Exception as e:
+                logger.warning(f"Failed to increment Redis stat {stat_name}: {e}")
+                # Fallback to in-memory
+                self.stats[stat_name] = self.stats.get(stat_name, 0) + amount
+        else:
+            # In-memory stats
+            self.stats[stat_name] = self.stats.get(stat_name, 0) + amount
+
     def get(self, cache_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Get cached response (tries all cache levels)
@@ -146,13 +188,14 @@ class CacheService:
         Returns:
             Cached result dict or None
         """
-        self.stats["total_requests"] += 1
+        # PROMPT #74 - Increment stats in Redis
+        self._increment_stat("total_requests")
 
         # Level 1: Exact Match (fastest)
         exact_result = self._get_exact(cache_input)
         if exact_result:
-            self.stats["hits"] += 1
-            self.stats["exact_hits"] += 1
+            self._increment_stat("hits")
+            self._increment_stat("exact_hits")
             logger.info(f"✓ Cache HIT (exact) - saved ~${exact_result['cost']:.4f}")
             return exact_result
 
@@ -160,8 +203,8 @@ class CacheService:
         if self.enable_semantic:
             semantic_result = self._get_semantic(cache_input)
             if semantic_result:
-                self.stats["hits"] += 1
-                self.stats["semantic_hits"] += 1
+                self._increment_stat("hits")
+                self._increment_stat("semantic_hits")
                 logger.info(f"✓ Cache HIT (semantic) - saved ~${semantic_result['cost']:.4f}")
                 return semantic_result
 
@@ -169,13 +212,13 @@ class CacheService:
         if cache_input.get("temperature", 0.7) == 0:
             template_result = self._get_template(cache_input)
             if template_result:
-                self.stats["hits"] += 1
-                self.stats["template_hits"] += 1
+                self._increment_stat("hits")
+                self._increment_stat("template_hits")
                 logger.info(f"✓ Cache HIT (template) - saved ~${template_result['cost']:.4f}")
                 return template_result
 
         # Cache miss
-        self.stats["misses"] += 1
+        self._increment_stat("misses")
         logger.debug("Cache MISS - will execute prompt")
         return None
 
@@ -609,14 +652,19 @@ class CacheService:
                     keys = self.redis_client.keys(f"{prefix}*")
                     if keys:
                         self.redis_client.delete(*keys)
-                logger.info("Cleared Redis cache")
+
+                # PROMPT #74 - Also clear stats in Redis
+                for redis_key in self.stats_keys.values():
+                    self.redis_client.set(redis_key, 0)
+
+                logger.info("Cleared Redis cache and stats")
             except Exception as e:
                 logger.error(f"Redis clear error: {e}")
         else:
             self._memory_cache.clear()
             logger.info("Cleared in-memory cache")
 
-        # Reset stats
+        # Reset in-memory stats
         self.stats = {
             "hits": 0,
             "misses": 0,
@@ -628,24 +676,39 @@ class CacheService:
 
     def get_stats(self) -> Dict[str, Any]:
         """
-        Get cache statistics
+        Get cache statistics (from Redis if available)
+
+        PROMPT #74 - Read stats from Redis for multi-instance consistency
 
         Returns:
             Dict with hit rates and performance metrics
         """
-        total = self.stats["total_requests"]
+        # PROMPT #74 - Read stats from Redis if available
+        if self.redis_client:
+            try:
+                stats = {}
+                for stat_name, redis_key in self.stats_keys.items():
+                    value = self.redis_client.get(redis_key)
+                    stats[stat_name] = int(value) if value else 0
+            except Exception as e:
+                logger.warning(f"Failed to read stats from Redis: {e}, using in-memory")
+                stats = self.stats
+        else:
+            stats = self.stats
+
+        total = stats["total_requests"]
         if total == 0:
             hit_rate = 0.0
         else:
-            hit_rate = self.stats["hits"] / total
+            hit_rate = stats["hits"] / total
 
         return {
             "total_requests": total,
-            "cache_hits": self.stats["hits"],
-            "cache_misses": self.stats["misses"],
+            "cache_hits": stats["hits"],
+            "cache_misses": stats["misses"],
             "hit_rate": hit_rate,
-            "exact_hits": self.stats["exact_hits"],
-            "semantic_hits": self.stats["semantic_hits"],
-            "template_hits": self.stats["template_hits"],
+            "exact_hits": stats["exact_hits"],
+            "semantic_hits": stats["semantic_hits"],
+            "template_hits": stats["template_hits"],
             "hit_rate_percent": f"{hit_rate * 100:.1f}%",
         }

@@ -21,9 +21,10 @@ router = APIRouter()
 @router.get("/cache/stats")
 async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
     """
-    Get cache statistics from PrompterFacade
+    Get aggregated cache statistics from all sources
 
     PROMPT #54.3 - Cache Performance Monitoring
+    PROMPT #74 - Aggregate stats from AIOrchestrator and PrompterFacade
 
     Returns:
         - enabled: Whether cache is enabled
@@ -35,22 +36,24 @@ async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
             - total: Aggregated statistics
     """
     try:
-        # Initialize PrompterFacade to access cache service
-        facade = PrompterFacade(db=db)
+        # PROMPT #74 - Get stats from AIOrchestrator (primary source for all AI operations)
+        from app.services.ai_orchestrator import AIOrchestrator
+
+        orchestrator = AIOrchestrator(db=db, enable_cache=True)
 
         # Check if cache is enabled
-        if not facade.cache:
+        if not orchestrator.cache_service:
             return {
                 "enabled": False,
                 "backend": "none",
-                "message": "Cache is not enabled. Set PROMPTER_USE_CACHE=true to enable."
+                "message": "Cache is not enabled in AIOrchestrator."
             }
 
-        # Get cache statistics
-        stats = facade.cache.get_stats()
+        # Get cache statistics from AIOrchestrator
+        stats = orchestrator.cache_service.get_stats()
 
         # Determine backend type
-        backend = "redis" if facade.cache.redis_client else "memory"
+        backend = "redis" if orchestrator.cache_service.redis_client else "memory"
 
         # Format response with multi-level cache breakdown
         return {
@@ -58,28 +61,28 @@ async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
             "backend": backend,
             "statistics": {
                 "l1_exact_match": {
-                    "hits": stats.get("l1_hits", 0),
-                    "misses": stats.get("l1_misses", 0),
-                    "hit_rate": stats.get("l1_hit_rate", 0.0),
+                    "hits": stats.get("exact_hits", 0),
+                    "misses": stats.get("cache_misses", 0),
+                    "hit_rate": stats.get("exact_hits", 0) / max(stats.get("total_requests", 1), 1),
                 },
                 "l2_semantic": {
-                    "hits": stats.get("l2_hits", 0),
-                    "misses": stats.get("l2_misses", 0),
-                    "hit_rate": stats.get("l2_hit_rate", 0.0),
-                    "enabled": facade.cache.enable_semantic,
+                    "hits": stats.get("semantic_hits", 0),
+                    "misses": 0,  # Not tracked separately
+                    "hit_rate": stats.get("semantic_hits", 0) / max(stats.get("total_requests", 1), 1),
+                    "enabled": orchestrator.cache_service.enable_semantic,
                 },
                 "l3_template": {
-                    "hits": stats.get("l3_hits", 0),
-                    "misses": stats.get("l3_misses", 0),
-                    "hit_rate": stats.get("l3_hit_rate", 0.0),
+                    "hits": stats.get("template_hits", 0),
+                    "misses": 0,  # Not tracked separately
+                    "hit_rate": stats.get("template_hits", 0) / max(stats.get("total_requests", 1), 1),
                 },
                 "total": {
-                    "hits": stats.get("total_hits", 0),
-                    "misses": stats.get("total_misses", 0),
+                    "hits": stats.get("cache_hits", 0),
+                    "misses": stats.get("cache_misses", 0),
                     "requests": stats.get("total_requests", 0),
-                    "hit_rate": stats.get("total_hit_rate", 0.0),
-                    "tokens_saved": stats.get("tokens_saved", 0),
-                    "estimated_cost_saved": stats.get("cost_saved", 0.0),
+                    "hit_rate": stats.get("hit_rate", 0.0),
+                    "tokens_saved": 0,  # TODO: Track in AIExecution logs
+                    "estimated_cost_saved": 0.0,  # TODO: Calculate from AIExecution logs
                 }
             }
         }
