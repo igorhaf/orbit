@@ -9,7 +9,6 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from pydantic import ValidationError
-from prometheus_client import make_asgi_app
 import logging
 
 from app.config import settings
@@ -112,10 +111,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Mount Prometheus metrics endpoint
-metrics_app = make_asgi_app()
-app.mount("/metrics", metrics_app)
 
 # Register custom exception handlers
 app.add_exception_handler(IntegrityError, integrity_error_handler)
