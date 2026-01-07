@@ -284,20 +284,38 @@ export function InterviewList({
         open={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         title="Create New Interview"
-        description="Start a new AI interview session for a project"
+        description={projectId
+          ? "Start a new AI interview session for this project"
+          : "Start a new AI interview session for a project"
+        }
       >
         <div className="space-y-4">
-          <Select
-            label="Select Project"
-            placeholder="-- Select a project --"
-            options={(projects || []).map((p) => ({ value: p.id, label: p.name }))}
-            value={selectedProject}
-            onChange={(e) => setSelectedProject(e.target.value)}
-          />
+          {/* Only show project selector if projectId is not provided */}
+          {!projectId && (
+            <>
+              <Select
+                label="Select Project"
+                placeholder="-- Select a project --"
+                options={(projects || []).map((p) => ({ value: p.id, label: p.name }))}
+                value={selectedProject}
+                onChange={(e) => setSelectedProject(e.target.value)}
+              />
 
-          {(projects || []).length === 0 && (
-            <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded">
-              No projects available. Please create a project first.
+              {(projects || []).length === 0 && (
+                <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded">
+                  No projects available. Please create a project first.
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Confirmation message when projectId is provided */}
+          {projectId && (
+            <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded">
+              <p className="font-medium mb-1">Ready to start interview</p>
+              <p className="text-xs text-gray-500">
+                The interview will be created for the current project and will begin immediately.
+              </p>
             </div>
           )}
 
@@ -315,10 +333,10 @@ export function InterviewList({
             <Button
               variant="primary"
               onClick={handleCreate}
-              disabled={!selectedProject || creating}
+              disabled={(!projectId && !selectedProject) || creating}
               isLoading={creating}
             >
-              Create Interview
+              {creating ? 'Creating...' : 'Create Interview'}
             </Button>
           </div>
         </div>
