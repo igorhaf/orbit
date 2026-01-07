@@ -162,7 +162,7 @@ export default function Home() {
             <CardTitle>Quick Actions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Link href="/projects">
                 <Button variant="outline" className="w-full justify-start">
                   <svg
@@ -179,24 +179,6 @@ export default function Home() {
                     />
                   </svg>
                   New Project
-                </Button>
-              </Link>
-              <Link href="/interviews">
-                <Button variant="outline" className="w-full justify-start">
-                  <svg
-                    className="w-5 h-5 mr-2"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                    />
-                  </svg>
-                  Start Interview
                 </Button>
               </Link>
               <Link href="/ai-models">
