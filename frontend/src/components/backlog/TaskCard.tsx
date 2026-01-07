@@ -42,7 +42,11 @@ const getPriorityColor = (priority: PriorityLevel) => {
 };
 
 // Helper function to get status badge
-const getStatusBadge = (status: string) => {
+const getStatusBadge = (status: string | undefined) => {
+  if (!status) {
+    return <Badge className="bg-gray-100 text-gray-800 border-gray-200">No Status</Badge>;
+  }
+
   const statusLower = status.toLowerCase();
 
   if (statusLower === 'done' || statusLower === 'completed') {
@@ -54,7 +58,7 @@ const getStatusBadge = (status: string) => {
   if (statusLower === 'review') {
     return <Badge className="bg-purple-100 text-purple-800 border-purple-200">Review</Badge>;
   }
-  if (statusLower === 'backlog') {
+  if (statusLower === 'backlog' || statusLower === 'todo') {
     return <Badge className="bg-gray-100 text-gray-800 border-gray-200">Backlog</Badge>;
   }
 
@@ -87,6 +91,10 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
 
   const hasSuggestions = task.subtask_suggestions && task.subtask_suggestions.length > 0;
 
+  // Handle both kanban (item_type) and backlog (item_type) - they use the same field
+  // Handle both kanban (status) and backlog (workflow_state) - different fields
+  const itemType = task.item_type || ItemType.TASK;
+
   const handleCreateSubInterview = async () => {
     setCreatingInterview(true);
     try {
@@ -117,9 +125,9 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
           title: suggestion.title,
           description: suggestion.description,
           story_points: suggestion.story_points,
-          priority: task.priority, // Inherit from parent
-          workflow_state: 'backlog',
-          labels: task.labels,
+          priority: task.priority || PriorityLevel.MEDIUM, // Inherit from parent or default
+          status: 'backlog', // Use status (kanban) instead of workflow_state
+          labels: task.labels || [],
         });
       }
 
@@ -144,7 +152,7 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3 flex-1">
             {/* Item Type Icon */}
-            <span className="text-2xl">{getItemTypeIcon(task.item_type)}</span>
+            <span className="text-2xl">{getItemTypeIcon(itemType)}</span>
 
             {/* Title */}
             <div className="flex-1">
@@ -159,9 +167,9 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
 
           {/* Badges */}
           <div className="flex flex-col gap-2 items-end">
-            {getStatusBadge(task.workflow_state)}
-            <Badge className={`${getPriorityColor(task.priority)} border`}>
-              {task.priority}
+            {getStatusBadge(task.status || task.workflow_state)}
+            <Badge className={`${getPriorityColor(task.priority || 'medium')} border`}>
+              {task.priority || 'medium'}
             </Badge>
             {task.story_points && (
               <Badge className="bg-purple-50 text-purple-700 border-purple-200">
