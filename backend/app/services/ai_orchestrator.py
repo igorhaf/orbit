@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Literal
 from sqlalchemy.orm import Session
 import logging
 import time
+import json  # PROMPT #74 - For cache key generation
+import os  # PROMPT #74 - For Redis env vars
 from datetime import datetime
 from uuid import UUID
 
@@ -39,16 +41,74 @@ class AIOrchestrator:
     - general: Gemini (barato para queries simples)
     """
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, cache_service=None, enable_cache=True):
         """
         Inicializa o orquestrador
 
         Args:
             db: Sessão do banco de dados
+            cache_service: CacheService opcional para caching (PROMPT #74)
+            enable_cache: Se True, inicializa cache automaticamente se não fornecido (PROMPT #74)
         """
         self.db = db
+
+        # PROMPT #74 - Auto-initialize cache if not provided
+        if cache_service is None and enable_cache:
+            cache_service = self._initialize_cache()
+
+        self.cache_service = cache_service
         self.clients: Dict[str, any] = {}
         self._initialize_clients()
+
+    def _initialize_cache(self):
+        """
+        Initialize cache service with Redis connection
+        PROMPT #74 - Redis Cache Integration
+
+        Returns:
+            CacheService instance or None if initialization fails
+        """
+        try:
+            import os
+            from app.prompter.optimization.cache_service import CacheService
+
+            # Try to connect to Redis
+            redis_client = None
+            redis_host = os.getenv("REDIS_HOST")
+
+            if redis_host:
+                try:
+                    import redis
+                    redis_client = redis.Redis(
+                        host=redis_host,
+                        port=int(os.getenv("REDIS_PORT", 6379)),
+                        db=0,
+                        decode_responses=True,
+                        socket_connect_timeout=5,
+                        socket_timeout=5,
+                    )
+                    # Test connection
+                    redis_client.ping()
+                    logger.info(f"✅ Redis cache connected: {redis_host}:{os.getenv('REDIS_PORT', 6379)}")
+                except Exception as e:
+                    logger.warning(f"⚠️  Redis connection failed: {e}. Using in-memory cache.")
+                    redis_client = None
+
+            # Initialize cache service
+            cache = CacheService(
+                redis_client=redis_client,
+                enable_semantic=True if redis_client else False,  # Only enable if Redis available
+                similarity_threshold=0.95
+            )
+
+            if redis_client and cache.enable_semantic:
+                logger.info("✅ Semantic caching (L2) enabled in AIOrchestrator")
+
+            return cache
+
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize cache: {e}")
+            return None
 
     def _initialize_clients(self):
         """
@@ -347,6 +407,37 @@ class AIOrchestrator:
 
         logger.info(f"📤 Executing with config: max_tokens={tokens_limit}, temperature={temperature}")
 
+        # PROMPT #74 - Check cache before execution
+        if self.cache_service:
+            # Prepare cache input (messages converted to single prompt string for caching)
+            cache_input = {
+                "prompt": json.dumps(messages),  # Serialize messages for consistent hashing
+                "system_prompt": system_prompt or "",
+                "usage_type": usage_type,
+                "temperature": temperature,
+                "model": model_name,
+            }
+
+            # Try to get from cache
+            cached_result = self.cache_service.get(cache_input)
+            if cached_result:
+                logger.info(f"✅ Cache HIT ({cached_result.get('cache_type')}) - Saved API call!")
+                # Return cached result in same format as execute() response
+                return {
+                    "provider": provider,
+                    "model": model_name,
+                    "content": cached_result["response"],
+                    "usage": {
+                        "input_tokens": 0,  # Cached, no tokens used
+                        "output_tokens": 0,
+                        "total_tokens": 0
+                    },
+                    "db_model_id": model_config["db_model_id"],
+                    "db_model_name": model_config["db_model_name"],
+                    "cache_hit": True,  # Flag indicating cache hit
+                    "cache_type": cached_result.get("cache_type")
+                }
+
         # PROMPT #54 - Track execution time
         start_time = time.time()
         execution_log = None
@@ -443,6 +534,37 @@ class AIOrchestrator:
                 logger.error(f"⚠️  Failed to log execution to database: {log_error}")
                 # Don't fail the request if logging fails
                 self.db.rollback()
+
+            # PROMPT #74 - Store result in cache after successful execution
+            if self.cache_service:
+                try:
+                    # Calculate cost for caching
+                    input_tokens = result.get("usage", {}).get("input_tokens", 0)
+                    output_tokens = result.get("usage", {}).get("output_tokens", 0)
+                    # Rough estimate: $3/million input, $15/million output for Claude Sonnet
+                    cost = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000)
+
+                    cache_input = {
+                        "prompt": json.dumps(messages),
+                        "system_prompt": system_prompt or "",
+                        "usage_type": usage_type,
+                        "temperature": temperature,
+                        "model": model_name,
+                    }
+
+                    cache_output = {
+                        "response": result.get("content", ""),
+                        "model": model_name,
+                        "input_tokens": input_tokens,
+                        "output_tokens": output_tokens,
+                        "cost": cost,
+                    }
+
+                    self.cache_service.set(cache_input, cache_output)
+                    logger.info(f"💾 Cached response for future requests")
+                except Exception as cache_error:
+                    logger.error(f"⚠️  Failed to cache result: {cache_error}")
+                    # Don't fail request if caching fails
 
             return result
 
