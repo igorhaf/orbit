@@ -19,7 +19,7 @@ import {
 import { tasksApi } from '@/lib/api';
 import { Task, TaskStatus } from '@/lib/types';
 import { DroppableColumn } from './DroppableColumn';
-import { TaskCard } from './TaskCard';
+import { TaskCard } from '@/components/backlog/TaskCard';
 import { TaskForm } from './TaskForm';
 import { Button, Dialog } from '@/components/ui';
 
@@ -300,8 +300,7 @@ export function KanbanBoard({ projectId }: Props) {
             <div className="opacity-90">
               <TaskCard
                 task={activeTask}
-                onDeleted={() => {}}
-                onUpdated={() => {}}
+                onUpdate={() => {}}
               />
             </div>
           ) : null}
