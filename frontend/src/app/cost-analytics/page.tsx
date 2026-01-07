@@ -65,20 +65,6 @@ interface CostAnalytics {
   daily_costs: DailyCost[];
 }
 
-interface ExecutionWithCost {
-  id: string;
-  usage_type: string;
-  provider: string;
-  model_name: string | null;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  cost: number;
-  input_cost: number;
-  output_cost: number;
-  created_at: string;
-}
-
 interface CacheStats {
   enabled: boolean;
   backend: string;
@@ -100,7 +86,6 @@ interface CacheStats {
 
 export default function CostAnalyticsPage() {
   const [analytics, setAnalytics] = useState<CostAnalytics | null>(null);
-  const [executions, setExecutions] = useState<ExecutionWithCost[]>([]);
   const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
@@ -109,7 +94,6 @@ export default function CostAnalyticsPage() {
 
   useEffect(() => {
     fetchAnalytics();
-    fetchExecutions();
     fetchCacheStats();
   }, [selectedProvider, selectedUsageType, dateRange]);
 
@@ -137,23 +121,6 @@ export default function CostAnalyticsPage() {
       console.error('Error fetching analytics:', error);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchExecutions = async () => {
-    try {
-      const params = new URLSearchParams();
-      params.append('limit', '50');
-      if (selectedProvider) params.append('provider', selectedProvider);
-      if (selectedUsageType) params.append('usage_type', selectedUsageType);
-
-      const response = await fetch(`http://localhost:8000/api/v1/cost/executions-with-cost?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch executions');
-
-      const data = await response.json();
-      setExecutions(data);
-    } catch (error) {
-      console.error('Error fetching executions:', error);
     }
   };
 
@@ -235,7 +202,7 @@ export default function CostAnalyticsPage() {
               <option value={90}>Last 90 days</option>
             </select>
 
-            <Button onClick={() => { fetchAnalytics(); fetchExecutions(); fetchCacheStats(); }}>
+            <Button onClick={() => { fetchAnalytics(); fetchCacheStats(); }}>
               Refresh
             </Button>
           </div>
@@ -525,56 +492,6 @@ export default function CostAnalyticsPage() {
               </div>
             </Card>
 
-            {/* Recent Executions */}
-            <Card>
-              <div className="p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent Executions</h2>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead>
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usage Type</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Model</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Input</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Output</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {executions.map((execution) => (
-                        <tr key={execution.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                            {formatDate(execution.created_at)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getProviderColor(execution.provider)}`}>
-                              {execution.provider}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
-                            {execution.usage_type}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                            {execution.model_name || 'N/A'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                            {formatNumber(execution.input_tokens)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                            {formatNumber(execution.output_tokens)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right font-medium text-gray-900">
-                            {formatCost(execution.cost)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </Card>
           </>
         )}
       </div>
