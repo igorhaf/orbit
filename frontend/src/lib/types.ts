@@ -200,6 +200,9 @@ export interface Task {
   // PROMPT #68 - Dual-Mode Interview System: AI-suggested subtasks
   subtask_suggestions?: SubtaskSuggestion[];
 
+  // Meta Prompt Feature - Generated atomic prompt for task execution
+  generated_prompt?: string | null;
+
   // Legacy Kanban fields (for backward compatibility)
   status: TaskStatus;
   column: string;
@@ -235,6 +238,7 @@ export interface TaskCreate {
   generation_context?: Record<string, any>;
   interview_question_ids?: number[];
   interview_insights?: Record<string, any>;
+  generated_prompt?: string | null;
 
   // Legacy Kanban
   status?: TaskStatus;
@@ -268,6 +272,7 @@ export interface TaskUpdate {
   generation_context?: Record<string, any>;
   interview_question_ids?: number[];
   interview_insights?: Record<string, any>;
+  generated_prompt?: string | null;
 
   // Legacy Kanban
   status?: TaskStatus;
