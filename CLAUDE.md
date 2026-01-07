@@ -2,8 +2,8 @@
 ## Arquivo de Instruções Permanentes para Claude Code
 
 **Data de Criação:** December 29, 2025
-**Última Atualização:** January 5, 2026
-**Versão:** 1.2
+**Última Atualização:** January 7, 2026
+**Versão:** 1.3 - Redis Cache Integration (PROMPT #74)
 
 ---
 
@@ -169,6 +169,83 @@ response = await orchestrator.execute(
 | `general` | Anthropic (padrão) | ✅ Sim |
 
 **Usuário pode configurar qualquer provider para qualquer usage type via `/ai-models`!**
+
+---
+
+### 0.2. CACHE REDIS (CRÍTICO - SEMPRE ATIVO) 💾
+
+**⚠️ ATENÇÃO: TODAS AS CHAMADAS DE IA USAM CACHE REDIS AUTOMATICAMENTE ⚠️**
+
+**REGRA FUNDAMENTAL (PROMPT #74):**
+O `AIOrchestrator` **SEMPRE** usa cache Redis automaticamente quando instanciado com `AIOrchestrator(db)`.
+
+**Como funciona:**
+
+1. **Cache Automático no AIOrchestrator**
+   - O `AIOrchestrator.__init__()` inicializa o cache automaticamente
+   - Conecta ao Redis (variável `REDIS_HOST` no .env)
+   - Se Redis não disponível, usa cache in-memory como fallback
+
+2. **3 Níveis de Cache (Multi-Level Caching)**
+   - **L1 - Exact Match:** Hash exato do prompt (TTL: 7 dias, hit rate esperado: ~20%)
+   - **L2 - Semantic Match:** Similaridade semântica >95% (TTL: 1 dia, hit rate esperado: ~10%)
+   - **L3 - Template Cache:** Para prompts determinísticos (temperature=0, TTL: 30 dias, hit rate esperado: ~5%)
+   - **Total:** Hit rate esperado de 30-35% → economia de 60-90% em custos!
+
+3. **Fluxo de Execução com Cache**
+   ```python
+   # Quando você chama:
+   response = await orchestrator.execute(
+       usage_type="interview",
+       messages=[...],
+       system_prompt="..."
+   )
+
+   # O que acontece internamente:
+   # 1. AIOrchestrator verifica cache (L1 → L2 → L3)
+   # 2. Se cache HIT: retorna resposta imediata (0 tokens usados!)
+   # 3. Se cache MISS: executa API call normalmente
+   # 4. Armazena resultado no cache para futuras requisições
+   ```
+
+4. **Verificação de Cache Hit**
+   - Resultado com cache hit: `response["cache_hit"] = True`
+   - Tipo de cache: `response["cache_type"]` = "exact", "semantic" ou "template"
+   - Tokens usados: `response["usage"]["total_tokens"] = 0` (cache hit não gasta tokens!)
+
+**NUNCA faça:**
+- ❌ Chamar APIs de IA diretamente (Anthropic, OpenAI, Google) sem usar AIOrchestrator
+- ❌ Criar instâncias de AIOrchestrator com `enable_cache=False` (desabilita cache)
+- ❌ Bypass do cache com chamadas diretas às APIs
+
+**SEMPRE faça:**
+- ✅ Use `AIOrchestrator(db)` para TODAS as chamadas de IA
+- ✅ O cache é automático, não precisa fazer nada extra!
+- ✅ Monitore hit rate em `/cost-analytics` (esperado: 30-35%)
+
+**Onde o cache está ativo:**
+- ✅ Interviews (geração de perguntas e respostas)
+- ✅ Task execution (execução de código)
+- ✅ Prompt generation (geração de tarefas)
+- ✅ Commit generation (mensagens de commit)
+- ✅ Backlog generation (geração de backlog)
+- ✅ Todas as outras chamadas de IA que usam AIOrchestrator!
+
+**Monitoramento:**
+- Cache hit rate visível em `/cost-analytics`
+- Logs mostram: `✅ Cache HIT (exact) - Saved API call!`
+- Redis stats disponíveis via API: `/api/v1/cache/stats`
+
+**Configuração Redis (.env):**
+```bash
+REDIS_HOST=redis
+REDIS_PORT=6379
+```
+
+**Se Redis não estiver disponível:**
+- Sistema usa cache in-memory como fallback
+- Hit rate menor (apenas L1 - Exact Match)
+- Recomenda-se sempre ter Redis rodando para máxima economia!
 
 ---
 
