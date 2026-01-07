@@ -114,6 +114,7 @@ class AIOrchestrator:
         """
         Inicializa clientes de TODAS as APIs com modelos ativos no banco
         PROMPT #51 - Dynamic AI Model Integration
+        PROMPT #75 - Async AI Clients (AsyncAnthropic, AsyncOpenAI, httpx)
         """
         # Buscar TODOS os AI Models ativos (não apenas o primeiro de cada provider)
         models = self.db.query(AIModel).filter(
@@ -130,28 +131,36 @@ class AIOrchestrator:
                 # Inicializar cada provider apenas uma vez, mas usando API key do primeiro modelo ativo
                 if provider_key not in initialized_providers:
                     if provider_key == "anthropic":
-                        from anthropic import Anthropic
-                        self.clients["anthropic"] = Anthropic(api_key=model.api_key)
-                        logger.info(f"✅ Anthropic client initialized with API key from: {model.name}")
+                        # PROMPT #75 - Use AsyncAnthropic for non-blocking async calls
+                        from anthropic import AsyncAnthropic
+                        self.clients["anthropic"] = AsyncAnthropic(api_key=model.api_key)
+                        logger.info(f"✅ AsyncAnthropic client initialized with API key from: {model.name}")
                         initialized_providers.add("anthropic")
 
                     elif provider_key == "openai":
-                        from openai import OpenAI
-                        self.clients["openai"] = OpenAI(api_key=model.api_key)
-                        logger.info(f"✅ OpenAI client initialized with API key from: {model.name}")
+                        # PROMPT #75 - Use AsyncOpenAI for non-blocking async calls
+                        from openai import AsyncOpenAI
+                        self.clients["openai"] = AsyncOpenAI(api_key=model.api_key)
+                        logger.info(f"✅ AsyncOpenAI client initialized with API key from: {model.name}")
                         initialized_providers.add("openai")
 
                     elif provider_key == "google":
-                        import google.generativeai as genai
-                        genai.configure(api_key=model.api_key)
-                        self.clients["google"] = genai
-                        logger.info(f"✅ Google AI client initialized with API key from: {model.name}")
+                        # PROMPT #75 - Use httpx.AsyncClient for Google Gemini (no native async SDK)
+                        import httpx
+                        self.clients["google"] = {
+                            "api_key": model.api_key,
+                            "http_client": httpx.AsyncClient(
+                                timeout=30.0,
+                                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+                            )
+                        }
+                        logger.info(f"✅ Google async HTTP client initialized with API key from: {model.name}")
                         initialized_providers.add("google")
 
             except Exception as e:
                 logger.error(f"❌ Failed to initialize {model.provider} client: {e}")
 
-        logger.info(f"📊 Initialized providers: {list(initialized_providers)}")
+        logger.info(f"📊 Initialized async providers: {list(initialized_providers)}")
 
     def choose_model(self, usage_type: UsageType) -> Dict[str, any]:
         """
@@ -653,10 +662,12 @@ class AIOrchestrator:
         """
         Executa com Anthropic Claude usando configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
+        PROMPT #75 - Async execution with await (non-blocking)
         """
-        client = self.clients["anthropic"]
+        client = self.clients["anthropic"]  # AsyncAnthropic instance
 
-        response = client.messages.create(
+        # PROMPT #75 - Await async call to yield to event loop during API request
+        response = await client.messages.create(
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
@@ -686,8 +697,9 @@ class AIOrchestrator:
         """
         Executa com OpenAI GPT usando configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
+        PROMPT #75 - Async execution with await (non-blocking)
         """
-        client = self.clients["openai"]
+        client = self.clients["openai"]  # AsyncOpenAI instance
 
         # Adicionar system message se fornecido
         openai_messages = []
@@ -698,7 +710,8 @@ class AIOrchestrator:
             })
         openai_messages.extend(messages)
 
-        response = client.chat.completions.create(
+        # PROMPT #75 - Await async call to yield to event loop during API request
+        response = await client.chat.completions.create(
             model=model,
             messages=openai_messages,
             max_tokens=max_tokens,
@@ -727,11 +740,11 @@ class AIOrchestrator:
         """
         Executa com Google Gemini usando configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
+        PROMPT #75 - Async execution with httpx AsyncClient (non-blocking)
         """
-        genai = self.clients["google"]
-
-        # Configurar modelo
-        model_instance = genai.GenerativeModel(model)
+        google_config = self.clients["google"]  # Dict with api_key and http_client
+        api_key = google_config["api_key"]
+        http_client = google_config["http_client"]
 
         # Converter mensagens para formato Gemini
         conversation = []
@@ -744,23 +757,35 @@ class AIOrchestrator:
 
         prompt = "\n\n".join(conversation)
 
-        # Gerar resposta com configurações do banco
-        response = model_instance.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                max_output_tokens=max_tokens,
-                temperature=temperature
-            )
-        )
+        # Construir URL e payload para Gemini API
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": max_tokens,
+                "temperature": temperature
+            }
+        }
+
+        # PROMPT #75 - Await async HTTP call to yield to event loop during API request
+        response = await http_client.post(url, json=payload)
+        response.raise_for_status()
+
+        data = response.json()
+        content = data["candidates"][0]["content"]["parts"][0]["text"]
+
+        # Extract token usage from response (Gemini provides usageMetadata)
+        usage_metadata = data.get("usageMetadata", {})
 
         return {
             "provider": "google",
             "model": model,
-            "content": response.text,
+            "content": content,
             "usage": {
-                "input_tokens": 0,  # Gemini não retorna token count facilmente
-                "output_tokens": 0,
-                "total_tokens": 0
+                "input_tokens": usage_metadata.get("promptTokenCount", 0),
+                "output_tokens": usage_metadata.get("candidatesTokenCount", 0),
+                "total_tokens": usage_metadata.get("totalTokenCount", 0)
             }
         }
 
