@@ -732,6 +732,183 @@ async def _generate_task_direct_async(
         db.close()
 
 
+@router.post("/{interview_id}/generate-hierarchy-from-meta", status_code=status.HTTP_202_ACCEPTED)
+async def generate_hierarchy_from_meta_prompt(
+    interview_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate complete project hierarchy from meta prompt interview (ASYNC).
+
+    PROMPT #78 - Meta Prompt Hierarchy Generation
+
+    After completing the meta prompt interview (Q1-Q9 + contextual questions),
+    this endpoint processes all responses and generates the ENTIRE project hierarchy:
+    - 1 Epic (entire project)
+    - 3-7 Stories (features)
+    - 15-50 Tasks (with generated_prompt for execution)
+    - Subtasks for complex Tasks (with generated_prompt)
+
+    All fields populated: title, description, acceptance_criteria, priorities, labels, etc.
+
+    Returns:
+        {
+            "job_id": "...",
+            "status": "pending",
+            "message": "Hierarchy generation started. This may take 2-5 minutes."
+        }
+
+    Raises:
+        400: If interview is not meta_prompt mode or not completed
+        404: If interview not found
+    """
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
+
+    # Validate interview exists
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview {interview_id} not found"
+        )
+
+    # Validate meta_prompt mode
+    if interview.interview_mode != "meta_prompt":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only meta_prompt interviews can generate complete hierarchy. "
+                   f"This interview is in '{interview.interview_mode}' mode."
+        )
+
+    # Validate interview is completed
+    if interview.status != InterviewStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Interview must be completed before generating hierarchy. Current status: {interview.status.value}"
+        )
+
+    # Create async job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.BACKLOG_GENERATION,  # Reuse same type - both generate hierarchy
+        input_data={
+            "interview_id": str(interview_id),
+            "project_id": str(interview.project_id),
+            "mode": "meta_prompt"  # Distinguish from legacy backlog generation
+        },
+        project_id=interview.project_id,
+        interview_id=interview_id
+    )
+
+    logger.info(f"Created async job {job.id} for meta prompt hierarchy generation from interview {interview_id}")
+
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _generate_hierarchy_from_meta_async(
+            job_id=job.id,
+            interview_id=interview_id,
+            project_id=interview.project_id
+        )
+    )
+
+    # Return job_id immediately
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": f"Hierarchy generation started from meta prompt. This may take 2-5 minutes. Poll GET /api/v1/jobs/{job.id} for progress."
+    }
+
+
+async def _generate_hierarchy_from_meta_async(
+    job_id: UUID,
+    interview_id: UUID,
+    project_id: UUID
+):
+    """
+    Background task to generate complete hierarchy from meta prompt interview.
+
+    PROMPT #78 - Meta Prompt Hierarchy Generation
+
+    Steps:
+    1. Extract Q1-Q9 + contextual Q&A from interview
+    2. Call AI to generate complete Epic → Stories → Tasks → Subtasks hierarchy
+    3. Create all database records
+    4. Generate atomic prompts (generated_prompt) for each Task/Subtask
+    5. Update job progress and status
+    """
+    from app.services.job_manager import JobManager
+    from app.services.meta_prompt_processor import MetaPromptProcessor
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+
+        logger.info(f"🚀 Starting meta prompt hierarchy generation for interview {interview_id}")
+
+        # Update progress: Loading interview
+        job_manager.update_progress(
+            job_id=job_id,
+            progress=10,
+            message="Loading meta prompt interview..."
+        )
+
+        # Load interview and project
+        interview = db.query(Interview).filter(Interview.id == interview_id).first()
+        project = db.query(Project).filter(Project.id == project_id).first()
+
+        if not interview or not project:
+            raise Exception("Interview or project not found")
+
+        # Update progress: Processing with AI
+        job_manager.update_progress(
+            job_id=job_id,
+            progress=20,
+            message="Analyzing meta prompt responses and generating hierarchy with AI..."
+        )
+
+        # Generate hierarchy via MetaPromptProcessor
+        processor = MetaPromptProcessor(db)
+        result = await processor.generate_complete_hierarchy(
+            interview_id=interview_id,
+            project_id=project_id
+        )
+
+        logger.info(f"✅ Hierarchy generated: {result['metadata']['total_items']} items created")
+
+        # Update progress: Complete
+        job_manager.update_progress(
+            job_id=job_id,
+            progress=100,
+            message="Hierarchy created successfully!"
+        )
+
+        # Complete job with result
+        job_manager.complete_job(job_id, {
+            "success": True,
+            "epic_id": result["epic"]["id"],
+            "epic_title": result["epic"]["title"],
+            "stories_created": len(result["stories"]),
+            "tasks_created": len(result["tasks"]),
+            "subtasks_created": len(result["subtasks"]),
+            "total_items": result["metadata"]["total_items"],
+            "message": f"Generated complete hierarchy: 1 Epic → {len(result['stories'])} Stories → {len(result['tasks'])} Tasks → {len(result['subtasks'])} Subtasks!"
+        })
+
+        logger.info(f"🎉 Meta prompt hierarchy generation completed for job {job_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Meta prompt hierarchy generation failed for job {job_id}: {str(e)}", exc_info=True)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
 # ============================================================================
 # INTERVIEW INTERACTION ENDPOINTS
 # ============================================================================
