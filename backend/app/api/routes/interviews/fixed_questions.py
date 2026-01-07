@@ -198,3 +198,135 @@ def get_fixed_question_task_focused(question_number: int, project: Project, db: 
 
     # Q2+ are AI-generated, not fixed
     return None
+
+
+def get_fixed_question_meta_prompt(question_number: int, project: Project, db: Session) -> dict:
+    """
+    Returns fixed questions for META PROMPT interviews.
+    PROMPT #76 - Meta Prompt Feature
+
+    Meta prompt is ALWAYS the first interview for any project.
+    It gathers comprehensive information to generate the entire project hierarchy
+    (Epics → Stories → Tasks → Subtasks) with atomic prompts.
+
+    Fixed Questions (Q1-Q8):
+    - Q1: Project Vision & Problem Statement
+    - Q2: Main Features/Modules (multiple choice)
+    - Q3: User Roles & Permissions
+    - Q4: Key Business Rules & Logic
+    - Q5: Data & Entities
+    - Q6: Success Criteria & Goals
+    - Q7: Technical Constraints/Preferences
+    - Q8: Project Scope & Priorities
+
+    After Q8, AI can ask contextual questions to clarify details.
+
+    Args:
+        question_number: Question number (Q1-Q8 are fixed for meta prompt)
+        project: Project instance
+        db: Database session
+
+    Returns:
+        Message dict with question, or None if beyond fixed questions
+    """
+
+    if question_number == 1:
+        return {
+            "role": "assistant",
+            "content": "🎯 Pergunta 1: Qual é a visão do projeto e o problema que ele resolve?\n\nDescreva brevemente:\n- Qual problema ou necessidade este projeto vai resolver?\n- Qual é o objetivo principal?\n- Quem são os usuários/clientes finais?",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "text",
+            "question_number": 1,
+            "prefilled_value": project.description or ""
+        }
+
+    elif question_number == 2:
+        return {
+            "role": "assistant",
+            "content": "📋 Pergunta 2: Quais são os principais módulos/funcionalidades do sistema?\n\nSelecione todos que se aplicam ao seu projeto:",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "multiple_choice",
+            "question_number": 2,
+            "options": {
+                "type": "multiple",
+                "choices": [
+                    {"id": "auth", "label": "🔐 Autenticação e Controle de Acesso", "value": "auth"},
+                    {"id": "crud", "label": "📝 CRUD de Entidades/Recursos", "value": "crud"},
+                    {"id": "reports", "label": "📊 Relatórios e Dashboards", "value": "reports"},
+                    {"id": "workflow", "label": "🔄 Fluxos de Trabalho/Processos", "value": "workflow"},
+                    {"id": "notifications", "label": "🔔 Notificações e Alertas", "value": "notifications"},
+                    {"id": "integration", "label": "🔌 Integrações Externas (APIs, Webhooks)", "value": "integration"},
+                    {"id": "files", "label": "📁 Upload/Gerenciamento de Arquivos", "value": "files"},
+                    {"id": "search", "label": "🔍 Busca e Filtros Avançados", "value": "search"},
+                    {"id": "payments", "label": "💳 Pagamentos/Transações Financeiras", "value": "payments"},
+                    {"id": "messaging", "label": "💬 Mensagens/Chat/Comunicação", "value": "messaging"},
+                    {"id": "calendar", "label": "📅 Calendário/Agendamento", "value": "calendar"},
+                    {"id": "analytics", "label": "📈 Analytics e Métricas", "value": "analytics"}
+                ]
+            }
+        }
+
+    elif question_number == 3:
+        return {
+            "role": "assistant",
+            "content": "👥 Pergunta 3: Quais são os perfis de usuários e suas permissões?\n\nDescreva os principais tipos de usuários e o que cada um pode fazer no sistema.\n\nExemplo:\n- Admin: Acesso total, gerencia usuários, configurações\n- Editor: Cria e edita conteúdo, não gerencia usuários\n- Visualizador: Apenas visualiza, sem edição",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "text",
+            "question_number": 3
+        }
+
+    elif question_number == 4:
+        return {
+            "role": "assistant",
+            "content": "⚙️ Pergunta 4: Quais são as principais regras de negócio do sistema?\n\nDescreva as regras críticas que o sistema deve seguir.\n\nExemplo:\n- Pedido só pode ser cancelado até 24h após criação\n- Usuário só pode aprovar documentos do seu departamento\n- Saldo não pode ficar negativo",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "text",
+            "question_number": 4
+        }
+
+    elif question_number == 5:
+        return {
+            "role": "assistant",
+            "content": "🗃️ Pergunta 5: Quais são as principais entidades/dados do sistema?\n\nListe as entidades principais e seus relacionamentos básicos.\n\nExemplo:\n- Usuário (tem múltiplos Pedidos)\n- Pedido (pertence a um Usuário, contém múltiplos Itens)\n- Produto (pode estar em múltiplos Pedidos via Itens)\n- Categoria (agrupa Produtos)",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "text",
+            "question_number": 5
+        }
+
+    elif question_number == 6:
+        return {
+            "role": "assistant",
+            "content": "🎯 Pergunta 6: Quais são os critérios de sucesso do projeto?\n\nComo você vai medir se o projeto foi bem-sucedido?\n\nExemplo:\n- Processar 1000 pedidos por dia sem erros\n- Tempo de resposta < 2 segundos em 95% das requisições\n- Taxa de conversão de 15% nos primeiros 6 meses\n- Reduzir tempo de processamento manual de 4h para 30min",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "text",
+            "question_number": 6
+        }
+
+    elif question_number == 7:
+        return {
+            "role": "assistant",
+            "content": "🔧 Pergunta 7: Há alguma restrição técnica ou preferência arquitetural?\n\nDescreva limitações ou decisões técnicas já definidas.\n\nExemplo:\n- Deve rodar em infraestrutura AWS específica\n- Precisa integrar com sistema legado X\n- Segurança: LGPD compliance obrigatório\n- Performance: Suportar 10.000 usuários simultâneos",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "text",
+            "question_number": 7
+        }
+
+    elif question_number == 8:
+        return {
+            "role": "assistant",
+            "content": "📌 Pergunta 8: Qual é o escopo e prioridades do MVP (Minimum Viable Product)?\n\nQuais funcionalidades DEVEM estar na primeira versão (MVP) vs. podem ficar para depois?\n\nExemplo:\n✅ MVP (Essencial):\n- Login e autenticação\n- CRUD de pedidos\n- Relatório básico de vendas\n\n⏳ Versão 2 (Desejável):\n- Dashboard avançado\n- Integrações com marketplaces\n- App mobile",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "text",
+            "question_number": 8
+        }
+
+    # Q9+ are AI-generated contextual questions to clarify details
+    return None

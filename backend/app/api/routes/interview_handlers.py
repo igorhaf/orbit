@@ -30,6 +30,82 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+async def handle_meta_prompt_interview(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    project_context: str,
+    db: Session,
+    get_fixed_question_meta_prompt_func,
+    clean_ai_response_func,
+    prepare_context_func
+) -> Dict[str, Any]:
+    """
+    Handle META PROMPT interview mode (ALWAYS first interview).
+
+    PROMPT #76 - Meta Prompt Feature
+
+    Flow:
+    - Q1-Q8: Fixed meta prompt questions (no AI)
+    - Q9+: AI-generated contextual questions to clarify details
+
+    The meta prompt gathers comprehensive information to generate:
+    - Complete project hierarchy (Epics → Stories → Tasks → Subtasks)
+    - Atomic prompts for each task/subtask
+    - All fields populated (description, acceptance_criteria, priorities, etc.)
+
+    Args:
+        interview: Interview instance
+        project: Project instance
+        message_count: Current message count
+        project_context: Project context string
+        db: Database session
+        get_fixed_question_meta_prompt_func: Function to get meta prompt fixed questions
+        clean_ai_response_func: Function to clean AI responses
+        prepare_context_func: Function to prepare interview context
+
+    Returns:
+        Response dict with success, message, and usage
+    """
+    logger.info(f"🎯 META PROMPT MODE - message_count={message_count}")
+
+    # Map message_count to question number for fixed questions
+    # Meta prompt has 8 fixed questions (Q1-Q8)
+    question_map = {
+        2: 1,   # After project creation → Ask Q1 (Vision & Problem)
+        4: 2,   # After A1 → Ask Q2 (Main Features)
+        6: 3,   # After A2 → Ask Q3 (User Roles)
+        8: 4,   # After A3 → Ask Q4 (Business Rules)
+        10: 5,  # After A4 → Ask Q5 (Data & Entities)
+        12: 6,  # After A5 → Ask Q6 (Success Criteria)
+        14: 7,  # After A6 → Ask Q7 (Technical Constraints)
+        16: 8,  # After A7 → Ask Q8 (MVP Scope)
+    }
+
+    # Fixed meta prompt questions (Q1-Q8)
+    if message_count in question_map:
+        return _handle_fixed_question_meta(
+            interview, project, message_count,
+            question_map, db, get_fixed_question_meta_prompt_func
+        )
+
+    # AI contextual questions (Q9+) - to clarify details
+    elif message_count >= 18:
+        return await _handle_ai_meta_contextual_question(
+            interview, project, message_count,
+            project_context, db,
+            clean_ai_response_func, prepare_context_func
+        )
+
+    else:
+        # Unexpected state
+        logger.error(f"Unexpected message_count={message_count} in meta prompt mode")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected interview state (message_count={message_count})"
+        )
+
+
 async def handle_requirements_interview(
     interview: Interview,
     project: Project,
@@ -406,3 +482,113 @@ async def _execute_ai_question(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get AI response: {str(ai_error)}"
         )
+
+
+def _handle_fixed_question_meta(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    question_map: dict,
+    db: Session,
+    get_fixed_question_meta_prompt_func
+) -> Dict[str, Any]:
+    """Handle fixed meta prompt questions (Q1-Q8)."""
+    question_number = question_map[message_count]
+    logger.info(f"Returning fixed Meta Prompt Question {question_number}")
+
+    assistant_message = get_fixed_question_meta_prompt_func(question_number, project, db)
+
+    if not assistant_message:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get fixed meta prompt question {question_number}"
+        )
+
+    interview.conversation_data.append(assistant_message)
+
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(interview, "conversation_data")
+    db.commit()
+    db.refresh(interview)
+
+    return {
+        "success": True,
+        "message": assistant_message,
+        "usage": {
+            "model": "system/fixed-question-meta-prompt",
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_cost_usd": 0.0
+        }
+    }
+
+
+async def _handle_ai_meta_contextual_question(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    project_context: str,
+    db: Session,
+    clean_ai_response_func,
+    prepare_context_func
+) -> Dict[str, Any]:
+    """Handle AI-generated contextual questions (Q9+) in meta prompt mode."""
+    logger.info(f"Using AI for meta contextual question (message_count={message_count})")
+
+    # Build system prompt for contextual clarification questions
+    system_prompt = f"""Você é um Product Owner experiente conduzindo uma entrevista de Meta Prompt para definir um projeto completo.
+
+**CONTEXTO DO PROJETO:**
+{project_context}
+
+**INFORMAÇÕES JÁ COLETADAS:**
+Você já fez 8 perguntas fixas sobre:
+1. Visão do projeto e problema a resolver
+2. Principais módulos/funcionalidades
+3. Perfis de usuários e permissões
+4. Regras de negócio
+5. Entidades/dados principais
+6. Critérios de sucesso
+7. Restrições técnicas
+8. Escopo e prioridades do MVP
+
+Analise as respostas anteriores e faça perguntas contextualizadas para:
+- **ESCLARECER DETALHES** que ficaram vagos ou ambíguos
+- **APROFUNDAR** em funcionalidades complexas mencionadas
+- **DESCOBRIR DEPENDÊNCIAS** entre módulos/features
+- **VALIDAR PREMISSAS** sobre escopo, usuários ou regras de negócio
+- **IDENTIFICAR EDGE CASES** ou cenários especiais
+
+**IMPORTANTE:**
+- Analise bem as respostas dadas nas perguntas fixas
+- Não fuja do conceito que o cliente quer
+- Foque em clarificar, não em expandir escopo desnecessariamente
+- Faça 1 pergunta por vez, contextualizada e específica
+
+**Formato de Pergunta:**
+❓ Pergunta [número]: [Sua pergunta contextual]
+
+Para ESCOLHA ÚNICA:
+○ Opção 1
+○ Opção 2
+○ Opção 3
+
+Para MÚLTIPLA ESCOLHA:
+☐ Opção 1
+☐ Opção 2
+☐ Opção 3
+☑️ [Selecione todas que se aplicam]
+
+Para TEXTO LIVRE:
+💬 Descreva sua resposta
+
+**Conduza em PORTUGUÊS.** Continue com a próxima pergunta relevante!
+
+Após 3-5 perguntas contextuais (total ~12-14 perguntas), conclua a entrevista informando que o projeto será gerado.
+"""
+
+    # Call AI Orchestrator
+    return await _execute_ai_question(
+        interview, project, system_prompt, db,
+        clean_ai_response_func, prepare_context_func
+    )

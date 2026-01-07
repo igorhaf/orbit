@@ -39,7 +39,8 @@ from app.services.provisioning import ProvisioningService
 from app.services.project_state_detector import ProjectStateDetector
 from app.api.routes.interview_handlers import (
     handle_requirements_interview,
-    handle_task_focused_interview
+    handle_task_focused_interview,
+    handle_meta_prompt_interview
 )
 
 # Import helper functions from modular files (PROMPT #69)
@@ -51,7 +52,8 @@ from .context_builders import (
 from .task_type_prompts import build_task_focused_prompt
 from .fixed_questions import (
     get_fixed_question,
-    get_fixed_question_task_focused
+    get_fixed_question_task_focused,
+    get_fixed_question_meta_prompt
 )
 
 logger = logging.getLogger(__name__)
@@ -126,7 +128,8 @@ async def create_interview(
             detail="conversation_data must be an array of messages"
         )
 
-    # PROMPT #68 - Detect project state and set interview mode
+    # PROMPT #76 - Detect if this is the first interview (Meta Prompt mode)
+    # PROMPT #68 - Otherwise detect project state and set interview mode
     project = db.query(Project).filter(Project.id == interview_data.project_id).first()
     if not project:
         raise HTTPException(
@@ -134,15 +137,28 @@ async def create_interview(
             detail=f"Project {interview_data.project_id} not found"
         )
 
-    detector = ProjectStateDetector(db)
-    should_skip_stack = detector.should_skip_stack_questions(project)
-    interview_mode = "task_focused" if should_skip_stack else "requirements"
+    # Check if this is the first interview for the project
+    existing_interviews_count = db.query(Interview).filter(
+        Interview.project_id == interview_data.project_id
+    ).count()
 
-    logger.info(f"Creating interview for project {project.name}:")
-    logger.info(f"  - interview_mode: {interview_mode}")
-    logger.info(f"  - should_skip_stack: {should_skip_stack}")
-    logger.info(f"  - has_stack: {bool(project.stack_backend and project.stack_database)}")
-    logger.info(f"  - Project state: {detector.detect_state(project).value}")
+    if existing_interviews_count == 0:
+        # FIRST INTERVIEW - Always use meta_prompt mode
+        interview_mode = "meta_prompt"
+        logger.info(f"Creating FIRST interview for project {project.name}:")
+        logger.info(f"  - interview_mode: meta_prompt (ALWAYS for first interview)")
+        logger.info(f"  - This interview will gather comprehensive info to generate full project hierarchy")
+    else:
+        # NOT FIRST - Use PROMPT #68 logic (requirements or task_focused)
+        detector = ProjectStateDetector(db)
+        should_skip_stack = detector.should_skip_stack_questions(project)
+        interview_mode = "task_focused" if should_skip_stack else "requirements"
+
+        logger.info(f"Creating interview for project {project.name}:")
+        logger.info(f"  - interview_mode: {interview_mode}")
+        logger.info(f"  - should_skip_stack: {should_skip_stack}")
+        logger.info(f"  - has_stack: {bool(project.stack_backend and project.stack_database)}")
+        logger.info(f"  - Project state: {detector.detect_state(project).value}")
 
     db_interview = Interview(
         project_id=interview_data.project_id,
@@ -1210,9 +1226,21 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
         content_preview = msg.get('content', '')[:80]
         logger.info(f"    - Index {i}: role={msg.get('role')}, content={content_preview}")
 
-    # PROMPT #68 - Dual-Mode Interview System
-    # Route based on interview mode
-    if interview.interview_mode == "requirements":
+    # PROMPT #76 / PROMPT #68 - Route based on interview mode
+    # Three modes: meta_prompt, requirements, task_focused
+    if interview.interview_mode == "meta_prompt":
+        # Meta Prompt interview (FIRST interview): Q1-Q8 fixed → AI contextual questions
+        return await handle_meta_prompt_interview(
+            interview=interview,
+            project=project,
+            message_count=message_count,
+            project_context=project_context,
+            db=db,
+            get_fixed_question_meta_prompt_func=get_fixed_question_meta_prompt,
+            clean_ai_response_func=clean_ai_response,
+            prepare_context_func=prepare_interview_context
+        )
+    elif interview.interview_mode == "requirements":
         # Requirements interview (new projects): Q1-Q7 stack → AI business questions
         return await handle_requirements_interview(
             interview=interview,
