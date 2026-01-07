@@ -128,6 +128,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     { id: 'transitions', label: 'History', icon: '📊', count: transitions.length },
     { id: 'ai-config', label: 'AI Config', icon: '🤖' },
     { id: 'interview', label: 'Interview', icon: '🎤' },
+    { id: 'prompt', label: 'Prompt', icon: '📝', hasPrompt: !!item.generated_prompt },
     { id: 'acceptance', label: 'Criteria', icon: '✅', count: item.acceptance_criteria?.length || 0 },
   ];
 
@@ -184,6 +185,9 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-gray-200 text-gray-700">
                   {tab.count}
                 </span>
+              )}
+              {('hasPrompt' in tab) && tab.hasPrompt && (
+                <span className="ml-2 w-2 h-2 rounded-full bg-green-500"></span>
               )}
             </button>
           ))}
@@ -579,6 +583,78 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       </div>
                     )}
                   </div>
+                </div>
+              )}
+
+              {/* Prompt Tab */}
+              {activeTab === 'prompt' && (
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Generated Prompt</h3>
+
+                    {item.generated_prompt ? (
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Atomic Prompt</span>
+                          <button
+                            onClick={() => navigator.clipboard.writeText(item.generated_prompt || '')}
+                            className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
+                          >
+                            📋 Copy
+                          </button>
+                        </div>
+                        <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono leading-relaxed">
+                          {item.generated_prompt}
+                        </pre>
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg bg-gray-50">
+                        <span className="text-4xl mb-3 block">📝</span>
+                        <p className="text-sm text-gray-500 mb-2">No prompt generated yet</p>
+                        <p className="text-xs text-gray-400">
+                          Prompt will be generated from meta prompt interview or can be created manually
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Prompt Metadata */}
+                  {item.generated_prompt && (
+                    <div className="border-t border-gray-200 pt-6">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Prompt Details</h3>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Token Budget</span>
+                          <p className="text-sm text-gray-900 mt-1">
+                            {item.token_budget ? `${item.token_budget.toLocaleString()} tokens` : 'Not set'}
+                          </p>
+                        </div>
+                        {item.actual_tokens_used && (
+                          <div>
+                            <span className="text-xs font-semibold text-gray-500 uppercase">Tokens Used</span>
+                            <p className="text-sm text-gray-900 mt-1">
+                              {item.actual_tokens_used.toLocaleString()} tokens
+                              {item.token_budget && (
+                                <span className="text-xs text-gray-500 ml-2">
+                                  ({Math.round((item.actual_tokens_used / item.token_budget) * 100)}%)
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        )}
+                        <div>
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Item Type</span>
+                          <p className="text-sm text-gray-900 mt-1">{item.item_type}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Target AI Model</span>
+                          <p className="text-sm text-gray-900 mt-1">
+                            {item.target_ai_model_id || 'Auto-select'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 

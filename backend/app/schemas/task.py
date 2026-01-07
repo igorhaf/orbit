@@ -63,6 +63,9 @@ class TaskBase(BaseModel):
     interview_question_ids: List[int] = Field(default_factory=list, description="Interview question indexes")
     interview_insights: Dict[str, Any] = Field(default_factory=dict, description="Interview insights")
 
+    # Generated Prompt (Meta Prompt Feature)
+    generated_prompt: Optional[str] = Field(None, description="Assembled atomic prompt for task execution")
+
     # Legacy Kanban fields (for backward compatibility)
     status: TaskStatus = Field(default=TaskStatus.BACKLOG, description="Legacy Kanban status")
     column: str = Field(default="backlog", max_length=50, description="Legacy Kanban column")
@@ -113,6 +116,9 @@ class TaskUpdate(BaseModel):
     # Interview Traceability
     interview_question_ids: Optional[List[int]] = None
     interview_insights: Optional[Dict[str, Any]] = None
+
+    # Generated Prompt (Meta Prompt Feature)
+    generated_prompt: Optional[str] = None
 
     # Legacy Kanban
     status: Optional[TaskStatus] = None

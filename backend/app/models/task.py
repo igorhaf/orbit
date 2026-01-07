@@ -206,6 +206,10 @@ class Task(Base):
         default=list  # [{"title": "...", "description": "...", "story_points": 2}]
     )
 
+    # Generated Prompt - Atomic prompts for task/subtask execution
+    # Stores the final assembled prompt generated from all task fields, context, and specs
+    generated_prompt = Column(Text, nullable=True)
+
     # ===== END JIRA TRANSFORMATION FIELDS =====
 
     # Relationships
