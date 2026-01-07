@@ -597,8 +597,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #72 (Refactor ChatInterface.tsx - Package Structure Created)
-**Próximo prompt:** PROMPT #73
+**Último prompt:** PROMPT #76 (Meta Prompt Fixed Questions)
+**Próximo prompt:** PROMPT #77
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -611,6 +611,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - PROMPT_70 (Refactor task_executor.py - Modularization)
 - PROMPT_71 (Refactor tasks.py - Package Structure Created)
 - PROMPT_72 (Refactor ChatInterface.tsx - Package Structure Created)
+- PROMPT_76 (Meta Prompt Fixed Questions)
 
 **Principais Marcos:**
 - **PROMPT #50**: AI Models Management Page
@@ -619,6 +620,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #70**: Refactor task_executor.py - Modularização COMPLETA (1179 → 1380 linhas distribuídas em 5 módulos focados: spec_fetcher, context_builder, budget_manager, batch_executor, executor)
 - **PROMPT #71**: Refactor tasks.py - Package Structure Created (Abordagem pragmática: estrutura criada, modularização completa adiada. 28 endpoints bem organizados em 1107 linhas)
 - **PROMPT #72**: Refactor ChatInterface.tsx - Package Structure Created (Abordagem pragmática: estrutura criada, modularização completa adiada. 16+ states, 3 job polling hooks, componente estável em 1101 linhas)
+- **PROMPT #76**: Meta Prompt Fixed Questions - PRIMEIRA entrevista sempre coleta informações completas (8 perguntas fixas Q1-Q8 + perguntas contextuais da IA Q9+), fundação para geração automática de hierarquia completa (Epics → Stories → Tasks → Subtasks com prompts atômicos)
 
 ---
 
