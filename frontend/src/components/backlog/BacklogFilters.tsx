@@ -50,7 +50,6 @@ export default function BacklogFilters({
       (filters.item_type && filters.item_type.length > 0) ||
       (filters.priority && filters.priority.length > 0) ||
       (filters.status && filters.status.length > 0) ||
-      filters.assignee ||
       (filters.labels && filters.labels.length > 0) ||
       filters.search
     );
@@ -185,18 +184,6 @@ export default function BacklogFilters({
                 );
               })}
             </div>
-          </div>
-
-          {/* Assignee */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Assignee</label>
-            <input
-              type="text"
-              placeholder="Filter by assignee..."
-              value={filters.assignee || ''}
-              onChange={(e) => onFiltersChange({ ...filters, assignee: e.target.value })}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
           </div>
         </div>
       </CardContent>
