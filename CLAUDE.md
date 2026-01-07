@@ -520,8 +520,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #71 (Refactor tasks.py - Package Structure Created)
-**Próximo prompt:** PROMPT #72
+**Último prompt:** PROMPT #72 (Refactor ChatInterface.tsx - Package Structure Created)
+**Próximo prompt:** PROMPT #73
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -533,13 +533,15 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - PROMPT_69 (Refactor interviews.py - Modularization)
 - PROMPT_70 (Refactor task_executor.py - Modularization)
 - PROMPT_71 (Refactor tasks.py - Package Structure Created)
+- PROMPT_72 (Refactor ChatInterface.tsx - Package Structure Created)
 
 **Principais Marcos:**
 - **PROMPT #50**: AI Models Management Page
 - **PROMPT #68**: Dual-Mode Interview System - Auto-detecção de estado do projeto (novo vs existente), entrevistas focadas em tasks, AI subtask suggestions, task exploration
-- **PROMPT #69**: Refactor interviews.py - Modularização (2464 → 2366 linhas distribuídas em 6 módulos focados)
-- **PROMPT #70**: Refactor task_executor.py - Modularização (1179 → 1380 linhas distribuídas em 5 módulos focados: spec_fetcher, context_builder, budget_manager, batch_executor, executor)
+- **PROMPT #69**: Refactor interviews.py - Modularização COMPLETA (2464 → 2366 linhas distribuídas em 6 módulos focados)
+- **PROMPT #70**: Refactor task_executor.py - Modularização COMPLETA (1179 → 1380 linhas distribuídas em 5 módulos focados: spec_fetcher, context_builder, budget_manager, batch_executor, executor)
 - **PROMPT #71**: Refactor tasks.py - Package Structure Created (Abordagem pragmática: estrutura criada, modularização completa adiada. 28 endpoints bem organizados em 1107 linhas)
+- **PROMPT #72**: Refactor ChatInterface.tsx - Package Structure Created (Abordagem pragmática: estrutura criada, modularização completa adiada. 16+ states, 3 job polling hooks, componente estável em 1101 linhas)
 
 ---
 
