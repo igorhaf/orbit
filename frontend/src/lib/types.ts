@@ -441,6 +441,9 @@ export interface Interview {
   conversation_data: ConversationMessage[];
   status: InterviewStatus;
   created_at: string;
+  interview_mode?: string; // "meta_prompt" | "requirements" | "task_focused"
+  task_type_selection?: string; // For task-focused interviews
+  focus_topics?: string[]; // For meta prompt interviews (PROMPT #77)
 }
 
 export interface InterviewCreate {

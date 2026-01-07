@@ -70,7 +70,7 @@ async def handle_meta_prompt_interview(
     logger.info(f"🎯 META PROMPT MODE - message_count={message_count}")
 
     # Map message_count to question number for fixed questions
-    # Meta prompt has 8 fixed questions (Q1-Q8)
+    # Meta prompt has 9 fixed questions (Q1-Q9)
     question_map = {
         2: 1,   # After project creation → Ask Q1 (Vision & Problem)
         4: 2,   # After A1 → Ask Q2 (Main Features)
@@ -80,19 +80,42 @@ async def handle_meta_prompt_interview(
         12: 6,  # After A5 → Ask Q6 (Success Criteria)
         14: 7,  # After A6 → Ask Q7 (Technical Constraints)
         16: 8,  # After A7 → Ask Q8 (MVP Scope)
+        18: 9,  # After A8 → Ask Q9 (Focus Topics Selection) - PROMPT #77
     }
 
-    # Fixed meta prompt questions (Q1-Q8)
+    # Fixed meta prompt questions (Q1-Q9)
     if message_count in question_map:
         return _handle_fixed_question_meta(
             interview, project, message_count,
             question_map, db, get_fixed_question_meta_prompt_func
         )
 
-    # AI contextual questions (Q9+) - to clarify details
-    elif message_count >= 18:
+    # After Q9: Extract focus topics from user's answer
+    elif message_count == 19:
+        # User just answered Q9 (topic selection)
+        # Extract topics and save them
+        user_answer = interview.conversation_data[-1]["content"]
+        focus_topics = _extract_focus_topics(user_answer)
+
+        logger.info(f"Extracted focus_topics: {focus_topics}")
+        interview.focus_topics = focus_topics
+
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(interview, "focus_topics")
+        db.commit()
+
+        # Continue to AI contextual questions
         return await _handle_ai_meta_contextual_question(
-            interview, project, message_count,
+            interview, project, message_count, focus_topics,
+            project_context, db,
+            clean_ai_response_func, prepare_context_func
+        )
+
+    # AI contextual questions (Q10+) - guided by selected topics
+    elif message_count >= 20:
+        focus_topics = interview.focus_topics or []
+        return await _handle_ai_meta_contextual_question(
+            interview, project, message_count, focus_topics,
             project_context, db,
             clean_ai_response_func, prepare_context_func
         )
@@ -484,6 +507,89 @@ async def _execute_ai_question(
         )
 
 
+def _extract_focus_topics(user_answer: str) -> list:
+    """
+    Extract focus topics from user's answer to Q9.
+    PROMPT #77 - Meta Prompt Topic Selection
+
+    The answer might be:
+    - A JSON array: ["business_rules", "design_ux", "security"]
+    - Text with topic IDs separated by commas: "business_rules, design_ux, security"
+    - Text with topic labels: "Regras de Negócio, Design e UX/UI"
+
+    Returns list of topic IDs.
+    """
+    import json
+    import re
+
+    # Try to parse as JSON array
+    try:
+        topics = json.loads(user_answer)
+        if isinstance(topics, list):
+            return topics
+    except (json.JSONDecodeError, TypeError):
+        pass
+
+    # Try to extract topic IDs from text
+    # Look for known topic IDs in the answer
+    known_topics = [
+        "business_rules",
+        "design_ux",
+        "architecture",
+        "security",
+        "performance",
+        "integrations",
+        "workflows",
+        "data_model",
+        "deployment",
+        "testing"
+    ]
+
+    found_topics = []
+    answer_lower = user_answer.lower()
+
+    for topic in known_topics:
+        if topic in answer_lower:
+            found_topics.append(topic)
+
+    # If no topics found by ID, try by keywords
+    if not found_topics:
+        keyword_map = {
+            "negócio": "business_rules",
+            "regra": "business_rules",
+            "design": "design_ux",
+            "ux": "design_ux",
+            "ui": "design_ux",
+            "interface": "design_ux",
+            "arquitetura": "architecture",
+            "conceito": "architecture",
+            "segurança": "security",
+            "seguranca": "security",
+            "performance": "performance",
+            "escalabilidade": "performance",
+            "integração": "integrations",
+            "integracao": "integrations",
+            "api": "integrations",
+            "workflow": "workflows",
+            "processo": "workflows",
+            "fluxo": "workflows",
+            "dados": "data_model",
+            "entidade": "data_model",
+            "modelo": "data_model",
+            "deploy": "deployment",
+            "infraestrutura": "deployment",
+            "teste": "testing",
+            "qualidade": "testing"
+        }
+
+        for keyword, topic in keyword_map.items():
+            if keyword in answer_lower and topic not in found_topics:
+                found_topics.append(topic)
+
+    logger.info(f"Extracted {len(found_topics)} topics from answer: {found_topics}")
+    return found_topics
+
+
 def _handle_fixed_question_meta(
     interview: Interview,
     project: Project,
@@ -492,7 +598,7 @@ def _handle_fixed_question_meta(
     db: Session,
     get_fixed_question_meta_prompt_func
 ) -> Dict[str, Any]:
-    """Handle fixed meta prompt questions (Q1-Q8)."""
+    """Handle fixed meta prompt questions (Q1-Q9)."""
     question_number = question_map[message_count]
     logger.info(f"Returning fixed Meta Prompt Question {question_number}")
 
@@ -527,13 +633,38 @@ async def _handle_ai_meta_contextual_question(
     interview: Interview,
     project: Project,
     message_count: int,
+    focus_topics: list,
     project_context: str,
     db: Session,
     clean_ai_response_func,
     prepare_context_func
 ) -> Dict[str, Any]:
-    """Handle AI-generated contextual questions (Q9+) in meta prompt mode."""
-    logger.info(f"Using AI for meta contextual question (message_count={message_count})")
+    """Handle AI-generated contextual questions (Q10+) in meta prompt mode."""
+    logger.info(f"Using AI for meta contextual question (message_count={message_count}, topics={focus_topics})")
+
+    # Build focus area text based on selected topics
+    topic_labels = {
+        "business_rules": "Regras de Negócio",
+        "design_ux": "Design e UX/UI",
+        "architecture": "Conceito e Arquitetura",
+        "security": "Segurança",
+        "performance": "Performance e Escalabilidade",
+        "integrations": "Integrações",
+        "workflows": "Workflows e Processos",
+        "data_model": "Modelagem de Dados",
+        "deployment": "Deploy e Infraestrutura",
+        "testing": "Testes e Qualidade"
+    }
+
+    if focus_topics:
+        focus_text = "\n**TÓPICOS SELECIONADOS PELO CLIENTE:**\n"
+        focus_text += "O cliente quer aprofundar especialmente nestes aspectos:\n"
+        for topic in focus_topics:
+            label = topic_labels.get(topic, topic)
+            focus_text += f"- {label}\n"
+        focus_text += "\n**IMPORTANTE: Priorize suas perguntas contextuais nestes tópicos selecionados!**\n"
+    else:
+        focus_text = ""
 
     # Build system prompt for contextual clarification questions
     system_prompt = f"""Você é um Product Owner experiente conduzindo uma entrevista de Meta Prompt para definir um projeto completo.
@@ -541,8 +672,10 @@ async def _handle_ai_meta_contextual_question(
 **CONTEXTO DO PROJETO:**
 {project_context}
 
+{focus_text}
+
 **INFORMAÇÕES JÁ COLETADAS:**
-Você já fez 8 perguntas fixas sobre:
+Você já fez 9 perguntas fixas sobre:
 1. Visão do projeto e problema a resolver
 2. Principais módulos/funcionalidades
 3. Perfis de usuários e permissões
@@ -551,6 +684,7 @@ Você já fez 8 perguntas fixas sobre:
 6. Critérios de sucesso
 7. Restrições técnicas
 8. Escopo e prioridades do MVP
+9. Tópicos que o cliente quer aprofundar
 
 Analise as respostas anteriores e faça perguntas contextualizadas para:
 - **ESCLARECER DETALHES** que ficaram vagos ou ambíguos
