@@ -443,6 +443,7 @@ export default function ProjectDetailsPage() {
                 item={selectedBacklogItem}
                 onClose={() => setSelectedBacklogItem(null)}
                 onUpdate={handleTasksUpdate}
+                onNavigateToItem={(item) => setSelectedBacklogItem(item)}
               />
             )}
           </div>
