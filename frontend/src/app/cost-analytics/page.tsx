@@ -408,89 +408,92 @@ export default function CostAnalyticsPage() {
               </Card>
             )}
 
-            {/* Cost by Provider */}
-            <Card>
-              <div className="p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Cost by Provider</h2>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead>
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Executions</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tokens</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">% of Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {analytics.by_provider.map((provider) => (
-                        <tr key={provider.provider} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getProviderColor(provider.provider)}`}>
-                              {provider.provider}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
-                            {formatCost(provider.total_cost)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                            {formatNumber(provider.execution_count)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                            {formatNumber(provider.total_tokens)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                            {((provider.total_cost / analytics.summary.total_cost) * 100).toFixed(1)}%
-                          </td>
+            {/* Cost Breakdowns - Side by Side */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Cost by Provider */}
+              <Card>
+                <div className="p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Cost by Provider</h2>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead>
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Executions</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tokens</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">% of Total</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {analytics.by_provider.map((provider) => (
+                          <tr key={provider.provider} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getProviderColor(provider.provider)}`}>
+                                {provider.provider}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
+                              {formatCost(provider.total_cost)}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
+                              {formatNumber(provider.execution_count)}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
+                              {formatNumber(provider.total_tokens)}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
+                              {((provider.total_cost / analytics.summary.total_cost) * 100).toFixed(1)}%
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
 
-            {/* Cost by Usage Type */}
-            <Card>
-              <div className="p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Cost by Usage Type</h2>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead>
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usage Type</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Avg/Call</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Executions</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tokens</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {analytics.by_usage_type.map((usage) => (
-                        <tr key={usage.usage_type} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                            {usage.usage_type}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
-                            {formatCost(usage.total_cost)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                            {formatCost(usage.avg_cost_per_execution)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                            {formatNumber(usage.execution_count)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                            {formatNumber(usage.total_tokens)}
-                          </td>
+              {/* Cost by Usage Type */}
+              <Card>
+                <div className="p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Cost by Usage Type</h2>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead>
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usage Type</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Avg/Call</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Executions</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tokens</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {analytics.by_usage_type.map((usage) => (
+                          <tr key={usage.usage_type} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {usage.usage_type}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
+                              {formatCost(usage.total_cost)}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
+                              {formatCost(usage.avg_cost_per_execution)}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
+                              {formatNumber(usage.execution_count)}
+                            </td>
+                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
+                              {formatNumber(usage.total_tokens)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            </Card>
+              </Card>
+            </div>
 
           </>
         )}
