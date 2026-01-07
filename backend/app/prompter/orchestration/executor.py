@@ -21,7 +21,7 @@ from .context import ExecutionContext
 from .validation import get_pipeline
 from ..core.exceptions import ExecutionError, CacheError
 from app.services.ai_orchestrator import AIOrchestrator
-from app.prompter.observability import get_tracing_service
+# Tracing removed - PROMPT #73
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +80,7 @@ class PromptExecutor:
             ExecutionError: If execution fails after all retries
         """
         # Get tracing service (if enabled)
-        tracing = get_tracing_service()
+        tracing = None  # Tracing removed - PROMPT #73
 
         # Create root span for this execution
         with tracing.start_span(
