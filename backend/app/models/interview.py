@@ -80,6 +80,13 @@ class Interview(Base):
         nullable=True
     )
 
+    # PROMPT #77 - Meta Prompt Topic Selection
+    focus_topics = Column(
+        JSON,  # ["business_rules", "design", "architecture", "security", etc.]
+        nullable=True,
+        default=list
+    )
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

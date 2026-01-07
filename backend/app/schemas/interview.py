@@ -57,6 +57,9 @@ class InterviewResponse(InterviewBase):
     id: UUID
     project_id: UUID
     created_at: datetime
+    interview_mode: Optional[str] = Field(None, description="Interview mode: meta_prompt, requirements, or task_focused")
+    task_type_selection: Optional[str] = Field(None, description="Selected task type for task-focused interviews")
+    focus_topics: Optional[List[str]] = Field(default_factory=list, description="Selected focus topics for meta prompt interviews (PROMPT #77)")
 
     class Config:
         from_attributes = True

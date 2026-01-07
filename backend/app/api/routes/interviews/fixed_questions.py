@@ -328,5 +328,81 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
             "question_number": 8
         }
 
-    # Q9+ are AI-generated contextual questions to clarify details
+    elif question_number == 9:
+        # PROMPT #77 - Topic Selection for Focused Discussion
+        return {
+            "role": "assistant",
+            "content": "🎯 Pergunta 9: Sobre quais aspectos do projeto você quer conversar mais profundamente?\n\nSelecione os tópicos que você deseja conceitualizar e aprofundar com a IA:",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "multiple_choice",
+            "question_number": 9,
+            "options": {
+                "type": "multiple",
+                "choices": [
+                    {
+                        "id": "business_rules",
+                        "label": "⚙️ Regras de Negócio",
+                        "value": "business_rules",
+                        "description": "Aprofundar em regras, validações e lógica de negócio"
+                    },
+                    {
+                        "id": "design_ux",
+                        "label": "🎨 Design e UX/UI",
+                        "value": "design_ux",
+                        "description": "Discutir interfaces, experiência do usuário e design visual"
+                    },
+                    {
+                        "id": "architecture",
+                        "label": "🏗️ Conceito e Arquitetura",
+                        "value": "architecture",
+                        "description": "Definir estrutura técnica, padrões e arquitetura do sistema"
+                    },
+                    {
+                        "id": "security",
+                        "label": "🔒 Segurança",
+                        "value": "security",
+                        "description": "Explorar requisitos de segurança, autenticação e proteção de dados"
+                    },
+                    {
+                        "id": "performance",
+                        "label": "⚡ Performance e Escalabilidade",
+                        "value": "performance",
+                        "description": "Discutir otimização, caching, load balancing e crescimento"
+                    },
+                    {
+                        "id": "integrations",
+                        "label": "🔌 Integrações",
+                        "value": "integrations",
+                        "description": "Definir integrações com sistemas externos, APIs e webhooks"
+                    },
+                    {
+                        "id": "workflows",
+                        "label": "🔄 Workflows e Processos",
+                        "value": "workflows",
+                        "description": "Detalhar fluxos de trabalho, automações e processos de negócio"
+                    },
+                    {
+                        "id": "data_model",
+                        "label": "🗃️ Modelagem de Dados",
+                        "value": "data_model",
+                        "description": "Aprofundar em entidades, relacionamentos e estrutura de dados"
+                    },
+                    {
+                        "id": "deployment",
+                        "label": "🚀 Deploy e Infraestrutura",
+                        "value": "deployment",
+                        "description": "Discutir estratégias de deploy, CI/CD e infraestrutura"
+                    },
+                    {
+                        "id": "testing",
+                        "label": "🧪 Testes e Qualidade",
+                        "value": "testing",
+                        "description": "Definir estratégias de testes, coverage e garantia de qualidade"
+                    }
+                ]
+            }
+        }
+
+    # Q10+ are AI-generated contextual questions to clarify details
     return None
