@@ -20,6 +20,27 @@ export const Breadcrumbs: React.FC = () => {
   // Don't show breadcrumbs on home page
   if (pathname === '/') return null;
 
+  // Custom labels for specific routes
+  const routeLabels: Record<string, string> = {
+    'ai-models': 'AI Models',
+    'ai-executions': 'AI Executions',
+    'ai-config': 'AI Config',
+    'specs': 'Specs',
+    'prompts': 'Prompts',
+    'projects': 'Projects',
+    'interviews': 'Interviews',
+    'commits': 'Commits',
+    'settings': 'Settings',
+    'debug': 'Debug',
+    'new': 'New',
+    'edit': 'Edit',
+    'generate': 'Generate',
+    'analyze': 'Analyze',
+    'consistency': 'Consistency Check',
+    'execute': 'Execute',
+    'models': 'Models',
+  };
+
   // Build breadcrumb path
   const pathSegments = pathname.split('/').filter(Boolean);
 
@@ -27,7 +48,9 @@ export const Breadcrumbs: React.FC = () => {
     { name: 'Home', href: '/' },
     ...pathSegments.map((segment, index) => {
       const href = '/' + pathSegments.slice(0, index + 1).join('/');
-      const name = segment
+
+      // Use custom label if available, otherwise capitalize
+      const name = routeLabels[segment] || segment
         .split('-')
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
