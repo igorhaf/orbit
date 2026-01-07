@@ -326,14 +326,7 @@ export default function Home() {
           {/* Recent Tasks */}
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>Recent Tasks</CardTitle>
-                <Link href="/kanban">
-                  <Button variant="ghost" size="sm">
-                    View Board
-                  </Button>
-                </Link>
-              </div>
+              <CardTitle>Recent Tasks</CardTitle>
             </CardHeader>
             <CardContent>
               {tasks.length === 0 ? (
