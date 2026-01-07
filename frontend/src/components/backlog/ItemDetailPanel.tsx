@@ -25,9 +25,10 @@ interface ItemDetailPanelProps {
   item: BacklogItem;
   onClose: () => void;
   onUpdate?: () => void;
+  onNavigateToItem?: (item: BacklogItem) => void;
 }
 
-export default function ItemDetailPanel({ item, onClose, onUpdate }: ItemDetailPanelProps) {
+export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToItem }: ItemDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [relationships, setRelationships] = useState<TaskRelationship[]>([]);
   const [comments, setComments] = useState<TaskComment[]>([]);
@@ -287,7 +288,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate }: ItemDetailP
                   {parent && (
                     <div>
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Parent</h3>
-                      <div className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer">
+                      <div
+                        className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                        onClick={() => onNavigateToItem?.(parent)}
+                      >
                         <div className="flex items-center gap-2">
                           <span className="text-lg">{getItemTypeIcon(parent.item_type)}</span>
                           <span className="text-sm font-medium text-gray-900">{parent.title}</span>
@@ -306,7 +310,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate }: ItemDetailP
                     ) : (
                       <div className="space-y-2">
                         {children.map((child) => (
-                          <div key={child.id} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer">
+                          <div
+                            key={child.id}
+                            className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
+                            onClick={() => onNavigateToItem?.(child)}
+                          >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <span className="text-lg">{getItemTypeIcon(child.item_type)}</span>
