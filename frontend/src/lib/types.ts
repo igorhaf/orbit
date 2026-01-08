@@ -737,3 +737,47 @@ export interface ToastNotification {
   message?: string;
   duration?: number;
 }
+
+// ============================================================================
+// RAG MONITORING & CODE INDEXING (PROMPT #90)
+// ============================================================================
+
+export interface RagStats {
+  total_rag_enabled: number;
+  total_rag_hits: number;
+  hit_rate: number;
+  avg_results_count: number;
+  avg_top_similarity: number;
+  avg_retrieval_time_ms: number;
+  by_usage_type: RagUsageTypeStats[];
+}
+
+export interface RagUsageTypeStats {
+  usage_type: string;
+  total: number;
+  hits: number;
+  hit_rate: number;
+  avg_results_count: number;
+  avg_top_similarity: number;
+  avg_retrieval_time_ms: number;
+}
+
+export interface CodeIndexingStats {
+  project_id: string;
+  total_documents: number;
+  avg_content_length: number;
+  document_types: string[];
+}
+
+export interface IndexCodeJob {
+  job_id: string;
+  status: 'completed' | 'pending' | 'failed';
+  message: string;
+  result?: {
+    files_scanned: number;
+    files_indexed: number;
+    files_skipped: number;
+    languages: Record<string, number>;
+    total_lines: number;
+  };
+}

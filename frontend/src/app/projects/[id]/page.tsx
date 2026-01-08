@@ -15,10 +15,11 @@ import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
 import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 import { InterviewList } from '@/components/interview';
-import { projectsApi, tasksApi, interviewsApi } from '@/lib/api';
-import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem } from '@/lib/types';
+import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
+import { projectsApi, tasksApi, interviewsApi, ragApi } from '@/lib/api';
+import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats } from '@/lib/types';
 
-type Tab = 'kanban' | 'overview' | 'interviews' | 'backlog';
+type Tab = 'kanban' | 'overview' | 'interviews' | 'backlog' | 'rag';
 
 export default function ProjectDetailsPage() {
   const params = useParams();
@@ -37,6 +38,11 @@ export default function ProjectDetailsPage() {
   const [backlogFilters, setBacklogFilters] = useState<IBacklogFilters>({});
   const [showBacklogFilters, setShowBacklogFilters] = useState(true);
   const [selectedBacklogItem, setSelectedBacklogItem] = useState<BacklogItem | null>(null);
+
+  // RAG states (PROMPT #90)
+  const [ragStats, setRagStats] = useState<RagStats | null>(null);
+  const [codeStats, setCodeStats] = useState<CodeIndexingStats | null>(null);
+  const [loadingRag, setLoadingRag] = useState(false);
 
   const loadProjectData = useCallback(async () => {
     console.log('📋 Loading project data for ID:', projectId);
@@ -69,6 +75,32 @@ export default function ProjectDetailsPage() {
   const handleTasksUpdate = () => {
     loadProjectData();
   };
+
+  // Load RAG stats (PROMPT #90)
+  const loadRagStats = useCallback(async () => {
+    if (activeTab !== 'rag') return;
+
+    setLoadingRag(true);
+    try {
+      const [rag, code] = await Promise.all([
+        ragApi.stats(),
+        ragApi.codeStats(projectId)
+      ]);
+      setRagStats(rag);
+      setCodeStats(code);
+    } catch (error) {
+      console.error('Failed to load RAG stats:', error);
+    } finally {
+      setLoadingRag(false);
+    }
+  }, [projectId, activeTab]);
+
+  // Load RAG stats when tab becomes active
+  useEffect(() => {
+    if (activeTab === 'rag') {
+      loadRagStats();
+    }
+  }, [activeTab, loadRagStats]);
 
   // Check if text is already in Markdown format
   const checkIfMarkdown = useCallback((text: string): boolean => {
@@ -373,6 +405,7 @@ export default function ProjectDetailsPage() {
               { id: 'backlog', label: 'Backlog' },
               { id: 'kanban', label: 'Kanban Board' },
               { id: 'interviews', label: 'Interviews' },
+              { id: 'rag', label: '📊 RAG Analytics' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -458,6 +491,45 @@ export default function ProjectDetailsPage() {
         {activeTab === 'interviews' && (
           <div>
             <InterviewList projectId={projectId} showHeader={false} showCreateButton={false} />
+          </div>
+        )}
+
+        {/* RAG Analytics Tab (PROMPT #90) */}
+        {activeTab === 'rag' && (
+          <div className="space-y-6">
+            {loadingRag ? (
+              <div className="flex items-center justify-center py-12">
+                <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+            ) : ragStats ? (
+              <>
+                {/* Stats Cards */}
+                <RagStatsCard stats={ragStats} />
+
+                {/* Charts and Table */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  <RagHitRatePieChart usageTypes={ragStats.by_usage_type} />
+                  <RagUsageTypeTable usageTypes={ragStats.by_usage_type} />
+                </div>
+
+                {/* Code Indexing Panel */}
+                <CodeIndexingPanel
+                  projectId={projectId}
+                  stats={codeStats}
+                  onIndexComplete={loadRagStats}
+                />
+              </>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center text-gray-500">
+                  <p>No RAG data available yet</p>
+                  <p className="text-sm mt-2">RAG analytics will appear after AI operations are executed</p>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 

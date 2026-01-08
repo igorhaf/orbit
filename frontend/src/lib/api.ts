@@ -708,3 +708,29 @@ export const consistencyApi = {
   byProject: (projectId: string, params?: any) =>
     request<any>(`/api/v1/consistency-issues/project/${projectId}`),
 };
+
+// RAG API (PROMPT #90 - RAG Monitoring & Code Indexing)
+export const ragApi = {
+  stats: (params?: {
+    start_date?: string;
+    end_date?: string;
+    usage_type?: string;
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.start_date) queryParams.append('start_date', params.start_date);
+    if (params?.end_date) queryParams.append('end_date', params.end_date);
+    if (params?.usage_type) queryParams.append('usage_type', params.usage_type);
+
+    const queryString = queryParams.toString();
+    return request<any>(`/api/v1/analytics/rag-stats${queryString ? '?' + queryString : ''}`);
+  },
+
+  indexCode: (projectId: string, force?: boolean) =>
+    request<any>(`/api/v1/projects/${projectId}/index-code`, {
+      method: 'POST',
+      body: force !== undefined ? JSON.stringify({ force }) : undefined,
+    }),
+
+  codeStats: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/code-stats`),
+};
