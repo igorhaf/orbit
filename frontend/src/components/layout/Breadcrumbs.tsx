@@ -28,6 +28,10 @@ export const Breadcrumbs: React.FC = () => {
     return UUID_PATTERN.test(segment);
   };
 
+  // Routes that don't have list pages (only detail pages)
+  // These segments should be skipped in breadcrumbs
+  const segmentsWithoutListPages = new Set(['interviews']);
+
   // Custom labels for specific routes
   const routeLabels: Record<string, string> = {
     'ai-models': 'AI Models',
@@ -36,7 +40,6 @@ export const Breadcrumbs: React.FC = () => {
     'specs': 'Specs',
     'prompts': 'Prompts',
     'projects': 'Projects',
-    'interviews': 'Interviews',
     'commits': 'Commits',
     'settings': 'Settings',
     'debug': 'Debug',
@@ -76,24 +79,32 @@ export const Breadcrumbs: React.FC = () => {
 
   const breadcrumbs: BreadcrumbItem[] = [
     { name: 'Home', href: '/' },
-    ...pathSegments.map((segment, index) => {
-      const href = '/' + pathSegments.slice(0, index + 1).join('/');
-      const parentSegment = index > 0 ? pathSegments[index - 1] : undefined;
+    ...pathSegments
+      .map((segment, index) => {
+        const href = '/' + pathSegments.slice(0, index + 1).join('/');
+        const parentSegment = index > 0 ? pathSegments[index - 1] : undefined;
+        const nextSegment = index < pathSegments.length - 1 ? pathSegments[index + 1] : undefined;
 
-      // Check if segment is a UUID
-      if (isUUID(segment)) {
-        const name = getUUIDLabel(parentSegment);
+        // Skip segments that don't have list pages if next segment is a UUID
+        if (segmentsWithoutListPages.has(segment) && nextSegment && isUUID(nextSegment)) {
+          return null;
+        }
+
+        // Check if segment is a UUID
+        if (isUUID(segment)) {
+          const name = getUUIDLabel(parentSegment);
+          return { name, href };
+        }
+
+        // Use custom label if available, otherwise capitalize
+        const name = routeLabels[segment] || segment
+          .split('-')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+
         return { name, href };
-      }
-
-      // Use custom label if available, otherwise capitalize
-      const name = routeLabels[segment] || segment
-        .split('-')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
-
-      return { name, href };
-    }),
+      })
+      .filter((item): item is BreadcrumbItem => item !== null),
   ];
 
   return (
