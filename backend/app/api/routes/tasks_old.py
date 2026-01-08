@@ -151,6 +151,8 @@ async def update_task(
     """
     Update a task (partial update).
 
+    PROMPT #85 - RAG Phase 3: Completed tasks/stories indexed in RAG
+
     - **title**: New title (optional)
     - **description**: New description (optional)
     - **status**: New status (optional, use /move endpoint for proper reordering)
@@ -158,13 +160,73 @@ async def update_task(
     """
     update_data = task_update.model_dump(exclude_unset=True)
 
+    # Track if status changed to done
+    status_changed_to_done = False
+    old_status = task.status
+
     for field, value in update_data.items():
         setattr(task, field, value)
 
     task.updated_at = datetime.utcnow()
 
+    # Check if status changed to done
+    if 'status' in update_data:
+        new_status = update_data['status']
+        if new_status == TaskStatus.DONE and old_status != TaskStatus.DONE:
+            status_changed_to_done = True
+
     db.commit()
     db.refresh(task)
+
+    # PROMPT #85 - RAG Phase 3: Index completed tasks/stories in RAG
+    if status_changed_to_done and task.item_type in [ItemType.TASK, ItemType.STORY]:
+        try:
+            from app.services.rag_service import RAGService
+
+            rag_service = RAGService(db)
+
+            # Build comprehensive content for RAG
+            content_parts = [
+                f"Title: {task.title}",
+                f"Type: {task.item_type.value}",
+                f"Description: {task.description or 'N/A'}"
+            ]
+
+            if task.acceptance_criteria:
+                criteria_text = "\n".join([f"- {ac}" for ac in task.acceptance_criteria])
+                content_parts.append(f"Acceptance Criteria:\n{criteria_text}")
+
+            if task.story_points:
+                content_parts.append(f"Story Points: {task.story_points}")
+
+            if task.resolution_comment:
+                content_parts.append(f"Resolution: {task.resolution_comment}")
+
+            content = "\n\n".join(content_parts)
+
+            # Store in RAG with metadata
+            rag_service.store(
+                content=content,
+                metadata={
+                    "type": f"completed_{task.item_type.value}",  # "completed_task" or "completed_story"
+                    "task_id": str(task.id),
+                    "title": task.title,
+                    "item_type": task.item_type.value,
+                    "story_points": task.story_points,
+                    "priority": task.priority.value if task.priority else None,
+                    "resolution": task.resolution.value if task.resolution else None,
+                    "labels": task.labels or [],
+                    "components": task.components or [],
+                    "completed_at": task.updated_at.isoformat()
+                },
+                project_id=task.project_id
+            )
+
+            logger.info(f"✅ RAG: Indexed completed {task.item_type.value} '{task.title}' (ID: {task.id})")
+
+        except Exception as e:
+            # Don't fail the request if RAG indexing fails
+            logger.warning(f"⚠️  RAG indexing failed for completed {task.item_type.value}: {e}")
 
     return task
 
@@ -202,12 +264,15 @@ async def move_task(
     """
     Move a task to a different column/status with proper reordering.
 
+    PROMPT #85 - RAG Phase 3: Completed tasks/stories indexed in RAG
+
     - **new_status**: Target status/column
     - **new_order**: Position in the new column (optional, defaults to end)
     """
     old_status = task.status
     old_order = task.order
     new_status = move_request.new_status
+    status_changed_to_done = False
 
     # If moving to a different column
     if old_status != new_status:
@@ -265,8 +330,62 @@ async def move_task(
 
     task.updated_at = datetime.utcnow()
 
+    # Check if task was moved to done status
+    if new_status == TaskStatus.DONE and old_status != TaskStatus.DONE:
+        status_changed_to_done = True
+
     db.commit()
     db.refresh(task)
+
+    # PROMPT #85 - RAG Phase 3: Index completed tasks/stories in RAG
+    if status_changed_to_done and task.item_type in [ItemType.TASK, ItemType.STORY]:
+        try:
+            from app.services.rag_service import RAGService
+
+            rag_service = RAGService(db)
+
+            # Build comprehensive content for RAG
+            content_parts = [
+                f"Title: {task.title}",
+                f"Type: {task.item_type.value}",
+                f"Description: {task.description or 'N/A'}"
+            ]
+
+            if task.acceptance_criteria:
+                criteria_text = "\n".join([f"- {ac}" for ac in task.acceptance_criteria])
+                content_parts.append(f"Acceptance Criteria:\n{criteria_text}")
+
+            if task.story_points:
+                content_parts.append(f"Story Points: {task.story_points}")
+
+            if task.resolution_comment:
+                content_parts.append(f"Resolution: {task.resolution_comment}")
+
+            content = "\n\n".join(content_parts)
+
+            # Store in RAG with metadata
+            rag_service.store(
+                content=content,
+                metadata={
+                    "type": f"completed_{task.item_type.value}",  # "completed_task" or "completed_story"
+                    "task_id": str(task.id),
+                    "title": task.title,
+                    "item_type": task.item_type.value,
+                    "story_points": task.story_points,
+                    "priority": task.priority.value if task.priority else None,
+                    "resolution": task.resolution.value if task.resolution else None,
+                    "labels": task.labels or [],
+                    "components": task.components or [],
+                    "completed_at": task.updated_at.isoformat()
+                },
+                project_id=task.project_id
+            )
+
+            logger.info(f"✅ RAG: Indexed completed {task.item_type.value} '{task.title}' (ID: {task.id})")
+
+        except Exception as e:
+            # Don't fail the request if RAG indexing fails
+            logger.warning(f"⚠️  RAG indexing failed for completed {task.item_type.value}: {e}")
 
     return task
 
