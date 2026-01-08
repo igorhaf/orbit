@@ -175,7 +175,7 @@ export default function PromptDetailPage() {
                   <p className="text-sm text-blue-800 mb-3">
                     This prompt was automatically generated from an interview session.
                   </p>
-                  <Link href={`/interviews/${prompt.created_from_interview_id}`}>
+                  <Link href={`/projects/${prompt.project_id}/interviews/${prompt.created_from_interview_id}`}>
                     <Button variant="outline" size="sm">
                       View Interview
                     </Button>
