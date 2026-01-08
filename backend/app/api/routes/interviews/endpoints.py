@@ -40,7 +40,8 @@ from app.services.project_state_detector import ProjectStateDetector
 from app.api.routes.interview_handlers import (
     handle_requirements_interview,
     handle_task_focused_interview,
-    handle_meta_prompt_interview
+    handle_meta_prompt_interview,
+    handle_simple_interview  # PROMPT #91
 )
 
 # Import helper functions from modular files (PROMPT #69)
@@ -54,6 +55,12 @@ from .fixed_questions import (
     get_fixed_question,
     get_fixed_question_task_focused,
     get_fixed_question_meta_prompt
+)
+# PROMPT #91 - Simple Interview Mode
+from .simple_questions import (
+    get_simple_fixed_question,
+    count_fixed_questions_simple,
+    is_fixed_question_complete_simple
 )
 
 logger = logging.getLogger(__name__)
@@ -143,11 +150,11 @@ async def create_interview(
     ).count()
 
     if existing_interviews_count == 0:
-        # FIRST INTERVIEW - Always use meta_prompt mode
-        interview_mode = "meta_prompt"
+        # FIRST INTERVIEW - Always use simple mode (PROMPT #91)
+        interview_mode = "simple"
         logger.info(f"Creating FIRST interview for project {project.name}:")
-        logger.info(f"  - interview_mode: meta_prompt (ALWAYS for first interview)")
-        logger.info(f"  - This interview will gather comprehensive info to generate full project hierarchy")
+        logger.info(f"  - interview_mode: simple (ALWAYS for first interview - PROMPT #91)")
+        logger.info(f"  - This interview will gather project info with conditional stack questions")
     else:
         # NOT FIRST - Use PROMPT #68 logic (requirements or task_focused)
         detector = ProjectStateDetector(db)
@@ -1005,11 +1012,14 @@ async def start_interview(
     # Inicializar conversa
     interview.conversation_data = []
 
-    # PROMPT #57 - Return fixed Question 1 (Title) without calling AI
+    # PROMPT #91 / PROMPT #57 - Return fixed Question 1 (Title) without calling AI
     logger.info(f"Starting interview {interview_id} with fixed Question 1 for project: {project.name}")
 
-    # Get fixed Question 1 (Title)
-    assistant_message = get_fixed_question(1, project, db)
+    # Get fixed Question 1 (Title) - use appropriate function based on interview mode
+    if interview.interview_mode == "simple":
+        assistant_message = get_simple_fixed_question(1, project, db, {})
+    else:
+        assistant_message = get_fixed_question(1, project, db)
 
     if not assistant_message:
         raise HTTPException(
@@ -1445,10 +1455,23 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
         content_preview = msg.get('content', '')[:80]
         logger.info(f"    - Index {i}: role={msg.get('role')}, content={content_preview}")
 
-    # PROMPT #76 / PROMPT #68 - Route based on interview mode
-    # Three modes: meta_prompt, requirements, task_focused
-    if interview.interview_mode == "meta_prompt":
-        # Meta Prompt interview (FIRST interview): Q1-Q8 fixed → AI contextual questions
+    # PROMPT #91 / PROMPT #76 / PROMPT #68 - Route based on interview mode
+    # Four modes: simple, meta_prompt, requirements, task_focused
+    if interview.interview_mode == "simple":
+        # Simple interview (FIRST interview - PROMPT #91): Q1-Q8 conditional → AI contextual questions
+        return await handle_simple_interview(
+            interview=interview,
+            project=project,
+            message_count=message_count,
+            db=db,
+            get_simple_fixed_question_func=get_simple_fixed_question,
+            count_fixed_questions_simple_func=count_fixed_questions_simple,
+            is_fixed_question_complete_simple_func=is_fixed_question_complete_simple,
+            clean_ai_response_func=clean_ai_response,
+            prepare_context_func=prepare_interview_context
+        )
+    elif interview.interview_mode == "meta_prompt":
+        # Meta Prompt interview (FIRST interview - PROMPT #76): Q1-Q17 fixed → AI contextual questions
         return await handle_meta_prompt_interview(
             interview=interview,
             project=project,
