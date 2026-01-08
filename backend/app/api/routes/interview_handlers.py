@@ -655,8 +655,44 @@ async def _handle_ai_meta_contextual_question(
     clean_ai_response_func,
     prepare_context_func
 ) -> Dict[str, Any]:
-    """Handle AI-generated contextual questions (Q10+) in meta prompt mode."""
+    """Handle AI-generated contextual questions (Q10+) in meta prompt mode.
+
+    PROMPT #84 - RAG Phase 2: Enhanced with domain knowledge retrieval
+    """
     logger.info(f"Using AI for meta contextual question (message_count={message_count}, topics={focus_topics})")
+
+    # PROMPT #84 - RAG Phase 2: Retrieve relevant domain knowledge
+    rag_context = ""
+    try:
+        from app.services.rag_service import RAGService
+
+        rag_service = RAGService(db)
+
+        # Build query from project description + focus topics
+        query_parts = [project.description or project.name]
+        if focus_topics:
+            query_parts.extend(focus_topics)
+        query = " ".join(query_parts)
+
+        # Retrieve domain templates (global knowledge, no project_id filter)
+        domain_docs = rag_service.retrieve(
+            query=query,
+            filter={"type": "domain_template"},  # Only domain templates
+            top_k=3,
+            similarity_threshold=0.6
+        )
+
+        if domain_docs:
+            rag_context = "\n**CONHECIMENTO DE DOMÍNIO RELEVANTE:**\n"
+            rag_context += "Baseado em projetos similares, considere estes aspectos:\n\n"
+            for i, doc in enumerate(domain_docs, 1):
+                rag_context += f"{i}. {doc['content']}\n"
+            rag_context += "\n**Use este conhecimento para fazer perguntas mais relevantes!**\n"
+
+            logger.info(f"✅ RAG: Retrieved {len(domain_docs)} domain templates for contextual questions")
+
+    except Exception as e:
+        logger.warning(f"⚠️  RAG retrieval failed for contextual questions: {e}")
 
     # Build focus area text based on selected topics
     topic_labels = {
@@ -687,6 +723,8 @@ async def _handle_ai_meta_contextual_question(
 
 **CONTEXTO DO PROJETO:**
 {project_context}
+
+{rag_context}
 
 {focus_text}
 

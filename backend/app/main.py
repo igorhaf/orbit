@@ -31,7 +31,8 @@ from app.api.routes import (
     project_analyses,
     specs,
     prompter,  # Prompter Architecture - Phase 1
-    jobs  # PROMPT #65 - Async Job System
+    jobs,  # PROMPT #65 - Async Job System
+    knowledge  # PROMPT #84 - RAG Phase 2: Knowledge Search
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -289,6 +290,13 @@ app.include_router(
     jobs.router,
     prefix=f"{API_V1_PREFIX}/jobs",
     tags=["Jobs"]
+)
+
+# Knowledge Search (RAG Phase 2 - PROMPT #84)
+app.include_router(
+    knowledge.router,
+    prefix=f"{API_V1_PREFIX}",
+    tags=["Knowledge"]
 )
 
 # WebSocket (Real-time updates)
