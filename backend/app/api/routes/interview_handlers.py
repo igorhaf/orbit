@@ -713,28 +713,66 @@ Analise as respostas anteriores e faça perguntas contextualizadas para:
 - **VALIDAR PREMISSAS** sobre escopo, usuários ou regras de negócio
 - **IDENTIFICAR EDGE CASES** ou cenários especiais
 
-**IMPORTANTE:**
-- Analise bem as respostas dadas nas perguntas fixas
-- Não fuja do conceito que o cliente quer
-- Foque em clarificar, não em expandir escopo desnecessariamente
-- Faça 1 pergunta por vez, contextualizada e específica
+**REGRAS CRÍTICAS - SIGA EXATAMENTE:**
+1. ❌ **NUNCA faça perguntas abertas** (texto livre)
+2. ✅ **SEMPRE forneça opções** para o cliente escolher
+3. ✅ **Use ESCOLHA ÚNICA (radio)** quando só pode haver UMA resposta
+   - Exemplos: "Qual arquitetura?" / "Como será o deploy?" / "Qual método de pagamento?"
+4. ✅ **Use MÚLTIPLA ESCOLHA (checkbox)** quando pode haver VÁRIAS respostas
+   - Exemplos: "Quais integrações?" / "Quais tipos de relatório?" / "Quais notificações?"
+5. ✅ Forneça sempre **3-5 opções relevantes** baseadas no contexto do projeto
+6. ✅ Analise bem as respostas anteriores antes de perguntar
+7. ✅ Não fuja do conceito que o cliente quer
+8. ✅ Faça 1 pergunta por vez, contextualizada e específica
 
-**Formato de Pergunta:**
-❓ Pergunta [número]: [Sua pergunta contextual]
+**FORMATO OBRIGATÓRIO:**
 
-Para ESCOLHA ÚNICA:
+Para ESCOLHA ÚNICA (quando só pode haver 1 resposta):
+❓ Pergunta [número]: [Sua pergunta]
+
 ○ Opção 1
 ○ Opção 2
 ○ Opção 3
+○ Opção 4
 
-Para MÚLTIPLA ESCOLHA:
+Escolha UMA opção.
+
+Para MÚLTIPLA ESCOLHA (quando pode haver várias respostas):
+❓ Pergunta [número]: [Sua pergunta]
+
 ☐ Opção 1
 ☐ Opção 2
 ☐ Opção 3
-☑️ [Selecione todas que se aplicam]
+☐ Opção 4
 
-Para TEXTO LIVRE:
-💬 Descreva sua resposta
+☑️ Selecione todas que se aplicam.
+
+**EXEMPLOS CORRETOS:**
+
+✅ BOM (Escolha única - só pode haver 1 arquitetura):
+❓ Pergunta 17: Qual arquitetura você pretende usar para o backend?
+
+○ Arquitetura em camadas (MVC)
+○ Clean Architecture (DDD)
+○ Arquitetura monolítica simples
+○ Microserviços
+
+Escolha UMA opção.
+
+✅ BOM (Múltipla escolha - pode ter várias integrações):
+❓ Pergunta 18: Quais integrações externas o sistema precisará?
+
+☐ Gateway de pagamento (Stripe, PagSeguro, etc.)
+☐ Serviço de e-mail (SendGrid, AWS SES)
+☐ Armazenamento de arquivos (AWS S3, Google Cloud Storage)
+☐ API de geolocalização
+☐ Serviço de SMS
+
+☑️ Selecione todas que se aplicam.
+
+❌ ERRADO (pergunta aberta - NUNCA FAÇA ISSO):
+❓ Pergunta 17: Descreva a arquitetura que você pretende usar.
+💬 Digite sua resposta aqui.
 
 **Conduza em PORTUGUÊS.** Continue com a próxima pergunta relevante!
 
