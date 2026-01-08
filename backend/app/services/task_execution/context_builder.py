@@ -15,6 +15,7 @@ from app.models.task import Task
 from app.models.project import Project
 from app.models.task_result import TaskResult
 from app.services.task_hierarchy import TaskHierarchyService
+from app.services.codebase_indexer import CodebaseIndexer
 import logging
 
 logger = logging.getLogger(__name__)
@@ -93,7 +94,163 @@ class ContextBuilder:
             context = orchestrator_context
             logger.info("No specs found for task, using orchestrator context only")
 
+        # PROMPT #89: Code RAG Integration
+        # Retrieve similar code from project codebase for context-aware generation
+        code_context = await self._retrieve_code_context(task, project)
+        if code_context:
+            context = code_context + "\n" + context
+            logger.info("✨ PROMPT #89: Code context integrated from RAG")
+
         return context
+
+    async def _retrieve_code_context(
+        self,
+        task: Task,
+        project: Project
+    ) -> str:
+        """
+        Retrieve relevant code context from project codebase via RAG.
+
+        PROMPT #89 - Code RAG Integration
+
+        Searches for similar code files to provide context for code generation.
+        This enables:
+        - Following existing project conventions
+        - Discovering similar implementations
+        - Understanding project structure
+
+        Args:
+            task: Task being executed
+            project: Project object
+
+        Returns:
+            Formatted code context string or empty string
+        """
+        try:
+            indexer = CodebaseIndexer(self.db)
+
+            # Build search query from task
+            query_parts = [task.title]
+            if task.description:
+                query_parts.append(task.description)
+
+            # Limit query length for better semantic matching
+            query = " ".join(query_parts)[:500]
+
+            # Detect language from task type or labels
+            language = self._detect_task_language(task, project)
+
+            # Search for similar code
+            results = await indexer.search_code(
+                project_id=project.id,
+                query=query,
+                language=language,
+                top_k=3  # Limit to 3 most relevant files
+            )
+
+            if not results:
+                logger.info("No relevant code found in RAG for task context")
+                return ""
+
+            # Format code context
+            context_parts = [
+                "=" * 80,
+                "RELEVANT CODE FROM PROJECT (RAG)",
+                "=" * 80,
+                "",
+                "The following code files from your project are relevant to this task.",
+                "Use them as reference for conventions, patterns, and structure.",
+                ""
+            ]
+
+            for i, result in enumerate(results, 1):
+                metadata = result.get("metadata", {})
+                file_path = metadata.get("file_path", "unknown")
+                similarity = result.get("similarity", 0.0)
+
+                context_parts.append(f"--- Similar File {i} (Similarity: {similarity:.2f}) ---")
+                context_parts.append(f"Path: {file_path}")
+
+                # Include extracted metadata
+                if metadata.get("classes"):
+                    context_parts.append(f"Classes: {', '.join(metadata['classes'][:5])}")
+
+                if metadata.get("functions"):
+                    context_parts.append(f"Functions: {', '.join(metadata['functions'][:5])}")
+
+                if metadata.get("components"):
+                    context_parts.append(f"Components: {', '.join(metadata['components'][:5])}")
+
+                # Include content preview
+                content = result.get("content", "")
+                if content:
+                    # Extract just the content preview part (after "Content Preview:")
+                    preview_lines = content.split("\n")
+                    preview_start = next((i for i, line in enumerate(preview_lines) if "Content Preview:" in line), None)
+                    if preview_start is not None:
+                        preview = "\n".join(preview_lines[preview_start+1:preview_start+21])  # 20 lines preview
+                        context_parts.append("\nCode Preview:")
+                        context_parts.append(preview)
+
+                context_parts.append("")
+
+            context_parts.append("Use the above code as reference. Follow the same:")
+            context_parts.append("- Naming conventions")
+            context_parts.append("- Project structure patterns")
+            context_parts.append("- Import/dependency patterns")
+            context_parts.append("- Code style and formatting")
+            context_parts.append("")
+
+            logger.info(f"Retrieved {len(results)} relevant code files from RAG")
+
+            return "\n".join(context_parts)
+
+        except Exception as e:
+            logger.error(f"Error retrieving code context from RAG: {e}")
+            return ""
+
+    def _detect_task_language(self, task: Task, project: Project) -> str:
+        """
+        Detect programming language for task based on labels or project stack.
+
+        Args:
+            task: Task object
+            project: Project object
+
+        Returns:
+            Language name (php, typescript, python, etc.) or None
+        """
+        # Check task labels
+        labels = task.labels or []
+
+        language_keywords = {
+            "php": ["php", "laravel", "backend", "api", "controller", "model"],
+            "typescript": ["typescript", "tsx", "react", "nextjs", "frontend", "component"],
+            "javascript": ["javascript", "js", "node"],
+            "python": ["python", "django", "flask"],
+            "css": ["css", "style", "tailwind", "scss"]
+        }
+
+        # Check labels for language keywords
+        for label in labels:
+            label_lower = label.lower()
+            for lang, keywords in language_keywords.items():
+                if any(keyword in label_lower for keyword in keywords):
+                    return lang
+
+        # Fallback to project stack
+        if project.stack_backend:
+            if "laravel" in project.stack_backend.lower() or "php" in project.stack_backend.lower():
+                return "php"
+            elif "django" in project.stack_backend.lower() or "python" in project.stack_backend.lower():
+                return "python"
+
+        if project.stack_frontend:
+            if "next" in project.stack_frontend.lower() or "react" in project.stack_frontend.lower():
+                return "typescript"
+
+        # Default to None (search all languages)
+        return None
 
     def build_jira_task_context(
         self,

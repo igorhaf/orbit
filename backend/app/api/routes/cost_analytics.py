@@ -261,3 +261,113 @@ async def get_executions_with_cost(
         ))
 
     return result
+
+
+@router.get("/rag-stats")
+async def get_rag_stats(
+    start_date: Optional[datetime] = Query(None, description="Start date for filtering"),
+    end_date: Optional[datetime] = Query(None, description="End date for filtering"),
+    usage_type: Optional[str] = Query(None, description="Filter by usage type"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get RAG (Retrieval-Augmented Generation) statistics
+
+    PROMPT #89 - RAG Monitoring & Analytics
+
+    Returns:
+        - Overall hit rate (% of executions with RAG hits)
+        - Total executions with RAG enabled
+        - Average similarity scores
+        - Average retrieval times
+        - Breakdown by usage type
+    """
+    # Build base query - only executions with RAG enabled
+    query = db.query(AIExecution).filter(AIExecution.rag_enabled == True)
+
+    # Apply filters
+    filters = []
+    if start_date:
+        filters.append(AIExecution.created_at >= start_date)
+    if end_date:
+        filters.append(AIExecution.created_at <= end_date)
+    if usage_type:
+        filters.append(AIExecution.usage_type == usage_type)
+
+    if filters:
+        query = query.filter(and_(*filters))
+
+    # Get all RAG-enabled executions
+    executions = query.all()
+
+    if not executions:
+        return {
+            "total_rag_enabled": 0,
+            "total_rag_hits": 0,
+            "hit_rate": 0.0,
+            "avg_results_count": 0.0,
+            "avg_top_similarity": 0.0,
+            "avg_retrieval_time_ms": 0.0,
+            "by_usage_type": []
+        }
+
+    # Calculate overall stats
+    total_rag_enabled = len(executions)
+    total_rag_hits = sum(1 for e in executions if e.rag_hit)
+    hit_rate = (total_rag_hits / total_rag_enabled) * 100 if total_rag_enabled > 0 else 0.0
+
+    # Calculate averages (only for hits)
+    hits = [e for e in executions if e.rag_hit]
+    avg_results_count = sum(e.rag_results_count or 0 for e in hits) / len(hits) if hits else 0.0
+    avg_top_similarity = sum(e.rag_top_similarity or 0 for e in hits) / len(hits) if hits else 0.0
+    avg_retrieval_time_ms = sum(e.rag_retrieval_time_ms or 0 for e in executions) / len(executions) if executions else 0.0
+
+    # Breakdown by usage type
+    usage_type_stats = {}
+    for e in executions:
+        utype = e.usage_type
+        if utype not in usage_type_stats:
+            usage_type_stats[utype] = {
+                "total": 0,
+                "hits": 0,
+                "results_sum": 0,
+                "similarity_sum": 0,
+                "similarity_count": 0,
+                "retrieval_time_sum": 0
+            }
+
+        stats = usage_type_stats[utype]
+        stats["total"] += 1
+        stats["retrieval_time_sum"] += e.rag_retrieval_time_ms or 0
+
+        if e.rag_hit:
+            stats["hits"] += 1
+            stats["results_sum"] += e.rag_results_count or 0
+            if e.rag_top_similarity is not None:
+                stats["similarity_sum"] += e.rag_top_similarity
+                stats["similarity_count"] += 1
+
+    # Build usage type breakdown
+    by_usage_type = [
+        {
+            "usage_type": utype,
+            "total": stats["total"],
+            "hits": stats["hits"],
+            "hit_rate": round((stats["hits"] / stats["total"]) * 100, 1) if stats["total"] > 0 else 0.0,
+            "avg_results_count": round(stats["results_sum"] / stats["hits"], 1) if stats["hits"] > 0 else 0.0,
+            "avg_top_similarity": round(stats["similarity_sum"] / stats["similarity_count"], 3) if stats["similarity_count"] > 0 else 0.0,
+            "avg_retrieval_time_ms": round(stats["retrieval_time_sum"] / stats["total"], 1) if stats["total"] > 0 else 0.0
+        }
+        for utype, stats in usage_type_stats.items()
+    ]
+    by_usage_type.sort(key=lambda x: x["total"], reverse=True)
+
+    return {
+        "total_rag_enabled": total_rag_enabled,
+        "total_rag_hits": total_rag_hits,
+        "hit_rate": round(hit_rate, 1),
+        "avg_results_count": round(avg_results_count, 1),
+        "avg_top_similarity": round(avg_top_similarity, 3),
+        "avg_retrieval_time_ms": round(avg_retrieval_time_ms, 1),
+        "by_usage_type": by_usage_type
+    }

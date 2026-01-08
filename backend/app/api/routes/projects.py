@@ -20,6 +20,8 @@ from app.models.task import Task
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
 from app.api.dependencies import get_project_or_404
 from app.services.consistency_validator import ConsistencyValidator
+from app.services.codebase_indexer import CodebaseIndexer
+from app.services.job_manager import JobManager
 
 logger = logging.getLogger(__name__)
 
@@ -312,3 +314,139 @@ async def get_consistency_report(
     report = validator.generate_report(str(project_id))
 
     return report
+
+
+@router.post("/{project_id}/index-code")
+async def index_project_code(
+    project_id: UUID,
+    force: bool = Query(False, description="Force re-indexing of all files"),
+    db: Session = Depends(get_db)
+):
+    """
+    Index project codebase for RAG-based context retrieval.
+
+    PROMPT #89 - Code RAG Implementation
+
+    Scans project folder recursively and indexes all code files in RAG.
+    This enables context-aware code generation during task execution.
+
+    Runs as background job for large projects.
+
+    **POST** `/api/v1/projects/{project_id}/index-code?force=false`
+
+    **Query Parameters:**
+    - `force` (bool): If true, re-index all files even if unchanged
+
+    **Response:**
+    ```json
+    {
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Code indexing started"
+    }
+    ```
+
+    **After completion, job result contains:**
+    ```json
+    {
+        "project_id": "uuid",
+        "files_scanned": 150,
+        "files_indexed": 145,
+        "files_skipped": 5,
+        "languages": {"php": 80, "typescript": 50, "css": 15},
+        "total_lines": 12500
+    }
+    ```
+    """
+
+    # Verify project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if not project.project_folder:
+        raise HTTPException(
+            status_code=400,
+            detail="Project has no project_folder configured. Cannot index code."
+        )
+
+    # Create background job
+    job_manager = JobManager(db)
+
+    job = job_manager.create_job(
+        job_type="code_indexing",
+        project_id=project_id,
+        metadata={
+            "force": force,
+            "project_folder": project.project_folder
+        }
+    )
+
+    # Start indexing in background
+    # (In production, this would be picked up by a worker process)
+    # For now, we'll execute it asynchronously
+    indexer = CodebaseIndexer(db)
+
+    try:
+        result = await indexer.index_project(project_id, force=force)
+
+        # Update job with result
+        job_manager.complete_job(
+            job_id=job.id,
+            result=result
+        )
+
+    except Exception as e:
+        logger.error(f"Code indexing failed for project {project_id}: {e}")
+        job_manager.fail_job(
+            job_id=job.id,
+            error_message=str(e)
+        )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Code indexing failed: {str(e)}"
+        )
+
+    return {
+        "job_id": str(job.id),
+        "status": "completed",
+        "message": "Code indexing completed",
+        "result": result
+    }
+
+
+@router.get("/{project_id}/code-stats")
+async def get_code_indexing_stats(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get code indexing statistics for project.
+
+    PROMPT #89 - Code RAG Implementation
+
+    Returns statistics about indexed code files in RAG.
+
+    **GET** `/api/v1/projects/{project_id}/code-stats`
+
+    **Response:**
+    ```json
+    {
+        "project_id": "uuid",
+        "total_documents": 145,
+        "avg_content_length": 1250.5,
+        "document_types": ["code_file", "interview_answer"]
+    }
+    ```
+    """
+
+    # Verify project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    indexer = CodebaseIndexer(db)
+    stats = await indexer.get_indexing_stats(project_id)
+
+    return stats
