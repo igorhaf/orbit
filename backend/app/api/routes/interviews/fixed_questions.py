@@ -55,6 +55,14 @@ def get_specs_for_category(db: Session, category: str) -> list:
         'bootstrap': 'Bootstrap',
         'materialui': 'Material UI',
         'custom': 'CSS Customizado',
+
+        # Mobile
+        'react-native': 'React Native',
+        'flutter': 'Flutter',
+        'ios-swift': 'Native iOS (Swift)',
+        'android-kotlin': 'Native Android (Kotlin)',
+        'ionic': 'Ionic',
+        'no-mobile': 'Sem Mobile',
     }
 
     # Format choices
