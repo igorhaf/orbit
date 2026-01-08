@@ -296,8 +296,50 @@ Insights da Entrevista:
 
 Retorne 3-7 Stories como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO O CONTEÚDO DEVE SER EM PORTUGUÊS."""
 
+        # PROMPT #85 - RAG Phase 3: Retrieve similar completed stories for learning
+        rag_context = ""
+        rag_story_count = 0
+        try:
+            from app.services.rag_service import RAGService
+
+            rag_service = RAGService(self.db)
+
+            # Build query from epic title + description
+            query = f"{epic.title} {epic.description or ''}"
+
+            # Retrieve similar completed stories (project-specific)
+            similar_stories = rag_service.retrieve(
+                query=query,
+                filter={"type": "completed_story", "project_id": str(project_id)},
+                top_k=5,
+                similarity_threshold=0.6
+            )
+
+            if similar_stories:
+                rag_story_count = len(similar_stories)
+                rag_context = "\n\n**APRENDIZADOS DE STORIES SIMILARES BEM-SUCEDIDAS:**\n"
+                rag_context += "Use estes exemplos como referência para criar stories melhores:\n\n"
+
+                for i, story in enumerate(similar_stories, 1):
+                    rag_context += f"{i}. {story['content']}\n"
+                    rag_context += f"   (Similaridade: {story['similarity']:.2f})\n\n"
+
+                rag_context += "**IMPORTANTE:** Use estes exemplos para:\n"
+                rag_context += "- Manter consistência nos títulos (formato User Story)\n"
+                rag_context += "- Estimar story points de forma mais precisa\n"
+                rag_context += "- Criar critérios de aceitação mais claros\n"
+                rag_context += "- Seguir o mesmo nível de granularidade e escopo\n"
+
+                # Inject RAG context into user prompt
+                user_prompt += f"\n\n{rag_context}"
+
+                logger.info(f"✅ RAG: Retrieved {rag_story_count} similar completed stories for epic decomposition")
+
+        except Exception as e:
+            logger.warning(f"⚠️  RAG retrieval failed for epic decomposition: {e}")
+
         # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
-        logger.info(f"🎯 Decomposing Epic {epic_id} into Stories...")
+        logger.info(f"🎯 Decomposing Epic {epic_id} into Stories... (RAG: {rag_story_count} similar stories)")
 
         try:
             result = await self.prompter.execute_prompt(
@@ -345,7 +387,9 @@ Retorne 3-7 Stories como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO
                     "input_tokens": result.get("input_tokens", 0),
                     "output_tokens": result.get("output_tokens", 0),
                     "cache_hit": result.get("cache_hit", False),
-                    "cache_type": result.get("cache_type", None)
+                    "cache_type": result.get("cache_type", None),
+                    "rag_enhanced": rag_story_count > 0,  # PROMPT #85 - Phase 3
+                    "rag_similar_stories": rag_story_count  # PROMPT #85 - Phase 3
                 }
 
             logger.info(f"✅ Generated {len(stories_suggestions)} Stories from Epic (cache: {result.get('cache_hit', False)})")
@@ -450,8 +494,50 @@ Critérios de Aceitação:
 
 Retorne 3-10 Tasks como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO O CONTEÚDO DEVE SER EM PORTUGUÊS."""
 
+        # PROMPT #85 - RAG Phase 3: Retrieve similar completed tasks for learning
+        rag_context = ""
+        rag_task_count = 0
+        try:
+            from app.services.rag_service import RAGService
+
+            rag_service = RAGService(self.db)
+
+            # Build query from story title + description
+            query = f"{story.title} {story.description or ''}"
+
+            # Retrieve similar completed tasks (project-specific)
+            similar_tasks = rag_service.retrieve(
+                query=query,
+                filter={"type": "completed_task", "project_id": str(project_id)},
+                top_k=5,
+                similarity_threshold=0.6
+            )
+
+            if similar_tasks:
+                rag_task_count = len(similar_tasks)
+                rag_context = "\n\n**APRENDIZADOS DE TASKS SIMILARES BEM-SUCEDIDAS:**\n"
+                rag_context += "Use estes exemplos como referência para criar tasks melhores:\n\n"
+
+                for i, task in enumerate(similar_tasks, 1):
+                    rag_context += f"{i}. {task['content']}\n"
+                    rag_context += f"   (Similaridade: {task['similarity']:.2f})\n\n"
+
+                rag_context += "**IMPORTANTE:** Use estes exemplos para:\n"
+                rag_context += "- Manter consistência nos títulos e descrições\n"
+                rag_context += "- Estimar story points de forma mais precisa\n"
+                rag_context += "- Criar critérios de aceitação mais claros\n"
+                rag_context += "- Seguir o mesmo nível de granularidade\n"
+
+                # Inject RAG context into user prompt
+                user_prompt += f"\n\n{rag_context}"
+
+                logger.info(f"✅ RAG: Retrieved {rag_task_count} similar completed tasks for story decomposition")
+
+        except Exception as e:
+            logger.warning(f"⚠️  RAG retrieval failed for story decomposition: {e}")
+
         # 4. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
-        logger.info(f"🎯 Decomposing Story {story_id} into Tasks...")
+        logger.info(f"🎯 Decomposing Story {story_id} into Tasks... (RAG: {rag_task_count} similar tasks)")
 
         try:
             result = await self.prompter.execute_prompt(
@@ -499,7 +585,9 @@ Retorne 3-10 Tasks como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO 
                     "input_tokens": result.get("input_tokens", 0),
                     "output_tokens": result.get("output_tokens", 0),
                     "cache_hit": result.get("cache_hit", False),
-                    "cache_type": result.get("cache_type", None)
+                    "cache_type": result.get("cache_type", None),
+                    "rag_enhanced": rag_task_count > 0,  # PROMPT #85 - Phase 3
+                    "rag_similar_tasks": rag_task_count  # PROMPT #85 - Phase 3
                 }
 
             logger.info(f"✅ Generated {len(tasks_suggestions)} Tasks from Story (cache: {result.get('cache_hit', False)})")
