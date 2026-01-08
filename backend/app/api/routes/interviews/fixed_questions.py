@@ -204,14 +204,15 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
     """
     Returns fixed questions for META PROMPT interviews.
     PROMPT #76 - Meta Prompt Feature
-    PROMPT #77 - Topic Selection (Q16)
+    PROMPT #77 - Topic Selection (Q17)
     PROMPT #79 - Stack Questions Added (Q1-Q7)
+    PROMPT #81 - Project Modules Question Added (Q8)
 
     Meta prompt is ALWAYS the first interview for any project.
     It gathers comprehensive information to generate the entire project hierarchy
     (Epics → Stories → Tasks → Subtasks) with atomic prompts.
 
-    Fixed Questions (Q1-Q16):
+    Fixed Questions (Q1-Q17):
     - Q1: Project Title
     - Q2: Project Description
     - Q3: Backend Framework
@@ -219,20 +220,21 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
     - Q5: Frontend Framework
     - Q6: CSS Framework
     - Q7: Mobile Framework
-    - Q8: Project Vision & Problem Statement
-    - Q9: Main Features/Modules (multiple choice)
-    - Q10: User Roles & Permissions
-    - Q11: Key Business Rules & Logic
-    - Q12: Data & Entities
-    - Q13: Success Criteria & Goals
-    - Q14: Technical Constraints/Preferences
-    - Q15: Project Scope & Priorities (MVP)
-    - Q16: Focus Topics (PROMPT #77)
+    - Q8: Project Modules/Components (Backend/API, Frontend Web, Mobile App, etc.)
+    - Q9: Project Vision & Problem Statement
+    - Q10: Main Features/Modules (Auth, CRUD, Reports, etc.)
+    - Q11: User Roles & Permissions
+    - Q12: Key Business Rules & Logic
+    - Q13: Data & Entities
+    - Q14: Success Criteria & Goals
+    - Q15: Technical Constraints/Preferences
+    - Q16: Project Scope & Priorities (MVP)
+    - Q17: Focus Topics (PROMPT #77)
 
-    After Q16, AI can ask contextual questions to clarify details.
+    After Q17, AI can ask contextual questions to clarify details.
 
     Args:
-        question_number: Question number (Q1-Q16 are fixed for meta prompt)
+        question_number: Question number (Q1-Q17 are fixed for meta prompt)
         project: Project instance
         db: Database session
 
@@ -294,25 +296,89 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
             }
         }
 
-    # Q8-Q16: Concept Questions
+    # Q8: Project Modules/Components (NEW - Architecture modules)
     elif question_number == 8:
         return {
             "role": "assistant",
-            "content": "🎯 Pergunta 8: Qual é a visão do projeto e o problema que ele resolve?\n\nDescreva brevemente:\n- Qual problema ou necessidade este projeto vai resolver?\n- Qual é o objetivo principal?\n- Quem são os usuários/clientes finais?",
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": "system/fixed-question-meta-prompt",
-            "question_type": "text",
-            "question_number": 8
-        }
-
-    elif question_number == 9:
-        return {
-            "role": "assistant",
-            "content": "📋 Pergunta 9: Quais são os principais módulos/funcionalidades do sistema?\n\nSelecione todos que se aplicam ao seu projeto:",
+            "content": "🏗️ Pergunta 8: Quais módulos/componentes você vai desenvolver neste projeto?\n\nSelecione todos os componentes que farão parte da solução:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
             "question_type": "multiple_choice",
-            "question_number": 9,
+            "question_number": 8,
+            "options": {
+                "type": "multiple",
+                "choices": [
+                    {
+                        "id": "backend_api",
+                        "label": "🔌 Backend/API REST",
+                        "value": "backend_api",
+                        "description": "API REST para servir dados e lógica de negócio"
+                    },
+                    {
+                        "id": "frontend_web",
+                        "label": "💻 Frontend Web (SPA/PWA)",
+                        "value": "frontend_web",
+                        "description": "Aplicação web client-side (React, Vue, Angular, Next.js)"
+                    },
+                    {
+                        "id": "mobile_app",
+                        "label": "📱 Mobile App (iOS/Android)",
+                        "value": "mobile_app",
+                        "description": "Aplicativo mobile nativo ou híbrido"
+                    },
+                    {
+                        "id": "admin_dashboard",
+                        "label": "⚙️ Dashboard Administrativo",
+                        "value": "admin_dashboard",
+                        "description": "Painel de administração para gestão do sistema"
+                    },
+                    {
+                        "id": "landing_page",
+                        "label": "🌐 Landing Page/Site Institucional",
+                        "value": "landing_page",
+                        "description": "Site público para divulgação/captação"
+                    },
+                    {
+                        "id": "background_jobs",
+                        "label": "⚡ Workers/Jobs em Background",
+                        "value": "background_jobs",
+                        "description": "Processamento assíncrono, filas, cron jobs"
+                    },
+                    {
+                        "id": "notification_system",
+                        "label": "🔔 Sistema de Notificações",
+                        "value": "notification_system",
+                        "description": "Envio de notificações (email, SMS, push)"
+                    },
+                    {
+                        "id": "reporting_system",
+                        "label": "📊 Sistema de Relatórios/BI",
+                        "value": "reporting_system",
+                        "description": "Geração de relatórios e dashboards analíticos"
+                    }
+                ]
+            }
+        }
+
+    # Q9-Q17: Concept Questions (renumbered from Q8-Q16)
+    elif question_number == 9:
+        return {
+            "role": "assistant",
+            "content": "🎯 Pergunta 9: Qual é a visão do projeto e o problema que ele resolve?\n\nDescreva brevemente:\n- Qual problema ou necessidade este projeto vai resolver?\n- Qual é o objetivo principal?\n- Quem são os usuários/clientes finais?",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "text",
+            "question_number": 9
+        }
+
+    elif question_number == 10:
+        return {
+            "role": "assistant",
+            "content": "📋 Pergunta 10: Quais são os principais módulos/funcionalidades do sistema?\n\nSelecione todos que se aplicam ao seu projeto:",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "multiple_choice",
+            "question_number": 10,
             "options": {
                 "type": "multiple",
                 "choices": [
@@ -332,20 +398,10 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
             }
         }
 
-    elif question_number == 10:
-        return {
-            "role": "assistant",
-            "content": "👥 Pergunta 10: Quais são os perfis de usuários e suas permissões?\n\nDescreva os principais tipos de usuários e o que cada um pode fazer no sistema.\n\nExemplo:\n- Admin: Acesso total, gerencia usuários, configurações\n- Editor: Cria e edita conteúdo, não gerencia usuários\n- Visualizador: Apenas visualiza, sem edição",
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": "system/fixed-question-meta-prompt",
-            "question_type": "text",
-            "question_number": 10
-        }
-
     elif question_number == 11:
         return {
             "role": "assistant",
-            "content": "⚙️ Pergunta 11: Quais são as principais regras de negócio do sistema?\n\nDescreva as regras críticas que o sistema deve seguir.\n\nExemplo:\n- Pedido só pode ser cancelado até 24h após criação\n- Usuário só pode aprovar documentos do seu departamento\n- Saldo não pode ficar negativo",
+            "content": "👥 Pergunta 11: Quais são os perfis de usuários e suas permissões?\n\nDescreva os principais tipos de usuários e o que cada um pode fazer no sistema.\n\nExemplo:\n- Admin: Acesso total, gerencia usuários, configurações\n- Editor: Cria e edita conteúdo, não gerencia usuários\n- Visualizador: Apenas visualiza, sem edição",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
             "question_type": "text",
@@ -355,7 +411,7 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
     elif question_number == 12:
         return {
             "role": "assistant",
-            "content": "🗃️ Pergunta 12: Quais são as principais entidades/dados do sistema?\n\nListe as entidades principais e seus relacionamentos básicos.\n\nExemplo:\n- Usuário (tem múltiplos Pedidos)\n- Pedido (pertence a um Usuário, contém múltiplos Itens)\n- Produto (pode estar em múltiplos Pedidos via Itens)\n- Categoria (agrupa Produtos)",
+            "content": "⚙️ Pergunta 12: Quais são as principais regras de negócio do sistema?\n\nDescreva as regras críticas que o sistema deve seguir.\n\nExemplo:\n- Pedido só pode ser cancelado até 24h após criação\n- Usuário só pode aprovar documentos do seu departamento\n- Saldo não pode ficar negativo",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
             "question_type": "text",
@@ -365,7 +421,7 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
     elif question_number == 13:
         return {
             "role": "assistant",
-            "content": "🎯 Pergunta 13: Quais são os critérios de sucesso do projeto?\n\nComo você vai medir se o projeto foi bem-sucedido?\n\nExemplo:\n- Processar 1000 pedidos por dia sem erros\n- Tempo de resposta < 2 segundos em 95% das requisições\n- Taxa de conversão de 15% nos primeiros 6 meses\n- Reduzir tempo de processamento manual de 4h para 30min",
+            "content": "🗃️ Pergunta 13: Quais são as principais entidades/dados do sistema?\n\nListe as entidades principais e seus relacionamentos básicos.\n\nExemplo:\n- Usuário (tem múltiplos Pedidos)\n- Pedido (pertence a um Usuário, contém múltiplos Itens)\n- Produto (pode estar em múltiplos Pedidos via Itens)\n- Categoria (agrupa Produtos)",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
             "question_type": "text",
@@ -375,7 +431,7 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
     elif question_number == 14:
         return {
             "role": "assistant",
-            "content": "🔧 Pergunta 14: Há alguma restrição técnica ou preferência arquitetural?\n\nDescreva limitações ou decisões técnicas já definidas.\n\nExemplo:\n- Deve rodar em infraestrutura AWS específica\n- Precisa integrar com sistema legado X\n- Segurança: LGPD compliance obrigatório\n- Performance: Suportar 10.000 usuários simultâneos",
+            "content": "🎯 Pergunta 14: Quais são os critérios de sucesso do projeto?\n\nComo você vai medir se o projeto foi bem-sucedido?\n\nExemplo:\n- Processar 1000 pedidos por dia sem erros\n- Tempo de resposta < 2 segundos em 95% das requisições\n- Taxa de conversão de 15% nos primeiros 6 meses\n- Reduzir tempo de processamento manual de 4h para 30min",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
             "question_type": "text",
@@ -385,7 +441,7 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
     elif question_number == 15:
         return {
             "role": "assistant",
-            "content": "📌 Pergunta 15: Qual é o escopo e prioridades do MVP (Minimum Viable Product)?\n\nQuais funcionalidades DEVEM estar na primeira versão (MVP) vs. podem ficar para depois?\n\nExemplo:\n✅ MVP (Essencial):\n- Login e autenticação\n- CRUD de pedidos\n- Relatório básico de vendas\n\n⏳ Versão 2 (Desejável):\n- Dashboard avançado\n- Integrações com marketplaces\n- App mobile",
+            "content": "🔧 Pergunta 15: Há alguma restrição técnica ou preferência arquitetural?\n\nDescreva limitações ou decisões técnicas já definidas.\n\nExemplo:\n- Deve rodar em infraestrutura AWS específica\n- Precisa integrar com sistema legado X\n- Segurança: LGPD compliance obrigatório\n- Performance: Suportar 10.000 usuários simultâneos",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
             "question_type": "text",
@@ -393,14 +449,24 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
         }
 
     elif question_number == 16:
+        return {
+            "role": "assistant",
+            "content": "📌 Pergunta 16: Qual é o escopo e prioridades do MVP (Minimum Viable Product)?\n\nQuais funcionalidades DEVEM estar na primeira versão (MVP) vs. podem ficar para depois?\n\nExemplo:\n✅ MVP (Essencial):\n- Login e autenticação\n- CRUD de pedidos\n- Relatório básico de vendas\n\n⏳ Versão 2 (Desejável):\n- Dashboard avançado\n- Integrações com marketplaces\n- App mobile",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fixed-question-meta-prompt",
+            "question_type": "text",
+            "question_number": 16
+        }
+
+    elif question_number == 17:
         # PROMPT #77 - Topic Selection for Focused Discussion
         return {
             "role": "assistant",
-            "content": "🎯 Pergunta 16: Sobre quais aspectos do projeto você quer conversar mais profundamente?\n\nSelecione os tópicos que você deseja conceitualizar e aprofundar com a IA:",
+            "content": "🎯 Pergunta 17: Sobre quais aspectos do projeto você quer conversar mais profundamente?\n\nSelecione os tópicos que você deseja conceitualizar e aprofundar com a IA:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
             "question_type": "multiple_choice",
-            "question_number": 16,
+            "question_number": 17,
             "options": {
                 "type": "multiple",
                 "choices": [
@@ -468,5 +534,5 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
             }
         }
 
-    # Q17+ are AI-generated contextual questions to clarify details
+    # Q18+ are AI-generated contextual questions to clarify details
     return None
