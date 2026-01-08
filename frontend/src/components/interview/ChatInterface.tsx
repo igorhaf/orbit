@@ -547,26 +547,28 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
     const messages = interviewData.conversation_data;
 
-    // PROMPT #67 - With 7 fixed questions, we need 14 messages total:
-    // Q1 (Title) + A1 + Q2 (Description) + A2 + Q3 (Backend) + A3 + Q4 (Database) + A4 + Q5 (Frontend) + A5 + Q6 (CSS) + A6 + Q7 (Mobile) + A7
-    // Or 15 messages (14 + next question)
-    if (messages.length < 14 || messages.length > 15) return;
+    // PROMPT #82 - Fixed answer indices (was reading from wrong messages!)
+    // Message structure:
+    // 0: Initial | 1: User start | 2: Q1 | 3: A1 | 4: Q2 | 5: A2 | 6: Q3 | 7: A3 | 8: Q4 | 9: A4 | 10: Q5 | 11: A5 | 12: Q6 | 13: A6 | 14: Q7 | 15: A7 | 16: Q8
+    // We need at least 16 messages (indices 0-15) to have all 7 answers
+    // Or 17 messages if Q8 has been sent
+    if (messages.length < 16 || messages.length > 17) return;
 
     // Verify the messages are stack questions by checking for backend keyword in Q3
     const aiMessages = messages.filter((m: any) => m.role === 'assistant');
     if (aiMessages.length < 7) return;
 
-    // Check if Q3 (index 4) is the backend question
+    // Check if Q3 (index 6) is the backend question
     const backendQuestion = aiMessages[2]?.content || '';  // Q3 is the 3rd AI message (index 2)
     if (!backendQuestion.includes('backend') && !backendQuestion.includes('Backend')) return;
 
-    // Extract user answers (PROMPT #67 - Updated indices for 7 questions)
-    // Stack answers are now at indices 5, 7, 9, 11, 13 (Questions 3, 4, 5, 6, 7)
-    const backendAnswer = messages[5]?.content || '';    // Answer to Q3 (Backend)
-    const databaseAnswer = messages[7]?.content || '';   // Answer to Q4 (Database)
-    const frontendAnswer = messages[9]?.content || '';   // Answer to Q5 (Frontend)
-    const cssAnswer = messages[11]?.content || '';       // Answer to Q6 (CSS)
-    const mobileAnswer = messages[13]?.content || '';    // Answer to Q7 (Mobile) - PROMPT #67
+    // Extract user answers - PROMPT #82 - CRITICAL FIX: Correct indices!
+    // Stack answers are at indices 7, 9, 11, 13, 15 (A3, A4, A5, A6, A7)
+    const backendAnswer = messages[7]?.content || '';    // Answer to Q3 (Backend) - was [5] (WRONG!)
+    const databaseAnswer = messages[9]?.content || '';   // Answer to Q4 (Database) - was [7] (WRONG!)
+    const frontendAnswer = messages[11]?.content || '';   // Answer to Q5 (Frontend) - was [9] (WRONG!)
+    const cssAnswer = messages[13]?.content || '';       // Answer to Q6 (CSS) - was [11] (WRONG!)
+    const mobileAnswer = messages[15]?.content || '';    // Answer to Q7 (Mobile) - was [13] (WRONG!)
 
     if (!backendAnswer || !databaseAnswer || !frontendAnswer || !cssAnswer) return;
 
