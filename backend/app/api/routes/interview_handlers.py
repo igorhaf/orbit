@@ -1,8 +1,11 @@
 """
-Interview Handlers - Dual-Mode Interview System
+Interview Handlers - Multi-Mode Interview System
 PROMPT #68 - Extracted routing logic for better maintainability
+PROMPT #91 - Simple Interview Mode
 
-This module contains the routing logic for both interview modes:
+This module contains the routing logic for all interview modes:
+- Simple Interview (first interview - PROMPT #91): Q1-Q8 conditional → AI contextual questions
+- Meta Prompt Interview (first interview - PROMPT #76): Q1-Q17 fixed → AI contextual questions
 - Requirements Interview (new projects): Q1-Q7 stack → AI business questions
 - Task-Focused Interview (existing projects): Q1 task type → AI focused questions
 """
@@ -28,6 +31,135 @@ except ImportError:
 
 
 logger = logging.getLogger(__name__)
+
+
+async def handle_simple_interview(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    db: Session,
+    get_simple_fixed_question_func,
+    count_fixed_questions_simple_func,
+    is_fixed_question_complete_simple_func,
+    clean_ai_response_func,
+    prepare_context_func
+) -> Dict[str, Any]:
+    """
+    Handle SIMPLE interview mode (PROMPT #91 - New simplified interview).
+
+    Flow:
+    - Q1-Q3: Basic info (title, description, system type) - Always asked
+    - Q4-Q8: Stack questions (conditional based on system type from Q3)
+      - apenas_api: Q4 backend, Q5 database (5 total)
+      - api_frontend: Q4 backend, Q5 database, Q6 frontend, Q7 CSS (7 total)
+      - api_mobile: Q4 backend, Q5 database, Q6 mobile (6 total)
+      - api_frontend_mobile: Q4-Q8 all stacks (8 total)
+    - Q9+: AI contextual questions (always closed-ended)
+
+    Args:
+        interview: Interview instance
+        project: Project instance
+        message_count: Current message count
+        db: Database session
+        get_simple_fixed_question_func: Function to get simple fixed questions
+        count_fixed_questions_simple_func: Function to count total fixed questions
+        is_fixed_question_complete_simple_func: Function to check if fixed phase is complete
+        clean_ai_response_func: Function to clean AI responses
+        prepare_context_func: Function to prepare interview context
+
+    Returns:
+        Response dict with success, message, and usage
+    """
+    logger.info(f"🎯 SIMPLE MODE - message_count={message_count}")
+
+    # Get system_type from previous answers (if Q3 was answered)
+    system_type = None
+    previous_answers = {}
+
+    # Extract previous answers from conversation
+    for i, msg in enumerate(interview.conversation_data):
+        if msg.get('role') == 'user':
+            # Determine which question this answers
+            question_num = (i + 1) // 2
+            previous_answers[f'q{question_num}'] = msg.get('content', '')
+
+            # If this is Q3 answer, extract system_type
+            if question_num == 3:
+                # Extract system_type from answer
+                content = msg.get('content', '').lower()
+                if 'apenas_api' in content or 'apenas api' in content:
+                    system_type = 'apenas_api'
+                elif 'api_frontend_mobile' in content or 'api + frontend + mobile' in content:
+                    system_type = 'api_frontend_mobile'
+                elif 'api_mobile' in content or 'api + mobile' in content:
+                    system_type = 'api_mobile'
+                elif 'api_frontend' in content or 'api + frontend' in content:
+                    system_type = 'api_frontend'
+
+                previous_answers['system_type'] = system_type
+                logger.info(f"Extracted system_type: {system_type}")
+
+    # Calculate current question number (messages are: Q, A, Q, A...)
+    # message_count=2 → Q1, message_count=4 → Q2, etc.
+    question_number = message_count // 2
+
+    # Check if we're still in fixed questions phase
+    # Need to know system_type to determine total fixed questions
+    if system_type:
+        total_fixed = count_fixed_questions_simple_func(system_type)
+        in_fixed_phase = question_number <= total_fixed
+    else:
+        # Before Q3 is answered, we don't know total fixed questions yet
+        # Q1, Q2, Q3 are always asked
+        in_fixed_phase = question_number <= 3
+
+    if in_fixed_phase:
+        # Fixed question phase
+        logger.info(f"Returning fixed Question {question_number}")
+
+        assistant_message = get_simple_fixed_question_func(
+            question_number=question_number,
+            project=project,
+            db=db,
+            previous_answers=previous_answers
+        )
+
+        if not assistant_message:
+            # No more fixed questions (conditional questions ended)
+            # Move to AI phase
+            logger.info(f"No fixed question {question_number} (conditional questions complete)")
+            return await _handle_ai_simple_contextual_question(
+                interview, project, message_count,
+                previous_answers, db,
+                clean_ai_response_func, prepare_context_func
+            )
+
+        # Add fixed question to conversation
+        interview.conversation_data.append(assistant_message)
+
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(interview, "conversation_data")
+        db.commit()
+        db.refresh(interview)
+
+        return {
+            "success": True,
+            "message": assistant_message,
+            "usage": {
+                "model": "system/fixed-question-simple",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_cost_usd": 0.0
+            }
+        }
+
+    else:
+        # AI contextual questions phase
+        return await _handle_ai_simple_contextual_question(
+            interview, project, message_count,
+            previous_answers, db,
+            clean_ai_response_func, prepare_context_func
+        )
 
 
 async def handle_meta_prompt_interview(
@@ -643,6 +775,105 @@ def _handle_fixed_question_meta(
             "total_cost_usd": 0.0
         }
     }
+
+
+async def _handle_ai_simple_contextual_question(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    previous_answers: dict,
+    db: Session,
+    clean_ai_response_func,
+    prepare_context_func
+) -> Dict[str, Any]:
+    """Handle AI-generated contextual questions in simple interview mode.
+
+    PROMPT #91 - Simple Interview Mode
+    """
+    logger.info(f"Using AI for simple contextual question (message_count={message_count})")
+
+    # Build context from previous answers
+    title = previous_answers.get('q1', project.name or '')
+    description = previous_answers.get('q2', project.description or '')
+    system_type = previous_answers.get('system_type', 'api_frontend')
+
+    # Extract stack choices from Q4-Q8
+    stack_backend = previous_answers.get('q4', project.stack_backend or '')
+    stack_database = previous_answers.get('q5', project.stack_database or '')
+    stack_frontend = previous_answers.get('q6', project.stack_frontend or '')
+    stack_css = previous_answers.get('q7', project.stack_css or '')
+    stack_mobile = previous_answers.get('q8', project.stack_mobile or '')
+
+    # Build rich context
+    context = f"""
+**INFORMAÇÕES DO PROJETO:**
+- Título: {title}
+- Descrição: {description}
+- Tipo de Sistema: {system_type}
+- Stack Backend: {stack_backend}
+- Stack Database: {stack_database}"""
+
+    if stack_frontend:
+        context += f"\n- Stack Frontend: {stack_frontend}"
+    if stack_css:
+        context += f"\n- Stack CSS: {stack_css}"
+    if stack_mobile:
+        context += f"\n- Stack Mobile: {stack_mobile}"
+
+    # Build system prompt for simple contextual questions
+    system_prompt = f"""Você é um analista de requisitos experiente conduzindo uma entrevista para um projeto de software.
+
+{context}
+
+**REGRAS CRÍTICAS - SIGA EXATAMENTE:**
+1. ❌ **NUNCA faça perguntas abertas** (texto livre)
+2. ✅ **SEMPRE forneça opções** para o cliente escolher
+3. ✅ **Use ESCOLHA ÚNICA (radio)** quando só pode haver UMA resposta
+4. ✅ **Use MÚLTIPLA ESCOLHA (checkbox)** quando pode haver VÁRIAS respostas
+5. ✅ Forneça sempre **3-5 opções relevantes** baseadas no contexto
+6. ✅ **NUNCA REPITA** uma pergunta já feita
+7. ✅ **INCREMENTE contexto** com cada resposta anterior
+8. ✅ Analise todas as respostas anteriores antes de perguntar
+9. ✅ Faça perguntas relevantes baseadas no tipo de sistema escolhido
+
+**FORMATO OBRIGATÓRIO:**
+
+Para ESCOLHA ÚNICA:
+❓ Pergunta [número]: [Sua pergunta]
+
+○ Opção 1
+○ Opção 2
+○ Opção 3
+
+Escolha UMA opção.
+
+Para MÚLTIPLA ESCOLHA:
+❓ Pergunta [número]: [Sua pergunta]
+
+☐ Opção 1
+☐ Opção 2
+☐ Opção 3
+
+☑️ Selecione todas que se aplicam.
+
+**TÓPICOS IMPORTANTES:**
+- Funcionalidades principais do sistema
+- Usuários e permissões
+- Integrações externas
+- Autenticação e segurança
+- Performance e escalabilidade
+- Deploy e infraestrutura
+
+Conduza em PORTUGUÊS. Continue com a próxima pergunta relevante!
+
+Após 8-12 perguntas total, conclua a entrevista.
+"""
+
+    # Call AI Orchestrator
+    return await _execute_ai_question(
+        interview, project, system_prompt, db,
+        clean_ai_response_func, prepare_context_func
+    )
 
 
 async def _handle_ai_meta_contextual_question(
