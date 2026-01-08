@@ -247,6 +247,151 @@ class SpecLoader:
         logger.debug(f"Loaded {len(specs)} selective specs for {category}/{name} (types: {spec_types})")
         return specs
 
+    def get_hybrid_specs(
+        self,
+        category: str,
+        name: str,
+        spec_types: Optional[List[str]] = None,
+        project_id: Optional[str] = None,
+        include_discovered: bool = True,
+        top_k_discovered: int = 5
+    ) -> List[SpecData]:
+        """
+        Get hybrid specs: static specs + RAG-discovered patterns
+
+        PROMPT #86 - RAG Phase 4: Specs Híbridas
+
+        Combines:
+        1. Static specs from JSON files (Laravel, Next.js, PostgreSQL, etc.)
+        2. Discovered patterns from RAG (project-specific + framework-worthy)
+
+        Args:
+            category: Framework category ('backend', 'frontend', 'database', etc.)
+            name: Framework name ('laravel', 'nextjs', 'postgresql', etc.)
+            spec_types: Optional list of spec types to filter (e.g., ['controller', 'model'])
+            project_id: Optional project UUID (retrieves project-specific patterns)
+            include_discovered: Whether to include RAG-discovered patterns (default: True)
+            top_k_discovered: Max number of discovered patterns to retrieve (default: 5)
+
+        Returns:
+            List of SpecData objects (static + discovered patterns converted to SpecData)
+
+        Example:
+            # Get all Laravel specs + discovered patterns for this project
+            specs = loader.get_hybrid_specs('backend', 'laravel', project_id='abc-123')
+
+            # Get only controller/model specs + discovered patterns
+            specs = loader.get_hybrid_specs(
+                'backend', 'laravel',
+                spec_types=['controller', 'model'],
+                project_id='abc-123'
+            )
+        """
+        # Step 1: Get static specs
+        if spec_types:
+            static_specs = self.get_specs_by_types(category, name, spec_types)
+        else:
+            static_specs = self.get_all_specs(category, name)
+
+        logger.debug(f"Loaded {len(static_specs)} static specs for {category}/{name}")
+
+        # Step 2: Get RAG-discovered patterns (if enabled)
+        discovered_specs = []
+        if include_discovered:
+            try:
+                from app.services.rag_service import RAGService
+                from sqlalchemy.orm import Session
+
+                # Import get_db to create a session
+                from app.database import SessionLocal
+                db = SessionLocal()
+
+                try:
+                    rag_service = RAGService(db)
+
+                    # Build query from category/name/spec_types
+                    query_parts = [category, name]
+                    if spec_types:
+                        query_parts.extend(spec_types)
+                    query = " ".join(query_parts)
+
+                    # Build filter
+                    filter_dict = {"type": "discovered_pattern", "category": category, "name": name}
+
+                    # Retrieve discovered patterns
+                    # Try project-specific first, then global framework-worthy
+                    if project_id:
+                        # Project-specific patterns
+                        project_patterns = rag_service.retrieve(
+                            query=query,
+                            filter={**filter_dict, "project_id": str(project_id)},
+                            top_k=top_k_discovered // 2,  # Half from project
+                            similarity_threshold=0.5
+                        )
+
+                        # Global framework-worthy patterns
+                        global_patterns = rag_service.retrieve(
+                            query=query,
+                            filter={**filter_dict, "is_framework_worthy": True},
+                            top_k=top_k_discovered // 2,  # Half from global
+                            similarity_threshold=0.6
+                        )
+
+                        discovered = project_patterns + global_patterns
+                    else:
+                        # Only global framework-worthy patterns
+                        discovered = rag_service.retrieve(
+                            query=query,
+                            filter={**filter_dict, "is_framework_worthy": True},
+                            top_k=top_k_discovered,
+                            similarity_threshold=0.6
+                        )
+
+                    # Convert to SpecData objects
+                    for pattern_doc in discovered:
+                        metadata = pattern_doc["metadata"]
+
+                        # Create SpecData-compatible object
+                        spec_data = SpecData({
+                            "id": pattern_doc["id"],
+                            "category": metadata.get("category", category),
+                            "name": metadata.get("name", name),
+                            "spec_type": metadata.get("spec_type", "discovered"),
+                            "title": f"🔍 {pattern_doc['content'][:50]}...",  # Use content preview
+                            "description": f"Discovered pattern (confidence: {metadata.get('confidence_score', 0):.2f})",
+                            "content": pattern_doc["content"],  # Full content from RAG
+                            "language": metadata.get("language", ""),
+                            "framework_version": "",
+                            "ignore_patterns": [],
+                            "file_extensions": [],
+                            "is_active": True,
+                            "metadata": {
+                                "created_at": metadata.get("discovered_at"),
+                                "updated_at": metadata.get("discovered_at"),
+                                "source": "rag_discovered",
+                                "confidence_score": metadata.get("confidence_score"),
+                                "is_framework_worthy": metadata.get("is_framework_worthy"),
+                                "source_project_id": metadata.get("source_project_id")
+                            }
+                        })
+
+                        discovered_specs.append(spec_data)
+
+                    if discovered_specs:
+                        logger.info(f"✅ RAG: Retrieved {len(discovered_specs)} discovered patterns for {category}/{name}")
+
+                finally:
+                    db.close()
+
+            except Exception as e:
+                logger.warning(f"⚠️  RAG pattern retrieval failed, using static specs only: {e}")
+
+        # Step 3: Combine and return
+        all_specs = static_specs + discovered_specs
+        logger.debug(f"Returning {len(all_specs)} hybrid specs ({len(static_specs)} static + {len(discovered_specs)} discovered)")
+
+        return all_specs
+
     def get_spec(
         self,
         category: str,

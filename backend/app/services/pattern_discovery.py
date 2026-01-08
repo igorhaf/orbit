@@ -123,7 +123,12 @@ class PatternDiscoveryService:
         ranked = self._rank_patterns(discovered_patterns)
 
         logger.info(f"🎯 Discovered {len(ranked)} patterns total")
-        return ranked[:max_patterns]
+
+        # PROMPT #86 - RAG Phase 4: Index discovered patterns in RAG
+        final_patterns = ranked[:max_patterns]
+        await self._index_patterns_in_rag(final_patterns, project_id)
+
+        return final_patterns
 
     def _build_file_inventory(self, project_path: Path) -> List[Path]:
         """
@@ -438,3 +443,87 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
             )
 
         return sorted(patterns, key=score, reverse=True)
+
+    async def _index_patterns_in_rag(
+        self,
+        patterns: List[DiscoveredPattern],
+        project_id: UUID
+    ) -> None:
+        """
+        Index discovered patterns in RAG for hybrid spec loading
+
+        PROMPT #86 - RAG Phase 4: Specs Híbridas
+
+        Stores discovered patterns in RAG to enable:
+        - Hybrid spec loading (static + discovered patterns)
+        - Cross-project pattern learning
+        - Pattern reuse across similar projects
+
+        Args:
+            patterns: List of discovered patterns to index
+            project_id: Project UUID
+        """
+        if not patterns:
+            logger.debug("No patterns to index in RAG")
+            return
+
+        try:
+            from app.services.rag_service import RAGService
+
+            rag_service = RAGService(self.db)
+            indexed_count = 0
+
+            for pattern in patterns:
+                # Build comprehensive content for semantic search
+                content_parts = [
+                    f"Pattern: {pattern.title}",
+                    f"Category: {pattern.category}/{pattern.spec_type}",
+                    f"Language: {pattern.language}",
+                    f"Description: {pattern.description}",
+                    "",
+                    "Key Characteristics:",
+                    "\n".join([f"- {char}" for char in pattern.key_characteristics]),
+                    "",
+                    "Template:",
+                    pattern.template_content[:500] + ("..." if len(pattern.template_content) > 500 else ""),
+                    "",
+                    f"AI Reasoning: {pattern.reasoning}"
+                ]
+
+                content = "\n".join(content_parts)
+
+                # Determine scope: project-specific or global (framework-worthy)
+                # Framework-worthy patterns stored globally (project_id=None)
+                # Project-specific patterns stored with project_id
+                storage_project_id = None if pattern.is_framework_worthy else project_id
+
+                # Store in RAG
+                rag_service.store(
+                    content=content,
+                    metadata={
+                        "type": "discovered_pattern",
+                        "category": pattern.category,
+                        "name": pattern.name,
+                        "spec_type": pattern.spec_type,
+                        "language": pattern.language,
+                        "confidence_score": pattern.confidence_score,
+                        "is_framework_worthy": pattern.is_framework_worthy,
+                        "occurrences": pattern.occurrences,
+                        "sample_files": pattern.sample_files[:3],  # First 3 samples
+                        "discovered_at": datetime.utcnow().isoformat(),
+                        "source_project_id": str(project_id),  # Always track source
+                        "discovery_method": pattern.discovery_method
+                    },
+                    project_id=storage_project_id
+                )
+
+                indexed_count += 1
+
+                scope = "global (framework-worthy)" if pattern.is_framework_worthy else f"project {project_id}"
+                logger.debug(f"   Indexed pattern '{pattern.title}' ({scope})")
+
+            logger.info(f"✅ RAG: Indexed {indexed_count} discovered patterns ({sum(1 for p in patterns if p.is_framework_worthy)} global, {sum(1 for p in patterns if not p.is_framework_worthy)} project-specific)")
+
+        except Exception as e:
+            # Don't fail pattern discovery if RAG indexing fails
+            logger.warning(f"⚠️  RAG indexing failed for discovered patterns: {e}")
