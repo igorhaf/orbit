@@ -321,10 +321,10 @@ export default function CommitsPage() {
                           <>
                             <span className="text-gray-400">•</span>
                             <Link
-                              href={`/tasks/${commit.task_id}`}
+                              href={`/projects/${commit.project_id}`}
                               className="text-blue-600 hover:text-blue-800 hover:underline"
                             >
-                              View Task
+                              View Project
                             </Link>
                           </>
                         )}

@@ -97,7 +97,7 @@ export function InterviewList({
       const interviewId = createdInterview.id;
 
       // Redirect to the interview page (it will auto-start with fixed questions)
-      router.push(`/interviews/${interviewId}`);
+      router.push(`/projects/${targetProjectId}/interviews/${interviewId}`);
     } catch (error) {
       console.error('Failed to create interview:', error);
       alert('Failed to create interview. Please try again.');
@@ -230,7 +230,7 @@ export function InterviewList({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {(filteredInterviews || []).map((interview) => (
-            <Link key={interview.id} href={`/interviews/${interview.id}`}>
+            <Link key={interview.id} href={`/projects/${interview.project_id}/interviews/${interview.id}`}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardHeader>
                   {!projectId && (

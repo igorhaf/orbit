@@ -339,7 +339,7 @@ export default function ProjectDetailsPage() {
                       conversation_data: [],
                     });
                     const interviewId = response.data?.id || response.id;
-                    router.push(`/interviews/${interviewId}`);
+                    router.push(`/projects/${projectId}/interviews/${interviewId}`);
                   } catch (error) {
                     console.error('Failed to create interview:', error);
                     alert('Failed to create interview. Please try again.');
