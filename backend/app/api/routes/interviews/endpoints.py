@@ -245,6 +245,8 @@ async def add_message_to_interview(
     """
     Add a new message to an interview's conversation.
 
+    PROMPT #84 - RAG Phase 2: Interview answers are now indexed in RAG for semantic search
+
     - **interview_id**: UUID of the interview
     - **message**: Message object to add to conversation_data
     """
@@ -259,6 +261,46 @@ async def add_message_to_interview(
 
     db.commit()
     db.refresh(interview)
+
+    # PROMPT #84 - RAG Phase 2: Index user answers in RAG
+    if message_request.message.get("role") == "user":
+        try:
+            from app.services.rag_service import RAGService
+
+            rag_service = RAGService(db)
+
+            # Find the previous assistant message (the question)
+            question_content = None
+            if len(interview.conversation_data) >= 2:
+                # Look backwards for last assistant message
+                for msg in reversed(interview.conversation_data[:-1]):
+                    if msg.get("role") == "assistant":
+                        question_content = msg.get("content", "")
+                        break
+
+            # Index the answer with metadata
+            user_content = message_request.message.get("content", "")
+            message_count = len(interview.conversation_data)
+            question_number = (message_count - 1) // 2  # Approximate question number
+
+            rag_service.store(
+                content=user_content,
+                metadata={
+                    "type": "interview_answer",
+                    "interview_id": str(interview.id),
+                    "question_number": question_number,
+                    "question": question_content or "",
+                    "interview_mode": interview.interview_mode,
+                    "timestamp": message_request.message.get("timestamp", datetime.utcnow().isoformat())
+                },
+                project_id=interview.project_id
+            )
+
+            logger.info(f"✅ RAG: Indexed interview answer (Q{question_number}) for interview {interview.id}")
+
+        except Exception as e:
+            # Don't fail the request if RAG indexing fails
+            logger.warning(f"⚠️  RAG indexing failed for interview answer: {e}")
 
     return interview
 

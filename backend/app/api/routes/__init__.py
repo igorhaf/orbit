@@ -15,7 +15,8 @@ from . import (
     commits,
     system_settings,
     backlog_generation,  # JIRA Transformation - AI-powered backlog generation
-    jobs  # PROMPT #65 - Async Job System
+    jobs,  # PROMPT #65 - Async Job System
+    knowledge  # PROMPT #84 - RAG Phase 2: Knowledge Search
 )
 
 __all__ = [
@@ -30,5 +31,6 @@ __all__ = [
     "commits",
     "system_settings",
     "backlog_generation",  # JIRA Transformation - AI-powered backlog generation
-    "jobs"  # PROMPT #65 - Async Job System
+    "jobs",  # PROMPT #65 - Async Job System
+    "knowledge"  # PROMPT #84 - RAG Phase 2: Knowledge Search
 ]
