@@ -6,7 +6,7 @@ PROMPT #54 - AI Execution Logging System
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, Text, Integer, DateTime, JSON, ForeignKey
+from sqlalchemy import Column, String, Text, Integer, Float, Boolean, DateTime, JSON, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -34,6 +34,11 @@ class AIExecution(Base):
         execution_metadata: Additional metadata as JSON (renamed from metadata to avoid SQLAlchemy conflict)
         error_message: Error message if execution failed
         execution_time_ms: Execution time in milliseconds
+        rag_enabled: Was RAG feature enabled for this execution? (PROMPT #89)
+        rag_hit: Did RAG find relevant results? (PROMPT #89)
+        rag_results_count: Number of RAG documents retrieved (PROMPT #89)
+        rag_top_similarity: Highest similarity score from RAG (0.0-1.0) (PROMPT #89)
+        rag_retrieval_time_ms: Time spent on RAG retrieval in milliseconds (PROMPT #89)
         created_at: Timestamp of execution
     """
 
@@ -71,6 +76,13 @@ class AIExecution(Base):
     execution_metadata = Column(JSON, nullable=True, default=dict)  # Renamed from 'metadata' to avoid SQLAlchemy conflict
     error_message = Column(Text, nullable=True)
     execution_time_ms = Column(Integer, nullable=True)
+
+    # PROMPT #89 - RAG Metrics
+    rag_enabled = Column(Boolean, nullable=True, default=False)  # Was RAG enabled for this execution?
+    rag_hit = Column(Boolean, nullable=True, default=False)  # Did RAG find relevant results?
+    rag_results_count = Column(Integer, nullable=True, default=0)  # Number of RAG documents retrieved
+    rag_top_similarity = Column(Float, nullable=True)  # Highest similarity score (0.0-1.0)
+    rag_retrieval_time_ms = Column(Float, nullable=True)  # Time spent on RAG retrieval (milliseconds)
 
     # Timestamp
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)

@@ -440,7 +440,16 @@ class AIOrchestrator:
         logger.info(f"📤 Executing with config: max_tokens={tokens_limit}, temperature={temperature}")
 
         # PROMPT #83 - RAG Enhancement (before cache check)
+        # PROMPT #89 - RAG Metrics Tracking
         rag_context_injected = False
+        rag_metrics = {
+            "rag_enabled": enable_rag,
+            "rag_hit": False,
+            "rag_results_count": 0,
+            "rag_top_similarity": None,
+            "rag_retrieval_time_ms": None
+        }
+
         if enable_rag and self.rag_service and messages:
             try:
                 # Extract query from last user message
@@ -456,6 +465,9 @@ class AIOrchestrator:
                     if project_id and "project_id" not in filter_dict:
                         filter_dict["project_id"] = project_id
 
+                    # PROMPT #89 - Measure RAG retrieval time
+                    rag_start_time = time.time()
+
                     # Retrieve relevant knowledge
                     rag_results = self.rag_service.retrieve(
                         query=query,
@@ -464,7 +476,15 @@ class AIOrchestrator:
                         similarity_threshold=rag_similarity_threshold
                     )
 
+                    # Calculate retrieval time
+                    rag_metrics["rag_retrieval_time_ms"] = (time.time() - rag_start_time) * 1000
+
                     if rag_results:
+                        # Update metrics
+                        rag_metrics["rag_hit"] = True
+                        rag_metrics["rag_results_count"] = len(rag_results)
+                        rag_metrics["rag_top_similarity"] = rag_results[0]["similarity"] if rag_results else None
+
                         # Format RAG context for injection
                         rag_context_text = "\n".join([
                             f"[{i+1}] (similarity: {r['similarity']:.2f})\n{r['content']}"
@@ -480,9 +500,11 @@ class AIOrchestrator:
                         rag_context_injected = True
 
                         logger.info(
-                            f"🔍 RAG: Injected {len(rag_results)} relevant docs "
-                            f"(avg similarity: {sum(r['similarity'] for r in rag_results) / len(rag_results):.2f})"
+                            f"🔍 RAG HIT: {len(rag_results)} docs (top similarity: {rag_metrics['rag_top_similarity']:.2f}, "
+                            f"retrieval: {rag_metrics['rag_retrieval_time_ms']:.1f}ms)"
                         )
+                    else:
+                        logger.info(f"🔍 RAG MISS: No relevant docs found (threshold: {rag_similarity_threshold})")
             except Exception as e:
                 logger.warning(f"⚠️  RAG retrieval failed: {e}")
 
@@ -544,6 +566,7 @@ class AIOrchestrator:
             result["rag_enhanced"] = rag_context_injected  # PROMPT #83
 
             # PROMPT #54 - Log successful execution to database
+            # PROMPT #89 - Include RAG metrics
             execution_time_ms = int((time.time() - start_time) * 1000)
             try:
                 execution_log = AIExecution(
@@ -560,7 +583,13 @@ class AIOrchestrator:
                     temperature=str(temperature),
                     max_tokens=tokens_limit,
                     execution_time_ms=execution_time_ms,
-                    created_at=datetime.utcnow()
+                    created_at=datetime.utcnow(),
+                    # PROMPT #89 - RAG metrics
+                    rag_enabled=rag_metrics["rag_enabled"],
+                    rag_hit=rag_metrics["rag_hit"],
+                    rag_results_count=rag_metrics["rag_results_count"],
+                    rag_top_similarity=rag_metrics["rag_top_similarity"],
+                    rag_retrieval_time_ms=rag_metrics["rag_retrieval_time_ms"]
                 )
                 self.db.add(execution_log)
                 self.db.commit()
@@ -653,6 +682,7 @@ class AIOrchestrator:
             logger.error(f"❌ Error with {provider} ({model_name}): {str(e)}")
 
             # PROMPT #54 - Log failed execution to database
+            # PROMPT #89 - Include RAG metrics even on failure
             execution_time_ms = int((time.time() - start_time) * 1000)
             try:
                 execution_log = AIExecution(
@@ -670,7 +700,13 @@ class AIOrchestrator:
                     max_tokens=tokens_limit,
                     error_message=str(e),
                     execution_time_ms=execution_time_ms,
-                    created_at=datetime.utcnow()
+                    created_at=datetime.utcnow(),
+                    # PROMPT #89 - RAG metrics (even on failure)
+                    rag_enabled=rag_metrics["rag_enabled"],
+                    rag_hit=rag_metrics["rag_hit"],
+                    rag_results_count=rag_metrics["rag_results_count"],
+                    rag_top_similarity=rag_metrics["rag_top_similarity"],
+                    rag_retrieval_time_ms=rag_metrics["rag_retrieval_time_ms"]
                 )
                 self.db.add(execution_log)
                 self.db.commit()
