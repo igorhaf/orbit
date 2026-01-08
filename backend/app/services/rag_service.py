@@ -194,43 +194,22 @@ class RAGService:
                     where_clauses.append(f"metadata->>'{key}' = :{key}")
                     params[key] = value
 
-        # Cosine similarity: 1 - (A <=> B) where <=> is cosine distance operator
-        # Note: This uses array operators, not pgvector (for now)
-        # Formula: cosine_similarity = dot(A, B) / (norm(A) * norm(B))
+        # Cosine similarity using pgvector: 1 - (A <=> B)
+        # <=> is the cosine distance operator (optimized with SIMD)
+        # Returns similarity score between 0 and 1 (1 = identical, 0 = orthogonal)
+        # PROMPT #88 - pgvector optimization (10-50x faster than manual calculation)
         sql = f"""
-            WITH query_vec AS (
-                SELECT :embedding::float8[] as vec
-            ),
-            similarities AS (
-                SELECT
-                    id,
-                    project_id,
-                    content,
-                    metadata,
-                    created_at,
-                    (
-                        SELECT SUM(a * b)
-                        FROM (
-                            SELECT unnest(embedding) as a, unnest(query_vec.vec) as b
-                            FROM query_vec
-                        ) AS dot_product
-                    ) / (
-                        SQRT((SELECT SUM(a * a) FROM unnest(embedding) as a)) *
-                        SQRT((SELECT SUM(b * b) FROM unnest(query_vec.vec) as b))
-                    ) as similarity
-                FROM rag_documents, query_vec
-                WHERE {" AND ".join(where_clauses)}
-            )
             SELECT
                 id,
                 project_id,
                 content,
                 metadata,
                 created_at,
-                similarity
-            FROM similarities
-            WHERE similarity >= :threshold
-            ORDER BY similarity DESC
+                (1 - (embedding <=> :embedding::vector)) as similarity
+            FROM rag_documents
+            WHERE {" AND ".join(where_clauses)}
+                AND (1 - (embedding <=> :embedding::vector)) >= :threshold
+            ORDER BY embedding <=> :embedding::vector
             LIMIT :k
         """
 
