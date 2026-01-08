@@ -41,7 +41,7 @@ class AIOrchestrator:
     - general: Gemini (barato para queries simples)
     """
 
-    def __init__(self, db: Session, cache_service=None, enable_cache=True):
+    def __init__(self, db: Session, cache_service=None, enable_cache=True, enable_rag=True):
         """
         Inicializa o orquestrador
 
@@ -49,6 +49,7 @@ class AIOrchestrator:
             db: Sessão do banco de dados
             cache_service: CacheService opcional para caching (PROMPT #74)
             enable_cache: Se True, inicializa cache automaticamente se não fornecido (PROMPT #74)
+            enable_rag: Se True, inicializa RAG service para retrieval-augmented generation (PROMPT #83)
         """
         self.db = db
 
@@ -57,6 +58,18 @@ class AIOrchestrator:
             cache_service = self._initialize_cache()
 
         self.cache_service = cache_service
+
+        # PROMPT #83 - Initialize RAG service
+        self.rag_service = None
+        if enable_rag:
+            try:
+                from app.services.rag_service import RAGService
+                self.rag_service = RAGService(db)
+                logger.info("✅ RAG service initialized")
+            except Exception as e:
+                logger.warning(f"⚠️  RAG service initialization failed: {e}")
+                self.rag_service = None
+
         self.clients: Dict[str, any] = {}
         self._initialize_clients()
 
@@ -381,13 +394,19 @@ class AIOrchestrator:
         project_id: Optional[UUID] = None,
         interview_id: Optional[UUID] = None,
         task_id: Optional[UUID] = None,
-        metadata: Optional[Dict] = None
+        metadata: Optional[Dict] = None,
+        # PROMPT #83 - RAG integration
+        enable_rag: bool = False,  # Feature flag - opt-in for now
+        rag_filter: Optional[Dict] = None,
+        rag_top_k: int = 3,
+        rag_similarity_threshold: float = 0.7
     ) -> Dict:
         """
         Executa chamada de IA usando modelo e configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
         PROMPT #54 - AI Execution Logging
         PROMPT #58 - Prompt Audit Logging
+        PROMPT #83 - RAG Integration (Retrieval-Augmented Generation)
 
         Args:
             usage_type: Tipo de uso para seleção do modelo
@@ -398,9 +417,13 @@ class AIOrchestrator:
             interview_id: ID da entrevista (PROMPT #58 - para contexto)
             task_id: ID da task (PROMPT #58 - para contexto)
             metadata: Metadados adicionais (PROMPT #58 - para contexto)
+            enable_rag: Se True, busca conhecimento relevante antes da execução (PROMPT #83)
+            rag_filter: Filtros para RAG retrieval (project_id, type, etc.)
+            rag_top_k: Número de documentos similares a recuperar (default: 3)
+            rag_similarity_threshold: Threshold de similaridade (0.0-1.0, default: 0.7)
 
         Returns:
-            Dicionário com response, usage, provider, model e db_model_info
+            Dicionário com response, usage, provider, model, db_model_info e rag_enhanced flag
 
         Raises:
             Exception: Se a execução falhar em todos os providers
@@ -415,6 +438,53 @@ class AIOrchestrator:
         temperature = model_config["temperature"]
 
         logger.info(f"📤 Executing with config: max_tokens={tokens_limit}, temperature={temperature}")
+
+        # PROMPT #83 - RAG Enhancement (before cache check)
+        rag_context_injected = False
+        if enable_rag and self.rag_service and messages:
+            try:
+                # Extract query from last user message
+                query = None
+                for msg in reversed(messages):
+                    if msg.get("role") == "user":
+                        query = msg.get("content", "")
+                        break
+
+                if query:
+                    # Build filter dict
+                    filter_dict = rag_filter or {}
+                    if project_id and "project_id" not in filter_dict:
+                        filter_dict["project_id"] = project_id
+
+                    # Retrieve relevant knowledge
+                    rag_results = self.rag_service.retrieve(
+                        query=query,
+                        filter=filter_dict,
+                        top_k=rag_top_k,
+                        similarity_threshold=rag_similarity_threshold
+                    )
+
+                    if rag_results:
+                        # Format RAG context for injection
+                        rag_context_text = "\n".join([
+                            f"[{i+1}] (similarity: {r['similarity']:.2f})\n{r['content']}"
+                            for i, r in enumerate(rag_results)
+                        ])
+
+                        # Inject RAG context before last user message
+                        rag_message = {
+                            "role": "user",
+                            "content": f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]"
+                        }
+                        messages.insert(-1, rag_message)
+                        rag_context_injected = True
+
+                        logger.info(
+                            f"🔍 RAG: Injected {len(rag_results)} relevant docs "
+                            f"(avg similarity: {sum(r['similarity'] for r in rag_results) / len(rag_results):.2f})"
+                        )
+            except Exception as e:
+                logger.warning(f"⚠️  RAG retrieval failed: {e}")
 
         # PROMPT #74 - Check cache before execution
         if self.cache_service:
@@ -444,7 +514,8 @@ class AIOrchestrator:
                     "db_model_id": model_config["db_model_id"],
                     "db_model_name": model_config["db_model_name"],
                     "cache_hit": True,  # Flag indicating cache hit
-                    "cache_type": cached_result.get("cache_type")
+                    "cache_type": cached_result.get("cache_type"),
+                    "rag_enhanced": rag_context_injected  # PROMPT #83
                 }
 
         # PROMPT #54 - Track execution time
@@ -470,6 +541,7 @@ class AIOrchestrator:
             # Adicionar informações do modelo do banco na resposta
             result["db_model_id"] = model_config["db_model_id"]
             result["db_model_name"] = model_config["db_model_name"]
+            result["rag_enhanced"] = rag_context_injected  # PROMPT #83
 
             # PROMPT #54 - Log successful execution to database
             execution_time_ms = int((time.time() - start_time) * 1000)
