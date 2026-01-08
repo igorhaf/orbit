@@ -20,6 +20,14 @@ export const Breadcrumbs: React.FC = () => {
   // Don't show breadcrumbs on home page
   if (pathname === '/') return null;
 
+  // UUID regex pattern
+  const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  // Helper function to check if a segment is a UUID
+  const isUUID = (segment: string): boolean => {
+    return UUID_PATTERN.test(segment);
+  };
+
   // Custom labels for specific routes
   const routeLabels: Record<string, string> = {
     'ai-models': 'AI Models',
@@ -41,6 +49,28 @@ export const Breadcrumbs: React.FC = () => {
     'models': 'Models',
   };
 
+  // Labels for UUID segments based on parent context
+  const getUUIDLabel = (parentSegment: string | undefined): string => {
+    if (!parentSegment) return 'Details';
+
+    switch (parentSegment) {
+      case 'interviews':
+        return 'Interview';
+      case 'projects':
+        return 'Project';
+      case 'tasks':
+        return 'Task';
+      case 'prompts':
+        return 'Prompt';
+      case 'ai-models':
+        return 'Model';
+      case 'commits':
+        return 'Commit';
+      default:
+        return 'Details';
+    }
+  };
+
   // Build breadcrumb path
   const pathSegments = pathname.split('/').filter(Boolean);
 
@@ -48,6 +78,13 @@ export const Breadcrumbs: React.FC = () => {
     { name: 'Home', href: '/' },
     ...pathSegments.map((segment, index) => {
       const href = '/' + pathSegments.slice(0, index + 1).join('/');
+      const parentSegment = index > 0 ? pathSegments[index - 1] : undefined;
+
+      // Check if segment is a UUID
+      if (isUUID(segment)) {
+        const name = getUUIDLabel(parentSegment);
+        return { name, href };
+      }
 
       // Use custom label if available, otherwise capitalize
       const name = routeLabels[segment] || segment
