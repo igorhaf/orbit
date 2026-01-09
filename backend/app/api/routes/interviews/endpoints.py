@@ -172,7 +172,7 @@ async def create_interview(
         )
 
     # PROMPT #97 - Hierarchical Interview Flow
-    # PROMPT #98 - Allow card_focused for first interview too (creates Epic with motivation type)
+    # PROMPT #98 - Card-focused mode for Stories/Tasks/Subtasks (not for Epic - Epic has no motivation type)
     # Determine interview mode based on parent_task_id and use_card_focused flag
     parent_task_id = interview_data.parent_task_id
 
@@ -183,30 +183,18 @@ async def create_interview(
     logger.info(f"  - project_id: {interview_data.project_id}")
     logger.info(f"  - ai_model_used: {interview_data.ai_model_used}")
 
-    # PROMPT #98 - Check if card_focused mode is requested (works for BOTH first interview and hierarchical)
-    if interview_data.use_card_focused:
-        # Card-focused mode requested
-        interview_mode = "card_focused"
-        if parent_task_id is None:
-            logger.info(f"Creating FIRST interview (card-focused) for project {project.name}:")
-            logger.info(f"  - interview_mode: card_focused (PROMPT #98 - Creates Epic with motivation type)")
-        else:
-            parent_task = db.query(Task).filter(Task.id == parent_task_id).first()
-            if not parent_task:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Parent task {parent_task_id} not found"
-                )
-            logger.info(f"Creating hierarchical interview (card-focused) from '{parent_task.title}':")
-            logger.info(f"  - interview_mode: card_focused (PROMPT #98 - Creates child item with motivation type)")
-    elif parent_task_id is None:
-        # No card_focused, no parent → FIRST INTERVIEW → meta_prompt (creates Epic)
+    if parent_task_id is None:
+        # FIRST INTERVIEW - Epic creation
+        # Epic never has motivation type (it's the start of the project)
         interview_mode = "meta_prompt"
         logger.info(f"Creating FIRST interview for project {project.name}:")
         logger.info(f"  - interview_mode: meta_prompt (PROMPT #97 - Creates Epic)")
-        logger.info(f"  - This interview collects comprehensive project info (Q1-Q18)")
+        logger.info(f"  - Epic has no motivation type (not applicable for projects)")
+        if interview_data.use_card_focused:
+            logger.warning(f"  - Note: use_card_focused=true ignored for Epic (first interview)")
     else:
-        # Has parent AND not card_focused → Standard hierarchical interview → mode depends on parent item_type
+        # HIERARCHICAL INTERVIEW - Story/Task/Subtask creation
+        # Card-focused mode applies here (with motivation types)
         parent_task = db.query(Task).filter(Task.id == parent_task_id).first()
 
         if not parent_task:
@@ -215,26 +203,31 @@ async def create_interview(
                 detail=f"Parent task {parent_task_id} not found"
             )
 
-        # Determine mode based on parent item_type
-        if parent_task.item_type == ItemType.EPIC:
-            # Epic → Story
-            interview_mode = "orchestrator"
-            logger.info(f"Creating Story interview from Epic '{parent_task.title}':")
-            logger.info(f"  - interview_mode: orchestrator (PROMPT #97 - Creates Story)")
-        elif parent_task.item_type == ItemType.STORY:
-            # Story → Task
-            interview_mode = "task_orchestrated"
-            logger.info(f"Creating Task interview from Story '{parent_task.title}':")
-            logger.info(f"  - interview_mode: task_orchestrated (PROMPT #97 - Creates Task)")
-        elif parent_task.item_type == ItemType.TASK:
-            # Task → Subtask
-            interview_mode = "subtask_orchestrated"
-            logger.info(f"Creating Subtask interview from Task '{parent_task.title}':")
-            logger.info(f"  - interview_mode: subtask_orchestrated (PROMPT #97 - Creates Subtask)")
+        # PROMPT #98 - Check if card-focused mode is requested
+        if interview_data.use_card_focused:
+            # Card-focused: Q1 motivation type, Q2 title, Q3 description, Q4+ AI contextual
+            interview_mode = "card_focused"
+            logger.info(f"Creating hierarchical interview (card-focused) from '{parent_task.title}':")
+            logger.info(f"  - interview_mode: card_focused (PROMPT #98 - Creates item with motivation type)")
         else:
-            # Fallback for other types
-            interview_mode = "task_orchestrated"
-            logger.warning(f"Unknown parent type {parent_task.item_type}, defaulting to task_orchestrated")
+            # Standard hierarchical: depends on parent type
+            logger.info(f"Creating hierarchical interview from '{parent_task.title}':")
+            if parent_task.item_type == ItemType.EPIC:
+                # Epic → Story
+                interview_mode = "orchestrator"
+                logger.info(f"  - interview_mode: orchestrator (PROMPT #97 - Creates Story)")
+            elif parent_task.item_type == ItemType.STORY:
+                # Story → Task
+                interview_mode = "task_orchestrated"
+                logger.info(f"  - interview_mode: task_orchestrated (PROMPT #97 - Creates Task)")
+            elif parent_task.item_type == ItemType.TASK:
+                # Task → Subtask
+                interview_mode = "subtask_orchestrated"
+                logger.info(f"  - interview_mode: subtask_orchestrated (PROMPT #97 - Creates Subtask)")
+            else:
+                # Fallback for other types
+                interview_mode = "task_orchestrated"
+                logger.warning(f"Unknown parent type {parent_task.item_type}, defaulting to task_orchestrated")
 
     # DEBUG: Log the determined interview mode (PROMPT #98 debugging)
     logger.info(f"✅ INTERVIEW MODE DETERMINED: interview_mode={interview_mode}")
