@@ -392,10 +392,12 @@ export default function ProjectDetailsPage() {
                 className="h-10"
                 onClick={async () => {
                   try {
+                    // PROMPT #97 - First interview with no parent → meta_prompt
                     const response = await interviewsApi.create({
                       project_id: projectId,
                       ai_model_used: 'claude-3-sonnet',
                       conversation_data: [],
+                      parent_task_id: null,  // PROMPT #97 - Null = first interview = meta_prompt
                     });
                     const interviewId = response.data?.id || response.id;
                     router.push(`/projects/${projectId}/interviews/${interviewId}`);

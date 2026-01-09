@@ -46,10 +46,11 @@ export default function NewProjectPage() {
 
       setProjectId(projectRes.data.id);
 
-      // Create interview
+      // Create interview (PROMPT #97 - First interview with no parent → meta_prompt)
       const interviewRes = await interviewsApi.create({
         project_id: projectRes.data.id,
         ai_model_used: 'claude-sonnet-4-20250514',
+        parent_task_id: null,  // PROMPT #97 - Null = first interview = meta_prompt
       });
 
       setInterviewId(interviewRes.data.id);
