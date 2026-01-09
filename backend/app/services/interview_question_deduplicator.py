@@ -47,7 +47,7 @@ class InterviewQuestionDeduplicator:
         self.rag_service = RAGService(db)
         self.threshold = similarity_threshold
 
-        logger.info(f"✅ InterviewQuestionDeduplicator initialized (threshold={threshold:.0%})")
+        logger.info(f"✅ InterviewQuestionDeduplicator initialized (threshold={self.threshold:.0%})")
 
     def store_question(
         self,
