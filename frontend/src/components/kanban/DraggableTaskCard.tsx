@@ -16,10 +16,11 @@ interface Props {
   onDeleted: () => void;
   onUpdated: () => void;
   disabled?: boolean; // PROMPT #95 - Disable drag for blocked tasks
-  onBlockedTaskClick?: (task: Task) => void; // PROMPT #95 - Click handler for blocked tasks
+  onTaskClick?: (task: Task) => void; // PROMPT #97 - Click handler for regular tasks (opens ItemDetailPanel)
+  onBlockedTaskClick?: (task: Task) => void; // PROMPT #95 - Click handler for blocked tasks (opens ModificationApprovalModal)
 }
 
-export function DraggableTaskCard({ task, onDeleted, onUpdated, disabled, onBlockedTaskClick }: Props) {
+export function DraggableTaskCard({ task, onDeleted: _onDeleted, onUpdated, disabled, onTaskClick, onBlockedTaskClick }: Props) {
   const {
     attributes,
     listeners,
@@ -43,10 +44,14 @@ export function DraggableTaskCard({ task, onDeleted, onUpdated, disabled, onBloc
     onUpdated();
   };
 
-  // PROMPT #95 - Handle click on blocked task
+  // PROMPT #97 - Handle click on task card
   const handleClick = () => {
     if (disabled && onBlockedTaskClick) {
+      // PROMPT #95 - Blocked tasks open ModificationApprovalModal
       onBlockedTaskClick(task);
+    } else if (!disabled && onTaskClick) {
+      // PROMPT #97 - Regular tasks open ItemDetailPanel
+      onTaskClick(task);
     }
   };
 
@@ -57,7 +62,7 @@ export function DraggableTaskCard({ task, onDeleted, onUpdated, disabled, onBloc
       {...attributes}
       {...(disabled ? {} : listeners)} // PROMPT #95 - Only add drag listeners if not disabled
       onClick={handleClick}
-      className={disabled ? 'cursor-pointer' : ''} // PROMPT #95 - Show pointer cursor for blocked tasks
+      className={onTaskClick || onBlockedTaskClick ? 'cursor-pointer' : ''} // PROMPT #97 - Show pointer cursor when clickable
     >
       <TaskCard
         task={task}
