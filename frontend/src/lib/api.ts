@@ -250,6 +250,24 @@ export const tasksApi = {
     request<any>(`/api/v1/tasks/${taskId}/create-interview`, {
       method: 'POST',
     }),
+
+  // PROMPT #95 - Blocking System: Get, Approve, Reject blocked tasks
+  getBlocked: (projectId: string) => {
+    const queryParams = new URLSearchParams();
+    queryParams.append('project_id', projectId);
+    return request<any>(`/api/v1/tasks/blocked?${queryParams.toString()}`);
+  },
+
+  approveModification: (taskId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/approve-modification`, {
+      method: 'POST',
+    }),
+
+  rejectModification: (taskId: string, reason?: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/reject-modification`, {
+      method: 'POST',
+      body: JSON.stringify(reason ? { rejection_reason: reason } : {}),
+    }),
 };
 
 // Backlog Generation API (JIRA Transformation - PROMPT #62)
