@@ -5,7 +5,7 @@ CRUD operations for managing tasks with Kanban board functionality.
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
@@ -1432,10 +1432,10 @@ class BlockingAnalytics(BaseModel):
     similarity_distribution: Dict[str, int]  # {"90+": X, "80-90": Y, ...}
 
     # Timeline
-    blocked_by_date: List[Dict[str, any]]  # [{"date": "2026-01-09", "count": 5}, ...]
+    blocked_by_date: List[Dict[str, Any]]  # [{"date": "2026-01-09", "count": 5}, ...]
 
     # Project breakdown
-    blocked_by_project: List[Dict[str, any]]  # [{"project_name": "X", "count": Y}, ...]
+    blocked_by_project: List[Dict[str, Any]]  # [{"project_name": "X", "count": Y}, ...]
 
 
 @router.get("/analytics/blocking", response_model=BlockingAnalytics)
