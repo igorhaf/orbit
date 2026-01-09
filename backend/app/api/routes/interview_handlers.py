@@ -100,8 +100,11 @@ async def handle_simple_interview(
                 logger.info(f"Extracted system_type: {system_type}")
 
     # Calculate current question number (messages are: Q, A, Q, A...)
-    # message_count=2 → Q1, message_count=4 → Q2, etc.
-    question_number = message_count // 2
+    # Start interview adds Q1 → conversation_data = [Q1] (length=1)
+    # User answers → conversation_data = [Q1, A1] (length=2) → next question is Q2
+    # message_count=2 ([Q1, A1]) → question_number=2
+    # message_count=4 ([Q1, A1, Q2, A2]) → question_number=3
+    question_number = (message_count // 2) + 1
 
     # Check if we're still in fixed questions phase
     # Need to know system_type to determine total fixed questions

@@ -156,16 +156,13 @@ async def create_interview(
         logger.info(f"  - interview_mode: simple (ALWAYS for first interview - PROMPT #91)")
         logger.info(f"  - This interview will gather project info with conditional stack questions")
     else:
-        # NOT FIRST - Use PROMPT #68 logic (requirements or task_focused)
-        detector = ProjectStateDetector(db)
-        should_skip_stack = detector.should_skip_stack_questions(project)
-        interview_mode = "task_focused" if should_skip_stack else "requirements"
+        # NOT FIRST - Use task_focused mode (PROMPT #68)
+        # PROMPT #93 - "requirements" mode deprecated (replaced by "simple" for first interviews)
+        interview_mode = "task_focused"
 
-        logger.info(f"Creating interview for project {project.name}:")
-        logger.info(f"  - interview_mode: {interview_mode}")
-        logger.info(f"  - should_skip_stack: {should_skip_stack}")
-        logger.info(f"  - has_stack: {bool(project.stack_backend and project.stack_database)}")
-        logger.info(f"  - Project state: {detector.detect_state(project).value}")
+        logger.info(f"Creating additional interview for project {project.name}:")
+        logger.info(f"  - interview_mode: task_focused (for creating tasks)")
+        logger.info(f"  - First interview already collected project info with 'simple' mode")
 
     db_interview = Interview(
         project_id=interview_data.project_id,
