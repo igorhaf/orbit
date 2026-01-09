@@ -29,10 +29,11 @@ class InterviewBase(BaseModel):
 
 
 class InterviewCreate(BaseModel):
-    """Schema for creating a new Interview"""
+    """Schema for creating a new Interview - PROMPT #97 Hierarchical Flow"""
     project_id: UUID
     ai_model_used: str = Field(..., min_length=1, max_length=100)
     conversation_data: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    parent_task_id: Optional[UUID] = Field(None, description="Parent task ID for hierarchical interviews (PROMPT #97)")
 
 
 class InterviewUpdate(BaseModel):

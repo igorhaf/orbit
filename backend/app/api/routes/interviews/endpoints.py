@@ -162,31 +162,53 @@ async def create_interview(
             detail=f"Project {interview_data.project_id} not found"
         )
 
-    # Check if this is the first interview for the project
-    existing_interviews_count = db.query(Interview).filter(
-        Interview.project_id == interview_data.project_id
-    ).count()
+    # PROMPT #97 - Hierarchical Interview Flow
+    # Determine interview mode based on parent_task_id
+    parent_task_id = interview_data.parent_task_id
 
-    if existing_interviews_count == 0:
-        # FIRST INTERVIEW - Always use orchestrator mode (PROMPT #91 / PROMPT #94)
-        interview_mode = "orchestrator"
+    if parent_task_id is None:
+        # No parent → FIRST INTERVIEW → meta_prompt (creates Epic)
+        interview_mode = "meta_prompt"
         logger.info(f"Creating FIRST interview for project {project.name}:")
-        logger.info(f"  - interview_mode: orchestrator (ALWAYS for first interview - PROMPT #91/94)")
-        logger.info(f"  - This interview orchestrates project info collection with conditional stack questions")
+        logger.info(f"  - interview_mode: meta_prompt (PROMPT #97 - Creates Epic)")
+        logger.info(f"  - This interview collects comprehensive project info (Q1-Q18)")
     else:
-        # NOT FIRST - Use task_focused mode (PROMPT #68)
-        # PROMPT #93/94 - "requirements" deprecated, replaced by "orchestrator" for first interviews
-        interview_mode = "task_focused"
+        # Has parent → Hierarchical interview → mode depends on parent type
+        parent_task = db.query(Task).filter(Task.id == parent_task_id).first()
 
-        logger.info(f"Creating additional interview for project {project.name}:")
-        logger.info(f"  - interview_mode: task_focused (for creating tasks)")
-        logger.info(f"  - First interview already collected project info with 'orchestrator' mode")
+        if not parent_task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Parent task {parent_task_id} not found"
+            )
+
+        # Determine mode based on parent item_type
+        if parent_task.item_type == ItemType.EPIC:
+            # Epic → Story
+            interview_mode = "orchestrator"
+            logger.info(f"Creating Story interview from Epic '{parent_task.title}':")
+            logger.info(f"  - interview_mode: orchestrator (PROMPT #97 - Creates Story)")
+        elif parent_task.item_type == ItemType.STORY:
+            # Story → Task
+            interview_mode = "task_orchestrated"
+            logger.info(f"Creating Task interview from Story '{parent_task.title}':")
+            logger.info(f"  - interview_mode: task_orchestrated (PROMPT #97 - Creates Task)")
+        elif parent_task.item_type == ItemType.TASK:
+            # Task → Subtask
+            interview_mode = "subtask_orchestrated"
+            logger.info(f"Creating Subtask interview from Task '{parent_task.title}':")
+            logger.info(f"  - interview_mode: subtask_orchestrated (PROMPT #97 - Creates Subtask)")
+        else:
+            # Fallback for other types
+            interview_mode = "task_orchestrated"
+            logger.warning(f"Unknown parent type {parent_task.item_type}, defaulting to task_orchestrated")
 
     db_interview = Interview(
         project_id=interview_data.project_id,
+        parent_task_id=parent_task_id,  # PROMPT #97
         conversation_data=interview_data.conversation_data,
         ai_model_used=interview_data.ai_model_used,
-        interview_mode=interview_mode,  # PROMPT #68
+        interview_mode=interview_mode,  # PROMPT #97 - Hierarchical mode
         created_at=datetime.utcnow()
     )
 
