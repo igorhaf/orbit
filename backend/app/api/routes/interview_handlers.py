@@ -33,19 +33,21 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-async def handle_simple_interview(
+async def handle_orchestrator_interview(
     interview: Interview,
     project: Project,
     message_count: int,
     db: Session,
-    get_simple_fixed_question_func,
-    count_fixed_questions_simple_func,
-    is_fixed_question_complete_simple_func,
+    get_orchestrator_fixed_question_func,
+    count_fixed_questions_orchestrator_func,
+    is_fixed_question_complete_orchestrator_func,
     clean_ai_response_func,
     prepare_context_func
 ) -> Dict[str, Any]:
     """
-    Handle SIMPLE interview mode (PROMPT #91 - New simplified interview).
+    Handle ORCHESTRATOR interview mode (PROMPT #91/94 - First interview orchestrator).
+
+    This mode "orchestrates" project foundation collection and hierarchy generation.
 
     Flow:
     - Q1-Q3: Basic info (title, description, system type) - Always asked
@@ -54,23 +56,28 @@ async def handle_simple_interview(
       - api_frontend: Q4 backend, Q5 database, Q6 frontend, Q7 CSS (7 total)
       - api_mobile: Q4 backend, Q5 database, Q6 mobile (6 total)
       - api_frontend_mobile: Q4-Q8 all stacks (8 total)
-    - Q9+: AI contextual questions (always closed-ended)
+    - Q9+: AI contextual questions with specialized sections:
+      - Business (always) - business rules
+      - Design (if frontend/css) - UX/UI/WebDesign
+      - Mobile (if mobile) - Mobile specific
+
+    After completion, can generate complete hierarchy (Epic → Stories → Tasks → Subtasks).
 
     Args:
         interview: Interview instance
         project: Project instance
         message_count: Current message count
         db: Database session
-        get_simple_fixed_question_func: Function to get simple fixed questions
-        count_fixed_questions_simple_func: Function to count total fixed questions
-        is_fixed_question_complete_simple_func: Function to check if fixed phase is complete
+        get_orchestrator_fixed_question_func: Function to get orchestrator fixed questions
+        count_fixed_questions_orchestrator_func: Function to count total fixed questions
+        is_fixed_question_complete_orchestrator_func: Function to check if fixed phase is complete
         clean_ai_response_func: Function to clean AI responses
         prepare_context_func: Function to prepare interview context
 
     Returns:
         Response dict with success, message, and usage
     """
-    logger.info(f"🎯 SIMPLE MODE - message_count={message_count}")
+    logger.info(f"🎯 ORCHESTRATOR MODE - message_count={message_count}")
 
     # Get system_type from previous answers (if Q3 was answered)
     system_type = None
@@ -109,7 +116,7 @@ async def handle_simple_interview(
     # Check if we're still in fixed questions phase
     # Need to know system_type to determine total fixed questions
     if system_type:
-        total_fixed = count_fixed_questions_simple_func(system_type)
+        total_fixed = count_fixed_questions_orchestrator_func(system_type)
         in_fixed_phase = question_number <= total_fixed
     else:
         # Before Q3 is answered, we don't know total fixed questions yet
@@ -120,7 +127,7 @@ async def handle_simple_interview(
         # Fixed question phase
         logger.info(f"Returning fixed Question {question_number}")
 
-        assistant_message = get_simple_fixed_question_func(
+        assistant_message = get_orchestrator_fixed_question_func(
             question_number=question_number,
             project=project,
             db=db,
@@ -131,7 +138,7 @@ async def handle_simple_interview(
             # No more fixed questions (conditional questions ended)
             # Move to AI phase
             logger.info(f"No fixed question {question_number} (conditional questions complete)")
-            return await _handle_ai_simple_contextual_question(
+            return await _handle_ai_orchestrator_contextual_question(
                 interview, project, message_count,
                 previous_answers, db,
                 clean_ai_response_func, prepare_context_func
@@ -158,7 +165,7 @@ async def handle_simple_interview(
 
     else:
         # AI contextual questions phase
-        return await _handle_ai_simple_contextual_question(
+        return await _handle_ai_orchestrator_contextual_question(
             interview, project, message_count,
             previous_answers, db,
             clean_ai_response_func, prepare_context_func
@@ -780,7 +787,7 @@ def _handle_fixed_question_meta(
     }
 
 
-async def _handle_ai_simple_contextual_question(
+async def _handle_ai_orchestrator_contextual_question(
     interview: Interview,
     project: Project,
     message_count: int,
@@ -789,11 +796,11 @@ async def _handle_ai_simple_contextual_question(
     clean_ai_response_func,
     prepare_context_func
 ) -> Dict[str, Any]:
-    """Handle AI-generated contextual questions in simple interview mode.
+    """Handle AI-generated contextual questions in orchestrator interview mode.
 
-    PROMPT #91 - Simple Interview Mode
+    PROMPT #91/94 - Orchestrator Interview Mode
     """
-    logger.info(f"Using AI for simple contextual question (message_count={message_count})")
+    logger.info(f"Using AI for orchestrator contextual question (message_count={message_count})")
 
     # Build context from previous answers
     title = previous_answers.get('q1', project.name or '')
