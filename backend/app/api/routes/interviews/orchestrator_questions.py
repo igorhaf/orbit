@@ -1,22 +1,23 @@
 """
-Orchestrator Interview Questions - PROMPT #91 / PROMPT #94
-Sistema de entrevistas orquestrador (primeira entrevista de qualquer projeto)
+Orchestrator Interview Questions - PROMPT #91 / PROMPT #94 / PROMPT #97
+Sistema de entrevistas orquestrador (para Stories/Tasks individuais)
 
-Fase 1 - Perguntas Fixas (Q1-Q8):
-- Q1: Título
-- Q2: Descrição
-- Q3: Tipo de Sistema (Apenas API, API + Frontend, API + Mobile, API + Frontend + Mobile)
-- Q4-Q8: Stack baseado no tipo escolhido (opções vêm dos specs)
+IMPORTANT (PROMPT #97 FIX):
+- Orchestrator mode is for STORIES/TASKS, not project setup
+- Meta_prompt mode is for EPICS/PROJECT (has Q3-Q8 stack questions)
 
-Fase 2 - Perguntas IA:
-- Contexto máximo (título + descrição + stack)
+Fase 1 - Perguntas Fixas (Q1-Q2 APENAS):
+- Q1: Task Title (na verdade Story/Task title)
+- Q2: Task Description (na verdade Story/Task description)
+
+Fase 2 - Perguntas IA (Q3+):
+- Contexto máximo (título + descrição + informações do Epic)
+- Baseadas no epic + story/task atual
 - Nunca repetir perguntas
 - Sempre respostas fechadas (radio/checkbox)
 
-PROMPT #94: Renamed from "orchestrator" to "orchestrator" to better reflect its role:
-- Orchestrates project information collection
-- Orchestrates hierarchy generation (Epic → Stories → Tasks → Subtasks)
-- First interview mode for all new projects
+NOTE: Stack questions (Backend, Database, Frontend, CSS, Mobile) are ONLY in meta_prompt mode!
+Orchestrator assumes stack is already defined from the Epic/Project.
 """
 
 from datetime import datetime
@@ -96,23 +97,25 @@ def get_orchestrator_fixed_question(
     previous_answers: Dict = None
 ) -> Optional[dict]:
     """
-    Returns fixed questions for SIMPLE interview mode.
+    Returns fixed questions for ORCHESTRATOR interview mode (Stories/Tasks).
 
-    PROMPT #91 - Novo Sistema Simplificado
+    PROMPT #91 / PROMPT #94 / PROMPT #97 FIX
 
-    Q1: Título (text)
-    Q2: Descrição (text)
-    Q3: Tipo de Sistema (single_choice)
-    Q4-Q8: Stack conforme tipo escolhido (opções dos specs)
+    Orchestrator is for STORIES/TASKS, not project setup:
+    Q1: Task Title (text)
+    Q2: Task Description (text)
+    Q3+: AI contextual questions (returns None to trigger AI phase)
+
+    Stack questions (Q3-Q8) are ONLY in meta_prompt mode (Epic/Project setup).
 
     Args:
         question_number: Question number
         project: Project instance
         db: Database session
-        previous_answers: Dict with previous answers (usado para Q4+ saber o tipo)
+        previous_answers: Dict with previous answers (not used in orchestrator)
 
     Returns:
-        Message dict with question, or None if beyond fixed questions
+        Message dict with question, or None if beyond Q2 (triggers AI contextual)
     """
     previous_answers = previous_answers or {}
 
@@ -140,102 +143,13 @@ def get_orchestrator_fixed_question(
             "prefilled_value": project.description or ""
         }
 
-    # Q3: Tipo de Sistema
-    elif question_number == 3:
-        return {
-            "role": "assistant",
-            "content": "🏗️ Pergunta 3: Que tipo de sistema você vai desenvolver?\n\nEscolha o tipo de aplicação que será construída:",
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": "system/fixed-question-orchestrator",
-            "question_type": "single_choice",
-            "question_number": 3,
-            "options": {
-                "type": "single",
-                "choices": [
-                    {
-                        "id": "apenas_api",
-                        "label": "🔌 Apenas API",
-                        "value": "apenas_api",
-                        "description": "API REST/GraphQL sem interface visual"
-                    },
-                    {
-                        "id": "api_frontend",
-                        "label": "💻 API + Frontend Web",
-                        "value": "api_frontend",
-                        "description": "API + aplicação web (SPA/SSR)"
-                    },
-                    {
-                        "id": "api_mobile",
-                        "label": "📱 API + Mobile",
-                        "value": "api_mobile",
-                        "description": "API + aplicativo móvel (iOS/Android)"
-                    },
-                    {
-                        "id": "api_frontend_mobile",
-                        "label": "🌐 API + Frontend + Mobile",
-                        "value": "api_frontend_mobile",
-                        "description": "Solução completa: API + Web + Mobile"
-                    }
-                ]
-            }
-        }
-
-    # Q4-Q8: Stack (condicional baseado em Q3)
-    system_type = previous_answers.get('system_type') or previous_answers.get('q3')
-
-    # Mapeamento de perguntas por tipo de sistema
-    stack_questions = {
-        'apenas_api': [
-            (4, "backend", "🔧 Pergunta 4: Qual framework de backend você vai usar?"),
-            (5, "database", "🗄️ Pergunta 5: Qual banco de dados você vai usar?")
-        ],
-        'api_frontend': [
-            (4, "backend", "🔧 Pergunta 4: Qual framework de backend você vai usar?"),
-            (5, "database", "🗄️ Pergunta 5: Qual banco de dados você vai usar?"),
-            (6, "frontend", "💻 Pergunta 6: Qual framework de frontend você vai usar?"),
-            (7, "css", "🎨 Pergunta 7: Qual framework CSS você vai usar?")
-        ],
-        'api_mobile': [
-            (4, "backend", "🔧 Pergunta 4: Qual framework de backend você vai usar?"),
-            (5, "database", "🗄️ Pergunta 5: Qual banco de dados você vai usar?"),
-            (6, "mobile", "📱 Pergunta 6: Qual framework mobile você vai usar?")
-        ],
-        'api_frontend_mobile': [
-            (4, "backend", "🔧 Pergunta 4: Qual framework de backend você vai usar?"),
-            (5, "database", "🗄️ Pergunta 5: Qual banco de dados você vai usar?"),
-            (6, "frontend", "💻 Pergunta 6: Qual framework de frontend você vai usar?"),
-            (7, "css", "🎨 Pergunta 7: Qual framework CSS você vai usar?"),
-            (8, "mobile", "📱 Pergunta 8: Qual framework mobile você vai usar?")
-        ]
-    }
-
-    if system_type and system_type in stack_questions:
-        questions = stack_questions[system_type]
-
-        # Procura a pergunta atual no mapeamento
-        for q_num, category, question_text in questions:
-            if q_num == question_number:
-                choices = get_specs_for_category(db, category)
-
-                if not choices:
-                    # Se não tem specs para essa categoria, pula
-                    return None
-
-                options_text = "\n".join([f"○ {choice['label']}" for choice in choices])
-
-                return {
-                    "role": "assistant",
-                    "content": f"{question_text}\n\n{options_text}\n\nPor favor, escolha uma das opções acima.",
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "model": "system/fixed-question-orchestrator",
-                    "question_type": "single_choice",
-                    "question_number": question_number,
-                    "options": {
-                        "type": "single",
-                        "choices": choices
-                    },
-                    "stack_category": category  # Metadado para salvar no projeto
-                }
+    # Q3+: No more fixed questions - move to AI contextual questions
+    # PROMPT #97 FIX: Orchestrator mode is for Stories/Tasks, not project setup
+    # Stack questions (Q3-Q8) are ONLY in meta_prompt mode (Epic/Project setup)
+    # Orchestrator only asks Q1 (Title) and Q2 (Description), then AI contextual
+    else:
+        # Q3+ should go to AI contextual questions
+        return None
 
     # Se chegou aqui, não tem mais perguntas fixas
     return None
@@ -243,22 +157,20 @@ def get_orchestrator_fixed_question(
 
 def count_fixed_questions_orchestrator(system_type: str) -> int:
     """
-    Retorna o número total de perguntas fixas baseado no tipo de sistema.
+    Retorna o número total de perguntas fixas para orchestrator mode.
+
+    PROMPT #97 FIX: Orchestrator is for Stories/Tasks, not project setup.
+    Only asks Q1 (Title) and Q2 (Description), then moves to AI contextual.
 
     Args:
-        system_type: Tipo do sistema (apenas_api, api_frontend, etc.)
+        system_type: Tipo do sistema (não usado - mantido por compatibilidade)
 
     Returns:
-        Número de perguntas fixas
+        Always 2 (Q1: Title, Q2: Description)
     """
-    question_count = {
-        'apenas_api': 5,  # Q1, Q2, Q3, Q4 (backend), Q5 (database)
-        'api_frontend': 7,  # Q1, Q2, Q3, Q4 (backend), Q5 (database), Q6 (frontend), Q7 (css)
-        'api_mobile': 6,  # Q1, Q2, Q3, Q4 (backend), Q5 (database), Q6 (mobile)
-        'api_frontend_mobile': 8  # Q1, Q2, Q3, Q4, Q5, Q6, Q7, Q8
-    }
-
-    return question_count.get(system_type, 5)  # Default: apenas_api
+    # Orchestrator mode only has 2 fixed questions
+    # Stack questions (Q3-Q8) are ONLY in meta_prompt mode
+    return 2
 
 
 def is_fixed_question_complete_orchestrator(conversation_data: list, system_type: str) -> bool:
