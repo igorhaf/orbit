@@ -1017,24 +1017,25 @@ async def _handle_ai_meta_contextual_question(
 {focus_text}
 
 **INFORMAÇÕES JÁ COLETADAS:**
-Você já fez 17 perguntas fixas sobre:
+Você já fez 18 perguntas fixas sobre:
 1. Título do projeto
 2. Descrição e objetivo
-3. Framework de backend
-4. Banco de dados
-5. Framework de frontend
-6. Framework CSS
-7. Framework mobile
-8. Módulos/componentes do projeto (Backend/API, Frontend Web, Mobile App, etc.)
-9. Visão do projeto e problema a resolver
-10. Principais funcionalidades (Auth, CRUD, Reports, etc.)
-11. Perfis de usuários e permissões
-12. Regras de negócio
-13. Entidades/dados principais
-14. Critérios de sucesso
-15. Restrições técnicas
-16. Escopo e prioridades do MVP
-17. Tópicos que o cliente quer aprofundar
+3. Tipo de sistema (Apenas API, API+Frontend, API+Mobile, API+Frontend+Mobile)
+4. Framework de backend
+5. Banco de dados
+6. Framework de frontend
+7. Framework CSS
+8. Framework mobile
+9. Módulos adicionais (Dashboard Admin, Landing Page, Workers, Notificações, Relatórios)
+10. Visão do projeto e problema a resolver
+11. Principais funcionalidades (Auth, CRUD, Reports, etc.)
+12. Perfis de usuários e permissões
+13. Regras de negócio
+14. Entidades/dados principais
+15. Critérios de sucesso
+16. Restrições técnicas
+17. Escopo e prioridades do MVP
+18. Tópicos que o cliente quer aprofundar
 
 Analise as respostas anteriores e faça perguntas contextualizadas para:
 - **ESCLARECER DETALHES** que ficaram vagos ou ambíguos
@@ -1044,16 +1045,17 @@ Analise as respostas anteriores e faça perguntas contextualizadas para:
 - **IDENTIFICAR EDGE CASES** ou cenários especiais
 
 **REGRAS CRÍTICAS - SIGA EXATAMENTE:**
-1. ❌ **NUNCA faça perguntas abertas** (texto livre)
-2. ✅ **SEMPRE forneça opções** para o cliente escolher
-3. ✅ **Use ESCOLHA ÚNICA (radio)** quando só pode haver UMA resposta
+1. ❌ **NUNCA REPITA PERGUNTAS JÁ FEITAS** - Verifique o histórico completo da conversa e NÃO faça perguntas sobre aspectos já respondidos (nas 18 perguntas fixas OU nas perguntas contextuais anteriores)
+2. ❌ **NUNCA faça perguntas abertas** (texto livre)
+3. ✅ **SEMPRE forneça opções** para o cliente escolher
+4. ✅ **Use ESCOLHA ÚNICA (radio)** quando só pode haver UMA resposta
    - Exemplos: "Qual arquitetura?" / "Como será o deploy?" / "Qual método de pagamento?"
-4. ✅ **Use MÚLTIPLA ESCOLHA (checkbox)** quando pode haver VÁRIAS respostas
+5. ✅ **Use MÚLTIPLA ESCOLHA (checkbox)** quando pode haver VÁRIAS respostas
    - Exemplos: "Quais integrações?" / "Quais tipos de relatório?" / "Quais notificações?"
-5. ✅ Forneça sempre **3-5 opções relevantes** baseadas no contexto do projeto
-6. ✅ Analise bem as respostas anteriores antes de perguntar
-7. ✅ Não fuja do conceito que o cliente quer
-8. ✅ Faça 1 pergunta por vez, contextualizada e específica
+6. ✅ Forneça sempre **3-5 opções relevantes** baseadas no contexto do projeto
+7. ✅ Analise bem as respostas anteriores antes de perguntar
+8. ✅ Não fuja do conceito que o cliente quer
+9. ✅ Faça 1 pergunta por vez, contextualizada e específica
 
 **FORMATO OBRIGATÓRIO:**
 
