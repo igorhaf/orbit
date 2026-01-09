@@ -1973,19 +1973,13 @@ async def _process_interview_message_async(
         if not interview.conversation_data:
             interview.conversation_data = []
 
-        # Add user message
-        user_message = {
-            "role": "user",
-            "content": message_content,
-            "timestamp": datetime.utcnow().isoformat()
-        }
-        interview.conversation_data.append(user_message)
-        db.commit()
+        # NOTE: User message is already added and committed by sync endpoint /send-message
+        # Do NOT add it again here to avoid duplication!
 
-        logger.info(f"Added user message to interview {interview_id}")
+        logger.info(f"User message already added by sync endpoint for interview {interview_id}")
 
         # Update progress: 30%
-        job_manager.update_progress(job_id, 30.0, "User message added, calling AI...")
+        job_manager.update_progress(job_id, 30.0, "Processing message, calling AI...")
 
         # Get project for context
         project = db.query(Project).filter(Project.id == interview.project_id).first()
