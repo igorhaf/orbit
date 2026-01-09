@@ -49,17 +49,23 @@ async def handle_orchestrator_interview(
 
     This mode "orchestrates" project foundation collection and hierarchy generation.
 
-    Flow:
+    Flow (PROMPT #94 FASE 3 - Specialized Sections):
     - Q1-Q3: Basic info (title, description, system type) - Always asked
     - Q4-Q8: Stack questions (conditional based on system type from Q3)
       - apenas_api: Q4 backend, Q5 database (5 total)
       - api_frontend: Q4 backend, Q5 database, Q6 frontend, Q7 CSS (7 total)
       - api_mobile: Q4 backend, Q5 database, Q6 mobile (6 total)
       - api_frontend_mobile: Q4-Q8 all stacks (8 total)
-    - Q9+: AI contextual questions with specialized sections:
-      - Business (always) - business rules
-      - Design (if frontend/css) - UX/UI/WebDesign
-      - Mobile (if mobile) - Mobile specific
+    - Q9+: AI contextual questions with specialized sections (PROMPT #94 FASE 3):
+      - **Business Section** (ALWAYS) - business rules, validations, workflows (4-6 questions)
+      - **Design Section** (if stack_frontend OR stack_css) - UX/UI, layout, components (3-5 questions)
+      - **Mobile Section** (if stack_mobile) - mobile navigation, native features (3-5 questions)
+
+    Sections are applied conditionally based on project stack, resulting in:
+    - API-only projects: Business section only (~10-12 questions total)
+    - API + Frontend: Business + Design sections (~13-17 questions total)
+    - API + Mobile: Business + Mobile sections (~13-17 questions total)
+    - Full stack (API + Frontend + Mobile): All 3 sections (~16-20 questions total)
 
     After completion, can generate complete hierarchy (Epic → Stories → Tasks → Subtasks).
 
@@ -830,12 +836,70 @@ async def _handle_ai_orchestrator_contextual_question(
     if stack_mobile:
         context += f"\n- Stack Mobile: {stack_mobile}"
 
-    # Build system prompt for simple contextual questions
+    # PROMPT #94 FASE 3 - Determine which specialized sections to apply
+    # Business: ALWAYS (all projects have business rules)
+    # Design: If stack_frontend OR stack_css exists
+    # Mobile: If stack_mobile exists
+    has_design_section = bool(stack_frontend or stack_css)
+    has_mobile_section = bool(stack_mobile)
+
+    # Calculate question number for section prompts
+    question_num = (message_count // 2) + 1
+
+    # PROMPT #94 FASE 3 - Import specialized section builders
+    from .interviews.context_builders import (
+        build_business_section_prompt,
+        build_design_section_prompt,
+        build_mobile_section_prompt
+    )
+
+    # Determine which section we're currently in based on question count
+    # Rough estimation: Q9-Q14 = Business, Q15-Q19 = Design (if applicable), Q20+ = Mobile (if applicable)
+    # This is a simple heuristic - in practice, sections flow naturally
+
+    # Build specialized section prompt based on context
+    # For now, we'll include all applicable sections and let AI naturally progress through them
+    specialized_sections = ""
+
+    # Always include Business section
+    specialized_sections += "\n" + build_business_section_prompt(project, question_num)
+
+    # Include Design section if applicable
+    if has_design_section:
+        specialized_sections += "\n\n---\n" + build_design_section_prompt(project, question_num)
+
+    # Include Mobile section if applicable
+    if has_mobile_section:
+        specialized_sections += "\n\n---\n" + build_mobile_section_prompt(project, question_num)
+
+    # Build system prompt with specialized sections
     system_prompt = f"""Você é um analista de requisitos experiente conduzindo uma entrevista para um projeto de software.
 
 {context}
 
-**REGRAS CRÍTICAS - SIGA EXATAMENTE:**
+**ESTRUTURA DA ENTREVISTA (PROMPT #94 FASE 3):**
+
+Você completou as perguntas fixas (Q1-Q8) sobre projeto e stack.
+Agora entramos nas **SEÇÕES ESPECIALIZADAS** de perguntas contextuais.
+
+**Seções disponíveis nesta entrevista:**
+1. ✅ **BUSINESS** - Regras de negócio (SEMPRE aplicada)
+{'2. ✅ **DESIGN** - UX/UI e Design Visual (aplicada pois projeto tem frontend/CSS)' if has_design_section else ''}
+{'3. ✅ **MOBILE** - Desenvolvimento Mobile (aplicada pois projeto tem mobile)' if has_mobile_section else ''}
+
+**INSTRUÇÕES PARA CONDUÇÃO:**
+
+1. **Progrida naturalmente através das seções** na ordem acima
+2. **Comece com Business** (regras de negócio, validações, fluxos)
+3. **Depois vá para Design** (se aplicável - UX/UI, layout, componentes)
+4. **Finalize com Mobile** (se aplicável - navegação, recursos nativos)
+5. **Não anuncie explicitamente "mudança de seção"** - apenas mude o foco das perguntas naturalmente
+6. **Cada seção: 3-6 perguntas focadas** no tema
+7. **Total da entrevista: 10-15 perguntas contextuais**
+
+{specialized_sections}
+
+**REGRAS GERAIS - SIGA EXATAMENTE:**
 1. ❌ **NUNCA faça perguntas abertas** (texto livre)
 2. ✅ **SEMPRE forneça opções** para o cliente escolher
 3. ✅ **Use ESCOLHA ÚNICA (radio)** quando só pode haver UMA resposta
@@ -844,39 +908,11 @@ async def _handle_ai_orchestrator_contextual_question(
 6. ✅ **NUNCA REPITA** uma pergunta já feita
 7. ✅ **INCREMENTE contexto** com cada resposta anterior
 8. ✅ Analise todas as respostas anteriores antes de perguntar
-9. ✅ Faça perguntas relevantes baseadas no tipo de sistema escolhido
+9. ✅ Faça perguntas relevantes para a seção atual
 
-**FORMATO OBRIGATÓRIO:**
+Conduza em PORTUGUÊS. Continue com a próxima pergunta relevante da seção apropriada!
 
-Para ESCOLHA ÚNICA:
-❓ Pergunta [número]: [Sua pergunta]
-
-○ Opção 1
-○ Opção 2
-○ Opção 3
-
-Escolha UMA opção.
-
-Para MÚLTIPLA ESCOLHA:
-❓ Pergunta [número]: [Sua pergunta]
-
-☐ Opção 1
-☐ Opção 2
-☐ Opção 3
-
-☑️ Selecione todas que se aplicam.
-
-**TÓPICOS IMPORTANTES:**
-- Funcionalidades principais do sistema
-- Usuários e permissões
-- Integrações externas
-- Autenticação e segurança
-- Performance e escalabilidade
-- Deploy e infraestrutura
-
-Conduza em PORTUGUÊS. Continue com a próxima pergunta relevante!
-
-Após 8-12 perguntas total, conclua a entrevista.
+Após completar todas as seções aplicáveis (10-15 perguntas total), conclua a entrevista.
 """
 
     # Call AI Orchestrator
