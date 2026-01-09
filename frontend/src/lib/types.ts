@@ -13,6 +13,7 @@ export enum TaskStatus {
   IN_PROGRESS = 'in_progress',
   REVIEW = 'review',
   DONE = 'done',
+  BLOCKED = 'blocked', // PROMPT #95 - Pending modification approval
 }
 
 // JIRA Transformation - New Enums (PROMPT #62)
@@ -202,6 +203,23 @@ export interface Task {
 
   // Meta Prompt Feature - Generated atomic prompt for task execution
   generated_prompt?: string | null;
+
+  // PROMPT #95 - Blocking System for Modification Detection
+  blocked_reason?: string | null;
+  pending_modification?: {
+    title: string;
+    description: string;
+    similarity_score: number;
+    suggested_at: string;
+    interview_id?: string;
+    original_title?: string;
+    original_description?: string;
+    story_points?: number;
+    priority?: string;
+    acceptance_criteria?: string[];
+    suggested_subtasks?: SubtaskSuggestion[];
+    interview_insights?: Record<string, any>;
+  } | null;
 
   // Legacy Kanban fields (for backward compatibility)
   status: TaskStatus;

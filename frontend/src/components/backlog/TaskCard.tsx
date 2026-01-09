@@ -17,6 +17,7 @@ import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
 import { tasksApi } from '@/lib/api';
 import { Task, SubtaskSuggestion, ItemType, PriorityLevel } from '@/lib/types';
+import { SimilarityBadge } from '@/components/kanban/SimilarityBadge'; // PROMPT #95
 
 interface TaskCardProps {
   task: Task;
@@ -49,6 +50,10 @@ const getStatusBadge = (status: string | undefined) => {
 
   const statusLower = status.toLowerCase();
 
+  // PROMPT #95 - Blocked status
+  if (statusLower === 'blocked') {
+    return <Badge className="bg-red-100 text-red-800 border-red-300 font-semibold">🚨 BLOCKED</Badge>;
+  }
   if (statusLower === 'done' || statusLower === 'completed') {
     return <Badge className="bg-green-100 text-green-800 border-green-200">Done</Badge>;
   }
@@ -168,6 +173,10 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
           {/* Badges */}
           <div className="flex flex-col gap-2 items-end">
             {getStatusBadge(task.status || task.workflow_state)}
+            {/* PROMPT #95 - Show similarity badge for blocked tasks */}
+            {task.pending_modification && task.pending_modification.similarity_score && (
+              <SimilarityBadge score={task.pending_modification.similarity_score} />
+            )}
             <Badge className={`${getPriorityColor(task.priority || 'medium')} border`}>
               {task.priority || 'medium'}
             </Badge>

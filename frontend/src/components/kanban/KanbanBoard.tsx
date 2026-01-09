@@ -22,6 +22,7 @@ import { DroppableColumn } from './DroppableColumn';
 import { TaskCard } from '@/components/backlog/TaskCard';
 import { TaskForm } from './TaskForm';
 import { Button, Dialog } from '@/components/ui';
+import { ModificationApprovalModal } from './ModificationApprovalModal'; // PROMPT #95
 
 interface Props {
   projectId: string;
@@ -33,9 +34,11 @@ interface BoardData {
   in_progress: Task[];
   review: Task[];
   done: Task[];
+  blocked: Task[]; // PROMPT #95 - Blocked tasks pending approval
 }
 
 const COLUMNS = [
+  { id: 'blocked' as TaskStatus, title: '🚨 Bloqueados', color: 'bg-red-100' }, // PROMPT #95 - First column
   { id: 'backlog' as TaskStatus, title: 'Backlog', color: 'bg-gray-100' },
   { id: 'todo' as TaskStatus, title: 'To Do', color: 'bg-blue-100' },
   { id: 'in_progress' as TaskStatus, title: 'In Progress', color: 'bg-yellow-100' },
@@ -49,6 +52,10 @@ export function KanbanBoard({ projectId }: Props) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  // PROMPT #95 - Modification approval modal state
+  const [selectedBlockedTask, setSelectedBlockedTask] = useState<Task | null>(null);
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
 
   // Configure sensors for drag-and-drop
   const sensors = useSensors(
@@ -67,10 +74,21 @@ export function KanbanBoard({ projectId }: Props) {
     setLoading(true);
     setError(null);
     try {
+      // Load regular kanban data
       const response = await tasksApi.kanban(projectId);
       const data = response.data || response;
-      // Ensure board data has the correct structure
-      setBoard(data && typeof data === 'object' ? data : null);
+
+      // PROMPT #95 - Load blocked tasks separately
+      const blockedResponse = await tasksApi.getBlocked(projectId);
+      const blockedTasks = Array.isArray(blockedResponse) ? blockedResponse : blockedResponse.data || [];
+
+      // Merge blocked tasks into board data
+      const boardData = data && typeof data === 'object' ? data : null;
+      if (boardData) {
+        boardData.blocked = blockedTasks;
+      }
+
+      setBoard(boardData);
     } catch (err: any) {
       console.error('Failed to load board:', err);
       setError(err.response?.data?.detail || 'Failed to load board');
@@ -214,6 +232,40 @@ export function KanbanBoard({ projectId }: Props) {
     await loadBoard();
   };
 
+  // PROMPT #95 - Blocked task handlers
+  const handleBlockedTaskClick = (task: Task) => {
+    setSelectedBlockedTask(task);
+    setIsApprovalModalOpen(true);
+  };
+
+  const handleApproveModification = async () => {
+    if (!selectedBlockedTask) return;
+
+    try {
+      await tasksApi.approveModification(selectedBlockedTask.id);
+      setIsApprovalModalOpen(false);
+      setSelectedBlockedTask(null);
+      await loadBoard(); // Reload to show new task
+    } catch (error) {
+      console.error('Failed to approve modification:', error);
+      alert('Failed to approve modification. Please try again.');
+    }
+  };
+
+  const handleRejectModification = async (reason?: string) => {
+    if (!selectedBlockedTask) return;
+
+    try {
+      await tasksApi.rejectModification(selectedBlockedTask.id, reason);
+      setIsApprovalModalOpen(false);
+      setSelectedBlockedTask(null);
+      await loadBoard(); // Reload to show unblocked task
+    } catch (error) {
+      console.error('Failed to reject modification:', error);
+      alert('Failed to reject modification. Please try again.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -290,6 +342,7 @@ export function KanbanBoard({ projectId }: Props) {
               tasks={board[column.id] || []}
               onTaskDeleted={handleTaskDeleted}
               onTaskUpdated={handleTaskUpdated}
+              onBlockedTaskClick={column.id === 'blocked' ? handleBlockedTaskClick : undefined} // PROMPT #95
             />
           ))}
         </div>
@@ -320,6 +373,17 @@ export function KanbanBoard({ projectId }: Props) {
           onCancel={() => setIsCreateOpen(false)}
         />
       </Dialog>
+
+      {/* PROMPT #95 - Modification Approval Modal */}
+      {selectedBlockedTask && (
+        <ModificationApprovalModal
+          task={selectedBlockedTask}
+          isOpen={isApprovalModalOpen}
+          onClose={() => setIsApprovalModalOpen(false)}
+          onApprove={handleApproveModification}
+          onReject={handleRejectModification}
+        />
+      )}
     </div>
   );
 }
