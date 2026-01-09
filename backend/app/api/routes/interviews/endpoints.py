@@ -1941,13 +1941,27 @@ async def _process_interview_message_async(
         message_count = len(interview.conversation_data)
 
         # Check if fixed question or AI question
-        if message_count in [2, 4, 6, 8, 10]:
-            # Fixed question
-            question_map = {2: 2, 4: 3, 6: 4, 8: 5, 10: 6}
+        # PROMPT #97 FIX - Check interview_mode to call correct question function
+        if message_count in [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34]:
+            # Fixed question - route to correct function based on interview_mode
+            question_map = {
+                2: 2, 4: 3, 6: 4, 8: 5, 10: 6, 12: 7, 14: 8, 16: 9,
+                18: 10, 20: 11, 22: 12, 24: 13, 26: 14, 28: 15, 30: 16, 32: 17, 34: 18
+            }
             question_number = question_map[message_count]
 
-            logger.info(f"Returning fixed Question {question_number}")
-            assistant_message = get_fixed_question(question_number, project, db)
+            logger.info(f"Returning fixed Question {question_number} for mode={interview.interview_mode}")
+
+            # PROMPT #97 - Call correct function based on interview_mode
+            if interview.interview_mode == "meta_prompt":
+                assistant_message = get_fixed_question_meta_prompt(question_number, project, db)
+            elif interview.interview_mode == "orchestrator":
+                # Orchestrator uses different question mapping
+                prev_answers = {}  # TODO: extract from conversation if needed
+                assistant_message = get_orchestrator_fixed_question(question_number, project, db, prev_answers)
+            else:
+                # Legacy modes (requirements, etc.)
+                assistant_message = get_fixed_question(question_number, project, db)
 
             if not assistant_message:
                 job_manager.fail_job(job_id, f"Failed to get fixed question {question_number}")
@@ -1971,8 +1985,11 @@ async def _process_interview_message_async(
 
             logger.info(f"✅ Job {job_id} completed (fixed question)")
 
-        elif message_count >= 12:
+        elif message_count >= 36 or (interview.interview_mode not in ["meta_prompt", "orchestrator"] and message_count >= 12):
             # AI business question
+            # PROMPT #97 - meta_prompt has 18 fixed questions → AI starts at count=36
+            # orchestrator has 8 fixed questions → AI starts at count=18 (TODO)
+            # Legacy modes have 6 fixed questions → AI starts at count=12
             logger.info(f"Calling AI for business question (message_count={message_count})")
 
             job_manager.update_progress(job_id, 40.0, "Preparing AI call...")
