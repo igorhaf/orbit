@@ -1741,3 +1741,236 @@ async def handle_subtask_orchestrated_interview(
             previous_answers, db,
             clean_ai_response_func, prepare_context_func
         )
+
+async def handle_card_focused_interview(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    db: Session,
+    get_card_focused_fixed_question_func,
+    count_fixed_questions_card_focused_func,
+    is_fixed_question_complete_card_focused_func,
+    get_motivation_type_from_answers_func,
+    build_card_focused_prompt_func,
+    clean_ai_response_func,
+    prepare_context_func,
+    parent_card=None,
+    stack_context=""
+) -> Dict[str, Any]:
+    """
+    Handle CARD_FOCUSED interview mode (PROMPT #98 - Cards for Story/Task/Subtask).
+
+    This mode is for creating individual cards (Stories, Tasks, Subtasks) within hierarchy.
+    Motivation-aware interview that directs AI questions based on card type.
+
+    Fixed Questions:
+    - Q1: Motivação/Tipo do Card (bug, feature, bugfix, design, documentation, enhancement, refactor, testing, optimization, security)
+    - Q2: Título da Demanda
+    - Q3: Descrição da Demanda
+    - Q4+: AI contextual questions (tailored to motivation type and parent card context)
+
+    Flow:
+    - Q1-Q3: Basic info (motivation type, title, description)
+    - Q4+: AI contextual questions contextualized with:
+      - Motivation type (directs question focus)
+      - Parent card context (Epic/Story/Task for hierarchy)
+      - Project stack and domain
+
+    Args:
+        interview: Interview instance
+        project: Project instance
+        message_count: Current message count
+        db: Database session
+        get_card_focused_fixed_question_func: Function to get card_focused fixed questions
+        count_fixed_questions_card_focused_func: Function to count total fixed questions
+        is_fixed_question_complete_card_focused_func: Function to check if fixed phase is complete
+        get_motivation_type_from_answers_func: Function to extract motivation type from answers
+        build_card_focused_prompt_func: Function to build motivation-aware AI prompts
+        clean_ai_response_func: Function to clean AI responses
+        prepare_context_func: Function to prepare interview context
+        parent_card: Parent card (Epic, Story, or Task) for context
+        stack_context: Stack context from project
+
+    Returns:
+        Response dict with success, message, and usage
+    """
+    logger.info(f"🎨 CARD_FOCUSED MODE - message_count={message_count}, motivation_type={interview.motivation_type}")
+
+    previous_answers = {}
+
+    # Extract previous answers from conversation
+    for i, msg in enumerate(interview.conversation_data):
+        if msg.get('role') == 'user':
+            question_num = (i + 1) // 2
+            previous_answers[f'q{question_num}'] = msg.get('content', '')
+
+    # Calculate current question number
+    question_number = (message_count // 2) + 1
+
+    # Card focused always has 3 fixed questions
+    total_fixed = count_fixed_questions_card_focused_func()
+    in_fixed_phase = question_number <= total_fixed
+
+    if in_fixed_phase:
+        # Fixed question phase
+        logger.info(f"Returning fixed Question {question_number}")
+
+        assistant_message = get_card_focused_fixed_question_func(
+            question_number=question_number,
+            project=project,
+            db=db,
+            parent_card=parent_card,
+            previous_answers=previous_answers
+        )
+
+        if not assistant_message:
+            # No more fixed questions - move to AI phase
+            logger.info(f"No fixed question {question_number} (moving to AI contextual)")
+            return await _handle_card_focused_ai_question(
+                interview, project, message_count,
+                previous_answers, parent_card, stack_context, db,
+                get_motivation_type_from_answers_func,
+                build_card_focused_prompt_func,
+                clean_ai_response_func, prepare_context_func
+            )
+
+        # Store motivation type from Q1 answer if available
+        if question_number == 1 and 'q1' in previous_answers:
+            interview.motivation_type = previous_answers['q1'].lower()
+            from sqlalchemy.orm.attributes import flag_modified
+            flag_modified(interview, "motivation_type")
+
+        # Add fixed question to conversation
+        interview.conversation_data.append(assistant_message)
+
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(interview, "conversation_data")
+        db.commit()
+        db.refresh(interview)
+
+        return {
+            "success": True,
+            "message": assistant_message,
+            "usage": {
+                "model": "system/fixed-question-card-focused",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_cost_usd": 0.0
+            }
+        }
+
+    else:
+        # AI contextual questions phase
+        return await _handle_card_focused_ai_question(
+            interview, project, message_count,
+            previous_answers, parent_card, stack_context, db,
+            get_motivation_type_from_answers_func,
+            build_card_focused_prompt_func,
+            clean_ai_response_func, prepare_context_func
+        )
+
+
+async def _handle_card_focused_ai_question(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    previous_answers: Dict,
+    parent_card,
+    stack_context: str,
+    db: Session,
+    get_motivation_type_from_answers_func,
+    build_card_focused_prompt_func,
+    clean_ai_response_func,
+    prepare_context_func
+) -> Dict[str, Any]:
+    """
+    Handle AI contextual questions for card-focused interview.
+    Questions are tailored based on motivation type (bug, feature, design, etc).
+    """
+    # Get motivation type from Q1 answer
+    motivation_type = interview.motivation_type or get_motivation_type_from_answers_func(previous_answers) or "task"
+
+    # Extract card title and description from Q2 and Q3
+    card_title = previous_answers.get('q2', '')
+    card_description = previous_answers.get('q3', '')
+
+    # Build context for AI
+    interview_context = prepare_context_func(interview, project, db)
+
+    # Build motivation-aware prompt
+    system_prompt = build_card_focused_prompt_func(
+        project=project,
+        motivation_type=motivation_type,
+        card_title=card_title,
+        card_description=card_description,
+        message_count=message_count,
+        parent_card=parent_card,
+        stack_context=stack_context
+    )
+
+    logger.info(f"🤖 Calling AIOrchestrator for CARD_FOCUSED (motivation={motivation_type}, Q{(message_count // 2) + 1})")
+
+    # Call AI to generate next contextual question
+    orchestrator = AIOrchestrator(db)
+
+    response = await orchestrator.execute(
+        usage_type="interview",
+        messages=interview.conversation_data,
+        system_prompt=system_prompt,
+        max_tokens=1000,
+        temperature=0.7
+    )
+
+    if not response.get('success'):
+        logger.error(f"❌ AIOrchestrator failed: {response.get('error')}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AI response generation failed: {response.get('error')}"
+        )
+
+    ai_response = response['response']
+
+    # Clean AI response
+    cleaned_response = clean_ai_response_func(ai_response)
+
+    # Create assistant message
+    assistant_message = {
+        "role": "assistant",
+        "content": cleaned_response,
+        "timestamp": datetime.utcnow().isoformat(),
+        "model": response.get('model', 'unknown'),
+        "question_number": (message_count // 2) + 1
+    }
+
+    # Add to conversation
+    interview.conversation_data.append(assistant_message)
+
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(interview, "conversation_data")
+    db.commit()
+    db.refresh(interview)
+
+    # Store question in RAG for cross-interview deduplication
+    try:
+        deduplicator = InterviewQuestionDeduplicator(db)
+        deduplicator.store_question(
+            project_id=project.id,
+            interview_id=interview.id,
+            interview_mode="card_focused",
+            question_text=cleaned_response,
+            question_number=(message_count // 2) + 1,
+            is_fixed=False
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to store AI question in RAG: {e}")
+
+    return {
+        "success": True,
+        "message": assistant_message,
+        "usage": response.get('usage', {
+            "model": response.get('model', 'unknown'),
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_cost_usd": 0.0
+        })
+    }

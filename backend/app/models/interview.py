@@ -87,6 +87,12 @@ class Interview(Base):
         default=list
     )
 
+    # PROMPT #98 - Card-Focused Interview System
+    motivation_type = Column(
+        String(50),  # "bug" | "feature" | "bugfix" | "design" | "documentation" | etc.
+        nullable=True
+    )
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
