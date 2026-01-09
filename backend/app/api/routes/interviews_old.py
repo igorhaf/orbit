@@ -852,8 +852,6 @@ async def add_message_to_interview(
     interview.conversation_data.append(message_request.message)
 
     # Mark the conversation_data as modified for SQLAlchemy to detect the change
-    from sqlalchemy.orm.attributes import flag_modified
-    flag_modified(interview, "conversation_data")
 
     db.commit()
     db.refresh(interview)
@@ -1916,8 +1914,6 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
     # CRITICAL FIX: Commit user message IMMEDIATELY to prevent loss during orchestrator.execute()
     # The orchestrator does db.commit() which expires the interview object, causing a reload
     # that would lose the uncommitted user message
-    from sqlalchemy.orm.attributes import flag_modified
-    flag_modified(interview, "conversation_data")
     db.commit()
     logger.info(f"✅ User message committed to database")
 
@@ -2308,7 +2304,6 @@ async def _process_interview_message_async(
     from app.database import SessionLocal
     from app.services.job_manager import JobManager
     from app.services.ai_orchestrator import AIOrchestrator
-    from sqlalchemy.orm.attributes import flag_modified
     import logging
 
     logger = logging.getLogger(__name__)
@@ -2341,7 +2336,6 @@ async def _process_interview_message_async(
             "timestamp": datetime.utcnow().isoformat()
         }
         interview.conversation_data.append(user_message)
-        flag_modified(interview, "conversation_data")
         db.commit()
 
         logger.info(f"Added user message to interview {interview_id}")
@@ -2369,7 +2363,6 @@ async def _process_interview_message_async(
                 return
 
             interview.conversation_data.append(assistant_message)
-            flag_modified(interview, "conversation_data")
             db.commit()
 
             # Complete job with result
@@ -2440,7 +2433,6 @@ Continue com próxima pergunta relevante!
 
             interview.conversation_data.append(assistant_message)
             interview.ai_model_used = response["model"]
-            flag_modified(interview, "conversation_data")
             db.commit()
 
             # Complete job with result

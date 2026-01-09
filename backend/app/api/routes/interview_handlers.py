@@ -170,8 +170,6 @@ async def handle_orchestrator_interview(
             # Non-blocking: log error but don't fail the interview
             logger.error(f"❌ Failed to store orchestrator Q{question_number} in RAG: {e}")
 
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(interview, "conversation_data")
         db.commit()
         db.refresh(interview)
 
@@ -288,8 +286,6 @@ async def handle_meta_prompt_interview(
         logger.info(f"Extracted focus_topics: {focus_topics}")
         interview.focus_topics = focus_topics
 
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(interview, "focus_topics")
         db.commit()
 
         # Continue to AI contextual questions
@@ -451,8 +447,6 @@ async def handle_task_focused_interview(
             # Non-blocking: log error but don't fail the interview
             logger.error(f"❌ Failed to store task-focused Q1 in RAG: {e}")
 
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(interview, "conversation_data")
         db.commit()
         db.refresh(interview)
 
@@ -477,8 +471,6 @@ async def handle_task_focused_interview(
         logger.info(f"Extracted task_type: {task_type}")
         interview.task_type_selection = task_type
 
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(interview, "task_type_selection")
         db.commit()
 
         # Continue to AI questions
@@ -531,8 +523,6 @@ def _handle_fixed_question(
 
     interview.conversation_data.append(assistant_message)
 
-    from sqlalchemy.orm.attributes import flag_modified
-    flag_modified(interview, "conversation_data")
     db.commit()
     db.refresh(interview)
 
@@ -751,8 +741,6 @@ async def _execute_ai_question(
         interview.conversation_data.append(assistant_message)
         interview.ai_model_used = response["model"]
 
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(interview, "conversation_data")
         db.commit()
         db.refresh(interview)
 
@@ -900,8 +888,6 @@ def _handle_fixed_question_meta(
         # Non-blocking: log error but don't fail the interview
         logger.error(f"❌ Failed to store Q{question_number} in RAG: {e}")
 
-    from sqlalchemy.orm.attributes import flag_modified
-    flag_modified(interview, "conversation_data")
     db.commit()
     db.refresh(interview)
 
@@ -1618,8 +1604,6 @@ async def handle_task_orchestrated_interview(
         # Add fixed question to conversation
         interview.conversation_data.append(assistant_message)
 
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(interview, "conversation_data")
         db.commit()
         db.refresh(interview)
 
@@ -1718,8 +1702,6 @@ async def handle_subtask_orchestrated_interview(
         # Add fixed question to conversation
         interview.conversation_data.append(assistant_message)
 
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(interview, "conversation_data")
         db.commit()
         db.refresh(interview)
 
