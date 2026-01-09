@@ -89,14 +89,14 @@ class MetaPromptProcessor:
         if not interview:
             raise ValueError(f"Interview {interview_id} not found")
 
-        # PROMPT #92 - Accept both meta_prompt and simple interviews
-        if interview.interview_mode not in ["meta_prompt", "simple"]:
-            raise ValueError(f"Interview {interview_id} cannot generate hierarchy (mode: {interview.interview_mode}). Only 'meta_prompt' and 'simple' modes supported.")
+        # PROMPT #92/94 - Accept both meta_prompt and orchestrator interviews
+        if interview.interview_mode not in ["meta_prompt", "orchestrator"]:
+            raise ValueError(f"Interview {interview_id} cannot generate hierarchy (mode: {interview.interview_mode}). Only 'meta_prompt' and 'orchestrator' modes supported.")
 
-        # PROMPT #92 - Different minimum messages for each mode
-        # Simple interviews: 5-8 fixed questions + AI questions (min 10 messages)
+        # PROMPT #92/94 - Different minimum messages for each mode
+        # Orchestrator interviews: 5-8 fixed questions + AI questions (min 10 messages)
         # Meta prompt: 17 fixed questions + AI questions (min 18 messages)
-        min_messages = 10 if interview.interview_mode == "simple" else 18
+        min_messages = 10 if interview.interview_mode == "orchestrator" else 18
         if not interview.conversation_data or len(interview.conversation_data) < min_messages:
             raise ValueError(f"Interview {interview_id} is incomplete (needs at least {min_messages//2} questions answered)")
 

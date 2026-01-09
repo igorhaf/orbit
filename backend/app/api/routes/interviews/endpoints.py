@@ -41,7 +41,7 @@ from app.api.routes.interview_handlers import (
     handle_requirements_interview,
     handle_task_focused_interview,
     handle_meta_prompt_interview,
-    handle_simple_interview  # PROMPT #91
+    handle_orchestrator_interview  # PROMPT #91 / PROMPT #94
 )
 
 # Import helper functions from modular files (PROMPT #69)
@@ -56,11 +56,11 @@ from .fixed_questions import (
     get_fixed_question_task_focused,
     get_fixed_question_meta_prompt
 )
-# PROMPT #91 - Simple Interview Mode
-from .simple_questions import (
-    get_simple_fixed_question,
-    count_fixed_questions_simple,
-    is_fixed_question_complete_simple
+# PROMPT #91 / PROMPT #94 - Orchestrator Interview Mode
+from .orchestrator_questions import (
+    get_orchestrator_fixed_question,
+    count_fixed_questions_orchestrator,
+    is_fixed_question_complete_orchestrator
 )
 
 logger = logging.getLogger(__name__)
@@ -150,19 +150,19 @@ async def create_interview(
     ).count()
 
     if existing_interviews_count == 0:
-        # FIRST INTERVIEW - Always use simple mode (PROMPT #91)
-        interview_mode = "simple"
+        # FIRST INTERVIEW - Always use orchestrator mode (PROMPT #91 / PROMPT #94)
+        interview_mode = "orchestrator"
         logger.info(f"Creating FIRST interview for project {project.name}:")
-        logger.info(f"  - interview_mode: simple (ALWAYS for first interview - PROMPT #91)")
-        logger.info(f"  - This interview will gather project info with conditional stack questions")
+        logger.info(f"  - interview_mode: orchestrator (ALWAYS for first interview - PROMPT #91/94)")
+        logger.info(f"  - This interview orchestrates project info collection with conditional stack questions")
     else:
         # NOT FIRST - Use task_focused mode (PROMPT #68)
-        # PROMPT #93 - "requirements" mode deprecated (replaced by "simple" for first interviews)
+        # PROMPT #93/94 - "requirements" deprecated, replaced by "orchestrator" for first interviews
         interview_mode = "task_focused"
 
         logger.info(f"Creating additional interview for project {project.name}:")
         logger.info(f"  - interview_mode: task_focused (for creating tasks)")
-        logger.info(f"  - First interview already collected project info with 'simple' mode")
+        logger.info(f"  - First interview already collected project info with 'orchestrator' mode")
 
     db_interview = Interview(
         project_id=interview_data.project_id,
@@ -787,11 +787,12 @@ async def generate_hierarchy_from_meta_prompt(
     Generate complete project hierarchy from interview (ASYNC).
 
     PROMPT #78 - Meta Prompt Hierarchy Generation
-    PROMPT #92 - Extended to support Simple interviews
+    PROMPT #92 - Extended to support Orchestrator interviews
+    PROMPT #94 - Renamed "simple" to "orchestrator"
 
     Supports two interview modes:
-    - meta_prompt: 17 fixed questions (comprehensive)
-    - simple: 5-8 conditional questions (focused)
+    - meta_prompt: 17 fixed questions (comprehensive, legacy)
+    - orchestrator: 5-8 conditional questions (focused, default for new projects)
 
     After completing either interview type, this endpoint processes all responses
     and generates the ENTIRE project hierarchy:
@@ -819,7 +820,7 @@ async def generate_hierarchy_from_meta_prompt(
         }
 
     Raises:
-        400: If interview is not meta_prompt/simple mode or not completed
+        400: If interview is not meta_prompt/orchestrator mode or not completed
         404: If interview not found
     """
     from app.services.job_manager import JobManager
@@ -833,12 +834,12 @@ async def generate_hierarchy_from_meta_prompt(
             detail=f"Interview {interview_id} not found"
         )
 
-    # Validate interview mode (PROMPT #92 - Accept both meta_prompt and simple)
-    if interview.interview_mode not in ["meta_prompt", "simple"]:
+    # Validate interview mode (PROMPT #92/94 - Accept meta_prompt and orchestrator)
+    if interview.interview_mode not in ["meta_prompt", "orchestrator"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Cannot generate hierarchy from '{interview.interview_mode}' mode. "
-                   f"Only 'meta_prompt' and 'simple' interviews support full hierarchy generation."
+                   f"Only 'meta_prompt' and 'orchestrator' interviews support full hierarchy generation."
         )
 
     # Validate interview is completed
@@ -1027,8 +1028,8 @@ async def start_interview(
     logger.info(f"Starting interview {interview_id} with fixed Question 1 for project: {project.name}")
 
     # Get fixed Question 1 (Title) - use appropriate function based on interview mode
-    if interview.interview_mode == "simple":
-        assistant_message = get_simple_fixed_question(1, project, db, {})
+    if interview.interview_mode == "orchestrator":
+        assistant_message = get_orchestrator_fixed_question(1, project, db, {})
     else:
         assistant_message = get_fixed_question(1, project, db)
 
@@ -1466,18 +1467,18 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
         content_preview = msg.get('content', '')[:80]
         logger.info(f"    - Index {i}: role={msg.get('role')}, content={content_preview}")
 
-    # PROMPT #91 / PROMPT #76 / PROMPT #68 - Route based on interview mode
-    # Four modes: simple, meta_prompt, requirements, task_focused
-    if interview.interview_mode == "simple":
-        # Simple interview (FIRST interview - PROMPT #91): Q1-Q8 conditional → AI contextual questions
-        return await handle_simple_interview(
+    # PROMPT #91/94 / PROMPT #76 / PROMPT #68 - Route based on interview mode
+    # Four modes: orchestrator, meta_prompt, requirements, task_focused
+    if interview.interview_mode == "orchestrator":
+        # Orchestrator interview (FIRST interview - PROMPT #91/94): Q1-Q8 conditional → AI contextual questions
+        return await handle_orchestrator_interview(
             interview=interview,
             project=project,
             message_count=message_count,
             db=db,
-            get_simple_fixed_question_func=get_simple_fixed_question,
-            count_fixed_questions_simple_func=count_fixed_questions_simple,
-            is_fixed_question_complete_simple_func=is_fixed_question_complete_simple,
+            get_orchestrator_fixed_question_func=get_orchestrator_fixed_question,
+            count_fixed_questions_orchestrator_func=count_fixed_questions_orchestrator,
+            is_fixed_question_complete_orchestrator_func=is_fixed_question_complete_orchestrator,
             clean_ai_response_func=clean_ai_response,
             prepare_context_func=prepare_interview_context
         )
