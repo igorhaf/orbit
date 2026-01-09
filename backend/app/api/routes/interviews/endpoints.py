@@ -787,18 +787,32 @@ async def generate_hierarchy_from_meta_prompt(
     db: Session = Depends(get_db)
 ):
     """
-    Generate complete project hierarchy from meta prompt interview (ASYNC).
+    Generate complete project hierarchy from interview (ASYNC).
 
     PROMPT #78 - Meta Prompt Hierarchy Generation
+    PROMPT #92 - Extended to support Simple interviews
 
-    After completing the meta prompt interview (Q1-Q9 + contextual questions),
-    this endpoint processes all responses and generates the ENTIRE project hierarchy:
+    Supports two interview modes:
+    - meta_prompt: 17 fixed questions (comprehensive)
+    - simple: 5-8 conditional questions (focused)
+
+    After completing either interview type, this endpoint processes all responses
+    and generates the ENTIRE project hierarchy:
     - 1 Epic (entire project)
-    - 3-7 Stories (features)
-    - 15-50 Tasks (with generated_prompt for execution)
-    - Subtasks for complex Tasks (with generated_prompt)
+    - ~10 Stories (features) - AI decides quantity based on complexity
+    - ~10 Tasks per Story (with generated_prompt for execution)
+    - 0-10 Subtasks per Task (with generated_prompt)
 
-    All fields populated: title, description, acceptance_criteria, priorities, labels, etc.
+    All items are fully populated with:
+    - title, description, acceptance_criteria
+    - priorities, labels, story_points
+    - generated_prompt (for execution)
+    - MD files (documentation)
+
+    AI analyzes each level hierarchically:
+    - Interview → generates Epic + Stories
+    - Each Story → generates Tasks
+    - Each Task → generates Subtasks (if needed)
 
     Returns:
         {
@@ -808,7 +822,7 @@ async def generate_hierarchy_from_meta_prompt(
         }
 
     Raises:
-        400: If interview is not meta_prompt mode or not completed
+        400: If interview is not meta_prompt/simple mode or not completed
         404: If interview not found
     """
     from app.services.job_manager import JobManager
@@ -822,12 +836,12 @@ async def generate_hierarchy_from_meta_prompt(
             detail=f"Interview {interview_id} not found"
         )
 
-    # Validate meta_prompt mode
-    if interview.interview_mode != "meta_prompt":
+    # Validate interview mode (PROMPT #92 - Accept both meta_prompt and simple)
+    if interview.interview_mode not in ["meta_prompt", "simple"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only meta_prompt interviews can generate complete hierarchy. "
-                   f"This interview is in '{interview.interview_mode}' mode."
+            detail=f"Cannot generate hierarchy from '{interview.interview_mode}' mode. "
+                   f"Only 'meta_prompt' and 'simple' interviews support full hierarchy generation."
         )
 
     # Validate interview is completed
@@ -850,7 +864,7 @@ async def generate_hierarchy_from_meta_prompt(
         interview_id=interview_id
     )
 
-    logger.info(f"Created async job {job.id} for meta prompt hierarchy generation from interview {interview_id}")
+    logger.info(f"Created async job {job.id} for {interview.interview_mode} hierarchy generation from interview {interview_id}")
 
     # Execute in background
     import asyncio
