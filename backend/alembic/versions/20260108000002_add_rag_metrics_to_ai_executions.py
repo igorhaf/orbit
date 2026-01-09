@@ -32,15 +32,27 @@ def upgrade() -> None:
     - rag_top_similarity: Highest similarity score (0.0-1.0)
     - rag_retrieval_time_ms: Time spent on RAG retrieval in milliseconds
     """
+    from sqlalchemy import inspect
+    from sqlalchemy.engine import reflection
 
     print("📊 Adding RAG metrics columns to ai_executions table...")
 
-    # Add RAG metrics columns
-    op.add_column('ai_executions', sa.Column('rag_enabled', sa.Boolean(), nullable=True, default=False))
-    op.add_column('ai_executions', sa.Column('rag_hit', sa.Boolean(), nullable=True, default=False))
-    op.add_column('ai_executions', sa.Column('rag_results_count', sa.Integer(), nullable=True, default=0))
-    op.add_column('ai_executions', sa.Column('rag_top_similarity', sa.Float(), nullable=True))
-    op.add_column('ai_executions', sa.Column('rag_retrieval_time_ms', sa.Float(), nullable=True))
+    # Get connection and check which columns already exist
+    conn = op.get_bind()
+    inspector = inspect(conn)
+    existing_columns = {col['name'] for col in inspector.get_columns('ai_executions')}
+
+    # Add RAG metrics columns only if they don't exist
+    if 'rag_enabled' not in existing_columns:
+        op.add_column('ai_executions', sa.Column('rag_enabled', sa.Boolean(), nullable=True, default=False))
+    if 'rag_hit' not in existing_columns:
+        op.add_column('ai_executions', sa.Column('rag_hit', sa.Boolean(), nullable=True, default=False))
+    if 'rag_results_count' not in existing_columns:
+        op.add_column('ai_executions', sa.Column('rag_results_count', sa.Integer(), nullable=True, default=0))
+    if 'rag_top_similarity' not in existing_columns:
+        op.add_column('ai_executions', sa.Column('rag_top_similarity', sa.Float(), nullable=True))
+    if 'rag_retrieval_time_ms' not in existing_columns:
+        op.add_column('ai_executions', sa.Column('rag_retrieval_time_ms', sa.Float(), nullable=True))
 
     print("✅ RAG metrics columns added successfully")
     print("\nTracking:")
