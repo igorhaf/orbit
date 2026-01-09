@@ -344,9 +344,54 @@ async def approve_and_create_tasks(
     Creates all Tasks linked to parent Story.
     """
     try:
+        # PROMPT #94 FASE 4 - Get existing tasks for similarity detection
+        from app.services.similarity_detector import detect_modification_attempt
+        from app.services.modification_manager import block_task
+
+        existing_tasks = db.query(Task).filter(
+            Task.project_id == project_id,
+            Task.status != TaskStatus.DONE  # Don't compare with archived tasks
+        ).all()
+
         created_tasks = []
+        blocked_tasks_count = 0
 
         for i, suggestion in enumerate(suggestions):
+            # PROMPT #94 FASE 4 - Check for modification attempts
+            is_modification, similar_task, similarity_score = detect_modification_attempt(
+                new_task_title=suggestion["title"],
+                new_task_description=suggestion["description"],
+                existing_tasks=existing_tasks,
+                threshold=0.90
+            )
+
+            if is_modification:
+                # Block existing task instead of creating new one
+                logger.warning(
+                    f"🚨 MODIFICATION DETECTED (similarity: {similarity_score:.2%})\n"
+                    f"   Blocking existing task: {similar_task.title}\n"
+                    f"   Proposed modification: {suggestion['title']}"
+                )
+
+                blocked_task = block_task(
+                    task=similar_task,
+                    proposed_modification={
+                        "title": suggestion["title"],
+                        "description": suggestion["description"],
+                        "story_points": suggestion.get("story_points"),
+                        "priority": suggestion.get("priority", "medium"),
+                        "acceptance_criteria": suggestion.get("acceptance_criteria", []),
+                        "similarity_score": similarity_score
+                    },
+                    db=db,
+                    reason=f"AI suggested modification detected (similarity: {similarity_score:.2%})"
+                )
+
+                created_tasks.append(blocked_task)  # Add blocked task to result
+                blocked_tasks_count += 1
+                continue
+
+            # No modification detected - create new task normally
             task = Task(
                 id=uuid4(),
                 project_id=project_id,
@@ -373,7 +418,15 @@ async def approve_and_create_tasks(
         for task in created_tasks:
             db.refresh(task)
 
-        logger.info(f"✅ Created {len(created_tasks)} Tasks")
+        # PROMPT #94 FASE 4 - Log blocked tasks
+        new_tasks_count = len(created_tasks) - blocked_tasks_count
+        if blocked_tasks_count > 0:
+            logger.info(
+                f"✅ Processed {len(created_tasks)} Tasks: "
+                f"{new_tasks_count} created, {blocked_tasks_count} blocked for approval"
+            )
+        else:
+            logger.info(f"✅ Created {len(created_tasks)} Tasks")
 
         return created_tasks
 

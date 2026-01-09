@@ -1224,3 +1224,189 @@ Me diga como posso ajudar!""",
             "has_subtask_suggestions": len(task.subtask_suggestions) > 0 if task.subtask_suggestions else False
         }
     }
+
+
+# ============================================================================
+# PROMPT #94 FASE 4 - BLOCKING SYSTEM FOR MODIFICATION DETECTION
+# ============================================================================
+
+class RejectModificationRequest(BaseModel):
+    """Request model for rejecting a proposed modification."""
+    rejection_reason: Optional[str] = None
+
+
+@router.get("/blocked", response_model=List[TaskResponse])
+async def get_blocked_tasks(
+    project_id: UUID = Query(..., description="Project ID to filter blocked tasks"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all blocked tasks for a project (for "Bloqueados" Kanban column).
+
+    PROMPT #94 FASE 4 - Blocking System:
+    When AI suggests modifying an existing task (>90% semantic similarity):
+    - Task gets BLOCKED status
+    - Modification saved in pending_modification field
+    - User must approve/reject via UI
+
+    GET /api/v1/tasks/blocked?project_id={uuid}
+
+    Returns:
+    - List of blocked tasks with pending_modification data
+
+    Example response:
+    [
+        {
+            "id": "uuid",
+            "title": "Create user authentication",
+            "status": "blocked",
+            "blocked_reason": "Modification suggested by AI",
+            "pending_modification": {
+                "title": "Add JWT authentication with refresh tokens",
+                "description": "...",
+                "similarity_score": 0.95,
+                "suggested_at": "2026-01-09T12:34:56"
+            }
+        }
+    ]
+    """
+    from app.services.modification_manager import get_blocked_tasks
+
+    blocked_tasks = get_blocked_tasks(project_id=project_id, db=db)
+
+    logger.info(f"Retrieved {len(blocked_tasks)} blocked tasks for project {project_id}")
+
+    return blocked_tasks
+
+
+@router.post("/{task_id}/approve-modification", response_model=TaskResponse)
+async def approve_task_modification(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Approve a proposed modification - creates new task with modifications.
+
+    PROMPT #94 FASE 4 - Blocking System Approval:
+
+    When user approves:
+    1. Create new task with the proposed modifications
+    2. Mark old task as DONE (archived, not deleted for traceability)
+    3. Add comment to old task: "Replaced by new task [link]"
+    4. Clear pending_modification field
+
+    POST /api/v1/tasks/{task_id}/approve-modification
+
+    Requirements:
+    - Task must have status BLOCKED
+    - Task must have pending_modification data
+
+    Returns:
+    - The newly created task (with modifications applied)
+
+    Example response:
+    {
+        "id": "new-uuid",
+        "title": "Add JWT authentication with refresh tokens",
+        "description": "...",
+        "status": "backlog",
+        "comments": [
+            {
+                "text": "Created from approved modification of task: Create user authentication",
+                "created_at": "2026-01-09T12:34:56",
+                "created_by": "system"
+            }
+        ]
+    }
+    """
+    from app.services.modification_manager import approve_modification
+
+    try:
+        new_task = approve_modification(task_id=task_id, db=db, approved_by="user")
+
+        logger.info(
+            f"✅ Modification approved for task {task_id}\n"
+            f"   New task created: {new_task.id}"
+        )
+
+        return new_task
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/{task_id}/reject-modification", response_model=TaskResponse)
+async def reject_task_modification(
+    task_id: UUID,
+    request: Optional[RejectModificationRequest] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    Reject a proposed modification - unblocks task and discards changes.
+
+    PROMPT #94 FASE 4 - Blocking System Rejection:
+
+    When user rejects:
+    1. Unblock the task (restore to original status, likely BACKLOG or TODO)
+    2. Clear pending_modification field
+    3. Add comment explaining rejection
+    4. Task continues as originally defined
+
+    POST /api/v1/tasks/{task_id}/reject-modification
+
+    Optional body:
+    {
+        "rejection_reason": "AI suggested changes are not needed"
+    }
+
+    Requirements:
+    - Task must have status BLOCKED
+    - Task must have pending_modification data
+
+    Returns:
+    - The unblocked task (restored to original state)
+
+    Example response:
+    {
+        "id": "uuid",
+        "title": "Create user authentication",
+        "status": "backlog",
+        "blocked_reason": null,
+        "pending_modification": null,
+        "comments": [
+            {
+                "text": "Proposed modification was rejected by user: AI suggested changes are not needed",
+                "created_at": "2026-01-09T12:34:56",
+                "created_by": "system"
+            }
+        ]
+    }
+    """
+    from app.services.modification_manager import reject_modification
+
+    try:
+        rejection_reason = request.rejection_reason if request else None
+
+        unblocked_task = reject_modification(
+            task_id=task_id,
+            db=db,
+            rejected_by="user",
+            rejection_reason=rejection_reason
+        )
+
+        logger.info(
+            f"❌ Modification rejected for task {task_id}\n"
+            f"   Task unblocked (restored to: {unblocked_task.status.value})\n"
+            f"   Reason: {rejection_reason or 'Not specified'}"
+        )
+
+        return unblocked_task
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
