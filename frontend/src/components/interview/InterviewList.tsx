@@ -31,6 +31,7 @@ export function InterviewList({
   const [selectedProject, setSelectedProject] = useState('');
   const [creating, setCreating] = useState(false);
   const [statusFilter, setStatusFilter] = useState('active'); // Default: only open/active interviews
+  const [useCardFocused, setUseCardFocused] = useState(false); // PROMPT #98 - Allow card-focused mode for first interview
 
   useEffect(() => {
     loadData();
@@ -85,12 +86,14 @@ export function InterviewList({
 
     setCreating(true);
     try {
-      // PROMPT #97 - First interview with no parent → meta_prompt
+      // PROMPT #97 - First interview with no parent
+      // PROMPT #98 - Allow card-focused mode (motion types instead of meta prompt)
       const response = await interviewsApi.create({
         project_id: targetProjectId,
         ai_model_used: 'claude-3-sonnet',
         conversation_data: [],
-        parent_task_id: null,  // PROMPT #97 - Null = first interview = meta_prompt
+        parent_task_id: null,  // PROMPT #97 - Null = first interview
+        use_card_focused: useCardFocused,  // PROMPT #98 - Choose between meta_prompt (false) or card_focused (true)
       });
 
       // Get the created interview ID
@@ -320,6 +323,25 @@ export function InterviewList({
             </div>
           )}
 
+          {/* PROMPT #98 - Card-focused mode toggle */}
+          <div className="flex items-start gap-3 p-4 bg-blue-50 rounded border border-blue-200">
+            <input
+              type="checkbox"
+              id="card-focused"
+              checked={useCardFocused}
+              onChange={(e) => setUseCardFocused(e.target.checked)}
+              className="mt-1 rounded border-gray-300 text-blue-600 cursor-pointer"
+            />
+            <label htmlFor="card-focused" className="text-sm cursor-pointer">
+              <p className="font-medium text-gray-900">Use Card-Focused Mode</p>
+              <p className="text-xs text-gray-600 mt-1">
+                {useCardFocused
+                  ? 'Select motivation type (bug, feature, design, etc.) instead of comprehensive project analysis'
+                  : 'Gather comprehensive project information (default: meta-prompt flow)'}
+              </p>
+            </label>
+          </div>
+
           <div className="flex justify-end gap-2 pt-4">
             <Button
               type="button"
@@ -327,6 +349,7 @@ export function InterviewList({
               onClick={() => {
                 setIsCreateOpen(false);
                 setSelectedProject('');
+                setUseCardFocused(false);
               }}
             >
               Cancel
