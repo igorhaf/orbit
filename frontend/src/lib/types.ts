@@ -712,6 +712,44 @@ export interface KanbanBoard {
 }
 
 // ============================================================================
+// BLOCKING ANALYTICS (PROMPT #97)
+// ============================================================================
+
+export interface BlockingAnalytics {
+  // Current state
+  total_blocked: number;
+  total_approved: number;
+  total_rejected: number;
+
+  // Rates
+  approval_rate: number;  // % of resolved modifications that were approved
+  rejection_rate: number;  // % of resolved modifications that were rejected
+  blocking_rate: number;  // % of all tasks that got blocked
+
+  // Similarity metrics
+  avg_similarity_score: number;
+  similarity_distribution: {
+    '90+': number;
+    '80-90': number;
+    '70-80': number;
+    '<70': number;
+  };
+
+  // Timeline
+  blocked_by_date: Array<{
+    date: string;
+    count: number;
+  }>;
+
+  // Project breakdown
+  blocked_by_project: Array<{
+    project_id: string;
+    project_name: string;
+    count: number;
+  }>;
+}
+
+// ============================================================================
 // API RESPONSE TYPES
 // ============================================================================
 

@@ -268,6 +268,16 @@ export const tasksApi = {
       method: 'POST',
       body: JSON.stringify(reason ? { rejection_reason: reason } : {}),
     }),
+
+  // PROMPT #97 - Blocking Analytics
+  getBlockingAnalytics: (projectId?: string, days: number = 30) => {
+    const queryParams = new URLSearchParams();
+    if (projectId) {
+      queryParams.append('project_id', projectId);
+    }
+    queryParams.append('days', days.toString());
+    return request<any>(`/api/v1/tasks/analytics/blocking?${queryParams.toString()}`);
+  },
 };
 
 // Backlog Generation API (JIRA Transformation - PROMPT #62)

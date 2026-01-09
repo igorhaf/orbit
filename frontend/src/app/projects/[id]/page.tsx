@@ -17,9 +17,9 @@ import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 import { InterviewList } from '@/components/interview';
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
 import { projectsApi, tasksApi, interviewsApi, ragApi } from '@/lib/api';
-import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats } from '@/lib/types';
+import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 
-type Tab = 'kanban' | 'overview' | 'interviews' | 'backlog' | 'rag';
+type Tab = 'kanban' | 'overview' | 'interviews' | 'backlog' | 'rag' | 'analytics';
 
 export default function ProjectDetailsPage() {
   const params = useParams();
@@ -43,6 +43,11 @@ export default function ProjectDetailsPage() {
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
   const [codeStats, setCodeStats] = useState<CodeIndexingStats | null>(null);
   const [loadingRag, setLoadingRag] = useState(false);
+
+  // Analytics states (PROMPT #97)
+  const [analyticsData, setAnalyticsData] = useState<BlockingAnalytics | null>(null);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [analyticsDays, setAnalyticsDays] = useState<number>(30);
 
   const loadProjectData = useCallback(async () => {
     console.log('📋 Loading project data for ID:', projectId);
@@ -101,6 +106,28 @@ export default function ProjectDetailsPage() {
       loadRagStats();
     }
   }, [activeTab, loadRagStats]);
+
+  // Load Analytics data (PROMPT #97)
+  const loadAnalyticsData = useCallback(async () => {
+    if (activeTab !== 'analytics') return;
+
+    setLoadingAnalytics(true);
+    try {
+      const analytics = await tasksApi.getBlockingAnalytics(projectId, analyticsDays);
+      setAnalyticsData(analytics.data || analytics);
+    } catch (error) {
+      console.error('Failed to load blocking analytics:', error);
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  }, [projectId, activeTab, analyticsDays]);
+
+  // Load Analytics when tab becomes active or days filter changes
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      loadAnalyticsData();
+    }
+  }, [activeTab, loadAnalyticsData]);
 
   // Check if text is already in Markdown format
   const checkIfMarkdown = useCallback((text: string): boolean => {
@@ -406,6 +433,7 @@ export default function ProjectDetailsPage() {
               { id: 'kanban', label: 'Kanban Board' },
               { id: 'interviews', label: 'Interviews' },
               { id: 'rag', label: '📊 RAG Analytics' },
+              { id: 'analytics', label: '🚨 Blocking Analytics' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -527,6 +555,208 @@ export default function ProjectDetailsPage() {
                 <CardContent className="py-12 text-center text-gray-500">
                   <p>No RAG data available yet</p>
                   <p className="text-sm mt-2">RAG analytics will appear after AI operations are executed</p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
+
+        {/* Blocking Analytics Tab (PROMPT #97) */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-6">
+            {/* Time Period Selector */}
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-900">Blocking System Analytics</h3>
+              <div className="flex gap-2">
+                {[7, 30, 90, 365].map((days) => (
+                  <Button
+                    key={days}
+                    variant={analyticsDays === days ? 'primary' : 'outline'}
+                    size="sm"
+                    onClick={() => setAnalyticsDays(days)}
+                  >
+                    {days === 365 ? 'All Time' : `${days}d`}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {loadingAnalytics ? (
+              <div className="flex items-center justify-center py-12">
+                <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </div>
+            ) : analyticsData ? (
+              <>
+                {/* Key Metrics Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium text-gray-500">Currently Blocked</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-baseline">
+                        <span className="text-3xl font-bold text-red-600">{analyticsData.total_blocked}</span>
+                        <span className="ml-2 text-sm text-gray-500">tasks</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">Pending user approval</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium text-gray-500">Approved</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-baseline">
+                        <span className="text-3xl font-bold text-green-600">{analyticsData.total_approved}</span>
+                        <span className="ml-2 text-sm text-gray-500">modifications</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">{(analyticsData.approval_rate * 100).toFixed(1)}% approval rate</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium text-gray-500">Rejected</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-baseline">
+                        <span className="text-3xl font-bold text-orange-600">{analyticsData.total_rejected}</span>
+                        <span className="ml-2 text-sm text-gray-500">modifications</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">{(analyticsData.rejection_rate * 100).toFixed(1)}% rejection rate</p>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-sm font-medium text-gray-500">Avg Similarity</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-baseline">
+                        <span className="text-3xl font-bold text-blue-600">{(analyticsData.avg_similarity_score * 100).toFixed(1)}%</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">AI detection accuracy</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Charts Row */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Similarity Distribution */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Similarity Score Distribution</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {Object.entries(analyticsData.similarity_distribution).map(([range, count]) => {
+                          const total = Object.values(analyticsData.similarity_distribution).reduce((a, b) => a + b, 0);
+                          const percentage = total > 0 ? (count / total) * 100 : 0;
+
+                          const getColor = (range: string) => {
+                            if (range === '90+') return 'bg-red-500';
+                            if (range === '80-90') return 'bg-orange-500';
+                            if (range === '70-80') return 'bg-yellow-500';
+                            return 'bg-green-500';
+                          };
+
+                          return (
+                            <div key={range}>
+                              <div className="flex justify-between text-sm mb-1">
+                                <span className="font-medium text-gray-700">{range}% Similar</span>
+                                <span className="text-gray-500">{count} ({percentage.toFixed(0)}%)</span>
+                              </div>
+                              <div className="w-full bg-gray-200 rounded-full h-3">
+                                <div
+                                  className={`h-3 rounded-full ${getColor(range)}`}
+                                  style={{ width: `${percentage}%` }}
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Approval vs Rejection Rate */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Resolution Rate</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="font-medium text-green-700">✅ Approved</span>
+                            <span className="text-gray-500">{analyticsData.total_approved} ({(analyticsData.approval_rate * 100).toFixed(1)}%)</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-6">
+                            <div
+                              className="h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-semibold"
+                              style={{ width: `${analyticsData.approval_rate * 100}%` }}
+                            >
+                              {analyticsData.approval_rate > 0.15 && `${(analyticsData.approval_rate * 100).toFixed(0)}%`}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="font-medium text-orange-700">❌ Rejected</span>
+                            <span className="text-gray-500">{analyticsData.total_rejected} ({(analyticsData.rejection_rate * 100).toFixed(1)}%)</span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-6">
+                            <div
+                              className="h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-semibold"
+                              style={{ width: `${analyticsData.rejection_rate * 100}%` }}
+                            >
+                              {analyticsData.rejection_rate > 0.15 && `${(analyticsData.rejection_rate * 100).toFixed(0)}%`}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="pt-4 border-t">
+                          <div className="text-sm text-gray-600">
+                            <strong>Total Resolved:</strong> {analyticsData.total_approved + analyticsData.total_rejected} modifications
+                          </div>
+                          <div className="text-sm text-gray-600 mt-1">
+                            <strong>Blocking Rate:</strong> {(analyticsData.blocking_rate * 100).toFixed(1)}% of all tasks
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Timeline */}
+                {analyticsData.blocked_by_date && analyticsData.blocked_by_date.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Blocking Timeline</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        {analyticsData.blocked_by_date.slice(0, 10).map((item) => (
+                          <div key={item.date} className="flex justify-between items-center py-2 border-b last:border-0">
+                            <span className="text-sm font-medium text-gray-700">{new Date(item.date).toLocaleDateString()}</span>
+                            <Badge variant="outline">{item.count} blocked</Badge>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center text-gray-500">
+                  <p>No blocking analytics available yet</p>
+                  <p className="text-sm mt-2">Analytics will appear after AI suggests modifications to tasks</p>
                 </CardContent>
               </Card>
             )}
