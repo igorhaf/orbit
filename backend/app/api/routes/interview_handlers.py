@@ -1837,14 +1837,10 @@ async def handle_card_focused_interview(
         # Store motivation type from Q1 answer if available
         if question_number == 1 and 'q1' in previous_answers:
             interview.motivation_type = previous_answers['q1'].lower()
-            from sqlalchemy.orm.attributes import flag_modified
-            flag_modified(interview, "motivation_type")
 
         # Add fixed question to conversation
         interview.conversation_data.append(assistant_message)
 
-        from sqlalchemy.orm.attributes import flag_modified
-        flag_modified(interview, "conversation_data")
         db.commit()
         db.refresh(interview)
 
@@ -1945,8 +1941,6 @@ async def _handle_card_focused_ai_question(
     # Add to conversation
     interview.conversation_data.append(assistant_message)
 
-    from sqlalchemy.orm.attributes import flag_modified
-    flag_modified(interview, "conversation_data")
     db.commit()
     db.refresh(interview)
 
