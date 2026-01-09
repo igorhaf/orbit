@@ -1245,3 +1245,202 @@ async def _handle_ai_subtask_focused_question(
         interview, project, system_prompt, db,
         clean_ai_response_func, prepare_context_func
     )
+
+async def handle_task_orchestrated_interview(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    db: Session,
+    get_task_orchestrated_fixed_question_func,
+    count_fixed_questions_task_orchestrated_func,
+    is_fixed_question_complete_task_orchestrated_func,
+    clean_ai_response_func,
+    prepare_context_func
+) -> Dict[str, Any]:
+    """
+    Handle TASK_ORCHESTRATED interview mode (PROMPT #97 - Tasks within Stories).
+
+    This mode is for creating individual TASKS within a Story.
+    Same layout as orchestrator: Q1 (Title) + Q2 (Description) + AI contextual.
+
+    Flow:
+    - Q1-Q2: Basic info (title, description)
+    - Q3+: AI contextual questions (based on Epic + Story + Task context)
+
+    Args:
+        interview: Interview instance
+        project: Project instance
+        message_count: Current message count
+        db: Database session
+        get_task_orchestrated_fixed_question_func: Function to get task_orchestrated fixed questions
+        count_fixed_questions_task_orchestrated_func: Function to count total fixed questions
+        is_fixed_question_complete_task_orchestrated_func: Function to check if fixed phase is complete
+        clean_ai_response_func: Function to clean AI responses
+        prepare_context_func: Function to prepare interview context
+
+    Returns:
+        Response dict with success, message, and usage
+    """
+    logger.info(f"🎯 TASK_ORCHESTRATED MODE - message_count={message_count}")
+
+    previous_answers = {}
+
+    # Extract previous answers from conversation
+    for i, msg in enumerate(interview.conversation_data):
+        if msg.get('role') == 'user':
+            question_num = (i + 1) // 2
+            previous_answers[f'q{question_num}'] = msg.get('content', '')
+
+    # Calculate current question number
+    question_number = (message_count // 2) + 1
+
+    # Task orchestrated always has 2 fixed questions
+    total_fixed = count_fixed_questions_task_orchestrated_func()
+    in_fixed_phase = question_number <= total_fixed
+
+    if in_fixed_phase:
+        # Fixed question phase
+        logger.info(f"Returning fixed Question {question_number}")
+
+        assistant_message = get_task_orchestrated_fixed_question_func(
+            question_number=question_number,
+            project=project,
+            db=db,
+            previous_answers=previous_answers
+        )
+
+        if not assistant_message:
+            # No more fixed questions - move to AI phase
+            logger.info(f"No fixed question {question_number} (moving to AI contextual)")
+            return await _handle_ai_orchestrator_contextual_question(
+                interview, project, message_count,
+                previous_answers, db,
+                clean_ai_response_func, prepare_context_func
+            )
+
+        # Add fixed question to conversation
+        interview.conversation_data.append(assistant_message)
+
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(interview, "conversation_data")
+        db.commit()
+        db.refresh(interview)
+
+        return {
+            "success": True,
+            "message": assistant_message,
+            "usage": {
+                "model": "system/fixed-question-task-orchestrated",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_cost_usd": 0.0
+            }
+        }
+
+    else:
+        # AI contextual questions phase
+        return await _handle_ai_orchestrator_contextual_question(
+            interview, project, message_count,
+            previous_answers, db,
+            clean_ai_response_func, prepare_context_func
+        )
+
+
+async def handle_subtask_orchestrated_interview(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    db: Session,
+    get_subtask_orchestrated_fixed_question_func,
+    count_fixed_questions_subtask_orchestrated_func,
+    is_fixed_question_complete_subtask_orchestrated_func,
+    clean_ai_response_func,
+    prepare_context_func
+) -> Dict[str, Any]:
+    """
+    Handle SUBTASK_ORCHESTRATED interview mode (PROMPT #97 - Subtasks within Tasks).
+
+    This mode is for creating individual SUBTASKS within a Task.
+    Same layout as orchestrator: Q1 (Title) + Q2 (Description) + AI contextual.
+
+    Flow:
+    - Q1-Q2: Basic info (title, description)
+    - Q3+: AI contextual questions (based on Epic + Story + Task + Subtask context)
+
+    Args:
+        interview: Interview instance
+        project: Project instance
+        message_count: Current message count
+        db: Database session
+        get_subtask_orchestrated_fixed_question_func: Function to get subtask_orchestrated fixed questions
+        count_fixed_questions_subtask_orchestrated_func: Function to count total fixed questions
+        is_fixed_question_complete_subtask_orchestrated_func: Function to check if fixed phase is complete
+        clean_ai_response_func: Function to clean AI responses
+        prepare_context_func: Function to prepare interview context
+
+    Returns:
+        Response dict with success, message, and usage
+    """
+    logger.info(f"🎯 SUBTASK_ORCHESTRATED MODE - message_count={message_count}")
+
+    previous_answers = {}
+
+    # Extract previous answers from conversation
+    for i, msg in enumerate(interview.conversation_data):
+        if msg.get('role') == 'user':
+            question_num = (i + 1) // 2
+            previous_answers[f'q{question_num}'] = msg.get('content', '')
+
+    # Calculate current question number
+    question_number = (message_count // 2) + 1
+
+    # Subtask orchestrated always has 2 fixed questions
+    total_fixed = count_fixed_questions_subtask_orchestrated_func()
+    in_fixed_phase = question_number <= total_fixed
+
+    if in_fixed_phase:
+        # Fixed question phase
+        logger.info(f"Returning fixed Question {question_number}")
+
+        assistant_message = get_subtask_orchestrated_fixed_question_func(
+            question_number=question_number,
+            project=project,
+            db=db,
+            previous_answers=previous_answers
+        )
+
+        if not assistant_message:
+            # No more fixed questions - move to AI phase
+            logger.info(f"No fixed question {question_number} (moving to AI contextual)")
+            return await _handle_ai_orchestrator_contextual_question(
+                interview, project, message_count,
+                previous_answers, db,
+                clean_ai_response_func, prepare_context_func
+            )
+
+        # Add fixed question to conversation
+        interview.conversation_data.append(assistant_message)
+
+        from sqlalchemy.orm.attributes import flag_modified
+        flag_modified(interview, "conversation_data")
+        db.commit()
+        db.refresh(interview)
+
+        return {
+            "success": True,
+            "message": assistant_message,
+            "usage": {
+                "model": "system/fixed-question-subtask-orchestrated",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "total_cost_usd": 0.0
+            }
+        }
+
+    else:
+        # AI contextual questions phase
+        return await _handle_ai_orchestrator_contextual_question(
+            interview, project, message_count,
+            previous_answers, db,
+            clean_ai_response_func, prepare_context_func
+        )
