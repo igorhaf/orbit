@@ -1191,12 +1191,27 @@ Me diga como posso ajudar!""",
     # Import Interview model
     from app.models.interview import Interview, InterviewStatus
 
+    # PROMPT #97 - Determine interview mode based on task item_type (hierarchical flow)
+    if task.item_type == ItemType.EPIC:
+        interview_mode = "orchestrator"  # Epic → Story
+        logger.info(f"Creating Story interview from Epic '{task.title}'")
+    elif task.item_type == ItemType.STORY:
+        interview_mode = "task_orchestrated"  # Story → Task
+        logger.info(f"Creating Task interview from Story '{task.title}'")
+    elif task.item_type == ItemType.TASK:
+        interview_mode = "subtask_orchestrated"  # Task → Subtask
+        logger.info(f"Creating Subtask interview from Task '{task.title}'")
+    else:
+        # Fallback for other types (bug, etc)
+        interview_mode = "task_orchestrated"
+        logger.warning(f"Unknown parent type {task.item_type}, defaulting to task_orchestrated")
+
     # Create interview
     interview = Interview(
         project_id=task.project_id,
         conversation_data=[initial_message],
         ai_model_used="system",
-        interview_mode="task_focused",
+        interview_mode=interview_mode,  # PROMPT #97 - Hierarchical mode
         parent_task_id=task_id,
         status=InterviewStatus.ACTIVE,
         created_at=datetime.utcnow()

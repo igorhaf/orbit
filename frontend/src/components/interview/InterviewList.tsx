@@ -85,11 +85,12 @@ export function InterviewList({
 
     setCreating(true);
     try {
-      // PROMPT #56 - Create and redirect to interview
+      // PROMPT #97 - First interview with no parent → meta_prompt
       const response = await interviewsApi.create({
         project_id: targetProjectId,
         ai_model_used: 'claude-3-sonnet',
         conversation_data: [],
+        parent_task_id: null,  // PROMPT #97 - Null = first interview = meta_prompt
       });
 
       // Get the created interview ID
