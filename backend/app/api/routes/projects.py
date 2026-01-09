@@ -22,6 +22,7 @@ from app.api.dependencies import get_project_or_404
 from app.services.consistency_validator import ConsistencyValidator
 from app.services.codebase_indexer import CodebaseIndexer
 from app.services.job_manager import JobManager
+from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +189,21 @@ async def delete_project(
 
     Note: This will cascade delete all related interviews, prompts, and tasks.
     Also deletes the project folder from backend/projects/
+
+    PROMPT #97: Also cleans up interview questions from RAG.
     """
+    # PROMPT #97 - Delete interview questions from RAG
+    try:
+        rag_service = RAGService(db)
+        deleted_count = rag_service.delete_by_filter({
+            "type": "interview_question",
+            "project_id": str(project.id)
+        })
+        logger.info(f"✅ Deleted {deleted_count} interview questions from RAG for project {project.id}")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to delete interview questions from RAG: {e}")
+        # Don't fail the request if RAG cleanup fails
+
     # Delete project folder
     try:
         import shutil
