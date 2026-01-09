@@ -42,7 +42,9 @@ from app.api.routes.interview_handlers import (
     handle_task_focused_interview,
     handle_meta_prompt_interview,
     handle_orchestrator_interview,  # PROMPT #91 / PROMPT #94
-    handle_subtask_focused_interview  # PROMPT #94 FASE 2
+    handle_subtask_focused_interview,  # PROMPT #94 FASE 2
+    handle_task_orchestrated_interview,  # PROMPT #97
+    handle_subtask_orchestrated_interview  # PROMPT #97
 )
 
 # Import helper functions from modular files (PROMPT #69)
@@ -66,6 +68,17 @@ from .orchestrator_questions import (
 # PROMPT #94 FASE 2 - Subtask-Focused Interview Mode
 from .subtask_focused_questions import (
     build_subtask_focused_prompt
+)
+# PROMPT #97 - Task/Subtask Orchestrated Interview Modes
+from .task_orchestrated_questions import (
+    get_task_orchestrated_fixed_question,
+    count_fixed_questions_task_orchestrated,
+    is_fixed_question_complete_task_orchestrated
+)
+from .subtask_orchestrated_questions import (
+    get_subtask_orchestrated_fixed_question,
+    count_fixed_questions_subtask_orchestrated,
+    is_fixed_question_complete_subtask_orchestrated
 )
 
 logger = logging.getLogger(__name__)
@@ -1543,6 +1556,32 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
             clean_ai_response_func=clean_ai_response,
             prepare_context_func=prepare_interview_context,
             parent_task=None  # Will be populated in future when creating subtasks for specific task
+        )
+    elif interview.interview_mode == "task_orchestrated":
+        # Task-orchestrated interview (PROMPT #97): Q1-Q2 fixed → AI contextual (for Tasks within Stories)
+        return await handle_task_orchestrated_interview(
+            interview=interview,
+            project=project,
+            message_count=message_count,
+            db=db,
+            get_task_orchestrated_fixed_question_func=get_task_orchestrated_fixed_question,
+            count_fixed_questions_task_orchestrated_func=count_fixed_questions_task_orchestrated,
+            is_fixed_question_complete_task_orchestrated_func=is_fixed_question_complete_task_orchestrated,
+            clean_ai_response_func=clean_ai_response,
+            prepare_context_func=prepare_interview_context
+        )
+    elif interview.interview_mode == "subtask_orchestrated":
+        # Subtask-orchestrated interview (PROMPT #97): Q1-Q2 fixed → AI contextual (for Subtasks within Tasks)
+        return await handle_subtask_orchestrated_interview(
+            interview=interview,
+            project=project,
+            message_count=message_count,
+            db=db,
+            get_subtask_orchestrated_fixed_question_func=get_subtask_orchestrated_fixed_question,
+            count_fixed_questions_subtask_orchestrated_func=count_fixed_questions_subtask_orchestrated,
+            is_fixed_question_complete_subtask_orchestrated_func=is_fixed_question_complete_subtask_orchestrated,
+            clean_ai_response_func=clean_ai_response,
+            prepare_context_func=prepare_interview_context
         )
     else:
         # Unknown interview mode
