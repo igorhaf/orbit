@@ -1067,3 +1067,142 @@ Após 3-5 perguntas contextuais (total ~20-22 perguntas), conclua a entrevista i
         interview, project, system_prompt, db,
         clean_ai_response_func, prepare_context_func
     )
+
+
+async def handle_subtask_focused_interview(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    db: Session,
+    build_subtask_focused_prompt_func,
+    clean_ai_response_func,
+    prepare_context_func,
+    parent_task = None
+) -> Dict[str, Any]:
+    """
+    Handle SUBTASK-FOCUSED interview mode (PROMPT #94 FASE 2).
+
+    This mode generates ATOMIC subtasks (1 action = 1 prompt super rápido).
+    NO fixed questions - AI starts immediately at Q1.
+    AI decides how many questions to ask (no fixed limit, just good sense).
+
+    Flow:
+    - Q1+: AI contextual questions from the start
+    - Focus on maximum decomposition (atomic subtasks)
+    - Each subtask = 1 executable action in minutes, not hours
+
+    Output: Multiple atomic subtasks (prompts super rápidos)
+
+    Args:
+        interview: Interview instance
+        project: Project instance
+        message_count: Current message count
+        db: Database session
+        build_subtask_focused_prompt_func: Function to build subtask-focused prompt
+        clean_ai_response_func: Function to clean AI responses
+        prepare_context_func: Function to prepare interview context
+        parent_task: Optional parent task for context
+
+    Returns:
+        Response dict with success, message, and usage
+    """
+    logger.info(f"🎯 SUBTASK-FOCUSED MODE - message_count={message_count}")
+
+    # Extract previous answers
+    previous_answers = {}
+    for i, msg in enumerate(interview.conversation_data):
+        if msg.get('role') == 'user':
+            question_num = (i + 1) // 2
+            previous_answers[f'q{question_num}'] = msg.get('content', '')
+
+    # No fixed questions in subtask_focused mode
+    # AI questions start immediately at Q1 (message_count >= 2)
+    if message_count >= 2:
+        return await _handle_ai_subtask_focused_question(
+            interview, project, message_count, parent_task,
+            previous_answers, db, build_subtask_focused_prompt_func,
+            clean_ai_response_func, prepare_context_func
+        )
+    else:
+        # Unexpected state
+        logger.error(f"Unexpected message_count={message_count} in subtask-focused mode")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Unexpected interview state (message_count={message_count})"
+        )
+
+
+async def _handle_ai_subtask_focused_question(
+    interview: Interview,
+    project: Project,
+    message_count: int,
+    parent_task,
+    previous_answers: Dict[str, Any],
+    db: Session,
+    build_subtask_focused_prompt_func,
+    clean_ai_response_func,
+    prepare_context_func
+) -> Dict[str, Any]:
+    """
+    Handle AI-generated questions for subtask-focused interviews.
+
+    PROMPT #94 FASE 2 - Atomic subtask decomposition:
+    - AI decides how many questions (no fixed limit)
+    - Focus on generating atomic subtasks (1 action per subtask)
+    - Each subtask should be executable in minutes
+
+    Args:
+        interview: Interview instance
+        project: Project instance
+        message_count: Current message count
+        parent_task: Parent task for context
+        previous_answers: Dict of previous answers
+        db: Database session
+        build_subtask_focused_prompt_func: Function to build prompt
+        clean_ai_response_func: Function to clean AI responses
+        prepare_context_func: Function to prepare interview context
+
+    Returns:
+        Response dict with success, message, and usage
+    """
+    logger.info(f"Using AI for subtask decomposition question (message_count={message_count})")
+
+    # Check if PrompterFacade is available
+    use_prompter = (
+        PROMPTER_AVAILABLE and
+        os.getenv("PROMPTER_USE_TEMPLATES", "false").lower() == "true"
+    )
+
+    # Generate system prompt for atomic subtask decomposition
+    if use_prompter:
+        try:
+            prompter = PrompterFacade(db)
+            question_num = (message_count // 2) + 1
+            system_prompt = prompter.generate_interview_question(
+                project=project,
+                interview_type="subtask_focused",
+                question_number=question_num,
+                context={
+                    "parent_task": parent_task.title if parent_task else None,
+                    "previous_answers": previous_answers
+                }
+            )
+            logger.info("✅ Using PrompterFacade for subtask_focused question generation")
+        except Exception as e:
+            logger.warning(f"⚠️ PrompterFacade failed: {e}, falling back to direct prompt")
+            use_prompter = False
+
+    if not use_prompter:
+        # Fallback: Use direct prompt building
+        system_prompt = build_subtask_focused_prompt_func(
+            project=project,
+            parent_task=parent_task,
+            message_count=message_count,
+            previous_answers=previous_answers
+        )
+
+    # Call AI Orchestrator
+    return await _execute_ai_question(
+        interview, project, system_prompt, db,
+        clean_ai_response_func, prepare_context_func
+    )

@@ -41,7 +41,8 @@ from app.api.routes.interview_handlers import (
     handle_requirements_interview,
     handle_task_focused_interview,
     handle_meta_prompt_interview,
-    handle_orchestrator_interview  # PROMPT #91 / PROMPT #94
+    handle_orchestrator_interview,  # PROMPT #91 / PROMPT #94
+    handle_subtask_focused_interview  # PROMPT #94 FASE 2
 )
 
 # Import helper functions from modular files (PROMPT #69)
@@ -61,6 +62,10 @@ from .orchestrator_questions import (
     get_orchestrator_fixed_question,
     count_fixed_questions_orchestrator,
     is_fixed_question_complete_orchestrator
+)
+# PROMPT #94 FASE 2 - Subtask-Focused Interview Mode
+from .subtask_focused_questions import (
+    build_subtask_focused_prompt
 )
 
 logger = logging.getLogger(__name__)
@@ -1372,10 +1377,15 @@ async def send_message_to_interview(
     """
     Envia mensagem do usuário e obtém resposta da IA.
 
-    PROMPT #68 - Dual-Mode Interview System:
+    PROMPT #68 - Dual-Mode Interview System
+    PROMPT #94 FASE 2 - Subtask-Focused Mode Added:
+
     Routes to correct handler based on interview_mode:
-    - requirements: Q1-Q7 stack → AI business questions
-    - task_focused: Q1 task type → AI focused questions
+    - orchestrator: Q1-Q8 conditional stack → AI contextual questions (first interview)
+    - meta_prompt: Q1-Q17 fixed questions → AI contextual questions (first interview alternative)
+    - requirements: Q1-Q7 stack → AI business questions (legacy)
+    - task_focused: Q1 task type → AI focused questions (existing projects)
+    - subtask_focused: No fixed questions → AI atomic decomposition (new in PROMPT #94)
 
     - **interview_id**: UUID of the interview
     - **message**: User message content
@@ -1468,7 +1478,7 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
         logger.info(f"    - Index {i}: role={msg.get('role')}, content={content_preview}")
 
     # PROMPT #91/94 / PROMPT #76 / PROMPT #68 - Route based on interview mode
-    # Four modes: orchestrator, meta_prompt, requirements, task_focused
+    # Five modes: orchestrator, meta_prompt, requirements, task_focused, subtask_focused
     if interview.interview_mode == "orchestrator":
         # Orchestrator interview (FIRST interview - PROMPT #91/94): Q1-Q8 conditional → AI contextual questions
         return await handle_orchestrator_interview(
@@ -1520,6 +1530,19 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
             build_task_focused_prompt_func=build_task_focused_prompt,
             clean_ai_response_func=clean_ai_response,
             prepare_context_func=prepare_interview_context
+        )
+    elif interview.interview_mode == "subtask_focused":
+        # Subtask-focused interview (PROMPT #94 FASE 2): No fixed questions → AI atomic decomposition
+        # TODO: Get parent_task from interview metadata when feature is fully implemented
+        return await handle_subtask_focused_interview(
+            interview=interview,
+            project=project,
+            message_count=message_count,
+            db=db,
+            build_subtask_focused_prompt_func=build_subtask_focused_prompt,
+            clean_ai_response_func=clean_ai_response,
+            prepare_context_func=prepare_interview_context,
+            parent_task=None  # Will be populated in future when creating subtasks for specific task
         )
     else:
         # Unknown interview mode
