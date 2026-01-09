@@ -21,6 +21,7 @@ import os
 from app.models.interview import Interview
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
+from app.services.interview_question_deduplicator import InterviewQuestionDeduplicator
 
 # Prompter Architecture
 try:
@@ -152,6 +153,22 @@ async def handle_orchestrator_interview(
 
         # Add fixed question to conversation
         interview.conversation_data.append(assistant_message)
+
+        # PROMPT #97 - Store question in RAG for cross-interview deduplication
+        try:
+            deduplicator = InterviewQuestionDeduplicator(db)
+            deduplicator.store_question(
+                project_id=project.id,
+                interview_id=interview.id,
+                interview_mode=interview.interview_mode,
+                question_text=assistant_message.get("content", ""),
+                question_number=question_number,
+                is_fixed=True
+            )
+            logger.info(f"✅ Stored orchestrator Q{question_number} in RAG for cross-interview deduplication")
+        except Exception as e:
+            # Non-blocking: log error but don't fail the interview
+            logger.error(f"❌ Failed to store orchestrator Q{question_number} in RAG: {e}")
 
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(interview, "conversation_data")
@@ -418,6 +435,22 @@ async def handle_task_focused_interview(
 
         interview.conversation_data.append(assistant_message)
 
+        # PROMPT #97 - Store question in RAG for cross-interview deduplication
+        try:
+            deduplicator = InterviewQuestionDeduplicator(db)
+            deduplicator.store_question(
+                project_id=project.id,
+                interview_id=interview.id,
+                interview_mode=interview.interview_mode,
+                question_text=assistant_message.get("content", ""),
+                question_number=1,
+                is_fixed=True
+            )
+            logger.info(f"✅ Stored task-focused Q1 in RAG for cross-interview deduplication")
+        except Exception as e:
+            # Non-blocking: log error but don't fail the interview
+            logger.error(f"❌ Failed to store task-focused Q1 in RAG: {e}")
+
         from sqlalchemy.orm.attributes import flag_modified
         flag_modified(interview, "conversation_data")
         db.commit()
@@ -600,19 +633,79 @@ async def _handle_ai_task_focused_question(
     clean_ai_response_func,
     prepare_context_func
 ) -> Dict[str, Any]:
-    """Handle AI-generated task-focused questions (Q2+) in task-focused mode."""
+    """
+    Handle AI-generated task-focused questions (Q2+) in task-focused mode.
+
+    PROMPT #97 - Cross-interview question deduplication
+    """
     logger.info(f"Using AI for task-focused question (type={task_type}, message_count={message_count})")
+
+    # PROMPT #97 - Retrieve questions already asked in THIS project (cross-interview)
+    previous_questions_context = ""
+    try:
+        from app.services.rag_service import RAGService
+
+        rag_service = RAGService(db)
+
+        # Retrieve ALL questions already asked in this project (from ANY interview)
+        previous_questions = rag_service.retrieve(
+            query="",
+            filter={
+                "type": "interview_question",
+                "project_id": str(project.id)
+            },
+            top_k=50,
+            similarity_threshold=0.0
+        )
+
+        if previous_questions:
+            previous_questions_context = "\n\n**⚠️ PERGUNTAS JÁ FEITAS EM ENTREVISTAS ANTERIORES DESTE PROJETO:**\n"
+            previous_questions_context += "NÃO repita perguntas similares a estas:\n\n"
+            for i, pq in enumerate(previous_questions, 1):
+                interview_mode = pq['metadata'].get('interview_mode', 'unknown')
+                question_num = pq['metadata'].get('question_number', '?')
+                previous_questions_context += f"{i}. [Interview {interview_mode}, Q{question_num}] {pq['content'][:100]}...\n"
+            previous_questions_context += "\n**CRÍTICO: Evite perguntas semanticamente similares às listadas acima!**\n"
+
+            logger.info(f"✅ RAG: Retrieved {len(previous_questions)} previous questions for deduplication")
+
+    except Exception as e:
+        logger.warning(f"⚠️  RAG retrieval failed for previous questions: {e}")
 
     # Build task-specific prompt
     system_prompt = build_task_focused_prompt_func(
         project, task_type, message_count, stack_context
     )
 
-    # Call AI Orchestrator
-    return await _execute_ai_question(
+    # Add previous questions context to system prompt
+    system_prompt += previous_questions_context
+
+    # Call AI Orchestrator to generate question
+    result = await _execute_ai_question(
         interview, project, system_prompt, db,
         clean_ai_response_func, prepare_context_func
     )
+
+    # PROMPT #97 - Store AI-generated question in RAG for cross-interview deduplication
+    if result.get("success"):
+        try:
+            deduplicator = InterviewQuestionDeduplicator(db)
+            question_content = result["message"].get("content", "")
+            question_number = message_count // 2 + 1
+
+            deduplicator.store_question(
+                project_id=project.id,
+                interview_id=interview.id,
+                interview_mode=interview.interview_mode,
+                question_text=question_content,
+                question_number=question_number,
+                is_fixed=False
+            )
+            logger.info(f"✅ Stored AI task-focused question Q{question_number} in RAG")
+        except Exception as e:
+            logger.error(f"❌ Failed to store AI task-focused question in RAG: {e}")
+
+    return result
 
 
 async def _execute_ai_question(
@@ -770,7 +863,11 @@ def _handle_fixed_question_meta(
     db: Session,
     get_fixed_question_meta_prompt_func
 ) -> Dict[str, Any]:
-    """Handle fixed meta prompt questions (Q1-Q9)."""
+    """
+    Handle fixed meta prompt questions (Q1-Q18).
+
+    PROMPT #97 - Stores questions in RAG for cross-interview deduplication.
+    """
     question_number = question_map[message_count]
     logger.info(f"Returning fixed Meta Prompt Question {question_number}")
 
@@ -786,6 +883,22 @@ def _handle_fixed_question_meta(
         )
 
     interview.conversation_data.append(assistant_message)
+
+    # PROMPT #97 - Store question in RAG for cross-interview deduplication
+    try:
+        deduplicator = InterviewQuestionDeduplicator(db)
+        deduplicator.store_question(
+            project_id=project.id,
+            interview_id=interview.id,
+            interview_mode=interview.interview_mode,
+            question_text=assistant_message.get("content", ""),
+            question_number=question_number,
+            is_fixed=True
+        )
+        logger.info(f"✅ Stored Q{question_number} in RAG for cross-interview deduplication")
+    except Exception as e:
+        # Non-blocking: log error but don't fail the interview
+        logger.error(f"❌ Failed to store Q{question_number} in RAG: {e}")
 
     from sqlalchemy.orm.attributes import flag_modified
     flag_modified(interview, "conversation_data")
@@ -813,11 +926,45 @@ async def _handle_ai_orchestrator_contextual_question(
     clean_ai_response_func,
     prepare_context_func
 ) -> Dict[str, Any]:
-    """Handle AI-generated contextual questions in orchestrator interview mode.
+    """
+    Handle AI-generated contextual questions in orchestrator interview mode.
 
     PROMPT #91/94 - Orchestrator Interview Mode
+    PROMPT #97 - Cross-interview question deduplication
     """
     logger.info(f"Using AI for orchestrator contextual question (message_count={message_count})")
+
+    # PROMPT #97 - Retrieve questions already asked in THIS project (cross-interview)
+    previous_questions_context = ""
+    try:
+        from app.services.rag_service import RAGService
+
+        rag_service = RAGService(db)
+
+        # Retrieve ALL questions already asked in this project (from ANY interview)
+        previous_questions = rag_service.retrieve(
+            query="",  # Empty query = get all
+            filter={
+                "type": "interview_question",
+                "project_id": str(project.id)
+            },
+            top_k=50,  # Get many to ensure we have full history
+            similarity_threshold=0.0  # Get all, no threshold
+        )
+
+        if previous_questions:
+            previous_questions_context = "\n**⚠️ PERGUNTAS JÁ FEITAS EM ENTREVISTAS ANTERIORES DESTE PROJETO:**\n"
+            previous_questions_context += "NÃO repita perguntas similares a estas:\n\n"
+            for i, pq in enumerate(previous_questions, 1):
+                interview_mode = pq['metadata'].get('interview_mode', 'unknown')
+                question_num = pq['metadata'].get('question_number', '?')
+                previous_questions_context += f"{i}. [Interview {interview_mode}, Q{question_num}] {pq['content'][:100]}...\n"
+            previous_questions_context += "\n**CRÍTICO: Evite perguntas semanticamente similares às listadas acima!**\n"
+
+            logger.info(f"✅ RAG: Retrieved {len(previous_questions)} previous questions for deduplication")
+
+    except Exception as e:
+        logger.warning(f"⚠️  RAG retrieval failed for previous questions: {e}")
 
     # Build context from previous answers
     title = previous_answers.get('q1', project.name or '')
@@ -888,6 +1035,8 @@ async def _handle_ai_orchestrator_contextual_question(
 
 {context}
 
+{previous_questions_context}
+
 **ESTRUTURA DA ENTREVISTA (PROMPT #94 FASE 3):**
 
 Você completou as perguntas fixas (Q1-Q8) sobre projeto e stack.
@@ -926,11 +1075,33 @@ Conduza em PORTUGUÊS. Continue com a próxima pergunta relevante da seção apr
 Após completar todas as seções aplicáveis (10-15 perguntas total), conclua a entrevista.
 """
 
-    # Call AI Orchestrator
-    return await _execute_ai_question(
+    # Call AI Orchestrator to generate question
+    result = await _execute_ai_question(
         interview, project, system_prompt, db,
         clean_ai_response_func, prepare_context_func
     )
+
+    # PROMPT #97 - Store AI-generated question in RAG for cross-interview deduplication
+    if result.get("success"):
+        try:
+            deduplicator = InterviewQuestionDeduplicator(db)
+            question_content = result["message"].get("content", "")
+            question_number = message_count // 2 + 1  # Approximate question number
+
+            deduplicator.store_question(
+                project_id=project.id,
+                interview_id=interview.id,
+                interview_mode=interview.interview_mode,
+                question_text=question_content,
+                question_number=question_number,
+                is_fixed=False  # AI-generated
+            )
+            logger.info(f"✅ Stored AI orchestrator question Q{question_number} in RAG")
+        except Exception as e:
+            # Non-blocking: log error but don't fail the interview
+            logger.error(f"❌ Failed to store AI orchestrator question in RAG: {e}")
+
+    return result
 
 
 async def _handle_ai_meta_contextual_question(
@@ -943,11 +1114,45 @@ async def _handle_ai_meta_contextual_question(
     clean_ai_response_func,
     prepare_context_func
 ) -> Dict[str, Any]:
-    """Handle AI-generated contextual questions (Q10+) in meta prompt mode.
+    """
+    Handle AI-generated contextual questions (Q19+) in meta prompt mode.
 
     PROMPT #84 - RAG Phase 2: Enhanced with domain knowledge retrieval
+    PROMPT #97 - Cross-interview question deduplication
     """
     logger.info(f"Using AI for meta contextual question (message_count={message_count}, topics={focus_topics})")
+
+    # PROMPT #97 - Retrieve questions already asked in THIS project (cross-interview)
+    previous_questions_context = ""
+    try:
+        from app.services.rag_service import RAGService
+
+        rag_service = RAGService(db)
+
+        # Retrieve ALL questions already asked in this project (from ANY interview)
+        previous_questions = rag_service.retrieve(
+            query="",  # Empty query = get all
+            filter={
+                "type": "interview_question",
+                "project_id": str(project.id)
+            },
+            top_k=50,  # Get many to ensure we have full history
+            similarity_threshold=0.0  # Get all, no threshold
+        )
+
+        if previous_questions:
+            previous_questions_context = "\n**⚠️ PERGUNTAS JÁ FEITAS EM ENTREVISTAS ANTERIORES DESTE PROJETO:**\n"
+            previous_questions_context += "NÃO repita perguntas similares a estas:\n\n"
+            for i, pq in enumerate(previous_questions, 1):
+                interview_mode = pq['metadata'].get('interview_mode', 'unknown')
+                question_num = pq['metadata'].get('question_number', '?')
+                previous_questions_context += f"{i}. [Interview {interview_mode}, Q{question_num}] {pq['content'][:100]}...\n"
+            previous_questions_context += "\n**CRÍTICO: Evite perguntas semanticamente similares às listadas acima!**\n"
+
+            logger.info(f"✅ RAG: Retrieved {len(previous_questions)} previous questions for deduplication")
+
+    except Exception as e:
+        logger.warning(f"⚠️  RAG retrieval failed for previous questions: {e}")
 
     # PROMPT #84 - RAG Phase 2: Retrieve relevant domain knowledge
     rag_context = ""
@@ -1013,6 +1218,8 @@ async def _handle_ai_meta_contextual_question(
 {project_context}
 
 {rag_context}
+
+{previous_questions_context}
 
 {focus_text}
 
@@ -1111,11 +1318,33 @@ Escolha UMA opção.
 Após 3-5 perguntas contextuais (total ~20-22 perguntas), conclua a entrevista informando que o projeto será gerado.
 """
 
-    # Call AI Orchestrator
-    return await _execute_ai_question(
+    # Call AI Orchestrator to generate question
+    result = await _execute_ai_question(
         interview, project, system_prompt, db,
         clean_ai_response_func, prepare_context_func
     )
+
+    # PROMPT #97 - Store AI-generated question in RAG for cross-interview deduplication
+    if result.get("success"):
+        try:
+            deduplicator = InterviewQuestionDeduplicator(db)
+            question_content = result["message"].get("content", "")
+            question_number = message_count // 2 + 1  # Approximate question number
+
+            deduplicator.store_question(
+                project_id=project.id,
+                interview_id=interview.id,
+                interview_mode=interview.interview_mode,
+                question_text=question_content,
+                question_number=question_number,
+                is_fixed=False  # AI-generated
+            )
+            logger.info(f"✅ Stored AI question Q{question_number} in RAG for cross-interview deduplication")
+        except Exception as e:
+            # Non-blocking: log error but don't fail the interview
+            logger.error(f"❌ Failed to store AI question in RAG: {e}")
+
+    return result
 
 
 async def handle_subtask_focused_interview(
@@ -1200,6 +1429,8 @@ async def _handle_ai_subtask_focused_question(
     - Focus on generating atomic subtasks (1 action per subtask)
     - Each subtask should be executable in minutes
 
+    PROMPT #97 - Cross-interview question deduplication
+
     Args:
         interview: Interview instance
         project: Project instance
@@ -1215,6 +1446,38 @@ async def _handle_ai_subtask_focused_question(
         Response dict with success, message, and usage
     """
     logger.info(f"Using AI for subtask decomposition question (message_count={message_count})")
+
+    # PROMPT #97 - Retrieve questions already asked in THIS project (cross-interview)
+    previous_questions_context = ""
+    try:
+        from app.services.rag_service import RAGService
+
+        rag_service = RAGService(db)
+
+        # Retrieve ALL questions already asked in this project (from ANY interview)
+        previous_questions = rag_service.retrieve(
+            query="",
+            filter={
+                "type": "interview_question",
+                "project_id": str(project.id)
+            },
+            top_k=50,
+            similarity_threshold=0.0
+        )
+
+        if previous_questions:
+            previous_questions_context = "\n\n**⚠️ PERGUNTAS JÁ FEITAS EM ENTREVISTAS ANTERIORES DESTE PROJETO:**\n"
+            previous_questions_context += "NÃO repita perguntas similares a estas:\n\n"
+            for i, pq in enumerate(previous_questions, 1):
+                interview_mode = pq['metadata'].get('interview_mode', 'unknown')
+                question_num = pq['metadata'].get('question_number', '?')
+                previous_questions_context += f"{i}. [Interview {interview_mode}, Q{question_num}] {pq['content'][:100]}...\n"
+            previous_questions_context += "\n**CRÍTICO: Evite perguntas semanticamente similares às listadas acima!**\n"
+
+            logger.info(f"✅ RAG: Retrieved {len(previous_questions)} previous questions for deduplication")
+
+    except Exception as e:
+        logger.warning(f"⚠️  RAG retrieval failed for previous questions: {e}")
 
     # Check if PrompterFacade is available
     use_prompter = (
@@ -1250,11 +1513,35 @@ async def _handle_ai_subtask_focused_question(
             previous_answers=previous_answers
         )
 
-    # Call AI Orchestrator
-    return await _execute_ai_question(
+    # Add previous questions context to system prompt
+    system_prompt += previous_questions_context
+
+    # Call AI Orchestrator to generate question
+    result = await _execute_ai_question(
         interview, project, system_prompt, db,
         clean_ai_response_func, prepare_context_func
     )
+
+    # PROMPT #97 - Store AI-generated question in RAG for cross-interview deduplication
+    if result.get("success"):
+        try:
+            deduplicator = InterviewQuestionDeduplicator(db)
+            question_content = result["message"].get("content", "")
+            question_number = message_count // 2 + 1
+
+            deduplicator.store_question(
+                project_id=project.id,
+                interview_id=interview.id,
+                interview_mode=interview.interview_mode,
+                question_text=question_content,
+                question_number=question_number,
+                is_fixed=False
+            )
+            logger.info(f"✅ Stored AI subtask-focused question Q{question_number} in RAG")
+        except Exception as e:
+            logger.error(f"❌ Failed to store AI subtask-focused question in RAG: {e}")
+
+    return result
 
 async def handle_task_orchestrated_interview(
     interview: Interview,

@@ -312,6 +312,76 @@ class RAGService:
 
         return count
 
+    def delete_by_filter(self, filter: Dict) -> int:
+        """
+        Delete documents matching filter criteria.
+
+        PROMPT #97 - Used for interview question cleanup.
+
+        Args:
+            filter: Filter dict (same format as retrieve())
+                - project_id: UUID or None (required for most use cases)
+                - type: metadata type filter (e.g., "interview_question")
+                - interview_id: specific interview UUID
+                - Any JSONB metadata field
+
+        Returns:
+            Number of documents deleted
+
+        Example:
+            # Delete all interview questions for a project
+            count = rag.delete_by_filter({
+                "project_id": project_id,
+                "type": "interview_question"
+            })
+
+            # Delete all questions from specific interview
+            count = rag.delete_by_filter({
+                "project_id": project_id,
+                "type": "interview_question",
+                "interview_id": interview_id
+            })
+        """
+        # Build WHERE clause from filter
+        where_clauses = []
+        params = {}
+
+        if not filter:
+            logger.warning("delete_by_filter called with empty filter - aborting for safety")
+            return 0
+
+        # Project ID filter
+        if "project_id" in filter:
+            if filter["project_id"] is None:
+                where_clauses.append("project_id IS NULL")
+            else:
+                where_clauses.append("project_id = :project_id")
+                params["project_id"] = str(filter["project_id"])
+
+        # Metadata type filter
+        if "type" in filter:
+            where_clauses.append("metadata->>'type' = :type")
+            params["type"] = filter["type"]
+
+        # Generic metadata filters (interview_id, etc.)
+        for key, value in filter.items():
+            if key not in ["project_id", "type"]:
+                where_clauses.append(f"metadata->>'{key}' = :{key}")
+                params[key] = str(value) if isinstance(value, UUID) else value
+
+        if not where_clauses:
+            logger.warning("delete_by_filter: No valid filter clauses - aborting for safety")
+            return 0
+
+        sql = f"DELETE FROM rag_documents WHERE {' AND '.join(where_clauses)}"
+        result = self.db.execute(text(sql), params)
+        self.db.commit()
+
+        count = result.rowcount
+        logger.info(f"Deleted {count} documents with filter {filter}")
+
+        return count
+
     def get_stats(self, project_id: Optional[UUID] = None) -> Dict:
         """
         Get RAG statistics.
