@@ -195,15 +195,17 @@ async def handle_meta_prompt_interview(
     PROMPT #77 - Topic Selection
     PROMPT #79 - Stack Questions Added
     PROMPT #81 - Project Modules Question Added
+    PROMPT #97 - System Type Question Added
 
     Flow:
-    - Q1-Q17: Fixed meta prompt questions (no AI)
+    - Q1-Q18: Fixed meta prompt questions (no AI)
       - Q1-Q2: Project info (title, description)
-      - Q3-Q7: Stack (backend, database, frontend, CSS, mobile)
-      - Q8: Project modules (Backend/API, Frontend Web, Mobile App, etc.)
-      - Q9-Q16: Concept (vision, features, roles, rules, data, success, constraints, MVP)
-      - Q17: Focus topics selection
-    - Q18+: AI-generated contextual questions to clarify details
+      - Q3: System type (Apenas API, API+Frontend, API+Mobile, API+Frontend+Mobile)
+      - Q4-Q8: Stack (backend, database, frontend, CSS, mobile)
+      - Q9: Project modules (Backend/API, Frontend Web, Mobile App, etc.)
+      - Q10-Q17: Concept (vision, features, roles, rules, data, success, constraints, MVP)
+      - Q18: Focus topics selection
+    - Q19+: AI-generated contextual questions to clarify details
 
     The meta prompt gathers comprehensive information to generate:
     - Complete project hierarchy (Epics → Stories → Tasks → Subtasks)
@@ -226,37 +228,38 @@ async def handle_meta_prompt_interview(
     logger.info(f"🎯 META PROMPT MODE - message_count={message_count}")
 
     # Map message_count to question number for fixed questions
-    # Meta prompt has 17 fixed questions (Q1-Q17) - PROMPT #81
+    # Meta prompt has 18 fixed questions (Q1-Q18) - PROMPT #97
     question_map = {
         2: 1,   # After project creation → Ask Q1 (Title)
         4: 2,   # After A1 → Ask Q2 (Description)
-        6: 3,   # After A2 → Ask Q3 (Backend Framework)
-        8: 4,   # After A3 → Ask Q4 (Database)
-        10: 5,  # After A4 → Ask Q5 (Frontend Framework)
-        12: 6,  # After A5 → Ask Q6 (CSS Framework)
-        14: 7,  # After A6 → Ask Q7 (Mobile Framework)
-        16: 8,  # After A7 → Ask Q8 (Project Modules) - PROMPT #81
-        18: 9,  # After A8 → Ask Q9 (Vision & Problem)
-        20: 10, # After A9 → Ask Q10 (Main Features)
-        22: 11, # After A10 → Ask Q11 (User Roles)
-        24: 12, # After A11 → Ask Q12 (Business Rules)
-        26: 13, # After A12 → Ask Q13 (Data & Entities)
-        28: 14, # After A13 → Ask Q14 (Success Criteria)
-        30: 15, # After A14 → Ask Q15 (Technical Constraints)
-        32: 16, # After A15 → Ask Q16 (MVP Scope)
-        34: 17, # After A16 → Ask Q17 (Focus Topics Selection) - PROMPT #77
+        6: 3,   # After A2 → Ask Q3 (System Type) - PROMPT #97
+        8: 4,   # After A3 → Ask Q4 (Backend Framework)
+        10: 5,  # After A4 → Ask Q5 (Database)
+        12: 6,  # After A5 → Ask Q6 (Frontend Framework)
+        14: 7,  # After A6 → Ask Q7 (CSS Framework)
+        16: 8,  # After A7 → Ask Q8 (Mobile Framework)
+        18: 9,  # After A8 → Ask Q9 (Project Modules) - PROMPT #81
+        20: 10, # After A9 → Ask Q10 (Vision & Problem)
+        22: 11, # After A10 → Ask Q11 (Main Features)
+        24: 12, # After A11 → Ask Q12 (User Roles)
+        26: 13, # After A12 → Ask Q13 (Business Rules)
+        28: 14, # After A13 → Ask Q14 (Data & Entities)
+        30: 15, # After A14 → Ask Q15 (Success Criteria)
+        32: 16, # After A15 → Ask Q16 (Technical Constraints)
+        34: 17, # After A16 → Ask Q17 (MVP Scope)
+        36: 18, # After A17 → Ask Q18 (Focus Topics Selection) - PROMPT #77
     }
 
-    # Fixed meta prompt questions (Q1-Q17)
+    # Fixed meta prompt questions (Q1-Q18)
     if message_count in question_map:
         return _handle_fixed_question_meta(
             interview, project, message_count,
             question_map, db, get_fixed_question_meta_prompt_func
         )
 
-    # After Q17: Extract focus topics from user's answer
-    elif message_count == 35:
-        # User just answered Q17 (topic selection)
+    # After Q18: Extract focus topics from user's answer
+    elif message_count == 37:
+        # User just answered Q18 (topic selection)
         # Extract topics and save them
         user_answer = interview.conversation_data[-1]["content"]
         focus_topics = _extract_focus_topics(user_answer)
@@ -275,8 +278,8 @@ async def handle_meta_prompt_interview(
             clean_ai_response_func, prepare_context_func
         )
 
-    # AI contextual questions (Q18+) - guided by selected topics
-    elif message_count >= 36:
+    # AI contextual questions (Q19+) - guided by selected topics
+    elif message_count >= 38:
         focus_topics = interview.focus_topics or []
         return await _handle_ai_meta_contextual_question(
             interview, project, message_count, focus_topics,
