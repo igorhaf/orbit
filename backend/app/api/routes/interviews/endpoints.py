@@ -1091,12 +1091,19 @@ async def start_interview(
 
     # Get fixed Question 1 (Title) - use appropriate function based on interview mode
     # PROMPT #97 FIX - Call correct function for each interview mode
+    # PROMPT #98 - Card-focused mode support added
     if interview.interview_mode == "orchestrator":
         assistant_message = get_orchestrator_fixed_question(1, project, db, {})
     elif interview.interview_mode == "meta_prompt":
         assistant_message = get_fixed_question_meta_prompt(1, project, db)
+    elif interview.interview_mode == "card_focused":
+        # Card-focused interview (PROMPT #98): Get Q1 (motivation type selection)
+        parent_card = None
+        if interview.parent_task_id:
+            parent_card = db.query(Task).filter(Task.id == interview.parent_task_id).first()
+        assistant_message = get_card_focused_fixed_question(1, project, db, parent_card, {})
     else:
-        # Fallback for other modes (task_orchestrated, subtask_orchestrated)
+        # Fallback for other modes (task_orchestrated, subtask_orchestrated, requirements, task_focused, subtask_focused)
         assistant_message = get_fixed_question(1, project, db)
 
     if not assistant_message:
