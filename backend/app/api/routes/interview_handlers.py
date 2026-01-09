@@ -229,25 +229,26 @@ async def handle_meta_prompt_interview(
 
     # Map message_count to question number for fixed questions
     # Meta prompt has 18 fixed questions (Q1-Q18) - PROMPT #97
+    # PROMPT #97 FIX - Questions are sent at ODD message_counts (1, 3, 5...)
     question_map = {
-        2: 1,   # After project creation → Ask Q1 (Title)
-        4: 2,   # After A1 → Ask Q2 (Description)
-        6: 3,   # After A2 → Ask Q3 (System Type) - PROMPT #97
-        8: 4,   # After A3 → Ask Q4 (Backend Framework)
-        10: 5,  # After A4 → Ask Q5 (Database)
-        12: 6,  # After A5 → Ask Q6 (Frontend Framework)
-        14: 7,  # After A6 → Ask Q7 (CSS Framework)
-        16: 8,  # After A7 → Ask Q8 (Mobile Framework)
-        18: 9,  # After A8 → Ask Q9 (Project Modules) - PROMPT #81
-        20: 10, # After A9 → Ask Q10 (Vision & Problem)
-        22: 11, # After A10 → Ask Q11 (Main Features)
-        24: 12, # After A11 → Ask Q12 (User Roles)
-        26: 13, # After A12 → Ask Q13 (Business Rules)
-        28: 14, # After A13 → Ask Q14 (Data & Entities)
-        30: 15, # After A14 → Ask Q15 (Success Criteria)
-        32: 16, # After A15 → Ask Q16 (Technical Constraints)
-        34: 17, # After A16 → Ask Q17 (MVP Scope)
-        36: 18, # After A17 → Ask Q18 (Focus Topics Selection) - PROMPT #77
+        1: 1,   # message_count=1 → Ask Q1 (Title)
+        3: 2,   # message_count=3 → Ask Q2 (Description)
+        5: 3,   # message_count=5 → Ask Q3 (System Type) - PROMPT #97
+        7: 4,   # message_count=7 → Ask Q4 (Backend Framework)
+        9: 5,   # message_count=9 → Ask Q5 (Database)
+        11: 6,  # message_count=11 → Ask Q6 (Frontend Framework)
+        13: 7,  # message_count=13 → Ask Q7 (CSS Framework)
+        15: 8,  # message_count=15 → Ask Q8 (Mobile Framework)
+        17: 9,  # message_count=17 → Ask Q9 (Project Modules) - PROMPT #81
+        19: 10, # message_count=19 → Ask Q10 (Vision & Problem)
+        21: 11, # message_count=21 → Ask Q11 (Main Features)
+        23: 12, # message_count=23 → Ask Q12 (User Roles)
+        25: 13, # message_count=25 → Ask Q13 (Business Rules)
+        27: 14, # message_count=27 → Ask Q14 (Data & Entities)
+        29: 15, # message_count=29 → Ask Q15 (Success Criteria)
+        31: 16, # message_count=31 → Ask Q16 (Technical Constraints)
+        33: 17, # message_count=33 → Ask Q17 (MVP Scope)
+        35: 18, # message_count=35 → Ask Q18 (Focus Topics Selection) - PROMPT #77
     }
 
     # Fixed meta prompt questions (Q1-Q18)
@@ -258,7 +259,8 @@ async def handle_meta_prompt_interview(
         )
 
     # After Q18: Extract focus topics from user's answer
-    elif message_count == 37:
+    # PROMPT #97 FIX - User answers Q18 at message_count=36 (not 37)
+    elif message_count == 36:
         # User just answered Q18 (topic selection)
         # Extract topics and save them
         user_answer = interview.conversation_data[-1]["content"]
@@ -279,7 +281,8 @@ async def handle_meta_prompt_interview(
         )
 
     # AI contextual questions (Q19+) - guided by selected topics
-    elif message_count >= 38:
+    # PROMPT #97 FIX - AI questions start at message_count=37 (not 38)
+    elif message_count >= 37:
         focus_topics = interview.focus_topics or []
         return await _handle_ai_meta_contextual_question(
             interview, project, message_count, focus_topics,
