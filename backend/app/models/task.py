@@ -21,6 +21,7 @@ class TaskStatus(str, enum.Enum):
     IN_PROGRESS = "in_progress"
     REVIEW = "review"
     DONE = "done"
+    BLOCKED = "blocked"  # PROMPT #94 FASE 4 - Pending modification approval
 
 
 class ItemType(str, enum.Enum):
@@ -209,6 +210,14 @@ class Task(Base):
     # Generated Prompt - Atomic prompts for task/subtask execution
     # Stores the final assembled prompt generated from all task fields, context, and specs
     generated_prompt = Column(Text, nullable=True)
+
+    # PROMPT #94 FASE 4 - Blocking System for Modification Detection
+    # When AI suggests modifying existing task (>90% semantic similarity):
+    # - Task gets BLOCKED status
+    # - Modification saved in pending_modification field
+    # - User must approve/reject via UI
+    blocked_reason = Column(String(500), nullable=True)  # Why task is blocked
+    pending_modification = Column(JSON, nullable=True, default=None)  # Proposed changes
 
     # ===== END JIRA TRANSFORMATION FIELDS =====
 

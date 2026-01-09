@@ -797,7 +797,55 @@ Return ONLY valid JSON in this format:
             logger.error(f"Failed to parse task JSON: {content[:200]}")
             raise ValueError(f"AI returned invalid JSON: {str(e)}")
 
-        # Create Task record
+        # PROMPT #94 FASE 4 - Check for modification attempts (>90% similarity)
+        from app.services.similarity_detector import detect_modification_attempt
+        from app.services.modification_manager import block_task
+
+        # Get all existing tasks in the project
+        existing_tasks = self.db.query(Task).filter(
+            Task.project_id == project.id,
+            Task.status != TaskStatus.DONE  # Don't compare with archived tasks
+        ).all()
+
+        # Detect if this is a modification attempt
+        is_modification, similar_task, similarity_score = detect_modification_attempt(
+            new_task_title=task_data["title"],
+            new_task_description=task_data["description"],
+            existing_tasks=existing_tasks,
+            threshold=0.90
+        )
+
+        if is_modification:
+            # Block the existing task instead of creating a new one
+            logger.warning(
+                f"🚨 MODIFICATION DETECTED (similarity: {similarity_score:.2%})\n"
+                f"   Blocking existing task: {similar_task.title}\n"
+                f"   Proposed modification: {task_data['title']}\n"
+                f"   User must approve/reject via UI"
+            )
+
+            blocked_task = block_task(
+                task=similar_task,
+                proposed_modification={
+                    "title": task_data["title"],
+                    "description": task_data["description"],
+                    "acceptance_criteria": task_data.get("acceptance_criteria", []),
+                    "story_points": task_data.get("story_points"),
+                    "priority": task_data.get("priority", "medium"),
+                    "labels": task_data.get("labels", []),
+                    "suggested_subtasks": task_data.get("suggested_subtasks", []),
+                    "interview_insights": task_data.get("interview_insights", {}),
+                    "similarity_score": similarity_score,
+                    "interview_id": str(interview.id)
+                },
+                db=self.db,
+                reason=f"AI suggested modification detected (similarity: {similarity_score:.2%})"
+            )
+
+            # Return the blocked task (not a new task)
+            return blocked_task
+
+        # No modification detected - create new task normally
         task = Task(
             project_id=project.id,
             created_from_interview_id=interview.id,
