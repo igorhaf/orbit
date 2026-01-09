@@ -175,6 +175,13 @@ async def create_interview(
     # Determine interview mode based on parent_task_id
     parent_task_id = interview_data.parent_task_id
 
+    # DEBUG: Log interview creation parameters (PROMPT #98 debugging)
+    logger.info(f"📋 CREATE INTERVIEW - Parameters received:")
+    logger.info(f"  - parent_task_id: {parent_task_id}")
+    logger.info(f"  - use_card_focused: {interview_data.use_card_focused}")
+    logger.info(f"  - project_id: {interview_data.project_id}")
+    logger.info(f"  - ai_model_used: {interview_data.ai_model_used}")
+
     if parent_task_id is None:
         # No parent → FIRST INTERVIEW → meta_prompt (creates Epic)
         interview_mode = "meta_prompt"
@@ -226,6 +233,9 @@ async def create_interview(
                 # Fallback for other types
                 interview_mode = "task_orchestrated"
                 logger.warning(f"Unknown parent type {parent_task.item_type}, defaulting to task_orchestrated")
+
+    # DEBUG: Log the determined interview mode (PROMPT #98 debugging)
+    logger.info(f"✅ INTERVIEW MODE DETERMINED: interview_mode={interview_mode}")
 
     db_interview = Interview(
         project_id=interview_data.project_id,
@@ -1092,6 +1102,8 @@ async def start_interview(
     # Get fixed Question 1 (Title) - use appropriate function based on interview mode
     # PROMPT #97 FIX - Call correct function for each interview mode
     # PROMPT #98 - Card-focused mode support added
+    logger.info(f"🚀 START INTERVIEW - interview_mode={interview.interview_mode}, conversation_data length={len(interview.conversation_data)}")
+
     if interview.interview_mode == "orchestrator":
         assistant_message = get_orchestrator_fixed_question(1, project, db, {})
     elif interview.interview_mode == "meta_prompt":
