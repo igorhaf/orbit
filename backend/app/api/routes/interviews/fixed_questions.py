@@ -344,11 +344,13 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
             }
         }
 
-    # Q9: Project Modules/Components (NEW - Architecture modules)
+    # Q9: Additional Project Modules/Components (PROMPT #97 - No redundancy with Q3)
+    # Q3 already covers: API, Frontend Web, Mobile
+    # Q9 focuses on ADDITIONAL features/modules not mentioned in Q3
     elif question_number == 9:
         return {
             "role": "assistant",
-            "content": "🏗️ Pergunta 9: Quais módulos/componentes você vai desenvolver neste projeto?\n\nSelecione todos os componentes que farão parte da solução:",
+            "content": "🏗️ Pergunta 9: Além dos componentes principais, quais funcionalidades/módulos adicionais você precisa?\n\nSelecione todos que se aplicam (OPCIONAL - pode deixar em branco se não precisar de nenhum):",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
             "question_type": "multiple_choice",
@@ -356,24 +358,9 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
             "options": {
                 "type": "multiple",
                 "choices": [
-                    {
-                        "id": "backend_api",
-                        "label": "🔌 Backend/API REST",
-                        "value": "backend_api",
-                        "description": "API REST para servir dados e lógica de negócio"
-                    },
-                    {
-                        "id": "frontend_web",
-                        "label": "💻 Frontend Web (SPA/PWA)",
-                        "value": "frontend_web",
-                        "description": "Aplicação web client-side (React, Vue, Angular, Next.js)"
-                    },
-                    {
-                        "id": "mobile_app",
-                        "label": "📱 Mobile App (iOS/Android)",
-                        "value": "mobile_app",
-                        "description": "Aplicativo mobile nativo ou híbrido"
-                    },
+                    # REMOVED redundant options (backend_api, frontend_web, mobile_app)
+                    # They are already covered by Q3 (System Type)
+                    # Q9 now focuses ONLY on additional features
                     {
                         "id": "admin_dashboard",
                         "label": "⚙️ Dashboard Administrativo",
