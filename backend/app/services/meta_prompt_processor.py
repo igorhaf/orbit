@@ -89,17 +89,22 @@ class MetaPromptProcessor:
         if not interview:
             raise ValueError(f"Interview {interview_id} not found")
 
-        if interview.interview_mode != "meta_prompt":
-            raise ValueError(f"Interview {interview_id} is not a meta prompt interview (mode: {interview.interview_mode})")
+        # PROMPT #92 - Accept both meta_prompt and simple interviews
+        if interview.interview_mode not in ["meta_prompt", "simple"]:
+            raise ValueError(f"Interview {interview_id} cannot generate hierarchy (mode: {interview.interview_mode}). Only 'meta_prompt' and 'simple' modes supported.")
 
-        if not interview.conversation_data or len(interview.conversation_data) < 18:
-            raise ValueError(f"Meta prompt interview {interview_id} is incomplete (needs at least Q1-Q9)")
+        # PROMPT #92 - Different minimum messages for each mode
+        # Simple interviews: 5-8 fixed questions + AI questions (min 10 messages)
+        # Meta prompt: 17 fixed questions + AI questions (min 18 messages)
+        min_messages = 10 if interview.interview_mode == "simple" else 18
+        if not interview.conversation_data or len(interview.conversation_data) < min_messages:
+            raise ValueError(f"Interview {interview_id} is incomplete (needs at least {min_messages//2} questions answered)")
 
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
             raise ValueError(f"Project {project_id} not found")
 
-        logger.info(f"🎯 Processing meta prompt interview {interview_id} for project {project.name}")
+        logger.info(f"🎯 Processing {interview.interview_mode} interview {interview_id} for project {project.name}")
         logger.info(f"   Focus topics: {interview.focus_topics}")
         logger.info(f"   Conversation messages: {len(interview.conversation_data)}")
 
