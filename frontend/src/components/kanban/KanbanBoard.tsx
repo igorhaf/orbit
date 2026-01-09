@@ -23,6 +23,7 @@ import { TaskCard } from '@/components/backlog/TaskCard';
 import { TaskForm } from './TaskForm';
 import { Button, Dialog } from '@/components/ui';
 import { ModificationApprovalModal } from './ModificationApprovalModal'; // PROMPT #95
+import { ItemDetailPanel } from '@/components/backlog'; // PROMPT #97
 
 interface Props {
   projectId: string;
@@ -56,6 +57,9 @@ export function KanbanBoard({ projectId }: Props) {
   // PROMPT #95 - Modification approval modal state
   const [selectedBlockedTask, setSelectedBlockedTask] = useState<Task | null>(null);
   const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false);
+
+  // PROMPT #97 - Item detail panel state (unified modal for all tasks)
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   // Configure sensors for drag-and-drop
   const sensors = useSensors(
@@ -232,6 +236,11 @@ export function KanbanBoard({ projectId }: Props) {
     await loadBoard();
   };
 
+  // PROMPT #97 - Regular task click handler (opens unified modal)
+  const handleTaskClick = (task: Task) => {
+    setSelectedTask(task);
+  };
+
   // PROMPT #95 - Blocked task handlers
   const handleBlockedTaskClick = (task: Task) => {
     setSelectedBlockedTask(task);
@@ -342,7 +351,8 @@ export function KanbanBoard({ projectId }: Props) {
               tasks={board[column.id] || []}
               onTaskDeleted={handleTaskDeleted}
               onTaskUpdated={handleTaskUpdated}
-              onBlockedTaskClick={column.id === 'blocked' ? handleBlockedTaskClick : undefined} // PROMPT #95
+              onTaskClick={column.id !== 'blocked' ? handleTaskClick : undefined} // PROMPT #97 - Regular tasks
+              onBlockedTaskClick={column.id === 'blocked' ? handleBlockedTaskClick : undefined} // PROMPT #95 - Blocked tasks
             />
           ))}
         </div>
@@ -382,6 +392,16 @@ export function KanbanBoard({ projectId }: Props) {
           onClose={() => setIsApprovalModalOpen(false)}
           onApprove={handleApproveModification}
           onReject={handleRejectModification}
+        />
+      )}
+
+      {/* PROMPT #97 - Unified Item Detail Panel */}
+      {selectedTask && (
+        <ItemDetailPanel
+          item={selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onUpdate={handleTaskUpdated}
+          onNavigateToItem={(item) => setSelectedTask(item as Task)}
         />
       )}
     </div>

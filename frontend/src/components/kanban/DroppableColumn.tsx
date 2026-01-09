@@ -17,7 +17,8 @@ interface Props {
   tasks: Task[];
   onTaskDeleted: () => void;
   onTaskUpdated: () => void;
-  onBlockedTaskClick?: (task: Task) => void; // PROMPT #95 - For blocked column
+  onTaskClick?: (task: Task) => void; // PROMPT #97 - For regular tasks (opens ItemDetailPanel)
+  onBlockedTaskClick?: (task: Task) => void; // PROMPT #95 - For blocked column (opens ModificationApprovalModal)
 }
 
 export function DroppableColumn({
@@ -27,6 +28,7 @@ export function DroppableColumn({
   tasks,
   onTaskDeleted,
   onTaskUpdated,
+  onTaskClick,
   onBlockedTaskClick,
 }: Props) {
   // PROMPT #95 - Check if this is the blocked column
@@ -67,7 +69,8 @@ export function DroppableColumn({
               onDeleted={onTaskDeleted}
               onUpdated={onTaskUpdated}
               disabled={isBlockedColumn} // PROMPT #95 - Disable drag for blocked tasks
-              onBlockedTaskClick={isBlockedColumn ? onBlockedTaskClick : undefined} // PROMPT #95
+              onTaskClick={!isBlockedColumn ? onTaskClick : undefined} // PROMPT #97 - Regular task click
+              onBlockedTaskClick={isBlockedColumn ? onBlockedTaskClick : undefined} // PROMPT #95 - Blocked task click
             />
           ))}
 

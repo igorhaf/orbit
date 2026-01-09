@@ -41,6 +41,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [newComment, setNewComment] = useState('');
   const [isAddingComment, setIsAddingComment] = useState(false);
 
+  // AI Suggestions state (PROMPT #97)
+  const [acceptingSubtasks, setAcceptingSubtasks] = useState(false);
+  const [creatingInterview, setCreatingInterview] = useState(false);
+  const [showSubtaskDetails, setShowSubtaskDetails] = useState<{ [key: number]: boolean }>({});
+
   useEffect(() => {
     fetchItemDetails();
   }, [item.id]);
@@ -98,6 +103,58 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     }
   };
 
+  // PROMPT #97 - AI Suggestions handlers
+  const handleAcceptSubtasks = async () => {
+    if (!item.subtask_suggestions || item.subtask_suggestions.length === 0) return;
+
+    setAcceptingSubtasks(true);
+    try {
+      // Create subtasks
+      for (const suggestion of item.subtask_suggestions) {
+        await tasksApi.create({
+          project_id: item.project_id,
+          parent_id: item.id,
+          item_type: ItemType.SUBTASK,
+          title: suggestion.title,
+          description: suggestion.description,
+          story_points: suggestion.story_points,
+          priority: item.priority || PriorityLevel.MEDIUM,
+          status: 'backlog',
+          workflow_state: 'open',
+          labels: item.labels || [],
+        });
+      }
+
+      // Clear suggestions from task
+      await tasksApi.update(item.id, { subtask_suggestions: [] });
+
+      console.log('✅ Accepted all subtasks');
+      await fetchItemDetails(); // Refresh to show new children
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      console.error('❌ Failed to accept subtasks:', error);
+      alert(`Failed to accept subtasks: ${error.message}`);
+    } finally {
+      setAcceptingSubtasks(false);
+    }
+  };
+
+  const handleCreateSubInterview = async () => {
+    setCreatingInterview(true);
+    try {
+      const interview = await tasksApi.createInterview(item.id);
+      console.log('✅ Created sub-interview:', interview);
+
+      // Navigate to interview page
+      window.location.href = `/projects/${item.project_id}/interviews/${interview.id}`;
+    } catch (error: any) {
+      console.error('❌ Failed to create sub-interview:', error);
+      alert(`Failed to create sub-interview: ${error.message}`);
+    } finally {
+      setCreatingInterview(false);
+    }
+  };
+
   const getItemTypeIcon = (type: ItemType) => {
     switch (type) {
       case ItemType.EPIC: return '🎯';
@@ -127,6 +184,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     { id: 'comments', label: 'Comments', icon: '💬', count: comments.length },
     { id: 'transitions', label: 'History', icon: '📊', count: transitions.length },
     { id: 'ai-config', label: 'AI Config', icon: '🤖' },
+    { id: 'ai-suggestions', label: 'AI Suggestions', icon: '🤖', count: item.subtask_suggestions?.length || 0 },
     { id: 'interview', label: 'Interview', icon: '🎤' },
     { id: 'prompt', label: 'Prompt', icon: '📝', hasPrompt: !!item.generated_prompt },
     { id: 'acceptance', label: 'Criteria', icon: '✅', count: item.acceptance_criteria?.length || 0 },
@@ -692,6 +750,140 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                         </li>
                       ))}
                     </ul>
+                  )}
+                </div>
+              )}
+
+              {/* AI Suggestions Tab - PROMPT #97 */}
+              {activeTab === 'ai-suggestions' && (
+                <div className="space-y-6">
+                  {!item.subtask_suggestions || item.subtask_suggestions.length === 0 ? (
+                    <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg bg-gray-50">
+                      <span className="text-4xl mb-3 block">🤖</span>
+                      <p className="text-sm text-gray-500 mb-2">No AI suggestions yet</p>
+                      <p className="text-xs text-gray-400 mb-4">
+                        AI can suggest subtasks to help decompose this item into smaller, actionable pieces.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={handleCreateSubInterview}
+                        isLoading={creatingInterview}
+                      >
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                        </svg>
+                        Generate Suggestions via Interview
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          🤖 AI-Suggested Subtasks ({item.subtask_suggestions.length})
+                        </h3>
+                      </div>
+
+                      {/* Subtasks List */}
+                      <div className="space-y-3">
+                        {item.subtask_suggestions.map((suggestion, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-200 hover:shadow-md transition-shadow"
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <span className="text-sm font-semibold text-purple-700">
+                                    {idx + 1}.
+                                  </span>
+                                  <h4 className="text-sm font-semibold text-gray-900 flex-1">
+                                    {suggestion.title}
+                                  </h4>
+                                  {suggestion.story_points && (
+                                    <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-700 border border-purple-200">
+                                      {suggestion.story_points} pts
+                                    </span>
+                                  )}
+                                </div>
+                                {suggestion.description && (
+                                  <button
+                                    onClick={() => setShowSubtaskDetails(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                                    className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 mb-2"
+                                  >
+                                    {showSubtaskDetails[idx] ? (
+                                      <>
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                        </svg>
+                                        Hide details
+                                      </>
+                                    ) : (
+                                      <>
+                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                        </svg>
+                                        Show details
+                                      </>
+                                    )}
+                                  </button>
+                                )}
+                                {showSubtaskDetails[idx] && suggestion.description && (
+                                  <p className="text-xs text-gray-700 pl-4 border-l-2 border-purple-300 bg-white bg-opacity-50 p-2 rounded">
+                                    {suggestion.description}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-3 pt-4 border-t border-gray-200">
+                        <Button
+                          variant="primary"
+                          onClick={handleAcceptSubtasks}
+                          isLoading={acceptingSubtasks}
+                          className="flex-1 bg-green-600 hover:bg-green-700"
+                        >
+                          {acceptingSubtasks ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              Accepting...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </svg>
+                              Accept All Subtasks
+                            </>
+                          )}
+                        </Button>
+
+                        <Button
+                          variant="outline"
+                          onClick={handleCreateSubInterview}
+                          isLoading={creatingInterview}
+                          className="flex-1"
+                        >
+                          {creatingInterview ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                              Creating...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                              </svg>
+                              Refine via Interview
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </>
                   )}
                 </div>
               )}
