@@ -1068,9 +1068,13 @@ async def start_interview(
     logger.info(f"Starting interview {interview_id} with fixed Question 1 for project: {project.name}")
 
     # Get fixed Question 1 (Title) - use appropriate function based on interview mode
+    # PROMPT #97 FIX - Call correct function for each interview mode
     if interview.interview_mode == "orchestrator":
         assistant_message = get_orchestrator_fixed_question(1, project, db, {})
+    elif interview.interview_mode == "meta_prompt":
+        assistant_message = get_fixed_question_meta_prompt(1, project, db)
     else:
+        # Fallback for other modes (task_orchestrated, subtask_orchestrated)
         assistant_message = get_fixed_question(1, project, db)
 
     if not assistant_message:
