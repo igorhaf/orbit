@@ -44,7 +44,8 @@ from app.api.routes.interview_handlers import (
     handle_orchestrator_interview,  # PROMPT #91 / PROMPT #94
     handle_subtask_focused_interview,  # PROMPT #94 FASE 2
     handle_task_orchestrated_interview,  # PROMPT #97
-    handle_subtask_orchestrated_interview  # PROMPT #97
+    handle_subtask_orchestrated_interview,  # PROMPT #97
+    handle_card_focused_interview  # PROMPT #98
 )
 
 # Import helper functions from modular files (PROMPT #69)
@@ -80,6 +81,14 @@ from .subtask_orchestrated_questions import (
     count_fixed_questions_subtask_orchestrated,
     is_fixed_question_complete_subtask_orchestrated
 )
+# PROMPT #98 - Card-Focused Interview Mode (Story/Task/Subtask with Motivation Type)
+from .card_focused_questions import (
+    get_card_focused_fixed_question,
+    count_fixed_questions_card_focused,
+    is_fixed_question_complete_card_focused,
+    get_motivation_type_from_answers
+)
+from .card_focused_prompts import build_card_focused_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -182,26 +191,41 @@ async def create_interview(
                 detail=f"Parent task {parent_task_id} not found"
             )
 
-        # Determine mode based on parent item_type
-        if parent_task.item_type == ItemType.EPIC:
-            # Epic → Story
-            interview_mode = "orchestrator"
-            logger.info(f"Creating Story interview from Epic '{parent_task.title}':")
-            logger.info(f"  - interview_mode: orchestrator (PROMPT #97 - Creates Story)")
-        elif parent_task.item_type == ItemType.STORY:
-            # Story → Task
-            interview_mode = "task_orchestrated"
-            logger.info(f"Creating Task interview from Story '{parent_task.title}':")
-            logger.info(f"  - interview_mode: task_orchestrated (PROMPT #97 - Creates Task)")
-        elif parent_task.item_type == ItemType.TASK:
-            # Task → Subtask
-            interview_mode = "subtask_orchestrated"
-            logger.info(f"Creating Subtask interview from Task '{parent_task.title}':")
-            logger.info(f"  - interview_mode: subtask_orchestrated (PROMPT #97 - Creates Subtask)")
+        # PROMPT #98 - Check if card_focused mode is requested
+        if interview_data.use_card_focused:
+            # Card-focused mode with motivation type
+            interview_mode = "card_focused"
+            if parent_task.item_type == ItemType.EPIC:
+                logger.info(f"Creating Story interview from Epic '{parent_task.title}':")
+                logger.info(f"  - interview_mode: card_focused (PROMPT #98 - Creates Story with motivation type)")
+            elif parent_task.item_type == ItemType.STORY:
+                logger.info(f"Creating Task interview from Story '{parent_task.title}':")
+                logger.info(f"  - interview_mode: card_focused (PROMPT #98 - Creates Task with motivation type)")
+            elif parent_task.item_type == ItemType.TASK:
+                logger.info(f"Creating Subtask interview from Task '{parent_task.title}':")
+                logger.info(f"  - interview_mode: card_focused (PROMPT #98 - Creates Subtask with motivation type)")
         else:
-            # Fallback for other types
-            interview_mode = "task_orchestrated"
-            logger.warning(f"Unknown parent type {parent_task.item_type}, defaulting to task_orchestrated")
+            # Standard hierarchical mode without motivation type
+            # Determine mode based on parent item_type
+            if parent_task.item_type == ItemType.EPIC:
+                # Epic → Story
+                interview_mode = "orchestrator"
+                logger.info(f"Creating Story interview from Epic '{parent_task.title}':")
+                logger.info(f"  - interview_mode: orchestrator (PROMPT #97 - Creates Story)")
+            elif parent_task.item_type == ItemType.STORY:
+                # Story → Task
+                interview_mode = "task_orchestrated"
+                logger.info(f"Creating Task interview from Story '{parent_task.title}':")
+                logger.info(f"  - interview_mode: task_orchestrated (PROMPT #97 - Creates Task)")
+            elif parent_task.item_type == ItemType.TASK:
+                # Task → Subtask
+                interview_mode = "subtask_orchestrated"
+                logger.info(f"Creating Subtask interview from Task '{parent_task.title}':")
+                logger.info(f"  - interview_mode: subtask_orchestrated (PROMPT #97 - Creates Subtask)")
+            else:
+                # Fallback for other types
+                interview_mode = "task_orchestrated"
+                logger.warning(f"Unknown parent type {parent_task.item_type}, defaulting to task_orchestrated")
 
     db_interview = Interview(
         project_id=interview_data.project_id,
@@ -1608,6 +1632,27 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
             is_fixed_question_complete_subtask_orchestrated_func=is_fixed_question_complete_subtask_orchestrated,
             clean_ai_response_func=clean_ai_response,
             prepare_context_func=prepare_interview_context
+        )
+    elif interview.interview_mode == "card_focused":
+        # Card-focused interview (PROMPT #98): Q1-Q3 fixed → AI contextual (for Story/Task/Subtask with motivation type)
+        parent_card = None
+        if interview.parent_task_id:
+            parent_card = db.query(Task).filter(Task.id == interview.parent_task_id).first()
+
+        return await handle_card_focused_interview(
+            interview=interview,
+            project=project,
+            message_count=message_count,
+            db=db,
+            get_card_focused_fixed_question_func=get_card_focused_fixed_question,
+            count_fixed_questions_card_focused_func=count_fixed_questions_card_focused,
+            is_fixed_question_complete_card_focused_func=is_fixed_question_complete_card_focused,
+            get_motivation_type_from_answers_func=get_motivation_type_from_answers,
+            build_card_focused_prompt_func=build_card_focused_prompt,
+            clean_ai_response_func=clean_ai_response,
+            prepare_context_func=prepare_interview_context,
+            parent_card=parent_card,
+            stack_context=stack_context
         )
     else:
         # Unknown interview mode
