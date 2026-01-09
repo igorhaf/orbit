@@ -229,26 +229,28 @@ async def handle_meta_prompt_interview(
 
     # Map message_count to question number for fixed questions
     # Meta prompt has 18 fixed questions (Q1-Q18) - PROMPT #97
-    # PROMPT #97 FIX - Questions are sent at ODD message_counts (1, 3, 5...)
+    # PROMPT #97 FIX FINAL - Q1 sent by /start (count=1), /send-message gets EVEN counts after user answers
+    # When user answers Q1 → count=2 → send Q2
+    # When user answers Q2 → count=4 → send Q3
+    # When user answers Q3 → count=6 → send Q4, etc.
     question_map = {
-        1: 1,   # message_count=1 → Ask Q1 (Title)
-        3: 2,   # message_count=3 → Ask Q2 (Description)
-        5: 3,   # message_count=5 → Ask Q3 (System Type) - PROMPT #97
-        7: 4,   # message_count=7 → Ask Q4 (Backend Framework)
-        9: 5,   # message_count=9 → Ask Q5 (Database)
-        11: 6,  # message_count=11 → Ask Q6 (Frontend Framework)
-        13: 7,  # message_count=13 → Ask Q7 (CSS Framework)
-        15: 8,  # message_count=15 → Ask Q8 (Mobile Framework)
-        17: 9,  # message_count=17 → Ask Q9 (Project Modules) - PROMPT #81
-        19: 10, # message_count=19 → Ask Q10 (Vision & Problem)
-        21: 11, # message_count=21 → Ask Q11 (Main Features)
-        23: 12, # message_count=23 → Ask Q12 (User Roles)
-        25: 13, # message_count=25 → Ask Q13 (Business Rules)
-        27: 14, # message_count=27 → Ask Q14 (Data & Entities)
-        29: 15, # message_count=29 → Ask Q15 (Success Criteria)
-        31: 16, # message_count=31 → Ask Q16 (Technical Constraints)
-        33: 17, # message_count=33 → Ask Q17 (MVP Scope)
-        35: 18, # message_count=35 → Ask Q18 (Focus Topics Selection) - PROMPT #77
+        2: 2,   # message_count=2 (user answered Q1) → Send Q2 (Description)
+        4: 3,   # message_count=4 (user answered Q2) → Send Q3 (System Type) - PROMPT #97
+        6: 4,   # message_count=6 (user answered Q3) → Send Q4 (Backend Framework)
+        8: 5,   # message_count=8 (user answered Q4) → Send Q5 (Database)
+        10: 6,  # message_count=10 (user answered Q5) → Send Q6 (Frontend Framework)
+        12: 7,  # message_count=12 (user answered Q6) → Send Q7 (CSS Framework)
+        14: 8,  # message_count=14 (user answered Q7) → Send Q8 (Mobile Framework)
+        16: 9,  # message_count=16 (user answered Q8) → Send Q9 (Project Modules) - PROMPT #81
+        18: 10, # message_count=18 (user answered Q9) → Send Q10 (Vision & Problem)
+        20: 11, # message_count=20 (user answered Q10) → Send Q11 (Main Features)
+        22: 12, # message_count=22 (user answered Q11) → Send Q12 (User Roles)
+        24: 13, # message_count=24 (user answered Q12) → Send Q13 (Business Rules)
+        26: 14, # message_count=26 (user answered Q13) → Send Q14 (Data & Entities)
+        28: 15, # message_count=28 (user answered Q14) → Send Q15 (Success Criteria)
+        30: 16, # message_count=30 (user answered Q15) → Send Q16 (Technical Constraints)
+        32: 17, # message_count=32 (user answered Q16) → Send Q17 (MVP Scope)
+        34: 18, # message_count=34 (user answered Q17) → Send Q18 (Focus Topics Selection) - PROMPT #77
     }
 
     # Fixed meta prompt questions (Q1-Q18)
@@ -259,8 +261,8 @@ async def handle_meta_prompt_interview(
         )
 
     # After Q18: Extract focus topics from user's answer
-    # PROMPT #97 FIX - User answers Q18 at message_count=36 (not 37)
-    elif message_count == 36:
+    # PROMPT #97 FIX FINAL - Q18 sent at count=34, user answers at count=35
+    elif message_count == 35:
         # User just answered Q18 (topic selection)
         # Extract topics and save them
         user_answer = interview.conversation_data[-1]["content"]
@@ -281,8 +283,8 @@ async def handle_meta_prompt_interview(
         )
 
     # AI contextual questions (Q19+) - guided by selected topics
-    # PROMPT #97 FIX - AI questions start at message_count=37 (not 38)
-    elif message_count >= 37:
+    # PROMPT #97 FIX FINAL - AI questions start at message_count=36 (after user answers Q18 at 35)
+    elif message_count >= 36:
         focus_topics = interview.focus_topics or []
         return await _handle_ai_meta_contextual_question(
             interview, project, message_count, focus_topics,
@@ -773,6 +775,9 @@ def _handle_fixed_question_meta(
     logger.info(f"Returning fixed Meta Prompt Question {question_number}")
 
     assistant_message = get_fixed_question_meta_prompt_func(question_number, project, db)
+
+    # PROMPT #97 DEBUG - Log the model being used
+    logger.warning(f"🔍 DEBUG Q{question_number}: model={assistant_message.get('model') if assistant_message else 'None'}, func={get_fixed_question_meta_prompt_func.__name__}")
 
     if not assistant_message:
         raise HTTPException(
