@@ -142,92 +142,92 @@ INFORMAÇÕES DO PROJETO:
     if parent_task:
         parent_task_context = f"""
 
-TAREFA PAI (CONTEXTO):
-- Título: {parent_task.title}
-- Descrição: {parent_task.description or "Não especificada"}
-- Tipo: {parent_task.task_type or "task"}
+PARENT TASK (CONTEXT):
+- Title: {parent_task.title}
+- Description: {parent_task.description or "Not specified"}
+- Type: {parent_task.task_type or "task"}
 
-Você está criando SUBTASKS ATÔMICAS para decompor esta tarefa pai.
+You are creating ATOMIC SUBTASKS to decompose this parent task.
 """
 
     return f"""{project_context}{parent_task_context}
 
-**MODO: SUBTASK FOCUSED - Geração de Subtasks Atômicas 🔬**
+**MODE: SUBTASK FOCUSED - Atomic Subtask Generation 🔬**
 
-**OBJETIVO CRÍTICO:** Gerar subtasks ATÔMICAS - cada subtask = 1 ação executável = 1 prompt super rápido
+**CRITICAL OBJECTIVE:** Generate ATOMIC subtasks - each subtask = 1 executable action = 1 super fast prompt
 
-**O QUE É UMA SUBTASK ATÔMICA:**
-✅ **BOM (Atômico):**
-- "Criar tabela users no banco de dados"
-- "Adicionar coluna email (string) na tabela users"
-- "Criar endpoint POST /api/users"
-- "Adicionar validação de email no request"
-- "Criar teste unitário para UserController::store"
+**WHAT IS AN ATOMIC SUBTASK:**
+✅ **GOOD (Atomic):**
+- "Create users table in database"
+- "Add email (string) column to users table"
+- "Create POST /api/users endpoint"
+- "Add email validation to request"
+- "Create unit test for UserController::store"
 
-❌ **RUIM (Não atômico):**
-- "Implementar CRUD de usuários" (muito amplo, precisa ser decomposto)
-- "Fazer autenticação e autorização" (2 ações, deveria ser 2 subtasks)
-- "Criar banco e endpoints" (2 ações, deveria ser 2 subtasks)
+❌ **BAD (Not atomic):**
+- "Implement user CRUD" (too broad, needs decomposition)
+- "Do authentication and authorization" (2 actions, should be 2 subtasks)
+- "Create database and endpoints" (2 actions, should be 2 subtasks)
 
-**REGRAS CRÍTICAS:**
-1. **1 Subtask = 1 Ação = 1 Prompt Executável**
-   - Se você pensar "e também precisa...", PARE! É outra subtask!
-   - Cada subtask deve ser executável em minutos, não horas
+**CRITICAL RULES:**
+1. **1 Subtask = 1 Action = 1 Executable Prompt**
+   - If you think "and also needs...", STOP! That's another subtask!
+   - Each subtask should be executable in minutes, not hours
 
-2. **IA Decide Quantas Perguntas (Sem Limite Fixo)**
-   - Use bom senso: 3-10 perguntas geralmente é suficiente
-   - Pare quando tiver contexto suficiente para gerar subtasks atômicas
-   - Se usuário responde de forma completa, menos perguntas são necessárias
+2. **AI Decides How Many Questions (No Fixed Limit)**
+   - Use common sense: 3-10 questions is usually enough
+   - Stop when you have enough context to generate atomic subtasks
+   - If user answers completely, fewer questions are needed
 
-3. **Foque em Decomposição Máxima**
-   - Pergunte sobre PARTES ESPECÍFICAS da tarefa
-   - Identifique dependências entre subtasks
-   - Quebre complexidade em ações simples
+3. **Focus on Maximum Decomposition**
+   - Ask about SPECIFIC PARTS of the task
+   - Identify dependencies between subtasks
+   - Break complexity into simple actions
 
-4. **Critérios de Atomicidade:**
-   - ✅ Pode ser descrita em 1 frase curta (< 10 palavras)?
-   - ✅ Executa em < 30 minutos?
-   - ✅ Tem 1 arquivo/componente como foco principal?
-   - ✅ Não usa "e" ou "também" na descrição?
-   - Se NÃO para qualquer um, decomponha mais!
+4. **Atomicity Criteria:**
+   - ✅ Can be described in 1 short sentence (< 10 words)?
+   - ✅ Executes in < 30 minutes?
+   - ✅ Has 1 file/component as main focus?
+   - ✅ Doesn't use "and" or "also" in description?
+   - If NO to any, decompose more!
 
-**FORMATO DE PERGUNTA:**
-❓ Pergunta {question_num}: [Sua pergunta focada em DECOMPOSIÇÃO ATÔMICA]
+**QUESTION FORMAT:**
+❓ Pergunta {question_num}: [Your question focused on ATOMIC DECOMPOSITION in Portuguese]
 
-Para ESCOLHA ÚNICA:
-○ Opção 1
-○ Opção 2
-○ Opção 3
+For SINGLE CHOICE:
+○ Option 1
+○ Option 2
+○ Option 3
 
-Para MÚLTIPLA ESCOLHA:
-☐ Opção 1
-☐ Opção 2
-☐ Opção 3
-☑️ [Selecione todas que se aplicam]
+For MULTIPLE CHOICE:
+☐ Option 1
+☐ Option 2
+☐ Option 3
+☑️ [Select all that apply]
 
-**ÁREAS DE FOCO (use como guia, não pergunte tudo):**
-1. **Escopo Específico**: Qual parte EXATA da tarefa? (banco/API/UI/lógica/validação)
-2. **Granularidade**: Detalhar mais? (ex: "criar endpoint" → GET/POST/PUT/DELETE separados)
-3. **Dependências**: O que deve ser feito ANTES? (ex: migração antes de model)
-4. **Sequência**: Qual ordem faz sentido? (banco → backend → frontend)
-5. **Edge Cases**: Validações? Erros? Casos especiais? (cada um = 1 subtask)
-6. **Testes**: Testes unitários/integração? (cada tipo = 1 subtask)
+**FOCUS AREAS (use as guide, don't ask everything):**
+1. **Specific Scope**: What EXACT part of the task? (database/API/UI/logic/validation)
+2. **Granularity**: More detail? (e.g.: "create endpoint" → separate GET/POST/PUT/DELETE)
+3. **Dependencies**: What must be done BEFORE? (e.g.: migration before model)
+4. **Sequence**: What order makes sense? (database → backend → frontend)
+5. **Edge Cases**: Validations? Errors? Special cases? (each one = 1 subtask)
+6. **Tests**: Unit/integration tests? (each type = 1 subtask)
 
-**EXEMPLO DE DECOMPOSIÇÃO ATÔMICA:**
+**ATOMIC DECOMPOSITION EXAMPLE:**
 
-Tarefa Pai: "Implementar cadastro de usuários"
+Parent Task: "Implement user registration"
 
-Subtasks Atômicas Geradas (8 subtasks):
-1. Criar migration da tabela users (id, name, email, password, timestamps)
-2. Criar model User com fillable e hidden fields
-3. Criar UserRequest com validação de email e senha
-4. Criar endpoint POST /api/users no routes/api.php
-5. Implementar UserController::store com hash de senha
-6. Criar teste unitário para validação de email duplicado
-7. Criar teste de integração para POST /api/users
-8. Adicionar mensagem de sucesso no frontend após cadastro
+Generated Atomic Subtasks (8 subtasks):
+1. Create users table migration (id, name, email, password, timestamps)
+2. Create User model with fillable and hidden fields
+3. Create UserRequest with email and password validation
+4. Create POST /api/users endpoint in routes/api.php
+5. Implement UserController::store with password hash
+6. Create unit test for duplicate email validation
+7. Create integration test for POST /api/users
+8. Add success message on frontend after registration
 
-**Sua missão:** Fazer perguntas inteligentes para gerar subtasks com este nível de atomicidade!
+**Your mission:** Ask smart questions to generate subtasks with this level of atomicity!
 
-Continue com a próxima pergunta focada em DECOMPOSIÇÃO ATÔMICA!
+**OUTPUT LANGUAGE: Portuguese (Brazilian).** Continue with the next question focused on ATOMIC DECOMPOSITION!
 """

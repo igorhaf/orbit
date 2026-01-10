@@ -65,13 +65,13 @@ def prepare_interview_context(conversation_data: List[Dict], max_recent: int = 5
     # Cannot use "system" role in messages array - it must be in system parameter
     summary_message = {
         "role": "user",
-        "content": f"""[CONTEXTO ANTERIOR - RESUMO]
+        "content": f"""[PREVIOUS CONTEXT - SUMMARY]
 
-Resumo das {len(older_messages)} mensagens anteriores desta entrevista:
+Summary of the {len(older_messages)} previous messages from this interview:
 
 {chr(10).join(summary_points)}
 
-As {len(recent_messages)} mensagens mais recentes seguem abaixo com conteúdo completo."""
+The {len(recent_messages)} most recent messages follow below with full content."""
     }
 
     # Build optimized message list
@@ -133,46 +133,46 @@ def build_business_section_prompt(project, question_num: int) -> str:
         System prompt string for business-focused questions
     """
     return f"""
-INFORMAÇÕES DO PROJETO:
-- Nome: {project.name}
-- Descrição: {project.description}
+PROJECT INFO:
+- Name: {project.name}
+- Description: {project.description}
 
-**SEÇÃO ESPECIALIZADA: BUSINESS - Regras de Negócio 💼**
+**SPECIALIZED SECTION: BUSINESS - Business Rules 💼**
 
-Você está na fase de perguntas sobre **REGRAS DE NEGÓCIO** e **LÓGICA DO DOMÍNIO**.
+You are in the phase of questions about **BUSINESS RULES** and **DOMAIN LOGIC**.
 
-**FOCO DESTA SEÇÃO (não pergunte tudo de uma vez):**
-1. **Regras de Validação**: Quais validações de negócio? (ex: CPF único, idade mínima, limite de crédito)
-2. **Fluxos de Trabalho**: Sequências/etapas obrigatórias? (ex: pedido → pagamento → envio)
-3. **Permissões e Acesso**: Quem pode fazer o quê? Níveis de acesso?
-4. **Cálculos e Fórmulas**: Regras de cálculo? (ex: desconto, frete, impostos, comissão)
-5. **Estados e Transições**: Quais status? Transições permitidas? (ex: rascunho → publicado → arquivado)
-6. **Integrações de Negócio**: APIs externas necessárias? (pagamento, envio, email, SMS)
-7. **Dados Críticos**: Entidades principais? Relacionamentos? (ex: User → Order → Product)
+**FOCUS OF THIS SECTION (don't ask everything at once):**
+1. **Validation Rules**: What business validations? (e.g.: unique ID, minimum age, credit limit)
+2. **Workflows**: Mandatory sequences/steps? (e.g.: order → payment → shipping)
+3. **Permissions and Access**: Who can do what? Access levels?
+4. **Calculations and Formulas**: Calculation rules? (e.g.: discount, shipping, taxes, commission)
+5. **States and Transitions**: What statuses? Allowed transitions? (e.g.: draft → published → archived)
+6. **Business Integrations**: External APIs needed? (payment, shipping, email, SMS)
+7. **Critical Data**: Main entities? Relationships? (e.g.: User → Order → Product)
 
-**FORMATO DE PERGUNTA:**
-❓ Pergunta {question_num}: [Sua pergunta focada em REGRAS DE NEGÓCIO]
+**QUESTION FORMAT:**
+❓ Pergunta {question_num}: [Your question focused on BUSINESS RULES in Portuguese]
 
-Para ESCOLHA ÚNICA:
-○ Opção 1
-○ Opção 2
-○ Opção 3
+For SINGLE CHOICE:
+○ Option 1
+○ Option 2
+○ Option 3
 
-Para MÚLTIPLA ESCOLHA:
-☐ Opção 1
-☐ Opção 2
-☐ Opção 3
-☑️ [Selecione todas que se aplicam]
+For MULTIPLE CHOICE:
+☐ Option 1
+☐ Option 2
+☐ Option 3
+☑️ [Select all that apply]
 
-**REGRAS:**
-- Uma pergunta por vez, FOCADA em regras de negócio
-- Construa contexto com respostas anteriores
-- Sempre forneça opções (nunca perguntas abertas!)
-- Após 4-6 perguntas sobre negócio, mova para próxima seção
+**RULES:**
+- One question at a time, FOCUSED on business rules
+- Build context with previous answers
+- Always provide options (never open-ended questions!)
+- After 4-6 business questions, move to next section
 
-**EXEMPLOS DE BOAS PERGUNTAS:**
+**EXAMPLES OF GOOD QUESTIONS:**
 
-✅ BOM (Validação de negócio):
+✅ GOOD (Business validation):
 ❓ Quais validações devem ser aplicadas ao criar um novo usuário?
 
 ☐ Email único (não pode repetir)
@@ -183,7 +183,7 @@ Para MÚLTIPLA ESCOLHA:
 
 ☑️ Selecione todas que se aplicam.
 
-✅ BOM (Fluxo de trabalho):
+✅ GOOD (Workflow):
 ❓ Qual o fluxo de status de um pedido?
 
 ○ Simples: pendente → pago → entregue
@@ -191,7 +191,7 @@ Para MÚLTIPLA ESCOLHA:
 ○ Complexo: pendente → em análise → aprovado → pago → em produção → enviado → entregue
 ○ Customizado (especificar depois)
 
-Continue com a próxima pergunta relevante sobre REGRAS DE NEGÓCIO!
+**OUTPUT LANGUAGE: Portuguese (Brazilian).** Continue with the next relevant question about BUSINESS RULES!
 """
 
 
@@ -211,48 +211,48 @@ def build_design_section_prompt(project, question_num: int) -> str:
         System prompt string for design-focused questions
     """
     return f"""
-INFORMAÇÕES DO PROJETO:
-- Nome: {project.name}
-- Descrição: {project.description}
-- Frontend: {project.stack_frontend or 'Não especificado'}
-- CSS: {project.stack_css or 'Não especificado'}
+PROJECT INFO:
+- Name: {project.name}
+- Description: {project.description}
+- Frontend: {project.stack_frontend or 'Not specified'}
+- CSS: {project.stack_css or 'Not specified'}
 
-**SEÇÃO ESPECIALIZADA: DESIGN - UX/UI e Design Visual 🎨**
+**SPECIALIZED SECTION: DESIGN - UX/UI and Visual Design 🎨**
 
-Você está na fase de perguntas sobre **EXPERIÊNCIA DO USUÁRIO (UX)**, **INTERFACE (UI)** e **DESIGN VISUAL**.
+You are in the phase of questions about **USER EXPERIENCE (UX)**, **INTERFACE (UI)** and **VISUAL DESIGN**.
 
-**FOCO DESTA SEÇÃO (não pergunte tudo de uma vez):**
-1. **Layout e Estrutura**: Como organizar a interface? (dashboard, sidebar, top nav, cards)
-2. **Tema e Estilo**: Qual identidade visual? (cores, fontes, espaçamentos, bordas)
-3. **Componentes UI**: Quais componentes necessários? (botões, forms, modais, tabelas, gráficos)
-4. **Responsividade**: Comportamento em mobile/tablet/desktop? Breakpoints?
-5. **Navegação**: Como usuário navega? Menu? Breadcrumbs? Tabs?
-6. **Feedback Visual**: Loading states? Mensagens de sucesso/erro? Tooltips?
-7. **Acessibilidade**: Suporte a screen readers? Contraste? Teclado?
+**FOCUS OF THIS SECTION (don't ask everything at once):**
+1. **Layout and Structure**: How to organize the interface? (dashboard, sidebar, top nav, cards)
+2. **Theme and Style**: What visual identity? (colors, fonts, spacing, borders)
+3. **UI Components**: What components needed? (buttons, forms, modals, tables, charts)
+4. **Responsiveness**: Behavior on mobile/tablet/desktop? Breakpoints?
+5. **Navigation**: How does user navigate? Menu? Breadcrumbs? Tabs?
+6. **Visual Feedback**: Loading states? Success/error messages? Tooltips?
+7. **Accessibility**: Screen reader support? Contrast? Keyboard?
 
-**FORMATO DE PERGUNTA:**
-❓ Pergunta {question_num}: [Sua pergunta focada em UX/UI/DESIGN]
+**QUESTION FORMAT:**
+❓ Pergunta {question_num}: [Your question focused on UX/UI/DESIGN in Portuguese]
 
-Para ESCOLHA ÚNICA:
-○ Opção 1
-○ Opção 2
-○ Opção 3
+For SINGLE CHOICE:
+○ Option 1
+○ Option 2
+○ Option 3
 
-Para MÚLTIPLA ESCOLHA:
-☐ Opção 1
-☐ Opção 2
-☐ Opção 3
-☑️ [Selecione todas que se aplicam]
+For MULTIPLE CHOICE:
+☐ Option 1
+☐ Option 2
+☐ Option 3
+☑️ [Select all that apply]
 
-**REGRAS:**
-- Uma pergunta por vez, FOCADA em UX/UI/design
-- Construa contexto com respostas anteriores
-- Sempre forneça opções (nunca perguntas abertas!)
-- Após 3-5 perguntas sobre design, mova para próxima seção (se houver)
+**RULES:**
+- One question at a time, FOCUSED on UX/UI/design
+- Build context with previous answers
+- Always provide options (never open-ended questions!)
+- After 3-5 design questions, move to next section (if any)
 
-**EXEMPLOS DE BOAS PERGUNTAS:**
+**EXAMPLES OF GOOD QUESTIONS:**
 
-✅ BOM (Layout):
+✅ GOOD (Layout):
 ❓ Qual layout principal você prefere para o dashboard?
 
 ○ Sidebar fixa + conteúdo principal (estilo admin)
@@ -260,7 +260,7 @@ Para MÚLTIPLA ESCOLHA:
 ○ Sidebar retrátil + tabbed content (estilo workspace)
 ○ Single page com sections verticais (estilo landing)
 
-✅ BOM (Componentes):
+✅ GOOD (Components):
 ❓ Quais componentes de UI você precisa no projeto?
 
 ☐ Tabelas com paginação e filtros
@@ -272,7 +272,7 @@ Para MÚLTIPLA ESCOLHA:
 
 ☑️ Selecione todas que se aplicam.
 
-✅ BOM (Tema):
+✅ GOOD (Theme):
 ❓ Qual paleta de cores deseja para a interface?
 
 ○ Azul profissional (corporativo, confiável)
@@ -280,7 +280,7 @@ Para MÚLTIPLA ESCOLHA:
 ○ Tons neutros (minimalista, clean)
 ○ Personalizada baseada em brand
 
-Continue com a próxima pergunta relevante sobre UX/UI/DESIGN!
+**OUTPUT LANGUAGE: Portuguese (Brazilian).** Continue with the next relevant question about UX/UI/DESIGN!
 """
 
 
@@ -300,47 +300,47 @@ def build_mobile_section_prompt(project, question_num: int) -> str:
         System prompt string for mobile-focused questions
     """
     return f"""
-INFORMAÇÕES DO PROJETO:
-- Nome: {project.name}
-- Descrição: {project.description}
-- Mobile Framework: {project.stack_mobile or 'Não especificado'}
+PROJECT INFO:
+- Name: {project.name}
+- Description: {project.description}
+- Mobile Framework: {project.stack_mobile or 'Not specified'}
 
-**SEÇÃO ESPECIALIZADA: MOBILE - Desenvolvimento Mobile Específico 📱**
+**SPECIALIZED SECTION: MOBILE - Mobile-Specific Development 📱**
 
-Você está na fase de perguntas sobre **DESENVOLVIMENTO MOBILE**, **NAVEGAÇÃO** e **EXPERIÊNCIA MOBILE**.
+You are in the phase of questions about **MOBILE DEVELOPMENT**, **NAVIGATION** and **MOBILE EXPERIENCE**.
 
-**FOCO DESTA SEÇÃO (não pergunte tudo de uma vez):**
-1. **Navegação Mobile**: Qual padrão de navegação? (tabs, drawer, stack, bottom nav)
-2. **Recursos Nativos**: Quais features nativas? (câmera, GPS, push, biometria, contatos)
-3. **Offline First**: Funcionamento offline? Sincronização? Cache local?
-4. **Gestos e Interações**: Swipe, pull-to-refresh, long-press, pinch-zoom?
-5. **Performance Mobile**: Lista grande (virtualized)? Imagens otimizadas? Lazy loading?
-6. **Plataformas**: iOS e Android? Comportamentos específicos por plataforma?
-7. **Push Notifications**: Tipos de notificação? Frequência? Deep linking?
+**FOCUS OF THIS SECTION (don't ask everything at once):**
+1. **Mobile Navigation**: What navigation pattern? (tabs, drawer, stack, bottom nav)
+2. **Native Resources**: What native features? (camera, GPS, push, biometrics, contacts)
+3. **Offline First**: Offline operation? Sync? Local cache?
+4. **Gestures and Interactions**: Swipe, pull-to-refresh, long-press, pinch-zoom?
+5. **Mobile Performance**: Large lists (virtualized)? Optimized images? Lazy loading?
+6. **Platforms**: iOS and Android? Platform-specific behaviors?
+7. **Push Notifications**: Notification types? Frequency? Deep linking?
 
-**FORMATO DE PERGUNTA:**
-❓ Pergunta {question_num}: [Sua pergunta focada em MOBILE]
+**QUESTION FORMAT:**
+❓ Pergunta {question_num}: [Your question focused on MOBILE in Portuguese]
 
-Para ESCOLHA ÚNICA:
-○ Opção 1
-○ Opção 2
-○ Opção 3
+For SINGLE CHOICE:
+○ Option 1
+○ Option 2
+○ Option 3
 
-Para MÚLTIPLA ESCOLHA:
-☐ Opção 1
-☐ Opção 2
-☐ Opção 3
-☑️ [Selecione todas que se aplicam]
+For MULTIPLE CHOICE:
+☐ Option 1
+☐ Option 2
+☐ Option 3
+☑️ [Select all that apply]
 
-**REGRAS:**
-- Uma pergunta por vez, FOCADA em mobile
-- Construa contexto com respostas anteriores
-- Sempre forneça opções (nunca perguntas abertas!)
-- Após 3-5 perguntas sobre mobile, conclua esta seção
+**RULES:**
+- One question at a time, FOCUSED on mobile
+- Build context with previous answers
+- Always provide options (never open-ended questions!)
+- After 3-5 mobile questions, conclude this section
 
-**EXEMPLOS DE BOAS PERGUNTAS:**
+**EXAMPLES OF GOOD QUESTIONS:**
 
-✅ BOM (Navegação):
+✅ GOOD (Navigation):
 ❓ Qual padrão de navegação mobile você prefere?
 
 ○ Bottom Tabs (tabs fixas na parte inferior - padrão iOS)
@@ -348,7 +348,7 @@ Para MÚLTIPLA ESCOLHA:
 ○ Stack Navigation (telas empilhadas com botão voltar)
 ○ Híbrido (tabs principais + drawer para secundárias)
 
-✅ BOM (Recursos nativos):
+✅ GOOD (Native resources):
 ❓ Quais recursos nativos do dispositivo você precisa?
 
 ☐ Câmera (foto/vídeo)
@@ -361,7 +361,7 @@ Para MÚLTIPLA ESCOLHA:
 
 ☑️ Selecione todas que se aplicam.
 
-✅ BOM (Offline):
+✅ GOOD (Offline):
 ❓ Como o app deve funcionar offline?
 
 ○ Totalmente online (requer internet sempre)
@@ -369,5 +369,5 @@ Para MÚLTIPLA ESCOLHA:
 ○ Offline first (cria/edita offline, sincroniza depois)
 ○ Híbrido (algumas telas offline, outras online)
 
-Continue com a próxima pergunta relevante sobre MOBILE!
+**OUTPUT LANGUAGE: Portuguese (Brazilian).** Continue with the next relevant question about MOBILE!
 """
