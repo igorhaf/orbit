@@ -735,7 +735,15 @@ async def _execute_ai_question(
         cleaned_content = clean_ai_response_func(response["content"])
 
         # PROMPT #99: Parse AI response to extract structured options
+        logger.info(f"🔍 DEBUG: AI response length: {len(cleaned_content)} chars")
+        logger.info(f"🔍 DEBUG: Has ○ symbol: {'○' in cleaned_content}")
+        logger.info(f"🔍 DEBUG: Has ☐ symbol: {'☐' in cleaned_content}")
+        logger.info(f"🔍 DEBUG: Content preview: {cleaned_content[:200]}")
+
         parsed_content, parsed_options = parse_ai_question_options(cleaned_content)
+
+        if not parsed_options:
+            logger.error(f"❌ PROMPT #99: Parser returned None! AI sent open question. Full content:\n{cleaned_content}")
 
         # Build assistant message
         assistant_message = {
