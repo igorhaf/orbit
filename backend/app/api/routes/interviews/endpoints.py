@@ -1500,6 +1500,7 @@ async def send_message_to_interview(
     }
     interview.conversation_data.append(user_message)
     flag_modified(interview, "conversation_data")  # CRITICAL: SQLAlchemy needs this for JSONB changes
+    db.flush()  # PROMPT #99: Flush first to write to DB
 
     # DEBUG: Log state after adding user message
     logger.info(f"🔍 DEBUG - After adding user message:")
@@ -1537,6 +1538,7 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
 
     # CRITICAL FIX: Commit user message IMMEDIATELY
     db.commit()
+    db.refresh(interview)  # PROMPT #99: Refresh to ensure data is synced
     logger.info(f"✅ User message committed to database")
 
     # Count messages to determine if we're in fixed questions phase
@@ -1925,7 +1927,9 @@ async def send_message_async(
     }
     interview.conversation_data.append(user_message)
     flag_modified(interview, "conversation_data")  # CRITICAL: SQLAlchemy needs this for JSONB changes
-    db.commit()
+    db.flush()  # PROMPT #99: Flush first to write to DB
+    db.commit()  # PROMPT #99: Then commit the transaction
+    db.refresh(interview)  # PROMPT #99: Refresh to ensure data is synced
 
     logger.info(f"✅ User message added to interview {interview_id} (message_count: {len(interview.conversation_data)})")
 
