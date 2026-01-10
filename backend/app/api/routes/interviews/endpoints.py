@@ -1888,6 +1888,7 @@ async def send_message_async(
     Send message to interview and get AI response ASYNCHRONOUSLY.
 
     PROMPT #65 - Async Job System
+    PROMPT #99 - Fixed async message duplication bug
 
     This endpoint prevents UI blocking by processing AI call in background.
 
@@ -1908,6 +1909,22 @@ async def send_message_async(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Interview {interview_id} not found"
         )
+
+    # Initialize conversation_data if empty
+    if not interview.conversation_data:
+        interview.conversation_data = []
+
+    # CRITICAL FIX (PROMPT #99): Add user message BEFORE creating async job
+    # The async handler expects the message to already be in conversation_data
+    user_message = {
+        "role": "user",
+        "content": message.content,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    interview.conversation_data.append(user_message)
+    db.commit()
+
+    logger.info(f"✅ User message added to interview {interview_id} (message_count: {len(interview.conversation_data)})")
 
     # Create async job
     job_manager = JobManager(db)
