@@ -399,11 +399,26 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
     elif question_number == 10:
         return {
             "role": "assistant",
-            "content": "🎯 Pergunta 10: Qual é a visão do projeto e o problema que ele resolve?\n\nDescreva brevemente:\n- Qual problema ou necessidade este projeto vai resolver?\n- Qual é o objetivo principal?\n- Quem são os usuários/clientes finais?",
+            "content": "🎯 Pergunta 10: Qual é o principal problema ou necessidade que este projeto resolve?\n\nSelecione o tipo de problema/necessidade principal:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
-            "question_type": "text",
-            "question_number": 10
+            "question_type": "single_choice",
+            "question_number": 10,
+            "options": {
+                "type": "single",
+                "choices": [
+                    {"id": "automation", "label": "⚙️ Automatizar processos manuais", "value": "automation"},
+                    {"id": "efficiency", "label": "🚀 Aumentar eficiência e produtividade", "value": "efficiency"},
+                    {"id": "sales", "label": "💰 Aumentar vendas e receita", "value": "sales"},
+                    {"id": "experience", "label": "😊 Melhorar experiência do usuário/cliente", "value": "experience"},
+                    {"id": "data", "label": "📊 Organizar e analisar dados", "value": "data"},
+                    {"id": "communication", "label": "💬 Facilitar comunicação e colaboração", "value": "communication"},
+                    {"id": "access", "label": "🌐 Disponibilizar serviços/produtos online", "value": "access"},
+                    {"id": "control", "label": "🔐 Controlar acessos e permissões", "value": "control"},
+                    {"id": "integration", "label": "🔌 Integrar sistemas diferentes", "value": "integration"},
+                    {"id": "cost", "label": "💵 Reduzir custos operacionais", "value": "cost"}
+                ]
+            }
         }
 
     elif question_number == 11:
@@ -436,61 +451,147 @@ def get_fixed_question_meta_prompt(question_number: int, project: Project, db: S
     elif question_number == 12:
         return {
             "role": "assistant",
-            "content": "👥 Pergunta 12: Quais são os perfis de usuários e suas permissões?\n\nDescreva os principais tipos de usuários e o que cada um pode fazer no sistema.\n\nExemplo:\n- Admin: Acesso total, gerencia usuários, configurações\n- Editor: Cria e edita conteúdo, não gerencia usuários\n- Visualizador: Apenas visualiza, sem edição",
+            "content": "👥 Pergunta 12: Quais perfis de usuários o sistema terá?\n\nSelecione todos os perfis de usuário necessários:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
-            "question_type": "text",
-            "question_number": 12
+            "question_type": "multiple_choice",
+            "question_number": 12,
+            "options": {
+                "type": "multiple",
+                "choices": [
+                    {"id": "admin", "label": "👑 Administrador (acesso total ao sistema)", "value": "admin"},
+                    {"id": "manager", "label": "📊 Gerente (supervisiona operações e equipes)", "value": "manager"},
+                    {"id": "editor", "label": "✏️ Editor (cria e edita conteúdo)", "value": "editor"},
+                    {"id": "operator", "label": "⚙️ Operador (executa operações do dia-a-dia)", "value": "operator"},
+                    {"id": "viewer", "label": "👁️ Visualizador (apenas consulta, sem edição)", "value": "viewer"},
+                    {"id": "customer", "label": "🛒 Cliente/Usuário final (usa o sistema)", "value": "customer"},
+                    {"id": "moderator", "label": "🛡️ Moderador (revisa e aprova conteúdo)", "value": "moderator"},
+                    {"id": "analyst", "label": "📈 Analista (acessa relatórios e dados)", "value": "analyst"},
+                    {"id": "support", "label": "💬 Suporte (atende usuários)", "value": "support"}
+                ]
+            }
         }
 
     elif question_number == 13:
         return {
             "role": "assistant",
-            "content": "⚙️ Pergunta 13: Quais são as principais regras de negócio do sistema?\n\nDescreva as regras críticas que o sistema deve seguir.\n\nExemplo:\n- Pedido só pode ser cancelado até 24h após criação\n- Usuário só pode aprovar documentos do seu departamento\n- Saldo não pode ficar negativo",
+            "content": "⚙️ Pergunta 13: Quais tipos de regras de negócio são críticas para o sistema?\n\nSelecione todas as categorias de regras necessárias:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
-            "question_type": "text",
-            "question_number": 13
+            "question_type": "multiple_choice",
+            "question_number": 13,
+            "options": {
+                "type": "multiple",
+                "choices": [
+                    {"id": "validation", "label": "✅ Validações de dados (formato, obrigatoriedade, limites)", "value": "validation"},
+                    {"id": "workflow", "label": "🔄 Regras de workflow (status, transições, aprovações)", "value": "workflow"},
+                    {"id": "access", "label": "🔐 Regras de acesso (quem pode fazer o quê)", "value": "access"},
+                    {"id": "calculation", "label": "🧮 Cálculos e fórmulas de negócio", "value": "calculation"},
+                    {"id": "timing", "label": "⏰ Regras temporais (prazos, janelas, expiração)", "value": "timing"},
+                    {"id": "financial", "label": "💰 Regras financeiras (preços, descontos, limites)", "value": "financial"},
+                    {"id": "hierarchy", "label": "🏗️ Hierarquias e dependências (relacionamentos)", "value": "hierarchy"},
+                    {"id": "notifications", "label": "🔔 Gatilhos de notificação (quando alertar)", "value": "notifications"},
+                    {"id": "integration", "label": "🔌 Regras de integração externa", "value": "integration"}
+                ]
+            }
         }
 
     elif question_number == 14:
         return {
             "role": "assistant",
-            "content": "🗃️ Pergunta 14: Quais são as principais entidades/dados do sistema?\n\nListe as entidades principais e seus relacionamentos básicos.\n\nExemplo:\n- Usuário (tem múltiplos Pedidos)\n- Pedido (pertence a um Usuário, contém múltiplos Itens)\n- Produto (pode estar em múltiplos Pedidos via Itens)\n- Categoria (agrupa Produtos)",
+            "content": "🗃️ Pergunta 14: Quais são os principais tipos de dados/entidades que o sistema gerencia?\n\nSelecione todas as categorias de dados relevantes:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
-            "question_type": "text",
-            "question_number": 14
+            "question_type": "multiple_choice",
+            "question_number": 14,
+            "options": {
+                "type": "multiple",
+                "choices": [
+                    {"id": "users", "label": "👥 Usuários e Perfis", "value": "users"},
+                    {"id": "products", "label": "📦 Produtos/Serviços/Itens", "value": "products"},
+                    {"id": "orders", "label": "🛒 Pedidos/Transações/Vendas", "value": "orders"},
+                    {"id": "customers", "label": "🧑‍💼 Clientes/Fornecedores", "value": "customers"},
+                    {"id": "documents", "label": "📄 Documentos/Arquivos", "value": "documents"},
+                    {"id": "events", "label": "📅 Eventos/Agendamentos", "value": "events"},
+                    {"id": "messages", "label": "💬 Mensagens/Comunicações", "value": "messages"},
+                    {"id": "financial", "label": "💰 Dados Financeiros (pagamentos, faturas)", "value": "financial"},
+                    {"id": "inventory", "label": "📊 Estoque/Recursos", "value": "inventory"},
+                    {"id": "analytics", "label": "📈 Métricas/Logs/Analytics", "value": "analytics"},
+                    {"id": "content", "label": "📝 Conteúdo (posts, artigos, mídias)", "value": "content"},
+                    {"id": "settings", "label": "⚙️ Configurações/Parâmetros", "value": "settings"}
+                ]
+            }
         }
 
     elif question_number == 15:
         return {
             "role": "assistant",
-            "content": "🎯 Pergunta 15: Quais são os critérios de sucesso do projeto?\n\nComo você vai medir se o projeto foi bem-sucedido?\n\nExemplo:\n- Processar 1000 pedidos por dia sem erros\n- Tempo de resposta < 2 segundos em 95% das requisições\n- Taxa de conversão de 15% nos primeiros 6 meses\n- Reduzir tempo de processamento manual de 4h para 30min",
+            "content": "🎯 Pergunta 15: Quais métricas são mais importantes para medir o sucesso do projeto?\n\nSelecione todas as métricas de sucesso relevantes:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
-            "question_type": "text",
-            "question_number": 15
+            "question_type": "multiple_choice",
+            "question_number": 15,
+            "options": {
+                "type": "multiple",
+                "choices": [
+                    {"id": "performance", "label": "⚡ Performance (tempo de resposta, velocidade)", "value": "performance"},
+                    {"id": "volume", "label": "📊 Volume de transações/operações", "value": "volume"},
+                    {"id": "adoption", "label": "👥 Taxa de adoção/usuários ativos", "value": "adoption"},
+                    {"id": "conversion", "label": "💰 Taxa de conversão/vendas", "value": "conversion"},
+                    {"id": "efficiency", "label": "🚀 Redução de tempo/esforço manual", "value": "efficiency"},
+                    {"id": "quality", "label": "✅ Qualidade (taxa de erros, bugs)", "value": "quality"},
+                    {"id": "satisfaction", "label": "😊 Satisfação do usuário (NPS, feedback)", "value": "satisfaction"},
+                    {"id": "availability", "label": "🔄 Disponibilidade/Uptime", "value": "availability"},
+                    {"id": "cost", "label": "💵 Redução de custos operacionais", "value": "cost"},
+                    {"id": "roi", "label": "📈 ROI (retorno sobre investimento)", "value": "roi"}
+                ]
+            }
         }
 
     elif question_number == 16:
         return {
             "role": "assistant",
-            "content": "🔧 Pergunta 16: Há alguma restrição técnica ou preferência arquitetural?\n\nDescreva limitações ou decisões técnicas já definidas.\n\nExemplo:\n- Deve rodar em infraestrutura AWS específica\n- Precisa integrar com sistema legado X\n- Segurança: LGPD compliance obrigatório\n- Performance: Suportar 10.000 usuários simultâneos",
+            "content": "🔧 Pergunta 16: Quais restrições técnicas ou requisitos especiais o projeto possui?\n\nSelecione todas as restrições/requisitos aplicáveis:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
-            "question_type": "text",
-            "question_number": 16
+            "question_type": "multiple_choice",
+            "question_number": 16,
+            "options": {
+                "type": "multiple",
+                "choices": [
+                    {"id": "infrastructure", "label": "☁️ Infraestrutura específica (AWS, Azure, GCP, on-premise)", "value": "infrastructure"},
+                    {"id": "compliance", "label": "🔒 Compliance e regulamentação (LGPD, GDPR, HIPAA)", "value": "compliance"},
+                    {"id": "legacy", "label": "🔄 Integração com sistemas legados", "value": "legacy"},
+                    {"id": "scalability", "label": "📈 Alta escalabilidade (muitos usuários simultâneos)", "value": "scalability"},
+                    {"id": "availability", "label": "⏰ Alta disponibilidade (99.9% uptime)", "value": "availability"},
+                    {"id": "security", "label": "🛡️ Requisitos avançados de segurança", "value": "security"},
+                    {"id": "offline", "label": "📱 Funcionamento offline/modo avião", "value": "offline"},
+                    {"id": "mobile", "label": "📲 Suporte mobile nativo (iOS/Android)", "value": "mobile"},
+                    {"id": "api", "label": "🔌 API pública para terceiros", "value": "api"},
+                    {"id": "none", "label": "✅ Nenhuma restrição técnica específica", "value": "none"}
+                ]
+            }
         }
 
     elif question_number == 17:
         return {
             "role": "assistant",
-            "content": "📌 Pergunta 17: Qual é o escopo e prioridades do MVP (Minimum Viable Product)?\n\nQuais funcionalidades DEVEM estar na primeira versão (MVP) vs. podem ficar para depois?\n\nExemplo:\n✅ MVP (Essencial):\n- Login e autenticação\n- CRUD de pedidos\n- Relatório básico de vendas\n\n⏳ Versão 2 (Desejável):\n- Dashboard avançado\n- Integrações com marketplaces\n- App mobile",
+            "content": "📌 Pergunta 17: Qual é a estratégia de lançamento do projeto?\n\nSelecione a abordagem que melhor descreve o planejamento:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-meta-prompt",
-            "question_type": "text",
-            "question_number": 17
+            "question_type": "single_choice",
+            "question_number": 17,
+            "options": {
+                "type": "single",
+                "choices": [
+                    {"id": "mvp_lean", "label": "🚀 MVP Mínimo (funcionalidades essenciais apenas, lançar rápido)", "value": "mvp_lean"},
+                    {"id": "mvp_robust", "label": "⭐ MVP Robusto (funcionalidades core bem completas)", "value": "mvp_robust"},
+                    {"id": "phased", "label": "📊 Lançamento em fases (incrementar features gradualmente)", "value": "phased"},
+                    {"id": "full", "label": "🎯 Lançamento completo (tudo de uma vez)", "value": "full"},
+                    {"id": "beta", "label": "🧪 Beta/Pilot (grupo restrito primeiro, depois escalona)", "value": "beta"},
+                    {"id": "undefined", "label": "❓ Ainda não definido", "value": "undefined"}
+                ]
+            }
         }
 
     elif question_number == 18:
