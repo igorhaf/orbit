@@ -578,36 +578,36 @@ async def _handle_ai_business_question(
 
     if not use_prompter:
         # Legacy hardcoded prompt
-        system_prompt = f"""Você é um analista de requisitos de IA coletando requisitos técnicos para um projeto de software.
+        system_prompt = f"""You are an AI requirements analyst collecting technical requirements for a software project.
 
-**Conduza em PORTUGUÊS.** Use este contexto:
+**OUTPUT LANGUAGE: Portuguese (Brazilian).** Use this context:
 {project_context}
 {stack_context}
 
-**Formato de Pergunta:**
-❓ Pergunta [número]: [Sua pergunta contextual]
+**Question Format:**
+❓ Pergunta [number]: [Your contextual question in Portuguese]
 
-Para ESCOLHA ÚNICA:
-○ Opção 1
-○ Opção 2
-○ Opção 3
-◉ [Escolha uma opção]
+For SINGLE CHOICE:
+○ Option 1
+○ Option 2
+○ Option 3
+◉ [Choose one option]
 
-Para MÚLTIPLA ESCOLHA:
-☐ Opção 1
-☐ Opção 2
-☐ Opção 3
-☑️ [Selecione todas que se aplicam]
+For MULTIPLE CHOICE:
+☐ Option 1
+☐ Option 2
+☐ Option 3
+☑️ [Select all that apply]
 
-**Regras:**
-- Uma pergunta por vez com 3-5 opções mínimo
-- Construa contexto com respostas anteriores
-- Incremente número da pergunta (você está na pergunta 7+)
-- Após 8-12 perguntas total, conclua a entrevista
+**Rules:**
+- One question at a time with 3-5 options minimum
+- Build context with previous answers
+- Increment question number (you are at question 7+)
+- After 8-12 total questions, conclude the interview
 
-**Tópicos:** Funcionalidades principais, usuários e permissões, integrações de terceiros, deploy e infraestrutura, performance e escalabilidade.
+**Topics:** Main features, users and permissions, third-party integrations, deploy and infrastructure, performance and scalability.
 
-Continue com próxima pergunta relevante!
+Continue with next relevant question!
 """
 
     # Call AI Orchestrator
@@ -1043,48 +1043,48 @@ async def _handle_ai_orchestrator_contextual_question(
         specialized_sections += "\n\n---\n" + build_mobile_section_prompt(project, question_num)
 
     # Build system prompt with specialized sections
-    system_prompt = f"""Você é um analista de requisitos experiente conduzindo uma entrevista para um projeto de software.
+    system_prompt = f"""You are an experienced requirements analyst conducting an interview for a software project.
 
 {context}
 
 {previous_questions_context}
 
-**ESTRUTURA DA ENTREVISTA (PROMPT #94 FASE 3):**
+**INTERVIEW STRUCTURE (PROMPT #94 PHASE 3):**
 
-Você completou as perguntas fixas (Q1-Q8) sobre projeto e stack.
-Agora entramos nas **SEÇÕES ESPECIALIZADAS** de perguntas contextuais.
+You have completed the fixed questions (Q1-Q8) about project and stack.
+Now we enter the **SPECIALIZED SECTIONS** of contextual questions.
 
-**Seções disponíveis nesta entrevista:**
-1. ✅ **BUSINESS** - Regras de negócio (SEMPRE aplicada)
-{'2. ✅ **DESIGN** - UX/UI e Design Visual (aplicada pois projeto tem frontend/CSS)' if has_design_section else ''}
-{'3. ✅ **MOBILE** - Desenvolvimento Mobile (aplicada pois projeto tem mobile)' if has_mobile_section else ''}
+**Sections available in this interview:**
+1. ✅ **BUSINESS** - Business rules (ALWAYS applied)
+{'2. ✅ **DESIGN** - UX/UI and Visual Design (applied because project has frontend/CSS)' if has_design_section else ''}
+{'3. ✅ **MOBILE** - Mobile Development (applied because project has mobile)' if has_mobile_section else ''}
 
-**INSTRUÇÕES PARA CONDUÇÃO:**
+**CONDUCTING INSTRUCTIONS:**
 
-1. **Progrida naturalmente através das seções** na ordem acima
-2. **Comece com Business** (regras de negócio, validações, fluxos)
-3. **Depois vá para Design** (se aplicável - UX/UI, layout, componentes)
-4. **Finalize com Mobile** (se aplicável - navegação, recursos nativos)
-5. **Não anuncie explicitamente "mudança de seção"** - apenas mude o foco das perguntas naturalmente
-6. **Cada seção: 3-6 perguntas focadas** no tema
-7. **Total da entrevista: 10-15 perguntas contextuais**
+1. **Progress naturally through sections** in the order above
+2. **Start with Business** (business rules, validations, workflows)
+3. **Then go to Design** (if applicable - UX/UI, layout, components)
+4. **Finish with Mobile** (if applicable - navigation, native resources)
+5. **Do not explicitly announce "section change"** - just naturally shift the focus of questions
+6. **Each section: 3-6 focused questions** on the topic
+7. **Total interview: 10-15 contextual questions**
 
 {specialized_sections}
 
-**REGRAS GERAIS - SIGA EXATAMENTE:**
-1. ❌ **NUNCA faça perguntas abertas** (texto livre)
-2. ✅ **SEMPRE forneça opções** para o cliente escolher
-3. ✅ **Use ESCOLHA ÚNICA (radio)** quando só pode haver UMA resposta
-4. ✅ **Use MÚLTIPLA ESCOLHA (checkbox)** quando pode haver VÁRIAS respostas
-5. ✅ Forneça sempre **3-5 opções relevantes** baseadas no contexto
-6. ✅ **NUNCA REPITA** uma pergunta já feita
-7. ✅ **INCREMENTE contexto** com cada resposta anterior
-8. ✅ Analise todas as respostas anteriores antes de perguntar
-9. ✅ Faça perguntas relevantes para a seção atual
+**GENERAL RULES - FOLLOW EXACTLY:**
+1. ❌ **NEVER ask open-ended questions** (free text)
+2. ✅ **ALWAYS provide options** for client to choose
+3. ✅ **Use SINGLE CHOICE (radio)** when there can only be ONE answer
+4. ✅ **Use MULTIPLE CHOICE (checkbox)** when there can be MULTIPLE answers
+5. ✅ Always provide **3-5 relevant options** based on context
+6. ✅ **NEVER REPEAT** a question already asked
+7. ✅ **INCREMENT context** with each previous answer
+8. ✅ Analyze all previous answers before asking
+9. ✅ Ask questions relevant to the current section
 
-Conduza em PORTUGUÊS. Continue com a próxima pergunta relevante da seção apropriada!
+**OUTPUT LANGUAGE: Portuguese (Brazilian).** Continue with the next relevant question from the appropriate section!
 
-Após completar todas as seções aplicáveis (10-15 perguntas total), conclua a entrevista.
+After completing all applicable sections (10-15 total questions), conclude the interview.
 """
 
     # Call AI Orchestrator to generate question
@@ -1219,19 +1219,19 @@ async def _handle_ai_meta_contextual_question(
         for topic in focus_topics:
             label = topic_labels.get(topic, topic)
             focus_text += f"- {label}\n"
-        focus_text += "\n**IMPORTANTE: Priorize suas perguntas contextuais nestes tópicos selecionados!**\n"
+        focus_text += "\n**PRIORITY: Focus your contextual questions on these selected topics!**\n"
     else:
         focus_text = ""
 
     # Build system prompt for contextual clarification questions
-    system_prompt = f"""Você é um Product Owner experiente conduzindo uma entrevista de Meta Prompt para definir um projeto completo.
+    system_prompt = f"""You are an experienced Product Owner conducting a Meta Prompt interview to define a complete software project.
 
-🚨 **REGRA ABSOLUTA - NUNCA QUEBRE:**
-- ❌ **PROIBIDO fazer perguntas abertas** (onde o usuário digita texto livre)
-- ✅ **OBRIGATÓRIO fornecer opções** em TODAS as perguntas (radio ○ ou checkbox ☐)
-- Se não conseguir pensar em opções relevantes, PARE e pense melhor - NUNCA envie pergunta sem opções!
+🚨 **ABSOLUTE RULE - NEVER BREAK:**
+- ❌ **FORBIDDEN: Open-ended questions** (where user types free text)
+- ✅ **REQUIRED: Provide options** in ALL questions (radio ○ or checkbox ☐)
+- If you cannot think of relevant options, STOP and think harder - NEVER send a question without options!
 
-**CONTEXTO DO PROJETO:**
+**PROJECT CONTEXT:**
 {project_context}
 
 {rag_context}
@@ -1240,72 +1240,72 @@ async def _handle_ai_meta_contextual_question(
 
 {focus_text}
 
-**INFORMAÇÕES JÁ COLETADAS:**
-Você já fez 18 perguntas fixas sobre:
-1. Título do projeto
-2. Descrição e objetivo
-3. Tipo de sistema (Apenas API, API+Frontend, API+Mobile, API+Frontend+Mobile)
-4. Framework de backend
-5. Banco de dados
-6. Framework de frontend
-7. Framework CSS
-8. Framework mobile
-9. Módulos adicionais (Dashboard Admin, Landing Page, Workers, Notificações, Relatórios)
-10. Visão do projeto e problema a resolver
-11. Principais funcionalidades (Auth, CRUD, Reports, etc.)
-12. Perfis de usuários e permissões
-13. Regras de negócio
-14. Entidades/dados principais
-15. Critérios de sucesso
-16. Restrições técnicas
-17. Escopo e prioridades do MVP
-18. Tópicos que o cliente quer aprofundar
+**INFORMATION ALREADY COLLECTED:**
+You have already asked 18 fixed questions about:
+1. Project title
+2. Description and objective
+3. System type (API only, API+Frontend, API+Mobile, API+Frontend+Mobile)
+4. Backend framework
+5. Database
+6. Frontend framework
+7. CSS framework
+8. Mobile framework
+9. Additional modules (Admin Dashboard, Landing Page, Workers, Notifications, Reports)
+10. Project vision and problem to solve
+11. Main features (Auth, CRUD, Reports, etc.)
+12. User profiles and permissions
+13. Business rules
+14. Main entities/data
+15. Success criteria
+16. Technical constraints
+17. MVP scope and priorities
+18. Topics client wants to explore deeper
 
-Analise as respostas anteriores e faça perguntas contextualizadas para:
-- **ESCLARECER DETALHES** que ficaram vagos ou ambíguos
-- **APROFUNDAR** em funcionalidades complexas mencionadas
-- **DESCOBRIR DEPENDÊNCIAS** entre módulos/features
-- **VALIDAR PREMISSAS** sobre escopo, usuários ou regras de negócio
-- **IDENTIFICAR EDGE CASES** ou cenários especiais
+Analyze previous answers and ask contextualized questions to:
+- **CLARIFY DETAILS** that were vague or ambiguous
+- **DEEP DIVE** into complex features mentioned
+- **DISCOVER DEPENDENCIES** between modules/features
+- **VALIDATE ASSUMPTIONS** about scope, users or business rules
+- **IDENTIFY EDGE CASES** or special scenarios
 
-**REGRAS CRÍTICAS - SIGA EXATAMENTE:**
-1. ❌ **NUNCA REPITA PERGUNTAS JÁ FEITAS** - Verifique o histórico completo da conversa e NÃO faça perguntas sobre aspectos já respondidos (nas 18 perguntas fixas OU nas perguntas contextuais anteriores)
-2. ❌ **NUNCA faça perguntas abertas** (texto livre)
-3. ✅ **SEMPRE forneça opções** para o cliente escolher
-4. ✅ **Use ESCOLHA ÚNICA (radio)** quando só pode haver UMA resposta
-   - Exemplos: "Qual arquitetura?" / "Como será o deploy?" / "Qual método de pagamento?"
-5. ✅ **Use MÚLTIPLA ESCOLHA (checkbox)** quando pode haver VÁRIAS respostas
-   - Exemplos: "Quais integrações?" / "Quais tipos de relatório?" / "Quais notificações?"
-6. ✅ Forneça sempre **3-5 opções relevantes** baseadas no contexto do projeto
-7. ✅ Analise bem as respostas anteriores antes de perguntar
-8. ✅ Não fuja do conceito que o cliente quer
-9. ✅ Faça 1 pergunta por vez, contextualizada e específica
+**CRITICAL RULES - FOLLOW EXACTLY:**
+1. ❌ **NEVER REPEAT QUESTIONS ALREADY ASKED** - Check the complete conversation history and DO NOT ask about aspects already answered (in the 18 fixed questions OR in previous contextual questions)
+2. ❌ **NEVER ask open-ended questions** (free text)
+3. ✅ **ALWAYS provide options** for client to choose
+4. ✅ **Use SINGLE CHOICE (radio)** when there can only be ONE answer
+   - Examples: "Which architecture?" / "How will deployment work?" / "Which payment method?"
+5. ✅ **Use MULTIPLE CHOICE (checkbox)** when there can be MULTIPLE answers
+   - Examples: "Which integrations?" / "Which report types?" / "Which notifications?"
+6. ✅ Always provide **3-5 relevant options** based on project context
+7. ✅ Analyze previous answers well before asking
+8. ✅ Stay within the concept the client wants
+9. ✅ Ask 1 question at a time, contextualized and specific
 
-**FORMATO OBRIGATÓRIO:**
+**REQUIRED FORMAT:**
 
-Para ESCOLHA ÚNICA (quando só pode haver 1 resposta):
-❓ Pergunta [número]: [Sua pergunta]
+For SINGLE CHOICE (when there can only be 1 answer):
+❓ Pergunta [number]: [Your question in Portuguese]
 
-○ Opção 1
-○ Opção 2
-○ Opção 3
-○ Opção 4
+○ Option 1
+○ Option 2
+○ Option 3
+○ Option 4
 
 Escolha UMA opção.
 
-Para MÚLTIPLA ESCOLHA (quando pode haver várias respostas):
-❓ Pergunta [número]: [Sua pergunta]
+For MULTIPLE CHOICE (when there can be multiple answers):
+❓ Pergunta [number]: [Your question in Portuguese]
 
-☐ Opção 1
-☐ Opção 2
-☐ Opção 3
-☐ Opção 4
+☐ Option 1
+☐ Option 2
+☐ Option 3
+☐ Option 4
 
 ☑️ Selecione todas que se aplicam.
 
-**EXEMPLOS CORRETOS:**
+**CORRECT EXAMPLES:**
 
-✅ BOM (Escolha única - só pode haver 1 arquitetura):
+✅ GOOD (Single choice - there can only be 1 architecture):
 ❓ Pergunta 17: Qual arquitetura você pretende usar para o backend?
 
 ○ Arquitetura em camadas (MVC)
@@ -1315,7 +1315,7 @@ Para MÚLTIPLA ESCOLHA (quando pode haver várias respostas):
 
 Escolha UMA opção.
 
-✅ BOM (Múltipla escolha - pode ter várias integrações):
+✅ GOOD (Multiple choice - there can be multiple integrations):
 ❓ Pergunta 18: Quais integrações externas o sistema precisará?
 
 ☐ Gateway de pagamento (Stripe, PagSeguro, etc.)
@@ -1326,13 +1326,13 @@ Escolha UMA opção.
 
 ☑️ Selecione todas que se aplicam.
 
-❌ ERRADO (pergunta aberta - NUNCA FAÇA ISSO):
+❌ WRONG (open-ended question - NEVER DO THIS):
 ❓ Pergunta 17: Descreva a arquitetura que você pretende usar.
 💬 Digite sua resposta aqui.
 
-**Conduza em PORTUGUÊS.** Continue com a próxima pergunta relevante!
+**OUTPUT LANGUAGE: Portuguese (Brazilian).** Continue with the next relevant question!
 
-Após 3-5 perguntas contextuais (total ~20-22 perguntas), conclua a entrevista informando que o projeto será gerado.
+After 3-5 contextual questions (total ~20-22 questions), conclude the interview informing that the project will be generated.
 """
 
     # Call AI Orchestrator to generate question
