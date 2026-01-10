@@ -23,6 +23,7 @@ from app.models.interview import Interview
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
 from app.services.interview_question_deduplicator import InterviewQuestionDeduplicator
+from app.api.routes.interviews.option_parser import parse_ai_question_options  # PROMPT #99: Parse AI options
 
 # Prompter Architecture
 try:
@@ -733,13 +734,22 @@ async def _execute_ai_question(
         # Clean response
         cleaned_content = clean_ai_response_func(response["content"])
 
+        # PROMPT #99: Parse AI response to extract structured options
+        parsed_content, parsed_options = parse_ai_question_options(cleaned_content)
+
         # Build assistant message
         assistant_message = {
             "role": "assistant",
-            "content": cleaned_content,
+            "content": parsed_content,
             "timestamp": datetime.utcnow().isoformat(),
             "model": f"{response['provider']}/{response['model']}"
         }
+
+        # PROMPT #99: Add structured options if found
+        if parsed_options:
+            assistant_message["question_type"] = parsed_options["question_type"]
+            assistant_message["options"] = parsed_options["options"]
+            logger.info(f"✅ Added structured {parsed_options['question_type']} with {len(parsed_options['options']['choices'])} options")
 
         # Append to conversation
         interview.conversation_data.append(assistant_message)
@@ -1207,6 +1217,11 @@ async def _handle_ai_meta_contextual_question(
 
     # Build system prompt for contextual clarification questions
     system_prompt = f"""Você é um Product Owner experiente conduzindo uma entrevista de Meta Prompt para definir um projeto completo.
+
+🚨 **REGRA ABSOLUTA - NUNCA QUEBRE:**
+- ❌ **PROIBIDO fazer perguntas abertas** (onde o usuário digita texto livre)
+- ✅ **OBRIGATÓRIO fornecer opções** em TODAS as perguntas (radio ○ ou checkbox ☐)
+- Se não conseguir pensar em opções relevantes, PARE e pense melhor - NUNCA envie pergunta sem opções!
 
 **CONTEXTO DO PROJETO:**
 {project_context}
