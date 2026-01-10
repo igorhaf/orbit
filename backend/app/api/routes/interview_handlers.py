@@ -14,6 +14,7 @@ from typing import Dict, Any
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified  # PROMPT #99: JSONB change detection
 from fastapi import HTTPException, status
 import logging
 import os
@@ -153,6 +154,7 @@ async def handle_orchestrator_interview(
 
         # Add fixed question to conversation
         interview.conversation_data.append(assistant_message)
+        flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
         # PROMPT #97 - Store question in RAG for cross-interview deduplication
         try:
@@ -430,6 +432,7 @@ async def handle_task_focused_interview(
             )
 
         interview.conversation_data.append(assistant_message)
+        flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
         # PROMPT #97 - Store question in RAG for cross-interview deduplication
         try:
@@ -522,6 +525,7 @@ def _handle_fixed_question(
         )
 
     interview.conversation_data.append(assistant_message)
+    flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
     db.commit()
     db.refresh(interview)
@@ -739,6 +743,7 @@ async def _execute_ai_question(
 
         # Append to conversation
         interview.conversation_data.append(assistant_message)
+        flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
         interview.ai_model_used = response["model"]
 
         db.commit()
@@ -871,6 +876,8 @@ def _handle_fixed_question_meta(
         )
 
     interview.conversation_data.append(assistant_message)
+    flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
+    flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
     # PROMPT #97 - Store question in RAG for cross-interview deduplication
     try:
@@ -888,6 +895,7 @@ def _handle_fixed_question_meta(
         # Non-blocking: log error but don't fail the interview
         logger.error(f"❌ Failed to store Q{question_number} in RAG: {e}")
 
+    db.flush()  # PROMPT #99: Flush before commit
     db.commit()
     db.refresh(interview)
 
@@ -1603,6 +1611,7 @@ async def handle_task_orchestrated_interview(
 
         # Add fixed question to conversation
         interview.conversation_data.append(assistant_message)
+        flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
         db.commit()
         db.refresh(interview)
@@ -1701,6 +1710,7 @@ async def handle_subtask_orchestrated_interview(
 
         # Add fixed question to conversation
         interview.conversation_data.append(assistant_message)
+        flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
         db.commit()
         db.refresh(interview)
@@ -1822,6 +1832,7 @@ async def handle_card_focused_interview(
 
         # Add fixed question to conversation
         interview.conversation_data.append(assistant_message)
+        flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
         db.commit()
         db.refresh(interview)
@@ -1922,6 +1933,7 @@ async def _handle_card_focused_ai_question(
 
     # Add to conversation
     interview.conversation_data.append(assistant_message)
+    flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
     db.commit()
     db.refresh(interview)
