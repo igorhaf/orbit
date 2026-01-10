@@ -11,6 +11,7 @@ HTTP endpoints for interview management:
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
@@ -1498,6 +1499,7 @@ async def send_message_to_interview(
         "timestamp": datetime.utcnow().isoformat()
     }
     interview.conversation_data.append(user_message)
+    flag_modified(interview, "conversation_data")  # CRITICAL: SQLAlchemy needs this for JSONB changes
 
     # DEBUG: Log state after adding user message
     logger.info(f"🔍 DEBUG - After adding user message:")
@@ -1922,6 +1924,7 @@ async def send_message_async(
         "timestamp": datetime.utcnow().isoformat()
     }
     interview.conversation_data.append(user_message)
+    flag_modified(interview, "conversation_data")  # CRITICAL: SQLAlchemy needs this for JSONB changes
     db.commit()
 
     logger.info(f"✅ User message added to interview {interview_id} (message_count: {len(interview.conversation_data)})")
