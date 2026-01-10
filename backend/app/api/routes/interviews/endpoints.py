@@ -330,7 +330,9 @@ async def add_message_to_interview(
     interview.conversation_data.append(message_request.message)
 
     # Mark the conversation_data as modified for SQLAlchemy to detect the change
+    flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
+    db.flush()
     db.commit()
     db.refresh(interview)
 
@@ -1122,10 +1124,12 @@ async def start_interview(
 
     # Add Question 1 to conversation
     interview.conversation_data.append(assistant_message)
+    flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
 
     # Set model to indicate fixed question (no AI)
     interview.ai_model_used = "system/fixed-questions"
 
+    db.flush()
     db.commit()
     db.refresh(interview)
 
@@ -2039,7 +2043,10 @@ async def _process_interview_message_async(
                 return
 
             interview.conversation_data.append(assistant_message)
+            flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
+            db.flush()
             db.commit()
+            db.refresh(interview)
 
             # Complete job
             job_manager.complete_job(job_id, {
@@ -2108,8 +2115,11 @@ Continue com próxima pergunta relevante!
             }
 
             interview.conversation_data.append(assistant_message)
+            flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
             interview.ai_model_used = response["model"]
+            db.flush()
             db.commit()
+            db.refresh(interview)
 
             # Complete job
             job_manager.complete_job(job_id, {
