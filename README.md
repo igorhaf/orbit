@@ -108,24 +108,36 @@ docker-compose -p orbit ps
 
 ## Configure AI Models
 
-The system requires AI model API keys to function. API keys are managed **exclusively via the database** (not .env files).
+The system requires AI model API keys to function. API keys are **automatically seeded from .env during database migrations**.
 
-### Step 1: Initialize Models
+### Automatic Seed (Recommended)
 
-Create default AI models with placeholders:
+1. **Add API keys to .env file**:
+   ```bash
+   # Edit .env file
+   ANTHROPIC_API_KEY=sk-ant-...
+   OPENAI_API_KEY=sk-...
+   GOOGLE_AI_API_KEY=...
+   ```
 
-```bash
-docker-compose -p orbit exec backend python scripts/init_ai_models.py
-```
+2. **Restart containers** (migrations auto-run on startup):
+   ```bash
+   docker-compose -p orbit down
+   docker-compose -p orbit up -d
+   ```
 
-This creates 9 AI models (inactive):
-- **Anthropic:** Claude Sonnet 4.5, Opus 4.5, Haiku 4
-- **OpenAI:** GPT-4o, GPT-4 Turbo, GPT-3.5 Turbo
-- **Google:** Gemini 1.5 Pro, 2.0 Flash, 1.5 Flash
+   The migration will automatically create 9 AI models (3 per provider):
+   - **Anthropic:** Claude Sonnet 4.5, Opus 4.5, Haiku 4
+   - **OpenAI:** GPT-4o, GPT-4 Turbo, GPT-3.5 Turbo
+   - **Google:** Gemini 1.5 Pro, 2.0 Flash, 1.5 Flash
 
-### Step 2: Configure API Keys
+   Models with API keys will be **ACTIVE**, models without keys will be **INACTIVE** (placeholders).
 
-**Via Web Interface (Recommended):**
+### Manual Configuration (Alternative)
+
+If you don't add API keys to .env, models will be created as inactive placeholders. Configure later:
+
+**Via Web Interface:**
 
 1. Go to http://localhost:3000/ai-models
 2. Click "Edit" on each model you want to use
@@ -140,12 +152,12 @@ curl -X PATCH http://localhost:8000/api/v1/ai-models/{model_id} \
   -d '{"api_key": "sk-ant-...", "is_active": true}'
 ```
 
-> **Why Database-Only?**
-> - ✅ Granular control per model (CRUD operations)
-> - ✅ Business logic and validations
-> - ✅ Audit trail and versioning
-> - ✅ Dynamic configuration without redeployment
-> - ✅ Multiple keys per provider with different configs
+> **Why .env + Database?**
+> - ✅ Automatic setup on first run (reads from .env during migration)
+> - ✅ Keys stored in database (not environment variables)
+> - ✅ Granular control per model via CRUD
+> - ✅ Business logic, validations, and audit trail
+> - ✅ .env never committed (in .gitignore)
 
 ---
 
