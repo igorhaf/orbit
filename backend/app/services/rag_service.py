@@ -198,6 +198,10 @@ class RAGService:
         # <=> is the cosine distance operator (optimized with SIMD)
         # Returns similarity score between 0 and 1 (1 = identical, 0 = orthogonal)
         # PROMPT #88 - pgvector optimization (10-50x faster than manual calculation)
+        # Convert embedding to string format for pgvector cast
+        embedding_str = "[" + ",".join(str(x) for x in params["embedding"]) + "]"
+        params["embedding_str"] = embedding_str
+
         sql = f"""
             SELECT
                 id,
@@ -205,11 +209,11 @@ class RAGService:
                 content,
                 metadata,
                 created_at,
-                (1 - (embedding <=> :embedding::vector)) as similarity
+                (1 - (embedding <=> :embedding_str::vector)) as similarity
             FROM rag_documents
             WHERE {" AND ".join(where_clauses)}
-                AND (1 - (embedding <=> :embedding::vector)) >= :threshold
-            ORDER BY embedding <=> :embedding::vector
+                AND (1 - (embedding <=> :embedding_str::vector)) >= :threshold
+            ORDER BY embedding <=> :embedding_str::vector
             LIMIT :k
         """
 
