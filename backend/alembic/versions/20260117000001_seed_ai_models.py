@@ -61,7 +61,18 @@ DEFAULT_MODELS = [
         "description": "Fastest Claude model - best for interviews (cost-effective)",
         "env_var": "ANTHROPIC_API_KEY"
     },
-    
+    {
+        "name": "Claude Sonnet 4.5 (General)",
+        "provider": "anthropic",
+        "model_id": "claude-sonnet-4-5-20250929",
+        "usage_type": "general",
+        "max_tokens": 8192,
+        "temperature": 0.7,
+        "description": "Most capable Claude model - best for general purpose tasks (default)",
+        "env_var": "ANTHROPIC_API_KEY",
+        "is_default": True  # Mark as default for general usage
+    },
+
     # OpenAI (GPT)
     {
         "name": "GPT-4o",
@@ -170,40 +181,43 @@ def upgrade() -> None:
         return
     
     print("🌱 Seeding AI models from environment variables...")
-    
+
     # Prepare and insert seed data
     active_count = 0
     placeholder_count = 0
     now = datetime.utcnow()
-    
+    default_general_model_id = None
+
     for model_config in DEFAULT_MODELS:
         api_key, is_active = get_api_key(model_config["env_var"])
-        
+
         if is_active:
             active_count += 1
         else:
             placeholder_count += 1
-        
+
         # Insert individual record - build config as JSONB string
-        connection.execute(
+        # Use RETURNING to get the generated ID
+        result = connection.execute(
             sa.text("""
                 INSERT INTO ai_models (id, name, provider, api_key, usage_type, is_active, config, created_at, updated_at)
                 VALUES (
-                    gen_random_uuid(), 
-                    :name, 
-                    :provider, 
-                    :api_key, 
-                    :usage_type, 
-                    :is_active, 
+                    gen_random_uuid(),
+                    :name,
+                    :provider,
+                    :api_key,
+                    :usage_type,
+                    :is_active,
                     jsonb_build_object(
                         'model_id', :model_id,
                         'max_tokens', :max_tokens,
                         'temperature', :temperature,
                         'description', :description
                     ),
-                    :created_at, 
+                    :created_at,
                     :updated_at
                 )
+                RETURNING id
             """),
             {
                 "name": model_config["name"],
@@ -219,14 +233,44 @@ def upgrade() -> None:
                 "updated_at": now,
             }
         )
-        
+
+        # Capture ID of default general model
+        if model_config.get("is_default") and model_config["usage_type"] == "general":
+            model_id = result.scalar()
+            default_general_model_id = str(model_id)
+
         status = "🔑" if is_active else "⚠️ "
-        print(f"{status} {model_config['name']:25} ({model_config['provider']:10}) - {model_config['usage_type']}")
+        marker = " (DEFAULT)" if model_config.get("is_default") else ""
+        print(f"{status} {model_config['name']:30} ({model_config['provider']:10}) - {model_config['usage_type']}{marker}")
     
     print(f"\n✅ Seeded {len(DEFAULT_MODELS)} AI models:")
     print(f"   - {active_count} active (with API keys from .env)")
     print(f"   - {placeholder_count} inactive (placeholders - configure via web)")
-    
+
+    # Configure default general model in system_settings
+    if default_general_model_id:
+        print(f"\n⚙️  Configuring default model for general usage...")
+        connection.execute(
+            sa.text("""
+                INSERT INTO system_settings (id, key, value, description, updated_at)
+                VALUES (
+                    gen_random_uuid(),
+                    'default_general_model_id',
+                    :value,
+                    'Default AI model for general purpose tasks',
+                    :updated_at
+                )
+                ON CONFLICT (key) DO UPDATE SET
+                    value = EXCLUDED.value,
+                    updated_at = EXCLUDED.updated_at
+            """),
+            {
+                "value": f'"{default_general_model_id}"',  # JSON string format
+                "updated_at": now
+            }
+        )
+        print(f"   ✅ Set Claude Sonnet 4.5 (General) as default")
+
     if placeholder_count > 0:
         print(f"\n⚠️  To activate inactive models:")
         print(f"   1. Add API keys to .env file:")
@@ -239,11 +283,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """
-    Remove seeded AI models.
-    
+    Remove seeded AI models and settings.
+
     WARNING: This will delete ALL ai_models records!
     Only use if you're rolling back the initial seed.
     """
-    print("⚠️  Rolling back AI models seed (deleting all models)...")
+    print("⚠️  Rolling back AI models seed (deleting all models and settings)...")
     op.execute("DELETE FROM ai_models")
+    op.execute("DELETE FROM system_settings WHERE key = 'default_general_model_id'")
     print("✅ AI models seed rolled back")
