@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 """
-Setup AI Models API Keys
+Initialize AI Models with Placeholders
 
-This script populates the ai_models table with default AI model configurations.
-API keys can be provided via:
-1. Environment variables from .env file (ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY)
-2. Manual configuration via web interface at http://localhost:3000/ai-models
+This script creates default AI model entries in the database with placeholder API keys.
+All API keys MUST be configured via the web interface at http://localhost:3000/ai-models
+
+This approach allows:
+- Granular control per model via CRUD operations
+- Business logic and validations in the backend
+- Audit trail and versioning
+- Dynamic configuration without redeployment
 
 Usage:
     # Inside Docker container:
-    docker-compose -p orbit exec backend python scripts/setup_api_keys.py
+    docker-compose -p orbit exec backend python scripts/init_ai_models.py
 
     # Or locally:
-    cd backend && python scripts/setup_api_keys.py
+    cd backend && python scripts/init_ai_models.py
 
-Security:
-    - API keys are stored in the DATABASE (ai_models table)
-    - .env is in .gitignore and NEVER committed
-    - If no keys in .env, placeholders are used (configure via web later)
+After running:
+    Configure API keys at: http://localhost:3000/ai-models
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -29,11 +30,11 @@ backend_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from sqlalchemy.orm import Session
-from app.database import SessionLocal, engine
+from app.database import SessionLocal
 from app.models.ai_model import AIModel, AIModelUsageType
 
 
-# Default AI models configuration
+# Default AI models configuration (without API keys)
 DEFAULT_MODELS = [
     # Anthropic (Claude)
     {
@@ -124,43 +125,15 @@ DEFAULT_MODELS = [
 ]
 
 
-def get_api_key(provider: str) -> str:
+def init_ai_models(db: Session):
     """
-    Get API key from environment or return placeholder.
-    
-    Args:
-        provider: AI provider name (anthropic, openai, google)
-    
-    Returns:
-        API key from .env or placeholder string
-    """
-    env_key_map = {
-        "anthropic": "ANTHROPIC_API_KEY",
-        "openai": "OPENAI_API_KEY",
-        "google": "GOOGLE_API_KEY",
-    }
-    
-    env_var = env_key_map.get(provider)
-    if not env_var:
-        return "configure-via-web-interface"
-    
-    api_key = os.getenv(env_var, "").strip()
-    
-    if not api_key:
-        return "configure-via-web-interface"
-    
-    return api_key
-
-
-def setup_ai_models(db: Session):
-    """
-    Create default AI models in database.
+    Create default AI models in database with placeholder API keys.
     
     Args:
         db: Database session
     """
-    print("🚀 Setting up AI Models...")
-    print("=" * 60)
+    print("🚀 Initializing AI Models...")
+    print("=" * 70)
     
     # Check if models already exist
     existing_count = db.query(AIModel).count()
@@ -168,34 +141,28 @@ def setup_ai_models(db: Session):
         print(f"⚠️  Found {existing_count} existing AI models in database.")
         response = input("Do you want to DELETE all and recreate? (yes/no): ")
         if response.lower() != "yes":
-            print("❌ Setup cancelled. Use web interface to manage models.")
+            print("❌ Initialization cancelled.")
+            print(f"\nManage models at: http://localhost:3000/ai-models")
             return
         
         # Delete existing models
         db.query(AIModel).delete()
         db.commit()
-        print("✅ Deleted existing models")
+        print("✅ Deleted existing models\n")
     
-    # Create models
+    # Create models with placeholders
     created_count = 0
-    placeholder_count = 0
+    
+    print("Creating models with placeholder API keys:\n")
     
     for model_config in DEFAULT_MODELS:
-        provider = model_config["provider"]
-        api_key = get_api_key(provider)
-        
-        # Track if using placeholder
-        using_placeholder = api_key == "configure-via-web-interface"
-        if using_placeholder:
-            placeholder_count += 1
-        
-        # Create model
+        # Create model with placeholder
         model = AIModel(
             name=model_config["name"],
-            provider=provider,
-            api_key=api_key,
+            provider=model_config["provider"],
+            api_key="CONFIGURE_VIA_WEB_INTERFACE",  # Placeholder
             usage_type=model_config["usage_type"],
-            is_active=not using_placeholder,  # Inactive if placeholder
+            is_active=False,  # Inactive until API key configured
             config={
                 "model_id": model_config["model_id"],
                 "max_tokens": model_config["max_tokens"],
@@ -207,52 +174,37 @@ def setup_ai_models(db: Session):
         db.add(model)
         created_count += 1
         
-        # Status emoji
-        status = "🔑" if not using_placeholder else "⚠️ "
-        print(f"{status} {model_config['name']:25} ({provider:10}) - {model_config['usage_type'].value}")
+        print(f"📝 {model_config['name']:25} ({model_config['provider']:10}) - {model_config['usage_type'].value}")
     
     db.commit()
     
-    print("=" * 60)
-    print(f"✅ Created {created_count} AI models")
-    
-    if placeholder_count > 0:
-        print(f"\n⚠️  {placeholder_count} models using placeholders (inactive)")
-        print(f"\nTo activate them:")
-        print(f"1. Add API keys to .env file:")
-        print(f"   - ANTHROPIC_API_KEY=sk-ant-...")
-        print(f"   - OPENAI_API_KEY=sk-...")
-        print(f"   - GOOGLE_API_KEY=...")
-        print(f"\n2. Run this script again: docker-compose -p orbit exec backend python scripts/setup_api_keys.py")
-        print(f"\nOR configure manually at: http://localhost:3000/ai-models")
-    else:
-        print(f"\n🎉 All models configured with API keys from .env!")
-        print(f"\nYou can manage models at: http://localhost:3000/ai-models")
-    
-    print("\n" + "=" * 60)
+    print("\n" + "=" * 70)
+    print(f"✅ Created {created_count} AI models with placeholders")
+    print("\n" + "⚠️  IMPORTANT: All models are INACTIVE")
+    print("=" * 70)
+    print("\n📌 Next Steps:\n")
+    print("1. Go to: http://localhost:3000/ai-models")
+    print("2. Edit each model to add your API key")
+    print("3. Toggle 'Active' to enable the model")
+    print("\nAlternatively, use the Backend API:")
+    print("  PATCH /api/v1/ai-models/{id}")
+    print("  Body: { \"api_key\": \"sk-...\", \"is_active\": true }")
+    print("\n" + "=" * 70)
 
 
 def main():
     """Main entry point"""
-    print("\n" + "=" * 60)
-    print("ORBIT - AI Models Setup")
-    print("=" * 60)
-    
-    # Load .env if exists (for local execution)
-    env_file = backend_dir.parent / ".env"
-    if env_file.exists():
-        from dotenv import load_dotenv
-        load_dotenv(env_file)
-        print(f"✅ Loaded .env from: {env_file}")
-    else:
-        print(f"⚠️  No .env file found at: {env_file}")
-        print(f"   API keys will use placeholders")
+    print("\n" + "=" * 70)
+    print("ORBIT - AI Models Initialization")
+    print("=" * 70)
+    print("\n⚠️  This script creates models with PLACEHOLDER API keys")
+    print("   You MUST configure real keys via web interface\n")
     
     # Create database session
     db = SessionLocal()
     
     try:
-        setup_ai_models(db)
+        init_ai_models(db)
     except Exception as e:
         print(f"\n❌ Error: {e}")
         db.rollback()

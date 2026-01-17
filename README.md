@@ -108,43 +108,44 @@ docker-compose -p orbit ps
 
 ## Configure AI Models
 
-The system requires AI model API keys to function. You have **two options**:
+The system requires AI model API keys to function. API keys are managed **exclusively via the database** (not .env files).
 
-### Option A: Automatic Setup (Recommended for Development)
+### Step 1: Initialize Models
 
-1. **Add API keys to .env file** (create from template):
-   ```bash
-   cp .env.example .env
-   ```
+Create default AI models with placeholders:
 
-2. **Edit .env and add your keys**:
-   ```bash
-   # Edit .env file
-   ANTHROPIC_API_KEY=sk-ant-...
-   OPENAI_API_KEY=sk-...
-   GOOGLE_API_KEY=...
-   ```
+```bash
+docker-compose -p orbit exec backend python scripts/init_ai_models.py
+```
 
-3. **Run the setup script**:
-   ```bash
-   docker-compose -p orbit exec backend python scripts/setup_api_keys.py
-   ```
+This creates 9 AI models (inactive):
+- **Anthropic:** Claude Sonnet 4.5, Opus 4.5, Haiku 4
+- **OpenAI:** GPT-4o, GPT-4 Turbo, GPT-3.5 Turbo
+- **Google:** Gemini 1.5 Pro, 2.0 Flash, 1.5 Flash
 
-   This will create 9 AI models (3 per provider) with your keys.
+### Step 2: Configure API Keys
 
-### Option B: Manual Configuration (Recommended for Production)
+**Via Web Interface (Recommended):**
 
 1. Go to http://localhost:3000/ai-models
-2. Click "Add Model" for each AI provider
-3. Configure your API keys:
-   - **Anthropic** (Claude models)
-   - **OpenAI** (GPT models)
-   - **Google AI** (Gemini models)
+2. Click "Edit" on each model you want to use
+3. Add your API key and toggle "Active"
 
-> **Security Notes:**
-> - API keys are stored in the **database** (ai_models table), NOT in environment variables
-> - .env file is in .gitignore and **NEVER** committed to git
-> - Option A is convenient for local dev, Option B is more secure for production
+**Via Backend API:**
+
+```bash
+# Example: Configure Claude Sonnet 4.5
+curl -X PATCH http://localhost:8000/api/v1/ai-models/{model_id} \
+  -H "Content-Type: application/json" \
+  -d '{"api_key": "sk-ant-...", "is_active": true}'
+```
+
+> **Why Database-Only?**
+> - ✅ Granular control per model (CRUD operations)
+> - ✅ Business logic and validations
+> - ✅ Audit trail and versioning
+> - ✅ Dynamic configuration without redeployment
+> - ✅ Multiple keys per provider with different configs
 
 ---
 
