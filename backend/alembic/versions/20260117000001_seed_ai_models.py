@@ -255,7 +255,7 @@ def upgrade() -> None:
                 INSERT INTO system_settings (id, key, value, description, updated_at)
                 VALUES (
                     gen_random_uuid(),
-                    'default_general_model_id',
+                    'default_model_general',
                     :value,
                     'Default AI model for general purpose tasks',
                     :updated_at
@@ -269,7 +269,7 @@ def upgrade() -> None:
                 "updated_at": now
             }
         )
-        print(f"   ✅ Set Claude Sonnet 4.5 (General) as default")
+        print(f"   ✅ Set Claude Sonnet 4.5 (General) as default for General dropdown")
 
     if placeholder_count > 0:
         print(f"\n⚠️  To activate inactive models:")
@@ -290,5 +290,5 @@ def downgrade() -> None:
     """
     print("⚠️  Rolling back AI models seed (deleting all models and settings)...")
     op.execute("DELETE FROM ai_models")
-    op.execute("DELETE FROM system_settings WHERE key = 'default_general_model_id'")
+    op.execute("DELETE FROM system_settings WHERE key = 'default_model_general'")
     print("✅ AI models seed rolled back")
