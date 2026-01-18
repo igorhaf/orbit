@@ -10,13 +10,12 @@ from sqlalchemy.orm import Session
 import json
 import logging
 
-from app.models.task import Task, ItemType, PriorityLevel
+from app.models.task import Task, ItemType, PriorityLevel, TaskStatus
 from app.models.interview import Interview
 from app.models.spec import Spec, SpecScope
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
 from app.prompter.facade import PrompterFacade
-from app.services.spec_loader import get_spec_loader
 
 logger = logging.getLogger(__name__)
 

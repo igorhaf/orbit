@@ -7,6 +7,10 @@ Key Innovation: Discovers patterns ORGANICALLY without framework assumptions
 - Groups similar files
 - Uses AI to identify repeating patterns
 - AI automatically decides: framework-worthy vs project-specific
+
+Updated: Project-Specific Specs via RAG Discovery
+- Now saves discovered patterns to database (specs table)
+- Patterns stored with project_id for project-specific lookup
 """
 
 import json
@@ -15,11 +19,12 @@ import os
 from pathlib import Path
 from typing import List, Dict, Optional, Set
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 from collections import defaultdict
 
 from app.schemas.pattern_discovery import DiscoveredPattern, FileGroup
 from app.services.ai_orchestrator import AIOrchestrator
+from app.models.spec import Spec, SpecScope
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
@@ -127,6 +132,10 @@ class PatternDiscoveryService:
         # PROMPT #86 - RAG Phase 4: Index discovered patterns in RAG
         final_patterns = ranked[:max_patterns]
         await self._index_patterns_in_rag(final_patterns, project_id)
+
+        # Project-Specific Specs: Save patterns to database
+        saved_specs = await self._save_patterns_to_database(final_patterns, project_id)
+        logger.info(f"💾 Saved {len(saved_specs)} patterns to database (specs table)")
 
         return final_patterns
 
@@ -527,3 +536,102 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
         except Exception as e:
             # Don't fail pattern discovery if RAG indexing fails
             logger.warning(f"⚠️  RAG indexing failed for discovered patterns: {e}")
+
+    async def _save_patterns_to_database(
+        self,
+        patterns: List[DiscoveredPattern],
+        project_id: UUID
+    ) -> List[Spec]:
+        """
+        Save discovered patterns to the specs table in database.
+
+        Project-Specific Specs: Patterns are now stored in database
+        for use during task execution instead of generic JSON files.
+
+        Args:
+            patterns: List of discovered patterns to save
+            project_id: Project UUID
+
+        Returns:
+            List of saved Spec objects
+        """
+        if not patterns:
+            logger.debug("No patterns to save to database")
+            return []
+
+        saved_specs = []
+
+        try:
+            for pattern in patterns:
+                # Check if spec with same category/name/type already exists for this project
+                existing = self.db.query(Spec).filter(
+                    Spec.project_id == project_id,
+                    Spec.category == pattern.category,
+                    Spec.name == pattern.name,
+                    Spec.spec_type == pattern.spec_type
+                ).first()
+
+                if existing:
+                    # Update existing spec
+                    existing.title = pattern.title
+                    existing.description = pattern.description
+                    existing.content = pattern.template_content
+                    existing.language = pattern.language
+                    existing.is_active = True
+                    existing.discovery_metadata = {
+                        "confidence_score": pattern.confidence_score,
+                        "occurrences": pattern.occurrences,
+                        "sample_files": pattern.sample_files[:5],
+                        "key_characteristics": pattern.key_characteristics,
+                        "reasoning": pattern.reasoning,
+                        "is_framework_worthy": pattern.is_framework_worthy,
+                        "discovered_at": datetime.utcnow().isoformat(),
+                        "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition')
+                    }
+                    existing.updated_at = datetime.utcnow()
+                    saved_specs.append(existing)
+                    logger.debug(f"   Updated existing spec: {pattern.title}")
+                else:
+                    # Create new spec
+                    spec = Spec(
+                        id=uuid4(),
+                        project_id=project_id,
+                        scope=SpecScope.PROJECT,
+                        category=pattern.category,
+                        name=pattern.name,
+                        spec_type=pattern.spec_type,
+                        title=pattern.title,
+                        description=pattern.description,
+                        content=pattern.template_content,
+                        language=pattern.language,
+                        is_active=True,
+                        usage_count=0,
+                        discovery_metadata={
+                            "confidence_score": pattern.confidence_score,
+                            "occurrences": pattern.occurrences,
+                            "sample_files": pattern.sample_files[:5],
+                            "key_characteristics": pattern.key_characteristics,
+                            "reasoning": pattern.reasoning,
+                            "is_framework_worthy": pattern.is_framework_worthy,
+                            "discovered_at": datetime.utcnow().isoformat(),
+                            "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition')
+                        },
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    self.db.add(spec)
+                    saved_specs.append(spec)
+                    logger.debug(f"   Created new spec: {pattern.title}")
+
+            # Commit all changes
+            self.db.commit()
+
+            logger.info(f"✅ Database: Saved {len(saved_specs)} specs for project {project_id}")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to save patterns to database: {e}")
+            self.db.rollback()
+            # Don't fail pattern discovery if database save fails
+            # Patterns are still in RAG
+
+        return saved_specs
