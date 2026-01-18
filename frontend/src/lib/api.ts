@@ -762,3 +762,61 @@ export const ragApi = {
   codeStats: (projectId: string) =>
     request<any>(`/api/v1/projects/${projectId}/code-stats`),
 };
+
+// PROMPT #80 - Backlog Generation API (Epic → Stories → Tasks)
+export const backlogApi = {
+  // Generate Epic suggestion from interview (returns suggestion, not created yet)
+  generateEpic: (interviewId: string, projectId: string) =>
+    request<{
+      suggestions: Array<{
+        title: string;
+        description: string;
+        story_points?: number;
+        priority: string;
+        acceptance_criteria?: string[];
+        interview_insights?: {
+          key_requirements?: string[];
+          business_goals?: string[];
+          technical_constraints?: string[];
+        };
+        interview_question_ids?: number[];
+        _metadata?: Record<string, any>;
+      }>;
+      metadata: Record<string, any>;
+    }>(`/api/v1/backlog/interview/${interviewId}/generate-epic?project_id=${projectId}`, {
+      method: 'POST',
+    }),
+
+  // Approve and create Epic in database
+  approveEpic: (suggestion: any, projectId: string, interviewId: string) =>
+    request<any>(`/api/v1/backlog/approve-epic?project_id=${projectId}&interview_id=${interviewId}`, {
+      method: 'POST',
+      body: JSON.stringify(suggestion),
+    }),
+
+  // Generate Stories from Epic
+  generateStories: (epicId: string, projectId: string) =>
+    request<any>(`/api/v1/backlog/epic/${epicId}/generate-stories?project_id=${projectId}`, {
+      method: 'POST',
+    }),
+
+  // Approve and create Stories
+  approveStories: (suggestions: any[], projectId: string) =>
+    request<any>(`/api/v1/backlog/approve-stories?project_id=${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify(suggestions),
+    }),
+
+  // Generate Tasks from Story
+  generateTasks: (storyId: string, projectId: string) =>
+    request<any>(`/api/v1/backlog/story/${storyId}/generate-tasks?project_id=${projectId}`, {
+      method: 'POST',
+    }),
+
+  // Approve and create Tasks
+  approveTasks: (suggestions: any[], projectId: string) =>
+    request<any>(`/api/v1/backlog/approve-tasks?project_id=${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify(suggestions),
+    }),
+};

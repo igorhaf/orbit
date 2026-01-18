@@ -31,8 +31,13 @@ export default function NewProjectPage() {
   const [interviewId, setInterviewId] = useState<string | null>(null);
 
   const handleBasicSubmit = async () => {
+    // PROMPT #80 - Both name and description are required
     if (!name.trim()) {
       alert('Please enter a project name');
+      return;
+    }
+    if (!description.trim()) {
+      alert('Please enter a project description');
       return;
     }
 
@@ -128,16 +133,20 @@ export default function NewProjectPage() {
                 />
               </div>
 
+              {/* PROMPT #80 - Description is now required */}
               <div>
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">Description *</Label>
                 <Textarea
                   id="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Brief description of your project (optional)"
+                  placeholder="Describe what you want to build. This will be the input for the AI interview."
                   className="mt-1"
                   rows={4}
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  This description will be used as context for the AI interview and Epic generation.
+                </p>
               </div>
 
               <div className="flex justify-end gap-3">
@@ -150,7 +159,7 @@ export default function NewProjectPage() {
                 <Button
                   variant="primary"
                   onClick={handleBasicSubmit}
-                  disabled={loading || !name.trim()}
+                  disabled={loading || !name.trim() || !description.trim()}
                 >
                   {loading ? 'Creating...' : 'Next: Interview'}
                 </Button>

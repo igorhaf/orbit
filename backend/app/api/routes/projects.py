@@ -88,7 +88,7 @@ async def create_project(
     Create a new project.
 
     - **name**: Project name (required, max 255 characters)
-    - **description**: Project description (optional)
+    - **description**: Project description (required, max 2000 characters) - PROMPT #80
     - **git_repository_info**: Git repository information as JSON (optional)
 
     Creates:
