@@ -352,14 +352,14 @@ async def handle_unified_open_interview(
             "role": "assistant",
             "content": f"""📋 Continuando a entrevista para o projeto "{project.name}"...
 
-❓ Pergunta {question_number}: Sobre o que você mencionou ("{last_user_response}..."), me conte mais detalhes:
+❓ Pergunta {question_number}: Qual aspecto do projeto você gostaria de detalhar agora?
 
-○ Quais são os requisitos específicos?
-○ Quem serão os usuários principais?
-○ Há integrações necessárias?
-○ Qual o prazo esperado?
+○ Requisitos técnicos e funcionais
+○ Perfil dos usuários e permissões
+○ Integrações com outros sistemas
+○ Cronograma e prioridades
 
-💬 Ou descreva livremente o que precisa.""",
+💬 Ou descreva com suas próprias palavras.""",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fallback",
             "question_number": question_number,
@@ -367,10 +367,10 @@ async def handle_unified_open_interview(
             "options": {
                 "type": "single",
                 "choices": [
-                    {"id": "requisitos", "label": "Quais são os requisitos específicos?", "value": "requisitos"},
-                    {"id": "usuarios", "label": "Quem serão os usuários principais?", "value": "usuarios"},
-                    {"id": "integracoes", "label": "Há integrações necessárias?", "value": "integracoes"},
-                    {"id": "prazo", "label": "Qual o prazo esperado?", "value": "prazo"}
+                    {"id": "requisitos", "label": "Requisitos técnicos e funcionais", "value": "requisitos"},
+                    {"id": "usuarios", "label": "Perfil dos usuários e permissões", "value": "usuarios"},
+                    {"id": "integracoes", "label": "Integrações com outros sistemas", "value": "integracoes"},
+                    {"id": "cronograma", "label": "Cronograma e prioridades", "value": "cronograma"}
                 ]
             },
             "allow_custom_response": True
