@@ -90,6 +90,11 @@ from .card_focused_questions import (
     get_motivation_type_from_answers
 )
 from .card_focused_prompts import build_card_focused_prompt
+# PROMPT #78 - Unified Open-Ended Interview System
+from .unified_open_handler import (
+    handle_unified_open_interview,
+    generate_first_question
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1050,16 +1055,18 @@ async def start_interview(
     db: Session = Depends(get_db)
 ):
     """
-    Inicia a entrevista com primeira pergunta baseada no projeto.
+    Inicia a entrevista com primeira pergunta aberta gerada por IA.
+
+    PROMPT #78 - Unified Open-Ended Interview System
 
     Este endpoint é chamado automaticamente quando o usuário abre o chat pela primeira vez.
-    Retorna Question 1 (Title) - PROMPT #57 Fixed Questions.
+    Agora retorna uma pergunta ABERTA gerada por IA (não mais perguntas fixas).
 
     - **interview_id**: UUID of the interview
 
     Returns:
         - success: Boolean
-        - message: Initial fixed question
+        - message: Initial open-ended question from AI
     """
     # Buscar interview
     interview = db.query(Interview).filter(
@@ -1094,46 +1101,41 @@ async def start_interview(
     # Inicializar conversa
     interview.conversation_data = []
 
-    # PROMPT #91 / PROMPT #57 - Return fixed Question 1 (Title) without calling AI
-    logger.info(f"Starting interview {interview_id} with fixed Question 1 for project: {project.name}")
+    # PROMPT #78 - Unified Open-Ended Interview System
+    # Generate first open-ended question using AI
+    logger.info(f"🌟 Starting interview {interview_id} with OPEN-ENDED Question 1 for project: {project.name}")
 
-    # Get fixed Question 1 (Title) - use appropriate function based on interview mode
-    # PROMPT #97 FIX - Call correct function for each interview mode
-    # PROMPT #98 - Card-focused mode support added
-    logger.info(f"🚀 START INTERVIEW - interview_mode={interview.interview_mode}, conversation_data length={len(interview.conversation_data)}")
+    # Get parent task for hierarchical interviews
+    parent_task = None
+    if interview.parent_task_id:
+        parent_task = db.query(Task).filter(Task.id == interview.parent_task_id).first()
 
-    if interview.interview_mode == "orchestrator":
-        assistant_message = get_orchestrator_fixed_question(1, project, db, {})
-    elif interview.interview_mode == "meta_prompt":
-        assistant_message = get_fixed_question_meta_prompt(1, project, db)
-    elif interview.interview_mode == "card_focused":
-        # Card-focused interview (PROMPT #98): Get Q1 (motivation type selection)
-        parent_card = None
-        if interview.parent_task_id:
-            parent_card = db.query(Task).filter(Task.id == interview.parent_task_id).first()
-        assistant_message = get_card_focused_fixed_question(1, project, db, parent_card, {})
-    else:
-        # Fallback for other modes (task_orchestrated, subtask_orchestrated, requirements, task_focused, subtask_focused)
-        assistant_message = get_fixed_question(1, project, db)
+    # Generate first question using AI
+    assistant_message = await generate_first_question(
+        interview=interview,
+        project=project,
+        db=db,
+        parent_task=parent_task
+    )
 
     if not assistant_message:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get fixed question 1"
+            detail="Failed to generate first question"
         )
 
     # Add Question 1 to conversation
     interview.conversation_data.append(assistant_message)
-    flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
+    flag_modified(interview, "conversation_data")
 
-    # Set model to indicate fixed question (no AI)
-    interview.ai_model_used = "system/fixed-questions"
+    # Set model from AI response
+    interview.ai_model_used = assistant_message.get("model", "ai/open-ended")
 
     db.flush()
     db.commit()
     db.refresh(interview)
 
-    logger.info(f"Interview {interview_id} started successfully with fixed Question 1")
+    logger.info(f"✅ Interview {interview_id} started with open-ended Question 1")
 
     return {
         "success": True,
@@ -1558,127 +1560,23 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
         content_preview = msg.get('content', '')[:80]
         logger.info(f"    - Index {i}: role={msg.get('role')}, content={content_preview}")
 
-    # PROMPT #91/94 / PROMPT #76 / PROMPT #68 - Route based on interview mode
-    # Five modes: orchestrator, meta_prompt, requirements, task_focused, subtask_focused
-    if interview.interview_mode == "orchestrator":
-        # Orchestrator interview (FIRST interview - PROMPT #91/94): Q1-Q8 conditional → AI contextual questions
-        return await handle_orchestrator_interview(
-            interview=interview,
-            project=project,
-            message_count=message_count,
-            db=db,
-            get_orchestrator_fixed_question_func=get_orchestrator_fixed_question,
-            count_fixed_questions_orchestrator_func=count_fixed_questions_orchestrator,
-            is_fixed_question_complete_orchestrator_func=is_fixed_question_complete_orchestrator,
-            clean_ai_response_func=clean_ai_response,
-            prepare_context_func=prepare_interview_context
-        )
-    elif interview.interview_mode == "meta_prompt":
-        # Meta Prompt interview (FIRST interview - PROMPT #76): Q1-Q17 fixed → AI contextual questions
-        return await handle_meta_prompt_interview(
-            interview=interview,
-            project=project,
-            message_count=message_count,
-            project_context=project_context,
-            db=db,
-            get_fixed_question_meta_prompt_func=get_fixed_question_meta_prompt,
-            clean_ai_response_func=clean_ai_response,
-            prepare_context_func=prepare_interview_context
-        )
-    elif interview.interview_mode == "requirements":
-        # Requirements interview (new projects): Q1-Q7 stack → AI business questions
-        return await handle_requirements_interview(
-            interview=interview,
-            project=project,
-            message_count=message_count,
-            project_context=project_context,
-            stack_context=stack_context,
-            db=db,
-            get_fixed_question_func=get_fixed_question,
-            clean_ai_response_func=clean_ai_response,
-            prepare_context_func=prepare_interview_context
-        )
-    elif interview.interview_mode == "task_focused":
-        # Task-focused interview (existing projects): Q1 task type → AI focused questions
-        return await handle_task_focused_interview(
-            interview=interview,
-            project=project,
-            message_count=message_count,
-            stack_context=stack_context,
-            db=db,
-            get_fixed_question_task_focused_func=get_fixed_question_task_focused,
-            extract_task_type_func=extract_task_type_from_answer,
-            build_task_focused_prompt_func=build_task_focused_prompt,
-            clean_ai_response_func=clean_ai_response,
-            prepare_context_func=prepare_interview_context
-        )
-    elif interview.interview_mode == "subtask_focused":
-        # Subtask-focused interview (PROMPT #94 FASE 2): No fixed questions → AI atomic decomposition
-        # TODO: Get parent_task from interview metadata when feature is fully implemented
-        return await handle_subtask_focused_interview(
-            interview=interview,
-            project=project,
-            message_count=message_count,
-            db=db,
-            build_subtask_focused_prompt_func=build_subtask_focused_prompt,
-            clean_ai_response_func=clean_ai_response,
-            prepare_context_func=prepare_interview_context,
-            parent_task=None  # Will be populated in future when creating subtasks for specific task
-        )
-    elif interview.interview_mode == "task_orchestrated":
-        # Task-orchestrated interview (PROMPT #97): Q1-Q2 fixed → AI contextual (for Tasks within Stories)
-        return await handle_task_orchestrated_interview(
-            interview=interview,
-            project=project,
-            message_count=message_count,
-            db=db,
-            get_task_orchestrated_fixed_question_func=get_task_orchestrated_fixed_question,
-            count_fixed_questions_task_orchestrated_func=count_fixed_questions_task_orchestrated,
-            is_fixed_question_complete_task_orchestrated_func=is_fixed_question_complete_task_orchestrated,
-            clean_ai_response_func=clean_ai_response,
-            prepare_context_func=prepare_interview_context
-        )
-    elif interview.interview_mode == "subtask_orchestrated":
-        # Subtask-orchestrated interview (PROMPT #97): Q1-Q2 fixed → AI contextual (for Subtasks within Tasks)
-        return await handle_subtask_orchestrated_interview(
-            interview=interview,
-            project=project,
-            message_count=message_count,
-            db=db,
-            get_subtask_orchestrated_fixed_question_func=get_subtask_orchestrated_fixed_question,
-            count_fixed_questions_subtask_orchestrated_func=count_fixed_questions_subtask_orchestrated,
-            is_fixed_question_complete_subtask_orchestrated_func=is_fixed_question_complete_subtask_orchestrated,
-            clean_ai_response_func=clean_ai_response,
-            prepare_context_func=prepare_interview_context
-        )
-    elif interview.interview_mode == "card_focused":
-        # Card-focused interview (PROMPT #98): Q1-Q3 fixed → AI contextual (for Story/Task/Subtask with motivation type)
-        parent_card = None
-        if interview.parent_task_id:
-            parent_card = db.query(Task).filter(Task.id == interview.parent_task_id).first()
+    # PROMPT #78 - Unified Open-Ended Interview System
+    # ALL interview modes now use the unified open-ended handler
+    # No more fixed questions - AI generates all questions
 
-        return await handle_card_focused_interview(
-            interview=interview,
-            project=project,
-            message_count=message_count,
-            db=db,
-            get_card_focused_fixed_question_func=get_card_focused_fixed_question,
-            count_fixed_questions_card_focused_func=count_fixed_questions_card_focused,
-            is_fixed_question_complete_card_focused_func=is_fixed_question_complete_card_focused,
-            get_motivation_type_from_answers_func=get_motivation_type_from_answers,
-            build_card_focused_prompt_func=build_card_focused_prompt,
-            clean_ai_response_func=clean_ai_response,
-            prepare_context_func=prepare_interview_context,
-            parent_card=parent_card,
-            stack_context=stack_context
-        )
-    else:
-        # Unknown interview mode
-        logger.error(f"Unknown interview_mode: {interview.interview_mode}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unknown interview mode: {interview.interview_mode}"
-        )
+    # Get parent task for hierarchical interviews
+    parent_task = None
+    if interview.parent_task_id:
+        parent_task = db.query(Task).filter(Task.id == interview.parent_task_id).first()
+
+    # Use unified open-ended handler for ALL interview modes
+    return await handle_unified_open_interview(
+        interview=interview,
+        project=project,
+        message_count=message_count,
+        db=db,
+        parent_task=parent_task
+    )
 
 
 @router.patch("/{interview_id}/update-project-info")
@@ -2015,124 +1913,36 @@ async def _process_interview_message_async(
         # Count messages
         message_count = len(interview.conversation_data)
 
-        # Check if fixed question or AI question
-        # PROMPT #97 FIX - Check interview_mode to call correct question function
-        if message_count in [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34]:
-            # Fixed question - route to correct function based on interview_mode
-            question_map = {
-                2: 2, 4: 3, 6: 4, 8: 5, 10: 6, 12: 7, 14: 8, 16: 9,
-                18: 10, 20: 11, 22: 12, 24: 13, 26: 14, 28: 15, 30: 16, 32: 17, 34: 18
-            }
-            question_number = question_map[message_count]
+        # PROMPT #78 - Unified Open-Ended Interview System
+        # ALL questions are now AI-generated and open-ended
+        logger.info(f"🌟 ASYNC: Generating open-ended question (message_count={message_count})")
 
-            logger.info(f"Returning fixed Question {question_number} for mode={interview.interview_mode}")
+        job_manager.update_progress(job_id, 40.0, "Generating open-ended question...")
 
-            # PROMPT #97 - Call correct function based on interview_mode
-            if interview.interview_mode == "meta_prompt":
-                assistant_message = get_fixed_question_meta_prompt(question_number, project, db)
-            elif interview.interview_mode == "orchestrator":
-                # Orchestrator uses different question mapping
-                prev_answers = {}  # TODO: extract from conversation if needed
-                assistant_message = get_orchestrator_fixed_question(question_number, project, db, prev_answers)
-            else:
-                # Legacy modes (requirements, etc.)
-                assistant_message = get_fixed_question(question_number, project, db)
+        # Get parent task for hierarchical interviews
+        parent_task = None
+        if interview.parent_task_id:
+            parent_task = db.query(Task).filter(Task.id == interview.parent_task_id).first()
 
-            if not assistant_message:
-                job_manager.fail_job(job_id, f"Failed to get fixed question {question_number}")
-                return
+        # Use unified open-ended handler
+        result = await handle_unified_open_interview(
+            interview=interview,
+            project=project,
+            message_count=message_count,
+            db=db,
+            parent_task=parent_task
+        )
 
-            interview.conversation_data.append(assistant_message)
-            flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
-            db.flush()
-            db.commit()
-            db.refresh(interview)
+        job_manager.update_progress(job_id, 80.0, "Processing response...")
 
-            # Complete job
-            job_manager.complete_job(job_id, {
-                "success": True,
-                "message": assistant_message,
-                "usage": {
-                    "model": "system/fixed-question",
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "total_cost_usd": 0.0
-                }
-            })
+        # Complete job with result
+        job_manager.complete_job(job_id, {
+            "success": result.get("success", True),
+            "message": result.get("message"),
+            "usage": result.get("usage", {})
+        })
 
-            logger.info(f"✅ Job {job_id} completed (fixed question)")
-
-        elif message_count >= 36 or (interview.interview_mode not in ["meta_prompt", "orchestrator"] and message_count >= 12):
-            # AI business question
-            # PROMPT #97 - meta_prompt has 18 fixed questions → AI starts at count=36
-            # orchestrator has 8 fixed questions → AI starts at count=18 (TODO)
-            # Legacy modes have 6 fixed questions → AI starts at count=12
-            logger.info(f"Calling AI for business question (message_count={message_count})")
-
-            job_manager.update_progress(job_id, 40.0, "Preparing AI call...")
-
-            # Build simplified system prompt
-            system_prompt = """Você é um analista de requisitos de IA coletando requisitos técnicos para um projeto de software.
-
-**Conduza em PORTUGUÊS.** Faça perguntas relevantes sobre funcionalidades, integrações, usuários, performance, etc.
-
-**Formato de Pergunta:**
-❓ Pergunta [número]: [Sua pergunta contextual]
-
-Continue com próxima pergunta relevante!
-"""
-
-            # Prepare optimized context
-            optimized_messages = prepare_interview_context(
-                conversation_data=interview.conversation_data,
-                max_recent=5
-            )
-
-            job_manager.update_progress(job_id, 50.0, "Calling AI...")
-
-            # Call AI
-            orchestrator = AIOrchestrator(db)
-            response = await orchestrator.execute(
-                usage_type="interview",
-                messages=optimized_messages,
-                system_prompt=system_prompt,
-                max_tokens=1000,
-                project_id=interview.project_id,
-                interview_id=interview.id
-            )
-
-            job_manager.update_progress(job_id, 80.0, "Processing AI response...")
-
-            # Clean AI response
-            cleaned_content = clean_ai_response(response["content"])
-
-            # Add assistant message
-            assistant_message = {
-                "role": "assistant",
-                "content": cleaned_content,
-                "timestamp": datetime.utcnow().isoformat(),
-                "model": f"{response['provider']}/{response['model']}"
-            }
-
-            interview.conversation_data.append(assistant_message)
-            flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
-            interview.ai_model_used = response["model"]
-            db.flush()
-            db.commit()
-            db.refresh(interview)
-
-            # Complete job
-            job_manager.complete_job(job_id, {
-                "success": True,
-                "message": assistant_message,
-                "usage": response.get("usage", {})
-            })
-
-            logger.info(f"✅ Job {job_id} completed (AI question)")
-
-        else:
-            # Unexpected state
-            job_manager.fail_job(job_id, f"Unexpected interview state (message_count={message_count})")
+        logger.info(f"✅ Job {job_id} completed (open-ended question)")
 
     except Exception as e:
         logger.error(f"❌ Job {job_id} failed: {str(e)}", exc_info=True)
