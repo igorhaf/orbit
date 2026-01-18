@@ -460,9 +460,20 @@ Gere sua resposta agora seguindo o formato do example_output:"""
     orchestrator = AIOrchestrator(db)
 
     try:
-        # PROMPT #81 - API requires at least one message
+        # PROMPT #81 - Use few-shot example to force format
         initial_messages = [
-            {"role": "user", "content": "Comece a entrevista para coletar requisitos do projeto."}
+            {"role": "user", "content": "Comece a entrevista para um projeto de e-commerce."},
+            {"role": "assistant", "content": """👋 Olá! Vou ajudar a definir os requisitos do seu projeto "E-commerce".
+
+❓ Pergunta 1: Qual é a principal funcionalidade que você precisa?
+
+○ Catálogo de produtos com busca
+○ Carrinho de compras
+○ Sistema de pagamento
+○ Painel administrativo
+
+💬 Ou descreva com suas próprias palavras."""},
+            {"role": "user", "content": f"Ótimo formato! Agora comece a entrevista para o projeto \"{project.name}\". IMPORTANTE: Use EXATAMENTE o mesmo formato da pergunta anterior, com \"○\" (círculo vazio)."}
         ]
 
         response = await orchestrator.execute(
