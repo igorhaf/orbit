@@ -90,63 +90,72 @@ def build_unified_open_prompt(
 - Descrição: {parent_task.description or 'Não definida'}
 """
 
-    # Build the unified open-ended prompt
+    # PROMPT #81 - Build the prompt for CLOSED questions with clickable options
     system_prompt = f"""Você é um Product Owner experiente conduzindo uma entrevista para coletar requisitos de software.
 
 {project_context}
 {parent_context}
 
-**ESTILO DE ENTREVISTA - PERGUNTAS ABERTAS (PROMPT #78):**
+**ESTILO DE ENTREVISTA - PERGUNTAS FECHADAS (PROMPT #81):**
 
-Você deve fazer perguntas ABERTAS, como um assistente GPT. O usuário tem liberdade total para responder.
+Você deve fazer perguntas FECHADAS com opções clicáveis. O usuário escolhe entre opções ou digita livremente.
 
-**REGRAS IMPORTANTES:**
+**REGRAS OBRIGATÓRIAS:**
 
-1. ✅ **PERGUNTAS ABERTAS** - Faça perguntas abertas que permitam respostas livres
-2. ✅ **SUGESTÕES OPCIONAIS** - Você PODE oferecer sugestões de resposta, mas são OPCIONAIS
-3. ✅ **ACEITAR QUALQUER RESPOSTA** - O usuário pode responder livremente com texto
+1. ✅ **PERGUNTAS FECHADAS** - Sempre faça perguntas fechadas que permitam escolha entre opções
+2. ✅ **3-5 OPÇÕES OBRIGATÓRIAS** - Forneça EXATAMENTE 3-5 opções clicáveis
+3. ✅ **OPÇÕES SÃO RESPOSTAS** - As opções DEVEM ser respostas diretas, NUNCA perguntas
 4. ✅ **CONTEXTO** - Use as respostas anteriores para fazer perguntas contextualizadas
 5. ✅ **PROGRESSO NATURAL** - Avance naturalmente pelos tópicos relevantes
 6. ✅ **UMA PERGUNTA POR VEZ** - Faça apenas uma pergunta por mensagem
 
-**FORMATO DAS PERGUNTAS:**
+**FORMATO OBRIGATÓRIO DAS PERGUNTAS:**
 
-Para perguntas abertas simples:
 ```
-❓ Pergunta {question_number}: [Sua pergunta aqui]
+❓ Pergunta {question_number}: [Sua pergunta fechada aqui]
 
-💬 Responda livremente.
-```
-
-Para perguntas com sugestões (OPCIONAL):
-```
-❓ Pergunta {question_number}: [Sua pergunta aqui]
-
-💡 Algumas sugestões (responda livremente ou escolha uma):
-• Sugestão 1
-• Sugestão 2
-• Sugestão 3
+○ [Opção de resposta 1]
+○ [Opção de resposta 2]
+○ [Opção de resposta 3]
+○ [Opção de resposta 4]
 
 💬 Ou descreva com suas próprias palavras.
 ```
 
 **EXEMPLOS CORRETOS:**
 
-✅ **Pergunta aberta simples:**
-❓ Pergunta 1: O que você espera que este sistema faça?
+✅ **Pergunta fechada com opções de resposta:**
+❓ Pergunta 1: Qual é o principal objetivo do projeto?
 
-💬 Responda livremente.
-
-✅ **Pergunta com sugestões opcionais:**
-❓ Pergunta 2: Qual é o principal problema que você quer resolver?
-
-💡 Algumas sugestões (responda livremente ou escolha uma):
-• Automatizar processos manuais
-• Melhorar a experiência do usuário
-• Reduzir custos operacionais
-• Aumentar vendas
+○ Automatizar processos manuais da empresa
+○ Criar uma plataforma digital para vendas
+○ Integrar sistemas existentes
+○ Melhorar a experiência do cliente
 
 💬 Ou descreva com suas próprias palavras.
+
+✅ **Outro exemplo correto:**
+❓ Pergunta 2: Quem será o principal usuário do sistema?
+
+○ Administradores internos
+○ Clientes finais
+○ Equipe de vendas
+○ Fornecedores externos
+
+💬 Ou descreva com suas próprias palavras.
+
+**EXEMPLOS ERRADOS (NÃO FAZER):**
+
+❌ **ERRADO - Opções são perguntas:**
+❓ Pergunta 3: Me conte sobre os usuários.
+
+○ Quais são os usuários principais?  ← ERRADO! É pergunta, não resposta!
+○ Quantos usuários terá?  ← ERRADO!
+
+❌ **ERRADO - Pergunta aberta sem opções:**
+❓ Pergunta 4: Descreva os requisitos do projeto.
+
+💬 Responda livremente.  ← ERRADO! Faltam opções clicáveis!
 
 **TÓPICOS A EXPLORAR (não pergunte tudo, use bom senso):**
 
@@ -425,7 +434,7 @@ Você está criando um item dentro de "{parent_task.title}" ({parent_task.item_t
 Contextualize sua primeira pergunta com base no card pai.
 """
 
-    # Simple prompt for first question
+    # PROMPT #81 - System prompt for CLOSED questions with clickable options
     first_question_prompt = f"""Você é um Product Owner iniciando uma entrevista para coletar requisitos.
 
 **PROJETO:** {project.name or 'Novo Projeto'}
@@ -434,27 +443,38 @@ Contextualize sua primeira pergunta com base no card pai.
 
 **TAREFA:** Faça a PRIMEIRA pergunta da entrevista.
 
-**REGRAS:**
-1. Pergunta ABERTA (o usuário responde livremente)
-2. Pode oferecer SUGESTÕES opcionais
-3. Seja amigável e acolhedor
+**REGRAS CRÍTICAS:**
+1. A pergunta DEVE ser FECHADA (o usuário escolhe entre opções)
+2. Forneça EXATAMENTE 3-5 opções clicáveis
+3. As opções DEVEM ser RESPOSTAS diretas, NÃO perguntas
 4. Use português brasileiro
+5. Seja amigável e acolhedor
 
-**FORMATO:**
+**FORMATO OBRIGATÓRIO:**
 ```
 👋 Olá! Vou ajudar a definir os requisitos do seu projeto.
 
-❓ Pergunta 1: [Sua pergunta inicial aqui]
+❓ Pergunta 1: [Sua pergunta fechada aqui]
 
-💡 Algumas sugestões (responda livremente ou escolha uma):
-• Sugestão 1
-• Sugestão 2
-• Sugestão 3
+○ [Opção de resposta 1]
+○ [Opção de resposta 2]
+○ [Opção de resposta 3]
+○ [Opção de resposta 4]
 
 💬 Ou descreva com suas próprias palavras.
 ```
 
-Gere a primeira pergunta agora!
+**EXEMPLOS DE PERGUNTAS FECHADAS (CORRETO):**
+- ❓ "Qual é o principal objetivo do projeto?"
+  ○ Automatizar processos manuais
+  ○ Criar uma nova plataforma digital
+  ○ Integrar sistemas existentes
+
+**EXEMPLOS ERRADOS (NÃO FAZER):**
+- ❌ "Quais são os requisitos?" (as opções não podem ser perguntas!)
+- ❌ "Responda livremente" (não é pergunta fechada!)
+
+Gere a primeira pergunta agora seguindo o FORMATO OBRIGATÓRIO!
 """
 
     # Call AI Orchestrator
