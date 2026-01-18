@@ -191,6 +191,10 @@ def upgrade() -> None:
     for model_config in DEFAULT_MODELS:
         api_key, is_active = get_api_key(model_config["env_var"])
 
+        # Force default general model to be active (even without API key)
+        if model_config.get("is_default"):
+            is_active = True
+
         if is_active:
             active_count += 1
         else:
