@@ -90,51 +90,47 @@ def build_unified_open_prompt(
 - Descrição: {parent_task.description or 'Não definida'}
 """
 
-    # PROMPT #81 - EXTREMELY explicit prompt for CLOSED questions
-    system_prompt = f"""🚨 ATENÇÃO: Use APENAS "○" para opções! PROIBIDO usar "•" ou "💡"! 🚨
+    # PROMPT #81 - Use XML structure for clarity
+    system_prompt = f"""Você está conduzindo uma entrevista de requisitos de software.
 
-Você é um Product Owner experiente conduzindo uma entrevista para coletar requisitos de software.
-
+<project>
 {project_context}
+</project>
 {parent_context}
 
-**FORMATO OBRIGATÓRIO (copie exatamente):**
-```
-❓ Pergunta {question_number}: [Pergunta FECHADA aqui]
+<instructions>
+Gere a próxima pergunta (Pergunta {question_number}) usando este formato EXATO:
 
-○ [Primeira resposta]
-○ [Segunda resposta]
-○ [Terceira resposta]
-○ [Quarta resposta]
+❓ Pergunta {question_number}: [Sua pergunta fechada aqui]
 
-💬 Ou descreva com suas próprias palavras.
-```
-
-🚫 FORMATO PROIBIDO (NÃO USE NUNCA):
-```
-❌ ERRADO:
-💡 Algumas sugestões (responda livremente ou escolha uma):
-• Sugestão 1
-• Sugestão 2
-```
-
-✅ EXEMPLO CORRETO:
-```
-❓ Pergunta {question_number}: Qual funcionalidade é prioritária?
-
-○ Sistema de login e autenticação
-○ Dashboard com relatórios
-○ Integração com pagamentos
-○ Notificações por email
+○ [Primeira opção]
+○ [Segunda opção]
+○ [Terceira opção]
+○ [Quarta opção]
 
 💬 Ou descreva com suas próprias palavras.
-```
+</instructions>
 
-**REGRAS:**
-1. Use APENAS "○" (círculo vazio) - NUNCA use "•" ou "💡"
-2. Opções são RESPOSTAS diretas (não perguntas!)
-3. Exatamente 3-5 opções
-4. Contextualize com respostas anteriores
+<critical_rules>
+- Use SOMENTE "○" (círculo vazio Unicode)
+- NUNCA use "•" ou "💡 Algumas sugestões"
+- Opções são RESPOSTAS, não perguntas
+- 3-5 opções obrigatórias
+- Contextualize com respostas anteriores
+</critical_rules>
+
+<example_output>
+❓ Pergunta {question_number}: Qual tipo de usuário terá acesso ao sistema?
+
+○ Administradores com acesso total
+○ Usuários internos da empresa
+○ Clientes externos
+○ Parceiros e fornecedores
+
+💬 Ou descreva com suas próprias palavras.
+</example_output>
+
+Gere a Pergunta {question_number} agora:
 
 **TÓPICOS A EXPLORAR (não pergunte tudo, use bom senso):**
 
@@ -413,23 +409,21 @@ Você está criando um item dentro de "{parent_task.title}" ({parent_task.item_t
 Contextualize sua primeira pergunta com base no card pai.
 """
 
-    # PROMPT #81 - EXTREMELY explicit prompt for CLOSED questions
-    first_question_prompt = f"""🚨 ATENÇÃO: Siga o formato EXATAMENTE como especificado abaixo! 🚨
+    # PROMPT #81 - Use XML structure for clarity
+    first_question_prompt = f"""Gere a primeira pergunta de uma entrevista de requisitos.
 
-Você é um Product Owner iniciando uma entrevista para coletar requisitos.
-
-**PROJETO:** {project.name or 'Novo Projeto'}
-**DESCRIÇÃO:** {project.description or 'Não definida'}
+<project>
+<name>{project.name or 'Novo Projeto'}</name>
+<description>{project.description or 'Não definida'}</description>
+</project>
 {parent_context}
 
-⚠️ IMPORTANTE: Use APENAS o símbolo "○" para as opções!
-⚠️ PROIBIDO usar "•" ou "💡 Algumas sugestões"!
+<instructions>
+Sua resposta DEVE seguir este formato EXATO (incluindo os símbolos "○"):
 
-**FORMATO OBRIGATÓRIO (copie exatamente):**
-```
 👋 Olá! Vou ajudar a definir os requisitos do seu projeto "{project.name or 'Novo Projeto'}".
 
-❓ Pergunta 1: [Faça uma pergunta FECHADA aqui]
+❓ Pergunta 1: [Sua pergunta fechada aqui - algo como "Qual é o principal objetivo?"]
 
 ○ [Primeira opção de resposta]
 ○ [Segunda opção de resposta]
@@ -437,32 +431,30 @@ Você é um Product Owner iniciando uma entrevista para coletar requisitos.
 ○ [Quarta opção de resposta]
 
 💬 Ou descreva com suas próprias palavras.
-```
+</instructions>
 
-🚫 FORMATO PROIBIDO (NÃO USE):
-```
-❌ ERRADO:
-💡 Algumas sugestões (responda livremente ou escolha uma):
-• Opção 1
-• Opção 2
-```
+<critical_rules>
+- Use SOMENTE o símbolo "○" (círculo vazio Unicode) para cada opção
+- NUNCA use "•" (bullet point)
+- NUNCA use "💡 Algumas sugestões"
+- As opções devem ser RESPOSTAS diretas, não perguntas
+- Forneça exatamente 3-5 opções
+</critical_rules>
 
-✅ FORMATO CORRETO:
-```
-○ Automatizar processos manuais da empresa
-○ Criar uma plataforma digital de vendas
-○ Integrar sistemas existentes
-○ Melhorar experiência do cliente
-```
+<example_output>
+👋 Olá! Vou ajudar a definir os requisitos do seu projeto "Sistema de Vendas".
 
-**REGRAS:**
-1. Use APENAS "○" (círculo vazio) para opções
-2. Opções são RESPOSTAS diretas, não perguntas
-3. Exatamente 3-5 opções
-4. Pergunta deve ser FECHADA
+❓ Pergunta 1: Qual é a principal funcionalidade que você precisa?
 
-Gere a pergunta agora usando o FORMATO OBRIGATÓRIO com "○"!
-"""
+○ Gerenciamento de produtos e estoque
+○ Controle de vendas e pedidos
+○ Relatórios e dashboards
+○ Integração com pagamentos
+
+💬 Ou descreva com suas próprias palavras.
+</example_output>
+
+Gere sua resposta agora seguindo o formato do example_output:"""
 
     # Call AI Orchestrator
     orchestrator = AIOrchestrator(db)
