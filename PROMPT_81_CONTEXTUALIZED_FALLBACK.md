@@ -101,6 +101,12 @@ except Exception as ai_error:
    - Removida chamada duplicada `interviewsApi.start()`
    - ChatInterface agora é único responsável por iniciar entrevista
 
+2. **[frontend/src/components/interview/ChatInterface.tsx](frontend/src/components/interview/ChatInterface.tsx)**
+   - Novo state `fallbackWarning` para detectar modo fallback
+   - Detecção de fallback em `handleSendMessageComplete` e `startInterviewWithAI`
+   - Barra azul informativa acima do chat quando IA está em modo fallback
+   - Exibe detalhes do erro e botões para configurar API keys
+
 ### Backend:
 2. **[backend/app/api/routes/interviews/unified_open_handler.py](backend/app/api/routes/interviews/unified_open_handler.py)**
    - Fallback contextualizado para primeira pergunta (linhas 461-490)
@@ -133,9 +139,14 @@ curl -X POST "/api/v1/interviews/{id}/start"
 curl -X POST "/api/v1/interviews/{id}/send-message" \
   -d '{"content": "Quero autenticação completa", "role": "user"}'
 
-# Resultado: ✅ Fallback continua entrevista
+# Resultado: ✅ Fallback continua entrevista com PERGUNTAS FECHADAS
 # "📋 Continuando a entrevista para o projeto "Teste"..."
-# "❓ Pergunta 2: Sobre "Quero autenticação completa...", me conte mais:"
+# "❓ Pergunta 2: Qual aspecto do projeto você gostaria de detalhar agora?"
+# Opções (respostas, não perguntas):
+# ○ Requisitos técnicos e funcionais
+# ○ Perfil dos usuários e permissões
+# ○ Integrações com outros sistemas
+# ○ Cronograma e prioridades
 ```
 
 ### Teste 3: Verificação de Mensagens
@@ -156,10 +167,11 @@ curl "/api/v1/interviews/{id}"
 ## 🎯 Success Metrics
 
 ✅ **Primeira pergunta contextualizada:** Mostra nome e descrição do projeto
-✅ **Perguntas subsequentes contextualizadas:** Mostra última resposta do usuário
+✅ **Perguntas subsequentes fechadas:** Pergunta fechada com opções de resposta (não perguntas como opções)
 ✅ **Entrevista não quebra:** Fallback permite continuar mesmo sem API
 ✅ **Duplicação corrigida:** Apenas 1 chamada para start()
 ✅ **RAG funcional:** Cast corrigido para pgvector
+✅ **Barra de aviso no frontend:** Usuário informado quando IA está em modo fallback
 
 ---
 
@@ -173,6 +185,17 @@ O `:` é usado tanto para bind parameters (SQLAlchemy) quanto para type cast (Po
 
 ### 3. Fallback como Feature, não Workaround
 O fallback contextualizado não é apenas um "plano B" - ele mantém a UX consistente e permite que o sistema funcione em modo degradado quando necessário.
+
+### 4. Perguntas Fechadas vs Abertas
+Perguntas de fallback devem ser fechadas (com opções de resposta, não perguntas como opções). Exemplo:
+- ✅ Correto: "Qual aspecto você gostaria de detalhar?" → Opções: "Requisitos técnicos", "Perfil dos usuários"
+- ❌ Errado: "Me conte mais detalhes" → Opções: "Quais são os requisitos?", "Quem são os usuários?"
+
+### 5. Feedback Visual para o Usuário
+Quando a IA está em modo fallback, o usuário deve ser informado via barra de aviso (azul) acima do chat, com opções para:
+- Ver detalhes do erro
+- Acessar configurações de API keys
+- Fechar o aviso e continuar
 
 ---
 
@@ -193,9 +216,10 @@ O fallback contextualizado não é apenas um "plano B" - ele mantém a UX consis
 
 **Key Achievements:**
 - ✅ Fallback contextualizado para primeira pergunta
-- ✅ Fallback contextualizado para perguntas subsequentes
+- ✅ Fallback com perguntas fechadas para perguntas subsequentes
 - ✅ Bug de duplicação corrigido
 - ✅ Bug de RAG (cast vector) corrigido
+- ✅ Barra de aviso informativa no frontend quando em modo fallback
 - ✅ Entrevista funciona 100% mesmo sem API
 
 **Impact:**
