@@ -15,9 +15,8 @@ import os
 from app.models.interview import Interview
 from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
 from app.models.project import Project
-from app.models.spec import Spec
+from app.models.spec import Spec, SpecScope
 from app.services.ai_orchestrator import AIOrchestrator
-from app.services.spec_loader import get_spec_loader
 from app.services.backlog_generator import BacklogGeneratorService
 
 # Prompter Architecture (gradual migration via feature flags)
@@ -65,11 +64,11 @@ class PromptGenerator:
 
     def _fetch_stack_specs(self, project: Project, db: Session) -> Dict[str, Any]:
         """
-        Fetch all relevant specs for project's stack.
+        Fetch all relevant specs for project from database.
         Returns organized specs by category and type.
 
         PROMPT #48 - Phase 3: Token Reduction via Specs Integration
-        PROMPT #61 - Week 2: Migrated to use SpecLoader instead of database queries
+        PROMPT #77 - Project-Specific Specs: Now fetches from database (discovered via RAG)
         """
         specs = {
             'backend': [],
@@ -79,100 +78,41 @@ class PromptGenerator:
             'ignore_patterns': set()
         }
 
-        # Get SpecLoader instance
-        spec_loader = get_spec_loader()
+        # Fetch project-specific specs from database
+        project_specs = db.query(Spec).filter(
+            Spec.project_id == project.id,
+            Spec.is_active == True
+        ).all()
 
-        # Fetch backend specs
-        if project.stack_backend:
-            backend_specs = spec_loader.get_specs_by_framework(
-                'backend',
-                project.stack_backend,
-                only_active=True
-            )
+        if not project_specs:
+            logger.info(f"No project-specific specs found for project {project.id}")
+            return specs
 
-            specs['backend'] = [
-                {
-                    'type': s.spec_type,
-                    'title': s.title,
-                    'content': s.content,
-                    'language': s.language
-                }
-                for s in backend_specs
-            ]
+        # Organize specs by category
+        for spec in project_specs:
+            category = spec.category.lower() if spec.category else 'backend'
+
+            spec_data = {
+                'type': spec.spec_type,
+                'title': spec.title,
+                'content': spec.content,
+                'language': getattr(spec, 'language', None)
+            }
+
+            if category in specs:
+                specs[category].append(spec_data)
+            else:
+                # Default to backend for unrecognized categories
+                specs['backend'].append(spec_data)
 
             # Collect ignore patterns
-            for s in backend_specs:
-                if s.ignore_patterns:
-                    specs['ignore_patterns'].update(s.ignore_patterns)
-
-        # Fetch database specs
-        if project.stack_database:
-            db_specs = spec_loader.get_specs_by_framework(
-                'database',
-                project.stack_database,
-                only_active=True
-            )
-
-            specs['database'] = [
-                {
-                    'type': s.spec_type,
-                    'title': s.title,
-                    'content': s.content
-                }
-                for s in db_specs
-            ]
-
-            for s in db_specs:
-                if s.ignore_patterns:
-                    specs['ignore_patterns'].update(s.ignore_patterns)
-
-        # Fetch frontend specs
-        if project.stack_frontend:
-            frontend_specs = spec_loader.get_specs_by_framework(
-                'frontend',
-                project.stack_frontend,
-                only_active=True
-            )
-
-            specs['frontend'] = [
-                {
-                    'type': s.spec_type,
-                    'title': s.title,
-                    'content': s.content,
-                    'language': s.language
-                }
-                for s in frontend_specs
-            ]
-
-            for s in frontend_specs:
-                if s.ignore_patterns:
-                    specs['ignore_patterns'].update(s.ignore_patterns)
-
-        # Fetch CSS specs
-        if project.stack_css:
-            css_specs = spec_loader.get_specs_by_framework(
-                'css',
-                project.stack_css,
-                only_active=True
-            )
-
-            specs['css'] = [
-                {
-                    'type': s.spec_type,
-                    'title': s.title,
-                    'content': s.content
-                }
-                for s in css_specs
-            ]
-
-            for s in css_specs:
-                if s.ignore_patterns:
-                    specs['ignore_patterns'].update(s.ignore_patterns)
+            if spec.ignore_patterns:
+                specs['ignore_patterns'].update(spec.ignore_patterns)
 
         # Convert ignore patterns set to list
         specs['ignore_patterns'] = list(specs['ignore_patterns'])
 
-        logger.info(f"Fetched specs from JSON files: {len(specs['backend'])} backend, {len(specs['frontend'])} frontend, "
+        logger.info(f"Fetched specs from database: {len(specs['backend'])} backend, {len(specs['frontend'])} frontend, "
                    f"{len(specs['database'])} database, {len(specs['css'])} css")
 
         return specs

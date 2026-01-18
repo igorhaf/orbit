@@ -32,7 +32,8 @@ from app.api.routes import (
     specs,
     prompter,  # Prompter Architecture - Phase 1
     jobs,  # PROMPT #65 - Async Job System
-    knowledge  # PROMPT #84 - RAG Phase 2: Knowledge Search
+    knowledge,  # PROMPT #84 - RAG Phase 2: Knowledge Search
+    discovery_queue  # PROMPT #77 - Project-Specific Specs Discovery Queue
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -297,6 +298,13 @@ app.include_router(
     knowledge.router,
     prefix=f"{API_V1_PREFIX}",
     tags=["Knowledge"]
+)
+
+# Discovery Queue (Project-Specific Specs - PROMPT #77)
+app.include_router(
+    discovery_queue.router,
+    prefix=f"{API_V1_PREFIX}/discovery-queue",
+    tags=["Discovery Queue"]
 )
 
 # WebSocket (Real-time updates)
