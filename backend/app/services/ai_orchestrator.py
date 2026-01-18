@@ -202,7 +202,7 @@ class AIOrchestrator:
             # Verificar se o provider está inicializado
             if provider in self.clients:
                 # Extrair configurações do banco
-                model_name = db_model.config.get("model", "")
+                model_name = db_model.config.get("model_id", "")
                 max_tokens = db_model.config.get("max_tokens", 4096)
                 temperature = db_model.config.get("temperature", 0.7)
 
@@ -235,7 +235,7 @@ class AIOrchestrator:
 
         if fallback_model and fallback_model.provider.lower() in self.clients:
             provider = fallback_model.provider.lower()
-            model_name = fallback_model.config.get("model", "")
+            model_name = fallback_model.config.get("model_id", "")
             max_tokens = fallback_model.config.get("max_tokens", 4096)
             temperature = fallback_model.config.get("temperature", 0.7)
 
@@ -314,7 +314,7 @@ class AIOrchestrator:
                 if provider in self.clients:
                     return {
                         "provider": provider,
-                        "model": db_model.config.get("model", self._get_default_model(provider)),
+                        "model": db_model.config.get("model_id", self._get_default_model(provider)),
                         "max_tokens": db_model.config.get("max_tokens", 4096),
                         "temperature": db_model.config.get("temperature", 0.7),
                         "db_model_id": str(db_model.id),
