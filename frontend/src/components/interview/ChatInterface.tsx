@@ -7,7 +7,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { interviewsApi } from '@/lib/api';
+import { interviewsApi, backlogApi } from '@/lib/api';
 import { Interview } from '@/lib/types';
 import { Button, Badge, JobProgressBar } from '@/components/ui';
 import { MessageBubble } from './MessageBubble';
@@ -677,43 +677,55 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     }
   };
 
-  const handleGeneratePrompts = async () => {
+  // PROMPT #80 - Generate Epic only (not full backlog)
+  const handleGenerateEpic = async () => {
     if (!interview) return;
 
     const hasMessages = interview.conversation_data && interview.conversation_data.length > 0;
     if (!hasMessages) {
-      alert('Cannot generate prompts from an empty interview. Please add some messages first.');
+      alert('Cannot generate Epic from an empty interview. Please add some messages first.');
       return;
     }
 
-    if (!confirm('Generate Backlog (Epic → Stories → Tasks) from this interview using AI?\n\nThis may take 2-5 minutes. You\'ll see real-time progress updates.')) {
+    if (!confirm('Generate Epic from this interview using AI?\n\nThe Epic will be created automatically based on your conversation.')) {
       return;
     }
+
+    setGeneratingPrompts(true);
 
     try {
-      // PROMPT #65 - Generate prompts ASYNC (non-blocking)
-      console.log('🚀 Starting async backlog generation...');
-      const response = await interviewsApi.generatePromptsAsync(interviewId);
-      const data = response.data || response;
-      const jobId = data.job_id;
+      const projectId = interview.project_id;
+      console.log('🚀 Generating Epic from interview...');
 
-      console.log('✅ Backlog generation job created:', jobId);
-      console.log('📊 Setting generatePromptsJobId to:', jobId);
+      // Step 1: Generate Epic suggestion
+      const generateResponse = await backlogApi.generateEpic(interviewId, projectId);
+      const data = generateResponse.data || generateResponse;
 
-      // PROMPT #65 - Save to localStorage (survives Fast Refresh)
-      localStorage.setItem(`generateJob_${interviewId}`, jobId);
-      console.log('💾 Saved generateJob to localStorage:', jobId);
+      if (!data.suggestions || data.suggestions.length === 0) {
+        throw new Error('No Epic suggestion generated');
+      }
 
-      setGeneratePromptsJobId(jobId); // Start polling for job status
+      const epicSuggestion = data.suggestions[0];
+      console.log('📋 Epic suggestion generated:', epicSuggestion.title);
 
-      // Force a small delay to ensure state updates
-      setTimeout(() => {
-        console.log('🔍 Current generatePromptsJobId after set:', jobId);
-      }, 100);
+      // Step 2: Auto-approve and create Epic
+      const approveResponse = await backlogApi.approveEpic(epicSuggestion, projectId, interviewId);
+      const epic = approveResponse.data || approveResponse;
+
+      console.log('✅ Epic created:', epic.id, epic.title);
+
+      // Show success message
+      alert(`✅ Epic Created!\n\nTitle: ${epic.title}\n\nYou can now decompose it into Stories from the Backlog page.`);
+
+      // Refresh interview to show updated state
+      await fetchInterview();
+
     } catch (error: any) {
-      console.error('❌ Failed to create backlog generation job:', error);
-      const errorDetail = error.response?.data?.detail || error.message || 'Failed to start backlog generation.';
+      console.error('❌ Failed to generate Epic:', error);
+      const errorDetail = error.response?.data?.detail || error.message || 'Failed to generate Epic.';
       alert(`❌ Error:\n\n${errorDetail}`);
+    } finally {
+      setGeneratingPrompts(false);
     }
   };
 
@@ -807,24 +819,24 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         </div>
 
         <div className="flex gap-2">
-          {/* Generate Prompts Button - Primary Action */}
+          {/* PROMPT #80 - Generate Epic Button (not full backlog) */}
           <Button
             variant="primary"
             size="sm"
-            onClick={handleGeneratePrompts}
-            disabled={isGeneratingPrompts || !interview || interview.conversation_data.length === 0}
+            onClick={handleGenerateEpic}
+            disabled={generatingPrompts || !interview || interview.conversation_data.length === 0}
           >
-            {isGeneratingPrompts ? (
+            {generatingPrompts ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
-                Generating...
+                Generating Epic...
               </>
             ) : (
               <>
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                🤖 Generate Backlog
+                🎯 Gerar Épico
               </>
             )}
           </Button>
@@ -978,17 +990,16 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
           </div>
         )}
 
-        {/* PROMPT #65 - Backlog Generation Progress */}
-        {isGeneratingPrompts && generatePromptsJob && (
+        {/* PROMPT #80 - Epic Generation Progress */}
+        {generatingPrompts && (
           <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h4 className="text-sm font-semibold text-green-900 mb-2">⚡ Generating Backlog...</h4>
-            <JobProgressBar
-              percent={generatePromptsJob.progress_percent}
-              message={generatePromptsJob.progress_message}
-              status={generatePromptsJob.status}
-            />
+            <h4 className="text-sm font-semibold text-green-900 mb-2">🎯 Generating Epic...</h4>
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-600"></div>
+              <span className="text-sm text-green-700">Analyzing interview and creating Epic...</span>
+            </div>
             <p className="text-xs text-green-700 mt-2">
-              This may take 2-5 minutes. You can continue working while we generate your Epic → Stories → Tasks.
+              The Epic will be created automatically based on your conversation.
             </p>
           </div>
         )}

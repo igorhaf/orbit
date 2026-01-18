@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 class ProjectBase(BaseModel):
     """Base schema for Project"""
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
-    description: Optional[str] = Field(None, description="Project description")
+    # PROMPT #80 - Description is now REQUIRED (entrada obrigatória para entrevista)
+    description: str = Field(..., min_length=1, max_length=2000, description="Project description (required)")
     git_repository_info: Optional[dict] = Field(None, description="Git repository information")
 
     # Stack configuration (PROMPT #46 - Phase 1, PROMPT #67 - Mobile)
