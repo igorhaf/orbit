@@ -458,17 +458,19 @@ Gere a primeira pergunta agora!
     except Exception as ai_error:
         logger.error(f"❌ Failed to generate first question: {str(ai_error)}", exc_info=True)
 
-        # Fallback: return a simple first question with options
+        # PROMPT #81 - Fallback: return a contextualized first question
         return {
             "role": "assistant",
-            "content": """👋 Olá! Vou ajudar a definir os requisitos do seu projeto.
+            "content": f"""👋 Olá! Vou ajudar a refinar os requisitos do projeto "{project.name}".
 
-❓ Pergunta 1: O que você espera que este sistema faça?
+📋 Você descreveu: "{project.description}"
 
-○ Automatizar processos manuais
-○ Gerenciar dados e informações
-○ Conectar usuários e serviços
-○ Melhorar a experiência do cliente
+❓ Pergunta 1: Com base nisso, qual seria a primeira funcionalidade principal que você precisa implementar?
+
+○ Sistema de autenticação e controle de acesso
+○ Interface para gerenciamento de dados
+○ Integração com sistemas externos
+○ Processamento e análise de informações
 
 💬 Ou descreva com suas próprias palavras.""",
             "timestamp": datetime.utcnow().isoformat(),
@@ -478,10 +480,10 @@ Gere a primeira pergunta agora!
             "options": {
                 "type": "single",
                 "choices": [
-                    {"id": "automatizar_processos", "label": "Automatizar processos manuais", "value": "automatizar_processos"},
-                    {"id": "gerenciar_dados", "label": "Gerenciar dados e informações", "value": "gerenciar_dados"},
-                    {"id": "conectar_usuarios", "label": "Conectar usuários e serviços", "value": "conectar_usuarios"},
-                    {"id": "melhorar_experiencia", "label": "Melhorar a experiência do cliente", "value": "melhorar_experiencia"}
+                    {"id": "autenticacao", "label": "Sistema de autenticação e controle de acesso", "value": "autenticacao"},
+                    {"id": "gerenciamento_dados", "label": "Interface para gerenciamento de dados", "value": "gerenciamento_dados"},
+                    {"id": "integracao", "label": "Integração com sistemas externos", "value": "integracao"},
+                    {"id": "processamento", "label": "Processamento e análise de informações", "value": "processamento"}
                 ]
             },
             "allow_custom_response": True  # PROMPT #79 - User can type freely OR click options
