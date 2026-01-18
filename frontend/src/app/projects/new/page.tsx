@@ -60,8 +60,9 @@ export default function NewProjectPage() {
 
       setInterviewId(interviewRes.data.id);
 
-      // Start interview
-      await interviewsApi.start(interviewRes.data.id);
+      // PROMPT #81 - Removed manual start here to avoid race condition
+      // ChatInterface.tsx auto-starts interview when no messages exist
+      // This was causing duplicate first questions
 
       setStep('interview');
     } catch (error) {
