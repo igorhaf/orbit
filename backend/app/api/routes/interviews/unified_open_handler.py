@@ -278,18 +278,31 @@ async def handle_unified_open_interview(
 
         # Build assistant message
         question_number = (message_count // 2) + 1
-        assistant_message = {
-            "role": "assistant",
-            "content": parsed_content,
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": f"{response['provider']}/{response['model']}",
-            "question_number": question_number,
-            "question_type": "open_ended"  # Always open-ended now
-        }
 
-        # Add suggestions if parsed (for frontend rendering)
+        # Determine question type based on parsed options
         if parsed_options:
-            assistant_message["suggestions"] = parsed_options.get("options", {}).get("choices", [])
+            # Has options - use single_choice or multiple_choice from parser
+            question_type = parsed_options.get("question_type", "single_choice")
+            assistant_message = {
+                "role": "assistant",
+                "content": parsed_content,
+                "timestamp": datetime.utcnow().isoformat(),
+                "model": f"{response['provider']}/{response['model']}",
+                "question_number": question_number,
+                "question_type": question_type,
+                "options": parsed_options.get("options", {}),
+                "allow_custom_response": True  # PROMPT #79 - User can type freely OR click options
+            }
+        else:
+            # No options - pure open-ended question
+            assistant_message = {
+                "role": "assistant",
+                "content": parsed_content,
+                "timestamp": datetime.utcnow().isoformat(),
+                "model": f"{response['provider']}/{response['model']}",
+                "question_number": question_number,
+                "question_type": "text"  # Pure text input
+            }
 
         # Append to conversation
         interview.conversation_data.append(assistant_message)
@@ -413,19 +426,30 @@ Gere a primeira pergunta agora!
         # Parse for suggestions
         parsed_content, parsed_options = parse_ai_question_options(cleaned_content)
 
-        # Build assistant message
-        assistant_message = {
-            "role": "assistant",
-            "content": parsed_content,
-            "timestamp": datetime.utcnow().isoformat(),
-            "model": f"{response['provider']}/{response['model']}",
-            "question_number": 1,
-            "question_type": "open_ended"
-        }
-
-        # Add suggestions if parsed
+        # Build assistant message with proper question type
         if parsed_options:
-            assistant_message["suggestions"] = parsed_options.get("options", {}).get("choices", [])
+            # Has options - use single_choice or multiple_choice from parser
+            question_type = parsed_options.get("question_type", "single_choice")
+            assistant_message = {
+                "role": "assistant",
+                "content": parsed_content,
+                "timestamp": datetime.utcnow().isoformat(),
+                "model": f"{response['provider']}/{response['model']}",
+                "question_number": 1,
+                "question_type": question_type,
+                "options": parsed_options.get("options", {}),
+                "allow_custom_response": True  # PROMPT #79 - User can type freely OR click options
+            }
+        else:
+            # No options - pure text input
+            assistant_message = {
+                "role": "assistant",
+                "content": parsed_content,
+                "timestamp": datetime.utcnow().isoformat(),
+                "model": f"{response['provider']}/{response['model']}",
+                "question_number": 1,
+                "question_type": "text"  # Pure text input
+            }
 
         logger.info(f"✅ First open-ended question generated successfully")
 
@@ -434,22 +458,31 @@ Gere a primeira pergunta agora!
     except Exception as ai_error:
         logger.error(f"❌ Failed to generate first question: {str(ai_error)}", exc_info=True)
 
-        # Fallback: return a simple first question
+        # Fallback: return a simple first question with options
         return {
             "role": "assistant",
             "content": """👋 Olá! Vou ajudar a definir os requisitos do seu projeto.
 
 ❓ Pergunta 1: O que você espera que este sistema faça?
 
-💡 Algumas sugestões (responda livremente ou escolha uma):
-• Automatizar processos manuais
-• Gerenciar dados e informações
-• Conectar usuários e serviços
-• Melhorar a experiência do cliente
+○ Automatizar processos manuais
+○ Gerenciar dados e informações
+○ Conectar usuários e serviços
+○ Melhorar a experiência do cliente
 
 💬 Ou descreva com suas próprias palavras.""",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fallback",
             "question_number": 1,
-            "question_type": "open_ended"
+            "question_type": "single_choice",
+            "options": {
+                "type": "single",
+                "choices": [
+                    {"id": "automatizar_processos", "label": "Automatizar processos manuais", "value": "automatizar_processos"},
+                    {"id": "gerenciar_dados", "label": "Gerenciar dados e informações", "value": "gerenciar_dados"},
+                    {"id": "conectar_usuarios", "label": "Conectar usuários e serviços", "value": "conectar_usuarios"},
+                    {"id": "melhorar_experiencia", "label": "Melhorar a experiência do cliente", "value": "melhorar_experiencia"}
+                ]
+            },
+            "allow_custom_response": True  # PROMPT #79 - User can type freely OR click options
         }
