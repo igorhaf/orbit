@@ -48,6 +48,9 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   // PROMPT #51 - Track AI errors (credits, authentication, etc.)
   const [aiError, setAiError] = useState<{ type: string; message: string; provider?: string } | null>(null);
 
+  // PROMPT #81 - Track fallback mode (API failure, using system fallback)
+  const [fallbackWarning, setFallbackWarning] = useState<{ message: string; error?: string } | null>(null);
+
   // PROMPT #65 - Async job tracking
   const [sendMessageJobId, setSendMessageJobId] = useState<string | null>(null);
   const [generatePromptsJobId, setGeneratePromptsJobId] = useState<string | null>(null);
@@ -59,6 +62,17 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
     // PROMPT #65 - Clear from localStorage on completion
     localStorage.removeItem(`sendMessageJob_${interviewId}`);
+
+    // PROMPT #81 - Detect fallback mode
+    const isFallback = result?.usage?.fallback === true ||
+                       result?.message?.model === 'system/fallback';
+    if (isFallback) {
+      console.log('⚠️ Fallback mode detected:', result?.usage?.error);
+      setFallbackWarning({
+        message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
+        error: result?.usage?.error
+      });
+    }
 
     setSendMessageJobId(null);
     loadInterview(); // Reload to get new message
@@ -330,12 +344,31 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       const startResponse = await interviewsApi.start(interviewId);
       console.log('📨 Start response:', startResponse);
 
+      // PROMPT #81 - Detect fallback on start
+      const startData = startResponse.data || startResponse;
+      if (startData?.model === 'system/fallback' || startData?.message?.model === 'system/fallback') {
+        console.log('⚠️ Fallback mode detected on start');
+        setFallbackWarning({
+          message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
+          error: 'API não disponível no momento'
+        });
+      }
+
       // Recarregar para pegar mensagem inicial da IA
       console.log('🔄 Reloading interview to get AI response...');
       const response = await interviewsApi.get(interviewId);
       const data = response.data || response;
       console.log('📄 Reloaded interview data:', data);
       console.log('💬 Conversation messages:', data?.conversation_data?.length);
+
+      // PROMPT #81 - Check if first message uses fallback
+      const firstMessage = data?.conversation_data?.[0];
+      if (firstMessage?.model === 'system/fallback') {
+        setFallbackWarning({
+          message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
+          error: 'API não disponível no momento'
+        });
+      }
 
       setInterview(data || null);
 
@@ -856,6 +889,46 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
           )}
         </div>
       </div>
+
+      {/* PROMPT #81 - Fallback Warning Banner */}
+      {fallbackWarning && (
+        <div className="mx-4 mt-4 p-4 rounded-lg border-2 bg-blue-50 border-blue-300">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0">
+              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <h3 className="font-semibold mb-1 text-blue-900">
+                ⚠️ Modo Fallback Ativo
+              </h3>
+              <p className="text-sm text-blue-800">
+                {fallbackWarning.message}
+              </p>
+              {fallbackWarning.error && (
+                <p className="text-xs text-blue-600 mt-1">
+                  Detalhes: {fallbackWarning.error}
+                </p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={() => router.push('/ai-models')}
+                  className="text-sm px-3 py-1 rounded font-medium bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  Configurar API Keys
+                </button>
+                <button
+                  onClick={() => setFallbackWarning(null)}
+                  className="text-sm px-3 py-1 rounded font-medium bg-gray-200 hover:bg-gray-300 text-gray-700"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* AI Error Banner */}
       {aiError && (
