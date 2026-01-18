@@ -1137,10 +1137,20 @@ async def start_interview(
 
     logger.info(f"✅ Interview {interview_id} started with open-ended Question 1")
 
-    return {
+    # PROMPT #81 - Include error if fallback was used
+    response_data = {
         "success": True,
         "message": assistant_message
     }
+
+    # If fallback was used, include error info in usage
+    if assistant_message.get("model") == "system/fallback" and "fallback_error" in assistant_message:
+        response_data["usage"] = {
+            "fallback": True,
+            "error": assistant_message["fallback_error"]
+        }
+
+    return response_data
 
 
 @router.post("/{interview_id}/save-stack", status_code=status.HTTP_200_OK)

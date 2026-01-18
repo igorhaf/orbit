@@ -389,7 +389,7 @@ async def handle_unified_open_interview(
         return {
             "success": True,
             "message": fallback_message,
-            "usage": {"fallback": True, "error": str(ai_error)[:100]}
+            "usage": {"fallback": True, "error": str(ai_error)}
         }
 
 
@@ -508,8 +508,8 @@ Gere a primeira pergunta agora!
     except Exception as ai_error:
         logger.error(f"❌ Failed to generate first question: {str(ai_error)}", exc_info=True)
 
-        # PROMPT #81 - Fallback: return a contextualized first question
-        return {
+        # PROMPT #81 - Fallback: return a contextualized first question with error info
+        fallback_message = {
             "role": "assistant",
             "content": f"""👋 Olá! Vou ajudar a refinar os requisitos do projeto "{project.name}".
 
@@ -536,5 +536,8 @@ Gere a primeira pergunta agora!
                     {"id": "processamento", "label": "Processamento e análise de informações", "value": "processamento"}
                 ]
             },
-            "allow_custom_response": True  # PROMPT #79 - User can type freely OR click options
+            "allow_custom_response": True,  # PROMPT #79 - User can type freely OR click options
+            "fallback_error": str(ai_error)  # PROMPT #81 - Include error for UI display
         }
+
+        return fallback_message
