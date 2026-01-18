@@ -202,6 +202,7 @@ class RAGService:
         embedding_str = "[" + ",".join(str(x) for x in params["embedding"]) + "]"
         params["embedding_str"] = embedding_str
 
+        # PROMPT #81 - Use CAST instead of :: to avoid SQLAlchemy bind parameter conflict
         sql = f"""
             SELECT
                 id,
@@ -209,11 +210,11 @@ class RAGService:
                 content,
                 metadata,
                 created_at,
-                (1 - (embedding <=> :embedding_str::vector)) as similarity
+                (1 - (embedding <=> CAST(:embedding_str AS vector))) as similarity
             FROM rag_documents
             WHERE {" AND ".join(where_clauses)}
-                AND (1 - (embedding <=> :embedding_str::vector)) >= :threshold
-            ORDER BY embedding <=> :embedding_str::vector
+                AND (1 - (embedding <=> CAST(:embedding_str AS vector))) >= :threshold
+            ORDER BY embedding <=> CAST(:embedding_str AS vector)
             LIMIT :k
         """
 

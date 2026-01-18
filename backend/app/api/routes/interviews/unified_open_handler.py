@@ -337,10 +337,60 @@ async def handle_unified_open_interview(
 
     except Exception as ai_error:
         logger.error(f"❌ AI execution failed: {str(ai_error)}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get AI response: {str(ai_error)}"
-        )
+
+        # PROMPT #81 - Fallback: return a contextualized follow-up question
+        question_number = (message_count // 2) + 1
+
+        # Get last user response for context
+        last_user_response = ""
+        for msg in reversed(interview.conversation_data):
+            if msg.get('role') == 'user':
+                last_user_response = msg.get('content', '')[:100]
+                break
+
+        fallback_message = {
+            "role": "assistant",
+            "content": f"""📋 Continuando a entrevista para o projeto "{project.name}"...
+
+❓ Pergunta {question_number}: Sobre o que você mencionou ("{last_user_response}..."), me conte mais detalhes:
+
+○ Quais são os requisitos específicos?
+○ Quem serão os usuários principais?
+○ Há integrações necessárias?
+○ Qual o prazo esperado?
+
+💬 Ou descreva livremente o que precisa.""",
+            "timestamp": datetime.utcnow().isoformat(),
+            "model": "system/fallback",
+            "question_number": question_number,
+            "question_type": "single_choice",
+            "options": {
+                "type": "single",
+                "choices": [
+                    {"id": "requisitos", "label": "Quais são os requisitos específicos?", "value": "requisitos"},
+                    {"id": "usuarios", "label": "Quem serão os usuários principais?", "value": "usuarios"},
+                    {"id": "integracoes", "label": "Há integrações necessárias?", "value": "integracoes"},
+                    {"id": "prazo", "label": "Qual o prazo esperado?", "value": "prazo"}
+                ]
+            },
+            "allow_custom_response": True
+        }
+
+        # Save fallback message to conversation
+        interview.conversation_data.append(fallback_message)
+        flag_modified(interview, "conversation_data")
+        interview.ai_model_used = "system/fallback"
+
+        db.commit()
+        db.refresh(interview)
+
+        logger.warning(f"⚠️  Using fallback question Q{question_number} for interview {interview.id}")
+
+        return {
+            "success": True,
+            "message": fallback_message,
+            "usage": {"fallback": True, "error": str(ai_error)[:100]}
+        }
 
 
 async def generate_first_question(
