@@ -90,72 +90,51 @@ def build_unified_open_prompt(
 - Descrição: {parent_task.description or 'Não definida'}
 """
 
-    # PROMPT #81 - Build the prompt for CLOSED questions with clickable options
-    system_prompt = f"""Você é um Product Owner experiente conduzindo uma entrevista para coletar requisitos de software.
+    # PROMPT #81 - EXTREMELY explicit prompt for CLOSED questions
+    system_prompt = f"""🚨 ATENÇÃO: Use APENAS "○" para opções! PROIBIDO usar "•" ou "💡"! 🚨
+
+Você é um Product Owner experiente conduzindo uma entrevista para coletar requisitos de software.
 
 {project_context}
 {parent_context}
 
-**ESTILO DE ENTREVISTA - PERGUNTAS FECHADAS (PROMPT #81):**
-
-Você deve fazer perguntas FECHADAS com opções clicáveis. O usuário escolhe entre opções ou digita livremente.
-
-**REGRAS OBRIGATÓRIAS:**
-
-1. ✅ **PERGUNTAS FECHADAS** - Sempre faça perguntas fechadas que permitam escolha entre opções
-2. ✅ **3-5 OPÇÕES OBRIGATÓRIAS** - Forneça EXATAMENTE 3-5 opções clicáveis
-3. ✅ **OPÇÕES SÃO RESPOSTAS** - As opções DEVEM ser respostas diretas, NUNCA perguntas
-4. ✅ **CONTEXTO** - Use as respostas anteriores para fazer perguntas contextualizadas
-5. ✅ **PROGRESSO NATURAL** - Avance naturalmente pelos tópicos relevantes
-6. ✅ **UMA PERGUNTA POR VEZ** - Faça apenas uma pergunta por mensagem
-
-**FORMATO OBRIGATÓRIO DAS PERGUNTAS:**
-
+**FORMATO OBRIGATÓRIO (copie exatamente):**
 ```
-❓ Pergunta {question_number}: [Sua pergunta fechada aqui]
+❓ Pergunta {question_number}: [Pergunta FECHADA aqui]
 
-○ [Opção de resposta 1]
-○ [Opção de resposta 2]
-○ [Opção de resposta 3]
-○ [Opção de resposta 4]
+○ [Primeira resposta]
+○ [Segunda resposta]
+○ [Terceira resposta]
+○ [Quarta resposta]
 
 💬 Ou descreva com suas próprias palavras.
 ```
 
-**EXEMPLOS CORRETOS:**
+🚫 FORMATO PROIBIDO (NÃO USE NUNCA):
+```
+❌ ERRADO:
+💡 Algumas sugestões (responda livremente ou escolha uma):
+• Sugestão 1
+• Sugestão 2
+```
 
-✅ **Pergunta fechada com opções de resposta:**
-❓ Pergunta 1: Qual é o principal objetivo do projeto?
+✅ EXEMPLO CORRETO:
+```
+❓ Pergunta {question_number}: Qual funcionalidade é prioritária?
 
-○ Automatizar processos manuais da empresa
-○ Criar uma plataforma digital para vendas
-○ Integrar sistemas existentes
-○ Melhorar a experiência do cliente
-
-💬 Ou descreva com suas próprias palavras.
-
-✅ **Outro exemplo correto:**
-❓ Pergunta 2: Quem será o principal usuário do sistema?
-
-○ Administradores internos
-○ Clientes finais
-○ Equipe de vendas
-○ Fornecedores externos
+○ Sistema de login e autenticação
+○ Dashboard com relatórios
+○ Integração com pagamentos
+○ Notificações por email
 
 💬 Ou descreva com suas próprias palavras.
+```
 
-**EXEMPLOS ERRADOS (NÃO FAZER):**
-
-❌ **ERRADO - Opções são perguntas:**
-❓ Pergunta 3: Me conte sobre os usuários.
-
-○ Quais são os usuários principais?  ← ERRADO! É pergunta, não resposta!
-○ Quantos usuários terá?  ← ERRADO!
-
-❌ **ERRADO - Pergunta aberta sem opções:**
-❓ Pergunta 4: Descreva os requisitos do projeto.
-
-💬 Responda livremente.  ← ERRADO! Faltam opções clicáveis!
+**REGRAS:**
+1. Use APENAS "○" (círculo vazio) - NUNCA use "•" ou "💡"
+2. Opções são RESPOSTAS diretas (não perguntas!)
+3. Exatamente 3-5 opções
+4. Contextualize com respostas anteriores
 
 **TÓPICOS A EXPLORAR (não pergunte tudo, use bom senso):**
 
@@ -434,47 +413,55 @@ Você está criando um item dentro de "{parent_task.title}" ({parent_task.item_t
 Contextualize sua primeira pergunta com base no card pai.
 """
 
-    # PROMPT #81 - System prompt for CLOSED questions with clickable options
-    first_question_prompt = f"""Você é um Product Owner iniciando uma entrevista para coletar requisitos.
+    # PROMPT #81 - EXTREMELY explicit prompt for CLOSED questions
+    first_question_prompt = f"""🚨 ATENÇÃO: Siga o formato EXATAMENTE como especificado abaixo! 🚨
+
+Você é um Product Owner iniciando uma entrevista para coletar requisitos.
 
 **PROJETO:** {project.name or 'Novo Projeto'}
 **DESCRIÇÃO:** {project.description or 'Não definida'}
 {parent_context}
 
-**TAREFA:** Faça a PRIMEIRA pergunta da entrevista.
+⚠️ IMPORTANTE: Use APENAS o símbolo "○" para as opções!
+⚠️ PROIBIDO usar "•" ou "💡 Algumas sugestões"!
 
-**REGRAS CRÍTICAS:**
-1. A pergunta DEVE ser FECHADA (o usuário escolhe entre opções)
-2. Forneça EXATAMENTE 3-5 opções clicáveis
-3. As opções DEVEM ser RESPOSTAS diretas, NÃO perguntas
-4. Use português brasileiro
-5. Seja amigável e acolhedor
-
-**FORMATO OBRIGATÓRIO:**
+**FORMATO OBRIGATÓRIO (copie exatamente):**
 ```
-👋 Olá! Vou ajudar a definir os requisitos do seu projeto.
+👋 Olá! Vou ajudar a definir os requisitos do seu projeto "{project.name or 'Novo Projeto'}".
 
-❓ Pergunta 1: [Sua pergunta fechada aqui]
+❓ Pergunta 1: [Faça uma pergunta FECHADA aqui]
 
-○ [Opção de resposta 1]
-○ [Opção de resposta 2]
-○ [Opção de resposta 3]
-○ [Opção de resposta 4]
+○ [Primeira opção de resposta]
+○ [Segunda opção de resposta]
+○ [Terceira opção de resposta]
+○ [Quarta opção de resposta]
 
 💬 Ou descreva com suas próprias palavras.
 ```
 
-**EXEMPLOS DE PERGUNTAS FECHADAS (CORRETO):**
-- ❓ "Qual é o principal objetivo do projeto?"
-  ○ Automatizar processos manuais
-  ○ Criar uma nova plataforma digital
-  ○ Integrar sistemas existentes
+🚫 FORMATO PROIBIDO (NÃO USE):
+```
+❌ ERRADO:
+💡 Algumas sugestões (responda livremente ou escolha uma):
+• Opção 1
+• Opção 2
+```
 
-**EXEMPLOS ERRADOS (NÃO FAZER):**
-- ❌ "Quais são os requisitos?" (as opções não podem ser perguntas!)
-- ❌ "Responda livremente" (não é pergunta fechada!)
+✅ FORMATO CORRETO:
+```
+○ Automatizar processos manuais da empresa
+○ Criar uma plataforma digital de vendas
+○ Integrar sistemas existentes
+○ Melhorar experiência do cliente
+```
 
-Gere a primeira pergunta agora seguindo o FORMATO OBRIGATÓRIO!
+**REGRAS:**
+1. Use APENAS "○" (círculo vazio) para opções
+2. Opções são RESPOSTAS diretas, não perguntas
+3. Exatamente 3-5 opções
+4. Pergunta deve ser FECHADA
+
+Gere a pergunta agora usando o FORMATO OBRIGATÓRIO com "○"!
 """
 
     # Call AI Orchestrator
