@@ -461,9 +461,14 @@ Gere a primeira pergunta agora!
     orchestrator = AIOrchestrator(db)
 
     try:
+        # PROMPT #81 - API requires at least one message
+        initial_messages = [
+            {"role": "user", "content": "Comece a entrevista para coletar requisitos do projeto."}
+        ]
+
         response = await orchestrator.execute(
             usage_type="interview",
-            messages=[],  # No previous messages
+            messages=initial_messages,
             system_prompt=first_question_prompt,
             max_tokens=500,
             project_id=interview.project_id,
