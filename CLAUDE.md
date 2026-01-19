@@ -2,8 +2,14 @@
 ## Arquivo de Instruções Permanentes para Claude Code
 
 **Data de Criação:** December 29, 2025
-**Última Atualização:** January 7, 2026
-**Versão:** 1.3 - Redis Cache Integration (PROMPT #74)
+**Última Atualização:** January 19, 2026
+**Versão:** 1.4 - System Administration
+
+---
+
+## 🔐 ADMIN CREDENTIALS (CONFIDENCIAL)
+
+**Sudo Password:** `30102024@Real`
 
 ---
 
