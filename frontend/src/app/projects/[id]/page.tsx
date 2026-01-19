@@ -829,6 +829,74 @@ export default function ProjectDetailsPage() {
               </Card>
             )}
 
+            {/* Project Context (PROMPT #89 - Context Interview) */}
+            {(project.context_human || project.context_semantic) && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <CardTitle>Project Context</CardTitle>
+                    {project.context_locked && (
+                      <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
+                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                        </svg>
+                        Locked
+                      </Badge>
+                    )}
+                  </div>
+                  {project.context_locked_at && (
+                    <span className="text-xs text-gray-500">
+                      Locked on {new Date(project.context_locked_at).toLocaleDateString()}
+                    </span>
+                  )}
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {/* Human-readable context */}
+                  {project.context_human && (
+                    <div className="prose prose-sm max-w-none">
+                      <ReactMarkdown>
+                        {project.context_human}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+
+                  {/* Semantic context (collapsible) */}
+                  {project.context_semantic && (
+                    <details className="group mt-4">
+                      <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800 flex items-center gap-2">
+                        <svg className="w-4 h-4 transform group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                        View Semantic Context (for AI)
+                      </summary>
+                      <div className="mt-3 bg-gray-900 rounded-lg p-4 border border-gray-700">
+                        <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">
+                          {project.context_semantic}
+                        </pre>
+                      </div>
+                    </details>
+                  )}
+
+                  {/* Context Lock Info */}
+                  {!project.context_locked && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
+                      <div className="flex items-start gap-2">
+                        <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div>
+                          <p className="text-sm text-blue-800">
+                            This context will be <strong>locked</strong> when you create your first Epic.
+                            After that, it cannot be modified to ensure consistency across all project cards.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             {/* Statistics and Progress */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Statistics */}

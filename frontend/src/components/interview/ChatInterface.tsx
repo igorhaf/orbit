@@ -17,9 +17,11 @@ import { useJobPolling } from '@/hooks';
 interface Props {
   interviewId: string;
   onStatusChange?: () => void;
+  onComplete?: () => void;  // PROMPT #89 - Called when interview is completed (for context generation)
+  interviewMode?: 'context' | 'meta_prompt' | 'orchestrator' | string;  // PROMPT #89 - Interview mode hint
 }
 
-export function ChatInterface({ interviewId, onStatusChange }: Props) {
+export function ChatInterface({ interviewId, onStatusChange, onComplete, interviewMode }: Props) {
   const router = useRouter();
   const [interview, setInterview] = useState<Interview | null>(null);
   const [message, setMessage] = useState('');
@@ -877,27 +879,42 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         </div>
 
         <div className="flex gap-2">
-          {/* PROMPT #80 - Generate Epic Button (not full backlog) */}
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={handleGenerateEpic}
-            disabled={generatingPrompts || !interview || interview.conversation_data.length === 0}
-          >
-            {generatingPrompts ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
-                Generating Epic...
-              </>
-            ) : (
-              <>
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                </svg>
-                🎯 Gerar Épico
-              </>
-            )}
-          </Button>
+          {/* PROMPT #89 - Context Interview: Generate Context Button */}
+          {/* PROMPT #80 - Meta Prompt: Generate Epic Button */}
+          {interviewMode === 'context' ? (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => onComplete?.()}
+              disabled={generatingPrompts || !interview || interview.conversation_data.length < 6}
+            >
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              📝 Gerar Contexto
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleGenerateEpic}
+              disabled={generatingPrompts || !interview || interview.conversation_data.length === 0}
+            >
+              {generatingPrompts ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                  Generating Epic...
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  🎯 Gerar Épico
+                </>
+              )}
+            </Button>
+          )}
 
           {isActive && (
             <>

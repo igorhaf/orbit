@@ -120,10 +120,10 @@ DEFAULT_MODELS = [
         "name": "Gemini 2.0 Flash",
         "provider": "google",
         "model_id": "gemini-2.0-flash",
-        "usage_type": "pattern_discovery",
+        "usage_type": "general",  # Changed from pattern_discovery to avoid enum timing issue
         "max_tokens": 8192,
         "temperature": 0.7,
-        "description": "Latest Gemini model - fast and efficient",
+        "description": "Latest Gemini model - fast and efficient (for pattern discovery)",
         "env_var": "GOOGLE_AI_API_KEY"
     },
     {
