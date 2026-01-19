@@ -466,6 +466,18 @@ async def get_kanban_board(
             "column": task.column,
             "order": task.order,
             "item_type": task.item_type.value if task.item_type else "task",  # PROMPT #82 - Include item type for Epic/Story/Task display
+            "generated_prompt": task.generated_prompt,  # PROMPT #86 - Include for Prompt tab
+            "priority": task.priority.value if task.priority else "medium",
+            "story_points": task.story_points,
+            "acceptance_criteria": task.acceptance_criteria,
+            "labels": task.labels,
+            "assignee": task.assignee,
+            "reporter": task.reporter,
+            "workflow_state": task.workflow_state,
+            "parent_id": task.parent_id,
+            "interview_insights": task.interview_insights,
+            "subtask_suggestions": task.subtask_suggestions,
+            "pending_modification": task.pending_modification,  # PROMPT #95
             "created_at": task.created_at,
             "updated_at": task.updated_at
         })
