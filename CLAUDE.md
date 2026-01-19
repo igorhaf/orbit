@@ -603,8 +603,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #92 (Suggested Epics from Context)
-**Próximo prompt:** PROMPT #93
+**Último prompt:** PROMPT #93 (Unlimited Context Interview)
+**Próximo prompt:** PROMPT #94
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -644,6 +644,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #90**: Context Interview Flow Fix - Corrigiu fluxo de Context Interview para garantir execução antes de Epic Interview. Redirecionou botão "New Project" para wizard `/projects/new`. Atualizou frontend para mostrar tipo correto de entrevista baseado em `context_locked`. Integrou `context_questions.py` no `unified_open_handler.py` para usar perguntas fixas Q1-Q3 no modo context.
 - **PROMPT #91**: Context Interview Model Configuration Fix - Removido parâmetro `temperature` inválido do `context_generator.py`. Corrigido model ID do Claude Haiku 4.5 para `claude-haiku-4-5-20251001`. Modelo `general` configurado como fallback universal para todos os usage_types.
 - **PROMPT #92**: Suggested Epics from Context - Geração automática de 8-20 épicos macro (módulos) após Context Interview. Épicos criados com `labels=["suggested"]` e `workflow_state="draft"`. Visual em cinza (opacity-60, border-dashed) no UI. Preview no wizard review step. Botões de ação escondidos para itens sugeridos (inativos).
+- **PROMPT #93**: Unlimited Context Interview - Entrevista de contexto agora é ILIMITADA. O usuário decide quando terminar clicando no botão "Gerar Contexto". Removido limite de 8 perguntas. IA continua gerando perguntas relevantes até o usuário decidir parar. Perguntas fixas Q1-Q3 ainda são obrigatórias como mínimo.
 
 ---
 
