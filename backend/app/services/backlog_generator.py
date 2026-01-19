@@ -98,54 +98,110 @@ class BacklogGeneratorService:
         if not conversation or len(conversation) == 0:
             raise ValueError(f"Interview {interview_id} has no conversation data")
 
-        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #64)
+        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
         system_prompt = """Você é um Product Owner especialista analisando conversas de entrevistas para extrair requisitos de nível Epic.
+
+METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+
+Esta metodologia funciona da seguinte forma:
+
+1. O texto principal utiliza **identificadores simbólicos** (ex: N1, N2, P1, E1, D1, S1, C1) como **referências semânticas**
+2. Esses identificadores **NÃO são variáveis, exemplos ou placeholders**
+3. Cada identificador possui um **significado único e imutável** definido em um **Mapa Semântico**
+4. O texto narrativo deve ser interpretado **exclusivamente** com base nessas definições
+5. **Não faça inferências** fora do que está explicitamente definido no Mapa Semântico
+6. **Não substitua** os identificadores por seus significados no texto
+7. Caso haja ambiguidade, ela deve ser apontada, não resolvida automaticamente
+8. Caso seja necessário criar novos conceitos, eles devem ser introduzidos como novos identificadores e definidos separadamente
+
+**Categorias de Identificadores:**
+- **N** (Nouns/Entidades): N1, N2, N3... = Usuários, sistemas, entidades de domínio
+- **P** (Processes/Processos): P1, P2, P3... = Processos de negócio, fluxos, workflows
+- **E** (Endpoints): E1, E2, E3... = APIs, rotas, endpoints
+- **D** (Data/Dados): D1, D2, D3... = Tabelas, estruturas de dados, schemas
+- **S** (Services/Serviços): S1, S2, S3... = Serviços, integrações, bibliotecas
+- **C** (Constraints/Critérios): C1, C2, C3... = Regras de negócio, validações, restrições
+- **AC** (Acceptance Criteria): AC1, AC2, AC3... = Critérios de aceitação numerados
+
+**Objetivo desta metodologia:**
+- Reduzir ambiguidade semântica
+- Manter consistência conceitual
+- Permitir edição posterior manual do código
+- Garantir rastreabilidade entre texto e implementação
 
 Sua tarefa:
 1. Analise toda a conversa e identifique o EPIC principal (objetivo de negócio de alto nível)
-2. Extraia critérios de aceitação (o que define que este Epic está "completo")
-3. Extraia insights chave: requisitos, objetivos de negócio, restrições técnicas
-4. Estime story points (1-21, escala Fibonacci) baseado na complexidade do Epic
-5. Sugira prioridade (critical, high, medium, low, trivial)
+2. Crie um **Mapa Semântico** definindo TODOS os identificadores usados
+3. Escreva a narrativa do Epic usando APENAS esses identificadores
+4. Extraia critérios de aceitação (usando identificadores AC1, AC2, AC3...)
+5. Extraia insights chave: requisitos, objetivos de negócio, restrições técnicas
+6. Estime story points (1-21, escala Fibonacci) baseado na complexidade do Epic
+7. Sugira prioridade (critical, high, medium, low, trivial)
 
 IMPORTANTE:
 - Um Epic representa um grande corpo de trabalho (múltiplas Stories)
 - Foque em VALOR DE NEGÓCIO e RESULTADOS PARA O USUÁRIO
+- Use identificadores semânticos em TODO o texto (narrativa, critérios, insights)
 - Seja específico e acionável nos critérios de aceitação
-- Extraia citações/insights reais da conversa
-- TUDO DEVE SER EM PORTUGUÊS (título, descrição, critérios)
+- TUDO DEVE SER EM PORTUGUÊS (título, descrição, critérios, identificadores)
 
-Retorne APENAS JSON válido (sem markdown, sem explicação):
+Retorne APENAS JSON válido (sem markdown code blocks, sem explicação):
 {
     "title": "Título do Epic (conciso, focado em negócio) - EM PORTUGUÊS",
-    "description": "Descrição detalhada do Epic explicando o objetivo de negócio e valor para o usuário - EM PORTUGUÊS",
+    "semantic_map": {
+        "N1": "Definição clara da entidade 1",
+        "N2": "Definição clara da entidade 2",
+        "P1": "Definição clara do processo 1",
+        "E1": "Definição clara do endpoint 1",
+        "D1": "Definição clara da estrutura de dados 1",
+        "S1": "Definição clara do serviço 1",
+        "C1": "Definição clara do critério/regra 1"
+    },
+    "description_markdown": "# Epic: [Título]\n\n## Mapa Semântico\n\n- **N1**: [definição]\n- **N2**: [definição]\n- **P1**: [definição]\n...\n\n## Descrição\n\n[Narrativa usando APENAS identificadores do mapa semântico. Ex: 'Este Epic implementa P1 para N1, permitindo que N2 gerencie D1 via E1.']\n\n## Critérios de Aceitação\n\n1. **AC1**: [critério usando identificadores]\n2. **AC2**: [critério usando identificadores]\n...\n\n## Insights da Entrevista\n\n**Requisitos-Chave:**\n- [requisito usando identificadores]\n...\n\n**Objetivos de Negócio:**\n- [objetivo usando identificadores]\n...\n\n**Restrições Técnicas:**\n- [restrição usando identificadores]\n...",
     "story_points": 13,
     "priority": "high",
     "acceptance_criteria": [
-        "Critério específico mensurável 1 - EM PORTUGUÊS",
-        "Critério específico mensurável 2 - EM PORTUGUÊS",
-        "Critério específico mensurável 3 - EM PORTUGUÊS"
+        "AC1: [Critério específico mensurável usando identificadores semânticos]",
+        "AC2: [Critério específico mensurável usando identificadores semânticos]",
+        "AC3: [Critério específico mensurável usando identificadores semânticos]"
     ],
     "interview_insights": {
-        "key_requirements": ["requisito 1 - EM PORTUGUÊS", "requisito 2 - EM PORTUGUÊS"],
-        "business_goals": ["objetivo 1 - EM PORTUGUÊS", "objetivo 2 - EM PORTUGUÊS"],
-        "technical_constraints": ["restrição 1 - EM PORTUGUÊS", "restrição 2 - EM PORTUGUÊS"]
+        "key_requirements": ["[requisito usando identificadores]", "[requisito usando identificadores]"],
+        "business_goals": ["[objetivo usando identificadores]", "[objetivo usando identificadores]"],
+        "technical_constraints": ["[restrição usando identificadores]", "[restrição usando identificadores]"]
     },
     "interview_question_ids": [0, 2, 5]
 }
 
-interview_question_ids deve conter os índices das mensagens da conversa mais relevantes para este Epic.
+**REGRAS CRÍTICAS:**
+- interview_question_ids deve conter os índices das mensagens da conversa mais relevantes para este Epic
+- description_markdown deve conter TODO o conteúdo formatado em Markdown
+- O Mapa Semântico deve estar TANTO no description_markdown quanto no campo semantic_map do JSON
+- Use identificadores semânticos em TODOS os textos (title pode ser em linguagem natural, mas description/criteria/insights devem usar identificadores)
+- NUNCA substitua identificadores por seus significados - mantenha sempre os identificadores no texto
 """
 
         # Convert conversation to readable format
         conversation_text = self._format_conversation(conversation)
 
-        user_prompt = f"""Analise esta conversa de entrevista e extraia o Epic principal:
+        user_prompt = f"""Analise esta conversa de entrevista e extraia o Epic principal usando a Metodologia de Referências Semânticas.
 
 CONVERSA:
 {conversation_text}
 
-Retorne o Epic como JSON seguindo o schema fornecido no system prompt. LEMBRE-SE: TODO O CONTEÚDO DEVE SER EM PORTUGUÊS."""
+INSTRUÇÕES:
+1. Crie um Mapa Semântico definindo TODOS os conceitos como identificadores (N1, N2, P1, E1, D1, S1, C1, AC1...)
+2. Escreva a narrativa do Epic usando APENAS esses identificadores
+3. Gere o campo "description_markdown" com o Markdown completo formatado (incluindo Mapa Semântico)
+4. Gere o campo "semantic_map" com o dicionário de identificadores
+
+Retorne o Epic como JSON seguindo EXATAMENTE o schema fornecido no system prompt.
+
+LEMBRE-SE:
+- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+- Use identificadores semânticos em TODA a narrativa
+- NUNCA substitua identificadores por seus significados
+- O Mapa Semântico deve aparecer tanto no Markdown quanto no JSON"""
 
         # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Generating Epic from Interview {interview_id}...")
@@ -179,6 +235,18 @@ Retorne o Epic como JSON seguindo o schema fornecido no system prompt. LEMBRE-SE
             clean_json = _strip_markdown_json(result["response"])
             epic_suggestion = json.loads(clean_json)
 
+            # PROMPT #83 - Process Semantic References Methodology output
+            # Use description_markdown if present, otherwise fallback to description
+            if "description_markdown" in epic_suggestion:
+                epic_suggestion["description"] = epic_suggestion["description_markdown"]
+                # Keep description_markdown for reference
+
+            # Add semantic_map to interview_insights for traceability
+            if "semantic_map" in epic_suggestion:
+                if "interview_insights" not in epic_suggestion:
+                    epic_suggestion["interview_insights"] = {}
+                epic_suggestion["interview_insights"]["semantic_map"] = epic_suggestion["semantic_map"]
+
             # Add metadata
             epic_suggestion["_metadata"] = {
                 "source": "interview",
@@ -187,7 +255,8 @@ Retorne o Epic como JSON seguindo o schema fornecido no system prompt. LEMBRE-SE
                 "input_tokens": result.get("input_tokens", 0),
                 "output_tokens": result.get("output_tokens", 0),
                 "cache_hit": result.get("cache_hit", False),
-                "cache_type": result.get("cache_type", None)
+                "cache_type": result.get("cache_type", None),
+                "uses_semantic_references": "semantic_map" in epic_suggestion  # PROMPT #83
             }
 
             logger.info(f"✅ Epic generated: {epic_suggestion['title']} (cache: {result.get('cache_hit', False)})")
@@ -243,43 +312,97 @@ Retorne o Epic como JSON seguindo o schema fornecido no system prompt. LEMBRE-SE
         if not epic:
             raise ValueError(f"Epic {epic_id} not found or is not an Epic")
 
-        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #64)
+        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
         system_prompt = """Você é um Product Owner especialista decompondo Epics em Stories.
+
+METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+
+Esta metodologia funciona da seguinte forma:
+
+1. O texto principal utiliza **identificadores simbólicos** (ex: N1, N2, P1, E1, D1, S1, C1) como **referências semânticas**
+2. Esses identificadores **NÃO são variáveis, exemplos ou placeholders**
+3. Cada identificador possui um **significado único e imutável** definido em um **Mapa Semântico**
+4. O texto narrativo deve ser interpretado **exclusivamente** com base nessas definições
+5. **Não faça inferências** fora do que está explicitamente definido no Mapa Semântico
+6. **Não substitua** os identificadores por seus significados no texto
+7. Caso haja ambiguidade, ela deve ser apontada, não resolvida automaticamente
+8. Caso seja necessário criar novos conceitos, eles devem ser introduzidos como novos identificadores e definidos separadamente
+
+**Categorias de Identificadores:**
+- **N** (Nouns/Entidades): N1, N2, N3... = Usuários, sistemas, entidades de domínio
+- **P** (Processes/Processos): P1, P2, P3... = Processos de negócio, fluxos, workflows
+- **E** (Endpoints): E1, E2, E3... = APIs, rotas, endpoints
+- **D** (Data/Dados): D1, D2, D3... = Tabelas, estruturas de dados, schemas
+- **S** (Services/Serviços): S1, S2, S3... = Serviços, integrações, bibliotecas
+- **C** (Constraints/Critérios): C1, C2, C3... = Regras de negócio, validações, restrições
+- **AC** (Acceptance Criteria): AC1, AC2, AC3... = Critérios de aceitação numerados
+
+**ATENÇÃO:** O Epic pai já possui um Mapa Semântico. Você deve:
+- **REUSAR** os identificadores existentes do Epic quando aplicável
+- **ESTENDER** o mapa com novos identificadores apenas se necessário (N10, P5, E3, etc.)
+- **MANTER CONSISTÊNCIA** com o mapa semântico do Epic
 
 Sua tarefa:
 1. Divida o Epic em 3-7 STORIES (funcionalidades voltadas ao usuário)
-2. Cada Story deve ser entregável de forma independente
-3. Cada Story deve entregar valor ao usuário
-4. Stories devem ser estimadas em story points (1-8, Fibonacci)
-5. Herde a prioridade do Epic (ajuste se necessário)
+2. Cada Story deve ter seu próprio Mapa Semântico (reutilizando identificadores do Epic + novos se necessário)
+3. Cada Story deve ser entregável de forma independente
+4. Cada Story deve entregar valor ao usuário
+5. Stories devem ser estimadas em story points (1-8, Fibonacci)
+6. Herde a prioridade do Epic (ajuste se necessário)
 
 IMPORTANTE:
 - Uma Story representa uma funcionalidade para o usuário (pode ser completada em 1-2 semanas)
-- Siga o formato de User Story: "Como [usuário], eu quero [funcionalidade] para que [benefício]"
-- Cada Story deve ter critérios de aceitação claros
+- Siga o formato de User Story no título: "Como [usuário], eu quero [funcionalidade]"
+- Use identificadores semânticos na description_markdown
+- Cada Story deve ter critérios de aceitação claros (AC1, AC2, AC3...)
 - Stories devem ser independentes (mínimas dependências)
 - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
 
-Retorne APENAS array JSON válido (sem markdown, sem explicação):
+Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
 [
     {
-        "title": "Título da Story (formato User Story) - EM PORTUGUÊS",
-        "description": "Como [usuário], eu quero [funcionalidade] para que [benefício]. Inclua detalhes de implementação aqui. - EM PORTUGUÊS",
+        "title": "Como [N1], eu quero [funcionalidade em linguagem natural]",
+        "semantic_map": {
+            "N1": "Reutilizado do Epic - [definição]",
+            "N10": "Novo conceito específico desta Story - [definição]",
+            "P5": "Novo processo específico desta Story - [definição]",
+            "AC1": "Critério de aceitação 1",
+            "AC2": "Critério de aceitação 2"
+        },
+        "description_markdown": "# Story: [Título]\n\n## Mapa Semântico\n\n- **N1**: [definição - REUTILIZADO DO EPIC]\n- **N10**: [definição - NOVO]\n- **P5**: [definição - NOVO]\n...\n\n## Descrição\n\n[Narrativa usando APENAS identificadores. Ex: 'Esta Story implementa P5 para N1, permitindo gerenciar N10 através de E3.']\n\n## Critérios de Aceitação\n\n1. **AC1**: [critério usando identificadores]\n2. **AC2**: [critério usando identificadores]\n...\n\n## Requisitos do Epic\n\n- [requisito usando identificadores do Epic]",
         "story_points": 5,
         "priority": "high",
         "acceptance_criteria": [
-            "Critério 1 - EM PORTUGUÊS",
-            "Critério 2 - EM PORTUGUÊS"
+            "AC1: [Critério usando identificadores]",
+            "AC2: [Critério usando identificadores]"
         ],
         "interview_insights": {
             "derived_from_epic": true,
-            "epic_requirements": ["requisito que esta story aborda - EM PORTUGUÊS"]
+            "epic_requirements": ["[requisito usando identificadores do Epic]"]
         }
     }
 ]
+
+**REGRAS CRÍTICAS:**
+- REUTILIZE identificadores do Epic sempre que possível
+- CRIE novos identificadores apenas para conceitos específicos da Story
+- Mantenha numeração consistente (se Epic usou N1-N5, Stories usam N6+)
+- Use identificadores semânticos em TODOS os textos
+- NUNCA substitua identificadores por seus significados
 """
 
-        user_prompt = f"""Decomponha este Epic em Stories:
+        # PROMPT #83 - Extract semantic_map from Epic if available
+        epic_semantic_map = None
+        if epic.interview_insights and isinstance(epic.interview_insights, dict):
+            epic_semantic_map = epic.interview_insights.get("semantic_map", {})
+
+        semantic_map_text = ""
+        if epic_semantic_map:
+            semantic_map_text = "\n\nMAPA SEMÂNTICO DO EPIC (REUTILIZE ESTES IDENTIFICADORES):\n"
+            semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
+            semantic_map_text += "\n\nVocê DEVE reutilizar estes identificadores nas Stories sempre que aplicável."
+
+        user_prompt = f"""Decomponha este Epic em Stories usando a Metodologia de Referências Semânticas.
 
 DETALHES DO EPIC:
 Título: {epic.title}
@@ -288,12 +411,25 @@ Story Points: {epic.story_points}
 Prioridade: {epic.priority.value if epic.priority else 'medium'}
 
 Critérios de Aceitação:
-{json.dumps(epic.acceptance_criteria, indent=2) if epic.acceptance_criteria else 'Nenhum'}
+{json.dumps(epic.acceptance_criteria, indent=2, ensure_ascii=False) if epic.acceptance_criteria else 'Nenhum'}
+{semantic_map_text}
 
 Insights da Entrevista:
-{json.dumps(epic.interview_insights, indent=2) if epic.interview_insights else 'Nenhum'}
+{json.dumps(epic.interview_insights, indent=2, ensure_ascii=False) if epic.interview_insights else 'Nenhum'}
 
-Retorne 3-7 Stories como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO O CONTEÚDO DEVE SER EM PORTUGUÊS."""
+INSTRUÇÕES:
+1. REUTILIZE os identificadores do Mapa Semântico do Epic (N1, N2, P1, etc.)
+2. CRIE novos identificadores apenas para conceitos específicos de cada Story (N10+, P5+, etc.)
+3. Cada Story deve ter seu próprio campo "semantic_map" (reutilizando + estendendo)
+4. Gere o campo "description_markdown" com Markdown completo formatado
+5. Use identificadores semânticos em TODA a narrativa
+
+Retorne 3-7 Stories como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.
+
+LEMBRE-SE:
+- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+- REUTILIZE identificadores do Epic (mantenha consistência)
+- NUNCA substitua identificadores por seus significados"""
 
         # PROMPT #85 - RAG Phase 3: Retrieve similar completed stories for learning
         rag_context = ""
@@ -378,6 +514,18 @@ Retorne 3-7 Stories como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO
 
             # Add metadata and parent_id to each Story
             for story in stories_suggestions:
+                # PROMPT #83 - Process Semantic References Methodology output
+                # Use description_markdown if present, otherwise fallback to description
+                if "description_markdown" in story:
+                    story["description"] = story["description_markdown"]
+                    # Keep description_markdown for reference
+
+                # Add semantic_map to interview_insights for traceability
+                if "semantic_map" in story:
+                    if "interview_insights" not in story:
+                        story["interview_insights"] = {}
+                    story["interview_insights"]["semantic_map"] = story["semantic_map"]
+
                 story["parent_id"] = str(epic_id)
                 story["_metadata"] = {
                     "source": "epic_decomposition",
@@ -388,7 +536,8 @@ Retorne 3-7 Stories como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO
                     "cache_hit": result.get("cache_hit", False),
                     "cache_type": result.get("cache_type", None),
                     "rag_enhanced": rag_story_count > 0,  # PROMPT #85 - Phase 3
-                    "rag_similar_stories": rag_story_count  # PROMPT #85 - Phase 3
+                    "rag_similar_stories": rag_story_count,  # PROMPT #85 - Phase 3
+                    "uses_semantic_references": "semantic_map" in story  # PROMPT #83
                 }
 
             logger.info(f"✅ Generated {len(stories_suggestions)} Stories from Epic (cache: {result.get('cache_hit', False)})")
@@ -447,40 +596,98 @@ Retorne 3-7 Stories como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO
         if not story:
             raise ValueError(f"Story {story_id} not found or is not a Story")
 
-        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #64)
+        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
         # PROMPT #54.2 - FIX: Specs removed from decomposition (only for execution)
         system_prompt = """Você é um Product Owner especialista decompondo Stories em Tasks.
 
+METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+
+Esta metodologia funciona da seguinte forma:
+
+1. O texto principal utiliza **identificadores simbólicos** (ex: N1, N2, P1, E1, D1, S1, C1) como **referências semânticas**
+2. Esses identificadores **NÃO são variáveis, exemplos ou placeholders**
+3. Cada identificador possui um **significado único e imutável** definido em um **Mapa Semântico**
+4. O texto narrativo deve ser interpretado **exclusivamente** com base nessas definições
+5. **Não faça inferências** fora do que está explicitamente definido no Mapa Semântico
+6. **Não substitua** os identificadores por seus significados no texto
+7. Caso haja ambiguidade, ela deve ser apontada, não resolvida automaticamente
+8. Caso seja necessário criar novos conceitos, eles devem ser introduzidos como novos identificadores e definidos separadamente
+
+**Categorias de Identificadores:**
+- **N** (Nouns/Entidades): N1, N2, N3... = Usuários, sistemas, entidades de domínio
+- **P** (Processes/Processos): P1, P2, P3... = Processos de negócio, fluxos, workflows
+- **E** (Endpoints): E1, E2, E3... = APIs, rotas, endpoints
+- **D** (Data/Dados): D1, D2, D3... = Tabelas, estruturas de dados, schemas
+- **S** (Services/Serviços): S1, S2, S3... = Serviços, integrações, bibliotecas
+- **C** (Constraints/Critérios): C1, C2, C3... = Regras de negócio, validações, restrições
+- **AC** (Acceptance Criteria): AC1, AC2, AC3... = Critérios de aceitação numerados
+- **F** (Files/Arquivos): F1, F2, F3... = Arquivos, módulos, componentes de código
+- **M** (Methods/Métodos): M1, M2, M3... = Funções, métodos, operações
+
+**ATENÇÃO:** A Story pai já possui um Mapa Semântico (que herda do Epic). Você deve:
+- **REUSAR** os identificadores existentes da Story/Epic quando aplicável
+- **ESTENDER** o mapa com novos identificadores técnicos (F1, M1, E10, D5, etc.)
+- **MANTER CONSISTÊNCIA** com o mapa semântico da Story
+
 Sua tarefa:
-1. Divida a Story em 3-10 TASKS (passos de implementação)
-2. Cada Task deve ser específica e acionável (completável em 1-3 dias)
-3. Estime story points para cada Task (1-3, Fibonacci)
-4. Mantenha a prioridade da Story
+1. Divida a Story em 3-10 TASKS (passos de implementação técnica)
+2. Cada Task deve ter seu próprio Mapa Semântico (reutilizando identificadores + novos técnicos)
+3. Cada Task deve ser específica e acionável (completável em 1-3 dias)
+4. Estime story points para cada Task (1-3, Fibonacci)
+5. Mantenha a prioridade da Story
 
 IMPORTANTE:
 - Uma Task é um passo concreto de implementação (o que precisa ser construído)
-- Seja ESPECÍFICO: "Criar endpoints CRUD da API de Usuário" não "Criar backend"
-- Foque em O QUE precisa ser feito, não COMO (detalhes técnicos vêm durante a execução)
+- Seja ESPECÍFICO: use identificadores como "Implementar E10 (CRUD de N1)" não genérico "Criar backend"
+- Foque em O QUE precisa ser feito (funcional), não COMO (detalhes de framework vêm na execução)
 - Tasks devem ter critérios de aceitação claros (resultados testáveis)
-- Evite detalhes específicos de framework (ex: não mencione Laravel/React/etc.)
+- Use identificadores semânticos em TODO o texto (títulos podem ser mais descritivos, mas descriptions devem usar identificadores)
 - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
 
-Retorne APENAS array JSON válido (sem markdown, sem explicação):
+Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
 [
     {
-        "title": "Título Específico da Task - EM PORTUGUÊS",
-        "description": "O que precisa ser implementado (descrição funcional, não técnica). - EM PORTUGUÊS",
+        "title": "Implementar E10 para gerenciamento de N1",
+        "semantic_map": {
+            "N1": "Reutilizado da Story - [definição]",
+            "E10": "Novo endpoint - [definição específica]",
+            "F1": "Arquivo específico - [definição]",
+            "M1": "Método específico - [definição]",
+            "D5": "Campo/estrutura específica - [definição]",
+            "AC1": "Critério de aceitação 1",
+            "AC2": "Critério de aceitação 2"
+        },
+        "description_markdown": "# Task: [Título]\n\n## Mapa Semântico\n\n- **N1**: [definição - REUTILIZADO]\n- **E10**: [definição - NOVO]\n- **F1**: [definição - NOVO]\n...\n\n## Descrição\n\n[Narrativa técnica usando identificadores. Ex: 'Esta Task implementa E10 em F1, criando M1 para processar D5 de N1.']\n\n## Critérios de Aceitação\n\n1. **AC1**: [critério testável usando identificadores]\n2. **AC2**: [critério testável usando identificadores]\n...",
         "story_points": 2,
         "priority": "high",
         "acceptance_criteria": [
-            "Critério testável 1 - EM PORTUGUÊS",
-            "Critério testável 2 - EM PORTUGUÊS"
+            "AC1: [Critério testável usando identificadores]",
+            "AC2: [Critério testável usando identificadores]"
         ]
     }
 ]
+
+**REGRAS CRÍTICAS:**
+- REUTILIZE identificadores da Story/Epic sempre que possível
+- CRIE novos identificadores técnicos para componentes específicos (F1, M1, E10, etc.)
+- Mantenha numeração consistente (se Story usou E1-E5, Tasks usam E6+)
+- Use identificadores semânticos em TODOS os textos
+- NUNCA substitua identificadores por seus significados
+- Evite mencionar frameworks específicos (Laravel, React, etc.) - use identificadores genéricos
 """
 
-        user_prompt = f"""Decomponha esta Story em Tasks:
+        # PROMPT #83 - Extract semantic_map from Story if available
+        story_semantic_map = None
+        if story.interview_insights and isinstance(story.interview_insights, dict):
+            story_semantic_map = story.interview_insights.get("semantic_map", {})
+
+        semantic_map_text = ""
+        if story_semantic_map:
+            semantic_map_text = "\n\nMAPA SEMÂNTICO DA STORY (REUTILIZE ESTES IDENTIFICADORES):\n"
+            semantic_map_text += json.dumps(story_semantic_map, indent=2, ensure_ascii=False)
+            semantic_map_text += "\n\nVocê DEVE reutilizar estes identificadores nas Tasks sempre que aplicável."
+
+        user_prompt = f"""Decomponha esta Story em Tasks usando a Metodologia de Referências Semânticas.
 
 DETALHES DA STORY:
 Título: {story.title}
@@ -489,9 +696,23 @@ Story Points: {story.story_points}
 Prioridade: {story.priority.value if story.priority else 'medium'}
 
 Critérios de Aceitação:
-{json.dumps(story.acceptance_criteria, indent=2) if story.acceptance_criteria else 'Nenhum'}
+{json.dumps(story.acceptance_criteria, indent=2, ensure_ascii=False) if story.acceptance_criteria else 'Nenhum'}
+{semantic_map_text}
 
-Retorne 3-10 Tasks como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO O CONTEÚDO DEVE SER EM PORTUGUÊS."""
+INSTRUÇÕES:
+1. REUTILIZE os identificadores do Mapa Semântico da Story (N1, P1, E1, etc.)
+2. CRIE novos identificadores técnicos para componentes específicos (F1, M1, E10, D5, etc.)
+3. Cada Task deve ter seu próprio campo "semantic_map" (reutilizando + estendendo)
+4. Gere o campo "description_markdown" com Markdown completo formatado
+5. Use identificadores semânticos em TODA a narrativa
+
+Retorne 3-10 Tasks como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.
+
+LEMBRE-SE:
+- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+- REUTILIZE identificadores da Story (mantenha consistência)
+- NUNCA substitua identificadores por seus significados
+- Evite mencionar frameworks específicos (use identificadores genéricos)"""
 
         # PROMPT #85 - RAG Phase 3: Retrieve similar completed tasks for learning
         rag_context = ""
@@ -576,6 +797,18 @@ Retorne 3-10 Tasks como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO 
 
             # Add metadata and parent_id to each Task
             for task in tasks_suggestions:
+                # PROMPT #83 - Process Semantic References Methodology output
+                # Use description_markdown if present, otherwise fallback to description
+                if "description_markdown" in task:
+                    task["description"] = task["description_markdown"]
+                    # Keep description_markdown for reference
+
+                # Add semantic_map to interview_insights for traceability (Tasks don't have interview_insights by default)
+                if "semantic_map" in task:
+                    if "interview_insights" not in task:
+                        task["interview_insights"] = {}
+                    task["interview_insights"]["semantic_map"] = task["semantic_map"]
+
                 task["parent_id"] = str(story_id)
                 task["_metadata"] = {
                     "source": "story_decomposition",
@@ -586,7 +819,8 @@ Retorne 3-10 Tasks como array JSON seguindo o schema fornecido. LEMBRE-SE: TODO 
                     "cache_hit": result.get("cache_hit", False),
                     "cache_type": result.get("cache_type", None),
                     "rag_enhanced": rag_task_count > 0,  # PROMPT #85 - Phase 3
-                    "rag_similar_tasks": rag_task_count  # PROMPT #85 - Phase 3
+                    "rag_similar_tasks": rag_task_count,  # PROMPT #85 - Phase 3
+                    "uses_semantic_references": "semantic_map" in task  # PROMPT #83
                 }
 
             logger.info(f"✅ Generated {len(tasks_suggestions)} Tasks from Story (cache: {result.get('cache_hit', False)})")
