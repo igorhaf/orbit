@@ -545,6 +545,21 @@ Gere sua resposta agora seguindo o formato do example_output:"""
                 "question_type": "text"  # Pure text input
             }
 
+        # PROMPT #82 - Store Q1 in RAG for deduplication (prevents Q2 from being same as Q1)
+        try:
+            deduplicator = InterviewQuestionDeduplicator(db)
+            deduplicator.store_question(
+                project_id=project.id,
+                interview_id=interview.id,
+                interview_mode=interview.interview_mode,
+                question_text=parsed_content,
+                question_number=1,
+                is_fixed=False
+            )
+            logger.info(f"✅ Stored Q1 in RAG for deduplication")
+        except Exception as e:
+            logger.error(f"❌ Failed to store Q1 in RAG: {e}")
+
         logger.info(f"✅ First open-ended question generated successfully")
 
         return assistant_message
