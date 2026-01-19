@@ -278,6 +278,112 @@ async def get_project_summary(
     }
 
 
+# ============================================================================
+# CONTEXT ENDPOINTS - PROMPT #89
+# ============================================================================
+
+@router.get("/{project_id}/context")
+async def get_project_context(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get project context (semantic and human-readable).
+
+    PROMPT #89 - Context Interview: Foundational Project Description
+
+    Returns the project's context information:
+    - context_semantic: Structured text for AI consumption
+    - context_human: Human-readable description
+    - context_locked: Whether context is immutable
+    - context_locked_at: When context was locked
+
+    Raises:
+        404: If project not found
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    return {
+        "project_id": str(project.id),
+        "project_name": project.name,
+        "context_semantic": project.context_semantic,
+        "context_human": project.context_human,
+        "context_locked": project.context_locked,
+        "context_locked_at": project.context_locked_at.isoformat() if project.context_locked_at else None,
+        "has_context": bool(project.context_semantic)
+    }
+
+
+@router.post("/{project_id}/lock-context")
+async def lock_project_context(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Lock project context (make it immutable).
+
+    PROMPT #89 - Context is locked automatically when first Epic is generated,
+    but can also be locked manually via this endpoint.
+
+    Once locked, context cannot be modified or regenerated.
+
+    Returns:
+        {
+            "success": True,
+            "message": "Context locked successfully",
+            "context_locked_at": "2026-01-19T..."
+        }
+
+    Raises:
+        400: If context not generated yet or already locked
+        404: If project not found
+    """
+    from app.services.context_generator import ContextGeneratorService
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    if project.context_locked:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Context is already locked"
+        )
+
+    if not project.context_semantic:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot lock context: no context has been generated yet"
+        )
+
+    try:
+        context_service = ContextGeneratorService(db)
+        context_service.lock_context(project_id)
+
+        # Refresh to get updated values
+        db.refresh(project)
+
+        return {
+            "success": True,
+            "message": "Context locked successfully",
+            "context_locked_at": project.context_locked_at.isoformat()
+        }
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
 @router.get("/{project_id}/consistency-report")
 async def get_consistency_report(
     project_id: UUID,

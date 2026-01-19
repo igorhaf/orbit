@@ -111,6 +111,12 @@ export interface Project {
   stack_frontend?: string | null;
   stack_css?: string | null;
 
+  // Context fields (PROMPT #89 - Context Interview)
+  context_semantic?: string | null;
+  context_human?: string | null;
+  context_locked?: boolean;
+  context_locked_at?: string | null;
+
   created_at: string;
   updated_at: string;
 }

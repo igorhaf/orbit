@@ -123,6 +123,13 @@ export const projectsApi = {
 
   summary: (id: string) =>
     request<any>(`/api/v1/projects/${id}/summary`),
+
+  // PROMPT #89 - Context Interview endpoints
+  getContext: (id: string) =>
+    request<any>(`/api/v1/projects/${id}/context`),
+
+  lockContext: (id: string) =>
+    request<any>(`/api/v1/projects/${id}/lock-context`, { method: 'POST' }),
 };
 
 // Tasks (Kanban) API
@@ -413,6 +420,18 @@ export const interviewsApi = {
     request<{ job_id: string; status: string; message: string }>(`/api/v1/interviews/${id}/save-stack-async`, {
       method: 'POST',
       body: JSON.stringify(stack),
+    }),
+
+  // PROMPT #89 - Generate context from Context Interview
+  generateContext: (id: string) =>
+    request<{
+      success: boolean;
+      context_semantic: string;
+      context_human: string;
+      semantic_map: Record<string, string>;
+      interview_insights: any;
+    }>(`/api/v1/interviews/${id}/generate-context`, {
+      method: 'POST',
     }),
 };
 
