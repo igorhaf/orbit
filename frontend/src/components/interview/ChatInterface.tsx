@@ -32,6 +32,9 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // PROMPT #82 - Prevent double start in React StrictMode
+  const startingInterviewRef = useRef(false);
+
   // Debug: Log selectedOptions changes
   useEffect(() => {
     console.log('🔍 ChatInterface - selectedOptions changed:', selectedOptions);
@@ -314,8 +317,9 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       const hasMessages = interviewData?.conversation_data && interviewData.conversation_data.length > 0;
       console.log('💬 Has messages:', hasMessages, 'Count:', interviewData?.conversation_data?.length);
 
-      if (!hasMessages) {
+      if (!hasMessages && !startingInterviewRef.current) {
         console.log('🎬 No messages found, auto-starting interview with AI...');
+        startingInterviewRef.current = true;
         await startInterviewWithAI();
       }
     } catch (error: any) {
@@ -336,6 +340,12 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   };
 
   const startInterviewWithAI = async () => {
+    // PROMPT #82 - Double-check guard (React StrictMode protection)
+    if (initializing) {
+      console.log('⏳ Already initializing, skipping duplicate start...');
+      return;
+    }
+
     setInitializing(true);
     try {
       console.log('🚀 Starting interview with AI...');
