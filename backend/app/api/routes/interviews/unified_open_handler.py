@@ -112,6 +112,7 @@ Gere a próxima pergunta (Pergunta {question_number}) usando este formato EXATO:
 </instructions>
 
 <critical_rules>
+- GERE APENAS UMA PERGUNTA POR RESPOSTA (nunca duas ou mais)
 - Use SOMENTE "○" (círculo vazio Unicode)
 - NUNCA use "•" ou "💡 Algumas sugestões"
 - Opções são RESPOSTAS, não perguntas
@@ -461,6 +462,7 @@ Sua resposta DEVE seguir este formato EXATO (incluindo os símbolos "○"):
 </instructions>
 
 <critical_rules>
+- GERE APENAS UMA PERGUNTA (a Pergunta 1, nunca duas ou mais)
 - Use SOMENTE o símbolo "○" (círculo vazio Unicode) para cada opção
 - NUNCA use "•" (bullet point)
 - NUNCA use "💡 Algumas sugestões"
