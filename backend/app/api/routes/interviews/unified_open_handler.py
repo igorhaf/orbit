@@ -26,7 +26,7 @@ from app.services.ai_orchestrator import AIOrchestrator
 from app.services.interview_question_deduplicator import InterviewQuestionDeduplicator
 from app.api.routes.interviews.option_parser import parse_ai_question_options
 from app.api.routes.interviews.response_cleaners import clean_ai_response
-from app.api.routes.interviews.context_builders import prepare_interview_context
+# PROMPT #82: prepare_interview_context NO LONGER used for interviews (full context always sent)
 
 logger = logging.getLogger(__name__)
 
@@ -205,49 +205,76 @@ async def handle_unified_open_interview(
         previous_answers=previous_answers
     )
 
-    # Retrieve previous questions from RAG for deduplication
+    # PROMPT #82 - Retrieve previous questions from RAG for deduplication (IMPROVED)
     previous_questions_context = ""
     try:
         from app.services.rag_service import RAGService
 
         rag_service = RAGService(db)
 
+        # PROMPT #82 - Build semantic query from interview context (not empty!)
+        interview_context_query = f"""Projeto: {project.name}
+Descrição: {project.description}
+Progresso: {len(interview.conversation_data) // 2} perguntas feitas"""
+
         previous_questions = rag_service.retrieve(
-            query="",
+            query=interview_context_query,  # ✅ Semantic context!
             filter={
                 "type": "interview_question",
                 "project_id": str(project.id)
             },
-            top_k=30,
-            similarity_threshold=0.0
+            top_k=10,  # ✅ Reduced from 30 to 10
+            similarity_threshold=0.0  # ✅ No threshold (already filtered by project_id)
         )
 
         if previous_questions:
-            previous_questions_context = "\n\n**⚠️ PERGUNTAS JÁ FEITAS (NÃO REPITA):**\n"
+            # PROMPT #82 - Use XML tags and FULL questions (not truncated!)
+            previous_questions_context = """
+
+<previous_questions>
+⚠️ CRÍTICO: As perguntas abaixo JÁ FORAM FEITAS neste projeto.
+NÃO REPITA estas perguntas nem perguntas muito similares!
+
+"""
             for i, pq in enumerate(previous_questions[:10], 1):
-                previous_questions_context += f"{i}. {pq['content'][:80]}...\n"
+                # Show FULL question (no truncation to 80 chars)
+                question_content = pq.get('content', '[NO CONTENT]')
+                previous_questions_context += f"{i}. {question_content}\n\n"
+
+            previous_questions_context += """</previous_questions>
+
+Gere uma pergunta DIFERENTE das acima.
+"""
 
             logger.info(f"✅ RAG: Retrieved {len(previous_questions)} previous questions for deduplication")
 
     except Exception as e:
         logger.warning(f"⚠️  RAG retrieval failed: {e}")
 
-    # Add previous questions to system prompt
-    system_prompt += previous_questions_context
+    # PROMPT #82 - Insert RAG context at BEGINNING of system_prompt (high prominence)
+    if previous_questions_context:
+        logger.info(f"📋 RAG context added to system_prompt ({len(previous_questions_context)} chars)")
+        system_prompt = previous_questions_context + "\n\n" + system_prompt
 
-    # Prepare optimized messages for AI
-    optimized_messages = prepare_interview_context(
-        conversation_data=interview.conversation_data,
-        max_recent=10
-    )
+    # PROMPT #82 - INTERVIEWS: Always send FULL context (no summarization)
+    # Interviews are short (~15-20 questions = ~40 messages)
+    # Cost increase is minimal, context quality is critical to avoid question repetition
+    messages = [
+        {"role": msg["role"], "content": msg["content"]}
+        for msg in interview.conversation_data
+    ]
+
+    logger.info(f"📝 Interview context: {len(messages)} messages, system_prompt: {len(system_prompt)} chars")
 
     # Call AI Orchestrator
-    orchestrator = AIOrchestrator(db)
+    # PROMPT #82 - Disable cache for interviews to avoid question repetition
+    # Each interview question MUST be unique, cache returns same response causing repetition
+    orchestrator = AIOrchestrator(db, enable_cache=False)
 
     try:
         response = await orchestrator.execute(
             usage_type="interview",
-            messages=optimized_messages,
+            messages=messages,  # PROMPT #82 - Full context (not summarized)
             system_prompt=system_prompt,
             max_tokens=1000,
             project_id=interview.project_id,
@@ -457,7 +484,9 @@ Sua resposta DEVE seguir este formato EXATO (incluindo os símbolos "○"):
 Gere sua resposta agora seguindo o formato do example_output:"""
 
     # Call AI Orchestrator
-    orchestrator = AIOrchestrator(db)
+    # PROMPT #82 - Disable cache for interviews to avoid question repetition
+    # Each interview question MUST be unique, cache returns same response causing repetition
+    orchestrator = AIOrchestrator(db, enable_cache=False)
 
     try:
         # PROMPT #81 - Use few-shot example to force format
