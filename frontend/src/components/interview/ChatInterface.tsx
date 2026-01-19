@@ -761,7 +761,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       alert(`✅ Epic Created!\n\nTitle: ${epic.title}\n\nYou can now decompose it into Stories from the Backlog page.`);
 
       // Refresh interview to show updated state
-      await fetchInterview();
+      await loadInterview();
 
     } catch (error: any) {
       console.error('❌ Failed to generate Epic:', error);
