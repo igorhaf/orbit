@@ -597,8 +597,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #76 (Meta Prompt Fixed Questions)
-**Próximo prompt:** PROMPT #77
+**Último prompt:** PROMPT #82 (Bug Fixes - Interview & Kanban)
+**Próximo prompt:** PROMPT #83
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -612,6 +612,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - PROMPT_71 (Refactor tasks.py - Package Structure Created)
 - PROMPT_72 (Refactor ChatInterface.tsx - Package Structure Created)
 - PROMPT_76 (Meta Prompt Fixed Questions)
+- PROMPT_82 (Bug Fixes - Interview & Kanban)
 
 **Principais Marcos:**
 - **PROMPT #50**: AI Models Management Page
@@ -621,6 +622,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #71**: Refactor tasks.py - Package Structure Created (Abordagem pragmática: estrutura criada, modularização completa adiada. 28 endpoints bem organizados em 1107 linhas)
 - **PROMPT #72**: Refactor ChatInterface.tsx - Package Structure Created (Abordagem pragmática: estrutura criada, modularização completa adiada. 16+ states, 3 job polling hooks, componente estável em 1101 linhas)
 - **PROMPT #76**: Meta Prompt Fixed Questions - PRIMEIRA entrevista sempre coleta informações completas (8 perguntas fixas Q1-Q8 + perguntas contextuais da IA Q9+), fundação para geração automática de hierarquia completa (Epics → Stories → Tasks → Subtasks com prompts atômicos)
+- **PROMPT #82**: Bug Fixes - Corrigiu 6 bugs críticos: Q1/Q2 duplicação (RAG storage), Q1 gerada duas vezes (React StrictMode), regra explícita "uma pergunta", fetchInterview undefined, Kanban board routing conflict, Epic visual indication. 100% bug resolution.
 
 ---
 
