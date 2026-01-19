@@ -190,14 +190,24 @@ async def create_interview(
     logger.info(f"  - ai_model_used: {interview_data.ai_model_used}")
 
     if parent_task_id is None:
-        # FIRST INTERVIEW - Epic creation
-        # Epic never has motivation type (it's the start of the project)
-        interview_mode = "meta_prompt"
-        logger.info(f"Creating FIRST interview for project {project.name}:")
-        logger.info(f"  - interview_mode: meta_prompt (PROMPT #97 - Creates Epic)")
-        logger.info(f"  - Epic has no motivation type (not applicable for projects)")
+        # PROMPT #89 - Context Interview vs Meta Prompt
+        # If context is NOT locked, this is a Context Interview (first interview ever)
+        # If context IS locked, this is a Meta Prompt for Epic creation
+        if not project.context_locked:
+            # CONTEXT INTERVIEW - First interview to establish project context
+            interview_mode = "context"
+            logger.info(f"Creating CONTEXT interview for project {project.name}:")
+            logger.info(f"  - interview_mode: context (PROMPT #89 - Establishes project context)")
+            logger.info(f"  - context_locked: False (context not yet generated)")
+        else:
+            # EPIC CREATION - Context is locked, can create Epic
+            interview_mode = "meta_prompt"
+            logger.info(f"Creating EPIC interview for project {project.name}:")
+            logger.info(f"  - interview_mode: meta_prompt (PROMPT #97 - Creates Epic)")
+            logger.info(f"  - context_locked: True (context already established)")
+
         if interview_data.use_card_focused:
-            logger.warning(f"  - Note: use_card_focused=true ignored for Epic (first interview)")
+            logger.warning(f"  - Note: use_card_focused=true ignored for first interview")
     else:
         # HIERARCHICAL INTERVIEW - Story/Task/Subtask creation
         # Card-focused mode applies here (with motivation types)
@@ -851,6 +861,78 @@ async def _generate_task_direct_async(
 
     finally:
         db.close()
+
+
+@router.post("/{interview_id}/generate-context", status_code=status.HTTP_200_OK)
+async def generate_context_from_interview(
+    interview_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate project context from Context Interview.
+
+    PROMPT #89 - Context Interview: Foundational Project Description
+
+    This endpoint processes a completed Context Interview and generates:
+    - context_semantic: Structured semantic text for AI consumption
+    - context_human: Human-readable project description
+
+    The context is saved to the Project model and the description field
+    is automatically updated with context_human.
+
+    Note: Context is NOT locked by this endpoint. It will be locked
+    automatically when the first Epic is generated.
+
+    Returns:
+        {
+            "success": True,
+            "context_semantic": str,
+            "context_human": str,
+            "interview_insights": {...}
+        }
+
+    Raises:
+        400: If interview is not context mode or has insufficient data
+        404: If interview not found
+    """
+    from app.services.context_generator import ContextGeneratorService
+
+    # Validate interview exists
+    interview = db.query(Interview).filter(Interview.id == interview_id).first()
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview {interview_id} not found"
+        )
+
+    # Validate interview mode
+    if interview.interview_mode not in ["context", "meta_prompt"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Cannot generate context from '{interview.interview_mode}' mode. "
+                   f"Only 'context' interviews support context generation."
+        )
+
+    try:
+        context_service = ContextGeneratorService(db)
+        result = await context_service.generate_context_from_interview(
+            interview_id=interview_id,
+            project_id=interview.project_id
+        )
+
+        return {
+            "success": True,
+            "context_semantic": result["context_semantic"],
+            "context_human": result["context_human"],
+            "semantic_map": result.get("semantic_map", {}),
+            "interview_insights": result.get("interview_insights", {})
+        }
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
 
 
 @router.post("/{interview_id}/generate-hierarchy-from-meta", status_code=status.HTTP_202_ACCEPTED)

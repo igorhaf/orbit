@@ -5,7 +5,7 @@ Represents a project in the AI Orchestrator system
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, Text, DateTime, JSON
+from sqlalchemy import Column, String, Text, DateTime, JSON, Boolean
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 
@@ -21,6 +21,10 @@ class Project(Base):
         name: Project name
         description: Detailed project description
         git_repository_info: JSON containing git repository information
+        context_semantic: Structured semantic text for AI (PROMPT #89)
+        context_human: Human-readable project context (PROMPT #89)
+        context_locked: Whether context is locked (PROMPT #89)
+        context_locked_at: When context was locked (PROMPT #89)
         created_at: Timestamp of creation
         updated_at: Timestamp of last update
     """
@@ -49,6 +53,12 @@ class Project(Base):
     code_path = Column(String(500), nullable=True, index=True)  # Path to project code in Docker container
     # Example: "/app/projects/legacy-app"
     # Required for AI-powered pattern discovery
+
+    # Context fields (PROMPT #89 - Context Interview)
+    context_semantic = Column(Text, nullable=True)       # Structured semantic text for AI consumption
+    context_human = Column(Text, nullable=True)          # Human-readable project description
+    context_locked = Column(Boolean, default=False, nullable=False)  # Lock after first epic
+    context_locked_at = Column(DateTime, nullable=True)  # When context was locked
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

@@ -12,8 +12,8 @@ from pydantic import BaseModel, Field
 class ProjectBase(BaseModel):
     """Base schema for Project"""
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
-    # PROMPT #80 - Description is now REQUIRED (entrada obrigatória para entrevista)
-    description: str = Field(..., min_length=1, max_length=2000, description="Project description (required)")
+    # PROMPT #89 - Description is now OPTIONAL (filled after context interview)
+    description: Optional[str] = Field(None, max_length=5000, description="Project description (auto-filled from context)")
     git_repository_info: Optional[dict] = Field(None, description="Git repository information")
 
     # Stack configuration (PROMPT #46 - Phase 1, PROMPT #67 - Mobile)
@@ -57,6 +57,12 @@ class ProjectResponse(ProjectBase):
     id: UUID
     created_at: datetime
     updated_at: datetime
+
+    # Context fields (PROMPT #89 - Context Interview)
+    context_semantic: Optional[str] = Field(None, description="Structured semantic text for AI")
+    context_human: Optional[str] = Field(None, description="Human-readable project context")
+    context_locked: bool = Field(False, description="Whether context is locked (immutable after first epic)")
+    context_locked_at: Optional[datetime] = Field(None, description="When context was locked")
 
     class Config:
         from_attributes = True
