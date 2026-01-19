@@ -286,8 +286,8 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=4000,
-            temperature=0.3  # Lower temperature for more consistent output
+            max_tokens=4000
+            # Note: temperature is configured in the AI model settings in the database
         )
 
         # Parse response
