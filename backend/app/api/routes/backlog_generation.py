@@ -443,3 +443,91 @@ async def approve_and_create_tasks(
             status_code=500,
             detail=f"Failed to create Tasks: {str(e)}"
         )
+
+
+@router.post("/migrate-descriptions", status_code=status.HTTP_200_OK)
+async def migrate_semantic_to_human_descriptions(
+    project_id: UUID = None,
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #86 - Migrate existing cards to use proper human-readable descriptions.
+
+    POST /api/v1/backlog/migrate-descriptions?project_id={project_id}
+
+    This endpoint re-processes the description field for all cards that have:
+    - generated_prompt (semantic markdown)
+    - interview_insights.semantic_map
+
+    It applies the improved _convert_semantic_to_human function to create
+    clean, human-readable descriptions.
+
+    Parameters:
+    - project_id: Optional. If provided, only migrates cards from this project.
+
+    Returns:
+    - total_processed: Number of cards processed
+    - updated: Number of cards updated
+    - skipped: Number of cards skipped (no semantic_map)
+    """
+    from app.services.backlog_generator import _convert_semantic_to_human
+
+    try:
+        # Query cards with generated_prompt
+        query = db.query(Task).filter(Task.generated_prompt.isnot(None))
+
+        if project_id:
+            query = query.filter(Task.project_id == project_id)
+
+        cards = query.all()
+
+        total_processed = 0
+        updated = 0
+        skipped = 0
+
+        for card in cards:
+            total_processed += 1
+
+            # Get semantic_map from interview_insights
+            semantic_map = None
+            if card.interview_insights and isinstance(card.interview_insights, dict):
+                semantic_map = card.interview_insights.get("semantic_map")
+
+            if not semantic_map:
+                skipped += 1
+                continue
+
+            # Re-apply conversion with improved function
+            new_description = _convert_semantic_to_human(
+                card.generated_prompt,
+                semantic_map
+            )
+
+            # Update only if description changed
+            if new_description != card.description:
+                card.description = new_description
+                card.updated_at = datetime.utcnow()
+                updated += 1
+                logger.info(f"✅ Updated description for {card.item_type} '{card.title}' (ID: {card.id})")
+
+        db.commit()
+
+        logger.info(
+            f"📋 Migration complete: {total_processed} processed, "
+            f"{updated} updated, {skipped} skipped"
+        )
+
+        return {
+            "total_processed": total_processed,
+            "updated": updated,
+            "skipped": skipped,
+            "message": f"Successfully migrated {updated} cards to human-readable descriptions"
+        }
+
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Migration failed: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Migration failed: {str(e)}"
+        )
