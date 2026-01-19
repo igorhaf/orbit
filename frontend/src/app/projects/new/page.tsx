@@ -39,6 +39,15 @@ export default function NewProjectPage() {
   const [contextHuman, setContextHuman] = useState<string | null>(null);
   const [contextSemantic, setContextSemantic] = useState<string | null>(null);
 
+  // PROMPT #92 - Suggested epics
+  const [suggestedEpics, setSuggestedEpics] = useState<Array<{
+    id: string;
+    title: string;
+    description: string;
+    priority: string;
+    order: number;
+  }>>([]);
+
   const handleBasicSubmit = async () => {
     // PROMPT #89 - Only name is required, description comes from context interview
     if (!name.trim()) {
@@ -91,6 +100,10 @@ export default function NewProjectPage() {
       if (contextData.success) {
         setContextHuman(contextData.context_human);
         setContextSemantic(contextData.context_semantic);
+        // PROMPT #92 - Store suggested epics
+        if (contextData.suggested_epics) {
+          setSuggestedEpics(contextData.suggested_epics);
+        }
         setStep('review');
       } else {
         alert('Failed to generate context. Please try again.');
@@ -248,6 +261,46 @@ export default function NewProjectPage() {
                   </div>
                 </div>
 
+                {/* PROMPT #92 - Suggested Epics */}
+                {suggestedEpics.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+                      <span>🎯 Suggested Epics</span>
+                      <span className="text-sm font-normal text-gray-500">({suggestedEpics.length} modules)</span>
+                    </h4>
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <p className="text-sm text-gray-600 mb-3">
+                        These epic suggestions cover the main modules of your project. They are saved as <strong>inactive</strong> (grayed out) in your backlog.
+                        Activate them when you're ready to work on each module.
+                      </p>
+                      <div className="grid gap-2">
+                        {suggestedEpics.map((epic, idx) => (
+                          <div
+                            key={epic.id}
+                            className="flex items-start gap-3 p-3 bg-white rounded border border-gray-200 border-dashed opacity-60"
+                          >
+                            <span className="text-gray-400 font-mono text-sm">{idx + 1}.</span>
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-gray-500 font-medium">{epic.title}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded ${
+                                  epic.priority === 'critical' ? 'bg-red-100 text-red-600' :
+                                  epic.priority === 'high' ? 'bg-orange-100 text-orange-600' :
+                                  epic.priority === 'medium' ? 'bg-yellow-100 text-yellow-600' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {epic.priority}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-400 mt-1">{epic.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Semantic context (collapsible) */}
                 <details className="group">
                   <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800 flex items-center gap-2">
@@ -335,20 +388,37 @@ export default function NewProjectPage() {
                 </div>
               </div>
 
+              {/* PROMPT #92 - Show epic count */}
+              {suggestedEpics.length > 0 && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🎯</span>
+                    <div>
+                      <h4 className="font-medium text-gray-900">
+                        {suggestedEpics.length} Epic Suggestions Generated
+                      </h4>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Your backlog now contains suggested modules. They appear grayed out until you activate them.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-4">
                 <h4 className="font-semibold text-gray-900">Next Steps:</h4>
                 <ul className="space-y-2 text-sm text-gray-600">
                   <li className="flex items-start gap-2">
                     <span className="text-blue-600 font-bold">1.</span>
-                    <span>Start a new interview to create your first Epic</span>
+                    <span>Review the suggested Epics in your backlog</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-blue-600 font-bold">2.</span>
-                    <span>Break down the Epic into Stories and Tasks</span>
+                    <span>Activate an Epic to start working on it</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <span className="text-blue-600 font-bold">3.</span>
-                    <span>Execute tasks and generate code</span>
+                    <span>Create an Epic Interview to define Stories and Tasks</span>
                   </li>
                 </ul>
               </div>
