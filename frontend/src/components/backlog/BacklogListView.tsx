@@ -441,6 +441,8 @@ export default function BacklogListView({
                 key={item.id}
                 task={item}
                 onUpdate={fetchBacklog}
+                onClick={() => handleItemClick(item)} // PROMPT #84 - Open detail panel on click
+                showInterviewButtons={false} // PROMPT #84 - Hide interview buttons in backlog view
               />
             ))}
           </div>
