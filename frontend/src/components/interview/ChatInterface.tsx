@@ -9,7 +9,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { interviewsApi, backlogApi } from '@/lib/api';
 import { Interview } from '@/lib/types';
-import { Button, Badge, JobProgressBar } from '@/components/ui';
+import { Button, Badge, JobProgressBar, Dialog, DialogFooter } from '@/components/ui';
 import { MessageBubble } from './MessageBubble';
 import { ProvisioningStatusCard } from './ProvisioningStatusCard';
 import { useJobPolling } from '@/hooks';
@@ -53,6 +53,12 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
   // PROMPT #81 - Track fallback mode (API failure, using system fallback)
   const [fallbackWarning, setFallbackWarning] = useState<{ message: string; error?: string } | null>(null);
+
+  // PROMPT #87 - Modal states for Epic generation
+  const [showEpicConfirmModal, setShowEpicConfirmModal] = useState(false);
+  const [showEpicSuccessModal, setShowEpicSuccessModal] = useState(false);
+  const [showEpicErrorModal, setShowEpicErrorModal] = useState(false);
+  const [epicResult, setEpicResult] = useState<{ title?: string; error?: string } | null>(null);
 
   // PROMPT #65 - Async job tracking
   const [sendMessageJobId, setSendMessageJobId] = useState<string | null>(null);
@@ -720,20 +726,27 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     }
   };
 
-  // PROMPT #80 - Generate Epic only (not full backlog)
-  const handleGenerateEpic = async () => {
+  // PROMPT #80/87 - Generate Epic only (not full backlog)
+  // PROMPT #87 - Open confirmation modal instead of browser confirm
+  const handleGenerateEpic = () => {
     if (!interview) return;
 
     const hasMessages = interview.conversation_data && interview.conversation_data.length > 0;
     if (!hasMessages) {
-      alert('Cannot generate Epic from an empty interview. Please add some messages first.');
+      setEpicResult({ error: 'Cannot generate Epic from an empty interview. Please add some messages first.' });
+      setShowEpicErrorModal(true);
       return;
     }
 
-    if (!confirm('Generate Epic from this interview using AI?\n\nThe Epic will be created automatically based on your conversation.')) {
-      return;
-    }
+    // Show confirmation modal
+    setShowEpicConfirmModal(true);
+  };
 
+  // PROMPT #87 - Actually execute Epic generation after confirmation
+  const executeEpicGeneration = async () => {
+    if (!interview) return;
+
+    setShowEpicConfirmModal(false);
     setGeneratingPrompts(true);
 
     try {
@@ -757,8 +770,9 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
       console.log('✅ Epic created:', epic.id, epic.title);
 
-      // Show success message
-      alert(`✅ Epic Created!\n\nTitle: ${epic.title}\n\nYou can now decompose it into Stories from the Backlog page.`);
+      // Show success modal
+      setEpicResult({ title: epic.title });
+      setShowEpicSuccessModal(true);
 
       // Refresh interview to show updated state
       await loadInterview();
@@ -766,7 +780,8 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     } catch (error: any) {
       console.error('❌ Failed to generate Epic:', error);
       const errorDetail = error.response?.data?.detail || error.message || 'Failed to generate Epic.';
-      alert(`❌ Error:\n\n${errorDetail}`);
+      setEpicResult({ error: errorDetail });
+      setShowEpicErrorModal(true);
     } finally {
       setGeneratingPrompts(false);
     }
@@ -1192,6 +1207,114 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
           </div>
         )}
       </div>
+
+      {/* PROMPT #87 - Epic Generation Confirmation Modal */}
+      <Dialog
+        open={showEpicConfirmModal}
+        onClose={() => setShowEpicConfirmModal(false)}
+        title="Generate Epic"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">🎯</span>
+            </div>
+            <div>
+              <p className="text-sm text-gray-700">
+                Generate an Epic from this interview using AI?
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                The Epic will be created automatically based on your conversation.
+              </p>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="secondary"
+            onClick={() => setShowEpicConfirmModal(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={executeEpicGeneration}
+          >
+            Generate Epic
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* PROMPT #87 - Epic Generation Success Modal */}
+      <Dialog
+        open={showEpicSuccessModal}
+        onClose={() => setShowEpicSuccessModal(false)}
+        title="Epic Created"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">✅</span>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                {epicResult?.title}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                You can now decompose it into Stories from the Backlog page.
+              </p>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="secondary"
+            onClick={() => setShowEpicSuccessModal(false)}
+          >
+            Close
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setShowEpicSuccessModal(false);
+              router.push(`/projects/${interview?.project_id}?tab=backlog`);
+            }}
+          >
+            Go to Backlog
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* PROMPT #87 - Epic Generation Error Modal */}
+      <Dialog
+        open={showEpicErrorModal}
+        onClose={() => setShowEpicErrorModal(false)}
+        title="Error"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">❌</span>
+            </div>
+            <div>
+              <p className="text-sm text-gray-700">
+                {epicResult?.error || 'An error occurred while generating the Epic.'}
+              </p>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="primary"
+            onClick={() => setShowEpicErrorModal(false)}
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }
