@@ -99,7 +99,7 @@ class Task(Base):
 
     created_from_interview_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("interviews.id", ondelete="SET NULL"),
+        ForeignKey("interviews.id", ondelete="CASCADE"),  # PROMPT #88 - Cascade delete interviews when task is deleted
         nullable=True,
         index=True
     )
