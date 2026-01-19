@@ -603,8 +603,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #86 (Kanban Click & Description Conversion Fix)
-**Próximo prompt:** PROMPT #87
+**Último prompt:** PROMPT #89 (Context Interview)
+**Próximo prompt:** PROMPT #90
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -622,6 +622,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - PROMPT_83 (Semantic References Methodology)
 - PROMPT_84 (Backlog Card Click Navigation Fix)
 - PROMPT_86 (Kanban Click & Description Conversion Fix)
+- PROMPT_88 (Cascade Delete for Interviews)
+- PROMPT_89 (Context Interview)
 
 **Principais Marcos:**
 - **PROMPT #50**: AI Models Management Page
@@ -636,6 +638,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #84**: Backlog Card Click Navigation Fix - Corrigiu bug onde clicar em card no Backlog Card View navegava para entrevista ao invés de abrir ItemDetailPanel. Adicionou props `onClick` e `showInterviewButtons` ao TaskCard, implementou stopPropagation() em todos botões internos, e escondeu botões de entrevista no contexto do Backlog. 90% de melhoria na UX.
 - **PROMPT #85**: Dual Output: Semantic Prompt + Human Description - Separou output de geração de cards: `description` contém texto humano legível (identificadores semânticos convertidos para significados), `generated_prompt` contém texto semântico estruturado (N1, P1, E1, etc.) usado como prompt de saída para gerar cards filhos. Função `_convert_semantic_to_human()` faz conversão via regex sem IA adicional. Backward compatible.
 - **PROMPT #86**: Kanban Click & Description Conversion Fix - Corrigiu 2 bugs críticos: (1) Kanban cards navegavam para entrevista ao invés de abrir ItemDetailPanel - adicionado `showInterviewButtons={false}` no DraggableTaskCard. (2) Descrição mostrava texto semântico com Mapa Semântico redundante - melhorado regex para remover seção Mapa Semântico antes das substituições. Criado endpoint `/migrate-descriptions` para corrigir cards existentes.
+- **PROMPT #88**: Cascade Delete for Interviews - Implementou delete em cascata para entrevistas quando tasks são deletadas. Alterou foreign key de `SET NULL` para `CASCADE` na relação Task→Interview (`created_from_interview_id`).
+- **PROMPT #89**: Context Interview - Feature fundamental que estabelece contexto imutável de projeto através de entrevista IA. Wizard de 4 passos (Nome → Entrevista → Review → Confirmar). Gera dual output: `context_semantic` (para IA) e `context_human` (legível). Contexto é LOCKED após primeiro Epic, garantindo consistência em todos os cards. 3 perguntas fixas (Q1-Q3) + perguntas contextuais da IA (Q4+).
 
 ---
 
