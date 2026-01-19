@@ -44,7 +44,7 @@ def _strip_markdown_json(content: str) -> str:
 
 def _convert_semantic_to_human(semantic_markdown: str, semantic_map: Dict[str, str]) -> str:
     """
-    PROMPT #85 - Convert semantic markdown to human-readable text.
+    PROMPT #85/86 - Convert semantic markdown to human-readable text.
 
     This function transforms semantic references (N1, P1, E1, etc.) into
     their actual meanings, creating natural prose from structured semantic text.
@@ -63,6 +63,17 @@ def _convert_semantic_to_human(semantic_markdown: str, semantic_map: Dict[str, s
 
     human_text = semantic_markdown
 
+    # PROMPT #86 - FIRST: Remove the entire "## Mapa Semântico" section BEFORE replacements
+    # This prevents redundant output like "**Recepcionista**: Recepcionista"
+    # Pattern matches: ## Mapa Semântico (or Mapa Semantico) followed by definition lines
+    # until next ## heading or end of section
+    human_text = re.sub(
+        r'##\s*Mapa\s*Sem[aâ]ntico\s*\n+(?:[-*]\s*\*\*[^*]+\*\*:[^\n]*\n*)*',
+        '',
+        human_text,
+        flags=re.IGNORECASE | re.MULTILINE
+    )
+
     # Sort identifiers by length (longest first) to avoid partial replacements
     # e.g., replace "AC10" before "AC1"
     sorted_identifiers = sorted(semantic_map.keys(), key=len, reverse=True)
@@ -75,19 +86,14 @@ def _convert_semantic_to_human(semantic_markdown: str, semantic_map: Dict[str, s
         human_text = re.sub(pattern, meaning, human_text)
 
     # Clean up markdown formatting artifacts
-    # Remove "## Mapa Semântico" section entirely (it's now embedded in text)
-    human_text = re.sub(
-        r'## Mapa Semântico\s*\n(- \*\*[A-Z]+\d+\*\*:.*\n)*',
-        '',
-        human_text,
-        flags=re.MULTILINE
-    )
+    # Remove any remaining bullet points that look like semantic definitions
+    human_text = re.sub(r'^[-*]\s*\*\*[^*]+\*\*:\s*[^\n]*$\n?', '', human_text, flags=re.MULTILINE)
 
     # Clean up double asterisks that might be left from **identifier** patterns
     human_text = re.sub(r'\*\*\*\*', '', human_text)
 
     # Clean up empty bullet points
-    human_text = re.sub(r'^- \s*$', '', human_text, flags=re.MULTILINE)
+    human_text = re.sub(r'^[-*]\s*$\n?', '', human_text, flags=re.MULTILINE)
 
     # Clean up multiple consecutive newlines
     human_text = re.sub(r'\n{3,}', '\n\n', human_text)
@@ -288,7 +294,7 @@ LEMBRE-SE:
             clean_json = _strip_markdown_json(result["response"])
             epic_suggestion = json.loads(clean_json)
 
-            # PROMPT #85 - Dual output: Semantic prompt + Human description
+            # PROMPT #85/86 - Dual output: Semantic prompt + Human description
             # - generated_prompt: Semantic markdown (for child card generation)
             # - description: Human-readable text (for reading)
             if "description_markdown" in epic_suggestion and "semantic_map" in epic_suggestion:
@@ -301,7 +307,7 @@ LEMBRE-SE:
                     epic_suggestion["semantic_map"]
                 )
 
-                logger.info("✅ PROMPT #85: Converted semantic → human description")
+                logger.info("✅ PROMPT #85/86: Converted semantic → human description")
             elif "description_markdown" in epic_suggestion:
                 # Fallback: no semantic_map, use description_markdown as-is
                 epic_suggestion["description"] = epic_suggestion["description_markdown"]

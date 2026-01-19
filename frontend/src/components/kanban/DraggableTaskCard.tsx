@@ -67,6 +67,7 @@ export function DraggableTaskCard({ task, onDeleted: _onDeleted, onUpdated, disa
       <TaskCard
         task={task}
         onUpdate={handleUpdate}
+        showInterviewButtons={false}  // PROMPT #86 - Hide interview buttons in Kanban (opens panel instead)
       />
     </div>
   );
