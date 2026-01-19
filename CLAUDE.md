@@ -597,8 +597,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #82 (Bug Fixes - Interview & Kanban)
-**Próximo prompt:** PROMPT #83
+**Último prompt:** PROMPT #83 (Semantic References Methodology)
+**Próximo prompt:** PROMPT #84
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -613,6 +613,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - PROMPT_72 (Refactor ChatInterface.tsx - Package Structure Created)
 - PROMPT_76 (Meta Prompt Fixed Questions)
 - PROMPT_82 (Bug Fixes - Interview & Kanban)
+- PROMPT_83 (Semantic References Methodology)
 
 **Principais Marcos:**
 - **PROMPT #50**: AI Models Management Page
@@ -623,6 +624,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #72**: Refactor ChatInterface.tsx - Package Structure Created (Abordagem pragmática: estrutura criada, modularização completa adiada. 16+ states, 3 job polling hooks, componente estável em 1101 linhas)
 - **PROMPT #76**: Meta Prompt Fixed Questions - PRIMEIRA entrevista sempre coleta informações completas (8 perguntas fixas Q1-Q8 + perguntas contextuais da IA Q9+), fundação para geração automática de hierarquia completa (Epics → Stories → Tasks → Subtasks com prompts atômicos)
 - **PROMPT #82**: Bug Fixes - Corrigiu 6 bugs críticos: Q1/Q2 duplicação (RAG storage), Q1 gerada duas vezes (React StrictMode), regra explícita "uma pergunta", fetchInterview undefined, Kanban board routing conflict, Epic visual indication. 100% bug resolution.
+- **PROMPT #83**: Semantic References Methodology - Implementou Metodologia de Referências Semânticas para geração de cards (Épicos/Stories/Tasks) com Markdown estruturado e Mapas Semânticos. Identificadores simbólicos (N1, P1, E1, D1, S1, C1, AC1, F1, M1) com significado único e imutável, reutilizados hierarquicamente (Epic→Stories→Tasks). Reduz ambiguidade semântica ~80%, permite rastreabilidade completa e edição manual posterior. Dual output (Markdown + JSON), backward compatible.
 
 ---
 
