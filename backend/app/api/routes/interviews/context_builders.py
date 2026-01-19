@@ -17,17 +17,22 @@ def prepare_interview_context(conversation_data: List[Dict], max_recent: int = 5
     """
     Prepare efficient context for AI to reduce token usage.
 
+    ⚠️ IMPORTANT (PROMPT #82):
+    This function is ONLY used for TASK EXECUTION CHAT, NOT for interviews!
+    - Interviews always send FULL context (no summarization) to avoid question repetition
+    - This optimization is only applied to long task execution conversations
+
     Strategy (PROMPT #54 - Token Cost Optimization):
     - For short conversations (≤ max_recent messages): Send all verbatim
     - For long conversations (> max_recent messages):
         * Summarize older messages into bullets (role + first 100 chars)
         * Send recent messages verbatim
 
-    This reduces token usage by 60-70% for longer interviews while maintaining
+    This reduces token usage by 60-70% for longer conversations while maintaining
     context quality by preserving recent conversation in full.
 
     Args:
-        conversation_data: Full conversation history from interview
+        conversation_data: Full conversation history
         max_recent: Number of recent messages to keep verbatim (default: 5)
 
     Returns:
