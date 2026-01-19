@@ -54,16 +54,20 @@ export default function NewProjectPage() {
         description: null,  // PROMPT #89 - Description comes from context interview
       });
 
-      setProjectId(projectRes.data.id);
+      // Handle both response formats (with or without .data wrapper)
+      const createdProject = projectRes.data || projectRes;
+      setProjectId(createdProject.id);
 
       // Create interview (PROMPT #89 - First interview = context mode)
       const interviewRes = await interviewsApi.create({
-        project_id: projectRes.data.id,
+        project_id: createdProject.id,
         ai_model_used: 'claude-sonnet-4-20250514',
         parent_task_id: null,  // PROMPT #89 - Null + context_locked=false = context mode
       });
 
-      setInterviewId(interviewRes.data.id);
+      // Handle both response formats
+      const createdInterview = interviewRes.data || interviewRes;
+      setInterviewId(createdInterview.id);
       setStep('interview');
     } catch (error) {
       console.error('Failed to create project:', error);
@@ -82,9 +86,11 @@ export default function NewProjectPage() {
       // Generate context from the interview
       const contextRes = await interviewsApi.generateContext(interviewId);
 
-      if (contextRes.data.success) {
-        setContextHuman(contextRes.data.context_human);
-        setContextSemantic(contextRes.data.context_semantic);
+      // Handle both response formats (with or without .data wrapper)
+      const contextData = contextRes.data || contextRes;
+      if (contextData.success) {
+        setContextHuman(contextData.context_human);
+        setContextSemantic(contextData.context_semantic);
         setStep('review');
       } else {
         alert('Failed to generate context. Please try again.');
