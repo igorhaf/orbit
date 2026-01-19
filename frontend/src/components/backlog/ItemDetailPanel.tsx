@@ -7,7 +7,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Card, CardHeader, CardTitle, CardContent, Button, Input } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, Button, Input, Dialog, DialogFooter } from '@/components/ui';
 import { tasksApi } from '@/lib/api';
 import WorkflowActions from './WorkflowActions';
 import {
@@ -45,6 +45,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [acceptingSubtasks, setAcceptingSubtasks] = useState(false);
   const [creatingInterview, setCreatingInterview] = useState(false);
   const [showSubtaskDetails, setShowSubtaskDetails] = useState<{ [key: number]: boolean }>({});
+
+  // PROMPT #87 - Delete confirmation modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchItemDetails();
@@ -100,6 +104,22 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       console.error('Error adding comment:', error);
     } finally {
       setIsAddingComment(false);
+    }
+  };
+
+  // PROMPT #87 - Delete item handler
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await tasksApi.delete(item.id);
+      setShowDeleteModal(false);
+      onClose();
+      if (onUpdate) onUpdate();
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      alert('Failed to delete item. Please try again.');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -903,7 +923,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
               </svg>
               Edit
             </Button>
-            <Button variant="danger">
+            <Button variant="danger" onClick={() => setShowDeleteModal(true)}>
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
@@ -912,6 +932,48 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           </div>
         </div>
       </div>
+
+      {/* PROMPT #87 - Delete Confirmation Modal */}
+      <Dialog
+        open={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        title="Delete Item"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Delete "{item.title}"?
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                This will permanently delete this {item.item_type} and all related interviews. This action cannot be undone.
+              </p>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="secondary"
+            onClick={() => setShowDeleteModal(false)}
+            disabled={isDeleting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDelete}
+            disabled={isDeleting}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   );
 }
