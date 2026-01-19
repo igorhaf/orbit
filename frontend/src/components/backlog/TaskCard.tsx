@@ -22,6 +22,8 @@ import { SimilarityBadge } from '@/components/kanban/SimilarityBadge'; // PROMPT
 interface TaskCardProps {
   task: Task;
   onUpdate?: () => void;
+  onClick?: () => void; // PROMPT #84 - Allow opening detail panel instead of creating interviews
+  showInterviewButtons?: boolean; // PROMPT #84 - Control whether to show "Create Sub-Interview" buttons
 }
 
 // Helper function to get priority color
@@ -88,7 +90,7 @@ const getItemTypeIcon = (type: ItemType) => {
   }
 };
 
-export function TaskCard({ task, onUpdate }: TaskCardProps) {
+export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true }: TaskCardProps) {
   const router = useRouter();
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [acceptingSubtasks, setAcceptingSubtasks] = useState(false);
@@ -152,7 +154,10 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
   };
 
   return (
-    <Card className="mb-4">
+    <Card
+      className={`mb-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      onClick={onClick}
+    >
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3 flex-1">
@@ -218,11 +223,14 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
         )}
 
         {/* AI-Suggested Subtasks */}
-        {hasSuggestions && (
+        {hasSuggestions && showInterviewButtons && (
           <div className="border-t pt-4 mt-4">
             <div className="flex items-center justify-between mb-3">
               <button
-                onClick={() => setShowSubtasks(!showSubtasks)}
+                onClick={(e) => {
+                  e.stopPropagation(); // PROMPT #84 - Prevent card click
+                  setShowSubtasks(!showSubtasks);
+                }}
                 className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-blue-600 transition-colors"
               >
                 {showSubtasks ? (
@@ -270,7 +278,10 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
             {/* Action Buttons */}
             <div className="flex gap-3">
               <Button
-                onClick={handleAcceptSubtasks}
+                onClick={(e) => {
+                  e.stopPropagation(); // PROMPT #84 - Prevent card click
+                  handleAcceptSubtasks();
+                }}
                 disabled={acceptingSubtasks}
                 className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
               >
@@ -290,7 +301,10 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
               </Button>
 
               <Button
-                onClick={handleCreateSubInterview}
+                onClick={(e) => {
+                  e.stopPropagation(); // PROMPT #84 - Prevent card click
+                  handleCreateSubInterview();
+                }}
                 disabled={creatingInterview}
                 className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
               >
@@ -313,10 +327,13 @@ export function TaskCard({ task, onUpdate }: TaskCardProps) {
         )}
 
         {/* Create Sub-Interview button (always available) */}
-        {!hasSuggestions && (
+        {!hasSuggestions && showInterviewButtons && (
           <div className="border-t pt-4 mt-4">
             <Button
-              onClick={handleCreateSubInterview}
+              onClick={(e) => {
+                e.stopPropagation(); // PROMPT #84 - Prevent card click
+                handleCreateSubInterview();
+              }}
               disabled={creatingInterview}
               className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white w-full justify-center"
             >
