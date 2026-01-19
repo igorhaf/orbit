@@ -7,6 +7,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import {
   Card,
@@ -22,9 +23,9 @@ import { projectsApi } from '@/lib/api';
 import { Project, ProjectCreate } from '@/lib/types';
 
 export default function ProjectsPage() {
+  const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
@@ -53,22 +54,6 @@ export default function ProjectsPage() {
       setProjects([]); // Reset to empty array on error
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleCreateProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-
-    try {
-      await projectsApi.create(formData);
-      setShowCreateDialog(false);
-      setFormData({ name: '', description: '', code_path: '' });
-      fetchProjects();
-    } catch (error) {
-      console.error('Error creating project:', error);
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -136,7 +121,7 @@ export default function ProjectsPage() {
           </div>
           <Button
             variant="primary"
-            onClick={() => setShowCreateDialog(true)}
+            onClick={() => router.push('/projects/new')}
             leftIcon={
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -178,7 +163,7 @@ export default function ProjectsPage() {
                 Get started by creating a new project.
               </p>
               <div className="mt-6">
-                <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
+                <Button variant="primary" onClick={() => router.push('/projects/new')}>
                   New Project
                 </Button>
               </div>
@@ -314,61 +299,6 @@ export default function ProjectsPage() {
               </Button>
             </div>
           </div>
-        </Dialog>
-
-        {/* Create Project Dialog */}
-        <Dialog
-          open={showCreateDialog}
-          onClose={() => setShowCreateDialog(false)}
-          title="Create New Project"
-          description="Create a new AI orchestration project"
-        >
-          <form onSubmit={handleCreateProject}>
-            <div className="space-y-4">
-              <Input
-                label="Project Name"
-                placeholder="My AI Project"
-                required
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-              />
-              <Input
-                label="Description"
-                placeholder="Project description..."
-                value={formData.description || ''}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-              />
-              <div>
-                <Input
-                  label="Code Path (Optional)"
-                  placeholder="/app/projects/my-legacy-app"
-                  value={formData.code_path || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, code_path: e.target.value })
-                  }
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Path to project code in Docker container. Required for AI-powered pattern discovery.
-                </p>
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setShowCreateDialog(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" isLoading={isSubmitting}>
-                Create Project
-              </Button>
-            </DialogFooter>
-          </form>
         </Dialog>
 
         {/* Edit Project Dialog */}

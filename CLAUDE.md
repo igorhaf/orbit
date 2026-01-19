@@ -603,8 +603,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #89 (Context Interview)
-**Próximo prompt:** PROMPT #90
+**Último prompt:** PROMPT #90 (Context Interview Flow Fix)
+**Próximo prompt:** PROMPT #91
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -624,6 +624,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - PROMPT_86 (Kanban Click & Description Conversion Fix)
 - PROMPT_88 (Cascade Delete for Interviews)
 - PROMPT_89 (Context Interview)
+- PROMPT_90 (Context Interview Flow Fix)
 
 **Principais Marcos:**
 - **PROMPT #50**: AI Models Management Page
@@ -640,6 +641,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #86**: Kanban Click & Description Conversion Fix - Corrigiu 2 bugs críticos: (1) Kanban cards navegavam para entrevista ao invés de abrir ItemDetailPanel - adicionado `showInterviewButtons={false}` no DraggableTaskCard. (2) Descrição mostrava texto semântico com Mapa Semântico redundante - melhorado regex para remover seção Mapa Semântico antes das substituições. Criado endpoint `/migrate-descriptions` para corrigir cards existentes.
 - **PROMPT #88**: Cascade Delete for Interviews - Implementou delete em cascata para entrevistas quando tasks são deletadas. Alterou foreign key de `SET NULL` para `CASCADE` na relação Task→Interview (`created_from_interview_id`).
 - **PROMPT #89**: Context Interview - Feature fundamental que estabelece contexto imutável de projeto através de entrevista IA. Wizard de 4 passos (Nome → Entrevista → Review → Confirmar). Gera dual output: `context_semantic` (para IA) e `context_human` (legível). Contexto é LOCKED após primeiro Epic, garantindo consistência em todos os cards. 3 perguntas fixas (Q1-Q3) + perguntas contextuais da IA (Q4+).
+- **PROMPT #90**: Context Interview Flow Fix - Corrigiu fluxo de Context Interview para garantir execução antes de Epic Interview. Redirecionou botão "New Project" para wizard `/projects/new`. Atualizou frontend para mostrar tipo correto de entrevista baseado em `context_locked`. Integrou `context_questions.py` no `unified_open_handler.py` para usar perguntas fixas Q1-Q3 no modo context.
 
 ---
 
