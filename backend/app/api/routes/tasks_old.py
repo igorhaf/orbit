@@ -130,6 +130,35 @@ async def create_task(
     return db_task
 
 
+# PROMPT #82 - Moved before /{task_id} to avoid route conflict
+@router.get("/blocked", response_model=List[TaskResponse])
+async def get_blocked_tasks(
+    project_id: UUID = Query(..., description="Project ID to filter blocked tasks"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all blocked tasks for a project (for "Bloqueados" Kanban column).
+
+    PROMPT #94 FASE 4 - Blocking System:
+    When AI suggests modifying an existing task (>90% semantic similarity):
+    - Task gets BLOCKED status
+    - Modification saved in pending_modification field
+    - User must approve/reject via UI
+
+    GET /api/v1/tasks/blocked?project_id={uuid}
+
+    Returns:
+    - List of blocked tasks with pending_modification data
+    """
+    from app.services.modification_manager import get_blocked_tasks as get_blocked
+
+    blocked_tasks = get_blocked(project_id=project_id, db=db)
+
+    logger.info(f"Retrieved {len(blocked_tasks)} blocked tasks for project {project_id}")
+
+    return blocked_tasks
+
+
 @router.get("/{task_id}", response_model=TaskResponse)
 async def get_task(
     task: Task = Depends(get_task_or_404)
@@ -1248,50 +1277,6 @@ Me diga como posso ajudar!""",
 class RejectModificationRequest(BaseModel):
     """Request model for rejecting a proposed modification."""
     rejection_reason: Optional[str] = None
-
-
-@router.get("/blocked", response_model=List[TaskResponse])
-async def get_blocked_tasks(
-    project_id: UUID = Query(..., description="Project ID to filter blocked tasks"),
-    db: Session = Depends(get_db)
-):
-    """
-    Get all blocked tasks for a project (for "Bloqueados" Kanban column).
-
-    PROMPT #94 FASE 4 - Blocking System:
-    When AI suggests modifying an existing task (>90% semantic similarity):
-    - Task gets BLOCKED status
-    - Modification saved in pending_modification field
-    - User must approve/reject via UI
-
-    GET /api/v1/tasks/blocked?project_id={uuid}
-
-    Returns:
-    - List of blocked tasks with pending_modification data
-
-    Example response:
-    [
-        {
-            "id": "uuid",
-            "title": "Create user authentication",
-            "status": "blocked",
-            "blocked_reason": "Modification suggested by AI",
-            "pending_modification": {
-                "title": "Add JWT authentication with refresh tokens",
-                "description": "...",
-                "similarity_score": 0.95,
-                "suggested_at": "2026-01-09T12:34:56"
-            }
-        }
-    ]
-    """
-    from app.services.modification_manager import get_blocked_tasks
-
-    blocked_tasks = get_blocked_tasks(project_id=project_id, db=db)
-
-    logger.info(f"Retrieved {len(blocked_tasks)} blocked tasks for project {project_id}")
-
-    return blocked_tasks
 
 
 @router.post("/{task_id}/approve-modification", response_model=TaskResponse)
