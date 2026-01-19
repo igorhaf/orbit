@@ -16,12 +16,14 @@ interface InterviewListProps {
   projectId?: string;
   showHeader?: boolean;
   showCreateButton?: boolean;
+  project?: Project;  // PROMPT #90 - Pass project to detect context state
 }
 
 export function InterviewList({
   projectId,
   showHeader = true,
-  showCreateButton = true
+  showCreateButton = true,
+  project: projectProp  // PROMPT #90 - Project passed from parent
 }: InterviewListProps) {
   const router = useRouter();
   const [interviews, setInterviews] = useState<Interview[]>([]);
@@ -364,15 +366,26 @@ export function InterviewList({
             </div>
           )}
 
-          {/* PROMPT #98 - Card-focused mode info */}
-          <div className="text-sm text-gray-600 bg-blue-50 p-4 rounded border border-blue-200">
-            <p className="font-medium text-gray-900 mb-1">Epic Interview (First Interview)</p>
-            <p className="text-xs text-gray-600">
-              This interview will create an Epic for your project.
-              Card-focused mode (with motivation types) is available for hierarchical interviews
-              (Stories, Tasks, Subtasks) created from this Epic.
-            </p>
-          </div>
+          {/* PROMPT #90 - Context-aware interview type info */}
+          {/* Show Context Interview info if project doesn't have context yet */}
+          {projectProp && !projectProp.context_locked ? (
+            <div className="text-sm text-gray-600 bg-amber-50 p-4 rounded border border-amber-200">
+              <p className="font-medium text-gray-900 mb-1">Context Interview (Required First Step)</p>
+              <p className="text-xs text-gray-600">
+                This interview will establish the foundational context for your project.
+                After completing this, the context will be locked and you can create Epics.
+              </p>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-600 bg-blue-50 p-4 rounded border border-blue-200">
+              <p className="font-medium text-gray-900 mb-1">Epic Interview</p>
+              <p className="text-xs text-gray-600">
+                This interview will create an Epic for your project.
+                Card-focused mode (with motivation types) is available for hierarchical interviews
+                (Stories, Tasks, Subtasks) created from this Epic.
+              </p>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-4">
             <Button

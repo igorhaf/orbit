@@ -386,18 +386,19 @@ export default function ProjectDetailsPage() {
             </Link>
 
             {/* New Interview button - only show on interviews tab */}
+            {/* PROMPT #90 - Show correct button based on context state */}
             {activeTab === 'interviews' && (
               <Button
                 variant="primary"
                 className="h-10"
                 onClick={async () => {
                   try {
-                    // PROMPT #97 - First interview with no parent → meta_prompt
+                    // PROMPT #90 - Backend auto-detects context vs meta_prompt based on context_locked
                     const response = await interviewsApi.create({
                       project_id: projectId,
                       ai_model_used: 'claude-3-sonnet',
                       conversation_data: [],
-                      parent_task_id: null,  // PROMPT #97 - Null = first interview = meta_prompt
+                      parent_task_id: null,  // PROMPT #97 - Null = context (if not locked) or meta_prompt (if locked)
                     });
                     const interviewId = response.data?.id || response.id;
                     router.push(`/projects/${projectId}/interviews/${interviewId}`);
@@ -406,6 +407,7 @@ export default function ProjectDetailsPage() {
                     alert('Failed to create interview. Please try again.');
                   }
                 }}
+                title={!project?.context_locked ? 'Start Context Interview to establish project foundation' : 'Start Epic Interview'}
               >
                 <svg
                   className="w-4 h-4 mr-2"
@@ -420,7 +422,7 @@ export default function ProjectDetailsPage() {
                     d="M12 4v16m8-8H4"
                   />
                 </svg>
-                New Interview
+                {!project?.context_locked ? 'Context Interview' : 'New Epic Interview'}
               </Button>
             )}
           </div>
@@ -520,7 +522,8 @@ export default function ProjectDetailsPage() {
 
         {activeTab === 'interviews' && (
           <div>
-            <InterviewList projectId={projectId} showHeader={false} showCreateButton={false} />
+            {/* PROMPT #90 - Pass project to detect context state for interview type */}
+            <InterviewList projectId={projectId} showHeader={false} showCreateButton={false} project={project} />
           </div>
         )}
 
