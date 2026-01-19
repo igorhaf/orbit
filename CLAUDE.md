@@ -597,8 +597,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #84 (Backlog Card Click Navigation Fix)
-**Próximo prompt:** PROMPT #85
+**Último prompt:** PROMPT #85 (Dual Output: Semantic Prompt + Human Description)
+**Próximo prompt:** PROMPT #86
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -627,6 +627,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #82**: Bug Fixes - Corrigiu 6 bugs críticos: Q1/Q2 duplicação (RAG storage), Q1 gerada duas vezes (React StrictMode), regra explícita "uma pergunta", fetchInterview undefined, Kanban board routing conflict, Epic visual indication. 100% bug resolution.
 - **PROMPT #83**: Semantic References Methodology - Implementou Metodologia de Referências Semânticas para geração de cards (Épicos/Stories/Tasks) com Markdown estruturado e Mapas Semânticos. Identificadores simbólicos (N1, P1, E1, D1, S1, C1, AC1, F1, M1) com significado único e imutável, reutilizados hierarquicamente (Epic→Stories→Tasks). Reduz ambiguidade semântica ~80%, permite rastreabilidade completa e edição manual posterior. Dual output (Markdown + JSON), backward compatible.
 - **PROMPT #84**: Backlog Card Click Navigation Fix - Corrigiu bug onde clicar em card no Backlog Card View navegava para entrevista ao invés de abrir ItemDetailPanel. Adicionou props `onClick` e `showInterviewButtons` ao TaskCard, implementou stopPropagation() em todos botões internos, e escondeu botões de entrevista no contexto do Backlog. 90% de melhoria na UX.
+- **PROMPT #85**: Dual Output: Semantic Prompt + Human Description - Separou output de geração de cards: `description` contém texto humano legível (identificadores semânticos convertidos para significados), `generated_prompt` contém texto semântico estruturado (N1, P1, E1, etc.) usado como prompt de saída para gerar cards filhos. Função `_convert_semantic_to_human()` faz conversão via regex sem IA adicional. Backward compatible.
 
 ---
 

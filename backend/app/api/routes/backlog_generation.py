@@ -234,6 +234,7 @@ async def approve_and_create_epic(
     """
     try:
         # Create Epic from approved suggestion
+        # PROMPT #85 - Include generated_prompt (semantic output prompt)
         epic = Task(
             id=uuid4(),
             project_id=project_id,
@@ -246,6 +247,7 @@ async def approve_and_create_epic(
             interview_insights=suggestion.get("interview_insights", {}),
             interview_question_ids=suggestion.get("interview_question_ids", []),
             generation_context=suggestion.get("_metadata", {}),
+            generated_prompt=suggestion.get("generated_prompt"),  # PROMPT #85
             reporter="system",
             workflow_state="backlog",
             order=0,
@@ -288,6 +290,7 @@ async def approve_and_create_stories(
         created_stories = []
 
         for i, suggestion in enumerate(suggestions):
+            # PROMPT #85 - Include generated_prompt (semantic output prompt)
             story = Task(
                 id=uuid4(),
                 project_id=project_id,
@@ -300,6 +303,7 @@ async def approve_and_create_stories(
                 acceptance_criteria=suggestion.get("acceptance_criteria", []),
                 interview_insights=suggestion.get("interview_insights", {}),
                 generation_context=suggestion.get("_metadata", {}),
+                generated_prompt=suggestion.get("generated_prompt"),  # PROMPT #85
                 reporter="system",
                 workflow_state="backlog",
                 order=i,
@@ -392,6 +396,7 @@ async def approve_and_create_tasks(
                 continue
 
             # No modification detected - create new task normally
+            # PROMPT #85 - Include generated_prompt (semantic output prompt)
             task = Task(
                 id=uuid4(),
                 project_id=project_id,
@@ -403,6 +408,7 @@ async def approve_and_create_tasks(
                 story_points=suggestion.get("story_points"),
                 acceptance_criteria=suggestion.get("acceptance_criteria", []),
                 generation_context=suggestion.get("_metadata", {}),
+                generated_prompt=suggestion.get("generated_prompt"),  # PROMPT #85
                 reporter="system",
                 workflow_state="backlog",
                 order=i,

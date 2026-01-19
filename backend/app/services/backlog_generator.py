@@ -42,6 +42,59 @@ def _strip_markdown_json(content: str) -> str:
     return content.strip()
 
 
+def _convert_semantic_to_human(semantic_markdown: str, semantic_map: Dict[str, str]) -> str:
+    """
+    PROMPT #85 - Convert semantic markdown to human-readable text.
+
+    This function transforms semantic references (N1, P1, E1, etc.) into
+    their actual meanings, creating natural prose from structured semantic text.
+
+    Args:
+        semantic_markdown: Markdown text with semantic identifiers (N1, P1, etc.)
+        semantic_map: Dictionary mapping identifiers to their meanings
+
+    Returns:
+        Human-readable text with identifiers replaced by their meanings
+    """
+    import re
+
+    if not semantic_map or not semantic_markdown:
+        return semantic_markdown or ""
+
+    human_text = semantic_markdown
+
+    # Sort identifiers by length (longest first) to avoid partial replacements
+    # e.g., replace "AC10" before "AC1"
+    sorted_identifiers = sorted(semantic_map.keys(), key=len, reverse=True)
+
+    for identifier in sorted_identifiers:
+        meaning = semantic_map[identifier]
+        # Replace identifier with meaning (case-sensitive, word boundaries)
+        # Match: **N1**, N1, (N1), [N1], N1:, N1,, N1.
+        pattern = rf'\b{re.escape(identifier)}\b'
+        human_text = re.sub(pattern, meaning, human_text)
+
+    # Clean up markdown formatting artifacts
+    # Remove "## Mapa Semântico" section entirely (it's now embedded in text)
+    human_text = re.sub(
+        r'## Mapa Semântico\s*\n(- \*\*[A-Z]+\d+\*\*:.*\n)*',
+        '',
+        human_text,
+        flags=re.MULTILINE
+    )
+
+    # Clean up double asterisks that might be left from **identifier** patterns
+    human_text = re.sub(r'\*\*\*\*', '', human_text)
+
+    # Clean up empty bullet points
+    human_text = re.sub(r'^- \s*$', '', human_text, flags=re.MULTILINE)
+
+    # Clean up multiple consecutive newlines
+    human_text = re.sub(r'\n{3,}', '\n\n', human_text)
+
+    return human_text.strip()
+
+
 class BacklogGeneratorService:
     """Service for AI-powered backlog generation with user approval"""
 
@@ -235,11 +288,24 @@ LEMBRE-SE:
             clean_json = _strip_markdown_json(result["response"])
             epic_suggestion = json.loads(clean_json)
 
-            # PROMPT #83 - Process Semantic References Methodology output
-            # Use description_markdown if present, otherwise fallback to description
-            if "description_markdown" in epic_suggestion:
+            # PROMPT #85 - Dual output: Semantic prompt + Human description
+            # - generated_prompt: Semantic markdown (for child card generation)
+            # - description: Human-readable text (for reading)
+            if "description_markdown" in epic_suggestion and "semantic_map" in epic_suggestion:
+                # Store semantic markdown as the output prompt (Prompt tab)
+                epic_suggestion["generated_prompt"] = epic_suggestion["description_markdown"]
+
+                # Convert semantic to human-readable text (Description tab)
+                epic_suggestion["description"] = _convert_semantic_to_human(
+                    epic_suggestion["description_markdown"],
+                    epic_suggestion["semantic_map"]
+                )
+
+                logger.info("✅ PROMPT #85: Converted semantic → human description")
+            elif "description_markdown" in epic_suggestion:
+                # Fallback: no semantic_map, use description_markdown as-is
                 epic_suggestion["description"] = epic_suggestion["description_markdown"]
-                # Keep description_markdown for reference
+                epic_suggestion["generated_prompt"] = epic_suggestion["description_markdown"]
 
             # Add semantic_map to interview_insights for traceability
             if "semantic_map" in epic_suggestion:
@@ -514,11 +580,20 @@ LEMBRE-SE:
 
             # Add metadata and parent_id to each Story
             for story in stories_suggestions:
-                # PROMPT #83 - Process Semantic References Methodology output
-                # Use description_markdown if present, otherwise fallback to description
-                if "description_markdown" in story:
+                # PROMPT #85 - Dual output: Semantic prompt + Human description
+                if "description_markdown" in story and "semantic_map" in story:
+                    # Store semantic markdown as the output prompt (Prompt tab)
+                    story["generated_prompt"] = story["description_markdown"]
+
+                    # Convert semantic to human-readable text (Description tab)
+                    story["description"] = _convert_semantic_to_human(
+                        story["description_markdown"],
+                        story["semantic_map"]
+                    )
+                elif "description_markdown" in story:
+                    # Fallback: no semantic_map, use description_markdown as-is
                     story["description"] = story["description_markdown"]
-                    # Keep description_markdown for reference
+                    story["generated_prompt"] = story["description_markdown"]
 
                 # Add semantic_map to interview_insights for traceability
                 if "semantic_map" in story:
@@ -797,11 +872,20 @@ LEMBRE-SE:
 
             # Add metadata and parent_id to each Task
             for task in tasks_suggestions:
-                # PROMPT #83 - Process Semantic References Methodology output
-                # Use description_markdown if present, otherwise fallback to description
-                if "description_markdown" in task:
+                # PROMPT #85 - Dual output: Semantic prompt + Human description
+                if "description_markdown" in task and "semantic_map" in task:
+                    # Store semantic markdown as the output prompt (Prompt tab)
+                    task["generated_prompt"] = task["description_markdown"]
+
+                    # Convert semantic to human-readable text (Description tab)
+                    task["description"] = _convert_semantic_to_human(
+                        task["description_markdown"],
+                        task["semantic_map"]
+                    )
+                elif "description_markdown" in task:
+                    # Fallback: no semantic_map, use description_markdown as-is
                     task["description"] = task["description_markdown"]
-                    # Keep description_markdown for reference
+                    task["generated_prompt"] = task["description_markdown"]
 
                 # Add semantic_map to interview_insights for traceability (Tasks don't have interview_insights by default)
                 if "semantic_map" in task:
