@@ -465,6 +465,7 @@ async def get_kanban_board(
             "status": task.status.value,
             "column": task.column,
             "order": task.order,
+            "item_type": task.item_type.value if task.item_type else "task",  # PROMPT #82 - Include item type for Epic/Story/Task display
             "created_at": task.created_at,
             "updated_at": task.updated_at
         })
