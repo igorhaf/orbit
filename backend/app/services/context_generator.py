@@ -1,17 +1,19 @@
 """
 ContextGeneratorService
 PROMPT #89 - Generate project context from Context Interview
+PROMPT #92 - Generate suggested epics from context
 
 This service processes the Context Interview and generates:
 - context_semantic: Structured semantic text for AI consumption
 - context_human: Human-readable project description
+- suggested_epics: List of macro-level epics covering all project modules
 
 The context is the foundational, immutable description of the project
 that guides all subsequent interviews and card generation.
 """
 
 from typing import Dict, List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.orm import Session
 import json
@@ -20,6 +22,7 @@ import re
 
 from app.models.project import Project
 from app.models.interview import Interview, InterviewStatus
+from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
 from app.services.ai_orchestrator import AIOrchestrator
 from app.prompter.facade import PrompterFacade
 
@@ -182,6 +185,19 @@ class ContextGeneratorService:
         logger.info(f"   - Semantic: {len(context_result['context_semantic'])} chars")
         logger.info(f"   - Human: {len(context_result['context_human'])} chars")
 
+        # 7. PROMPT #92 - Generate suggested epics from context
+        try:
+            suggested_epics = await self.generate_suggested_epics(
+                project_id=project_id,
+                context_human=context_result["context_human"],
+                interview_insights=context_result.get("interview_insights", {})
+            )
+            context_result["suggested_epics"] = suggested_epics
+            logger.info(f"   - Suggested Epics: {len(suggested_epics)}")
+        except Exception as e:
+            logger.error(f"Failed to generate suggested epics: {e}")
+            context_result["suggested_epics"] = []
+
         return context_result
 
     def _build_conversation_summary(self, conversation_data: List[Dict]) -> str:
@@ -326,6 +342,157 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             "semantic_map": semantic_map,
             "interview_insights": result.get("interview_insights", {})
         }
+
+    async def generate_suggested_epics(
+        self,
+        project_id: UUID,
+        context_human: str,
+        interview_insights: Dict
+    ) -> List[Dict]:
+        """
+        PROMPT #92 - Generate suggested epics from project context.
+
+        Generates a comprehensive list of macro-level epics (modules) that
+        cover the entire scope of the project based on the context interview.
+
+        All epics are created as suggestions (inactive) with labels=["suggested"].
+        They appear grayed out in the UI until the user activates them.
+
+        Args:
+            project_id: Project ID
+            context_human: Human-readable project context
+            interview_insights: Insights extracted from the context interview
+
+        Returns:
+            List of suggested epic dictionaries
+        """
+        system_prompt = """Você é um arquiteto de software especialista em decomposição de sistemas.
+
+Sua tarefa é analisar o contexto de um projeto e gerar uma lista ABRANGENTE de Épicos (módulos macro) que cubram TODO o escopo do sistema.
+
+REGRAS:
+1. Cada épico representa um MÓDULO ou ÁREA FUNCIONAL macro do sistema
+2. A lista deve ser COMPLETA - cobrir 100% das funcionalidades mencionadas no contexto
+3. Pense em termos de módulos de software (Autenticação, Dashboard, Relatórios, Configurações, etc.)
+4. Inclua também épicos de infraestrutura se relevante (Setup Inicial, Deploy, Integrações)
+5. Use nomes CURTOS e DESCRITIVOS para os épicos (máx 50 caracteres)
+6. A descrição deve ser breve (1-2 frases) explicando o escopo do módulo
+7. Ordene por prioridade/dependência lógica (fundacionais primeiro)
+
+FORMATO DE RESPOSTA (JSON):
+```json
+{
+    "epics": [
+        {
+            "title": "Autenticação e Autorização",
+            "description": "Sistema de login, registro, recuperação de senha e controle de permissões por perfil.",
+            "priority": "critical",
+            "order": 1
+        },
+        {
+            "title": "Dashboard Principal",
+            "description": "Tela inicial com indicadores chave, resumos e acesso rápido às principais funcionalidades.",
+            "priority": "high",
+            "order": 2
+        }
+    ]
+}
+```
+
+PRIORIDADES VÁLIDAS: critical, high, medium, low
+
+IMPORTANTE:
+- Gere entre 8 e 20 épicos dependendo da complexidade do projeto
+- Cubra TODAS as áreas mencionadas no contexto
+- Inclua épicos implícitos (toda aplicação precisa de autenticação, configurações, etc.)
+- Retorne APENAS o JSON, sem texto adicional"""
+
+        # Build user prompt with context
+        key_features = interview_insights.get("key_features", [])
+        target_users = interview_insights.get("target_users", [])
+
+        features_text = "\n".join([f"- {f}" for f in key_features]) if key_features else "Não especificadas"
+        users_text = "\n".join([f"- {u}" for u in target_users]) if target_users else "Não especificados"
+
+        user_prompt = f"""Analise o seguinte contexto de projeto e gere a lista completa de Épicos:
+
+## CONTEXTO DO PROJETO
+{context_human}
+
+## FUNCIONALIDADES IDENTIFICADAS
+{features_text}
+
+## USUÁRIOS DO SISTEMA
+{users_text}
+
+Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto."""
+
+        # Call AI
+        messages = [{"role": "user", "content": user_prompt}]
+
+        response = await self.orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=messages,
+            system_prompt=system_prompt,
+            max_tokens=4000
+        )
+
+        # Parse response
+        response_text = response.get("content", "")
+        response_text = _strip_markdown_json(response_text)
+
+        try:
+            result = json.loads(response_text)
+            epics = result.get("epics", [])
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse epic suggestions as JSON: {e}")
+            logger.error(f"Response text: {response_text[:500]}...")
+            # Return empty list on error - don't fail the whole process
+            return []
+
+        # Save epics to database
+        saved_epics = []
+        priority_map = {
+            "critical": PriorityLevel.CRITICAL,
+            "high": PriorityLevel.HIGH,
+            "medium": PriorityLevel.MEDIUM,
+            "low": PriorityLevel.LOW
+        }
+
+        for i, epic_data in enumerate(epics):
+            try:
+                epic = Task(
+                    id=uuid4(),
+                    project_id=project_id,
+                    title=epic_data.get("title", f"Épico {i+1}")[:255],
+                    description=epic_data.get("description", ""),
+                    item_type=ItemType.EPIC,
+                    status=TaskStatus.BACKLOG,
+                    priority=priority_map.get(epic_data.get("priority", "medium"), PriorityLevel.MEDIUM),
+                    order=epic_data.get("order", i + 1),
+                    labels=["suggested"],  # Mark as suggested (inactive)
+                    workflow_state="draft",  # Draft state for suggested items
+                    reporter="system",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                self.db.add(epic)
+                saved_epics.append({
+                    "id": str(epic.id),
+                    "title": epic.title,
+                    "description": epic.description,
+                    "priority": epic_data.get("priority", "medium"),
+                    "order": epic.order
+                })
+            except Exception as e:
+                logger.error(f"Failed to create epic '{epic_data.get('title')}': {e}")
+                continue
+
+        self.db.commit()
+
+        logger.info(f"✅ Generated {len(saved_epics)} suggested epics for project {project_id}")
+
+        return saved_epics
 
     async def lock_context(self, project_id: UUID) -> bool:
         """

@@ -102,6 +102,9 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
   // Handle both kanban (status) and backlog (workflow_state) - different fields
   const itemType = task.item_type || ItemType.TASK;
 
+  // PROMPT #92 - Check if this is a suggested (inactive) epic
+  const isSuggested = task.labels?.includes('suggested') || task.workflow_state === 'draft';
+
   const handleCreateSubInterview = async () => {
     setCreatingInterview(true);
     try {
@@ -155,22 +158,29 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
 
   return (
     <Card
-      className={`mb-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+      className={`mb-4 ${onClick ? 'cursor-pointer hover:shadow-md transition-shadow' : ''} ${
+        isSuggested ? 'opacity-60 bg-gray-50 border-gray-300 border-dashed' : ''
+      }`}
       onClick={onClick}
     >
       <CardHeader>
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3 flex-1">
             {/* Item Type Icon */}
-            <span className="text-2xl">{getItemTypeIcon(itemType)}</span>
+            <span className={`text-2xl ${isSuggested ? 'grayscale' : ''}`}>
+              {getItemTypeIcon(itemType)}
+            </span>
 
             {/* Title */}
             <div className="flex-1">
-              <CardTitle className="text-lg font-semibold text-gray-900">
+              <CardTitle className={`text-lg font-semibold ${isSuggested ? 'text-gray-500' : 'text-gray-900'}`}>
+                {isSuggested && <span className="text-xs font-normal text-gray-400 mr-2">[Sugestão]</span>}
                 {task.title}
               </CardTitle>
               {task.description && (
-                <p className="text-sm text-gray-600 mt-1">{task.description}</p>
+                <p className={`text-sm mt-1 ${isSuggested ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {task.description}
+                </p>
               )}
             </div>
           </div>
@@ -222,8 +232,8 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           </div>
         )}
 
-        {/* AI-Suggested Subtasks */}
-        {hasSuggestions && showInterviewButtons && (
+        {/* AI-Suggested Subtasks - Hide for suggested items */}
+        {hasSuggestions && showInterviewButtons && !isSuggested && (
           <div className="border-t pt-4 mt-4">
             <div className="flex items-center justify-between mb-3">
               <button
@@ -326,8 +336,8 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           </div>
         )}
 
-        {/* Create Sub-Interview button (always available) */}
-        {!hasSuggestions && showInterviewButtons && (
+        {/* Create Sub-Interview button (always available) - Hide for suggested items */}
+        {!hasSuggestions && showInterviewButtons && !isSuggested && (
           <div className="border-t pt-4 mt-4">
             <Button
               onClick={(e) => {

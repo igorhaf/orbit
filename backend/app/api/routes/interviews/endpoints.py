@@ -925,7 +925,9 @@ async def generate_context_from_interview(
             "context_semantic": result["context_semantic"],
             "context_human": result["context_human"],
             "semantic_map": result.get("semantic_map", {}),
-            "interview_insights": result.get("interview_insights", {})
+            "interview_insights": result.get("interview_insights", {}),
+            # PROMPT #92 - Return suggested epics
+            "suggested_epics": result.get("suggested_epics", [])
         }
 
     except ValueError as e:
