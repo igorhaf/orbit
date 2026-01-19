@@ -334,6 +334,10 @@ export const interviewsApi = {
       body: JSON.stringify(data),
     }),
 
+  // PROMPT #87 - Delete interview
+  delete: (id: string) =>
+    request<any>(`/api/v1/interviews/${id}`, { method: 'DELETE' }),
+
   addMessage: (id: string, message: any) =>
     request<any>(`/api/v1/interviews/${id}/messages`, {
       method: 'POST',

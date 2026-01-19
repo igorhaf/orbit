@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { interviewsApi, projectsApi } from '@/lib/api';
 import { Interview, Project } from '@/lib/types';
-import { Button, Badge, Card, CardHeader, CardTitle, CardContent, Dialog, Select } from '@/components/ui';
+import { Button, Badge, Card, CardHeader, CardTitle, CardContent, Dialog, DialogFooter, Select } from '@/components/ui';
 
 interface InterviewListProps {
   projectId?: string;
@@ -31,6 +31,11 @@ export function InterviewList({
   const [selectedProject, setSelectedProject] = useState('');
   const [creating, setCreating] = useState(false);
   const [statusFilter, setStatusFilter] = useState('active'); // Default: only open/active interviews
+
+  // PROMPT #87 - Delete confirmation modal state
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [interviewToDelete, setInterviewToDelete] = useState<Interview | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -107,6 +112,31 @@ export function InterviewList({
       setCreating(false);
     }
     // Note: Don't setCreating(false) on success - we're navigating away
+  };
+
+  // PROMPT #87 - Delete interview handler
+  const handleDeleteClick = (e: React.MouseEvent, interview: Interview) => {
+    e.preventDefault(); // Prevent navigation
+    e.stopPropagation(); // Stop event bubbling
+    setInterviewToDelete(interview);
+    setShowDeleteModal(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!interviewToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await interviewsApi.delete(interviewToDelete.id);
+      setShowDeleteModal(false);
+      setInterviewToDelete(null);
+      await loadData(); // Refresh list
+    } catch (error) {
+      console.error('Failed to delete interview:', error);
+      alert('Failed to delete interview. Please try again.');
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   // Filter interviews by status
@@ -263,17 +293,29 @@ export function InterviewList({
                     <span>
                       Created: {new Date(interview.created_at).toLocaleDateString()}
                     </span>
-                    <Badge
-                      variant={
-                        interview.status === 'active'
-                          ? 'success'
-                          : interview.status === 'completed'
-                          ? 'default'
-                          : 'danger'
-                      }
-                    >
-                      {interview.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={
+                          interview.status === 'active'
+                            ? 'success'
+                            : interview.status === 'completed'
+                            ? 'default'
+                            : 'danger'
+                        }
+                      >
+                        {interview.status}
+                      </Badge>
+                      {/* PROMPT #87 - Delete button */}
+                      <button
+                        onClick={(e) => handleDeleteClick(e, interview)}
+                        className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+                        title="Delete interview"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -353,6 +395,54 @@ export function InterviewList({
             </Button>
           </div>
         </div>
+      </Dialog>
+
+      {/* PROMPT #87 - Delete Confirmation Modal */}
+      <Dialog
+        open={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setInterviewToDelete(null);
+        }}
+        title="Delete Interview"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0 w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">
+                Delete this interview?
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                This will permanently delete the interview and all its messages. This action cannot be undone.
+              </p>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowDeleteModal(false);
+              setInterviewToDelete(null);
+            }}
+            disabled={isDeleting}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDeleteConfirm}
+            disabled={isDeleting}
+          >
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogFooter>
       </Dialog>
     </div>
   );
