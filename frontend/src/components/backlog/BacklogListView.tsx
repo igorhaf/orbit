@@ -29,6 +29,9 @@ interface BacklogListViewProps {
     labels?: string[];
     status?: TaskStatus[];
   };
+  // PROMPT #96 - Props for refresh and selected item sync
+  refreshKey?: number;  // When this changes, backlog is refreshed
+  selectedItemId?: string;  // Currently selected item ID to update after refresh
 }
 
 // Helper function to get item type icon
@@ -110,7 +113,9 @@ export default function BacklogListView({
   onItemSelect,
   selectedIds = new Set(),
   onSelectionChange,
-  filters
+  filters,
+  refreshKey,  // PROMPT #96
+  selectedItemId  // PROMPT #96
 }: BacklogListViewProps) {
   const [backlog, setBacklog] = useState<BacklogItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,7 +128,7 @@ export default function BacklogListView({
 
   useEffect(() => {
     fetchBacklog();
-  }, [projectId, filters]);
+  }, [projectId, filters, refreshKey]);  // PROMPT #96 - Added refreshKey to dependencies
 
   const fetchBacklog = async () => {
     setLoading(true);
@@ -142,6 +147,29 @@ export default function BacklogListView({
       setLoading(false);
     }
   };
+
+  // PROMPT #96 - Update selected item when backlog changes
+  // Helper to find item recursively in tree
+  const findItemById = (items: BacklogItem[], id: string): BacklogItem | null => {
+    for (const item of items) {
+      if (item.id === id) return item;
+      if (item.children && item.children.length > 0) {
+        const found = findItemById(item.children as BacklogItem[], id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
+  // PROMPT #96 - Sync selected item with updated backlog data
+  useEffect(() => {
+    if (selectedItemId && backlog.length > 0 && onItemSelect) {
+      const updatedItem = findItemById(backlog, selectedItemId);
+      if (updatedItem) {
+        onItemSelect(updatedItem);
+      }
+    }
+  }, [backlog, selectedItemId]);
 
   // Recursively collect all item IDs for expansion
   const collectAllIds = (items: BacklogItem[]): string[] => {

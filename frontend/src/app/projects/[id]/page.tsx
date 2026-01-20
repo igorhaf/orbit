@@ -38,6 +38,7 @@ export default function ProjectDetailsPage() {
   const [backlogFilters, setBacklogFilters] = useState<IBacklogFilters>({});
   const [showBacklogFilters, setShowBacklogFilters] = useState(true);
   const [selectedBacklogItem, setSelectedBacklogItem] = useState<BacklogItem | null>(null);
+  const [backlogRefreshKey, setBacklogRefreshKey] = useState(0);  // PROMPT #96 - Trigger backlog refresh
 
   // RAG states (PROMPT #90)
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
@@ -79,6 +80,8 @@ export default function ProjectDetailsPage() {
 
   const handleTasksUpdate = () => {
     loadProjectData();
+    // PROMPT #96 - Trigger backlog refresh to update selected item
+    setBacklogRefreshKey(prev => prev + 1);
   };
 
   // Load RAG stats (PROMPT #90)
@@ -107,22 +110,8 @@ export default function ProjectDetailsPage() {
     }
   }, [activeTab, loadRagStats]);
 
-  // PROMPT #96 - Sync selectedBacklogItem with updated task data
-  // When tasks are reloaded (e.g., after activating an epic), update selectedBacklogItem
-  useEffect(() => {
-    if (selectedBacklogItem && tasks.length > 0) {
-      const updatedItem = tasks.find(t => t.id === selectedBacklogItem.id);
-      if (updatedItem) {
-        // Preserve UI-specific properties from the original selectedBacklogItem
-        setSelectedBacklogItem({
-          ...updatedItem,
-          depth: selectedBacklogItem.depth,
-          isExpanded: selectedBacklogItem.isExpanded,
-          isSelected: selectedBacklogItem.isSelected,
-        } as BacklogItem);
-      }
-    }
-  }, [tasks]); // Only re-run when tasks change
+  // PROMPT #96 - Removed direct sync here, now handled by BacklogListView
+  // via refreshKey and selectedItemId props
 
   // Load Analytics data (PROMPT #97)
   const loadAnalyticsData = useCallback(async () => {
@@ -515,6 +504,8 @@ export default function ProjectDetailsPage() {
                   projectId={projectId}
                   filters={backlogFilters}
                   onItemSelect={setSelectedBacklogItem}
+                  refreshKey={backlogRefreshKey}
+                  selectedItemId={selectedBacklogItem?.id}
                 />
               </div>
             </div>
