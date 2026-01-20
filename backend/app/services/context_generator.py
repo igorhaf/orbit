@@ -862,13 +862,15 @@ Retorne o Epic completo como JSON seguindo EXATAMENTE o schema fornecido no syst
         # Step 0: Try parsing raw response before any transformation
         result = None
         parse_method = "none"
+        last_error = None
 
         try:
             result = json.loads(response_text)
             parse_method = "raw_direct"
             logger.info("✅ JSON parsed from raw response directly")
         except json.JSONDecodeError as e:
-            logger.debug(f"Raw parse failed: {e}")
+            last_error = e
+            logger.warning(f"Raw parse failed at position {e.pos}: {e.msg}")
 
         # Step 1: Strip markdown code blocks
         if result is None:
@@ -883,7 +885,12 @@ Retorne o Epic completo como JSON seguindo EXATAMENTE o schema fornecido no syst
                 parse_method = "direct"
                 logger.info("✅ JSON parsed directly after strip")
             except json.JSONDecodeError as e:
-                logger.debug(f"Direct parse failed: {e}")
+                last_error = e
+                logger.warning(f"Direct parse failed at position {e.pos}/{len(response_text)}: {e.msg}")
+                # Show context around error position
+                start = max(0, e.pos - 50)
+                end = min(len(response_text), e.pos + 50)
+                logger.warning(f"Context around error: ...{response_text[start:end]}...")
 
         # Strategy 2: Extract JSON object with regex (greedy)
         if result is None:
@@ -937,33 +944,56 @@ Retorne o Epic completo como JSON seguindo EXATAMENTE o schema fornecido no syst
             # This is a common issue where AI returns JSON with literal newlines in strings
             # instead of \n escape sequences
             try:
-                # Replace literal newlines inside strings with \n
-                # This is a heuristic approach - find strings and escape their newlines
-                fixed_text = response_text
-
-                # First, try to find the JSON object
-                json_match = re.search(r'\{[\s\S]*\}', fixed_text)
+                json_match = re.search(r'\{[\s\S]*\}', response_text)
                 if json_match:
                     json_str = json_match.group(0)
 
-                    # Try to fix common issues:
-                    # 1. Replace literal \n with \\n in strings (already escaped but not properly)
-                    # 2. Try to load with strict=False
+                    # Aggressive approach: escape all literal newlines that appear within strings
+                    # by finding string boundaries and escaping newlines inside them
+                    fixed_chars = []
+                    in_string = False
+                    escape_next = False
 
-                    # Attempt 1: Replace problematic characters
-                    json_str_fixed = json_str.replace('\r\n', '\\n').replace('\r', '\\n')
+                    for char in json_str:
+                        if escape_next:
+                            fixed_chars.append(char)
+                            escape_next = False
+                            continue
+
+                        if char == '\\':
+                            fixed_chars.append(char)
+                            escape_next = True
+                            continue
+
+                        if char == '"' and not escape_next:
+                            in_string = not in_string
+                            fixed_chars.append(char)
+                            continue
+
+                        if in_string and char == '\n':
+                            fixed_chars.append('\\n')
+                            continue
+
+                        if in_string and char == '\r':
+                            continue  # Skip carriage returns
+
+                        if in_string and char == '\t':
+                            fixed_chars.append('\\t')
+                            continue
+
+                        fixed_chars.append(char)
+
+                    json_str_fixed = ''.join(fixed_chars)
 
                     try:
                         result = json.loads(json_str_fixed)
-                        parse_method = "fixed_newlines"
-                        logger.info("✅ JSON parsed after fixing newlines")
-                    except json.JSONDecodeError:
-                        # Attempt 2: More aggressive fix - escape all unescaped newlines
-                        # Find all strings and properly escape them
-                        pass
+                        parse_method = "fixed_newlines_aggressive"
+                        logger.info("✅ JSON parsed after aggressive newline fix")
+                    except json.JSONDecodeError as e:
+                        logger.warning(f"Aggressive newline fix failed at {e.pos}: {e.msg}")
 
             except Exception as e:
-                logger.debug(f"Newline fix failed: {e}")
+                logger.warning(f"Newline fix failed: {e}")
 
         # Strategy 6: Last resort - try Python's ast.literal_eval for simple cases
         if result is None:
