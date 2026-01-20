@@ -32,36 +32,74 @@ SELECT id, title, LENGTH(generated_prompt) as prompt_len FROM tasks WHERE title 
 
 ## Implementação
 
-### Arquivo Modificado
+### Arquivos Modificados
 
-**[frontend/src/app/projects/[id]/page.tsx](frontend/src/app/projects/[id]/page.tsx#L110-L125)**
+#### 1. [frontend/src/components/backlog/BacklogListView.tsx](frontend/src/components/backlog/BacklogListView.tsx)
 
-Adicionado `useEffect` para sincronizar `selectedBacklogItem` quando a lista `tasks` é atualizada:
+Adicionadas novas props para controlar refresh e sincronização:
 
 ```typescript
-// PROMPT #96 - Sync selectedBacklogItem with updated task data
-// When tasks are reloaded (e.g., after activating an epic), update selectedBacklogItem
-useEffect(() => {
-  if (selectedBacklogItem && tasks.length > 0) {
-    const updatedItem = tasks.find(t => t.id === selectedBacklogItem.id);
-    if (updatedItem) {
-      // Preserve UI-specific properties from the original selectedBacklogItem
-      setSelectedBacklogItem({
-        ...updatedItem,
-        depth: selectedBacklogItem.depth,
-        isExpanded: selectedBacklogItem.isExpanded,
-        isSelected: selectedBacklogItem.isSelected,
-      } as BacklogItem);
+interface BacklogListViewProps {
+  // ... existing props ...
+  refreshKey?: number;     // When this changes, backlog is refreshed
+  selectedItemId?: string; // Currently selected item ID to update after refresh
+}
+```
+
+E novo `useEffect` para sincronizar o item selecionado:
+
+```typescript
+// Helper to find item recursively in tree
+const findItemById = (items: BacklogItem[], id: string): BacklogItem | null => {
+  for (const item of items) {
+    if (item.id === id) return item;
+    if (item.children && item.children.length > 0) {
+      const found = findItemById(item.children as BacklogItem[], id);
+      if (found) return found;
     }
   }
-}, [tasks]); // Only re-run when tasks change
+  return null;
+};
+
+// Sync selected item with updated backlog data
+useEffect(() => {
+  if (selectedItemId && backlog.length > 0 && onItemSelect) {
+    const updatedItem = findItemById(backlog, selectedItemId);
+    if (updatedItem) {
+      onItemSelect(updatedItem);
+    }
+  }
+}, [backlog, selectedItemId]);
+```
+
+#### 2. [frontend/src/app/projects/[id]/page.tsx](frontend/src/app/projects/[id]/page.tsx)
+
+Adicionado state `backlogRefreshKey` e passado para `BacklogListView`:
+
+```typescript
+const [backlogRefreshKey, setBacklogRefreshKey] = useState(0);
+
+const handleTasksUpdate = () => {
+  loadProjectData();
+  // Trigger backlog refresh to update selected item
+  setBacklogRefreshKey(prev => prev + 1);
+};
+
+// In JSX:
+<BacklogListView
+  projectId={projectId}
+  filters={backlogFilters}
+  onItemSelect={setSelectedBacklogItem}
+  refreshKey={backlogRefreshKey}
+  selectedItemId={selectedBacklogItem?.id}
+/>
 ```
 
 **Características da solução:**
-- Preserva propriedades de UI (`depth`, `isExpanded`, `isSelected`) do item original
-- Executa apenas quando `tasks` muda (dependency array)
-- Não causa re-renders desnecessários
-- Funciona para qualquer tipo de atualização de task (não apenas ativação de épico)
+- `BacklogListView` tem seu próprio estado interno `backlog` (estrutura de árvore)
+- Quando `refreshKey` muda, o componente recarrega seus dados da API
+- Quando `backlog` é atualizado, o `selectedItemId` é encontrado na árvore e passado via `onItemSelect`
+- Funciona com a estrutura hierárquica (épicos → stories → tasks)
 
 ---
 
@@ -106,7 +144,8 @@ useEffect(() => {
 
 | Arquivo | Mudança | Linhas |
 |---------|---------|--------|
-| `frontend/src/app/projects/[id]/page.tsx` | Adicionado useEffect de sincronização | +15 |
+| `frontend/src/app/projects/[id]/page.tsx` | Adicionado state `backlogRefreshKey`, modificado `handleTasksUpdate`, props para BacklogListView | +6 |
+| `frontend/src/components/backlog/BacklogListView.tsx` | Adicionado props `refreshKey` e `selectedItemId`, `findItemById` helper, useEffect de sincronização | +25 |
 
 ---
 
