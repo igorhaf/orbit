@@ -663,8 +663,13 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
 
         logger.info(f"✅ Item activated: {epic.title} ({epic.item_type.value if epic.item_type else 'unknown'})")
         logger.info(f"   - Description: {len(epic.description or '')} chars")
+        logger.info(f"   - Description preview: {(epic.description or '')[:200]}...")
         logger.info(f"   - Generated Prompt: {len(epic.generated_prompt or '')} chars")
+        logger.info(f"   - Generated Prompt preview: {(epic.generated_prompt or '')[:200]}...")
         logger.info(f"   - Acceptance Criteria: {len(epic.acceptance_criteria or [])} items")
+        logger.info(f"   - Story Points: {epic.story_points}")
+        logger.info(f"   - Labels: {epic.labels}")
+        logger.info(f"   - Workflow State: {epic.workflow_state}")
 
         return {
             "id": str(epic.id),
@@ -802,18 +807,58 @@ Retorne o Epic completo como JSON."""
 
         try:
             result = json.loads(response_text)
+            logger.info(f"✅ AI response parsed successfully")
+            logger.info(f"   - title: {result.get('title', 'N/A')}")
+            logger.info(f"   - semantic_map keys: {list(result.get('semantic_map', {}).keys())}")
+            logger.info(f"   - description_markdown length: {len(result.get('description_markdown', ''))}")
+            logger.info(f"   - acceptance_criteria count: {len(result.get('acceptance_criteria', []))}")
+            logger.info(f"   - story_points: {result.get('story_points', 'N/A')}")
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse epic content as JSON: {e}")
-            logger.error(f"Response text: {response_text[:1000]}...")
+            logger.error(f"Response text (first 1500 chars): {response_text[:1500]}...")
 
-            # Fallback: create basic content from the epic data
+            # Fallback: create meaningful content from the epic data and project context
             logger.warning("Using fallback content generation...")
+
+            # Build a meaningful description from the context
+            fallback_description = f"""# Epic: {epic_title}
+
+## Descrição
+
+{epic_description}
+
+Este épico faz parte do projeto {project.name} e visa implementar funcionalidades essenciais para o sucesso do sistema.
+
+## Escopo
+
+Este módulo inclui:
+- Análise de requisitos e definição de histórias
+- Implementação das funcionalidades principais
+- Testes e validação
+- Documentação
+
+## Critérios de Aceitação
+
+1. Todas as funcionalidades descritas devem estar implementadas
+2. Código deve estar testado e documentado
+3. Integração com outros módulos do sistema deve funcionar corretamente
+"""
+
             result = {
                 "title": epic_title,
-                "semantic_map": {},
-                "description_markdown": f"# Epic: {epic_title}\n\n## Descrição\n\n{epic_description}",
-                "acceptance_criteria": [],
-                "story_points": 8
+                "semantic_map": {
+                    "N1": project.name,
+                    "E1": epic_title,
+                    "AC1": "Funcionalidades implementadas",
+                    "AC2": "Código testado e documentado"
+                },
+                "description_markdown": fallback_description,
+                "acceptance_criteria": [
+                    "AC1: Todas as funcionalidades descritas devem estar implementadas",
+                    "AC2: Código deve estar testado e documentado",
+                    "AC3: Integração com outros módulos deve funcionar corretamente"
+                ],
+                "story_points": 13
             }
 
         # Extract and process content
