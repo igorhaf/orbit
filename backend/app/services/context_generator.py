@@ -640,11 +640,19 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
         epic.acceptance_criteria = epic_content.get("acceptance_criteria", [])
         epic.story_points = epic_content.get("story_points")
 
-        # Store semantic_map in interview_insights for traceability
+        # PROMPT #95 - Store complete interview_insights for traceability
+        # Includes semantic_map, key_requirements, business_goals, technical_constraints
         epic.interview_insights = epic.interview_insights or {}
         epic.interview_insights["semantic_map"] = epic_content.get("semantic_map", {})
         epic.interview_insights["activated_from_suggestion"] = True
         epic.interview_insights["activation_timestamp"] = datetime.utcnow().isoformat()
+
+        # Merge additional interview_insights from AI response
+        ai_insights = epic_content.get("interview_insights", {})
+        if ai_insights:
+            epic.interview_insights["key_requirements"] = ai_insights.get("key_requirements", [])
+            epic.interview_insights["business_goals"] = ai_insights.get("business_goals", [])
+            epic.interview_insights["technical_constraints"] = ai_insights.get("technical_constraints", [])
 
         # 5. Remove "suggested" label and change workflow_state
         if epic.labels and "suggested" in epic.labels:
@@ -661,15 +669,21 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
         self.db.commit()
         self.db.refresh(epic)
 
+        # PROMPT #95 - Enhanced logging
         logger.info(f"✅ Item activated: {epic.title} ({epic.item_type.value if epic.item_type else 'unknown'})")
         logger.info(f"   - Description: {len(epic.description or '')} chars")
-        logger.info(f"   - Description preview: {(epic.description or '')[:200]}...")
+        logger.info(f"   - Description preview: {(epic.description or '')[:300]}...")
         logger.info(f"   - Generated Prompt: {len(epic.generated_prompt or '')} chars")
-        logger.info(f"   - Generated Prompt preview: {(epic.generated_prompt or '')[:200]}...")
+        logger.info(f"   - Generated Prompt preview: {(epic.generated_prompt or '')[:300]}...")
         logger.info(f"   - Acceptance Criteria: {len(epic.acceptance_criteria or [])} items")
         logger.info(f"   - Story Points: {epic.story_points}")
         logger.info(f"   - Labels: {epic.labels}")
         logger.info(f"   - Workflow State: {epic.workflow_state}")
+        logger.info(f"   - Interview Insights keys: {list(epic.interview_insights.keys()) if epic.interview_insights else []}")
+        if epic.interview_insights:
+            logger.info(f"   - Key Requirements: {len(epic.interview_insights.get('key_requirements', []))} items")
+            logger.info(f"   - Business Goals: {len(epic.interview_insights.get('business_goals', []))} items")
+            logger.info(f"   - Technical Constraints: {len(epic.interview_insights.get('technical_constraints', []))} items")
 
         return {
             "id": str(epic.id),
@@ -697,6 +711,9 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
         - Human description for reading
         - Acceptance criteria
         - Story points estimation
+        - Interview insights (key requirements, business goals, technical constraints)
+
+        PROMPT #95 - Enhanced to match the rich structure from Epic Interview flow.
 
         Args:
             project: Project instance with context
@@ -706,7 +723,8 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
         Returns:
             Dict with full epic content
         """
-        system_prompt = """Você é um Product Owner especialista em criar cards de Epic completos.
+        # PROMPT #95 - Use the same rich structure as backlog_generator.py
+        system_prompt = """Você é um Product Owner especialista analisando contexto de projeto para gerar Epics completos.
 
 METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
 
@@ -716,6 +734,10 @@ Esta metodologia funciona da seguinte forma:
 2. Esses identificadores **NÃO são variáveis, exemplos ou placeholders**
 3. Cada identificador possui um **significado único e imutável** definido em um **Mapa Semântico**
 4. O texto narrativo deve ser interpretado **exclusivamente** com base nessas definições
+5. **Não faça inferências** fora do que está explicitamente definido no Mapa Semântico
+6. **Não substitua** os identificadores por seus significados no texto
+7. Caso haja ambiguidade, ela deve ser apontada, não resolvida automaticamente
+8. Caso seja necessário criar novos conceitos, eles devem ser introduzidos como novos identificadores e definidos separadamente
 
 **Categorias de Identificadores:**
 - **N** (Nouns/Entidades): N1, N2, N3... = Usuários, sistemas, entidades de domínio
@@ -726,36 +748,66 @@ Esta metodologia funciona da seguinte forma:
 - **C** (Constraints/Critérios): C1, C2, C3... = Regras de negócio, validações, restrições
 - **AC** (Acceptance Criteria): AC1, AC2, AC3... = Critérios de aceitação numerados
 - **F** (Features/Funcionalidades): F1, F2, F3... = Funcionalidades específicas
+- **M** (Metrics/Métricas): M1, M2, M3... = Métricas, KPIs, indicadores
+
+**Objetivo desta metodologia:**
+- Reduzir ambiguidade semântica
+- Manter consistência conceitual
+- Permitir edição posterior manual do código
+- Garantir rastreabilidade entre texto e implementação
 
 Sua tarefa:
 1. Analise o contexto do projeto e o épico sugerido
-2. Crie um **Mapa Semântico** definindo TODOS os identificadores usados
+2. Crie um **Mapa Semântico** definindo TODOS os identificadores usados (mínimo 15-20 identificadores)
 3. Escreva a narrativa completa do Epic usando APENAS esses identificadores
-4. Extraia critérios de aceitação claros (AC1, AC2, AC3...)
-5. Estime story points (escala Fibonacci: 1, 2, 3, 5, 8, 13, 21)
+4. Extraia critérios de aceitação claros (usando identificadores AC1, AC2, AC3...)
+5. Extraia insights chave: requisitos, objetivos de negócio, restrições técnicas
+6. Estime story points (1-21, escala Fibonacci) baseado na complexidade do Epic
+7. Sugira prioridade (critical, high, medium, low, trivial)
 
 IMPORTANTE:
 - Um Epic representa um grande corpo de trabalho (múltiplas Stories)
 - Foque em VALOR DE NEGÓCIO e RESULTADOS PARA O USUÁRIO
-- Use identificadores semânticos em TODO o texto
-- TUDO DEVE SER EM PORTUGUÊS
+- Use identificadores semânticos em TODO o texto (narrativa, critérios, insights)
+- Seja específico e acionável nos critérios de aceitação
+- TUDO DEVE SER EM PORTUGUÊS (título, descrição, critérios, identificadores)
+- A descrição deve ser RICA e DETALHADA (mínimo 800 caracteres)
 
-Retorne APENAS JSON válido (sem markdown code blocks):
+Retorne APENAS JSON válido (sem markdown code blocks, sem explicação):
 {
-    "title": "Título do Epic (pode manter o original ou melhorar)",
+    "title": "Título do Epic (conciso, focado em negócio) - EM PORTUGUÊS",
     "semantic_map": {
         "N1": "Definição clara da entidade 1",
+        "N2": "Definição clara da entidade 2",
         "P1": "Definição clara do processo 1",
-        "F1": "Funcionalidade específica",
-        "AC1": "Critério de aceitação 1"
+        "E1": "Definição clara do endpoint 1",
+        "D1": "Definição clara da estrutura de dados 1",
+        "S1": "Definição clara do serviço 1",
+        "C1": "Definição clara do critério/regra 1",
+        "AC1": "Critério de aceitação 1",
+        "AC2": "Critério de aceitação 2"
     },
-    "description_markdown": "# Epic: [Título]\\n\\n## Mapa Semântico\\n\\n- **N1**: [definição]\\n- **P1**: [definição]\\n...\\n\\n## Descrição\\n\\n[Narrativa usando identificadores]\\n\\n## Critérios de Aceitação\\n\\n1. **AC1**: [critério]\\n2. **AC2**: [critério]",
+    "description_markdown": "# Epic: [Título]\\n\\n## Mapa Semântico\\n\\n- **N1**: [definição]\\n- **N2**: [definição]\\n- **P1**: [definição]\\n...\\n\\n## Descrição\\n\\n[Narrativa usando APENAS identificadores do mapa semântico. Ex: 'Este Epic implementa P1 para N1, permitindo que N2 gerencie D1 via E1.']\\n\\n## Critérios de Aceitação\\n\\n1. **AC1**: [critério usando identificadores]\\n2. **AC2**: [critério usando identificadores]\\n...\\n\\n## Insights da Entrevista\\n\\n**Requisitos-Chave:**\\n- [requisito usando identificadores]\\n...\\n\\n**Objetivos de Negócio:**\\n- [objetivo usando identificadores]\\n...\\n\\n**Restrições Técnicas:**\\n- [restrição usando identificadores]\\n...",
+    "story_points": 13,
+    "priority": "high",
     "acceptance_criteria": [
-        "AC1: Critério específico e mensurável",
-        "AC2: Critério específico e mensurável"
+        "AC1: [Critério específico mensurável usando identificadores semânticos]",
+        "AC2: [Critério específico mensurável usando identificadores semânticos]",
+        "AC3: [Critério específico mensurável usando identificadores semânticos]"
     ],
-    "story_points": 13
+    "interview_insights": {
+        "key_requirements": ["[requisito usando identificadores]", "[requisito usando identificadores]"],
+        "business_goals": ["[objetivo usando identificadores]", "[objetivo usando identificadores]"],
+        "technical_constraints": ["[restrição usando identificadores]", "[restrição usando identificadores]"]
+    }
 }
+
+**REGRAS CRÍTICAS:**
+- description_markdown deve conter TODO o conteúdo formatado em Markdown
+- O Mapa Semântico deve estar TANTO no description_markdown quanto no campo semantic_map do JSON
+- Use identificadores semânticos em TODOS os textos (title pode ser em linguagem natural, mas description/criteria/insights devem usar identificadores)
+- NUNCA substitua identificadores por seus significados - mantenha sempre os identificadores no texto
+- A seção "Insights da Entrevista" é OBRIGATÓRIA com Requisitos-Chave, Objetivos de Negócio e Restrições Técnicas
 """
 
         user_prompt = f"""Gere o conteúdo completo para este Epic sugerido usando a Metodologia de Referências Semânticas.
@@ -764,10 +816,10 @@ Retorne APENAS JSON válido (sem markdown code blocks):
 **Nome:** {project.name}
 **Descrição:** {project.description or 'Não especificada'}
 
-**Contexto Semântico:**
+**Contexto Semântico do Projeto (USE ESTES IDENTIFICADORES SE APLICÁVEL):**
 {project.context_semantic or 'Não disponível'}
 
-**Contexto Legível:**
+**Contexto Legível do Projeto:**
 {project.context_human or 'Não disponível'}
 
 ## EPIC SUGERIDO
@@ -775,13 +827,22 @@ Retorne APENAS JSON válido (sem markdown code blocks):
 **Descrição Inicial:** {epic_description}
 
 ## INSTRUÇÕES
-1. Use o contexto do projeto para entender o domínio
-2. Crie um Mapa Semântico específico para este Epic
-3. Gere uma descrição rica e detalhada usando identificadores semânticos
-4. Defina critérios de aceitação claros e mensuráveis
-5. Estime story points baseado na complexidade
+1. **REUTILIZE** identificadores do contexto semântico do projeto quando aplicável
+2. **ESTENDA** o mapa com novos identificadores específicos para este Epic
+3. Crie um Mapa Semântico COMPLETO (mínimo 15-20 identificadores)
+4. Gere uma descrição RICA e DETALHADA usando identificadores semânticos
+5. Defina critérios de aceitação claros e mensuráveis (AC1, AC2, AC3...)
+6. Inclua seção de Insights com Requisitos-Chave, Objetivos de Negócio e Restrições Técnicas
+7. Estime story points baseado na complexidade
 
-Retorne o Epic completo como JSON."""
+LEMBRE-SE:
+- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+- Use identificadores semânticos em TODA a narrativa
+- NUNCA substitua identificadores por seus significados
+- A descrição deve ter MÍNIMO 800 caracteres
+- A seção de Insights da Entrevista é OBRIGATÓRIA
+
+Retorne o Epic completo como JSON seguindo EXATAMENTE o schema fornecido no system prompt."""
 
         # Call AI
         messages = [{"role": "user", "content": user_prompt}]
@@ -818,30 +879,55 @@ Retorne o Epic completo como JSON."""
             logger.error(f"Response text (first 1500 chars): {response_text[:1500]}...")
 
             # Fallback: create meaningful content from the epic data and project context
+            # PROMPT #95 - Enhanced fallback with rich structure
             logger.warning("Using fallback content generation...")
 
-            # Build a meaningful description from the context
+            # Build a meaningful description from the context with Semantic References structure
             fallback_description = f"""# Epic: {epic_title}
+
+## Mapa Semântico
+
+- **N1**: {project.name}
+- **E1**: {epic_title}
+- **P1**: Processo principal de implementação
+- **D1**: Dados e estruturas do módulo
+- **S1**: Serviços e integrações necessárias
+- **C1**: Funcionalidades devem estar completas
+- **C2**: Código deve seguir padrões de qualidade
+- **AC1**: E1 deve estar completamente implementado
+- **AC2**: D1 deve estar corretamente estruturado
+- **AC3**: S1 deve estar integrado com o sistema
 
 ## Descrição
 
+Este Epic implementa E1 como parte de N1, seguindo P1 para garantir a entrega de valor ao usuário. O módulo gerencia D1 e integra S1 para fornecer as funcionalidades necessárias.
+
 {epic_description}
 
-Este épico faz parte do projeto {project.name} e visa implementar funcionalidades essenciais para o sucesso do sistema.
-
-## Escopo
-
-Este módulo inclui:
-- Análise de requisitos e definição de histórias
-- Implementação das funcionalidades principais
-- Testes e validação
-- Documentação
+O desenvolvimento segue C1 e C2 para garantir qualidade e consistência com o restante do sistema.
 
 ## Critérios de Aceitação
 
-1. Todas as funcionalidades descritas devem estar implementadas
-2. Código deve estar testado e documentado
-3. Integração com outros módulos do sistema deve funcionar corretamente
+1. **AC1**: E1 deve estar completamente implementado com todas as funcionalidades descritas
+2. **AC2**: D1 deve estar corretamente estruturado e validado
+3. **AC3**: S1 deve estar integrado e funcionando com os demais módulos
+
+## Insights da Entrevista
+
+**Requisitos-Chave:**
+- E1 deve atender aos requisitos de negócio de N1
+- P1 deve seguir as melhores práticas de desenvolvimento
+- D1 deve estar bem documentado
+
+**Objetivos de Negócio:**
+- Entregar E1 com valor ao usuário final
+- Garantir escalabilidade de S1
+- Manter qualidade conforme C1 e C2
+
+**Restrições Técnicas:**
+- E1 deve ser compatível com a arquitetura existente
+- D1 deve seguir os padrões de dados do projeto
+- S1 deve ter performance adequada
 """
 
             result = {
@@ -849,16 +935,39 @@ Este módulo inclui:
                 "semantic_map": {
                     "N1": project.name,
                     "E1": epic_title,
-                    "AC1": "Funcionalidades implementadas",
-                    "AC2": "Código testado e documentado"
+                    "P1": "Processo principal de implementação",
+                    "D1": "Dados e estruturas do módulo",
+                    "S1": "Serviços e integrações necessárias",
+                    "C1": "Funcionalidades devem estar completas",
+                    "C2": "Código deve seguir padrões de qualidade",
+                    "AC1": "E1 deve estar completamente implementado",
+                    "AC2": "D1 deve estar corretamente estruturado",
+                    "AC3": "S1 deve estar integrado com o sistema"
                 },
                 "description_markdown": fallback_description,
                 "acceptance_criteria": [
-                    "AC1: Todas as funcionalidades descritas devem estar implementadas",
-                    "AC2: Código deve estar testado e documentado",
-                    "AC3: Integração com outros módulos deve funcionar corretamente"
+                    "AC1: E1 deve estar completamente implementado com todas as funcionalidades descritas",
+                    "AC2: D1 deve estar corretamente estruturado e validado",
+                    "AC3: S1 deve estar integrado e funcionando com os demais módulos"
                 ],
-                "story_points": 13
+                "story_points": 13,
+                "interview_insights": {
+                    "key_requirements": [
+                        "E1 deve atender aos requisitos de negócio de N1",
+                        "P1 deve seguir as melhores práticas de desenvolvimento",
+                        "D1 deve estar bem documentado"
+                    ],
+                    "business_goals": [
+                        "Entregar E1 com valor ao usuário final",
+                        "Garantir escalabilidade de S1",
+                        "Manter qualidade conforme C1 e C2"
+                    ],
+                    "technical_constraints": [
+                        "E1 deve ser compatível com a arquitetura existente",
+                        "D1 deve seguir os padrões de dados do projeto",
+                        "S1 deve ter performance adequada"
+                    ]
+                }
             }
 
         # Extract and process content
@@ -880,13 +989,15 @@ Este módulo inclui:
         )
         description = description.strip()
 
+        # PROMPT #95 - Include interview_insights in return
         return {
             "title": result.get("title", epic_title),
             "description": description,
             "generated_prompt": generated_prompt,
             "semantic_map": semantic_map,
             "acceptance_criteria": result.get("acceptance_criteria", []),
-            "story_points": result.get("story_points")
+            "story_points": result.get("story_points"),
+            "interview_insights": result.get("interview_insights", {})
         }
 
     async def reject_suggested_epic(self, epic_id: UUID) -> bool:
