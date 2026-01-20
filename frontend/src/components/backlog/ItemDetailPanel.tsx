@@ -51,6 +51,13 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // PROMPT #96 - Approve/Reject suggested item state
+  const [isApproving, setIsApproving] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+
+  // Check if item is a suggested/draft item
+  const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
+
   useEffect(() => {
     fetchItemDetails();
   }, [item.id]);
@@ -121,6 +128,37 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       alert('Failed to delete item. Please try again.');
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // PROMPT #96 - Approve suggested item handler
+  const handleApprove = async () => {
+    setIsApproving(true);
+    try {
+      await tasksApi.activateSuggestedEpic(item.id);
+      console.log('✅ Item approved and activated:', item.title);
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      console.error('❌ Failed to approve item:', error);
+      alert(`Failed to approve item: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  // PROMPT #96 - Reject suggested item handler
+  const handleReject = async () => {
+    setIsRejecting(true);
+    try {
+      await tasksApi.rejectSuggestedEpic(item.id);
+      console.log('✅ Item rejected and deleted:', item.title);
+      onClose();
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      console.error('❌ Failed to reject item:', error);
+      alert(`Failed to reject item: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsRejecting(false);
     }
   };
 
@@ -230,9 +268,62 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   {item.story_points} pts
                 </span>
               )}
+              {/* PROMPT #96 - Show draft/suggested badge */}
+              {isSuggestedItem && (
+                <span className="px-2 py-1 text-xs font-medium rounded bg-amber-100 text-amber-800 border border-amber-200">
+                  📝 Rascunho
+                </span>
+              )}
             </div>
             <h2 className="text-2xl font-bold text-gray-900">{item.title}</h2>
             <p className="text-sm text-gray-500 mt-1">ID: {item.id}</p>
+
+            {/* PROMPT #96 - Approve/Reject buttons for suggested items */}
+            {isSuggestedItem && (
+              <div className="flex gap-2 mt-3">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleApprove}
+                  disabled={isApproving || isRejecting}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isApproving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Ativando...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Aprovar
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  onClick={handleReject}
+                  disabled={isApproving || isRejecting}
+                >
+                  {isRejecting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Rejeitando...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                      Rejeitar
+                    </>
+                  )}
+                </Button>
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}
