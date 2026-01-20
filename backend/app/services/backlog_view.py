@@ -344,5 +344,10 @@ class BacklogViewService:
             "parent_id": str(task.parent_id) if task.parent_id else None,
             "order": task.order,
             "created_at": task.created_at.isoformat() if task.created_at else None,
-            "updated_at": task.updated_at.isoformat() if task.updated_at else None
+            "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+            # PROMPT #96 - Include generated_prompt for ItemDetailPanel
+            "generated_prompt": task.generated_prompt,
+            "acceptance_criteria": task.acceptance_criteria or [],
+            "token_budget": task.token_budget,
+            "actual_tokens_used": task.actual_tokens_used,
         }
