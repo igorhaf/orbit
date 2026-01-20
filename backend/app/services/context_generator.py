@@ -2,6 +2,7 @@
 ContextGeneratorService
 PROMPT #89 - Generate project context from Context Interview
 PROMPT #92 - Generate suggested epics from context
+PROMPT #94 - Activate/Reject suggested epics
 
 This service processes the Context Interview and generates:
 - context_semantic: Structured semantic text for AI consumption
@@ -561,3 +562,310 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
             return False
 
         return project.context_locked
+
+    async def activate_suggested_epic(self, epic_id: UUID) -> Dict:
+        """
+        PROMPT #94 - Activate a suggested epic by generating full content.
+
+        Takes a suggested epic (with labels=["suggested"] and workflow_state="draft")
+        and generates full semantic content using the project context.
+
+        Flow:
+        1. Validate epic is a suggested epic
+        2. Fetch project context
+        3. Generate full epic content using AI (semantic markdown + human description)
+        4. Update epic with generated content
+        5. Remove "suggested" label and change workflow_state to "open"
+        6. Lock project context if this is the first activated epic
+
+        Args:
+            epic_id: Epic ID to activate
+
+        Returns:
+            Dict with activated epic data:
+            {
+                "id": str,
+                "title": str,
+                "description": str,
+                "generated_prompt": str,
+                "semantic_map": Dict,
+                "acceptance_criteria": List[str],
+                "story_points": int,
+                "priority": str,
+                "activated": True
+            }
+
+        Raises:
+            ValueError: If epic not found, not suggested, or project has no context
+        """
+        # 1. Fetch epic
+        epic = self.db.query(Task).filter(Task.id == epic_id).first()
+        if not epic:
+            raise ValueError(f"Epic {epic_id} not found")
+
+        if epic.item_type != ItemType.EPIC:
+            raise ValueError(f"Task {epic_id} is not an Epic (type: {epic.item_type})")
+
+        # Check if it's a suggested epic
+        is_suggested = (
+            epic.labels and "suggested" in epic.labels
+        ) or epic.workflow_state == "draft"
+
+        if not is_suggested:
+            raise ValueError(
+                f"Epic {epic_id} is not a suggested epic. "
+                "It may have already been activated."
+            )
+
+        # 2. Fetch project and context
+        project = self.db.query(Project).filter(Project.id == epic.project_id).first()
+        if not project:
+            raise ValueError(f"Project {epic.project_id} not found")
+
+        if not project.context_semantic:
+            raise ValueError(
+                f"Project {project.id} has no context. "
+                "Please complete the Context Interview first."
+            )
+
+        # 3. Generate full epic content using AI
+        epic_content = await self._generate_full_epic_content(
+            project=project,
+            epic_title=epic.title,
+            epic_description=epic.description
+        )
+
+        # 4. Update epic with generated content
+        epic.description = epic_content["description"]
+        epic.generated_prompt = epic_content["generated_prompt"]
+        epic.acceptance_criteria = epic_content.get("acceptance_criteria", [])
+        epic.story_points = epic_content.get("story_points")
+
+        # Store semantic_map in interview_insights for traceability
+        epic.interview_insights = epic.interview_insights or {}
+        epic.interview_insights["semantic_map"] = epic_content.get("semantic_map", {})
+        epic.interview_insights["activated_from_suggestion"] = True
+        epic.interview_insights["activation_timestamp"] = datetime.utcnow().isoformat()
+
+        # 5. Remove "suggested" label and change workflow_state
+        if epic.labels and "suggested" in epic.labels:
+            epic.labels = [l for l in epic.labels if l != "suggested"]
+        epic.workflow_state = "open"
+        epic.updated_at = datetime.utcnow()
+
+        # 6. Lock project context (first epic activated = context locked)
+        if not project.context_locked:
+            project.context_locked = True
+            project.context_locked_at = datetime.utcnow()
+            logger.info(f"🔒 Context locked for project {project.name} (first epic activated)")
+
+        self.db.commit()
+        self.db.refresh(epic)
+
+        logger.info(f"✅ Epic activated: {epic.title}")
+        logger.info(f"   - Description: {len(epic.description or '')} chars")
+        logger.info(f"   - Generated Prompt: {len(epic.generated_prompt or '')} chars")
+        logger.info(f"   - Acceptance Criteria: {len(epic.acceptance_criteria or [])} items")
+
+        return {
+            "id": str(epic.id),
+            "title": epic.title,
+            "description": epic.description,
+            "generated_prompt": epic.generated_prompt,
+            "semantic_map": epic_content.get("semantic_map", {}),
+            "acceptance_criteria": epic.acceptance_criteria,
+            "story_points": epic.story_points,
+            "priority": epic.priority.value if epic.priority else "medium",
+            "activated": True
+        }
+
+    async def _generate_full_epic_content(
+        self,
+        project: Project,
+        epic_title: str,
+        epic_description: str
+    ) -> Dict:
+        """
+        Generate full epic content using AI and project context.
+
+        Uses PROMPT #83 Semantic References Methodology to generate:
+        - Semantic markdown (generated_prompt) for AI consumption
+        - Human description for reading
+        - Acceptance criteria
+        - Story points estimation
+
+        Args:
+            project: Project instance with context
+            epic_title: Epic title (from suggested epic)
+            epic_description: Epic minimal description (from suggested epic)
+
+        Returns:
+            Dict with full epic content
+        """
+        system_prompt = """Você é um Product Owner especialista em criar cards de Epic completos.
+
+METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+
+Esta metodologia funciona da seguinte forma:
+
+1. O texto principal utiliza **identificadores simbólicos** (ex: N1, N2, P1, E1, D1, S1, C1) como **referências semânticas**
+2. Esses identificadores **NÃO são variáveis, exemplos ou placeholders**
+3. Cada identificador possui um **significado único e imutável** definido em um **Mapa Semântico**
+4. O texto narrativo deve ser interpretado **exclusivamente** com base nessas definições
+
+**Categorias de Identificadores:**
+- **N** (Nouns/Entidades): N1, N2, N3... = Usuários, sistemas, entidades de domínio
+- **P** (Processes/Processos): P1, P2, P3... = Processos de negócio, fluxos, workflows
+- **E** (Endpoints): E1, E2, E3... = APIs, rotas, endpoints
+- **D** (Data/Dados): D1, D2, D3... = Tabelas, estruturas de dados, schemas
+- **S** (Services/Serviços): S1, S2, S3... = Serviços, integrações, bibliotecas
+- **C** (Constraints/Critérios): C1, C2, C3... = Regras de negócio, validações, restrições
+- **AC** (Acceptance Criteria): AC1, AC2, AC3... = Critérios de aceitação numerados
+- **F** (Features/Funcionalidades): F1, F2, F3... = Funcionalidades específicas
+
+Sua tarefa:
+1. Analise o contexto do projeto e o épico sugerido
+2. Crie um **Mapa Semântico** definindo TODOS os identificadores usados
+3. Escreva a narrativa completa do Epic usando APENAS esses identificadores
+4. Extraia critérios de aceitação claros (AC1, AC2, AC3...)
+5. Estime story points (escala Fibonacci: 1, 2, 3, 5, 8, 13, 21)
+
+IMPORTANTE:
+- Um Epic representa um grande corpo de trabalho (múltiplas Stories)
+- Foque em VALOR DE NEGÓCIO e RESULTADOS PARA O USUÁRIO
+- Use identificadores semânticos em TODO o texto
+- TUDO DEVE SER EM PORTUGUÊS
+
+Retorne APENAS JSON válido (sem markdown code blocks):
+{
+    "title": "Título do Epic (pode manter o original ou melhorar)",
+    "semantic_map": {
+        "N1": "Definição clara da entidade 1",
+        "P1": "Definição clara do processo 1",
+        "F1": "Funcionalidade específica",
+        "AC1": "Critério de aceitação 1"
+    },
+    "description_markdown": "# Epic: [Título]\\n\\n## Mapa Semântico\\n\\n- **N1**: [definição]\\n- **P1**: [definição]\\n...\\n\\n## Descrição\\n\\n[Narrativa usando identificadores]\\n\\n## Critérios de Aceitação\\n\\n1. **AC1**: [critério]\\n2. **AC2**: [critério]",
+    "acceptance_criteria": [
+        "AC1: Critério específico e mensurável",
+        "AC2: Critério específico e mensurável"
+    ],
+    "story_points": 13
+}
+"""
+
+        user_prompt = f"""Gere o conteúdo completo para este Epic sugerido usando a Metodologia de Referências Semânticas.
+
+## CONTEXTO DO PROJETO
+**Nome:** {project.name}
+**Descrição:** {project.description or 'Não especificada'}
+
+**Contexto Semântico:**
+{project.context_semantic or 'Não disponível'}
+
+**Contexto Legível:**
+{project.context_human or 'Não disponível'}
+
+## EPIC SUGERIDO
+**Título:** {epic_title}
+**Descrição Inicial:** {epic_description}
+
+## INSTRUÇÕES
+1. Use o contexto do projeto para entender o domínio
+2. Crie um Mapa Semântico específico para este Epic
+3. Gere uma descrição rica e detalhada usando identificadores semânticos
+4. Defina critérios de aceitação claros e mensuráveis
+5. Estime story points baseado na complexidade
+
+Retorne o Epic completo como JSON."""
+
+        # Call AI
+        messages = [{"role": "user", "content": user_prompt}]
+
+        response = await self.orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=messages,
+            system_prompt=system_prompt,
+            max_tokens=4000
+        )
+
+        # Parse response
+        response_text = response.get("content", "")
+        response_text = _strip_markdown_json(response_text)
+
+        try:
+            result = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse epic content as JSON: {e}")
+            logger.error(f"Response text: {response_text[:500]}...")
+            raise ValueError("AI response was not valid JSON. Please try again.")
+
+        # Extract and process content
+        semantic_map = result.get("semantic_map", {})
+        description_markdown = result.get("description_markdown", "")
+
+        # generated_prompt = semantic markdown (for AI/child cards)
+        generated_prompt = description_markdown
+
+        # description = human-readable (converted from semantic)
+        description = _convert_semantic_to_human(description_markdown, semantic_map)
+
+        # Remove Mapa Semântico section from human description
+        description = re.sub(
+            r'##\s*Mapa\s*Sem[aâ]ntico\s*\n+(?:[-*]\s*\*\*[^*]+\*\*:[^\n]*\n*)*',
+            '',
+            description,
+            flags=re.IGNORECASE | re.MULTILINE
+        )
+        description = description.strip()
+
+        return {
+            "title": result.get("title", epic_title),
+            "description": description,
+            "generated_prompt": generated_prompt,
+            "semantic_map": semantic_map,
+            "acceptance_criteria": result.get("acceptance_criteria", []),
+            "story_points": result.get("story_points")
+        }
+
+    async def reject_suggested_epic(self, epic_id: UUID) -> bool:
+        """
+        PROMPT #94 - Reject (delete) a suggested epic.
+
+        Args:
+            epic_id: Epic ID to reject
+
+        Returns:
+            True if deleted successfully
+
+        Raises:
+            ValueError: If epic not found or not a suggested epic
+        """
+        # Fetch epic
+        epic = self.db.query(Task).filter(Task.id == epic_id).first()
+        if not epic:
+            raise ValueError(f"Epic {epic_id} not found")
+
+        if epic.item_type != ItemType.EPIC:
+            raise ValueError(f"Task {epic_id} is not an Epic (type: {epic.item_type})")
+
+        # Check if it's a suggested epic
+        is_suggested = (
+            epic.labels and "suggested" in epic.labels
+        ) or epic.workflow_state == "draft"
+
+        if not is_suggested:
+            raise ValueError(
+                f"Epic {epic_id} is not a suggested epic. "
+                "Only suggested epics can be rejected."
+            )
+
+        epic_title = epic.title
+
+        # Delete the epic
+        self.db.delete(epic)
+        self.db.commit()
+
+        logger.info(f"❌ Suggested epic rejected and deleted: {epic_title}")
+
+        return True

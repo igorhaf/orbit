@@ -1678,3 +1678,132 @@ async def get_blocking_analytics(
         blocked_by_date=blocked_by_date,
         blocked_by_project=blocked_by_project
     )
+
+
+# ============================================================================
+# PROMPT #94 - ACTIVATE/REJECT SUGGESTED EPICS
+# ============================================================================
+
+class ActivateEpicResponse(BaseModel):
+    """Response model for activating a suggested epic."""
+    id: str
+    title: str
+    description: Optional[str] = None
+    generated_prompt: Optional[str] = None
+    acceptance_criteria: Optional[List[str]] = None
+    story_points: Optional[int] = None
+    priority: str
+    activated: bool
+
+
+@router.post("/{task_id}/activate", response_model=ActivateEpicResponse)
+async def activate_suggested_epic(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Activate a suggested epic by generating full semantic content.
+
+    PROMPT #94 - Activate Suggested Epic:
+
+    When user approves a suggested epic:
+    1. Fetch project context (context_semantic, context_human)
+    2. Generate full epic content using AI:
+       - Semantic markdown (generated_prompt) for AI/child cards
+       - Human description for reading
+       - Acceptance criteria
+       - Story points estimation
+    3. Update epic:
+       - Remove "suggested" label
+       - Change workflow_state from "draft" to "open"
+       - Add generated content
+    4. Lock project context (first activated epic triggers lock)
+
+    POST /api/v1/tasks/{task_id}/activate
+
+    Requirements:
+    - Task must be an EPIC
+    - Task must have labels=["suggested"] or workflow_state="draft"
+    - Project must have context_semantic (Context Interview completed)
+
+    Returns:
+    - The activated epic with full content
+
+    Example response:
+    {
+        "id": "uuid",
+        "title": "Autenticação e Autorização",
+        "description": "Sistema completo de autenticação...",
+        "generated_prompt": "# Epic: Autenticação\\n\\n## Mapa Semântico...",
+        "acceptance_criteria": ["AC1: ...", "AC2: ..."],
+        "story_points": 13,
+        "priority": "critical",
+        "activated": true
+    }
+    """
+    from app.services.context_generator import ContextGeneratorService
+
+    context_service = ContextGeneratorService(db)
+
+    try:
+        result = await context_service.activate_suggested_epic(epic_id=task_id)
+
+        logger.info(
+            f"✅ Suggested epic activated: {task_id}\n"
+            f"   Title: {result['title']}\n"
+            f"   Description: {len(result.get('description', ''))} chars\n"
+            f"   Generated Prompt: {len(result.get('generated_prompt', ''))} chars"
+        )
+
+        return ActivateEpicResponse(**result)
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.delete("/{task_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
+async def reject_suggested_epic(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Reject (delete) a suggested epic.
+
+    PROMPT #94 - Reject Suggested Epic:
+
+    When user rejects a suggested epic:
+    1. Validate it's a suggested epic (labels=["suggested"] or workflow_state="draft")
+    2. Delete the epic from database
+
+    DELETE /api/v1/tasks/{task_id}/reject
+
+    Requirements:
+    - Task must be an EPIC
+    - Task must have labels=["suggested"] or workflow_state="draft"
+
+    Returns:
+    - 204 No Content on success
+
+    Note: This permanently deletes the suggested epic. If the user wants to
+    create a similar epic later, they can do so manually or re-run the
+    Context Interview.
+    """
+    from app.services.context_generator import ContextGeneratorService
+
+    context_service = ContextGeneratorService(db)
+
+    try:
+        context_service.reject_suggested_epic(epic_id=task_id)
+
+        logger.info(f"❌ Suggested epic rejected and deleted: {task_id}")
+
+        return None
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
