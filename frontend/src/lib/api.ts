@@ -285,6 +285,26 @@ export const tasksApi = {
     queryParams.append('days', days.toString());
     return request<any>(`/api/v1/tasks/analytics/blocking?${queryParams.toString()}`);
   },
+
+  // PROMPT #94 - Activate/Reject Suggested Epics
+  activateSuggestedEpic: (taskId: string) =>
+    request<{
+      id: string;
+      title: string;
+      description: string | null;
+      generated_prompt: string | null;
+      acceptance_criteria: string[] | null;
+      story_points: number | null;
+      priority: string;
+      activated: boolean;
+    }>(`/api/v1/tasks/${taskId}/activate`, {
+      method: 'POST',
+    }),
+
+  rejectSuggestedEpic: (taskId: string) =>
+    request<void>(`/api/v1/tasks/${taskId}/reject`, {
+      method: 'DELETE',
+    }),
 };
 
 // Backlog Generation API (JIRA Transformation - PROMPT #62)
