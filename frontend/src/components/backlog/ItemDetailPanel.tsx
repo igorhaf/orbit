@@ -7,6 +7,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Dialog, DialogFooter } from '@/components/ui';
 import { tasksApi } from '@/lib/api';
 import WorkflowActions from './WorkflowActions';
@@ -284,12 +285,18 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
               {/* Overview Tab */}
               {activeTab === 'overview' && (
                 <div className="space-y-6">
-                  {/* Description */}
+                  {/* Description - PROMPT #96: Render as Markdown */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 mb-2">Description</h3>
-                    <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                      {item.description || 'No description provided.'}
-                    </p>
+                    {item.description ? (
+                      <div className="prose prose-sm max-w-none text-gray-700">
+                        <ReactMarkdown>
+                          {item.description}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 italic">No description provided.</p>
+                    )}
                   </div>
 
                   {/* Metadata Grid */}
