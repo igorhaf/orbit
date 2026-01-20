@@ -723,135 +723,276 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
         Returns:
             Dict with full epic content
         """
-        # PROMPT #95 - Use the same rich structure as backlog_generator.py
-        system_prompt = """Você é um Product Owner especialista analisando contexto de projeto para gerar Epics completos.
+        # PROMPT #96 - Enhanced prompt for DETAILED epic content generation
+        system_prompt = """Você é um Arquiteto de Software e Product Owner especialista gerando especificações técnicas DETALHADAS para Epics.
+
+OBJETIVO: Gerar uma especificação COMPLETA e DETALHADA do módulo/funcionalidade, incluindo:
+- Campos e atributos com tipos de dados
+- Regras de negócio específicas
+- Fluxos e estados
+- Interface do usuário
+- Integrações e APIs
+- Validações e constraints
 
 METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
 
-Esta metodologia funciona da seguinte forma:
+**Categorias de Identificadores (use TODAS que forem aplicáveis):**
 
-1. O texto principal utiliza **identificadores simbólicos** (ex: N1, N2, P1, E1, D1, S1, C1) como **referências semânticas**
-2. Esses identificadores **NÃO são variáveis, exemplos ou placeholders**
-3. Cada identificador possui um **significado único e imutável** definido em um **Mapa Semântico**
-4. O texto narrativo deve ser interpretado **exclusivamente** com base nessas definições
-5. **Não faça inferências** fora do que está explicitamente definido no Mapa Semântico
-6. **Não substitua** os identificadores por seus significados no texto
-7. Caso haja ambiguidade, ela deve ser apontada, não resolvida automaticamente
-8. Caso seja necessário criar novos conceitos, eles devem ser introduzidos como novos identificadores e definidos separadamente
+**Entidades e Dados:**
+- **N** (Nouns/Entidades): N1, N2... = Entidades de domínio (Ex: N1=Usuário, N2=Imóvel)
+- **ATTR** (Atributos): ATTR1, ATTR2... = Campos/atributos específicos (Ex: ATTR1=nome:string, ATTR2=email:string)
+- **D** (Data/Estruturas): D1, D2... = Tabelas, schemas, models (Ex: D1=tabela_usuarios)
+- **ENUM** (Enumerações): ENUM1, ENUM2... = Valores fixos (Ex: ENUM1=TipoUsuario[admin,corretor,cliente])
+- **REL** (Relacionamentos): REL1, REL2... = Relações entre entidades (Ex: REL1=N1 possui muitos N2)
 
-**Categorias de Identificadores:**
-- **N** (Nouns/Entidades): N1, N2, N3... = Usuários, sistemas, entidades de domínio
-- **P** (Processes/Processos): P1, P2, P3... = Processos de negócio, fluxos, workflows
-- **E** (Endpoints): E1, E2, E3... = APIs, rotas, endpoints
-- **D** (Data/Dados): D1, D2, D3... = Tabelas, estruturas de dados, schemas
-- **S** (Services/Serviços): S1, S2, S3... = Serviços, integrações, bibliotecas
-- **C** (Constraints/Critérios): C1, C2, C3... = Regras de negócio, validações, restrições
-- **AC** (Acceptance Criteria): AC1, AC2, AC3... = Critérios de aceitação numerados
-- **F** (Features/Funcionalidades): F1, F2, F3... = Funcionalidades específicas
-- **M** (Metrics/Métricas): M1, M2, M3... = Métricas, KPIs, indicadores
+**Lógica e Regras:**
+- **RN** (Regras de Negócio): RN1, RN2... = Regras específicas (Ex: RN1=Email deve ser único)
+- **VAL** (Validações): VAL1, VAL2... = Validações de entrada (Ex: VAL1=CPF válido)
+- **CALC** (Cálculos): CALC1, CALC2... = Fórmulas e cálculos (Ex: CALC1=comissão=valor*0.05)
+- **COND** (Condições): COND1, COND2... = Condições lógicas (Ex: COND1=se status=ativo)
 
-**Objetivo desta metodologia:**
-- Reduzir ambiguidade semântica
-- Manter consistência conceitual
-- Permitir edição posterior manual do código
-- Garantir rastreabilidade entre texto e implementação
+**Fluxos e Processos:**
+- **P** (Processos): P1, P2... = Fluxos de trabalho (Ex: P1=Cadastro de imóvel)
+- **EST** (Estados): EST1, EST2... = Estados possíveis (Ex: EST1=rascunho, EST2=publicado)
+- **TRANS** (Transições): TRANS1, TRANS2... = Transições de estado (Ex: TRANS1=EST1→EST2)
+- **STEP** (Etapas): STEP1, STEP2... = Passos do processo (Ex: STEP1=preencher dados)
+
+**Interface:**
+- **TELA** (Telas): TELA1, TELA2... = Telas/páginas (Ex: TELA1=Dashboard, TELA2=Listagem)
+- **COMP** (Componentes): COMP1, COMP2... = Componentes UI (Ex: COMP1=FormularioCadastro)
+- **BTN** (Botões/Ações): BTN1, BTN2... = Ações do usuário (Ex: BTN1=Salvar, BTN2=Cancelar)
+- **FILTRO** (Filtros): FILTRO1... = Filtros disponíveis (Ex: FILTRO1=por status)
+
+**Integrações:**
+- **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuarios)
+- **S** (Serviços): S1, S2... = Serviços externos (Ex: S1=serviço de email)
+- **EVENTO** (Eventos): EVENTO1... = Eventos do sistema (Ex: EVENTO1=usuario_criado)
+
+**Critérios:**
+- **AC** (Acceptance Criteria): AC1, AC2... = Critérios de aceitação
+- **PERF** (Performance): PERF1... = Requisitos de performance
+- **SEG** (Segurança): SEG1... = Requisitos de segurança
 
 Sua tarefa:
 1. Analise o contexto do projeto e o épico sugerido
-2. Crie um **Mapa Semântico** definindo TODOS os identificadores usados (mínimo 15-20 identificadores)
-3. Escreva a narrativa completa do Epic usando APENAS esses identificadores
-4. Extraia critérios de aceitação claros (usando identificadores AC1, AC2, AC3...)
-5. Extraia insights chave: requisitos, objetivos de negócio, restrições técnicas
-6. Estime story points (1-21, escala Fibonacci) baseado na complexidade do Epic
-7. Sugira prioridade (critical, high, medium, low, trivial)
+2. Crie um **Mapa Semântico EXTENSO** com MÍNIMO 25-35 identificadores
+3. DETALHE especificamente:
+   - TODOS os campos/atributos com seus TIPOS DE DADOS
+   - TODAS as regras de negócio com condições específicas
+   - TODOS os estados e transições
+   - TODAS as telas e componentes principais
+   - TODOS os endpoints necessários
+4. Escreva a descrição usando APENAS identificadores do mapa
+5. Defina critérios de aceitação específicos e mensuráveis
 
-IMPORTANTE:
-- Um Epic representa um grande corpo de trabalho (múltiplas Stories)
-- Foque em VALOR DE NEGÓCIO e RESULTADOS PARA O USUÁRIO
-- Use identificadores semânticos em TODO o texto (narrativa, critérios, insights)
-- Seja específico e acionável nos critérios de aceitação
-- TUDO DEVE SER EM PORTUGUÊS (título, descrição, critérios, identificadores)
-- A descrição deve ser RICA e DETALHADA (mínimo 800 caracteres)
+ESTRUTURA OBRIGATÓRIA DO description_markdown:
 
-Retorne APENAS JSON válido (sem markdown code blocks, sem explicação):
+```
+# Epic: [Título]
+
+## Mapa Semântico
+
+### Entidades
+- **N1**: [entidade]
+- **N2**: [entidade]
+
+### Atributos de [Entidade Principal]
+- **ATTR1**: [campo]: [tipo] - [descrição]
+- **ATTR2**: [campo]: [tipo] - [descrição]
+...
+
+### Enumerações
+- **ENUM1**: [nome][valor1, valor2, valor3]
+...
+
+### Regras de Negócio
+- **RN1**: [regra específica]
+- **RN2**: [regra específica]
+...
+
+### Validações
+- **VAL1**: [validação]
+...
+
+### Estados e Transições
+- **EST1**: [estado1]
+- **EST2**: [estado2]
+- **TRANS1**: EST1 → EST2 quando [condição]
+...
+
+### Telas e Componentes
+- **TELA1**: [nome da tela] - [descrição]
+- **COMP1**: [componente] em TELA1
+...
+
+### Endpoints
+- **API1**: [método] [rota] - [descrição]
+...
+
+## Descrição Funcional
+
+[Narrativa DETALHADA usando os identificadores. Descreva o fluxo completo,
+como as telas interagem, quais validações são aplicadas em cada etapa,
+como os estados mudam, etc.]
+
+## Fluxo Principal
+
+1. STEP1: [descrição usando identificadores]
+2. STEP2: [descrição usando identificadores]
+...
+
+## Critérios de Aceitação
+
+1. **AC1**: [critério específico e mensurável]
+2. **AC2**: [critério específico e mensurável]
+...
+
+## Regras de Negócio Detalhadas
+
+### RN1: [Nome da Regra]
+- **Condição**: [quando se aplica]
+- **Ação**: [o que acontece]
+- **Exceção**: [casos especiais]
+
+...
+
+## Especificação de Dados
+
+### Tabela: [nome]
+| Campo | Tipo | Obrigatório | Descrição |
+|-------|------|-------------|-----------|
+| ATTR1 | string | Sim | ... |
+| ATTR2 | integer | Não | ... |
+
+## Considerações Técnicas
+
+- [consideração 1]
+- [consideração 2]
+```
+
+Retorne APENAS JSON válido (sem markdown code blocks):
 {
-    "title": "Título do Epic (conciso, focado em negócio) - EM PORTUGUÊS",
+    "title": "Título do Epic",
     "semantic_map": {
-        "N1": "Definição clara da entidade 1",
-        "N2": "Definição clara da entidade 2",
-        "P1": "Definição clara do processo 1",
-        "E1": "Definição clara do endpoint 1",
-        "D1": "Definição clara da estrutura de dados 1",
-        "S1": "Definição clara do serviço 1",
-        "C1": "Definição clara do critério/regra 1",
-        "AC1": "Critério de aceitação 1",
-        "AC2": "Critério de aceitação 2"
+        "N1": "...", "N2": "...",
+        "ATTR1": "campo: tipo - descrição",
+        "RN1": "regra específica",
+        "EST1": "estado", "TRANS1": "transição",
+        "TELA1": "tela", "API1": "endpoint"
     },
-    "description_markdown": "# Epic: [Título]\\n\\n## Mapa Semântico\\n\\n- **N1**: [definição]\\n- **N2**: [definição]\\n- **P1**: [definição]\\n...\\n\\n## Descrição\\n\\n[Narrativa usando APENAS identificadores do mapa semântico. Ex: 'Este Epic implementa P1 para N1, permitindo que N2 gerencie D1 via E1.']\\n\\n## Critérios de Aceitação\\n\\n1. **AC1**: [critério usando identificadores]\\n2. **AC2**: [critério usando identificadores]\\n...\\n\\n## Insights da Entrevista\\n\\n**Requisitos-Chave:**\\n- [requisito usando identificadores]\\n...\\n\\n**Objetivos de Negócio:**\\n- [objetivo usando identificadores]\\n...\\n\\n**Restrições Técnicas:**\\n- [restrição usando identificadores]\\n...",
+    "description_markdown": "[MARKDOWN COMPLETO seguindo a estrutura acima]",
     "story_points": 13,
     "priority": "high",
-    "acceptance_criteria": [
-        "AC1: [Critério específico mensurável usando identificadores semânticos]",
-        "AC2: [Critério específico mensurável usando identificadores semânticos]",
-        "AC3: [Critério específico mensurável usando identificadores semânticos]"
-    ],
+    "acceptance_criteria": ["AC1: critério", "AC2: critério"],
     "interview_insights": {
-        "key_requirements": ["[requisito usando identificadores]", "[requisito usando identificadores]"],
-        "business_goals": ["[objetivo usando identificadores]", "[objetivo usando identificadores]"],
-        "technical_constraints": ["[restrição usando identificadores]", "[restrição usando identificadores]"]
+        "key_requirements": ["requisito 1", "requisito 2"],
+        "business_goals": ["objetivo 1", "objetivo 2"],
+        "technical_constraints": ["restrição 1", "restrição 2"]
     }
 }
 
 **REGRAS CRÍTICAS:**
-- description_markdown deve conter TODO o conteúdo formatado em Markdown
-- O Mapa Semântico deve estar TANTO no description_markdown quanto no campo semantic_map do JSON
-- Use identificadores semânticos em TODOS os textos (title pode ser em linguagem natural, mas description/criteria/insights devem usar identificadores)
-- NUNCA substitua identificadores por seus significados - mantenha sempre os identificadores no texto
-- A seção "Insights da Entrevista" é OBRIGATÓRIA com Requisitos-Chave, Objetivos de Negócio e Restrições Técnicas
+- MÍNIMO 25 identificadores no mapa semântico
+- DETALHE campos com TIPOS DE DADOS (string, integer, boolean, date, etc)
+- DETALHE regras de negócio com CONDIÇÕES ESPECÍFICAS
+- INCLUA telas e componentes UI
+- INCLUA endpoints da API
+- A descrição deve ter MÍNIMO 1500 caracteres
+- TUDO EM PORTUGUÊS
 """
 
-        user_prompt = f"""Gere o conteúdo completo para este Epic sugerido usando a Metodologia de Referências Semânticas.
+        user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para este Epic/Módulo.
 
 ## CONTEXTO DO PROJETO
 **Nome:** {project.name}
 **Descrição:** {project.description or 'Não especificada'}
 
-**Contexto Semântico do Projeto (USE ESTES IDENTIFICADORES SE APLICÁVEL):**
+**Contexto Semântico do Projeto (REUTILIZE estes identificadores):**
 {project.context_semantic or 'Não disponível'}
 
 **Contexto Legível do Projeto:**
 {project.context_human or 'Não disponível'}
 
-## EPIC SUGERIDO
+## EPIC/MÓDULO A ESPECIFICAR
 **Título:** {epic_title}
 **Descrição Inicial:** {epic_description}
 
-## INSTRUÇÕES
-1. **REUTILIZE** identificadores do contexto semântico do projeto quando aplicável
-2. **ESTENDA** o mapa com novos identificadores específicos para este Epic
-3. Crie um Mapa Semântico COMPLETO (mínimo 15-20 identificadores)
-4. Gere uma descrição RICA e DETALHADA usando identificadores semânticos
-5. Defina critérios de aceitação claros e mensuráveis (AC1, AC2, AC3...)
-6. Inclua seção de Insights com Requisitos-Chave, Objetivos de Negócio e Restrições Técnicas
-7. Estime story points baseado na complexidade
+## REQUISITOS DA ESPECIFICAÇÃO
 
-LEMBRE-SE:
-- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
-- Use identificadores semânticos em TODA a narrativa
-- NUNCA substitua identificadores por seus significados
-- A descrição deve ter MÍNIMO 800 caracteres
-- A seção de Insights da Entrevista é OBRIGATÓRIA
+Você DEVE incluir detalhes sobre:
 
-Retorne o Epic completo como JSON seguindo EXATAMENTE o schema fornecido no system prompt."""
+### 1. MODELO DE DADOS (obrigatório)
+- Liste TODOS os campos/atributos necessários
+- Especifique o TIPO DE DADO de cada campo (string, integer, boolean, date, decimal, text, json, etc)
+- Indique se é obrigatório ou opcional
+- Descreva validações específicas de cada campo
 
-        # Call AI - PROMPT #95: Increased max_tokens to 6000 for richer content
+### 2. REGRAS DE NEGÓCIO (obrigatório)
+- Liste TODAS as regras de negócio do módulo
+- Especifique CONDIÇÕES de cada regra (quando se aplica)
+- Especifique AÇÕES de cada regra (o que acontece)
+- Especifique EXCEÇÕES (casos especiais)
+
+### 3. ESTADOS E FLUXOS (obrigatório)
+- Liste TODOS os estados possíveis
+- Especifique TODAS as transições entre estados
+- Indique as CONDIÇÕES para cada transição
+
+### 4. INTERFACE DO USUÁRIO (obrigatório)
+- Liste TODAS as telas necessárias
+- Descreva os componentes principais de cada tela
+- Indique os botões e ações disponíveis
+- Descreva filtros e ordenações
+
+### 5. ENDPOINTS DA API (obrigatório)
+- Liste TODOS os endpoints REST necessários
+- Especifique método HTTP e rota
+- Descreva parâmetros de entrada e saída
+
+### 6. INTEGRAÇÕES (se aplicável)
+- Serviços externos necessários
+- Eventos do sistema
+
+## FORMATO DE SAÍDA
+
+Use a estrutura EXATA especificada no system prompt:
+- Mapa semântico com MÍNIMO 25 identificadores
+- Seções: Entidades, Atributos, Enumerações, Regras, Validações, Estados, Telas, Endpoints
+- Tabela de especificação de dados
+- Fluxo principal detalhado
+
+## EXEMPLO DE NÍVEL DE DETALHE ESPERADO
+
+Para um módulo de "Cadastro de Imóveis", esperamos ver:
+- ATTR1: titulo: string(100) - Título do anúncio, obrigatório
+- ATTR2: descricao: text - Descrição detalhada, obrigatório, mínimo 50 caracteres
+- ATTR3: preco: decimal(10,2) - Valor do imóvel em reais
+- ATTR4: tipo: enum[casa,apartamento,terreno,comercial] - Tipo do imóvel
+- ATTR5: quartos: integer - Número de quartos, 0-10
+- ATTR6: banheiros: integer - Número de banheiros, 0-10
+- ATTR7: area_m2: decimal(8,2) - Área em metros quadrados
+- ATTR8: endereco_cep: string(8) - CEP, validação de formato
+- RN1: Preço deve ser maior que zero
+- RN2: Área deve ser maior que zero
+- EST1: rascunho, EST2: pendente_aprovacao, EST3: publicado, EST4: vendido
+- TELA1: Lista de Imóveis com filtros por tipo, preço, localização
+- TELA2: Formulário de Cadastro com wizard de 3 etapas
+- API1: GET /imoveis - listar com paginação e filtros
+- API2: POST /imoveis - criar novo imóvel
+- API3: PUT /imoveis/:id - atualizar imóvel
+
+GERE ESTE NÍVEL DE DETALHE PARA O MÓDULO "{epic_title}".
+
+Retorne como JSON seguindo o schema do system prompt."""
+
+        # Call AI - PROMPT #96: Increased max_tokens to 8000 for detailed specs
         messages = [{"role": "user", "content": user_prompt}]
 
         response = await self.orchestrator.execute(
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=6000  # Increased from 4000 to allow for richer content
+            max_tokens=8000  # Increased to allow for detailed specifications
         )
 
         # Parse response - PROMPT #95: Enhanced JSON extraction
