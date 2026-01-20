@@ -1796,7 +1796,7 @@ async def reject_suggested_epic(
     context_service = ContextGeneratorService(db)
 
     try:
-        context_service.reject_suggested_epic(epic_id=task_id)
+        await context_service.reject_suggested_epic(epic_id=task_id)
 
         logger.info(f"❌ Suggested epic rejected and deleted: {task_id}")
 
