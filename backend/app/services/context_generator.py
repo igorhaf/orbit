@@ -856,23 +856,34 @@ Retorne o Epic completo como JSON seguindo EXATAMENTE o schema fornecido no syst
 
         # Parse response - PROMPT #95: Enhanced JSON extraction
         response_text = response.get("content", "")
+        original_response = response_text  # Keep original for debugging
         logger.info(f"📥 Raw AI response length: {len(response_text)} chars")
-        logger.debug(f"Raw AI response (first 2000): {response_text[:2000]}...")
 
-        # Step 1: Strip markdown code blocks
-        response_text = _strip_markdown_json(response_text)
-
-        # Step 2: Try multiple JSON extraction strategies
+        # Step 0: Try parsing raw response before any transformation
         result = None
         parse_method = "none"
 
-        # Strategy 1: Direct JSON parse
         try:
             result = json.loads(response_text)
-            parse_method = "direct"
-            logger.info("✅ JSON parsed directly")
-        except json.JSONDecodeError:
-            pass
+            parse_method = "raw_direct"
+            logger.info("✅ JSON parsed from raw response directly")
+        except json.JSONDecodeError as e:
+            logger.debug(f"Raw parse failed: {e}")
+
+        # Step 1: Strip markdown code blocks
+        if result is None:
+            response_text = _strip_markdown_json(response_text)
+
+        # Step 2: Try multiple JSON extraction strategies
+
+        # Strategy 1: Direct JSON parse after strip
+        if result is None:
+            try:
+                result = json.loads(response_text)
+                parse_method = "direct"
+                logger.info("✅ JSON parsed directly after strip")
+            except json.JSONDecodeError as e:
+                logger.debug(f"Direct parse failed: {e}")
 
         # Strategy 2: Extract JSON object with regex (greedy)
         if result is None:
@@ -918,8 +929,55 @@ Retorne o Epic completo como JSON seguindo EXATAMENTE o schema fornecido no syst
                     result = json.loads(json_match.group(0))
                     parse_method = "fixed_trailing_commas"
                     logger.info("✅ JSON parsed after fixing trailing commas")
-                except json.JSONDecodeError:
-                    pass
+                except json.JSONDecodeError as e:
+                    logger.debug(f"Trailing comma fix failed: {e}")
+
+        # Strategy 5: Fix unescaped newlines in JSON strings
+        if result is None:
+            # This is a common issue where AI returns JSON with literal newlines in strings
+            # instead of \n escape sequences
+            try:
+                # Replace literal newlines inside strings with \n
+                # This is a heuristic approach - find strings and escape their newlines
+                fixed_text = response_text
+
+                # First, try to find the JSON object
+                json_match = re.search(r'\{[\s\S]*\}', fixed_text)
+                if json_match:
+                    json_str = json_match.group(0)
+
+                    # Try to fix common issues:
+                    # 1. Replace literal \n with \\n in strings (already escaped but not properly)
+                    # 2. Try to load with strict=False
+
+                    # Attempt 1: Replace problematic characters
+                    json_str_fixed = json_str.replace('\r\n', '\\n').replace('\r', '\\n')
+
+                    try:
+                        result = json.loads(json_str_fixed)
+                        parse_method = "fixed_newlines"
+                        logger.info("✅ JSON parsed after fixing newlines")
+                    except json.JSONDecodeError:
+                        # Attempt 2: More aggressive fix - escape all unescaped newlines
+                        # Find all strings and properly escape them
+                        pass
+
+            except Exception as e:
+                logger.debug(f"Newline fix failed: {e}")
+
+        # Strategy 6: Last resort - try Python's ast.literal_eval for simple cases
+        if result is None:
+            try:
+                import ast
+                # This can handle some cases where json.loads fails
+                result = ast.literal_eval(response_text)
+                if isinstance(result, dict):
+                    parse_method = "ast_literal_eval"
+                    logger.info("✅ JSON parsed with ast.literal_eval")
+                else:
+                    result = None
+            except:
+                pass
 
         if result:
             logger.info(f"✅ AI response parsed successfully (method: {parse_method})")
