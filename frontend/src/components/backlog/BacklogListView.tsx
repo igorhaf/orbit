@@ -12,6 +12,11 @@ import { tasksApi } from '@/lib/api';
 import { BacklogItem, ItemType, PriorityLevel, TaskStatus } from '@/lib/types';
 import { TaskCard } from './TaskCard'; // PROMPT #68
 
+// PROMPT #94 - Helper to check if item is suggested
+const isSuggestedItem = (item: BacklogItem): boolean => {
+  return item.labels?.includes('suggested') || item.workflow_state === 'draft';
+};
+
 interface BacklogListViewProps {
   projectId: string;
   onItemSelect?: (item: BacklogItem) => void;
@@ -112,6 +117,10 @@ export default function BacklogListView({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree'); // PROMPT #68
 
+  // PROMPT #94 - State for approve/reject actions
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+
   useEffect(() => {
     fetchBacklog();
   }, [projectId, filters]);
@@ -193,6 +202,40 @@ export default function BacklogListView({
     }
   };
 
+  // PROMPT #94 - Activate suggested item
+  const handleActivateItem = async (item: BacklogItem) => {
+    setActivatingId(item.id);
+    try {
+      await tasksApi.activateSuggestedEpic(item.id);
+      console.log('✅ Item activated:', item.title);
+      fetchBacklog();
+    } catch (error: any) {
+      console.error('❌ Failed to activate item:', error);
+      alert(`Failed to activate item: ${error.message}`);
+    } finally {
+      setActivatingId(null);
+    }
+  };
+
+  // PROMPT #94 - Reject suggested item
+  const handleRejectItem = async (item: BacklogItem) => {
+    if (!confirm(`Are you sure you want to reject and delete "${item.title}"?`)) {
+      return;
+    }
+
+    setRejectingId(item.id);
+    try {
+      await tasksApi.rejectSuggestedEpic(item.id);
+      console.log('❌ Item rejected:', item.title);
+      fetchBacklog();
+    } catch (error: any) {
+      console.error('❌ Failed to reject item:', error);
+      alert(`Failed to reject item: ${error.message}`);
+    } finally {
+      setRejectingId(null);
+    }
+  };
+
   // PROMPT #68 - Flatten hierarchy for Card View
   const flattenBacklog = (items: BacklogItem[]): BacklogItem[] => {
     const flattened: BacklogItem[] = [];
@@ -213,15 +256,17 @@ export default function BacklogListView({
     const hasChildren = item.children && item.children.length > 0;
     const isExpanded = expandedIds.has(item.id);
     const isSelected = selectedIds.has(item.id);
+    const isSuggested = isSuggestedItem(item);
     const indentClass = `pl-${depth * 6}`;
 
     return (
-      <div key={item.id} className="border-b border-gray-100">
+      <div key={item.id} className={`border-b ${isSuggested ? 'border-dashed border-gray-300 bg-gray-50/50' : 'border-gray-100'}`}>
         {/* Item Row */}
         <div
           className={`
             flex items-center gap-3 py-3 px-4 hover:bg-gray-50 cursor-pointer transition-colors
             ${isSelected ? 'bg-blue-50' : ''}
+            ${isSuggested ? 'opacity-60' : ''}
             ${indentClass}
           `}
           style={{ paddingLeft: `${depth * 1.5 + 1}rem` }}
@@ -313,6 +358,49 @@ export default function BacklogListView({
 
           {/* Status Badge */}
           {getStatusBadge(item.workflow_state)}
+
+          {/* PROMPT #94 - Approve/Reject buttons for suggested items */}
+          {isSuggestedItem(item) && (
+            <div className="flex gap-1 ml-2">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleActivateItem(item);
+                }}
+                disabled={activatingId === item.id || rejectingId === item.id}
+                className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                title="Aprovar sugestão"
+              >
+                {activatingId === item.id ? (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
+                ) : (
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+                <span>Aprovar</span>
+              </button>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRejectItem(item);
+                }}
+                disabled={activatingId === item.id || rejectingId === item.id}
+                className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded border border-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                title="Rejeitar sugestão"
+              >
+                {rejectingId === item.id ? (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
+                ) : (
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                )}
+                <span>Rejeitar</span>
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Render Children (if expanded) */}
