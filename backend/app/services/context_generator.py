@@ -844,38 +844,94 @@ LEMBRE-SE:
 
 Retorne o Epic completo como JSON seguindo EXATAMENTE o schema fornecido no system prompt."""
 
-        # Call AI
+        # Call AI - PROMPT #95: Increased max_tokens to 6000 for richer content
         messages = [{"role": "user", "content": user_prompt}]
 
         response = await self.orchestrator.execute(
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=4000
+            max_tokens=6000  # Increased from 4000 to allow for richer content
         )
 
-        # Parse response
+        # Parse response - PROMPT #95: Enhanced JSON extraction
         response_text = response.get("content", "")
-        logger.debug(f"Raw AI response: {response_text[:1000]}...")
+        logger.info(f"📥 Raw AI response length: {len(response_text)} chars")
+        logger.debug(f"Raw AI response (first 2000): {response_text[:2000]}...")
 
-        # Strip markdown code blocks
+        # Step 1: Strip markdown code blocks
         response_text = _strip_markdown_json(response_text)
 
-        # Try to extract JSON from the response if it contains extra text
-        json_match = re.search(r'\{[\s\S]*\}', response_text)
-        if json_match:
-            response_text = json_match.group(0)
+        # Step 2: Try multiple JSON extraction strategies
+        result = None
+        parse_method = "none"
 
+        # Strategy 1: Direct JSON parse
         try:
             result = json.loads(response_text)
-            logger.info(f"✅ AI response parsed successfully")
+            parse_method = "direct"
+            logger.info("✅ JSON parsed directly")
+        except json.JSONDecodeError:
+            pass
+
+        # Strategy 2: Extract JSON object with regex (greedy)
+        if result is None:
+            json_match = re.search(r'\{[\s\S]*\}', response_text)
+            if json_match:
+                try:
+                    result = json.loads(json_match.group(0))
+                    parse_method = "regex_greedy"
+                    logger.info("✅ JSON extracted with greedy regex")
+                except json.JSONDecodeError:
+                    pass
+
+        # Strategy 3: Find balanced braces (handles nested objects)
+        if result is None:
+            brace_start = response_text.find('{')
+            if brace_start != -1:
+                brace_count = 0
+                brace_end = brace_start
+                for i, char in enumerate(response_text[brace_start:], start=brace_start):
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            brace_end = i + 1
+                            break
+                if brace_end > brace_start:
+                    try:
+                        result = json.loads(response_text[brace_start:brace_end])
+                        parse_method = "balanced_braces"
+                        logger.info("✅ JSON extracted with balanced braces")
+                    except json.JSONDecodeError:
+                        pass
+
+        # Strategy 4: Try to fix common JSON issues
+        if result is None:
+            # Remove trailing commas before closing braces/brackets
+            fixed_text = re.sub(r',\s*([}\]])', r'\1', response_text)
+            # Try parsing fixed text
+            json_match = re.search(r'\{[\s\S]*\}', fixed_text)
+            if json_match:
+                try:
+                    result = json.loads(json_match.group(0))
+                    parse_method = "fixed_trailing_commas"
+                    logger.info("✅ JSON parsed after fixing trailing commas")
+                except json.JSONDecodeError:
+                    pass
+
+        if result:
+            logger.info(f"✅ AI response parsed successfully (method: {parse_method})")
             logger.info(f"   - title: {result.get('title', 'N/A')}")
             logger.info(f"   - semantic_map keys: {list(result.get('semantic_map', {}).keys())}")
             logger.info(f"   - description_markdown length: {len(result.get('description_markdown', ''))}")
             logger.info(f"   - acceptance_criteria count: {len(result.get('acceptance_criteria', []))}")
             logger.info(f"   - story_points: {result.get('story_points', 'N/A')}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse epic content as JSON: {e}")
+            logger.info(f"   - interview_insights keys: {list(result.get('interview_insights', {}).keys())}")
+        else:
+            # All parsing strategies failed
+            logger.error(f"❌ Failed to parse AI response as JSON after all strategies")
             logger.error(f"Response text (first 1500 chars): {response_text[:1500]}...")
 
             # Fallback: create meaningful content from the epic data and project context
