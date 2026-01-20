@@ -6,7 +6,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Dialog, DialogFooter } from '@/components/ui';
 import { tasksApi } from '@/lib/api';
@@ -55,12 +55,25 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [isApproving, setIsApproving] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
 
+  // PROMPT #97 - Inline description editing state
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editedDescription, setEditedDescription] = useState(item.description || '');
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
+  const descriptionEditorRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
   // Check if item is a suggested/draft item
   const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
 
   useEffect(() => {
     fetchItemDetails();
   }, [item.id]);
+
+  // PROMPT #97 - Sync edited description when item changes
+  useEffect(() => {
+    setEditedDescription(item.description || '');
+    setIsEditingDescription(false);
+  }, [item.id, item.description]);
 
   const fetchItemDetails = async () => {
     setLoading(true);
@@ -161,6 +174,97 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       setIsRejecting(false);
     }
   };
+
+  // PROMPT #97 - Inline description editing handlers
+  const handleDescriptionDoubleClick = () => {
+    setIsEditingDescription(true);
+    setEditedDescription(item.description || '');
+    // Focus textarea after state update
+    setTimeout(() => {
+      textareaRef.current?.focus();
+      textareaRef.current?.select();
+    }, 0);
+  };
+
+  const handleSaveDescription = async () => {
+    if (editedDescription === item.description) {
+      setIsEditingDescription(false);
+      return;
+    }
+
+    setIsSavingDescription(true);
+    try {
+      await tasksApi.update(item.id, { description: editedDescription });
+      console.log('✅ Description saved:', item.title);
+      setIsEditingDescription(false);
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      console.error('❌ Failed to save description:', error);
+      alert(`Failed to save description: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsSavingDescription(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditedDescription(item.description || '');
+    setIsEditingDescription(false);
+  };
+
+  // PROMPT #97 - Markdown formatting helpers
+  const insertMarkdown = (before: string, after: string = '') => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = editedDescription.substring(start, end);
+    const newText = editedDescription.substring(0, start) + before + selectedText + after + editedDescription.substring(end);
+
+    setEditedDescription(newText);
+
+    // Restore cursor position
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + before.length + selectedText.length + after.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
+  const formatBold = () => insertMarkdown('**', '**');
+  const formatItalic = () => insertMarkdown('*', '*');
+  const formatCode = () => insertMarkdown('`', '`');
+  const formatCodeBlock = () => insertMarkdown('\n```\n', '\n```\n');
+  const formatHeading1 = () => insertMarkdown('# ');
+  const formatHeading2 = () => insertMarkdown('## ');
+  const formatHeading3 = () => insertMarkdown('### ');
+  const formatBulletList = () => insertMarkdown('- ');
+  const formatNumberedList = () => insertMarkdown('1. ');
+  const formatLink = () => insertMarkdown('[', '](url)');
+  const formatQuote = () => insertMarkdown('> ');
+  const formatTable = () => insertMarkdown('\n| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1 | Cell 2 |\n');
+
+  // PROMPT #97 - Click outside handler
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isEditingDescription &&
+          descriptionEditorRef.current &&
+          !descriptionEditorRef.current.contains(event.target as Node)) {
+        handleSaveDescription();
+      }
+    };
+
+    if (isEditingDescription) {
+      // Add small delay to prevent immediate trigger
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 100);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isEditingDescription, editedDescription]);
 
   // PROMPT #97 - AI Suggestions handlers
   const handleAcceptSubtasks = async () => {
@@ -376,17 +480,227 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
               {/* Overview Tab */}
               {activeTab === 'overview' && (
                 <div className="space-y-6">
-                  {/* Description - PROMPT #96: Render as Markdown */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-2">Description</h3>
-                    {item.description ? (
-                      <div className="prose prose-sm max-w-none text-gray-700">
-                        <ReactMarkdown>
-                          {item.description}
-                        </ReactMarkdown>
+                  {/* Description - PROMPT #97: Inline editable with Markdown toolbar */}
+                  <div ref={descriptionEditorRef}>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-semibold text-gray-900">Description</h3>
+                      {!isEditingDescription && (
+                        <span className="text-xs text-gray-400">Double-click to edit</span>
+                      )}
+                    </div>
+
+                    {isEditingDescription ? (
+                      <div className="border border-blue-300 rounded-lg overflow-hidden shadow-sm">
+                        {/* Markdown Toolbar */}
+                        <div className="flex flex-wrap items-center gap-1 p-2 bg-gray-50 border-b border-gray-200">
+                          {/* Text Formatting */}
+                          <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
+                            <button
+                              type="button"
+                              onClick={formatBold}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-bold text-sm"
+                              title="Bold (Ctrl+B)"
+                            >
+                              B
+                            </button>
+                            <button
+                              type="button"
+                              onClick={formatItalic}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm"
+                              title="Italic (Ctrl+I)"
+                            >
+                              I
+                            </button>
+                            <button
+                              type="button"
+                              onClick={formatCode}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm"
+                              title="Inline Code"
+                            >
+                              {'</>'}
+                            </button>
+                          </div>
+
+                          {/* Headings */}
+                          <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
+                            <button
+                              type="button"
+                              onClick={formatHeading1}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold"
+                              title="Heading 1"
+                            >
+                              H1
+                            </button>
+                            <button
+                              type="button"
+                              onClick={formatHeading2}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold"
+                              title="Heading 2"
+                            >
+                              H2
+                            </button>
+                            <button
+                              type="button"
+                              onClick={formatHeading3}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold"
+                              title="Heading 3"
+                            >
+                              H3
+                            </button>
+                          </div>
+
+                          {/* Lists */}
+                          <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
+                            <button
+                              type="button"
+                              onClick={formatBulletList}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
+                              title="Bullet List"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={formatNumberedList}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
+                              title="Numbered List"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h10M7 16h10M3 8h.01M3 12h.01M3 16h.01" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          {/* Blocks */}
+                          <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
+                            <button
+                              type="button"
+                              onClick={formatQuote}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
+                              title="Quote"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                              </svg>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={formatCodeBlock}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono"
+                              title="Code Block"
+                            >
+                              {'```'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={formatTable}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
+                              title="Table"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M9 10v8m6-8v8M3 6h18v12H3V6z" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          {/* Link */}
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={formatLink}
+                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
+                              title="Link"
+                            >
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                              </svg>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Textarea */}
+                        <textarea
+                          ref={textareaRef}
+                          value={editedDescription}
+                          onChange={(e) => setEditedDescription(e.target.value)}
+                          className="w-full p-4 min-h-[300px] text-sm text-gray-900 font-mono focus:outline-none resize-y"
+                          placeholder="Enter description using Markdown..."
+                          onKeyDown={(e) => {
+                            // Ctrl+B for bold
+                            if (e.ctrlKey && e.key === 'b') {
+                              e.preventDefault();
+                              formatBold();
+                            }
+                            // Ctrl+I for italic
+                            if (e.ctrlKey && e.key === 'i') {
+                              e.preventDefault();
+                              formatItalic();
+                            }
+                            // Escape to cancel
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              handleCancelEdit();
+                            }
+                            // Ctrl+Enter to save
+                            if (e.ctrlKey && e.key === 'Enter') {
+                              e.preventDefault();
+                              handleSaveDescription();
+                            }
+                          }}
+                        />
+
+                        {/* Action Buttons */}
+                        <div className="flex items-center justify-between p-3 bg-gray-50 border-t border-gray-200">
+                          <span className="text-xs text-gray-500">
+                            Press <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Ctrl+Enter</kbd> to save, <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Esc</kbd> to cancel
+                          </span>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={handleCancelEdit}
+                              disabled={isSavingDescription}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              onClick={handleSaveDescription}
+                              disabled={isSavingDescription}
+                            >
+                              {isSavingDescription ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
+                                  Saving...
+                                </>
+                              ) : (
+                                'Save'
+                              )}
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     ) : (
-                      <p className="text-sm text-gray-500 italic">No description provided.</p>
+                      <div
+                        onDoubleClick={handleDescriptionDoubleClick}
+                        className="cursor-pointer hover:bg-gray-50 rounded-lg p-3 -m-3 transition-colors group"
+                        title="Double-click to edit"
+                      >
+                        {item.description ? (
+                          <div className="prose prose-sm max-w-none text-gray-700 group-hover:bg-gray-50">
+                            <ReactMarkdown>
+                              {item.description}
+                            </ReactMarkdown>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-400 italic py-4 text-center border-2 border-dashed border-gray-200 rounded-lg">
+                            Click twice to add a description...
+                          </p>
+                        )}
+                      </div>
                     )}
                   </div>
 
