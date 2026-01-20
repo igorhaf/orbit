@@ -1136,7 +1136,41 @@ Retorne como JSON seguindo o schema do system prompt."""
             except Exception as e:
                 logger.warning(f"Newline fix failed: {e}")
 
-        # Strategy 6: Last resort - try Python's ast.literal_eval for simple cases
+        # Strategy 6: Try to truncate at the last valid JSON point
+        if result is None:
+            try:
+                json_match = re.search(r'\{[\s\S]*', response_text)
+                if json_match:
+                    json_str = json_match.group(0)
+
+                    # Find the position of the error and try truncating before it
+                    for truncate_at in range(len(json_str), max(len(json_str) - 500, 0), -10):
+                        test_str = json_str[:truncate_at]
+                        # Try to close any open structures
+                        open_braces = test_str.count('{') - test_str.count('}')
+                        open_brackets = test_str.count('[') - test_str.count(']')
+                        open_quotes = test_str.count('"') % 2
+
+                        if open_quotes == 1:
+                            test_str += '"'
+                        test_str += ']' * open_brackets
+                        test_str += '}' * open_braces
+
+                        try:
+                            result = json.loads(test_str)
+                            # Verify it has required fields
+                            if isinstance(result, dict) and ('description_markdown' in result or 'semantic_map' in result):
+                                parse_method = "truncated_recovery"
+                                logger.info(f"✅ JSON recovered by truncating at position {truncate_at}")
+                                break
+                            else:
+                                result = None
+                        except:
+                            continue
+            except Exception as e:
+                logger.warning(f"Truncation recovery failed: {e}")
+
+        # Strategy 7: Last resort - try Python's ast.literal_eval for simple cases
         if result is None:
             try:
                 import ast
@@ -1176,52 +1210,149 @@ Retorne como JSON seguindo o schema do system prompt."""
             # asking just for a text description without JSON
             logger.info("📤 Attempting simplified AI request for epic content...")
 
-            simple_prompt = f"""Escreva uma especificação técnica DETALHADA para o módulo "{epic_title}" do projeto "{project.name}".
+            # Extract key info from project context for better prompting
+            context_preview = project_context[:3000] if project_context else "Não disponível"
 
-CONTEXTO DO PROJETO:
-{project_context}
+            simple_system_prompt = f"""Você é um Arquiteto de Software Sênior com 20 anos de experiência.
 
-MÓDULO A ESPECIFICAR: {epic_title}
-Descrição básica: {epic_description}
+Sua tarefa é escrever uma ESPECIFICAÇÃO TÉCNICA COMPLETA E DETALHADA para um módulo de software.
 
-ESCREVA UMA ESPECIFICAÇÃO TÉCNICA incluindo:
+REGRAS IMPORTANTES:
+1. Seja EXTREMAMENTE ESPECÍFICO - use nomes reais de campos, tabelas, endpoints
+2. NÃO use placeholders genéricos como "campo1", "tabela1", "endpoint1"
+3. BASEIE-SE no contexto do projeto para gerar nomes e estruturas realistas
+4. Cada seção deve ter MÍNIMO 5 itens detalhados
+5. Use Markdown formatado corretamente
+6. Responda APENAS em PORTUGUÊS
 
-1. **VISÃO GERAL**: O que este módulo faz e por que é importante
+CONTEXTO DO PROJETO PARA REFERÊNCIA:
+{context_preview}
 
-2. **MODELO DE DADOS** (campos com tipos):
-   - Liste os campos necessários com seus tipos de dados
-   - Exemplo: nome: string, email: string, preco: decimal
+Use este contexto para gerar especificações REALISTAS e ESPECÍFICAS para o módulo solicitado."""
 
-3. **REGRAS DE NEGÓCIO**:
-   - Liste as regras específicas deste módulo
-   - Inclua validações e condições
+            simple_prompt = f"""# Especificação Técnica: {epic_title}
 
-4. **FLUXOS E ESTADOS**:
-   - Descreva os estados possíveis
-   - Descreva as transições entre estados
+**Projeto:** {project.name}
 
-5. **INTERFACE DO USUÁRIO**:
-   - Liste as telas necessárias
-   - Descreva os componentes principais
+**Descrição do Módulo:** {epic_description}
 
-6. **API ENDPOINTS**:
-   - Liste os endpoints REST necessários
-   - Use formato: MÉTODO /rota - descrição
+Por favor, gere uma especificação técnica COMPLETA e DETALHADA para este módulo seguindo EXATAMENTE esta estrutura:
 
-7. **CRITÉRIOS DE ACEITAÇÃO**:
-   - Liste critérios específicos e mensuráveis
+---
 
-Escreva em PORTUGUÊS. Seja ESPECÍFICO e DETALHADO baseado no contexto do projeto.
-NÃO use placeholders genéricos como "Dados e estruturas do módulo".
-USE informações REAIS do contexto fornecido."""
+## 1. VISÃO GERAL
+Escreva 2-3 parágrafos explicando:
+- O propósito principal do módulo
+- Como ele se integra com o restante do sistema
+- O valor que ele entrega para o usuário
+
+---
+
+## 2. MODELO DE DADOS
+
+### Entidade Principal: [Nome da Entidade]
+| Campo | Tipo | Obrigatório | Descrição |
+|-------|------|-------------|-----------|
+| id | uuid | Sim | Identificador único |
+| ... | ... | ... | ... |
+
+Liste MÍNIMO 10 campos com seus tipos de dados reais (string, text, integer, boolean, decimal, date, datetime, json, enum, etc.)
+
+### Relacionamentos
+- [Entidade] tem muitos [Outra Entidade]
+- etc.
+
+---
+
+## 3. REGRAS DE NEGÓCIO
+
+Liste MÍNIMO 8 regras de negócio específicas no formato:
+- **RN1 - [Nome]**: [Descrição detalhada da regra, quando se aplica, o que acontece]
+- **RN2 - [Nome]**: ...
+
+---
+
+## 4. ESTADOS E TRANSIÇÕES
+
+### Estados Possíveis
+| Estado | Descrição | Ações Permitidas |
+|--------|-----------|------------------|
+| ... | ... | ... |
+
+### Fluxo de Transições
+1. [Estado A] → [Estado B]: quando [condição]
+2. ...
+
+---
+
+## 5. INTERFACE DO USUÁRIO
+
+### Telas Principais
+1. **[Nome da Tela]**
+   - Propósito: ...
+   - Componentes: ...
+   - Ações disponíveis: ...
+
+Liste MÍNIMO 4 telas com detalhes.
+
+### Componentes Reutilizáveis
+- [Componente 1]: [descrição]
+- ...
+
+---
+
+## 6. API REST
+
+### Endpoints
+| Método | Rota | Descrição | Request Body | Response |
+|--------|------|-----------|--------------|----------|
+| GET | /api/... | ... | - | Lista de ... |
+| POST | /api/... | ... | {{ campo1, campo2 }} | Objeto criado |
+| ... | ... | ... | ... | ... |
+
+Liste MÍNIMO 6 endpoints.
+
+---
+
+## 7. VALIDAÇÕES E ERROS
+
+### Validações de Entrada
+- [Campo]: [Validação] - Mensagem de erro
+- ...
+
+### Códigos de Erro
+- 400: ...
+- 404: ...
+- ...
+
+---
+
+## 8. CRITÉRIOS DE ACEITAÇÃO
+
+Liste MÍNIMO 8 critérios de aceitação específicos e mensuráveis:
+1. [ ] ...
+2. [ ] ...
+
+---
+
+## 9. CONSIDERAÇÕES TÉCNICAS
+
+- Segurança: ...
+- Performance: ...
+- Escalabilidade: ...
+- Integrações: ...
+
+---
+
+GERE A ESPECIFICAÇÃO COMPLETA AGORA, preenchendo TODOS os campos com dados REALISTAS baseados no contexto do projeto "{project.name}"."""
 
             try:
                 simple_messages = [{"role": "user", "content": simple_prompt}]
                 simple_response = await self.orchestrator.execute(
                     usage_type="prompt_generation",
                     messages=simple_messages,
-                    system_prompt="Você é um arquiteto de software gerando especificações técnicas detalhadas. Responda em texto formatado em Markdown.",
-                    max_tokens=4000
+                    system_prompt=simple_system_prompt,
+                    max_tokens=6000  # Increased to allow more detailed response
                 )
 
                 raw_content = simple_response.get("content", "")
@@ -1231,16 +1362,67 @@ USE informações REAIS do contexto fornecido."""
                     # Use the raw content as the description
                     fallback_description = f"# Epic: {epic_title}\n\n{raw_content}"
 
+                    # Try to extract acceptance criteria from the response
+                    extracted_criteria = []
+                    criteria_match = re.search(
+                        r'(?:CRITÉRIOS DE ACEITAÇÃO|ACCEPTANCE CRITERIA)[:\s]*\n((?:[\-\*\d\.\[\]]+[^\n]+\n?)+)',
+                        raw_content,
+                        re.IGNORECASE
+                    )
+                    if criteria_match:
+                        criteria_text = criteria_match.group(1)
+                        # Extract each criterion
+                        for line in criteria_text.split('\n'):
+                            line = line.strip()
+                            if line and (line.startswith('-') or line.startswith('*') or
+                                        line.startswith('[') or re.match(r'^\d+\.', line)):
+                                # Clean up the criterion text
+                                criterion = re.sub(r'^[\-\*\[\]\d\.\s]+', '', line).strip()
+                                if criterion and len(criterion) > 10:
+                                    extracted_criteria.append(criterion)
+
+                    logger.info(f"   - Extracted {len(extracted_criteria)} acceptance criteria from response")
+
+                    # Try to extract key requirements from "Regras de Negócio" section
+                    extracted_requirements = []
+                    rules_match = re.search(
+                        r'(?:REGRAS DE NEGÓCIO|BUSINESS RULES)[:\s]*\n((?:[\-\*]+\s*\*\*RN\d+[^\n]+\n?)+)',
+                        raw_content,
+                        re.IGNORECASE
+                    )
+                    if rules_match:
+                        rules_text = rules_match.group(1)
+                        for line in rules_text.split('\n'):
+                            if '**RN' in line or '- RN' in line:
+                                rule = re.sub(r'^[\-\*\s]+\*\*RN\d+[^:]*:\*\*\s*', '', line).strip()
+                                if rule and len(rule) > 10:
+                                    extracted_requirements.append(rule[:200])
+
                     result = {
                         "title": epic_title,
                         "semantic_map": {},
                         "description_markdown": fallback_description,
-                        "acceptance_criteria": [],
+                        "acceptance_criteria": extracted_criteria[:10] if extracted_criteria else [
+                            f"Módulo {epic_title} completamente implementado",
+                            "Todos os endpoints funcionando corretamente",
+                            "Interface de usuário responsiva e intuitiva",
+                            "Testes automatizados com cobertura adequada",
+                            "Documentação atualizada"
+                        ],
                         "story_points": 13,
                         "interview_insights": {
-                            "key_requirements": [],
-                            "business_goals": [],
-                            "technical_constraints": []
+                            "key_requirements": extracted_requirements[:5] if extracted_requirements else [
+                                f"Implementar {epic_title} conforme especificação",
+                                "Seguir padrões de código do projeto"
+                            ],
+                            "business_goals": [
+                                f"Entregar funcionalidade completa de {epic_title}",
+                                "Melhorar experiência do usuário"
+                            ],
+                            "technical_constraints": [
+                                "Compatível com arquitetura existente",
+                                "Performance adequada"
+                            ]
                         }
                     }
                     logger.info("✅ Using simplified AI response as fallback content")
