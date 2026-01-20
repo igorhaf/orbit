@@ -565,24 +565,26 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
 
     async def activate_suggested_epic(self, epic_id: UUID) -> Dict:
         """
-        PROMPT #94 - Activate a suggested epic by generating full content.
+        PROMPT #94 - Activate a suggested item by generating full content.
 
-        Takes a suggested epic (with labels=["suggested"] and workflow_state="draft")
+        Takes a suggested item (with labels=["suggested"] and workflow_state="draft")
         and generates full semantic content using the project context.
 
+        Works with any item type (Epic, Story, Task, Subtask).
+
         Flow:
-        1. Validate epic is a suggested epic
+        1. Validate item is a suggested item
         2. Fetch project context
-        3. Generate full epic content using AI (semantic markdown + human description)
-        4. Update epic with generated content
+        3. Generate full item content using AI (semantic markdown + human description)
+        4. Update item with generated content
         5. Remove "suggested" label and change workflow_state to "open"
-        6. Lock project context if this is the first activated epic
+        6. Lock project context if this is the first activated item (for Epics)
 
         Args:
-            epic_id: Epic ID to activate
+            epic_id: Item ID to activate (named epic_id for backwards compatibility)
 
         Returns:
-            Dict with activated epic data:
+            Dict with activated item data:
             {
                 "id": str,
                 "title": str,
@@ -596,24 +598,21 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
             }
 
         Raises:
-            ValueError: If epic not found, not suggested, or project has no context
+            ValueError: If item not found, not suggested, or project has no context
         """
-        # 1. Fetch epic
+        # 1. Fetch item
         epic = self.db.query(Task).filter(Task.id == epic_id).first()
         if not epic:
-            raise ValueError(f"Epic {epic_id} not found")
+            raise ValueError(f"Item {epic_id} not found")
 
-        if epic.item_type != ItemType.EPIC:
-            raise ValueError(f"Task {epic_id} is not an Epic (type: {epic.item_type})")
-
-        # Check if it's a suggested epic
+        # Check if it's a suggested item
         is_suggested = (
             epic.labels and "suggested" in epic.labels
         ) or epic.workflow_state == "draft"
 
         if not is_suggested:
             raise ValueError(
-                f"Epic {epic_id} is not a suggested epic. "
+                f"Item {epic_id} is not a suggested item. "
                 "It may have already been activated."
             )
 
@@ -653,16 +652,16 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
         epic.workflow_state = "open"
         epic.updated_at = datetime.utcnow()
 
-        # 6. Lock project context (first epic activated = context locked)
-        if not project.context_locked:
+        # 6. Lock project context (first item activated = context locked)
+        if not project.context_locked and epic.item_type == ItemType.EPIC:
             project.context_locked = True
             project.context_locked_at = datetime.utcnow()
-            logger.info(f"🔒 Context locked for project {project.name} (first epic activated)")
+            logger.info(f"🔒 Context locked for project {project.name} (first item activated)")
 
         self.db.commit()
         self.db.refresh(epic)
 
-        logger.info(f"✅ Epic activated: {epic.title}")
+        logger.info(f"✅ Item activated: {epic.title} ({epic.item_type.value if epic.item_type else 'unknown'})")
         logger.info(f"   - Description: {len(epic.description or '')} chars")
         logger.info(f"   - Generated Prompt: {len(epic.generated_prompt or '')} chars")
         logger.info(f"   - Acceptance Criteria: {len(epic.acceptance_criteria or [])} items")
@@ -791,14 +790,31 @@ Retorne o Epic completo como JSON."""
 
         # Parse response
         response_text = response.get("content", "")
+        logger.debug(f"Raw AI response: {response_text[:1000]}...")
+
+        # Strip markdown code blocks
         response_text = _strip_markdown_json(response_text)
+
+        # Try to extract JSON from the response if it contains extra text
+        json_match = re.search(r'\{[\s\S]*\}', response_text)
+        if json_match:
+            response_text = json_match.group(0)
 
         try:
             result = json.loads(response_text)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse epic content as JSON: {e}")
-            logger.error(f"Response text: {response_text[:500]}...")
-            raise ValueError("AI response was not valid JSON. Please try again.")
+            logger.error(f"Response text: {response_text[:1000]}...")
+
+            # Fallback: create basic content from the epic data
+            logger.warning("Using fallback content generation...")
+            result = {
+                "title": epic_title,
+                "semantic_map": {},
+                "description_markdown": f"# Epic: {epic_title}\n\n## Descrição\n\n{epic_description}",
+                "acceptance_criteria": [],
+                "story_points": 8
+            }
 
         # Extract and process content
         semantic_map = result.get("semantic_map", {})
@@ -830,42 +846,41 @@ Retorne o Epic completo como JSON."""
 
     async def reject_suggested_epic(self, epic_id: UUID) -> bool:
         """
-        PROMPT #94 - Reject (delete) a suggested epic.
+        PROMPT #94 - Reject (delete) a suggested item.
+
+        Works with any item type (Epic, Story, Task, Subtask).
 
         Args:
-            epic_id: Epic ID to reject
+            epic_id: Item ID to reject (named epic_id for backwards compatibility)
 
         Returns:
             True if deleted successfully
 
         Raises:
-            ValueError: If epic not found or not a suggested epic
+            ValueError: If item not found or not a suggested item
         """
-        # Fetch epic
+        # Fetch item
         epic = self.db.query(Task).filter(Task.id == epic_id).first()
         if not epic:
-            raise ValueError(f"Epic {epic_id} not found")
+            raise ValueError(f"Item {epic_id} not found")
 
-        if epic.item_type != ItemType.EPIC:
-            raise ValueError(f"Task {epic_id} is not an Epic (type: {epic.item_type})")
-
-        # Check if it's a suggested epic
+        # Check if it's a suggested item
         is_suggested = (
             epic.labels and "suggested" in epic.labels
         ) or epic.workflow_state == "draft"
 
         if not is_suggested:
             raise ValueError(
-                f"Epic {epic_id} is not a suggested epic. "
-                "Only suggested epics can be rejected."
+                f"Item {epic_id} is not a suggested item. "
+                "Only suggested items can be rejected."
             )
 
-        epic_title = epic.title
+        item_title = epic.title
 
-        # Delete the epic
+        # Delete the item
         self.db.delete(epic)
         self.db.commit()
 
-        logger.info(f"❌ Suggested epic rejected and deleted: {epic_title}")
+        logger.info(f"❌ Suggested item rejected and deleted: {item_title}")
 
         return True

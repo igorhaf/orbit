@@ -246,6 +246,49 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
                 {task.story_points} pts
               </Badge>
             )}
+
+            {/* PROMPT #94 - Approve/Reject buttons for suggested items (compact inline) */}
+            {isSuggested && (
+              <div className="flex gap-1 mt-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleActivateEpic();
+                  }}
+                  disabled={activatingEpic || rejectingEpic}
+                  className="px-2 py-1 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  title="Aprovar sugestão"
+                >
+                  {activatingEpic ? (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
+                  ) : (
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  <span>Aprovar</span>
+                </button>
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRejectEpic();
+                  }}
+                  disabled={activatingEpic || rejectingEpic}
+                  className="px-2 py-1 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded border border-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                  title="Rejeitar sugestão"
+                >
+                  {rejectingEpic ? (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
+                  ) : (
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  )}
+                  <span>Rejeitar</span>
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </CardHeader>
@@ -275,65 +318,6 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
                 {label}
               </Badge>
             ))}
-          </div>
-        )}
-
-        {/* PROMPT #94 - Approve/Reject buttons for suggested epics */}
-        {isSuggested && itemType === ItemType.EPIC && (
-          <div className="border-t pt-4 mt-4">
-            <div className="flex items-center gap-2 mb-3">
-              <span className="text-sm text-gray-500">
-                Este épico foi sugerido com base no contexto do projeto.
-              </span>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleActivateEpic();
-                }}
-                disabled={activatingEpic || rejectingEpic}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white flex-1 justify-center"
-              >
-                {activatingEpic ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Ativando...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span>Aprovar</span>
-                  </>
-                )}
-              </Button>
-
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRejectEpic();
-                }}
-                disabled={activatingEpic || rejectingEpic}
-                variant="outline"
-                className="flex items-center gap-2 border-red-300 text-red-600 hover:bg-red-50 flex-1 justify-center"
-              >
-                {rejectingEpic ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600"></div>
-                    <span>Rejeitando...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                    <span>Rejeitar</span>
-                  </>
-                )}
-              </Button>
-            </div>
           </div>
         )}
 
