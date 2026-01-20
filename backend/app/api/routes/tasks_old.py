@@ -914,7 +914,7 @@ async def create_comment(
         author=comment_data.author,
         content=comment_data.content,
         comment_type=comment_data.comment_type,
-        metadata=comment_data.metadata,
+        comment_metadata=comment_data.comment_metadata,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )

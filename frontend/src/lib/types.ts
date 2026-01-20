@@ -358,7 +358,7 @@ export interface TaskComment {
   author: string;
   content: string;
   comment_type: CommentType;
-  metadata?: Record<string, any> | null;
+  comment_metadata?: Record<string, any> | null;
   created_at: string;
   updated_at: string;
 }
@@ -368,12 +368,12 @@ export interface TaskCommentCreate {
   author: string;
   content: string;
   comment_type?: CommentType;
-  metadata?: Record<string, any> | null;
+  comment_metadata?: Record<string, any> | null;
 }
 
 export interface TaskCommentUpdate {
   content?: string;
-  metadata?: Record<string, any> | null;
+  comment_metadata?: Record<string, any> | null;
 }
 
 export interface StatusTransition {
