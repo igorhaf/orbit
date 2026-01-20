@@ -1163,97 +1163,147 @@ Retorne como JSON seguindo o schema do system prompt."""
             logger.error(f"❌ Failed to parse AI response as JSON after all strategies")
             logger.error(f"Response text (first 1500 chars): {response_text[:1500]}...")
 
-            # Fallback: create meaningful content from the epic data and project context
-            # PROMPT #95 - Enhanced fallback with rich structure
-            logger.warning("Using fallback content generation...")
+            # Fallback: PROMPT #96 - Try to extract content from raw response
+            logger.warning("🔄 JSON parsing failed - attempting to extract content from raw response...")
 
-            # Build a meaningful description from the context with Semantic References structure
-            fallback_description = f"""# Epic: {epic_title}
+            # Try to extract useful content from the response even if JSON parsing failed
+            # The AI might have returned text that contains useful information
 
-## Mapa Semântico
+            # Extract project context
+            project_context = project.context_human or project.description or ""
 
-- **N1**: {project.name}
-- **E1**: {epic_title}
-- **P1**: Processo principal de implementação
-- **D1**: Dados e estruturas do módulo
-- **S1**: Serviços e integrações necessárias
-- **C1**: Funcionalidades devem estar completas
-- **C2**: Código deve seguir padrões de qualidade
-- **AC1**: E1 deve estar completamente implementado
-- **AC2**: D1 deve estar corretamente estruturado
-- **AC3**: S1 deve estar integrado com o sistema
+            # PROMPT #96 - Better fallback: Make a simpler request to the AI
+            # asking just for a text description without JSON
+            logger.info("📤 Attempting simplified AI request for epic content...")
 
-## Descrição
+            simple_prompt = f"""Escreva uma especificação técnica DETALHADA para o módulo "{epic_title}" do projeto "{project.name}".
 
-Este Epic implementa E1 como parte de N1, seguindo P1 para garantir a entrega de valor ao usuário. O módulo gerencia D1 e integra S1 para fornecer as funcionalidades necessárias.
+CONTEXTO DO PROJETO:
+{project_context}
+
+MÓDULO A ESPECIFICAR: {epic_title}
+Descrição básica: {epic_description}
+
+ESCREVA UMA ESPECIFICAÇÃO TÉCNICA incluindo:
+
+1. **VISÃO GERAL**: O que este módulo faz e por que é importante
+
+2. **MODELO DE DADOS** (campos com tipos):
+   - Liste os campos necessários com seus tipos de dados
+   - Exemplo: nome: string, email: string, preco: decimal
+
+3. **REGRAS DE NEGÓCIO**:
+   - Liste as regras específicas deste módulo
+   - Inclua validações e condições
+
+4. **FLUXOS E ESTADOS**:
+   - Descreva os estados possíveis
+   - Descreva as transições entre estados
+
+5. **INTERFACE DO USUÁRIO**:
+   - Liste as telas necessárias
+   - Descreva os componentes principais
+
+6. **API ENDPOINTS**:
+   - Liste os endpoints REST necessários
+   - Use formato: MÉTODO /rota - descrição
+
+7. **CRITÉRIOS DE ACEITAÇÃO**:
+   - Liste critérios específicos e mensuráveis
+
+Escreva em PORTUGUÊS. Seja ESPECÍFICO e DETALHADO baseado no contexto do projeto.
+NÃO use placeholders genéricos como "Dados e estruturas do módulo".
+USE informações REAIS do contexto fornecido."""
+
+            try:
+                simple_messages = [{"role": "user", "content": simple_prompt}]
+                simple_response = await self.orchestrator.execute(
+                    usage_type="prompt_generation",
+                    messages=simple_messages,
+                    system_prompt="Você é um arquiteto de software gerando especificações técnicas detalhadas. Responda em texto formatado em Markdown.",
+                    max_tokens=4000
+                )
+
+                raw_content = simple_response.get("content", "")
+                logger.info(f"✅ Simplified request returned {len(raw_content)} chars")
+
+                if len(raw_content) > 500:
+                    # Use the raw content as the description
+                    fallback_description = f"# Epic: {epic_title}\n\n{raw_content}"
+
+                    result = {
+                        "title": epic_title,
+                        "semantic_map": {},
+                        "description_markdown": fallback_description,
+                        "acceptance_criteria": [],
+                        "story_points": 13,
+                        "interview_insights": {
+                            "key_requirements": [],
+                            "business_goals": [],
+                            "technical_constraints": []
+                        }
+                    }
+                    logger.info("✅ Using simplified AI response as fallback content")
+                else:
+                    raise ValueError("Response too short")
+
+            except Exception as fallback_error:
+                logger.error(f"❌ Simplified request also failed: {fallback_error}")
+
+                # Last resort: use project context to build something meaningful
+                fallback_description = f"""# Epic: {epic_title}
+
+## Visão Geral
 
 {epic_description}
 
-O desenvolvimento segue C1 e C2 para garantir qualidade e consistência com o restante do sistema.
+## Contexto do Projeto
 
-## Critérios de Aceitação
+Este módulo faz parte do projeto **{project.name}**.
 
-1. **AC1**: E1 deve estar completamente implementado com todas as funcionalidades descritas
-2. **AC2**: D1 deve estar corretamente estruturado e validado
-3. **AC3**: S1 deve estar integrado e funcionando com os demais módulos
+{project_context[:2000] if project_context else 'Contexto não disponível.'}
 
-## Insights da Entrevista
+## Próximos Passos
 
-**Requisitos-Chave:**
-- E1 deve atender aos requisitos de negócio de N1
-- P1 deve seguir as melhores práticas de desenvolvimento
-- D1 deve estar bem documentado
+Para completar a especificação deste módulo, é necessário definir:
+- Modelo de dados com campos e tipos
+- Regras de negócio específicas
+- Estados e transições
+- Telas e componentes de interface
+- Endpoints da API
 
-**Objetivos de Negócio:**
-- Entregar E1 com valor ao usuário final
-- Garantir escalabilidade de S1
-- Manter qualidade conforme C1 e C2
-
-**Restrições Técnicas:**
-- E1 deve ser compatível com a arquitetura existente
-- D1 deve seguir os padrões de dados do projeto
-- S1 deve ter performance adequada
+⚠️ **Nota**: Esta é uma especificação preliminar. A geração automática de conteúdo detalhado falhou.
+Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
 """
 
-            result = {
-                "title": epic_title,
-                "semantic_map": {
-                    "N1": project.name,
-                    "E1": epic_title,
-                    "P1": "Processo principal de implementação",
-                    "D1": "Dados e estruturas do módulo",
-                    "S1": "Serviços e integrações necessárias",
-                    "C1": "Funcionalidades devem estar completas",
-                    "C2": "Código deve seguir padrões de qualidade",
-                    "AC1": "E1 deve estar completamente implementado",
-                    "AC2": "D1 deve estar corretamente estruturado",
-                    "AC3": "S1 deve estar integrado com o sistema"
-                },
-                "description_markdown": fallback_description,
-                "acceptance_criteria": [
-                    "AC1: E1 deve estar completamente implementado com todas as funcionalidades descritas",
-                    "AC2: D1 deve estar corretamente estruturado e validado",
-                    "AC3: S1 deve estar integrado e funcionando com os demais módulos"
-                ],
-                "story_points": 13,
-                "interview_insights": {
-                    "key_requirements": [
-                        "E1 deve atender aos requisitos de negócio de N1",
-                        "P1 deve seguir as melhores práticas de desenvolvimento",
-                        "D1 deve estar bem documentado"
+                result = {
+                    "title": epic_title,
+                    "semantic_map": {},
+                    "description_markdown": fallback_description,
+                    "acceptance_criteria": [
+                        "Módulo deve estar completamente implementado",
+                        "Testes devem cobrir os principais fluxos",
+                        "Documentação deve estar atualizada"
                     ],
-                    "business_goals": [
-                        "Entregar E1 com valor ao usuário final",
-                        "Garantir escalabilidade de S1",
-                        "Manter qualidade conforme C1 e C2"
-                    ],
-                    "technical_constraints": [
-                        "E1 deve ser compatível com a arquitetura existente",
-                        "D1 deve seguir os padrões de dados do projeto",
-                        "S1 deve ter performance adequada"
-                    ]
+                    "story_points": 13,
+                    "interview_insights": {
+                        "key_requirements": [
+                            f"Implementar {epic_title} conforme especificação",
+                            "Seguir padrões de código do projeto",
+                            "Garantir integração com módulos existentes"
+                        ],
+                        "business_goals": [
+                            f"Entregar funcionalidade de {epic_title}",
+                            "Melhorar experiência do usuário",
+                            "Atender requisitos do negócio"
+                        ],
+                        "technical_constraints": [
+                            f"{epic_title} deve ser compatível com a arquitetura existente",
+                            "Deve seguir os padrões de dados do projeto",
+                            "Deve ter performance adequada"
+                        ]
+                    }
                 }
-            }
 
         # Extract and process content
         semantic_map = result.get("semantic_map", {})
