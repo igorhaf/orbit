@@ -603,8 +603,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #95 (Rich Epic Content Generation)
-**Próximo prompt:** PROMPT #96
+**Último prompt:** PROMPT #96 (Item Detail Panel Sync Fix)
+**Próximo prompt:** PROMPT #97
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -647,6 +647,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #93**: Unlimited Context Interview - Entrevista de contexto agora é ILIMITADA. O usuário decide quando terminar clicando no botão "Gerar Contexto". Removido limite de 8 perguntas. IA continua gerando perguntas relevantes até o usuário decidir parar. Perguntas fixas Q1-Q3 ainda são obrigatórias como mínimo.
 - **PROMPT #94**: Activate/Reject Suggested Epics - Botões de "Aprovar" e "Rejeitar" para épicos sugeridos. Ao aprovar: gera conteúdo completo do épico usando Metodologia de Referências Semânticas (PROMPT #83), incluindo `generated_prompt` (semântico) e `description` (humano legível), critérios de aceitação, story points. Remove label "suggested", muda workflow_state para "open", e trava o contexto do projeto. Ao rejeitar: deleta o épico sugerido.
 - **PROMPT #95**: Rich Epic Content Generation - Corrigiu a geração de conteúdo para épicos sugeridos ativados. O conteúdo agora segue a estrutura rica da Metodologia de Referências Semânticas: Mapa Semântico completo (15-20 identificadores), Descrição usando identificadores, Critérios de Aceitação (AC1, AC2...), e Insights da Entrevista (Requisitos-Chave, Objetivos de Negócio, Restrições Técnicas). O sistema agora reutiliza identificadores do contexto do projeto para consistência.
+- **PROMPT #96**: Item Detail Panel Sync Fix - Corrigiu bug onde o ItemDetailPanel não atualizava após mudanças na task. Quando um épico era ativado, o `selectedBacklogItem` mantinha dados antigos (sem `generated_prompt`), fazendo o Prompt tab mostrar "No prompt generated yet" mesmo com dados no banco. Adicionado `useEffect` para sincronizar `selectedBacklogItem` quando a lista `tasks` é atualizada.
 
 ---
 

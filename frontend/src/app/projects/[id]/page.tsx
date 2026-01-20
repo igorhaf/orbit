@@ -107,6 +107,23 @@ export default function ProjectDetailsPage() {
     }
   }, [activeTab, loadRagStats]);
 
+  // PROMPT #96 - Sync selectedBacklogItem with updated task data
+  // When tasks are reloaded (e.g., after activating an epic), update selectedBacklogItem
+  useEffect(() => {
+    if (selectedBacklogItem && tasks.length > 0) {
+      const updatedItem = tasks.find(t => t.id === selectedBacklogItem.id);
+      if (updatedItem) {
+        // Preserve UI-specific properties from the original selectedBacklogItem
+        setSelectedBacklogItem({
+          ...updatedItem,
+          depth: selectedBacklogItem.depth,
+          isExpanded: selectedBacklogItem.isExpanded,
+          isSelected: selectedBacklogItem.isSelected,
+        } as BacklogItem);
+      }
+    }
+  }, [tasks]); // Only re-run when tasks change
+
   // Load Analytics data (PROMPT #97)
   const loadAnalyticsData = useCallback(async () => {
     if (activeTab !== 'analytics') return;
