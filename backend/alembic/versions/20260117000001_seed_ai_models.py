@@ -30,21 +30,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # Default AI models configuration
 DEFAULT_MODELS = [
-    # Anthropic (Claude)
+    # Anthropic (Claude) - PROMPT #100: Fixed model IDs to use real Anthropic API model names
     {
-        "name": "Claude Sonnet 4.5",
+        "name": "Claude Sonnet 3.5",
         "provider": "anthropic",
-        "model_id": "claude-sonnet-4-5-20250929",
+        "model_id": "claude-3-5-sonnet-20241022",
         "usage_type": "task_execution",
         "max_tokens": 8192,
         "temperature": 0.7,
-        "description": "Most capable Claude model - best for complex task execution",
+        "description": "Most capable Claude 3.5 model - best for complex task execution",
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Opus 4.5",
+        "name": "Claude Opus 3",
         "provider": "anthropic",
-        "model_id": "claude-opus-4-5-20251101",
+        "model_id": "claude-3-opus-20240229",
         "usage_type": "prompt_generation",
         "max_tokens": 4096,
         "temperature": 0.8,
@@ -52,23 +52,23 @@ DEFAULT_MODELS = [
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Haiku 4",
+        "name": "Claude Haiku 3.5 (Interview)",
         "provider": "anthropic",
-        "model_id": "claude-haiku-4-20250110",
+        "model_id": "claude-3-5-haiku-20241022",
         "usage_type": "interview",
         "max_tokens": 4096,
         "temperature": 0.7,
-        "description": "Fastest Claude model - best for interviews (cost-effective)",
+        "description": "Fastest Claude 3.5 model - best for interviews (cost-effective)",
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Sonnet 4.5 (General)",
+        "name": "Claude Sonnet 3.5 (General)",
         "provider": "anthropic",
-        "model_id": "claude-sonnet-4-5-20250929",
+        "model_id": "claude-3-5-sonnet-20241022",
         "usage_type": "general",
         "max_tokens": 8192,
         "temperature": 0.7,
-        "description": "Most capable Claude model - best for general purpose tasks (default)",
+        "description": "Most capable Claude 3.5 model - best for general purpose tasks (default)",
         "env_var": "ANTHROPIC_API_KEY",
         "is_default": True  # Mark as default for general usage
     },

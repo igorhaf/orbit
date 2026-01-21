@@ -33,39 +33,39 @@ def populate_ai_models(db):
     # db.commit()
 
     ai_models_data = [
-        # ANTHROPIC MODELS
+        # ANTHROPIC MODELS (PROMPT #100: Updated with real model IDs)
         {
-            "name": "Claude Sonnet 4",
+            "name": "Claude Sonnet 3.5",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.TASK_EXECUTION,
             "is_active": True,
             "config": {
-                "model": "claude-sonnet-4-20250514",
+                "model": "claude-3-5-sonnet-20241022",
                 "max_tokens": 8000,
                 "temperature": 0.7
             }
         },
         {
-            "name": "Claude Haiku 4",
+            "name": "Claude Haiku 3.5",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.INTERVIEW,
             "is_active": True,
             "config": {
-                "model": "claude-haiku-4-5",
+                "model": "claude-3-5-haiku-20241022",
                 "max_tokens": 4000,
                 "temperature": 0.7
             }
         },
         {
-            "name": "Claude Opus 4",
+            "name": "Claude Opus 3",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.GENERAL,
             "is_active": False,
             "config": {
-                "model": "claude-opus-4-5",
+                "model": "claude-3-opus-20240229",
                 "max_tokens": 16000,
                 "temperature": 0.7
             }

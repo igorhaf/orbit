@@ -603,8 +603,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #99 (Project Badge Fix)
-**Próximo prompt:** PROMPT #100
+**Último prompt:** PROMPT #100 (Fix Invalid Model IDs)
+**Próximo prompt:** PROMPT #101
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -642,7 +642,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #88**: Cascade Delete for Interviews - Implementou delete em cascata para entrevistas quando tasks são deletadas. Alterou foreign key de `SET NULL` para `CASCADE` na relação Task→Interview (`created_from_interview_id`).
 - **PROMPT #89**: Context Interview - Feature fundamental que estabelece contexto imutável de projeto através de entrevista IA. Wizard de 4 passos (Nome → Entrevista → Review → Confirmar). Gera dual output: `context_semantic` (para IA) e `context_human` (legível). Contexto é LOCKED após primeiro Epic, garantindo consistência em todos os cards. 3 perguntas fixas (Q1-Q3) + perguntas contextuais da IA (Q4+).
 - **PROMPT #90**: Context Interview Flow Fix - Corrigiu fluxo de Context Interview para garantir execução antes de Epic Interview. Redirecionou botão "New Project" para wizard `/projects/new`. Atualizou frontend para mostrar tipo correto de entrevista baseado em `context_locked`. Integrou `context_questions.py` no `unified_open_handler.py` para usar perguntas fixas Q1-Q3 no modo context.
-- **PROMPT #91**: Context Interview Model Configuration Fix - Removido parâmetro `temperature` inválido do `context_generator.py`. Corrigido model ID do Claude Haiku 4.5 para `claude-haiku-4-5-20251001`. Modelo `general` configurado como fallback universal para todos os usage_types.
+- **PROMPT #91**: Context Interview Model Configuration Fix - Removido parâmetro `temperature` inválido do `context_generator.py`. (Nota: Model IDs mencionados aqui eram fictícios e foram corrigidos no PROMPT #100 para usar IDs válidos da API Anthropic). Modelo `general` configurado como fallback universal para todos os usage_types.
 - **PROMPT #92**: Suggested Epics from Context - Geração automática de 8-20 épicos macro (módulos) após Context Interview. Épicos criados com `labels=["suggested"]` e `workflow_state="draft"`. Visual em cinza (opacity-60, border-dashed) no UI. Preview no wizard review step. Botões de ação escondidos para itens sugeridos (inativos).
 - **PROMPT #93**: Unlimited Context Interview - Entrevista de contexto agora é ILIMITADA. O usuário decide quando terminar clicando no botão "Gerar Contexto". Removido limite de 8 perguntas. IA continua gerando perguntas relevantes até o usuário decidir parar. Perguntas fixas Q1-Q3 ainda são obrigatórias como mínimo.
 - **PROMPT #94**: Activate/Reject Suggested Epics - Botões de "Aprovar" e "Rejeitar" para épicos sugeridos. Ao aprovar: gera conteúdo completo do épico usando Metodologia de Referências Semânticas (PROMPT #83), incluindo `generated_prompt` (semântico) e `description` (humano legível), critérios de aceitação, story points. Remove label "suggested", muda workflow_state para "open", e trava o contexto do projeto. Ao rejeitar: deleta o épico sugerido.
@@ -651,6 +651,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #97**: Inline Description Editor - Implementou edição inline do Overview com Rich Text Markdown toolbar, similar ao JIRA. Double-click ativa modo de edição com toolbar completo (Bold, Italic, Code, Headings, Lists, Blocks, Links). Suporta atalhos de teclado (Ctrl+B, Ctrl+I, Ctrl+Enter para salvar, Esc para cancelar). Auto-save ao clicar fora do editor. Integrado com API `tasksApi.update`.
 - **PROMPT #98**: Context Interview Cancellation (v2) - Implementou cleanup automático de projetos abandonados no wizard de Context Interview. Projeto só existe se o wizard for COMPLETAMENTE concluído (incluindo entrevista e confirmação final). Se usuário abandona wizard (fecha tab, navega, atualiza página), o projeto é automaticamente deletado. Usa `wizardCompleted` flag, cleanup em `useEffect` (unmount + beforeunload), e `navigator.sendBeacon` para garantir cleanup durante page unload. Substituiu abordagem v1 incorreta (botões manuais de cancelar).
 - **PROMPT #99**: Project Badge Fix - Substituiu badge obsoleta "Pending Stack" / "Provisioned" (baseada em `stack_backend`) por badge "Context Set" / "Draft" (baseada em `context_locked` e `context_human`). Alinha UI com novo modelo Context Interview (PROMPT #89). Badge verde "Context Set" quando projeto tem contexto definido, badge cinza "Draft" quando não tem. Também corrigiu erro de ESLint pré-existente com aspas escapadas.
+- **PROMPT #100**: Fix Invalid Claude Haiku Model ID - Corrigiu erro crítico 404 "model not found" causado por model IDs fictícios (claude-4.x) que não existem na API Anthropic. Substituiu 4 model IDs inválidos por IDs válidos: Claude Haiku 3.5 (`claude-3-5-haiku-20241022`) para interviews, Claude Sonnet 3.5 (`claude-3-5-sonnet-20241022`) para task execution e general, Claude Opus 3 (`claude-3-opus-20240229`) para prompt generation. Atualizou banco de dados (Phase 1), migration seed (Phase 2), pricing.py e populate_database.py (Phase 4). Criou model específico para usage_type="interview". Desbloqueou usuários imediatamente - entrevistas de contexto funcionando novamente.
 
 ---
 
