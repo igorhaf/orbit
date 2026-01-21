@@ -300,7 +300,7 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
         messages = [{"role": "user", "content": user_prompt}]
 
         response = await self.orchestrator.execute(
-            usage_type="general",
+            usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=4000
@@ -432,7 +432,7 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
         messages = [{"role": "user", "content": user_prompt}]
 
         response = await self.orchestrator.execute(
-            usage_type="general",
+            usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=4000
@@ -989,7 +989,7 @@ Retorne como JSON seguindo o schema do system prompt."""
         messages = [{"role": "user", "content": user_prompt}]
 
         response = await self.orchestrator.execute(
-            usage_type="general",
+            usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=8000  # Increased to allow for detailed specifications
@@ -1349,7 +1349,7 @@ GERE A ESPECIFICAÇÃO COMPLETA AGORA, preenchendo TODOS os campos com dados REA
             try:
                 simple_messages = [{"role": "user", "content": simple_prompt}]
                 simple_response = await self.orchestrator.execute(
-                    usage_type="general",
+                    usage_type="prompt_generation",
                     messages=simple_messages,
                     system_prompt=simple_system_prompt,
                     max_tokens=6000  # Increased to allow more detailed response
