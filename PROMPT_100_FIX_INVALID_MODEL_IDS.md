@@ -320,6 +320,36 @@ This prevented creating a second "Claude Haiku 3.5" model for interview usage.
 
 ---
 
+### Insight #5: Multi-Model Configuration with Fallback
+
+**Initial Misunderstanding:** I incorrectly disabled all models except general, thinking user wanted a single-model setup.
+
+**User Clarification:** User WANTS separate models for each usage_type with automatic fallback to general when needed.
+
+**Correct Configuration:**
+- Each usage_type should have its dedicated active model
+- If a model fails, is inactive, or not configured → AIOrchestrator automatically falls back to general
+- This fallback mechanism is ALREADY implemented in AIOrchestrator
+
+**Final Setup (4 commits):**
+1. `dc93168` - Fixed invalid model IDs (Claude 4.x → Claude 3.x)
+2. `5db2d65` - Changed prompt_generation from Opus to Sonnet
+3. `8530074` - Incorrectly changed context_generator.py to use "general" ❌
+4. `b9d6cbe` - **CORRECTED:** Restored "prompt_generation" usage_type ✅
+
+**Final Configuration (All Active):**
+```
+Interview         → Claude Haiku 3.5 (claude-3-5-haiku-20241022)
+Prompt Generation → Claude Sonnet 3.5 (claude-3-5-sonnet-20241022)
+Task Execution    → Claude Sonnet 3.5 (claude-3-5-sonnet-20241022)
+General           → Claude Haiku 3.5 (claude-3-5-haiku-20241022) [FALLBACK]
+General           → Claude Sonnet 3.5 (duplicate)
+```
+
+**Lesson:** Trust the existing fallback mechanism. Don't force all code to use "general" - let each feature use its intended usage_type and fallback naturally when needed.
+
+---
+
 ## 🔗 Related PROMPTs
 
 - **PROMPT #89**: Context Interview - Introduced context interview system
@@ -348,11 +378,12 @@ All model IDs corrected, user unblocked, and documentation updated.
 
 **Key Achievements:**
 - ✅ Fixed critical 404 error blocking interviews
-- ✅ Updated 4 models in database (immediate fix)
+- ✅ Updated 5 models in database (immediate fix) - all active
 - ✅ Corrected migration seed file (future deployments)
 - ✅ Updated all code references (pricing, populate script)
+- ✅ Restored multi-model configuration with fallback mechanism
 - ✅ Created comprehensive documentation
-- ✅ User confirmed working: "antes estava funcionando perfeitamente" - now working again!
+- ✅ 4 commits: Invalid IDs fix → Opus→Sonnet → General fallback → Restored prompt_generation
 
 **Impact:**
 - **User Experience:** Interview flow restored - users can complete context interviews
