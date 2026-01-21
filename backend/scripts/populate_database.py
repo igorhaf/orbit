@@ -33,39 +33,39 @@ def populate_ai_models(db):
     # db.commit()
 
     ai_models_data = [
-        # ANTHROPIC MODELS (PROMPT #100: Updated with real model IDs)
+        # ANTHROPIC MODELS (PROMPT #100 v2: Updated to Claude 4.5 - Claude 3.5 retired Jan 5, 2026)
         {
-            "name": "Claude Sonnet 3.5",
+            "name": "Claude Sonnet 4.5",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.TASK_EXECUTION,
             "is_active": True,
             "config": {
-                "model": "claude-3-5-sonnet-20241022",
+                "model": "claude-sonnet-4-5-20250929",
                 "max_tokens": 8000,
                 "temperature": 0.7
             }
         },
         {
-            "name": "Claude Haiku 3.5",
+            "name": "Claude Haiku 4.5",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.INTERVIEW,
             "is_active": True,
             "config": {
-                "model": "claude-3-5-haiku-20241022",
+                "model": "claude-haiku-4-5-20251001",
                 "max_tokens": 4000,
                 "temperature": 0.7
             }
         },
         {
-            "name": "Claude Sonnet 3.5 (Prompt Gen)",
+            "name": "Claude Sonnet 4.5 (Prompt Gen)",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.PROMPT_GENERATION,
             "is_active": True,
             "config": {
-                "model": "claude-3-5-sonnet-20241022",
+                "model": "claude-sonnet-4-5-20250929",
                 "max_tokens": 4000,
                 "temperature": 0.8
             }
