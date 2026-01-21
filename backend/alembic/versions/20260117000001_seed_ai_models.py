@@ -42,13 +42,13 @@ DEFAULT_MODELS = [
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Opus 3",
+        "name": "Claude Sonnet 3.5 (Prompt Gen)",
         "provider": "anthropic",
-        "model_id": "claude-3-opus-20240229",
+        "model_id": "claude-3-5-sonnet-20241022",
         "usage_type": "prompt_generation",
         "max_tokens": 4096,
         "temperature": 0.8,
-        "description": "Most intelligent Claude model - best for prompt generation",
+        "description": "Most capable Claude 3.5 model - best for prompt generation",
         "env_var": "ANTHROPIC_API_KEY"
     },
     {

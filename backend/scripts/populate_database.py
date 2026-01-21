@@ -59,15 +59,15 @@ def populate_ai_models(db):
             }
         },
         {
-            "name": "Claude Opus 3",
+            "name": "Claude Sonnet 3.5 (Prompt Gen)",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
-            "usage_type": AIModelUsageType.GENERAL,
-            "is_active": False,
+            "usage_type": AIModelUsageType.PROMPT_GENERATION,
+            "is_active": True,
             "config": {
-                "model": "claude-3-opus-20240229",
-                "max_tokens": 16000,
-                "temperature": 0.7
+                "model": "claude-3-5-sonnet-20241022",
+                "max_tokens": 4000,
+                "temperature": 0.8
             }
         },
 
