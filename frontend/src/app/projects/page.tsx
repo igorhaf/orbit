@@ -176,17 +176,17 @@ export default function ProjectsPage() {
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle>{project.name}</CardTitle>
-                    {/* PROMPT #61 - Provisioned badge */}
-                    {project.stack_backend ? (
+                    {/* PROMPT #99 - Context status badge (replaces obsolete stack badge) */}
+                    {project.context_locked || project.context_human ? (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                         </svg>
-                        Provisioned
+                        Context Set
                       </span>
                     ) : (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                        Pending Stack
+                        Draft
                       </span>
                     )}
                   </div>
@@ -274,7 +274,7 @@ export default function ProjectsPage() {
                 <div>
                   <h4 className="font-semibold text-red-900 mb-1">Warning: This action cannot be undone!</h4>
                   <p className="text-sm text-red-800">
-                    Project "{projectToDelete?.name}" and all associated data (tasks, interviews, commits) will be permanently deleted.
+                    Project &quot;{projectToDelete?.name}&quot; and all associated data (tasks, interviews, commits) will be permanently deleted.
                   </p>
                 </div>
               </div>

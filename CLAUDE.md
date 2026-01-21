@@ -603,8 +603,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #98 (Context Interview Cancellation)
-**Próximo prompt:** PROMPT #99
+**Último prompt:** PROMPT #99 (Project Badge Fix)
+**Próximo prompt:** PROMPT #100
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -649,7 +649,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #95**: Rich Epic Content Generation - Corrigiu a geração de conteúdo para épicos sugeridos ativados. O conteúdo agora segue a estrutura rica da Metodologia de Referências Semânticas: Mapa Semântico completo (15-20 identificadores), Descrição usando identificadores, Critérios de Aceitação (AC1, AC2...), e Insights da Entrevista (Requisitos-Chave, Objetivos de Negócio, Restrições Técnicas). O sistema agora reutiliza identificadores do contexto do projeto para consistência.
 - **PROMPT #96**: Item Detail Panel Sync Fix - Corrigiu bug onde o ItemDetailPanel não atualizava após mudanças na task. Quando um épico era ativado, o `selectedBacklogItem` mantinha dados antigos (sem `generated_prompt`), fazendo o Prompt tab mostrar "No prompt generated yet" mesmo com dados no banco. Adicionado `useEffect` para sincronizar `selectedBacklogItem` quando a lista `tasks` é atualizada.
 - **PROMPT #97**: Inline Description Editor - Implementou edição inline do Overview com Rich Text Markdown toolbar, similar ao JIRA. Double-click ativa modo de edição com toolbar completo (Bold, Italic, Code, Headings, Lists, Blocks, Links). Suporta atalhos de teclado (Ctrl+B, Ctrl+I, Ctrl+Enter para salvar, Esc para cancelar). Auto-save ao clicar fora do editor. Integrado com API `tasksApi.update`.
-- **PROMPT #98**: Context Interview Cancellation - Adicionado botão "Cancel Project" nas etapas de Context Interview (interview e review). Quando o usuário cancela, o projeto criado é deletado do banco de dados (cascade delete também remove a interview associada). Confirmação via dialog alert antes de deletar. Previne projetos órfãos quando o usuário desiste da entrevista de contexto.
+- **PROMPT #98**: Context Interview Cancellation (v2) - Implementou cleanup automático de projetos abandonados no wizard de Context Interview. Projeto só existe se o wizard for COMPLETAMENTE concluído (incluindo entrevista e confirmação final). Se usuário abandona wizard (fecha tab, navega, atualiza página), o projeto é automaticamente deletado. Usa `wizardCompleted` flag, cleanup em `useEffect` (unmount + beforeunload), e `navigator.sendBeacon` para garantir cleanup durante page unload. Substituiu abordagem v1 incorreta (botões manuais de cancelar).
+- **PROMPT #99**: Project Badge Fix - Substituiu badge obsoleta "Pending Stack" / "Provisioned" (baseada em `stack_backend`) por badge "Context Set" / "Draft" (baseada em `context_locked` e `context_human`). Alinha UI com novo modelo Context Interview (PROMPT #89). Badge verde "Context Set" quando projeto tem contexto definido, badge cinza "Draft" quando não tem. Também corrigiu erro de ESLint pré-existente com aspas escapadas.
 
 ---
 
