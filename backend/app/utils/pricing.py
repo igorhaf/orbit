@@ -11,17 +11,23 @@ from typing import Dict, Tuple
 # Pricing per million tokens (input, output)
 # Source: Official provider pricing pages (as of January 2026)
 MODEL_PRICING = {
-    # Anthropic Claude models (PROMPT #100: Added real model IDs)
+    # Anthropic Claude 4.5 models (PROMPT #100 v2: Updated to Claude 4.5 - Jan 2026)
+    "claude-haiku-4-5-20251001": (1.00, 5.00),      # Haiku 4.5 (current)
+    "claude-sonnet-4-5-20250929": (3.00, 15.00),   # Sonnet 4.5 (current)
+    "claude-opus-4-5-20251101": (5.00, 25.00),     # Opus 4.5 (current)
+    # Aliases
+    "claude-haiku-4-5": (1.00, 5.00),
+    "claude-sonnet-4-5": (3.00, 15.00),
+    "claude-opus-4-5": (5.00, 25.00),
+    # RETIRED Claude 3.5 models (kept for backwards compatibility - retired Jan 5, 2026)
     "claude-3-5-sonnet-20241022": (3.00, 15.00),
     "claude-3-5-haiku-20241022": (0.80, 4.00),
     "claude-3-opus-20240229": (15.00, 75.00),
-    # Legacy/fictitious model IDs (kept for backwards compatibility)
+    # Legacy IDs
     "claude-sonnet-4-20250514": (3.00, 15.00),
     "claude-sonnet-4": (3.00, 15.00),
-    "claude-haiku-4-5": (0.80, 4.00),
-    "claude-haiku-4": (0.80, 4.00),
-    "claude-opus-4-5": (15.00, 75.00),
-    "claude-opus-4": (15.00, 75.00),
+    "claude-haiku-4": (1.00, 5.00),
+    "claude-opus-4": (5.00, 25.00),
 
     # OpenAI models
     "gpt-4o": (2.50, 10.00),

@@ -30,45 +30,45 @@ depends_on: Union[str, Sequence[str], None] = None
 
 # Default AI models configuration
 DEFAULT_MODELS = [
-    # Anthropic (Claude) - PROMPT #100: Fixed model IDs to use real Anthropic API model names
+    # Anthropic (Claude) - PROMPT #100 v2: Updated to Claude 4.5 (Claude 3.5 retired Jan 5, 2026)
     {
-        "name": "Claude Sonnet 3.5",
+        "name": "Claude Sonnet 4.5",
         "provider": "anthropic",
-        "model_id": "claude-3-5-sonnet-20241022",
+        "model_id": "claude-sonnet-4-5-20250929",
         "usage_type": "task_execution",
         "max_tokens": 8192,
         "temperature": 0.7,
-        "description": "Most capable Claude 3.5 model - best for complex task execution",
+        "description": "Most capable Claude 4.5 model - best for complex task execution",
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Sonnet 3.5 (Prompt Gen)",
+        "name": "Claude Sonnet 4.5 (Prompt Gen)",
         "provider": "anthropic",
-        "model_id": "claude-3-5-sonnet-20241022",
+        "model_id": "claude-sonnet-4-5-20250929",
         "usage_type": "prompt_generation",
         "max_tokens": 4096,
         "temperature": 0.8,
-        "description": "Most capable Claude 3.5 model - best for prompt generation",
+        "description": "Most capable Claude 4.5 model - best for prompt generation",
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Haiku 3.5 (Interview)",
+        "name": "Claude Haiku 4.5 (Interview)",
         "provider": "anthropic",
-        "model_id": "claude-3-5-haiku-20241022",
+        "model_id": "claude-haiku-4-5-20251001",
         "usage_type": "interview",
         "max_tokens": 4096,
         "temperature": 0.7,
-        "description": "Fastest Claude 3.5 model - best for interviews (cost-effective)",
+        "description": "Fastest Claude 4.5 model - best for interviews (cost-effective)",
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Sonnet 3.5 (General)",
+        "name": "Claude Sonnet 4.5 (General)",
         "provider": "anthropic",
-        "model_id": "claude-3-5-sonnet-20241022",
+        "model_id": "claude-sonnet-4-5-20250929",
         "usage_type": "general",
         "max_tokens": 8192,
         "temperature": 0.7,
-        "description": "Most capable Claude 3.5 model - best for general purpose tasks (default)",
+        "description": "Most capable Claude 4.5 model - best for general purpose tasks (default)",
         "env_var": "ANTHROPIC_API_KEY",
         "is_default": True  # Mark as default for general usage
     },
