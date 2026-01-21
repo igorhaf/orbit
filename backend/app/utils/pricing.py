@@ -11,7 +11,11 @@ from typing import Dict, Tuple
 # Pricing per million tokens (input, output)
 # Source: Official provider pricing pages (as of January 2026)
 MODEL_PRICING = {
-    # Anthropic Claude models
+    # Anthropic Claude models (PROMPT #100: Added real model IDs)
+    "claude-3-5-sonnet-20241022": (3.00, 15.00),
+    "claude-3-5-haiku-20241022": (0.80, 4.00),
+    "claude-3-opus-20240229": (15.00, 75.00),
+    # Legacy/fictitious model IDs (kept for backwards compatibility)
     "claude-sonnet-4-20250514": (3.00, 15.00),
     "claude-sonnet-4": (3.00, 15.00),
     "claude-haiku-4-5": (0.80, 4.00),
