@@ -29,6 +29,7 @@ export default function NewProjectPage() {
   const [step, setStep] = useState<Step>('basic');
   const [loading, setLoading] = useState(false);
   const [generatingContext, setGeneratingContext] = useState(false);
+  const [cancellingProject, setCancellingProject] = useState(false);
 
   // Form data
   const [name, setName] = useState('');
@@ -113,6 +114,32 @@ export default function NewProjectPage() {
       alert('Failed to generate context. Please try again.');
     } finally {
       setGeneratingContext(false);
+    }
+  };
+
+  // PROMPT #98 - Cancel and delete project if context interview is not completed
+  const handleCancelProject = async () => {
+    if (!projectId) {
+      router.push('/projects');
+      return;
+    }
+
+    const confirmCancel = window.confirm(
+      'Are you sure you want to cancel? The project will be deleted.'
+    );
+
+    if (!confirmCancel) return;
+
+    setCancellingProject(true);
+    try {
+      // Delete the project (will cascade delete the interview)
+      await projectsApi.delete(projectId);
+      console.log('✅ Project cancelled and deleted:', projectId);
+      router.push('/projects');
+    } catch (error) {
+      console.error('❌ Failed to delete project:', error);
+      alert('Failed to cancel project. Please try again.');
+      setCancellingProject(false);
     }
   };
 
@@ -225,11 +252,37 @@ export default function NewProjectPage() {
                   <p className="text-sm text-gray-500 mt-1">This may take a moment</p>
                 </div>
               ) : (
-                <ChatInterface
-                  interviewId={interviewId}
-                  onComplete={handleInterviewComplete}
-                  interviewMode="context"
-                />
+                <>
+                  <ChatInterface
+                    interviewId={interviewId}
+                    onComplete={handleInterviewComplete}
+                    interviewMode="context"
+                  />
+
+                  {/* PROMPT #98 - Cancel button */}
+                  <div className="mt-6 flex justify-start">
+                    <Button
+                      variant="outline"
+                      onClick={handleCancelProject}
+                      disabled={cancellingProject}
+                      className="text-red-600 border-red-300 hover:bg-red-50"
+                    >
+                      {cancellingProject ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600 mr-2"></div>
+                          Cancelling...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          Cancel Project
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -331,19 +384,31 @@ export default function NewProjectPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-3">
+                <div className="flex justify-between items-center">
+                  {/* PROMPT #98 - Cancel button on review step */}
                   <Button
                     variant="outline"
-                    onClick={() => setStep('interview')}
+                    onClick={handleCancelProject}
+                    disabled={cancellingProject}
+                    className="text-red-600 border-red-300 hover:bg-red-50"
                   >
-                    Back to Interview
+                    {cancellingProject ? 'Cancelling...' : 'Cancel Project'}
                   </Button>
-                  <Button
-                    variant="primary"
-                    onClick={() => setStep('confirm')}
-                  >
-                    Confirm & Continue
-                  </Button>
+
+                  <div className="flex gap-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => setStep('interview')}
+                    >
+                      Back to Interview
+                    </Button>
+                    <Button
+                      variant="primary"
+                      onClick={() => setStep('confirm')}
+                    >
+                      Confirm & Continue
+                    </Button>
+                  </div>
                 </div>
               </div>
             </CardContent>
