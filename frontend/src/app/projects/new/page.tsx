@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -29,12 +29,14 @@ export default function NewProjectPage() {
   const [step, setStep] = useState<Step>('basic');
   const [loading, setLoading] = useState(false);
   const [generatingContext, setGeneratingContext] = useState(false);
-  const [cancellingProject, setCancellingProject] = useState(false);
 
   // Form data
   const [name, setName] = useState('');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [interviewId, setInterviewId] = useState<string | null>(null);
+
+  // PROMPT #98 (v2) - Track if wizard was completed to prevent cleanup
+  const [wizardCompleted, setWizardCompleted] = useState(false);
 
   // Context data (PROMPT #89)
   const [contextHuman, setContextHuman] = useState<string | null>(null);
@@ -117,33 +119,41 @@ export default function NewProjectPage() {
     }
   };
 
-  // PROMPT #98 - Cancel and delete project if context interview is not completed
-  const handleCancelProject = async () => {
-    if (!projectId) {
-      router.push('/projects');
-      return;
-    }
+  // PROMPT #98 (v2) - Cleanup project if wizard is abandoned
+  useEffect(() => {
+    const cleanupProject = async () => {
+      if (projectId && !wizardCompleted) {
+        try {
+          await projectsApi.delete(projectId);
+          console.log('✅ Cleanup: Deleted incomplete project:', projectId);
+        } catch (error) {
+          console.error('❌ Failed to cleanup project:', error);
+        }
+      }
+    };
 
-    const confirmCancel = window.confirm(
-      'Are you sure you want to cancel? The project will be deleted.'
-    );
+    // Cleanup on page unload (browser close, navigation away)
+    const handleBeforeUnload = () => {
+      if (projectId && !wizardCompleted) {
+        // Synchronous cleanup for beforeunload
+        navigator.sendBeacon(`/api/v1/projects/${projectId}`,
+          new Blob([JSON.stringify({ method: 'DELETE' })], { type: 'application/json' })
+        );
+      }
+    };
 
-    if (!confirmCancel) return;
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
-    setCancellingProject(true);
-    try {
-      // Delete the project (will cascade delete the interview)
-      await projectsApi.delete(projectId);
-      console.log('✅ Project cancelled and deleted:', projectId);
-      router.push('/projects');
-    } catch (error) {
-      console.error('❌ Failed to delete project:', error);
-      alert('Failed to cancel project. Please try again.');
-      setCancellingProject(false);
-    }
-  };
+    // Cleanup on component unmount (router navigation)
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      cleanupProject();
+    };
+  }, [projectId, wizardCompleted]);
 
   const handleConfirm = () => {
+    // PROMPT #98 (v2) - Mark wizard as completed before navigating
+    setWizardCompleted(true);
     if (projectId) {
       router.push(`/projects/${projectId}`);
     }
@@ -252,37 +262,11 @@ export default function NewProjectPage() {
                   <p className="text-sm text-gray-500 mt-1">This may take a moment</p>
                 </div>
               ) : (
-                <>
-                  <ChatInterface
-                    interviewId={interviewId}
-                    onComplete={handleInterviewComplete}
-                    interviewMode="context"
-                  />
-
-                  {/* PROMPT #98 - Cancel button */}
-                  <div className="mt-6 flex justify-start">
-                    <Button
-                      variant="outline"
-                      onClick={handleCancelProject}
-                      disabled={cancellingProject}
-                      className="text-red-600 border-red-300 hover:bg-red-50"
-                    >
-                      {cancellingProject ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-600 mr-2"></div>
-                          Cancelling...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                          Cancel Project
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                </>
+                <ChatInterface
+                  interviewId={interviewId}
+                  onComplete={handleInterviewComplete}
+                  interviewMode="context"
+                />
               )}
             </CardContent>
           </Card>
@@ -384,31 +368,19 @@ export default function NewProjectPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-between items-center">
-                  {/* PROMPT #98 - Cancel button on review step */}
+                <div className="flex justify-end gap-3">
                   <Button
                     variant="outline"
-                    onClick={handleCancelProject}
-                    disabled={cancellingProject}
-                    className="text-red-600 border-red-300 hover:bg-red-50"
+                    onClick={() => setStep('interview')}
                   >
-                    {cancellingProject ? 'Cancelling...' : 'Cancel Project'}
+                    Back to Interview
                   </Button>
-
-                  <div className="flex gap-3">
-                    <Button
-                      variant="outline"
-                      onClick={() => setStep('interview')}
-                    >
-                      Back to Interview
-                    </Button>
-                    <Button
-                      variant="primary"
-                      onClick={() => setStep('confirm')}
-                    >
-                      Confirm & Continue
-                    </Button>
-                  </div>
+                  <Button
+                    variant="primary"
+                    onClick={() => setStep('confirm')}
+                  >
+                    Confirm & Continue
+                  </Button>
                 </div>
               </div>
             </CardContent>
