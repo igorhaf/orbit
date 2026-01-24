@@ -13,7 +13,8 @@ class ProjectBase(BaseModel):
     """Base schema for Project"""
     name: str = Field(..., min_length=1, max_length=255, description="Project name")
     # PROMPT #89 - Description is now OPTIONAL (filled after context interview)
-    description: Optional[str] = Field(None, max_length=5000, description="Project description (auto-filled from context)")
+    # PROMPT #101 - Increased max_length from 5000 to 50000 (context can be very long)
+    description: Optional[str] = Field(None, max_length=50000, description="Project description (auto-filled from context)")
     git_repository_info: Optional[dict] = Field(None, description="Git repository information")
 
     # Stack configuration (PROMPT #46 - Phase 1, PROMPT #67 - Mobile)
