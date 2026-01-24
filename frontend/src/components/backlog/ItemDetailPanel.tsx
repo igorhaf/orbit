@@ -145,11 +145,24 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   };
 
   // PROMPT #96 - Approve suggested item handler
+  // PROMPT #102 - Extended to show children generated feedback
   const handleApprove = async () => {
     setIsApproving(true);
     try {
-      await tasksApi.activateSuggestedEpic(item.id);
+      const result = await tasksApi.activateSuggestedEpic(item.id);
       console.log('✅ Item approved and activated:', item.title);
+
+      // PROMPT #102 - Show feedback about children generated
+      const childrenCount = result.children_generated || 0;
+      if (childrenCount > 0) {
+        const childType = item.item_type === 'epic' ? 'stories' :
+                          item.item_type === 'story' ? 'tasks' :
+                          item.item_type === 'task' ? 'subtasks' : 'items';
+        console.log(`📝 Generated ${childrenCount} draft ${childType}`);
+        // Show a brief notification (optional: could use toast library)
+        alert(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
+      }
+
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('❌ Failed to approve item:', error);
