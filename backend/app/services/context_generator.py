@@ -1620,6 +1620,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
     # ============================================================
     # PROMPT #102 - Hierarchical Draft Generation
     # Auto-generate child cards when parent is activated
+    # EACH CARD gets FULL EPIC-LEVEL content (generated individually)
     # ============================================================
 
     async def _generate_draft_stories(
@@ -1628,240 +1629,186 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         project: Project
     ) -> List[Task]:
         """
-        PROMPT #102 - Generate 15-20 DETAILED draft stories for an activated epic.
+        PROMPT #102 - Generate 15-20 stories with FULL EPIC-LEVEL content.
 
-        Stories are created with FULL CONTENT (same level of detail as Epics):
-        - labels=["suggested"]
-        - workflow_state="draft"
-        - parent_id=epic.id
-        - item_type=STORY
-        - FULL semantic_map, description_markdown, acceptance_criteria, generated_prompt
+        NEW APPROACH: Generate each story INDIVIDUALLY with full detail.
+        1. First: Generate list of 15-20 story TITLES
+        2. Then: For EACH title, generate FULL content (same as Epic)
+
+        This ensures each story has the SAME level of detail as an Epic.
 
         Args:
             epic: The activated epic
             project: The project with context
 
         Returns:
-            List of created draft Story tasks
+            List of created Story tasks with FULL content
         """
-        logger.info(f"📝 Generating DETAILED draft stories for epic: {epic.title}")
+        logger.info(f"📝 Generating stories with FULL EPIC-LEVEL content for: {epic.title}")
 
         # Extract epic's semantic map for context
         epic_semantic_map = {}
         if epic.interview_insights and isinstance(epic.interview_insights, dict):
             epic_semantic_map = epic.interview_insights.get("semantic_map", {})
 
-        # Build prompt for AI to generate DETAILED story specifications
-        system_prompt = """Você é um Product Owner e Arquiteto de Software especialista gerando especificações DETALHADAS de User Stories.
+        # ============================================================
+        # STEP 1: Generate only TITLES (15-20 story titles)
+        # ============================================================
+        titles_system_prompt = """Você é um Product Owner especialista em decomposição de Epics.
 
-TAREFA: Decomponha o Epic fornecido em 15-20 User Stories com ESPECIFICAÇÃO TÉCNICA COMPLETA.
+TAREFA: Decomponha o Epic em 15-20 User Stories. Retorne APENAS os TÍTULOS.
 
-METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+FORMATO OBRIGATÓRIO de cada título:
+"Como [tipo de usuário], eu quero [funcionalidade específica], para [benefício]"
 
-Cada Story deve ter seu próprio Mapa Semântico COMPLETO, REUTILIZANDO identificadores do Epic pai e ESTENDENDO com novos específicos da Story.
+**REGRAS:**
+- Cada Story deve cobrir uma funcionalidade DISTINTA e ESPECÍFICA
+- Stories devem ser independentes quando possível
+- Cubra TODOS os aspectos do Epic: CRUD, validações, integrações, UI, relatórios
+- Inclua Stories para: configuração, listagem, criação, edição, exclusão, busca, filtros, relatórios, integrações, notificações
 
-**Categorias de Identificadores:**
-- **N** (Entidades): N1, N2... = Entidades de domínio
-- **ATTR** (Atributos): ATTR1, ATTR2... = Campos com TIPOS (Ex: ATTR1=email:string)
-- **RN** (Regras de Negócio): RN1, RN2... = Regras específicas
-- **VAL** (Validações): VAL1, VAL2... = Validações de entrada
-- **EST** (Estados): EST1, EST2... = Estados possíveis
-- **TELA** (Telas): TELA1, TELA2... = Telas/páginas
-- **COMP** (Componentes): COMP1, COMP2... = Componentes UI
-- **API** (Endpoints): API1, API2... = Endpoints REST
-- **AC** (Acceptance Criteria): AC1, AC2... = Critérios de aceitação
+Retorne APENAS um array JSON com os títulos:
+["título 1", "título 2", ..., "título N"]
 
-ESTRUTURA OBRIGATÓRIA DO description_markdown PARA CADA STORY:
-
-```
-# Story: [Título no formato User Story]
-
-## Mapa Semântico
-
-### Entidades
-- **N1**: [reutilizado do Epic]
-- **N10**: [novo específico desta Story]
-
-### Atributos Relevantes
-- **ATTR1**: campo: tipo - descrição
-- **ATTR2**: campo: tipo - descrição
-
-### Regras de Negócio
-- **RN1**: [regra específica]
-- **RN2**: [regra específica]
-
-### Validações
-- **VAL1**: [validação]
-
-### Telas e Componentes
-- **TELA1**: [tela principal]
-- **COMP1**: [componente]
-
-### Endpoints
-- **API1**: [método] [rota] - [descrição]
-
-## Descrição Funcional
-
-[Narrativa DETALHADA usando identificadores. Mínimo 500 caracteres.]
-
-## Fluxo Principal
-
-1. [Passo 1 usando identificadores]
-2. [Passo 2 usando identificadores]
-...
-
-## Critérios de Aceitação
-
-1. **AC1**: [critério específico e mensurável]
-2. **AC2**: [critério específico e mensurável]
-...
-
-## Especificação Técnica
-
-[Detalhes técnicos de implementação]
-```
-
-Retorne APENAS um array JSON válido:
-[
-    {
-        "title": "Como [usuário], eu quero [funcionalidade], para [benefício]",
-        "semantic_map": {
-            "N1": "reutilizado do Epic",
-            "N10": "novo desta Story",
-            "ATTR1": "campo: tipo",
-            "RN1": "regra",
-            "TELA1": "tela",
-            "API1": "endpoint",
-            "AC1": "critério"
-        },
-        "description_markdown": "[MARKDOWN COMPLETO seguindo estrutura acima - MÍNIMO 1000 caracteres]",
-        "acceptance_criteria": ["AC1: critério", "AC2: critério", "AC3: critério"],
-        "story_points": 5,
-        "priority": "high",
-        "interview_insights": {
-            "key_requirements": ["req1", "req2"],
-            "technical_considerations": ["tech1", "tech2"]
-        }
-    },
-    ...
-]
-
-**REGRAS CRÍTICAS:**
-- MÍNIMO 15 identificadores no mapa semântico de cada Story
-- REUTILIZE identificadores do Epic (N1-N9 existentes)
-- ESTENDA com novos identificadores (N10+, ATTR10+, etc.)
-- description_markdown com MÍNIMO 1000 caracteres
-- MÍNIMO 5 critérios de aceitação por Story
-- Gere entre 15 e 20 Stories
-- TODO CONTEÚDO EM PORTUGUÊS
-"""
+NÃO inclua nenhuma explicação, apenas o array JSON."""
 
         semantic_map_text = ""
         if epic_semantic_map:
-            semantic_map_text = "\n\nMAPA SEMÂNTICO DO EPIC (REUTILIZE ESTES IDENTIFICADORES):\n"
+            semantic_map_text = "\n\nMAPA SEMÂNTICO DO EPIC:\n"
             semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
 
-        user_prompt = f"""Decomponha este Epic em 15-20 User Stories com ESPECIFICAÇÃO TÉCNICA COMPLETA.
+        titles_user_prompt = f"""Decomponha este Epic em 15-20 User Stories.
 
-## EPIC PAI
+## EPIC
 **Título:** {epic.title}
 **Descrição:** {epic.description or 'Não especificada'}
-**Generated Prompt:** {(epic.generated_prompt or '')[:2000]}
+**Especificação:** {(epic.generated_prompt or '')[:2000]}
 {semantic_map_text}
 
 ## CONTEXTO DO PROJETO
 **Nome:** {project.name}
-**Contexto:** {(project.context_human or project.context_semantic or 'Não disponível')[:3000]}
+**Contexto:** {(project.context_human or project.context_semantic or 'Não disponível')[:2000]}
 
-## INSTRUÇÕES
-1. Gere 15-20 Stories que decomponham COMPLETAMENTE o Epic
-2. Cada Story deve ter ESPECIFICAÇÃO TÉCNICA COMPLETA
-3. REUTILIZE identificadores do Epic (N1, N2, ATTR1, etc.)
-4. ESTENDA com novos identificadores específicos de cada Story
-5. Cada description_markdown deve ter MÍNIMO 1000 caracteres
-6. Cada Story deve ter MÍNIMO 5 critérios de aceitação
-
-Retorne APENAS o array JSON."""
+Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
-            response = await orchestrator.execute(
+
+            # Get titles first
+            titles_response = await orchestrator.execute(
                 usage_type="prompt_generation",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=16000  # Increased for detailed content
+                messages=[{"role": "user", "content": titles_user_prompt}],
+                system_prompt=titles_system_prompt,
+                max_tokens=2000
             )
 
-            content = response.get("content", "")
-            stories_data = self._parse_json_response(content)
+            titles_content = titles_response.get("content", "")
+            story_titles = self._parse_json_response(titles_content)
 
-            if not stories_data or not isinstance(stories_data, list):
-                logger.warning("AI did not return valid stories array, using fallback")
-                stories_data = self._generate_fallback_stories(epic)
+            if not story_titles or not isinstance(story_titles, list):
+                logger.warning("AI did not return valid titles array, using fallback titles")
+                story_titles = self._generate_fallback_story_titles(epic)
 
-            stories_data = stories_data[:20]
+            story_titles = story_titles[:20]
+            logger.info(f"📋 Generated {len(story_titles)} story titles for epic: {epic.title}")
 
+            # ============================================================
+            # STEP 2: For EACH title, generate FULL content individually
+            # ============================================================
             created_stories = []
-            for i, story_data in enumerate(stories_data):
-                # Convert semantic description to human-readable
-                semantic_map = story_data.get("semantic_map", {})
-                description_markdown = story_data.get("description_markdown", story_data.get("description", ""))
-                human_description = _convert_semantic_to_human(description_markdown, semantic_map)
+            for i, title in enumerate(story_titles):
+                logger.info(f"🔄 Generating FULL content for story {i+1}/{len(story_titles)}: {title[:50]}...")
 
-                story = Task(
-                    project_id=epic.project_id,
-                    parent_id=epic.id,
-                    item_type=ItemType.STORY,
-                    title=story_data.get("title", f"Story {i+1} do Epic"),
-                    description=human_description,  # Human-readable
-                    generated_prompt=description_markdown,  # Semantic for AI
-                    acceptance_criteria=story_data.get("acceptance_criteria", []),
-                    story_points=story_data.get("story_points", 5),
-                    priority=PriorityLevel(story_data.get("priority", "medium")) if story_data.get("priority") in ["critical", "high", "medium", "low", "trivial"] else PriorityLevel.MEDIUM,
-                    labels=["suggested"],
-                    workflow_state="draft",
-                    status=TaskStatus.BACKLOG,
-                    order=i,
-                    reporter="system",
-                    interview_insights={
-                        "semantic_map": semantic_map,
-                        "derived_from_epic": str(epic.id),
-                        **story_data.get("interview_insights", {})
-                    },
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
-                self.db.add(story)
-                created_stories.append(story)
+                try:
+                    # Create basic story first
+                    story = Task(
+                        project_id=epic.project_id,
+                        parent_id=epic.id,
+                        item_type=ItemType.STORY,
+                        title=title if isinstance(title, str) else f"Story {i+1}",
+                        description="Gerando conteúdo detalhado...",
+                        generated_prompt="",
+                        acceptance_criteria=[],
+                        story_points=5,
+                        priority=PriorityLevel.MEDIUM,
+                        labels=["suggested"],
+                        workflow_state="draft",
+                        status=TaskStatus.BACKLOG,
+                        order=i,
+                        reporter="system",
+                        interview_insights={"derived_from_epic": str(epic.id)},
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    self.db.add(story)
+                    self.db.commit()
+                    self.db.refresh(story)
 
-            self.db.commit()
+                    # Generate FULL content using _generate_full_story_content
+                    full_content = await self._generate_full_story_content(story, project)
 
-            for story in created_stories:
-                self.db.refresh(story)
+                    if full_content:
+                        # Update story with full content
+                        semantic_map = full_content.get("semantic_map", {})
+                        description_markdown = full_content.get("description_markdown", "")
+                        human_description = _convert_semantic_to_human(description_markdown, semantic_map)
 
-            logger.info(f"✅ Created {len(created_stories)} DETAILED draft stories for epic: {epic.title}")
+                        story.title = full_content.get("title", story.title)
+                        story.description = human_description
+                        story.generated_prompt = description_markdown
+                        story.acceptance_criteria = full_content.get("acceptance_criteria", [])
+                        story.story_points = full_content.get("story_points", 5)
+
+                        priority_str = full_content.get("priority", "medium")
+                        if priority_str in ["critical", "high", "medium", "low", "trivial"]:
+                            story.priority = PriorityLevel(priority_str)
+
+                        story.interview_insights = {
+                            "semantic_map": semantic_map,
+                            "derived_from_epic": str(epic.id),
+                            **full_content.get("interview_insights", {})
+                        }
+                        story.updated_at = datetime.utcnow()
+                        self.db.commit()
+                        self.db.refresh(story)
+
+                        logger.info(f"✅ Generated FULL content for story: {story.title[:50]}")
+
+                    created_stories.append(story)
+
+                except Exception as story_error:
+                    logger.error(f"❌ Error generating content for story '{title}': {str(story_error)}")
+                    # Keep the basic story even if content generation failed
+                    if story.id:
+                        created_stories.append(story)
+
+            logger.info(f"✅ Created {len(created_stories)} stories with FULL EPIC-LEVEL content")
             return created_stories
 
         except Exception as e:
             logger.error(f"❌ Error generating draft stories: {str(e)}")
-            fallback_stories = self._generate_fallback_stories(epic)
+            import traceback
+            traceback.print_exc()
+
+            # Fallback: create basic stories with titles only
+            fallback_titles = self._generate_fallback_story_titles(epic)
             created_stories = []
-            for i, story_data in enumerate(fallback_stories[:5]):
+            for i, title in enumerate(fallback_titles[:5]):
                 story = Task(
                     project_id=epic.project_id,
                     parent_id=epic.id,
                     item_type=ItemType.STORY,
-                    title=story_data.get("title", f"Story {i+1}"),
-                    description=story_data.get("description", ""),
-                    generated_prompt=story_data.get("description_markdown", ""),
-                    acceptance_criteria=story_data.get("acceptance_criteria", []),
+                    title=title,
+                    description="Conteúdo será gerado ao aprovar.",
+                    generated_prompt="",
+                    acceptance_criteria=[],
                     story_points=5,
                     priority=PriorityLevel.MEDIUM,
                     labels=["suggested"],
                     workflow_state="draft",
                     status=TaskStatus.BACKLOG,
                     order=i,
-                    interview_insights={"semantic_map": story_data.get("semantic_map", {})}
+                    interview_insights={"derived_from_epic": str(epic.id)}
                 )
                 self.db.add(story)
                 created_stories.append(story)
@@ -1869,50 +1816,25 @@ Retorne APENAS o array JSON."""
             self.db.commit()
             return created_stories
 
-    def _generate_fallback_stories(self, epic: Task) -> List[Dict]:
-        """Generate detailed fallback stories when AI fails."""
+    def _generate_fallback_story_titles(self, epic: Task) -> List[str]:
+        """Generate fallback story titles when AI fails."""
         base_title = epic.title.replace("Epic: ", "").replace("Módulo: ", "")
         return [
-            {
-                "title": f"Como usuário, eu quero configurar {base_title}, para personalizar o sistema",
-                "description_markdown": f"# Story: Configuração de {base_title}\n\n## Mapa Semântico\n- **N1**: Usuário\n- **TELA1**: Tela de configuração\n- **AC1**: Configurações salvas persistem\n\n## Descrição\nPermite ao N1 configurar as preferências de {base_title} através de TELA1.",
-                "semantic_map": {"N1": "Usuário", "TELA1": "Tela de configuração", "AC1": "Configurações persistem"},
-                "acceptance_criteria": ["AC1: Configurações salvas persistem após logout", "AC2: Validação de campos obrigatórios", "AC3: Feedback visual de sucesso/erro"],
-                "story_points": 5,
-                "priority": "high"
-            },
-            {
-                "title": f"Como usuário, eu quero visualizar dados de {base_title}, para acompanhar informações",
-                "description_markdown": f"# Story: Visualização de {base_title}\n\n## Mapa Semântico\n- **N1**: Usuário\n- **TELA1**: Dashboard\n- **COMP1**: Lista de itens\n\n## Descrição\nN1 acessa TELA1 para visualizar dados através de COMP1.",
-                "semantic_map": {"N1": "Usuário", "TELA1": "Dashboard", "COMP1": "Lista de itens"},
-                "acceptance_criteria": ["AC1: Lista carrega em menos de 2 segundos", "AC2: Paginação funcional", "AC3: Filtros aplicáveis"],
-                "story_points": 5,
-                "priority": "high"
-            },
-            {
-                "title": f"Como usuário, eu quero criar registros em {base_title}, para adicionar novos dados",
-                "description_markdown": f"# Story: Criação em {base_title}\n\n## Mapa Semântico\n- **N1**: Usuário\n- **TELA1**: Formulário de criação\n- **API1**: POST /api/items\n\n## Descrição\nN1 preenche TELA1 e submete via API1.",
-                "semantic_map": {"N1": "Usuário", "TELA1": "Formulário", "API1": "POST /api/items"},
-                "acceptance_criteria": ["AC1: Validação de campos obrigatórios", "AC2: Feedback de sucesso", "AC3: Redirect após criação"],
-                "story_points": 5,
-                "priority": "medium"
-            },
-            {
-                "title": f"Como usuário, eu quero editar registros em {base_title}, para atualizar informações",
-                "description_markdown": f"# Story: Edição em {base_title}\n\n## Mapa Semântico\n- **N1**: Usuário\n- **TELA1**: Formulário de edição\n- **API1**: PUT /api/items/:id\n\n## Descrição\nN1 edita dados existentes via TELA1 e API1.",
-                "semantic_map": {"N1": "Usuário", "TELA1": "Formulário de edição", "API1": "PUT /api/items/:id"},
-                "acceptance_criteria": ["AC1: Dados pré-preenchidos", "AC2: Validação de campos", "AC3: Histórico de alterações"],
-                "story_points": 5,
-                "priority": "medium"
-            },
-            {
-                "title": f"Como usuário, eu quero excluir registros em {base_title}, para remover dados desnecessários",
-                "description_markdown": f"# Story: Exclusão em {base_title}\n\n## Mapa Semântico\n- **N1**: Usuário\n- **COMP1**: Modal de confirmação\n- **API1**: DELETE /api/items/:id\n\n## Descrição\nN1 confirma exclusão via COMP1 e API1 processa.",
-                "semantic_map": {"N1": "Usuário", "COMP1": "Modal de confirmação", "API1": "DELETE /api/items/:id"},
-                "acceptance_criteria": ["AC1: Confirmação obrigatória", "AC2: Soft delete implementado", "AC3: Feedback de sucesso"],
-                "story_points": 3,
-                "priority": "low"
-            }
+            f"Como usuário, eu quero configurar {base_title}, para personalizar o sistema",
+            f"Como usuário, eu quero visualizar lista de {base_title}, para acompanhar dados",
+            f"Como usuário, eu quero criar registros em {base_title}, para adicionar informações",
+            f"Como usuário, eu quero editar registros de {base_title}, para atualizar dados",
+            f"Como usuário, eu quero excluir registros de {base_title}, para remover dados obsoletos",
+            f"Como usuário, eu quero buscar em {base_title}, para encontrar dados específicos",
+            f"Como usuário, eu quero filtrar {base_title} por status, para organizar visualização",
+            f"Como usuário, eu quero exportar dados de {base_title}, para análise externa",
+            f"Como usuário, eu quero importar dados para {base_title}, para carga em massa",
+            f"Como usuário, eu quero validar dados de {base_title}, para garantir integridade",
+            f"Como administrador, eu quero gerenciar permissões de {base_title}, para controle de acesso",
+            f"Como usuário, eu quero receber notificações de {base_title}, para acompanhamento",
+            f"Como usuário, eu quero ver histórico de {base_title}, para auditoria",
+            f"Como usuário, eu quero gerar relatórios de {base_title}, para análise",
+            f"Como usuário, eu quero integrar {base_title} com outros módulos, para automação"
         ]
 
     def _parse_json_response(self, content: str) -> Any:
@@ -1973,243 +1895,159 @@ Retorne APENAS o array JSON."""
         if story.interview_insights:
             story_semantic_map = story.interview_insights.get("semantic_map", {})
 
-        system_prompt = """Você é um Tech Lead e Arquiteto de Software gerando especificações TÉCNICAS DETALHADAS de Tasks.
+        # ============================================================
+        # STEP 1: Generate only TITLES (5-8 task titles)
+        # ============================================================
+        titles_system_prompt = """Você é um Tech Lead especialista em decomposição de User Stories.
 
-TAREFA: Decomponha a User Story em 5-8 Tasks com ESPECIFICAÇÃO TÉCNICA COMPLETA.
+TAREFA: Decomponha a User Story em 5-8 Tasks técnicas. Retorne APENAS os TÍTULOS.
 
-METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+FORMATO: Cada título deve descrever uma tarefa técnica específica e implementável.
 
-Cada Task deve ter seu próprio Mapa Semântico COMPLETO, REUTILIZANDO identificadores do Epic/Story e ESTENDENDO com específicos da Task.
+**TIPOS DE TASKS A INCLUIR:**
+- Modelagem de dados (criar/modificar models, migrations)
+- Implementação de API (endpoints, controllers)
+- Implementação de UI (componentes, páginas)
+- Validações e regras de negócio
+- Integrações (serviços externos, outros módulos)
+- Testes (unitários, integração)
+- Configurações e setup
 
-**Categorias de Identificadores:**
-- **N** (Entidades): N1, N2... = Entidades de domínio
-- **ATTR** (Atributos): ATTR1, ATTR2... = Campos com TIPOS
-- **FUNC** (Funções): FUNC1, FUNC2... = Funções/métodos a implementar
-- **PARAM** (Parâmetros): PARAM1, PARAM2... = Parâmetros de funções
-- **RET** (Retornos): RET1, RET2... = Tipos de retorno
-- **VAL** (Validações): VAL1, VAL2... = Validações
-- **ERR** (Erros): ERR1, ERR2... = Tratamento de erros
-- **API** (Endpoints): API1, API2... = Endpoints REST
-- **COMP** (Componentes): COMP1, COMP2... = Componentes UI
-- **FILE** (Arquivos): FILE1, FILE2... = Arquivos a criar/modificar
-- **TEST** (Testes): TEST1, TEST2... = Casos de teste
-- **AC** (Acceptance Criteria): AC1, AC2... = Critérios de aceitação
+Retorne APENAS um array JSON com os títulos:
+["título 1", "título 2", ..., "título N"]
 
-ESTRUTURA OBRIGATÓRIA DO description_markdown PARA CADA TASK:
+NÃO inclua nenhuma explicação, apenas o array JSON."""
 
-```
-# Task: [Título Técnico]
-
-## Mapa Semântico
-
-### Entidades Envolvidas
-- **N1**: [reutilizado]
-
-### Funções/Métodos
-- **FUNC1**: nome_funcao(PARAM1, PARAM2) -> RET1
-- **FUNC2**: nome_funcao(...) -> RET2
-
-### Arquivos
-- **FILE1**: caminho/arquivo.ext - [descrição]
-
-### Validações
-- **VAL1**: [validação específica]
-
-### Tratamento de Erros
-- **ERR1**: [erro e como tratar]
-
-### Testes Necessários
-- **TEST1**: [caso de teste]
-
-## Descrição Técnica
-
-[Narrativa DETALHADA usando identificadores. Mínimo 500 caracteres.
-Descreva exatamente O QUE implementar, COMO implementar, e ONDE implementar.]
-
-## Passos de Implementação
-
-1. [Passo 1 com detalhes técnicos]
-2. [Passo 2 com detalhes técnicos]
-...
-
-## Critérios de Aceitação
-
-1. **AC1**: [critério técnico específico]
-2. **AC2**: [critério técnico específico]
-...
-
-## Código de Exemplo (se aplicável)
-
-[Snippet de código ou pseudo-código]
-```
-
-Retorne APENAS um array JSON válido:
-[
-    {
-        "title": "Título técnico da task",
-        "semantic_map": {
-            "N1": "reutilizado",
-            "FUNC1": "nome_funcao(params) -> tipo",
-            "FILE1": "caminho/arquivo.ext",
-            "VAL1": "validação",
-            "TEST1": "caso de teste",
-            "AC1": "critério"
-        },
-        "description_markdown": "[MARKDOWN COMPLETO - MÍNIMO 800 caracteres]",
-        "acceptance_criteria": ["AC1: critério", "AC2: critério", "AC3: critério"],
-        "story_points": 3,
-        "interview_insights": {
-            "implementation_notes": ["nota1", "nota2"],
-            "dependencies": ["dep1", "dep2"]
-        }
-    },
-    ...
-]
-
-**REGRAS CRÍTICAS:**
-- MÍNIMO 10 identificadores no mapa semântico de cada Task
-- REUTILIZE identificadores do Epic/Story (N1-N9, ATTR1-ATTR9, etc.)
-- ESTENDA com novos identificadores específicos da Task
-- description_markdown com MÍNIMO 800 caracteres
-- MÍNIMO 4 critérios de aceitação por Task
-- Gere entre 5 e 8 Tasks
-- Inclua detalhes de ARQUIVOS, FUNÇÕES, TESTES
-- TODO CONTEÚDO EM PORTUGUÊS
-"""
-
-        # Combine semantic maps for context
         combined_semantic_map = {**epic_semantic_map, **story_semantic_map}
         semantic_map_text = ""
         if combined_semantic_map:
-            semantic_map_text = "\n\nMAPA SEMÂNTICO DO EPIC/STORY (REUTILIZE):\n"
+            semantic_map_text = "\n\nMAPA SEMÂNTICO DO EPIC/STORY:\n"
             semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
 
         epic_context = ""
         if parent_epic:
             epic_context = f"\n## EPIC PAI\n**Título:** {parent_epic.title}\n**Descrição:** {(parent_epic.description or 'N/A')[:500]}\n"
 
-        user_prompt = f"""Decomponha esta User Story em 5-8 Tasks com ESPECIFICAÇÃO TÉCNICA COMPLETA.
+        titles_user_prompt = f"""Decomponha esta User Story em 5-8 Tasks técnicas.
 
 ## STORY
 **Título:** {story.title}
 **Descrição:** {story.description or 'Não especificada'}
-**Generated Prompt:** {(story.generated_prompt or '')[:1500]}
+**Especificação:** {(story.generated_prompt or '')[:1500]}
 {epic_context}
 {semantic_map_text}
 
 ## CONTEXTO DO PROJETO
-{(project.context_human or project.context_semantic or 'Não disponível')[:2000]}
+{(project.context_human or project.context_semantic or 'Não disponível')[:1500]}
 
-## INSTRUÇÕES
-1. Gere 5-8 Tasks TÉCNICAS que implementem a Story
-2. Cada Task deve ter ESPECIFICAÇÃO TÉCNICA COMPLETA
-3. REUTILIZE identificadores existentes
-4. Inclua: FUNÇÕES, ARQUIVOS, VALIDAÇÕES, TESTES
-5. Cada description_markdown deve ter MÍNIMO 800 caracteres
-6. Cada Task deve ter MÍNIMO 4 critérios de aceitação
-
-Retorne APENAS o array JSON."""
+Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
-            response = await orchestrator.execute(
+
+            # Get titles first
+            titles_response = await orchestrator.execute(
                 usage_type="prompt_generation",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=12000
+                messages=[{"role": "user", "content": titles_user_prompt}],
+                system_prompt=titles_system_prompt,
+                max_tokens=1500
             )
 
-            content = response.get("content", "")
-            tasks_data = self._parse_json_response(content)
+            titles_content = titles_response.get("content", "")
+            task_titles = self._parse_json_response(titles_content)
 
-            if not tasks_data or not isinstance(tasks_data, list):
-                tasks_data = self._generate_fallback_tasks(story)
+            if not task_titles or not isinstance(task_titles, list):
+                logger.warning("AI did not return valid task titles array, using fallback titles")
+                task_titles = self._generate_fallback_task_titles(story)
 
-            tasks_data = tasks_data[:8]
+            task_titles = task_titles[:8]
+            logger.info(f"📋 Generated {len(task_titles)} task titles for story: {story.title}")
 
+            # ============================================================
+            # STEP 2: For EACH title, generate FULL content individually
+            # ============================================================
             created_tasks = []
-            for i, task_data in enumerate(tasks_data):
-                semantic_map = task_data.get("semantic_map", {})
-                description_markdown = task_data.get("description_markdown", task_data.get("description", ""))
-                human_description = _convert_semantic_to_human(description_markdown, semantic_map)
+            for i, title in enumerate(task_titles):
+                logger.info(f"🔄 Generating FULL content for task {i+1}/{len(task_titles)}: {title[:50] if isinstance(title, str) else 'Task'}...")
 
-                task = Task(
-                    project_id=story.project_id,
-                    parent_id=story.id,
-                    item_type=ItemType.TASK,
-                    title=task_data.get("title", f"Task {i+1}"),
-                    description=human_description,
-                    generated_prompt=description_markdown,
-                    acceptance_criteria=task_data.get("acceptance_criteria", []),
-                    story_points=task_data.get("story_points", 3),
-                    priority=story.priority or PriorityLevel.MEDIUM,
-                    labels=["suggested"],
-                    workflow_state="draft",
-                    status=TaskStatus.BACKLOG,
-                    order=i,
-                    reporter="system",
-                    interview_insights={
-                        "semantic_map": semantic_map,
-                        "derived_from_story": str(story.id),
-                        **task_data.get("interview_insights", {})
-                    },
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
-                self.db.add(task)
-                created_tasks.append(task)
+                try:
+                    # Create basic task first
+                    task = Task(
+                        project_id=story.project_id,
+                        parent_id=story.id,
+                        item_type=ItemType.TASK,
+                        title=title if isinstance(title, str) else f"Task {i+1}",
+                        description="Gerando conteúdo detalhado...",
+                        generated_prompt="",
+                        acceptance_criteria=[],
+                        story_points=3,
+                        priority=story.priority or PriorityLevel.MEDIUM,
+                        labels=["suggested"],
+                        workflow_state="draft",
+                        status=TaskStatus.BACKLOG,
+                        order=i,
+                        reporter="system",
+                        interview_insights={"derived_from_story": str(story.id)},
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    self.db.add(task)
+                    self.db.commit()
+                    self.db.refresh(task)
 
-            self.db.commit()
+                    # Generate FULL content using _generate_full_task_content
+                    full_content = await self._generate_full_task_content(task, project)
 
-            for task in created_tasks:
-                self.db.refresh(task)
+                    if full_content:
+                        # Update task with full content
+                        semantic_map = full_content.get("semantic_map", {})
+                        description_markdown = full_content.get("description_markdown", "")
+                        human_description = _convert_semantic_to_human(description_markdown, semantic_map)
 
-            logger.info(f"✅ Created {len(created_tasks)} DETAILED draft tasks for story: {story.title}")
+                        task.title = full_content.get("title", task.title)
+                        task.description = human_description
+                        task.generated_prompt = description_markdown
+                        task.acceptance_criteria = full_content.get("acceptance_criteria", [])
+                        task.story_points = full_content.get("story_points", 3)
+
+                        task.interview_insights = {
+                            "semantic_map": semantic_map,
+                            "derived_from_story": str(story.id),
+                            **full_content.get("interview_insights", {})
+                        }
+                        task.updated_at = datetime.utcnow()
+                        self.db.commit()
+                        self.db.refresh(task)
+
+                        logger.info(f"✅ Generated FULL content for task: {task.title[:50]}")
+
+                    created_tasks.append(task)
+
+                except Exception as task_error:
+                    logger.error(f"❌ Error generating content for task '{title}': {str(task_error)}")
+                    if task.id:
+                        created_tasks.append(task)
+
+            logger.info(f"✅ Created {len(created_tasks)} tasks with FULL EPIC-LEVEL content")
             return created_tasks
 
         except Exception as e:
             logger.error(f"❌ Error generating draft tasks: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
 
-    def _generate_fallback_tasks(self, story: Task) -> List[Dict]:
-        """Generate detailed fallback tasks when AI fails."""
+    def _generate_fallback_task_titles(self, story: Task) -> List[str]:
+        """Generate fallback task titles when AI fails."""
         base_title = story.title[:50] if story.title else "funcionalidade"
         return [
-            {
-                "title": "Criar modelo de dados e migrations",
-                "description_markdown": f"# Task: Modelo de Dados\n\n## Mapa Semântico\n- **N1**: Entidade principal\n- **ATTR1**: campo: tipo\n- **FILE1**: models/entidade.py\n\n## Descrição\nCriar modelo de dados para {base_title}.",
-                "semantic_map": {"N1": "Entidade", "ATTR1": "campo: tipo", "FILE1": "models/entidade.py"},
-                "acceptance_criteria": ["AC1: Model criado", "AC2: Migration executada", "AC3: Testes passam", "AC4: Documentação atualizada"],
-                "story_points": 3
-            },
-            {
-                "title": "Implementar endpoints da API REST",
-                "description_markdown": f"# Task: API REST\n\n## Mapa Semântico\n- **API1**: POST /api/items\n- **API2**: GET /api/items\n- **FILE1**: routes/items.py\n\n## Descrição\nImplementar endpoints REST para {base_title}.",
-                "semantic_map": {"API1": "POST /api/items", "API2": "GET /api/items", "FILE1": "routes/items.py"},
-                "acceptance_criteria": ["AC1: Endpoints funcionais", "AC2: Validações implementadas", "AC3: Documentação Swagger", "AC4: Testes de integração"],
-                "story_points": 5
-            },
-            {
-                "title": "Criar componentes de interface frontend",
-                "description_markdown": f"# Task: Frontend\n\n## Mapa Semântico\n- **COMP1**: Formulário\n- **COMP2**: Lista\n- **FILE1**: components/Form.tsx\n\n## Descrição\nCriar componentes UI para {base_title}.",
-                "semantic_map": {"COMP1": "Formulário", "COMP2": "Lista", "FILE1": "components/Form.tsx"},
-                "acceptance_criteria": ["AC1: Componentes criados", "AC2: Responsivo", "AC3: Acessível", "AC4: Testes unitários"],
-                "story_points": 5
-            },
-            {
-                "title": "Implementar validações e regras de negócio",
-                "description_markdown": f"# Task: Validações\n\n## Mapa Semântico\n- **VAL1**: Validação de campos\n- **RN1**: Regra de negócio\n- **ERR1**: Tratamento de erro\n\n## Descrição\nImplementar validações para {base_title}.",
-                "semantic_map": {"VAL1": "Validação", "RN1": "Regra", "ERR1": "Erro"},
-                "acceptance_criteria": ["AC1: Validações frontend", "AC2: Validações backend", "AC3: Mensagens de erro claras", "AC4: Testes de validação"],
-                "story_points": 3
-            },
-            {
-                "title": "Escrever testes unitários e de integração",
-                "description_markdown": f"# Task: Testes\n\n## Mapa Semântico\n- **TEST1**: Teste unitário\n- **TEST2**: Teste de integração\n- **FILE1**: tests/test_items.py\n\n## Descrição\nEscrever testes para {base_title}.",
-                "semantic_map": {"TEST1": "Unitário", "TEST2": "Integração", "FILE1": "tests/test_items.py"},
-                "acceptance_criteria": ["AC1: Cobertura > 80%", "AC2: Testes passam", "AC3: CI configurado", "AC4: Mocks apropriados"],
-                "story_points": 3
-            }
+            "Criar modelo de dados e migrations",
+            "Implementar endpoints da API REST",
+            "Criar componentes de UI",
+            "Implementar validações e regras de negócio",
+            "Escrever testes unitários",
+            "Implementar integração com serviços",
+            "Documentar implementação"
         ]
 
     async def _generate_draft_subtasks(
@@ -2241,191 +2079,146 @@ Retorne APENAS o array JSON."""
         if task.interview_insights:
             task_semantic_map = task.interview_insights.get("semantic_map", {})
 
-        system_prompt = """Você é um Desenvolvedor Sênior gerando especificações DETALHADAS de Subtasks.
+        # ============================================================
+        # STEP 1: Generate only TITLES (3-5 subtask titles)
+        # ============================================================
+        titles_system_prompt = """Você é um Desenvolvedor Sênior especialista em decomposição de Tasks.
 
-TAREFA: Decomponha a Task em 3-5 Subtasks com ESPECIFICAÇÃO TÉCNICA COMPLETA.
+TAREFA: Decomponha a Task em 3-5 Subtasks atômicas. Retorne APENAS os TÍTULOS.
 
-METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+FORMATO: Cada título deve descrever uma ação específica e implementável.
 
-Cada Subtask deve ter seu próprio Mapa Semântico, REUTILIZANDO identificadores da Task pai.
+**TIPOS DE SUBTASKS A INCLUIR:**
+- Implementação de função/método específico
+- Configuração de dependência/biblioteca
+- Criação/modificação de arquivo
+- Implementação de validação
+- Tratamento de erro específico
+- Escrita de teste
+- Refatoração de código
 
-**Categorias de Identificadores:**
-- **N** (Entidades): N1, N2... = Entidades envolvidas
-- **FUNC** (Funções): FUNC1, FUNC2... = Função específica a implementar
-- **LINE** (Linhas): LINE1, LINE2... = Linhas de código a adicionar/modificar
-- **VAL** (Validações): VAL1... = Validação específica
-- **ERR** (Erros): ERR1... = Erro a tratar
-- **FILE** (Arquivos): FILE1... = Arquivo específico
-- **CMD** (Comandos): CMD1... = Comando a executar
-- **AC** (Acceptance Criteria): AC1, AC2... = Critérios de aceitação
+Retorne APENAS um array JSON com os títulos:
+["título 1", "título 2", ..., "título N"]
 
-ESTRUTURA OBRIGATÓRIA DO description_markdown PARA CADA SUBTASK:
-
-```
-# Subtask: [Título - Ação Específica]
-
-## Mapa Semântico
-
-- **FUNC1**: função a implementar
-- **FILE1**: arquivo a modificar
-- **LINE1**: código a adicionar
-
-## Descrição Técnica
-
-[O QUE fazer, COMO fazer, ONDE fazer - MÍNIMO 400 caracteres]
-
-## Passos Detalhados
-
-1. [Passo específico]
-2. [Passo específico]
-...
-
-## Critérios de Aceitação
-
-1. **AC1**: [critério específico]
-2. **AC2**: [critério específico]
-...
-
-## Código/Comandos
-
-[Código ou comandos específicos]
-```
-
-Retorne APENAS um array JSON válido:
-[
-    {
-        "title": "Ação específica da subtask",
-        "semantic_map": {
-            "FUNC1": "função",
-            "FILE1": "arquivo",
-            "LINE1": "código",
-            "AC1": "critério"
-        },
-        "description_markdown": "[MARKDOWN COMPLETO - MÍNIMO 400 caracteres]",
-        "acceptance_criteria": ["AC1: critério", "AC2: critério", "AC3: critério"],
-        "interview_insights": {
-            "code_snippet": "código exemplo",
-            "commands": ["cmd1", "cmd2"]
-        }
-    },
-    ...
-]
-
-**REGRAS CRÍTICAS:**
-- MÍNIMO 6 identificadores no mapa semântico de cada Subtask
-- REUTILIZE identificadores da Task pai
-- description_markdown com MÍNIMO 400 caracteres
-- MÍNIMO 3 critérios de aceitação por Subtask
-- Gere entre 3 e 5 Subtasks
-- Inclua CÓDIGO ou COMANDOS específicos quando aplicável
-- TODO CONTEÚDO EM PORTUGUÊS
-"""
+NÃO inclua nenhuma explicação, apenas o array JSON."""
 
         semantic_map_text = ""
         if task_semantic_map:
-            semantic_map_text = "\n\nMAPA SEMÂNTICO DA TASK (REUTILIZE):\n"
+            semantic_map_text = "\n\nMAPA SEMÂNTICO DA TASK:\n"
             semantic_map_text += json.dumps(task_semantic_map, indent=2, ensure_ascii=False)
 
-        user_prompt = f"""Decomponha esta Task em 3-5 Subtasks com ESPECIFICAÇÃO TÉCNICA COMPLETA.
+        titles_user_prompt = f"""Decomponha esta Task em 3-5 Subtasks atômicas.
 
 ## TASK
 **Título:** {task.title}
 **Descrição:** {task.description or 'Não especificada'}
-**Generated Prompt:** {(task.generated_prompt or '')[:1000]}
+**Especificação:** {(task.generated_prompt or '')[:1000]}
 {semantic_map_text}
 
-## INSTRUÇÕES
-1. Gere 3-5 Subtasks que completem a Task
-2. Cada Subtask deve ter especificação DETALHADA
-3. Inclua: CÓDIGO, COMANDOS, ARQUIVOS específicos
-4. Cada description_markdown deve ter MÍNIMO 400 caracteres
-5. Cada Subtask deve ter MÍNIMO 3 critérios de aceitação
-
-Retorne APENAS o array JSON."""
+Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
-            response = await orchestrator.execute(
+
+            # Get titles first
+            titles_response = await orchestrator.execute(
                 usage_type="prompt_generation",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=8000
+                messages=[{"role": "user", "content": titles_user_prompt}],
+                system_prompt=titles_system_prompt,
+                max_tokens=1000
             )
 
-            content = response.get("content", "")
-            subtasks_data = self._parse_json_response(content)
+            titles_content = titles_response.get("content", "")
+            subtask_titles = self._parse_json_response(titles_content)
 
-            if not subtasks_data or not isinstance(subtasks_data, list):
-                subtasks_data = self._generate_fallback_subtasks(task)
+            if not subtask_titles or not isinstance(subtask_titles, list):
+                logger.warning("AI did not return valid subtask titles array, using fallback titles")
+                subtask_titles = self._generate_fallback_subtask_titles(task)
 
-            subtasks_data = subtasks_data[:5]
+            subtask_titles = subtask_titles[:5]
+            logger.info(f"📋 Generated {len(subtask_titles)} subtask titles for task: {task.title}")
 
+            # ============================================================
+            # STEP 2: For EACH title, generate FULL content individually
+            # ============================================================
             created_subtasks = []
-            for i, subtask_data in enumerate(subtasks_data):
-                semantic_map = subtask_data.get("semantic_map", {})
-                description_markdown = subtask_data.get("description_markdown", subtask_data.get("description", ""))
-                human_description = _convert_semantic_to_human(description_markdown, semantic_map)
+            for i, title in enumerate(subtask_titles):
+                logger.info(f"🔄 Generating FULL content for subtask {i+1}/{len(subtask_titles)}: {title[:50] if isinstance(title, str) else 'Subtask'}...")
 
-                subtask = Task(
-                    project_id=task.project_id,
-                    parent_id=task.id,
-                    item_type=ItemType.SUBTASK,
-                    title=subtask_data.get("title", f"Subtask {i+1}"),
-                    description=human_description,
-                    generated_prompt=description_markdown,
-                    acceptance_criteria=subtask_data.get("acceptance_criteria", []),
-                    story_points=1,
-                    priority=task.priority or PriorityLevel.MEDIUM,
-                    labels=["suggested"],
-                    workflow_state="draft",
-                    status=TaskStatus.BACKLOG,
-                    order=i,
-                    reporter="system",
-                    interview_insights={
-                        "semantic_map": semantic_map,
-                        "derived_from_task": str(task.id),
-                        **subtask_data.get("interview_insights", {})
-                    },
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
-                self.db.add(subtask)
-                created_subtasks.append(subtask)
+                try:
+                    # Create basic subtask first
+                    subtask = Task(
+                        project_id=task.project_id,
+                        parent_id=task.id,
+                        item_type=ItemType.SUBTASK,
+                        title=title if isinstance(title, str) else f"Subtask {i+1}",
+                        description="Gerando conteúdo detalhado...",
+                        generated_prompt="",
+                        acceptance_criteria=[],
+                        story_points=1,
+                        priority=task.priority or PriorityLevel.MEDIUM,
+                        labels=["suggested"],
+                        workflow_state="draft",
+                        status=TaskStatus.BACKLOG,
+                        order=i,
+                        reporter="system",
+                        interview_insights={"derived_from_task": str(task.id)},
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow()
+                    )
+                    self.db.add(subtask)
+                    self.db.commit()
+                    self.db.refresh(subtask)
 
-            self.db.commit()
+                    # Generate FULL content using _generate_full_subtask_content
+                    full_content = await self._generate_full_subtask_content(subtask, project)
 
-            for subtask in created_subtasks:
-                self.db.refresh(subtask)
+                    if full_content:
+                        # Update subtask with full content
+                        semantic_map = full_content.get("semantic_map", {})
+                        description_markdown = full_content.get("description_markdown", "")
+                        human_description = _convert_semantic_to_human(description_markdown, semantic_map)
 
-            logger.info(f"✅ Created {len(created_subtasks)} DETAILED draft subtasks for task: {task.title}")
+                        subtask.title = full_content.get("title", subtask.title)
+                        subtask.description = human_description
+                        subtask.generated_prompt = description_markdown
+                        subtask.acceptance_criteria = full_content.get("acceptance_criteria", [])
+
+                        subtask.interview_insights = {
+                            "semantic_map": semantic_map,
+                            "derived_from_task": str(task.id),
+                            **full_content.get("interview_insights", {})
+                        }
+                        subtask.updated_at = datetime.utcnow()
+                        self.db.commit()
+                        self.db.refresh(subtask)
+
+                        logger.info(f"✅ Generated FULL content for subtask: {subtask.title[:50]}")
+
+                    created_subtasks.append(subtask)
+
+                except Exception as subtask_error:
+                    logger.error(f"❌ Error generating content for subtask '{title}': {str(subtask_error)}")
+                    if subtask.id:
+                        created_subtasks.append(subtask)
+
+            logger.info(f"✅ Created {len(created_subtasks)} subtasks with FULL EPIC-LEVEL content")
             return created_subtasks
 
         except Exception as e:
             logger.error(f"❌ Error generating draft subtasks: {str(e)}")
+            import traceback
+            traceback.print_exc()
             return []
 
-    def _generate_fallback_subtasks(self, task: Task) -> List[Dict]:
-        """Generate detailed fallback subtasks when AI fails."""
+    def _generate_fallback_subtask_titles(self, task: Task) -> List[str]:
+        """Generate fallback subtask titles when AI fails."""
         base_title = task.title[:30] if task.title else "item"
         return [
-            {
-                "title": f"Implementar lógica principal de {base_title}",
-                "description_markdown": f"# Subtask: Implementação Principal\n\n## Mapa Semântico\n- **FUNC1**: função principal\n- **FILE1**: arquivo de implementação\n\n## Descrição\nImplementar a lógica principal da funcionalidade. Criar as funções necessárias seguindo os padrões do projeto.",
-                "semantic_map": {"FUNC1": "função principal", "FILE1": "arquivo.py", "AC1": "Funciona corretamente"},
-                "acceptance_criteria": ["AC1: Implementação funciona", "AC2: Código segue padrões", "AC3: Sem erros de lint"]
-            },
-            {
-                "title": f"Adicionar validações para {base_title}",
-                "description_markdown": f"# Subtask: Validações\n\n## Mapa Semântico\n- **VAL1**: validação de entrada\n- **ERR1**: mensagem de erro\n\n## Descrição\nAdicionar validações de entrada e tratamento de erros apropriado.",
-                "semantic_map": {"VAL1": "validação", "ERR1": "erro", "AC1": "Validações funcionam"},
-                "acceptance_criteria": ["AC1: Validações implementadas", "AC2: Erros tratados", "AC3: Mensagens claras"]
-            },
-            {
-                "title": f"Testar e documentar {base_title}",
-                "description_markdown": f"# Subtask: Testes e Documentação\n\n## Mapa Semântico\n- **TEST1**: teste unitário\n- **DOC1**: documentação\n\n## Descrição\nEscrever testes unitários e documentar a funcionalidade implementada.",
-                "semantic_map": {"TEST1": "teste", "DOC1": "documentação", "AC1": "Testes passam"},
-                "acceptance_criteria": ["AC1: Testes passam", "AC2: Documentação atualizada", "AC3: Cobertura adequada"]
-            }
+            f"Implementar lógica principal de {base_title}",
+            f"Adicionar validações para {base_title}",
+            f"Escrever testes para {base_title}",
+            f"Documentar {base_title}"
         ]
 
     async def activate_suggested_story(self, story_id: UUID) -> Dict:
