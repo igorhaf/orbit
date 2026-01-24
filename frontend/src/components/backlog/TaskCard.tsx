@@ -163,18 +163,29 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
   };
 
   // PROMPT #94 - Activate suggested epic
+  // PROMPT #102 - Extended to show children generated feedback
   const handleActivateEpic = async () => {
     setActivatingEpic(true);
     try {
       const result = await tasksApi.activateSuggestedEpic(task.id);
-      console.log('✅ Epic activated:', result);
+      console.log('✅ Item activated:', result);
+
+      // PROMPT #102 - Show feedback about children generated
+      const childrenCount = result.children_generated || 0;
+      if (childrenCount > 0) {
+        const childType = task.item_type === 'epic' ? 'stories' :
+                          task.item_type === 'story' ? 'tasks' :
+                          task.item_type === 'task' ? 'subtasks' : 'items';
+        console.log(`📝 Generated ${childrenCount} draft ${childType}`);
+        alert(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
+      }
 
       if (onUpdate) {
         onUpdate();
       }
     } catch (error: any) {
-      console.error('❌ Failed to activate epic:', error);
-      alert(`Failed to activate epic: ${error.message}`);
+      console.error('❌ Failed to activate item:', error);
+      alert(`Failed to activate item: ${error.message}`);
     } finally {
       setActivatingEpic(false);
     }

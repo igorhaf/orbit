@@ -287,6 +287,7 @@ export const tasksApi = {
   },
 
   // PROMPT #94 - Activate/Reject Suggested Epics
+  // PROMPT #102 - Extended to support all item types with hierarchical draft generation
   activateSuggestedEpic: (taskId: string) =>
     request<{
       id: string;
@@ -297,6 +298,7 @@ export const tasksApi = {
       story_points: number | null;
       priority: string;
       activated: boolean;
+      children_generated?: number;  // PROMPT #102 - Number of draft children auto-generated
     }>(`/api/v1/tasks/${taskId}/activate`, {
       method: 'POST',
     }),

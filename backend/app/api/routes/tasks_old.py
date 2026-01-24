@@ -1685,7 +1685,7 @@ async def get_blocking_analytics(
 # ============================================================================
 
 class ActivateEpicResponse(BaseModel):
-    """Response model for activating a suggested epic."""
+    """Response model for activating a suggested item (Epic, Story, Task, Subtask)."""
     id: str
     title: str
     description: Optional[str] = None
@@ -1694,40 +1694,45 @@ class ActivateEpicResponse(BaseModel):
     story_points: Optional[int] = None
     priority: str
     activated: bool
+    children_generated: Optional[int] = 0  # PROMPT #102 - Number of draft children generated
 
 
 @router.post("/{task_id}/activate", response_model=ActivateEpicResponse)
-async def activate_suggested_epic(
+async def activate_suggested_item(
     task_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Activate a suggested epic by generating full semantic content.
+    Activate a suggested item (Epic, Story, Task, or Subtask).
 
-    PROMPT #94 - Activate Suggested Epic:
+    PROMPT #94 - Original Activate Suggested Epic
+    PROMPT #102 - Extended to support all item types with hierarchical draft generation
 
-    When user approves a suggested epic:
+    When user approves a suggested item:
     1. Fetch project context (context_semantic, context_human)
-    2. Generate full epic content using AI:
+    2. Generate full item content using AI:
        - Semantic markdown (generated_prompt) for AI/child cards
        - Human description for reading
        - Acceptance criteria
        - Story points estimation
-    3. Update epic:
+    3. Update item:
        - Remove "suggested" label
        - Change workflow_state from "draft" to "open"
        - Add generated content
-    4. Lock project context (first activated epic triggers lock)
+    4. Auto-generate draft children based on item type:
+       - Epic → 15-20 draft Stories
+       - Story → 5-8 draft Tasks
+       - Task → 3-5 draft Subtasks
+       - Subtask → No children (leaf level)
 
     POST /api/v1/tasks/{task_id}/activate
 
     Requirements:
-    - Task must be an EPIC
     - Task must have labels=["suggested"] or workflow_state="draft"
     - Project must have context_semantic (Context Interview completed)
 
     Returns:
-    - The activated epic with full content
+    - The activated item with full content and children_generated count
 
     Example response:
     {
@@ -1738,21 +1743,45 @@ async def activate_suggested_epic(
         "acceptance_criteria": ["AC1: ...", "AC2: ..."],
         "story_points": 13,
         "priority": "critical",
-        "activated": true
+        "activated": true,
+        "children_generated": 18
     }
     """
     from app.services.context_generator import ContextGeneratorService
+    from app.models.task import Task, ItemType
 
     context_service = ContextGeneratorService(db)
 
+    # Fetch the task to determine its type
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Item {task_id} not found"
+        )
+
     try:
-        result = await context_service.activate_suggested_epic(epic_id=task_id)
+        # PROMPT #102 - Call appropriate activation function based on item type
+        if task.item_type == ItemType.EPIC:
+            result = await context_service.activate_suggested_epic(epic_id=task_id)
+        elif task.item_type == ItemType.STORY:
+            result = await context_service.activate_suggested_story(story_id=task_id)
+        elif task.item_type == ItemType.TASK:
+            result = await context_service.activate_suggested_task(task_id=task_id)
+        elif task.item_type == ItemType.SUBTASK:
+            result = await context_service.activate_suggested_subtask(subtask_id=task_id)
+        else:
+            # Fallback to epic activation for unknown types
+            result = await context_service.activate_suggested_epic(epic_id=task_id)
+
+        children_count = result.get('children_generated', 0)
 
         logger.info(
-            f"✅ Suggested epic activated: {task_id}\n"
+            f"✅ Suggested {task.item_type.value} activated: {task_id}\n"
             f"   Title: {result['title']}\n"
             f"   Description: {len(result.get('description', ''))} chars\n"
-            f"   Generated Prompt: {len(result.get('generated_prompt', ''))} chars"
+            f"   Generated Prompt: {len(result.get('generated_prompt', ''))} chars\n"
+            f"   Children Generated: {children_count}"
         )
 
         return ActivateEpicResponse(**result)

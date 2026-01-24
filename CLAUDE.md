@@ -603,8 +603,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #100 (Fix Invalid Model IDs)
-**Próximo prompt:** PROMPT #101
+**Último prompt:** PROMPT #102 (Hierarchical Draft Generation)
+**Próximo prompt:** PROMPT #103
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -652,6 +652,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #98**: Context Interview Cancellation (v2) - Implementou cleanup automático de projetos abandonados no wizard de Context Interview. Projeto só existe se o wizard for COMPLETAMENTE concluído (incluindo entrevista e confirmação final). Se usuário abandona wizard (fecha tab, navega, atualiza página), o projeto é automaticamente deletado. Usa `wizardCompleted` flag, cleanup em `useEffect` (unmount + beforeunload), e `navigator.sendBeacon` para garantir cleanup durante page unload. Substituiu abordagem v1 incorreta (botões manuais de cancelar).
 - **PROMPT #99**: Project Badge Fix - Substituiu badge obsoleta "Pending Stack" / "Provisioned" (baseada em `stack_backend`) por badge "Context Set" / "Draft" (baseada em `context_locked` e `context_human`). Alinha UI com novo modelo Context Interview (PROMPT #89). Badge verde "Context Set" quando projeto tem contexto definido, badge cinza "Draft" quando não tem. Também corrigiu erro de ESLint pré-existente com aspas escapadas.
 - **PROMPT #100**: Fix Invalid Claude Haiku Model ID - Corrigiu erro crítico 404 "model not found" causado por model IDs fictícios (claude-4.x) que não existem na API Anthropic. Substituiu 4 model IDs inválidos por IDs válidos: Claude Haiku 3.5 (`claude-3-5-haiku-20241022`) para interviews, Claude Sonnet 3.5 (`claude-3-5-sonnet-20241022`) para task execution e general, Claude Opus 3 (`claude-3-opus-20240229`) para prompt generation. Atualizou banco de dados (Phase 1), migration seed (Phase 2), pricing.py e populate_database.py (Phase 4). Criou model específico para usage_type="interview". Desbloqueou usuários imediatamente - entrevistas de contexto funcionando novamente.
+- **PROMPT #102**: Hierarchical Draft Generation - Implementou geração automática de cards filhos ao aprovar cards pai. Epic aprovado → 15-20 Stories draft. Story aprovada → 5-8 Tasks draft. Task aprovada → 3-5 Subtasks draft. Subtask aprovada → Conteúdo gerado (nível folha). Endpoint unificado `POST /tasks/{id}/activate` detecta item_type e chama função apropriada. Response inclui `children_generated`. Frontend mostra feedback: "Item ativado! 18 stories foram geradas como drafts." Funções adicionadas: `_generate_draft_stories`, `_generate_draft_tasks`, `_generate_draft_subtasks`, `activate_suggested_story`, `activate_suggested_task`, `activate_suggested_subtask`.
 
 ---
 

@@ -13,7 +13,7 @@ The context is the foundational, immutable description of the project
 that guides all subsequent interviews and card generation.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -685,6 +685,16 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
             logger.info(f"   - Business Goals: {len(epic.interview_insights.get('business_goals', []))} items")
             logger.info(f"   - Technical Constraints: {len(epic.interview_insights.get('technical_constraints', []))} items")
 
+        # PROMPT #102 - Auto-generate draft stories after epic activation
+        draft_stories = []
+        if epic.item_type == ItemType.EPIC:
+            try:
+                draft_stories = await self._generate_draft_stories(epic, project)
+                logger.info(f"📝 Generated {len(draft_stories)} draft stories for epic: {epic.title}")
+            except Exception as e:
+                logger.error(f"❌ Error generating draft stories: {str(e)}")
+                # Don't fail the activation if story generation fails
+
         return {
             "id": str(epic.id),
             "title": epic.title,
@@ -694,7 +704,8 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
             "acceptance_criteria": epic.acceptance_criteria,
             "story_points": epic.story_points,
             "priority": epic.priority.value if epic.priority else "medium",
-            "activated": True
+            "activated": True,
+            "children_generated": len(draft_stories)  # PROMPT #102 - Report how many children were generated
         }
 
     async def _generate_full_epic_content(
@@ -1605,3 +1616,804 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         logger.info(f"❌ Suggested item rejected and deleted: {item_title}")
 
         return True
+
+    # ============================================================
+    # PROMPT #102 - Hierarchical Draft Generation
+    # Auto-generate child cards when parent is activated
+    # ============================================================
+
+    async def _generate_draft_stories(
+        self,
+        epic: Task,
+        project: Project
+    ) -> List[Task]:
+        """
+        PROMPT #102 - Generate 15-20 draft stories for an activated epic.
+
+        Stories are created with:
+        - labels=["suggested"]
+        - workflow_state="draft"
+        - parent_id=epic.id
+        - item_type=STORY
+        - Simple title and description (full content generated on approval)
+
+        Args:
+            epic: The activated epic
+            project: The project with context
+
+        Returns:
+            List of created draft Story tasks
+        """
+        logger.info(f"📝 Generating draft stories for epic: {epic.title}")
+
+        # Build prompt for AI to generate story suggestions
+        system_prompt = """Você é um Product Owner especialista em decomposição de Epics em User Stories.
+
+TAREFA: Decomponha o Epic fornecido em 15-20 User Stories.
+
+REGRAS PARA CADA STORY:
+1. Título no formato User Story: "Como [usuário], eu quero [funcionalidade], para [benefício]"
+2. Descrição breve (2-3 frases) explicando o escopo
+3. Story points estimados (1, 2, 3, 5, 8 - Fibonacci)
+4. Prioridade (high, medium, low)
+5. Stories devem ser independentes e entregáveis
+6. Cobrir TODA a funcionalidade do Epic
+
+IMPORTANTE:
+- Gere entre 15 e 20 stories para cobertura completa
+- Stories menores e mais focadas são melhores que stories grandes
+- Cada story deve ser completável em 1-2 semanas
+- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+
+Retorne APENAS um array JSON válido (sem markdown, sem explicações):
+[
+    {
+        "title": "Como [usuário], eu quero [funcionalidade], para [benefício]",
+        "description": "Descrição breve da funcionalidade.",
+        "story_points": 3,
+        "priority": "high"
+    },
+    ...
+]
+"""
+
+        user_prompt = f"""Decomponha este Epic em 15-20 User Stories:
+
+EPIC:
+Título: {epic.title}
+Descrição: {epic.description or 'Não especificada'}
+Story Points: {epic.story_points or 'Não estimado'}
+
+CONTEXTO DO PROJETO:
+{project.context_human or project.context_semantic or 'Contexto não disponível'}
+
+Gere 15-20 stories que cubram completamente a funcionalidade do Epic.
+Retorne APENAS o array JSON, sem explicações."""
+
+        try:
+            # Call AI to generate stories
+            orchestrator = AIOrchestrator(self.db)
+            response = await orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=4000
+            )
+
+            content = response.get("content", "")
+
+            # Parse JSON response
+            stories_data = self._parse_json_response(content)
+
+            if not stories_data or not isinstance(stories_data, list):
+                logger.warning("AI did not return valid stories array, using fallback")
+                stories_data = self._generate_fallback_stories(epic)
+
+            # Limit to 20 stories max
+            stories_data = stories_data[:20]
+
+            # Create draft stories in database
+            created_stories = []
+            for i, story_data in enumerate(stories_data):
+                story = Task(
+                    project_id=epic.project_id,
+                    parent_id=epic.id,
+                    item_type=ItemType.STORY,
+                    title=story_data.get("title", f"Story {i+1} do Epic"),
+                    description=story_data.get("description", ""),
+                    story_points=story_data.get("story_points", 3),
+                    priority=PriorityLevel(story_data.get("priority", "medium")) if story_data.get("priority") in ["critical", "high", "medium", "low", "trivial"] else PriorityLevel.MEDIUM,
+                    labels=["suggested"],
+                    workflow_state="draft",
+                    status=TaskStatus.BACKLOG,
+                    order=i,
+                    reporter="system",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                self.db.add(story)
+                created_stories.append(story)
+
+            self.db.commit()
+
+            # Refresh all stories to get IDs
+            for story in created_stories:
+                self.db.refresh(story)
+
+            logger.info(f"✅ Created {len(created_stories)} draft stories for epic: {epic.title}")
+            return created_stories
+
+        except Exception as e:
+            logger.error(f"❌ Error generating draft stories: {str(e)}")
+            # Create minimal fallback stories
+            fallback_stories = self._generate_fallback_stories(epic)
+            created_stories = []
+            for i, story_data in enumerate(fallback_stories[:5]):
+                story = Task(
+                    project_id=epic.project_id,
+                    parent_id=epic.id,
+                    item_type=ItemType.STORY,
+                    title=story_data.get("title", f"Story {i+1}"),
+                    description=story_data.get("description", ""),
+                    story_points=3,
+                    priority=PriorityLevel.MEDIUM,
+                    labels=["suggested"],
+                    workflow_state="draft",
+                    status=TaskStatus.BACKLOG,
+                    order=i
+                )
+                self.db.add(story)
+                created_stories.append(story)
+
+            self.db.commit()
+            return created_stories
+
+    def _generate_fallback_stories(self, epic: Task) -> List[Dict]:
+        """Generate basic fallback stories when AI fails."""
+        return [
+            {
+                "title": f"Como usuário, eu quero configurar {epic.title}",
+                "description": "Configuração inicial da funcionalidade.",
+                "story_points": 3,
+                "priority": "high"
+            },
+            {
+                "title": f"Como usuário, eu quero visualizar dados de {epic.title}",
+                "description": "Interface para visualização dos dados.",
+                "story_points": 5,
+                "priority": "high"
+            },
+            {
+                "title": f"Como usuário, eu quero criar registros em {epic.title}",
+                "description": "Funcionalidade de criação de novos registros.",
+                "story_points": 5,
+                "priority": "medium"
+            },
+            {
+                "title": f"Como usuário, eu quero editar registros em {epic.title}",
+                "description": "Funcionalidade de edição de registros existentes.",
+                "story_points": 3,
+                "priority": "medium"
+            },
+            {
+                "title": f"Como usuário, eu quero excluir registros em {epic.title}",
+                "description": "Funcionalidade de exclusão com confirmação.",
+                "story_points": 2,
+                "priority": "low"
+            }
+        ]
+
+    def _parse_json_response(self, content: str) -> Any:
+        """Parse JSON from AI response, handling various formats."""
+        import re
+
+        # Remove markdown code blocks
+        content = re.sub(r'```json\s*', '', content)
+        content = re.sub(r'```\s*', '', content)
+        content = content.strip()
+
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            # Try to find JSON array in content
+            match = re.search(r'\[[\s\S]*\]', content)
+            if match:
+                try:
+                    return json.loads(match.group())
+                except json.JSONDecodeError:
+                    pass
+            return None
+
+    async def _generate_draft_tasks(
+        self,
+        story: Task,
+        project: Project
+    ) -> List[Task]:
+        """
+        PROMPT #102 - Generate 5-8 draft tasks for an activated story.
+
+        Tasks are created with:
+        - labels=["suggested"]
+        - workflow_state="draft"
+        - parent_id=story.id
+        - item_type=TASK
+
+        Args:
+            story: The activated story
+            project: The project with context
+
+        Returns:
+            List of created draft Task items
+        """
+        logger.info(f"📝 Generating draft tasks for story: {story.title}")
+
+        # Get parent epic for context
+        parent_epic = None
+        if story.parent_id:
+            parent_epic = self.db.query(Task).filter(Task.id == story.parent_id).first()
+
+        system_prompt = """Você é um Tech Lead especialista em decomposição de User Stories em Tasks técnicas.
+
+TAREFA: Decomponha a User Story em 5-8 Tasks técnicas.
+
+REGRAS PARA CADA TASK:
+1. Título técnico e específico (ex: "Criar modelo User com validações")
+2. Descrição breve (2-3 frases) do trabalho técnico
+3. Story points estimados (1, 2, 3, 5 - tasks são menores que stories)
+4. Tasks devem ser completáveis em 2-8 horas
+5. Incluir tasks de: Backend, Frontend, Testes, Integração
+
+IMPORTANTE:
+- Gere entre 5 e 8 tasks para cobertura técnica completa
+- Tasks devem ser atômicas e bem definidas
+- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+
+Retorne APENAS um array JSON válido:
+[
+    {
+        "title": "Título técnico da task",
+        "description": "Descrição do trabalho técnico.",
+        "story_points": 2
+    },
+    ...
+]
+"""
+
+        epic_context = ""
+        if parent_epic:
+            epic_context = f"\nEPIC PAI:\nTítulo: {parent_epic.title}\nDescrição: {parent_epic.description or 'N/A'}\n"
+
+        user_prompt = f"""Decomponha esta User Story em 5-8 Tasks técnicas:
+
+STORY:
+Título: {story.title}
+Descrição: {story.description or 'Não especificada'}
+Story Points: {story.story_points or 'Não estimado'}
+{epic_context}
+CONTEXTO DO PROJETO:
+{project.context_human or project.context_semantic or 'Contexto não disponível'}
+
+Gere 5-8 tasks técnicas que implementem completamente a Story.
+Retorne APENAS o array JSON, sem explicações."""
+
+        try:
+            orchestrator = AIOrchestrator(self.db)
+            response = await orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=2000
+            )
+
+            content = response.get("content", "")
+            tasks_data = self._parse_json_response(content)
+
+            if not tasks_data or not isinstance(tasks_data, list):
+                tasks_data = self._generate_fallback_tasks(story)
+
+            tasks_data = tasks_data[:8]
+
+            created_tasks = []
+            for i, task_data in enumerate(tasks_data):
+                task = Task(
+                    project_id=story.project_id,
+                    parent_id=story.id,
+                    item_type=ItemType.TASK,
+                    title=task_data.get("title", f"Task {i+1}"),
+                    description=task_data.get("description", ""),
+                    story_points=task_data.get("story_points", 2),
+                    priority=story.priority or PriorityLevel.MEDIUM,
+                    labels=["suggested"],
+                    workflow_state="draft",
+                    status=TaskStatus.BACKLOG,
+                    order=i,
+                    reporter="system",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                self.db.add(task)
+                created_tasks.append(task)
+
+            self.db.commit()
+
+            for task in created_tasks:
+                self.db.refresh(task)
+
+            logger.info(f"✅ Created {len(created_tasks)} draft tasks for story: {story.title}")
+            return created_tasks
+
+        except Exception as e:
+            logger.error(f"❌ Error generating draft tasks: {str(e)}")
+            return []
+
+    def _generate_fallback_tasks(self, story: Task) -> List[Dict]:
+        """Generate basic fallback tasks when AI fails."""
+        return [
+            {"title": "Criar modelo de dados", "description": "Definir entidades e relacionamentos.", "story_points": 2},
+            {"title": "Implementar API backend", "description": "Criar endpoints REST.", "story_points": 3},
+            {"title": "Criar interface frontend", "description": "Implementar componentes UI.", "story_points": 3},
+            {"title": "Adicionar validações", "description": "Validar inputs e regras de negócio.", "story_points": 2},
+            {"title": "Escrever testes", "description": "Criar testes unitários e de integração.", "story_points": 2}
+        ]
+
+    async def _generate_draft_subtasks(
+        self,
+        task: Task,
+        project: Project
+    ) -> List[Task]:
+        """
+        PROMPT #102 - Generate 3-5 draft subtasks for an activated task.
+
+        Subtasks are created with:
+        - labels=["suggested"]
+        - workflow_state="draft"
+        - parent_id=task.id
+        - item_type=SUBTASK
+
+        Args:
+            task: The activated task
+            project: The project with context
+
+        Returns:
+            List of created draft Subtask items
+        """
+        logger.info(f"📝 Generating draft subtasks for task: {task.title}")
+
+        system_prompt = """Você é um desenvolvedor sênior decompondo Tasks em Subtasks atômicas.
+
+TAREFA: Decomponha a Task em 3-5 Subtasks atômicas.
+
+REGRAS PARA CADA SUBTASK:
+1. Título como ação específica (ex: "Adicionar campo email no formulário")
+2. Descrição opcional de 1 frase
+3. Subtasks devem ser completáveis em 15-60 minutos
+4. Cada subtask = uma ação bem definida
+
+IMPORTANTE:
+- Gere entre 3 e 5 subtasks
+- Subtasks são o nível mais granular (não têm filhos)
+- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+
+Retorne APENAS um array JSON válido:
+[
+    {
+        "title": "Ação específica da subtask",
+        "description": "Descrição breve opcional."
+    },
+    ...
+]
+"""
+
+        user_prompt = f"""Decomponha esta Task em 3-5 Subtasks atômicas:
+
+TASK:
+Título: {task.title}
+Descrição: {task.description or 'Não especificada'}
+
+Gere 3-5 subtasks que completem a Task.
+Retorne APENAS o array JSON."""
+
+        try:
+            orchestrator = AIOrchestrator(self.db)
+            response = await orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=1000
+            )
+
+            content = response.get("content", "")
+            subtasks_data = self._parse_json_response(content)
+
+            if not subtasks_data or not isinstance(subtasks_data, list):
+                subtasks_data = [
+                    {"title": "Implementar funcionalidade principal", "description": ""},
+                    {"title": "Adicionar tratamento de erros", "description": ""},
+                    {"title": "Testar e validar", "description": ""}
+                ]
+
+            subtasks_data = subtasks_data[:5]
+
+            created_subtasks = []
+            for i, subtask_data in enumerate(subtasks_data):
+                subtask = Task(
+                    project_id=task.project_id,
+                    parent_id=task.id,
+                    item_type=ItemType.SUBTASK,
+                    title=subtask_data.get("title", f"Subtask {i+1}"),
+                    description=subtask_data.get("description", ""),
+                    story_points=1,
+                    priority=task.priority or PriorityLevel.MEDIUM,
+                    labels=["suggested"],
+                    workflow_state="draft",
+                    status=TaskStatus.BACKLOG,
+                    order=i,
+                    reporter="system",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                self.db.add(subtask)
+                created_subtasks.append(subtask)
+
+            self.db.commit()
+
+            for subtask in created_subtasks:
+                self.db.refresh(subtask)
+
+            logger.info(f"✅ Created {len(created_subtasks)} draft subtasks for task: {task.title}")
+            return created_subtasks
+
+        except Exception as e:
+            logger.error(f"❌ Error generating draft subtasks: {str(e)}")
+            return []
+
+    async def activate_suggested_story(self, story_id: UUID) -> Dict:
+        """
+        PROMPT #102 - Activate a suggested story and generate draft tasks.
+
+        Similar to activate_suggested_epic but for stories.
+        After activation, auto-generates 5-8 draft tasks.
+
+        Args:
+            story_id: Story ID to activate
+
+        Returns:
+            Dict with activated story data and children_generated count
+        """
+        # Fetch story
+        story = self.db.query(Task).filter(Task.id == story_id).first()
+        if not story:
+            raise ValueError(f"Story {story_id} not found")
+
+        if story.item_type != ItemType.STORY:
+            raise ValueError(f"Item {story_id} is not a Story (type: {story.item_type})")
+
+        # Check if suggested
+        is_suggested = (story.labels and "suggested" in story.labels) or story.workflow_state == "draft"
+        if not is_suggested:
+            raise ValueError(f"Story {story_id} is not a suggested item")
+
+        # Fetch project
+        project = self.db.query(Project).filter(Project.id == story.project_id).first()
+        if not project:
+            raise ValueError(f"Project {story.project_id} not found")
+
+        # Generate full story content
+        story_content = await self._generate_full_story_content(story, project)
+
+        # Update story
+        story.description = story_content.get("description", story.description)
+        story.generated_prompt = story_content.get("generated_prompt")
+        story.acceptance_criteria = story_content.get("acceptance_criteria", [])
+        story.story_points = story_content.get("story_points", story.story_points)
+
+        # Store insights
+        story.interview_insights = story.interview_insights or {}
+        story.interview_insights["semantic_map"] = story_content.get("semantic_map", {})
+        story.interview_insights["activated_from_suggestion"] = True
+        story.interview_insights["activation_timestamp"] = datetime.utcnow().isoformat()
+
+        # Remove suggested label
+        if story.labels and "suggested" in story.labels:
+            story.labels = [l for l in story.labels if l != "suggested"]
+        story.workflow_state = "open"
+        story.updated_at = datetime.utcnow()
+
+        self.db.commit()
+        self.db.refresh(story)
+
+        logger.info(f"✅ Story activated: {story.title}")
+
+        # Generate draft tasks
+        draft_tasks = await self._generate_draft_tasks(story, project)
+
+        return {
+            "id": str(story.id),
+            "title": story.title,
+            "description": story.description,
+            "generated_prompt": story.generated_prompt,
+            "acceptance_criteria": story.acceptance_criteria,
+            "story_points": story.story_points,
+            "priority": story.priority.value if story.priority else "medium",
+            "activated": True,
+            "children_generated": len(draft_tasks)
+        }
+
+    async def _generate_full_story_content(self, story: Task, project: Project) -> Dict:
+        """Generate full content for a story using AI."""
+
+        # Get parent epic for context
+        parent_epic = None
+        if story.parent_id:
+            parent_epic = self.db.query(Task).filter(Task.id == story.parent_id).first()
+
+        system_prompt = """Você é um Product Owner gerando especificação completa de uma User Story.
+
+Gere conteúdo detalhado incluindo:
+1. Descrição expandida da funcionalidade
+2. Critérios de aceitação (AC1, AC2, AC3...)
+3. Mapa semântico com identificadores
+4. Story points refinados
+
+Retorne JSON:
+{
+    "description": "Descrição completa em português",
+    "generated_prompt": "Markdown semântico para IA",
+    "acceptance_criteria": ["AC1: critério", "AC2: critério"],
+    "semantic_map": {"N1": "entidade", "P1": "processo"},
+    "story_points": 5
+}
+"""
+
+        epic_context = ""
+        if parent_epic:
+            epic_context = f"\nEPIC PAI: {parent_epic.title}\n{parent_epic.description or ''}\n"
+
+        user_prompt = f"""Gere especificação completa para esta Story:
+
+STORY:
+Título: {story.title}
+Descrição atual: {story.description or 'N/A'}
+{epic_context}
+CONTEXTO DO PROJETO:
+{project.context_human or 'N/A'}
+
+Retorne JSON com description, generated_prompt, acceptance_criteria, semantic_map, story_points."""
+
+        try:
+            orchestrator = AIOrchestrator(self.db)
+            response = await orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=2000
+            )
+
+            content = response.get("content", "")
+            result = self._parse_json_response(content)
+
+            if result and isinstance(result, dict):
+                return result
+
+            # Fallback
+            return {
+                "description": story.description or "",
+                "generated_prompt": f"# {story.title}\n\n{story.description or ''}",
+                "acceptance_criteria": [],
+                "semantic_map": {},
+                "story_points": story.story_points or 3
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating story content: {e}")
+            return {
+                "description": story.description or "",
+                "generated_prompt": "",
+                "acceptance_criteria": [],
+                "semantic_map": {},
+                "story_points": story.story_points or 3
+            }
+
+    async def activate_suggested_task(self, task_id: UUID) -> Dict:
+        """
+        PROMPT #102 - Activate a suggested task and generate draft subtasks.
+
+        After activation, auto-generates 3-5 draft subtasks.
+
+        Args:
+            task_id: Task ID to activate
+
+        Returns:
+            Dict with activated task data and children_generated count
+        """
+        # Fetch task
+        task = self.db.query(Task).filter(Task.id == task_id).first()
+        if not task:
+            raise ValueError(f"Task {task_id} not found")
+
+        if task.item_type != ItemType.TASK:
+            raise ValueError(f"Item {task_id} is not a Task (type: {task.item_type})")
+
+        # Check if suggested
+        is_suggested = (task.labels and "suggested" in task.labels) or task.workflow_state == "draft"
+        if not is_suggested:
+            raise ValueError(f"Task {task_id} is not a suggested item")
+
+        # Fetch project
+        project = self.db.query(Project).filter(Project.id == task.project_id).first()
+        if not project:
+            raise ValueError(f"Project {task.project_id} not found")
+
+        # Generate full task content
+        task_content = await self._generate_full_task_content(task, project)
+
+        # Update task
+        task.description = task_content.get("description", task.description)
+        task.generated_prompt = task_content.get("generated_prompt")
+        task.acceptance_criteria = task_content.get("acceptance_criteria", [])
+        task.story_points = task_content.get("story_points", task.story_points)
+
+        # Store insights
+        task.interview_insights = task.interview_insights or {}
+        task.interview_insights["activated_from_suggestion"] = True
+        task.interview_insights["activation_timestamp"] = datetime.utcnow().isoformat()
+
+        # Remove suggested label
+        if task.labels and "suggested" in task.labels:
+            task.labels = [l for l in task.labels if l != "suggested"]
+        task.workflow_state = "open"
+        task.updated_at = datetime.utcnow()
+
+        self.db.commit()
+        self.db.refresh(task)
+
+        logger.info(f"✅ Task activated: {task.title}")
+
+        # Generate draft subtasks
+        draft_subtasks = await self._generate_draft_subtasks(task, project)
+
+        return {
+            "id": str(task.id),
+            "title": task.title,
+            "description": task.description,
+            "generated_prompt": task.generated_prompt,
+            "acceptance_criteria": task.acceptance_criteria,
+            "story_points": task.story_points,
+            "priority": task.priority.value if task.priority else "medium",
+            "activated": True,
+            "children_generated": len(draft_subtasks)
+        }
+
+    async def _generate_full_task_content(self, task: Task, project: Project) -> Dict:
+        """Generate full content for a task using AI."""
+
+        system_prompt = """Você é um Tech Lead gerando especificação técnica de uma Task.
+
+Gere conteúdo detalhado incluindo:
+1. Descrição técnica expandida
+2. Critérios de aceitação técnicos
+3. Prompt de execução para IA
+
+Retorne JSON:
+{
+    "description": "Descrição técnica completa",
+    "generated_prompt": "Prompt detalhado para execução por IA",
+    "acceptance_criteria": ["Critério técnico 1", "Critério técnico 2"],
+    "story_points": 3
+}
+"""
+
+        user_prompt = f"""Gere especificação técnica para esta Task:
+
+TASK:
+Título: {task.title}
+Descrição atual: {task.description or 'N/A'}
+
+CONTEXTO DO PROJETO:
+{project.context_human or 'N/A'}
+
+Retorne JSON com description, generated_prompt, acceptance_criteria, story_points."""
+
+        try:
+            orchestrator = AIOrchestrator(self.db)
+            response = await orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=1500
+            )
+
+            content = response.get("content", "")
+            result = self._parse_json_response(content)
+
+            if result and isinstance(result, dict):
+                return result
+
+            return {
+                "description": task.description or "",
+                "generated_prompt": f"Implementar: {task.title}\n\n{task.description or ''}",
+                "acceptance_criteria": [],
+                "story_points": task.story_points or 2
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating task content: {e}")
+            return {
+                "description": task.description or "",
+                "generated_prompt": "",
+                "acceptance_criteria": [],
+                "story_points": task.story_points or 2
+            }
+
+    async def activate_suggested_subtask(self, subtask_id: UUID) -> Dict:
+        """
+        PROMPT #102 - Activate a suggested subtask.
+
+        Subtasks are leaf nodes - no children generated.
+        Just generates full content.
+
+        Args:
+            subtask_id: Subtask ID to activate
+
+        Returns:
+            Dict with activated subtask data
+        """
+        # Fetch subtask
+        subtask = self.db.query(Task).filter(Task.id == subtask_id).first()
+        if not subtask:
+            raise ValueError(f"Subtask {subtask_id} not found")
+
+        if subtask.item_type != ItemType.SUBTASK:
+            raise ValueError(f"Item {subtask_id} is not a Subtask (type: {subtask.item_type})")
+
+        # Check if suggested
+        is_suggested = (subtask.labels and "suggested" in subtask.labels) or subtask.workflow_state == "draft"
+        if not is_suggested:
+            raise ValueError(f"Subtask {subtask_id} is not a suggested item")
+
+        # Fetch project
+        project = self.db.query(Project).filter(Project.id == subtask.project_id).first()
+        if not project:
+            raise ValueError(f"Project {subtask.project_id} not found")
+
+        # Generate subtask prompt (simple, atomic)
+        subtask.generated_prompt = f"""# Subtask: {subtask.title}
+
+## Descrição
+{subtask.description or 'Executar a ação descrita no título.'}
+
+## Instruções
+1. Implementar exatamente o que está descrito no título
+2. Manter código limpo e documentado
+3. Testar a implementação
+
+## Critério de Conclusão
+A subtask está completa quando a ação do título foi executada com sucesso.
+"""
+
+        # Remove suggested label
+        if subtask.labels and "suggested" in subtask.labels:
+            subtask.labels = [l for l in subtask.labels if l != "suggested"]
+        subtask.workflow_state = "open"
+        subtask.updated_at = datetime.utcnow()
+
+        # Store activation info
+        subtask.interview_insights = subtask.interview_insights or {}
+        subtask.interview_insights["activated_from_suggestion"] = True
+        subtask.interview_insights["activation_timestamp"] = datetime.utcnow().isoformat()
+
+        self.db.commit()
+        self.db.refresh(subtask)
+
+        logger.info(f"✅ Subtask activated: {subtask.title}")
+
+        return {
+            "id": str(subtask.id),
+            "title": subtask.title,
+            "description": subtask.description,
+            "generated_prompt": subtask.generated_prompt,
+            "story_points": subtask.story_points or 1,
+            "priority": subtask.priority.value if subtask.priority else "medium",
+            "activated": True,
+            "children_generated": 0  # Subtasks don't have children
+        }
