@@ -1192,6 +1192,18 @@ Retorne como JSON seguindo o schema do system prompt."""
             logger.info(f"   - acceptance_criteria count: {len(result.get('acceptance_criteria', []))}")
             logger.info(f"   - story_points: {result.get('story_points', 'N/A')}")
             logger.info(f"   - interview_insights keys: {list(result.get('interview_insights', {}).keys())}")
+
+            # PROMPT #101 FIX: Extract acceptance_criteria from semantic_map if empty
+            # When JSON is truncated, acceptance_criteria field is lost but AC1, AC2 etc are in semantic_map
+            if not result.get('acceptance_criteria') and result.get('semantic_map'):
+                semantic_map = result.get('semantic_map', {})
+                extracted_criteria = []
+                for key in sorted(semantic_map.keys()):
+                    if key.startswith('AC') and key[2:].isdigit():
+                        extracted_criteria.append(f"{key}: {semantic_map[key]}")
+                if extracted_criteria:
+                    result['acceptance_criteria'] = extracted_criteria
+                    logger.info(f"   - acceptance_criteria RECOVERED from semantic_map: {len(extracted_criteria)} items")
         else:
             # All parsing strategies failed
             logger.error(f"❌ Failed to parse AI response as JSON after all strategies")
