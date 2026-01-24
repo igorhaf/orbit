@@ -1193,17 +1193,53 @@ Retorne como JSON seguindo o schema do system prompt."""
             logger.info(f"   - story_points: {result.get('story_points', 'N/A')}")
             logger.info(f"   - interview_insights keys: {list(result.get('interview_insights', {}).keys())}")
 
-            # PROMPT #101 FIX: Extract acceptance_criteria from semantic_map if empty
-            # When JSON is truncated, acceptance_criteria field is lost but AC1, AC2 etc are in semantic_map
-            if not result.get('acceptance_criteria') and result.get('semantic_map'):
-                semantic_map = result.get('semantic_map', {})
+            # PROMPT #101 FIX (v2): Extract acceptance_criteria from multiple sources if empty
+            # When JSON is truncated, acceptance_criteria field is lost
+            if not result.get('acceptance_criteria'):
                 extracted_criteria = []
-                for key in sorted(semantic_map.keys()):
-                    if key.startswith('AC') and key[2:].isdigit():
-                        extracted_criteria.append(f"{key}: {semantic_map[key]}")
+
+                # Strategy 1: Extract from semantic_map (AC1, AC2, etc. keys)
+                if result.get('semantic_map'):
+                    semantic_map = result.get('semantic_map', {})
+                    for key in sorted(semantic_map.keys()):
+                        if key.startswith('AC') and len(key) > 2 and key[2:].replace('.', '').isdigit():
+                            extracted_criteria.append(f"{key}: {semantic_map[key]}")
+                    if extracted_criteria:
+                        logger.info(f"   - Found {len(extracted_criteria)} AC keys in semantic_map")
+
+                # Strategy 2: Extract from description_markdown
+                if not extracted_criteria and result.get('description_markdown'):
+                    desc = result.get('description_markdown', '')
+                    # Look for "## Critérios de Aceitação" section
+                    criteria_section = re.search(
+                        r'##\s*(?:Critérios de Aceitação|Acceptance Criteria|Critérios)\s*\n((?:[\s\S](?!##))*)',
+                        desc,
+                        re.IGNORECASE
+                    )
+                    if criteria_section:
+                        criteria_text = criteria_section.group(1)
+                        # Extract lines that look like criteria (numbered, bulleted, or with AC prefix)
+                        for line in criteria_text.split('\n'):
+                            line = line.strip()
+                            # Match patterns like: "1. **AC1**: ...", "- AC1: ...", "* [x] ...", etc.
+                            if line and (
+                                re.match(r'^\d+\.\s*\*?\*?AC\d+', line, re.IGNORECASE) or
+                                re.match(r'^[-*]\s*\*?\*?AC\d+', line, re.IGNORECASE) or
+                                re.match(r'^\d+\.\s*\[[ xX]?\]', line) or
+                                re.match(r'^[-*]\s*\[[ xX]?\]', line)
+                            ):
+                                # Clean up the line
+                                criterion = re.sub(r'^[\d\.\-\*\s\[\]xX]+', '', line).strip()
+                                criterion = re.sub(r'^\*+', '', criterion).strip()
+                                if criterion and len(criterion) > 5:
+                                    extracted_criteria.append(criterion)
+                        if extracted_criteria:
+                            logger.info(f"   - Found {len(extracted_criteria)} criteria in description_markdown")
+
+                # Apply extracted criteria
                 if extracted_criteria:
-                    result['acceptance_criteria'] = extracted_criteria
-                    logger.info(f"   - acceptance_criteria RECOVERED from semantic_map: {len(extracted_criteria)} items")
+                    result['acceptance_criteria'] = extracted_criteria[:15]  # Limit to 15 criteria
+                    logger.info(f"   - acceptance_criteria RECOVERED: {len(result['acceptance_criteria'])} items")
         else:
             # All parsing strategies failed
             logger.error(f"❌ Failed to parse AI response as JSON after all strategies")
