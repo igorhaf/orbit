@@ -2501,45 +2501,230 @@ Retorne APENAS o array JSON."""
         }
 
     async def _generate_full_story_content(self, story: Task, project: Project) -> Dict:
-        """Generate full content for a story using AI."""
+        """
+        Generate FULL EPIC-LEVEL content for a story using AI.
+
+        Uses the SAME detailed prompt structure as _generate_full_epic_content.
+        Includes ALL parent context (Epic semantic map, project context).
+        """
 
         # Get parent epic for context
         parent_epic = None
+        epic_semantic_map = {}
         if story.parent_id:
             parent_epic = self.db.query(Task).filter(Task.id == story.parent_id).first()
+            if parent_epic and parent_epic.interview_insights:
+                epic_semantic_map = parent_epic.interview_insights.get("semantic_map", {})
 
-        system_prompt = """Você é um Product Owner gerando especificação completa de uma User Story.
+        # SAME DETAILED PROMPT AS EPIC - Adapted for Story
+        system_prompt = """Você é um Arquiteto de Software e Product Owner especialista gerando especificações técnicas DETALHADAS para User Stories.
 
-Gere conteúdo detalhado incluindo:
-1. Descrição expandida da funcionalidade
-2. Critérios de aceitação (AC1, AC2, AC3...)
-3. Mapa semântico com identificadores
-4. Story points refinados
+OBJETIVO: Gerar uma especificação COMPLETA e DETALHADA da User Story, incluindo:
+- Campos e atributos com tipos de dados
+- Regras de negócio específicas
+- Fluxos e estados
+- Interface do usuário
+- Integrações e APIs
+- Validações e constraints
 
-Retorne JSON:
+METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+
+**Categorias de Identificadores (use TODAS que forem aplicáveis):**
+
+**Entidades e Dados:**
+- **N** (Nouns/Entidades): N1, N2... = Entidades de domínio (Ex: N1=Usuário, N2=Imóvel)
+- **ATTR** (Atributos): ATTR1, ATTR2... = Campos/atributos específicos (Ex: ATTR1=nome:string, ATTR2=email:string)
+- **D** (Data/Estruturas): D1, D2... = Tabelas, schemas, models (Ex: D1=tabela_usuarios)
+- **ENUM** (Enumerações): ENUM1, ENUM2... = Valores fixos (Ex: ENUM1=TipoUsuario[admin,corretor,cliente])
+- **REL** (Relacionamentos): REL1, REL2... = Relações entre entidades (Ex: REL1=N1 possui muitos N2)
+
+**Lógica e Regras:**
+- **RN** (Regras de Negócio): RN1, RN2... = Regras específicas (Ex: RN1=Email deve ser único)
+- **VAL** (Validações): VAL1, VAL2... = Validações de entrada (Ex: VAL1=CPF válido)
+- **CALC** (Cálculos): CALC1, CALC2... = Fórmulas e cálculos (Ex: CALC1=comissão=valor*0.05)
+- **COND** (Condições): COND1, COND2... = Condições lógicas (Ex: COND1=se status=ativo)
+
+**Fluxos e Processos:**
+- **P** (Processos): P1, P2... = Fluxos de trabalho (Ex: P1=Cadastro de imóvel)
+- **EST** (Estados): EST1, EST2... = Estados possíveis (Ex: EST1=rascunho, EST2=publicado)
+- **TRANS** (Transições): TRANS1, TRANS2... = Transições de estado (Ex: TRANS1=EST1→EST2)
+- **STEP** (Etapas): STEP1, STEP2... = Passos do processo (Ex: STEP1=preencher dados)
+
+**Interface:**
+- **TELA** (Telas): TELA1, TELA2... = Telas/páginas (Ex: TELA1=Dashboard, TELA2=Listagem)
+- **COMP** (Componentes): COMP1, COMP2... = Componentes UI (Ex: COMP1=FormularioCadastro)
+- **BTN** (Botões/Ações): BTN1, BTN2... = Ações do usuário (Ex: BTN1=Salvar, BTN2=Cancelar)
+- **FILTRO** (Filtros): FILTRO1... = Filtros disponíveis (Ex: FILTRO1=por status)
+
+**Integrações:**
+- **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuarios)
+- **S** (Serviços): S1, S2... = Serviços externos (Ex: S1=serviço de email)
+- **EVENTO** (Eventos): EVENTO1... = Eventos do sistema (Ex: EVENTO1=usuario_criado)
+
+**Critérios:**
+- **AC** (Acceptance Criteria): AC1, AC2... = Critérios de aceitação
+- **PERF** (Performance): PERF1... = Requisitos de performance
+- **SEG** (Segurança): SEG1... = Requisitos de segurança
+
+**IMPORTANTE:** REUTILIZE os identificadores do Epic pai (N1, N2, ATTR1, etc.) e ESTENDA com novos específicos desta Story.
+
+ESTRUTURA OBRIGATÓRIA DO description_markdown:
+
+```
+# Story: [Título no formato User Story]
+
+## Mapa Semântico
+
+### Entidades (Reutilizadas do Epic)
+- **N1**: [reutilizado do Epic]
+- **N2**: [reutilizado do Epic]
+
+### Atributos Relevantes
+- **ATTR1**: [campo]: [tipo] - [descrição]
+- **ATTR2**: [campo]: [tipo] - [descrição]
+...
+
+### Regras de Negócio
+- **RN1**: [regra específica]
+- **RN2**: [regra específica]
+...
+
+### Validações
+- **VAL1**: [validação]
+...
+
+### Estados e Transições
+- **EST1**: [estado1]
+- **TRANS1**: EST1 → EST2 quando [condição]
+...
+
+### Telas e Componentes
+- **TELA1**: [nome da tela] - [descrição]
+- **COMP1**: [componente] em TELA1
+...
+
+### Endpoints
+- **API1**: [método] [rota] - [descrição]
+...
+
+## Descrição Funcional
+
+[Narrativa DETALHADA usando os identificadores. Descreva o fluxo completo,
+como as telas interagem, quais validações são aplicadas em cada etapa,
+como os estados mudam, etc. MÍNIMO 1500 caracteres.]
+
+## Fluxo Principal
+
+1. STEP1: [descrição usando identificadores]
+2. STEP2: [descrição usando identificadores]
+...
+
+## Critérios de Aceitação
+
+1. **AC1**: [critério específico e mensurável]
+2. **AC2**: [critério específico e mensurável]
+...
+
+## Regras de Negócio Detalhadas
+
+### RN1: [Nome da Regra]
+- **Condição**: [quando se aplica]
+- **Ação**: [o que acontece]
+- **Exceção**: [casos especiais]
+
+...
+
+## Especificação de Dados
+
+### Campos Envolvidos
+| Campo | Tipo | Obrigatório | Descrição |
+|-------|------|-------------|-----------|
+| ATTR1 | string | Sim | ... |
+| ATTR2 | integer | Não | ... |
+
+## Considerações Técnicas
+
+- [consideração 1]
+- [consideração 2]
+```
+
+Retorne APENAS JSON válido (sem markdown code blocks):
 {
-    "description": "Descrição completa em português",
-    "generated_prompt": "Markdown semântico para IA",
-    "acceptance_criteria": ["AC1: critério", "AC2: critério"],
-    "semantic_map": {"N1": "entidade", "P1": "processo"},
-    "story_points": 5
+    "title": "Título da Story",
+    "semantic_map": {
+        "N1": "reutilizado do Epic", "N2": "...",
+        "ATTR1": "campo: tipo - descrição",
+        "RN1": "regra específica",
+        "EST1": "estado", "TRANS1": "transição",
+        "TELA1": "tela", "API1": "endpoint",
+        "AC1": "critério de aceitação"
+    },
+    "description_markdown": "[MARKDOWN COMPLETO seguindo a estrutura acima - MÍNIMO 1500 caracteres]",
+    "story_points": 5,
+    "priority": "high",
+    "acceptance_criteria": ["AC1: critério", "AC2: critério", "AC3: critério", "AC4: critério", "AC5: critério"],
+    "interview_insights": {
+        "key_requirements": ["requisito 1", "requisito 2"],
+        "business_goals": ["objetivo 1", "objetivo 2"],
+        "technical_constraints": ["restrição 1", "restrição 2"]
+    }
 }
+
+**REGRAS CRÍTICAS:**
+- MÍNIMO 20 identificadores no mapa semântico
+- REUTILIZE identificadores do Epic (N1-N9, ATTR1-ATTR9, etc.)
+- ESTENDA com novos identificadores específicos desta Story
+- DETALHE campos com TIPOS DE DADOS (string, integer, boolean, date, etc)
+- DETALHE regras de negócio com CONDIÇÕES ESPECÍFICAS
+- INCLUA telas e componentes UI
+- INCLUA endpoints da API
+- A descrição deve ter MÍNIMO 1500 caracteres
+- MÍNIMO 5 critérios de aceitação
+- TUDO EM PORTUGUÊS
 """
 
+        # Build context from Epic
         epic_context = ""
+        semantic_map_text = ""
         if parent_epic:
-            epic_context = f"\nEPIC PAI: {parent_epic.title}\n{parent_epic.description or ''}\n"
+            epic_context = f"""
+## EPIC PAI
+**Título:** {parent_epic.title}
+**Descrição:** {parent_epic.description or 'N/A'}
+**Generated Prompt (Especificação do Epic):**
+{(parent_epic.generated_prompt or '')[:3000]}
+"""
+            if epic_semantic_map:
+                semantic_map_text = "\n\n## MAPA SEMÂNTICO DO EPIC (REUTILIZE ESTES IDENTIFICADORES):\n"
+                semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
+                semantic_map_text += "\n\n**IMPORTANTE:** Você DEVE reutilizar estes identificadores na Story."
 
-        user_prompt = f"""Gere especificação completa para esta Story:
+        user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para esta User Story (MESMO NÍVEL DE DETALHE DO EPIC).
 
-STORY:
-Título: {story.title}
-Descrição atual: {story.description or 'N/A'}
+## CONTEXTO DO PROJETO
+**Nome:** {project.name}
+**Descrição:** {project.description or 'Não especificada'}
+
+**Contexto Completo:**
+{(project.context_human or project.context_semantic or 'Não disponível')[:4000]}
 {epic_context}
-CONTEXTO DO PROJETO:
-{project.context_human or 'N/A'}
+{semantic_map_text}
 
-Retorne JSON com description, generated_prompt, acceptance_criteria, semantic_map, story_points."""
+## STORY A ESPECIFICAR
+**Título:** {story.title}
+**Descrição Atual:** {story.description or 'Não especificada'}
+**Generated Prompt Atual:** {(story.generated_prompt or '')[:1000]}
+
+## INSTRUÇÕES
+1. Gere especificação COMPLETA com MESMO nível de detalhe do Epic
+2. REUTILIZE os identificadores do Epic (N1, N2, ATTR1, etc.)
+3. ESTENDA com novos identificadores específicos desta Story
+4. description_markdown deve ter MÍNIMO 1500 caracteres
+5. MÍNIMO 20 identificadores no mapa semântico
+6. MÍNIMO 5 critérios de aceitação
+7. Inclua: campos com tipos, regras de negócio, telas, APIs
+
+Retorne APENAS o JSON, sem explicações."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
@@ -2547,22 +2732,28 @@ Retorne JSON com description, generated_prompt, acceptance_criteria, semantic_ma
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=2000
+                max_tokens=8000
             )
 
             content = response.get("content", "")
             result = self._parse_json_response(content)
 
             if result and isinstance(result, dict):
+                # Convert semantic to human description
+                semantic_map = result.get("semantic_map", {})
+                description_markdown = result.get("description_markdown", "")
+                result["description"] = _convert_semantic_to_human(description_markdown, semantic_map)
+                result["generated_prompt"] = description_markdown
                 return result
 
-            # Fallback
+            # Fallback with more detail
             return {
                 "description": story.description or "",
-                "generated_prompt": f"# {story.title}\n\n{story.description or ''}",
-                "acceptance_criteria": [],
-                "semantic_map": {},
-                "story_points": story.story_points or 3
+                "generated_prompt": f"# Story: {story.title}\n\n## Descrição\n{story.description or ''}\n\n## Contexto do Epic\n{parent_epic.title if parent_epic else 'N/A'}",
+                "acceptance_criteria": ["AC1: Funcionalidade implementada", "AC2: Testes passam", "AC3: Código revisado", "AC4: Documentação atualizada", "AC5: Deploy realizado"],
+                "semantic_map": epic_semantic_map,
+                "story_points": story.story_points or 5,
+                "interview_insights": {"derived_from_epic": str(parent_epic.id) if parent_epic else None}
             }
 
         except Exception as e:
@@ -2572,7 +2763,7 @@ Retorne JSON com description, generated_prompt, acceptance_criteria, semantic_ma
                 "generated_prompt": "",
                 "acceptance_criteria": [],
                 "semantic_map": {},
-                "story_points": story.story_points or 3
+                "story_points": story.story_points or 5
             }
 
     async def activate_suggested_task(self, task_id: UUID) -> Dict:
@@ -2646,34 +2837,238 @@ Retorne JSON com description, generated_prompt, acceptance_criteria, semantic_ma
         }
 
     async def _generate_full_task_content(self, task: Task, project: Project) -> Dict:
-        """Generate full content for a task using AI."""
+        """
+        Generate FULL EPIC-LEVEL content for a task using AI.
 
-        system_prompt = """Você é um Tech Lead gerando especificação técnica de uma Task.
+        Uses the SAME detailed prompt structure as _generate_full_epic_content.
+        Includes ALL parent context (Epic + Story semantic maps, project context).
+        """
 
-Gere conteúdo detalhado incluindo:
-1. Descrição técnica expandida
-2. Critérios de aceitação técnicos
-3. Prompt de execução para IA
+        # Get parent story and grandparent epic for full context
+        parent_story = None
+        grandparent_epic = None
+        story_semantic_map = {}
+        epic_semantic_map = {}
 
-Retorne JSON:
+        if task.parent_id:
+            parent_story = self.db.query(Task).filter(Task.id == task.parent_id).first()
+            if parent_story:
+                if parent_story.interview_insights:
+                    story_semantic_map = parent_story.interview_insights.get("semantic_map", {})
+                if parent_story.parent_id:
+                    grandparent_epic = self.db.query(Task).filter(Task.id == parent_story.parent_id).first()
+                    if grandparent_epic and grandparent_epic.interview_insights:
+                        epic_semantic_map = grandparent_epic.interview_insights.get("semantic_map", {})
+
+        # Combine all semantic maps for context
+        combined_semantic_map = {**epic_semantic_map, **story_semantic_map}
+
+        # SAME DETAILED PROMPT AS EPIC - Adapted for Task
+        system_prompt = """Você é um Arquiteto de Software e Tech Lead especialista gerando especificações técnicas DETALHADAS para Tasks de desenvolvimento.
+
+OBJETIVO: Gerar uma especificação TÉCNICA COMPLETA da Task, incluindo:
+- Arquivos a criar/modificar
+- Funções e métodos com assinaturas
+- Parâmetros e tipos de retorno
+- Validações e tratamento de erros
+- Testes necessários
+- Comandos e código de exemplo
+
+METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+
+**Categorias de Identificadores (use TODAS que forem aplicáveis):**
+
+**Código e Arquivos:**
+- **FILE** (Arquivos): FILE1, FILE2... = Arquivos a criar/modificar (Ex: FILE1=src/models/User.ts)
+- **FUNC** (Funções): FUNC1, FUNC2... = Funções/métodos (Ex: FUNC1=createUser(data: UserDTO): Promise<User>)
+- **CLASS** (Classes): CLASS1, CLASS2... = Classes a criar (Ex: CLASS1=UserService)
+- **PARAM** (Parâmetros): PARAM1, PARAM2... = Parâmetros de funções (Ex: PARAM1=userId: string)
+- **RET** (Retornos): RET1, RET2... = Tipos de retorno (Ex: RET1=Promise<User>)
+- **IMPORT** (Imports): IMPORT1... = Imports necessários (Ex: IMPORT1=import { User } from './models')
+
+**Dados e Tipos:**
+- **N** (Entidades): N1, N2... = Entidades envolvidas (reutilizar do Epic/Story)
+- **ATTR** (Atributos): ATTR1, ATTR2... = Campos com tipos (reutilizar do Epic/Story)
+- **TYPE** (Tipos): TYPE1, TYPE2... = Tipos/interfaces (Ex: TYPE1=UserDTO)
+- **SCHEMA** (Schemas): SCHEMA1... = Schemas de validação (Ex: SCHEMA1=createUserSchema)
+
+**Lógica:**
+- **VAL** (Validações): VAL1, VAL2... = Validações a implementar
+- **ERR** (Erros): ERR1, ERR2... = Erros a tratar (Ex: ERR1=UserNotFoundError)
+- **LOG** (Logs): LOG1... = Logs a adicionar
+- **COND** (Condições): COND1... = Condições lógicas
+
+**Integração:**
+- **API** (Endpoints): API1, API2... = Endpoints (reutilizar do Epic/Story)
+- **QUERY** (Queries): QUERY1... = Queries de banco (Ex: QUERY1=SELECT * FROM users WHERE id = ?)
+- **CMD** (Comandos): CMD1... = Comandos a executar (Ex: CMD1=npm run migrate)
+
+**Testes:**
+- **TEST** (Testes): TEST1, TEST2... = Casos de teste (Ex: TEST1=should create user with valid data)
+- **MOCK** (Mocks): MOCK1... = Mocks necessários
+- **FIXTURE** (Fixtures): FIXTURE1... = Dados de teste
+
+**Critérios:**
+- **AC** (Acceptance Criteria): AC1, AC2... = Critérios de aceitação técnicos
+
+**IMPORTANTE:** REUTILIZE os identificadores do Epic/Story (N1, N2, ATTR1, API1, etc.) e ESTENDA com novos específicos desta Task.
+
+ESTRUTURA OBRIGATÓRIA DO description_markdown:
+
+```
+# Task: [Título Técnico]
+
+## Mapa Semântico
+
+### Entidades (Reutilizadas)
+- **N1**: [do Epic/Story]
+
+### Arquivos
+- **FILE1**: [caminho/arquivo.ext] - [descrição do que fazer]
+- **FILE2**: [caminho/arquivo.ext] - [descrição]
+
+### Funções a Implementar
+- **FUNC1**: [assinatura completa com tipos]
+- **FUNC2**: [assinatura completa com tipos]
+
+### Tipos/Interfaces
+- **TYPE1**: [definição do tipo]
+
+### Validações
+- **VAL1**: [validação específica]
+- **VAL2**: [validação específica]
+
+### Tratamento de Erros
+- **ERR1**: [erro e como tratar]
+
+### Queries/Comandos
+- **QUERY1**: [query SQL ou comando]
+- **CMD1**: [comando terminal]
+
+### Testes Necessários
+- **TEST1**: [caso de teste]
+- **TEST2**: [caso de teste]
+
+## Descrição Técnica
+
+[Narrativa DETALHADA usando os identificadores. Descreva EXATAMENTE:
+- O QUE implementar (quais arquivos, funções)
+- COMO implementar (lógica, algoritmo)
+- ONDE implementar (localização no código)
+MÍNIMO 1200 caracteres.]
+
+## Passos de Implementação
+
+1. STEP1: [passo detalhado com identificadores]
+2. STEP2: [passo detalhado]
+...
+
+## Código de Exemplo
+
+```[linguagem]
+// Exemplo de implementação de FUNC1
+[código de exemplo]
+```
+
+## Critérios de Aceitação Técnicos
+
+1. **AC1**: [critério técnico específico]
+2. **AC2**: [critério técnico específico]
+...
+
+## Comandos Necessários
+
+```bash
+[comandos a executar]
+```
+
+## Considerações Técnicas
+
+- [consideração 1]
+- [consideração 2]
+```
+
+Retorne APENAS JSON válido:
 {
-    "description": "Descrição técnica completa",
-    "generated_prompt": "Prompt detalhado para execução por IA",
-    "acceptance_criteria": ["Critério técnico 1", "Critério técnico 2"],
-    "story_points": 3
+    "title": "Título da Task",
+    "semantic_map": {
+        "N1": "reutilizado", "ATTR1": "reutilizado",
+        "FILE1": "caminho/arquivo.ext",
+        "FUNC1": "assinatura(params): ReturnType",
+        "VAL1": "validação",
+        "ERR1": "erro",
+        "TEST1": "caso de teste",
+        "AC1": "critério"
+    },
+    "description_markdown": "[MARKDOWN COMPLETO - MÍNIMO 1200 caracteres]",
+    "story_points": 3,
+    "acceptance_criteria": ["AC1: critério", "AC2: critério", "AC3: critério", "AC4: critério"],
+    "interview_insights": {
+        "files_to_modify": ["arquivo1", "arquivo2"],
+        "dependencies": ["dep1", "dep2"],
+        "commands": ["cmd1", "cmd2"]
+    }
 }
+
+**REGRAS CRÍTICAS:**
+- MÍNIMO 15 identificadores no mapa semântico
+- REUTILIZE identificadores do Epic/Story
+- INCLUA arquivos específicos (FILE1, FILE2...)
+- INCLUA funções com assinaturas completas (FUNC1, FUNC2...)
+- INCLUA casos de teste (TEST1, TEST2...)
+- A descrição deve ter MÍNIMO 1200 caracteres
+- MÍNIMO 4 critérios de aceitação
+- INCLUA código de exemplo quando aplicável
+- TUDO EM PORTUGUÊS
 """
 
-        user_prompt = f"""Gere especificação técnica para esta Task:
+        # Build full context from Epic + Story
+        context_text = ""
+        semantic_map_text = ""
 
-TASK:
-Título: {task.title}
-Descrição atual: {task.description or 'N/A'}
+        if grandparent_epic:
+            context_text += f"""
+## EPIC (Avô)
+**Título:** {grandparent_epic.title}
+**Descrição:** {(grandparent_epic.description or '')[:1000]}
+"""
 
-CONTEXTO DO PROJETO:
-{project.context_human or 'N/A'}
+        if parent_story:
+            context_text += f"""
+## STORY (Pai)
+**Título:** {parent_story.title}
+**Descrição:** {(parent_story.description or '')[:1000]}
+**Generated Prompt:** {(parent_story.generated_prompt or '')[:2000]}
+"""
 
-Retorne JSON com description, generated_prompt, acceptance_criteria, story_points."""
+        if combined_semantic_map:
+            semantic_map_text = "\n\n## MAPA SEMÂNTICO COMBINADO (REUTILIZE):\n"
+            semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
+            semantic_map_text += "\n\n**IMPORTANTE:** REUTILIZE estes identificadores na Task."
+
+        user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para esta Task (MESMO NÍVEL DE DETALHE DO EPIC).
+
+## CONTEXTO DO PROJETO
+**Nome:** {project.name}
+**Contexto:** {(project.context_human or project.context_semantic or 'N/A')[:3000]}
+{context_text}
+{semantic_map_text}
+
+## TASK A ESPECIFICAR
+**Título:** {task.title}
+**Descrição Atual:** {task.description or 'N/A'}
+**Generated Prompt Atual:** {(task.generated_prompt or '')[:1000]}
+
+## INSTRUÇÕES
+1. Gere especificação TÉCNICA COMPLETA com MESMO nível de detalhe do Epic
+2. REUTILIZE os identificadores do Epic/Story
+3. INCLUA: arquivos, funções com assinaturas, validações, testes
+4. description_markdown deve ter MÍNIMO 1200 caracteres
+5. MÍNIMO 15 identificadores no mapa semântico
+6. MÍNIMO 4 critérios de aceitação
+7. INCLUA código de exemplo
+
+Retorne APENAS o JSON."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
@@ -2681,20 +3076,26 @@ Retorne JSON com description, generated_prompt, acceptance_criteria, story_point
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=1500
+                max_tokens=6000
             )
 
             content = response.get("content", "")
             result = self._parse_json_response(content)
 
             if result and isinstance(result, dict):
+                # Convert semantic to human description
+                semantic_map = result.get("semantic_map", {})
+                description_markdown = result.get("description_markdown", "")
+                result["description"] = _convert_semantic_to_human(description_markdown, semantic_map)
+                result["generated_prompt"] = description_markdown
                 return result
 
             return {
                 "description": task.description or "",
-                "generated_prompt": f"Implementar: {task.title}\n\n{task.description or ''}",
-                "acceptance_criteria": [],
-                "story_points": task.story_points or 2
+                "generated_prompt": f"# Task: {task.title}\n\n## Descrição\n{task.description or ''}\n\n## Contexto da Story\n{parent_story.title if parent_story else 'N/A'}",
+                "acceptance_criteria": ["AC1: Implementação completa", "AC2: Testes passam", "AC3: Code review aprovado", "AC4: Sem bugs"],
+                "semantic_map": combined_semantic_map,
+                "story_points": task.story_points or 3
             }
 
         except Exception as e:
@@ -2711,7 +3112,7 @@ Retorne JSON com description, generated_prompt, acceptance_criteria, story_point
         PROMPT #102 - Activate a suggested subtask.
 
         Subtasks are leaf nodes - no children generated.
-        Just generates full content.
+        Generates FULL DETAILED content (same level as Epic/Story/Task).
 
         Args:
             subtask_id: Subtask ID to activate
@@ -2737,31 +3138,29 @@ Retorne JSON com description, generated_prompt, acceptance_criteria, story_point
         if not project:
             raise ValueError(f"Project {subtask.project_id} not found")
 
-        # Generate subtask prompt (simple, atomic)
-        subtask.generated_prompt = f"""# Subtask: {subtask.title}
+        # Generate FULL subtask content (same level of detail as Epic/Story/Task)
+        subtask_content = await self._generate_full_subtask_content(subtask, project)
 
-## Descrição
-{subtask.description or 'Executar a ação descrita no título.'}
+        # Update subtask with generated content
+        subtask.description = subtask_content.get("description", subtask.description)
+        subtask.generated_prompt = subtask_content.get("generated_prompt")
+        subtask.acceptance_criteria = subtask_content.get("acceptance_criteria", [])
 
-## Instruções
-1. Implementar exatamente o que está descrito no título
-2. Manter código limpo e documentado
-3. Testar a implementação
+        # Store semantic map and insights
+        subtask.interview_insights = subtask.interview_insights or {}
+        subtask.interview_insights["semantic_map"] = subtask_content.get("semantic_map", {})
+        subtask.interview_insights["activated_from_suggestion"] = True
+        subtask.interview_insights["activation_timestamp"] = datetime.utcnow().isoformat()
 
-## Critério de Conclusão
-A subtask está completa quando a ação do título foi executada com sucesso.
-"""
+        # Merge additional insights
+        if subtask_content.get("interview_insights"):
+            subtask.interview_insights.update(subtask_content["interview_insights"])
 
         # Remove suggested label
         if subtask.labels and "suggested" in subtask.labels:
             subtask.labels = [l for l in subtask.labels if l != "suggested"]
         subtask.workflow_state = "open"
         subtask.updated_at = datetime.utcnow()
-
-        # Store activation info
-        subtask.interview_insights = subtask.interview_insights or {}
-        subtask.interview_insights["activated_from_suggestion"] = True
-        subtask.interview_insights["activation_timestamp"] = datetime.utcnow().isoformat()
 
         self.db.commit()
         self.db.refresh(subtask)
@@ -2773,8 +3172,240 @@ A subtask está completa quando a ação do título foi executada com sucesso.
             "title": subtask.title,
             "description": subtask.description,
             "generated_prompt": subtask.generated_prompt,
+            "acceptance_criteria": subtask.acceptance_criteria,
             "story_points": subtask.story_points or 1,
             "priority": subtask.priority.value if subtask.priority else "medium",
             "activated": True,
             "children_generated": 0  # Subtasks don't have children
         }
+
+    async def _generate_full_subtask_content(self, subtask: Task, project: Project) -> Dict:
+        """
+        Generate FULL EPIC-LEVEL content for a subtask using AI.
+
+        Uses the SAME detailed prompt structure as other items.
+        Includes ALL parent context (Epic + Story + Task semantic maps).
+        """
+
+        # Get full hierarchy context: Task -> Story -> Epic
+        parent_task = None
+        grandparent_story = None
+        great_grandparent_epic = None
+        task_semantic_map = {}
+        story_semantic_map = {}
+        epic_semantic_map = {}
+
+        if subtask.parent_id:
+            parent_task = self.db.query(Task).filter(Task.id == subtask.parent_id).first()
+            if parent_task:
+                if parent_task.interview_insights:
+                    task_semantic_map = parent_task.interview_insights.get("semantic_map", {})
+                if parent_task.parent_id:
+                    grandparent_story = self.db.query(Task).filter(Task.id == parent_task.parent_id).first()
+                    if grandparent_story:
+                        if grandparent_story.interview_insights:
+                            story_semantic_map = grandparent_story.interview_insights.get("semantic_map", {})
+                        if grandparent_story.parent_id:
+                            great_grandparent_epic = self.db.query(Task).filter(Task.id == grandparent_story.parent_id).first()
+                            if great_grandparent_epic and great_grandparent_epic.interview_insights:
+                                epic_semantic_map = great_grandparent_epic.interview_insights.get("semantic_map", {})
+
+        # Combine all semantic maps
+        combined_semantic_map = {**epic_semantic_map, **story_semantic_map, **task_semantic_map}
+
+        system_prompt = """Você é um Desenvolvedor Sênior gerando especificações DETALHADAS para Subtasks de implementação.
+
+OBJETIVO: Gerar uma especificação COMPLETA da Subtask, incluindo:
+- Código específico a escrever
+- Linhas exatas a modificar
+- Comandos a executar
+- Validações e testes
+
+METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+
+**Categorias de Identificadores:**
+- **N** (Entidades): Reutilizar do Epic/Story/Task
+- **ATTR** (Atributos): Reutilizar do Epic/Story/Task
+- **FILE** (Arquivos): FILE1... = Arquivo específico a modificar
+- **LINE** (Linhas): LINE1... = Linhas de código específicas
+- **FUNC** (Funções): FUNC1... = Função específica a implementar/modificar
+- **CODE** (Código): CODE1... = Bloco de código a adicionar
+- **VAL** (Validações): VAL1... = Validação específica
+- **TEST** (Testes): TEST1... = Teste específico
+- **CMD** (Comandos): CMD1... = Comando a executar
+- **AC** (Critérios): AC1, AC2... = Critérios de aceitação
+
+ESTRUTURA OBRIGATÓRIA DO description_markdown:
+
+```
+# Subtask: [Título - Ação Específica]
+
+## Mapa Semântico
+
+### Entidades (Reutilizadas)
+- **N1**: [do Epic/Story/Task]
+
+### Arquivo(s) a Modificar
+- **FILE1**: [caminho/completo/arquivo.ext]
+
+### Código a Adicionar/Modificar
+- **CODE1**: [descrição do bloco de código]
+- **LINE1**: [linha específica]
+
+### Função(ões) Envolvida(s)
+- **FUNC1**: [nome da função]
+
+### Validações
+- **VAL1**: [validação]
+
+### Teste(s)
+- **TEST1**: [caso de teste]
+
+### Comando(s)
+- **CMD1**: [comando]
+
+## Descrição Técnica Detalhada
+
+[Narrativa DETALHADA descrevendo EXATAMENTE:
+- O QUE modificar (arquivo, função, linha)
+- O CÓDIGO a escrever
+- COMO testar
+MÍNIMO 800 caracteres.]
+
+## Código a Implementar
+
+```[linguagem]
+// Código específico a adicionar
+[código completo]
+```
+
+## Passos de Execução
+
+1. [Passo específico com arquivo/linha]
+2. [Passo específico]
+...
+
+## Comandos a Executar
+
+```bash
+[comandos]
+```
+
+## Critérios de Aceitação
+
+1. **AC1**: [critério específico]
+2. **AC2**: [critério específico]
+...
+```
+
+Retorne APENAS JSON válido:
+{
+    "title": "Título da Subtask",
+    "semantic_map": {
+        "N1": "reutilizado",
+        "FILE1": "caminho/arquivo.ext",
+        "LINE1": "linha específica",
+        "CODE1": "descrição do código",
+        "FUNC1": "função",
+        "VAL1": "validação",
+        "TEST1": "teste",
+        "CMD1": "comando",
+        "AC1": "critério"
+    },
+    "description_markdown": "[MARKDOWN COMPLETO - MÍNIMO 800 caracteres]",
+    "acceptance_criteria": ["AC1: critério", "AC2: critério", "AC3: critério"],
+    "interview_insights": {
+        "code_to_add": "código",
+        "files_to_modify": ["arquivo1"],
+        "commands": ["cmd1"]
+    }
+}
+
+**REGRAS CRÍTICAS:**
+- MÍNIMO 10 identificadores no mapa semântico
+- REUTILIZE identificadores do Epic/Story/Task
+- INCLUA código específico a escrever
+- INCLUA arquivo e localização exata
+- description_markdown com MÍNIMO 800 caracteres
+- MÍNIMO 3 critérios de aceitação
+- TUDO EM PORTUGUÊS
+"""
+
+        # Build full context from Epic + Story + Task
+        context_text = ""
+        if great_grandparent_epic:
+            context_text += f"\n## EPIC (Bisavô)\n**Título:** {great_grandparent_epic.title}\n"
+
+        if grandparent_story:
+            context_text += f"\n## STORY (Avô)\n**Título:** {grandparent_story.title}\n"
+
+        if parent_task:
+            context_text += f"""
+## TASK (Pai)
+**Título:** {parent_task.title}
+**Descrição:** {(parent_task.description or '')[:1000]}
+**Generated Prompt:** {(parent_task.generated_prompt or '')[:2000]}
+"""
+
+        semantic_map_text = ""
+        if combined_semantic_map:
+            semantic_map_text = "\n\n## MAPA SEMÂNTICO COMBINADO (REUTILIZE):\n"
+            semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
+
+        user_prompt = f"""Gere a ESPECIFICAÇÃO COMPLETA para esta Subtask (MESMO NÍVEL DE DETALHE DO EPIC).
+
+## CONTEXTO DO PROJETO
+**Nome:** {project.name}
+**Contexto:** {(project.context_human or '')[:2000]}
+{context_text}
+{semantic_map_text}
+
+## SUBTASK A ESPECIFICAR
+**Título:** {subtask.title}
+**Descrição Atual:** {subtask.description or 'N/A'}
+**Generated Prompt Atual:** {(subtask.generated_prompt or '')[:500]}
+
+## INSTRUÇÕES
+1. Gere especificação COMPLETA com MESMO nível de detalhe do Epic
+2. REUTILIZE os identificadores existentes
+3. INCLUA: código específico, arquivo, localização
+4. description_markdown deve ter MÍNIMO 800 caracteres
+5. MÍNIMO 10 identificadores no mapa semântico
+6. MÍNIMO 3 critérios de aceitação
+
+Retorne APENAS o JSON."""
+
+        try:
+            orchestrator = AIOrchestrator(self.db)
+            response = await orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=4000
+            )
+
+            content = response.get("content", "")
+            result = self._parse_json_response(content)
+
+            if result and isinstance(result, dict):
+                semantic_map = result.get("semantic_map", {})
+                description_markdown = result.get("description_markdown", "")
+                result["description"] = _convert_semantic_to_human(description_markdown, semantic_map)
+                result["generated_prompt"] = description_markdown
+                return result
+
+            return {
+                "description": subtask.description or "",
+                "generated_prompt": f"# Subtask: {subtask.title}\n\n## Descrição\n{subtask.description or ''}\n\n## Contexto\nTask pai: {parent_task.title if parent_task else 'N/A'}",
+                "acceptance_criteria": ["AC1: Implementação completa", "AC2: Testes passam", "AC3: Code review aprovado"],
+                "semantic_map": combined_semantic_map
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating subtask content: {e}")
+            return {
+                "description": subtask.description or "",
+                "generated_prompt": "",
+                "acceptance_criteria": [],
+                "semantic_map": {}
+            }
