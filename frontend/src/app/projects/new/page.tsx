@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -36,7 +36,9 @@ export default function NewProjectPage() {
   const [interviewId, setInterviewId] = useState<string | null>(null);
 
   // PROMPT #98 (v2) - Track if wizard was completed to prevent cleanup
-  const [wizardCompleted, setWizardCompleted] = useState(false);
+  // PROMPT #101 FIX: Use useRef instead of useState because setState is async
+  // and the cleanup effect would still see the old value when navigating away
+  const wizardCompletedRef = useRef(false);
 
   // Context data (PROMPT #89)
   const [contextHuman, setContextHuman] = useState<string | null>(null);
@@ -120,9 +122,10 @@ export default function NewProjectPage() {
   };
 
   // PROMPT #98 (v2) - Cleanup project if wizard is abandoned
+  // PROMPT #101 FIX: Use ref.current for synchronous access to completion state
   useEffect(() => {
     const cleanupProject = async () => {
-      if (projectId && !wizardCompleted) {
+      if (projectId && !wizardCompletedRef.current) {
         try {
           await projectsApi.delete(projectId);
           console.log('✅ Cleanup: Deleted incomplete project:', projectId);
@@ -134,7 +137,7 @@ export default function NewProjectPage() {
 
     // Cleanup on page unload (browser close, navigation away)
     const handleBeforeUnload = () => {
-      if (projectId && !wizardCompleted) {
+      if (projectId && !wizardCompletedRef.current) {
         // Synchronous cleanup for beforeunload
         navigator.sendBeacon(`/api/v1/projects/${projectId}`,
           new Blob([JSON.stringify({ method: 'DELETE' })], { type: 'application/json' })
@@ -149,11 +152,12 @@ export default function NewProjectPage() {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       cleanupProject();
     };
-  }, [projectId, wizardCompleted]);
+  }, [projectId]);
 
   const handleConfirm = () => {
     // PROMPT #98 (v2) - Mark wizard as completed before navigating
-    setWizardCompleted(true);
+    // PROMPT #101 FIX: Use ref for synchronous update before navigation
+    wizardCompletedRef.current = true;
     if (projectId) {
       router.push(`/projects/${projectId}`);
     }
