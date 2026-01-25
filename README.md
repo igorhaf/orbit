@@ -359,11 +359,10 @@ docker-compose -p orbit exec backend poetry run alembic downgrade -1
 |---------|------|-------------|
 | Frontend | 3000 | Next.js application |
 | Backend | 8000 | FastAPI API |
-| PostgreSQL | 5432 | Database with pgvector |
+| PostgreSQL | 5432 | Database with pgvector (supports RAG) |
 | Redis | 6379 | Cache server |
 | Ollama | 11434 | Local LLM Server |
 | Qdrant | 6333, 6334 | Vector Database (REST, gRPC) |
-| PostgreSQL RAG | 5433 | Separate database for RAG |
 
 ---
 
@@ -379,9 +378,10 @@ All RAG services use **bind mounts** for data persistence. Data is stored in the
 orbit/
 └── data/                    # All persistent data (git-ignored, except .gitkeep)
     ├── ollama/              # Ollama models (~4-40GB per model)
-    ├── qdrant/              # Qdrant vector storage
-    └── postgres-rag/        # PostgreSQL RAG database
+    └── qdrant/              # Qdrant vector storage
 ```
+
+> **Note:** Vector embeddings for RAG are stored in the main PostgreSQL database using pgvector extension.
 
 ### Starting RAG Services
 
@@ -390,7 +390,7 @@ orbit/
 docker compose up -d
 
 # Or start specific RAG services
-docker compose up -d ollama qdrant postgres-rag
+docker compose up -d ollama qdrant
 ```
 
 ### Viewing Logs
@@ -401,9 +401,6 @@ docker compose logs -f ollama
 
 # Qdrant logs
 docker compose logs -f qdrant
-
-# PostgreSQL RAG logs
-docker compose logs -f postgres-rag
 ```
 
 ### Quick Tests
@@ -415,8 +412,8 @@ curl http://localhost:11434/api/tags
 # Test Qdrant (list collections)
 curl http://localhost:6333/collections
 
-# Test PostgreSQL RAG
-docker compose exec postgres-rag psql -U rag -d rag -c "SELECT version();"
+# Test pgvector extension
+docker compose exec postgres psql -U orbit -d orbit -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
 ```
 
 ### Installing Models in Ollama
@@ -440,12 +437,6 @@ GPU support is disabled by default. To enable NVIDIA GPU:
 1. Install NVIDIA drivers on host
 2. Install [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
 3. Uncomment the `deploy` section in `docker-compose.yml` under the `ollama` service
-
-### Service Credentials
-
-| Service | User | Password | Database |
-|---------|------|----------|----------|
-| PostgreSQL RAG | rag | rag | rag |
 
 ### Qdrant API Examples
 

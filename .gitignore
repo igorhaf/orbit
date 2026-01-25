@@ -133,7 +133,6 @@ volumes/
 # Keep .gitkeep files, ignore actual data
 data/ollama/*
 data/qdrant/*
-data/postgres-rag/*
 !data/.gitkeep
 !data/**/.gitkeep
 
