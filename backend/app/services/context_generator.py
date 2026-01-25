@@ -1745,7 +1745,8 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
                     self.db.refresh(story)
 
                     # Generate FULL content using _generate_full_story_content
-                    full_content = await self._generate_full_story_content(story, project)
+                    # Pass epic directly to ensure full context is available
+                    full_content = await self._generate_full_story_content(story, project, epic)
 
                     if full_content:
                         # Update story with full content
@@ -1996,7 +1997,8 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
                     self.db.refresh(task)
 
                     # Generate FULL content using _generate_full_task_content
-                    full_content = await self._generate_full_task_content(task, project)
+                    # Pass story and epic directly to ensure full context is available
+                    full_content = await self._generate_full_task_content(task, project, story, parent_epic)
 
                     if full_content:
                         # Update task with full content
@@ -2078,6 +2080,14 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
         task_semantic_map = {}
         if task.interview_insights:
             task_semantic_map = task.interview_insights.get("semantic_map", {})
+
+        # Get parent story and great-grandparent epic for full hierarchy context
+        parent_story = None
+        great_grandparent_epic = None
+        if task.parent_id:
+            parent_story = self.db.query(Task).filter(Task.id == task.parent_id).first()
+            if parent_story and parent_story.parent_id:
+                great_grandparent_epic = self.db.query(Task).filter(Task.id == parent_story.parent_id).first()
 
         # ============================================================
         # STEP 1: Generate only TITLES (3-5 subtask titles)
@@ -2171,7 +2181,8 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
                     self.db.refresh(subtask)
 
                     # Generate FULL content using _generate_full_subtask_content
-                    full_content = await self._generate_full_subtask_content(subtask, project)
+                    # Pass full hierarchy: task (pai), parent_story (avô), great_grandparent_epic (bisavô)
+                    full_content = await self._generate_full_subtask_content(subtask, project, task, parent_story, great_grandparent_epic)
 
                     if full_content:
                         # Update subtask with full content
@@ -2293,21 +2304,26 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
             "children_generated": len(draft_tasks)
         }
 
-    async def _generate_full_story_content(self, story: Task, project: Project) -> Dict:
+    async def _generate_full_story_content(self, story: Task, project: Project, parent_epic: Task = None) -> Dict:
         """
         Generate FULL EPIC-LEVEL content for a story using AI.
 
         Uses the SAME detailed prompt structure as _generate_full_epic_content.
         Includes ALL parent context (Epic semantic map, project context).
+
+        Args:
+            story: The story to generate content for (may only have title)
+            project: The project
+            parent_epic: The parent Epic (passed directly for full context access)
         """
 
-        # Get parent epic for context
-        parent_epic = None
-        epic_semantic_map = {}
-        if story.parent_id:
+        # Get parent epic for context - use passed epic or fetch from DB
+        if not parent_epic and story.parent_id:
             parent_epic = self.db.query(Task).filter(Task.id == story.parent_id).first()
-            if parent_epic and parent_epic.interview_insights:
-                epic_semantic_map = parent_epic.interview_insights.get("semantic_map", {})
+
+        epic_semantic_map = {}
+        if parent_epic and parent_epic.interview_insights:
+            epic_semantic_map = parent_epic.interview_insights.get("semantic_map", {})
 
         # SAME DETAILED PROMPT AS EPIC - Adapted for Story
         system_prompt = """Você é um Arquiteto de Software e Product Owner especialista gerando especificações técnicas DETALHADAS para User Stories.
@@ -2476,46 +2492,65 @@ Retorne APENAS JSON válido (sem markdown code blocks):
 - TUDO EM PORTUGUÊS
 """
 
-        # Build context from Epic
-        epic_context = ""
+        # Build COMPLETE context from Epic - NO TRUNCATION
+        epic_full_spec = ""
         semantic_map_text = ""
         if parent_epic:
-            epic_context = f"""
-## EPIC PAI
-**Título:** {parent_epic.title}
-**Descrição:** {parent_epic.description or 'N/A'}
-**Generated Prompt (Especificação do Epic):**
-{(parent_epic.generated_prompt or '')[:3000]}
+            # Use FULL generated_prompt from Epic - this is the key!
+            epic_full_spec = f"""
+## ===== ESPECIFICAÇÃO COMPLETA DO EPIC PAI (USE COMO BASE) =====
+
+**Título do Epic:** {parent_epic.title}
+
+**Descrição do Epic:**
+{parent_epic.description or 'N/A'}
+
+**ESPECIFICAÇÃO TÉCNICA COMPLETA DO EPIC (generated_prompt):**
+{parent_epic.generated_prompt or 'N/A'}
+
+## ===== FIM DA ESPECIFICAÇÃO DO EPIC =====
 """
             if epic_semantic_map:
-                semantic_map_text = "\n\n## MAPA SEMÂNTICO DO EPIC (REUTILIZE ESTES IDENTIFICADORES):\n"
+                semantic_map_text = "\n\n## MAPA SEMÂNTICO DO EPIC (VOCÊ DEVE REUTILIZAR E ESTENDER):\n"
                 semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
-                semantic_map_text += "\n\n**IMPORTANTE:** Você DEVE reutilizar estes identificadores na Story."
 
-        user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para esta User Story (MESMO NÍVEL DE DETALHE DO EPIC).
+        user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para a User Story abaixo.
+
+A Story deve ter o MESMO NÍVEL DE DETALHAMENTO do Epic pai.
+Os critérios de aceitação devem ser ESPECÍFICOS para esta Story, não genéricos.
 
 ## CONTEXTO DO PROJETO
 **Nome:** {project.name}
-**Descrição:** {project.description or 'Não especificada'}
+**Contexto:**
+{(project.context_human or project.context_semantic or 'Não disponível')[:3000]}
 
-**Contexto Completo:**
-{(project.context_human or project.context_semantic or 'Não disponível')[:4000]}
-{epic_context}
+{epic_full_spec}
 {semantic_map_text}
 
 ## STORY A ESPECIFICAR
-**Título:** {story.title}
-**Descrição Atual:** {story.description or 'Não especificada'}
-**Generated Prompt Atual:** {(story.generated_prompt or '')[:1000]}
+**Título da Story:** {story.title}
 
-## INSTRUÇÕES
-1. Gere especificação COMPLETA com MESMO nível de detalhe do Epic
-2. REUTILIZE os identificadores do Epic (N1, N2, ATTR1, etc.)
-3. ESTENDA com novos identificadores específicos desta Story
-4. description_markdown deve ter MÍNIMO 1500 caracteres
-5. MÍNIMO 20 identificadores no mapa semântico
-6. MÍNIMO 5 critérios de aceitação
-7. Inclua: campos com tipos, regras de negócio, telas, APIs
+## REGRAS OBRIGATÓRIAS
+
+1. **REUTILIZE os identificadores do Epic** (N1, N2, ATTR1, RN1, etc.)
+2. **ESTENDA com NOVOS identificadores específicos desta Story** (ex: se Epic tem N1-N5, adicione N6-N10)
+3. **Critérios de Aceitação ESPECÍFICOS** - baseados no título e contexto da Story, NÃO genéricos como "funcionalidade implementada"
+4. **description_markdown MÍNIMO 1500 caracteres** com estrutura completa
+5. **MÍNIMO 20 identificadores** no mapa semântico
+6. **MÍNIMO 5 critérios de aceitação** específicos e mensuráveis
+7. **Inclua**: campos com tipos de dados, regras de negócio, telas/componentes, endpoints API
+
+## EXEMPLO DE CRITÉRIOS DE ACEITAÇÃO ESPECÍFICOS (para uma Story de cadastro de usuário):
+- "AC1: Formulário de cadastro exibe campos nome, email, senha e confirmação de senha"
+- "AC2: Email é validado com formato correto e verificação de unicidade no banco"
+- "AC3: Senha deve ter mínimo 8 caracteres, incluindo letra maiúscula e número"
+- "AC4: Após cadastro bem-sucedido, usuário recebe email de confirmação"
+- "AC5: Usuário não confirmado não consegue fazer login"
+
+## EXEMPLO DE CRITÉRIOS GENÉRICOS (NÃO USE):
+- "Funcionalidade implementada" ❌
+- "Testes passam" ❌
+- "Código revisado" ❌
 
 Retorne APENAS o JSON, sem explicações."""
 
@@ -2589,8 +2624,16 @@ Retorne APENAS o JSON, sem explicações."""
         if not project:
             raise ValueError(f"Project {task.project_id} not found")
 
-        # Generate full task content
-        task_content = await self._generate_full_task_content(task, project)
+        # Fetch parent story and grandparent epic for full context
+        parent_story = None
+        grandparent_epic = None
+        if task.parent_id:
+            parent_story = self.db.query(Task).filter(Task.id == task.parent_id).first()
+            if parent_story and parent_story.parent_id:
+                grandparent_epic = self.db.query(Task).filter(Task.id == parent_story.parent_id).first()
+
+        # Generate full task content with complete hierarchy context
+        task_content = await self._generate_full_task_content(task, project, parent_story, grandparent_epic)
 
         # Update task
         task.description = task_content.get("description", task.description)
@@ -2629,29 +2672,36 @@ Retorne APENAS o JSON, sem explicações."""
             "children_generated": len(draft_subtasks)
         }
 
-    async def _generate_full_task_content(self, task: Task, project: Project) -> Dict:
+    async def _generate_full_task_content(self, task: Task, project: Project, parent_story: Task = None, grandparent_epic: Task = None) -> Dict:
         """
         Generate FULL EPIC-LEVEL content for a task using AI.
 
         Uses the SAME detailed prompt structure as _generate_full_epic_content.
         Includes ALL parent context (Epic + Story semantic maps, project context).
+
+        Args:
+            task: The task to generate content for (may only have title)
+            project: The project
+            parent_story: The parent Story (passed directly for full context access)
+            grandparent_epic: The grandparent Epic (passed directly for full context access)
         """
 
         # Get parent story and grandparent epic for full context
-        parent_story = None
-        grandparent_epic = None
+        # Use passed parameters or fetch from DB if not provided
         story_semantic_map = {}
         epic_semantic_map = {}
 
-        if task.parent_id:
+        if not parent_story and task.parent_id:
             parent_story = self.db.query(Task).filter(Task.id == task.parent_id).first()
-            if parent_story:
-                if parent_story.interview_insights:
-                    story_semantic_map = parent_story.interview_insights.get("semantic_map", {})
-                if parent_story.parent_id:
-                    grandparent_epic = self.db.query(Task).filter(Task.id == parent_story.parent_id).first()
-                    if grandparent_epic and grandparent_epic.interview_insights:
-                        epic_semantic_map = grandparent_epic.interview_insights.get("semantic_map", {})
+
+        if parent_story:
+            if parent_story.interview_insights:
+                story_semantic_map = parent_story.interview_insights.get("semantic_map", {})
+            if not grandparent_epic and parent_story.parent_id:
+                grandparent_epic = self.db.query(Task).filter(Task.id == parent_story.parent_id).first()
+
+        if grandparent_epic and grandparent_epic.interview_insights:
+            epic_semantic_map = grandparent_epic.interview_insights.get("semantic_map", {})
 
         # Combine all semantic maps for context
         combined_semantic_map = {**epic_semantic_map, **story_semantic_map}
@@ -2815,53 +2865,86 @@ Retorne APENAS JSON válido:
 - TUDO EM PORTUGUÊS
 """
 
-        # Build full context from Epic + Story
-        context_text = ""
+        # Build COMPLETE context from Epic + Story - NO TRUNCATION
+        epic_full_spec = ""
+        story_full_spec = ""
         semantic_map_text = ""
 
         if grandparent_epic:
-            context_text += f"""
-## EPIC (Avô)
-**Título:** {grandparent_epic.title}
-**Descrição:** {(grandparent_epic.description or '')[:1000]}
+            epic_full_spec = f"""
+## ===== ESPECIFICAÇÃO COMPLETA DO EPIC (AVÔ) =====
+
+**Título do Epic:** {grandparent_epic.title}
+
+**Descrição do Epic:**
+{grandparent_epic.description or 'N/A'}
+
+**ESPECIFICAÇÃO TÉCNICA COMPLETA DO EPIC (generated_prompt):**
+{grandparent_epic.generated_prompt or 'N/A'}
+
+## ===== FIM DA ESPECIFICAÇÃO DO EPIC =====
 """
 
         if parent_story:
-            context_text += f"""
-## STORY (Pai)
-**Título:** {parent_story.title}
-**Descrição:** {(parent_story.description or '')[:1000]}
-**Generated Prompt:** {(parent_story.generated_prompt or '')[:2000]}
+            story_full_spec = f"""
+## ===== ESPECIFICAÇÃO COMPLETA DA STORY (PAI DIRETO) =====
+
+**Título da Story:** {parent_story.title}
+
+**Descrição da Story:**
+{parent_story.description or 'N/A'}
+
+**ESPECIFICAÇÃO TÉCNICA COMPLETA DA STORY (generated_prompt):**
+{parent_story.generated_prompt or 'N/A'}
+
+## ===== FIM DA ESPECIFICAÇÃO DA STORY =====
 """
 
         if combined_semantic_map:
-            semantic_map_text = "\n\n## MAPA SEMÂNTICO COMBINADO (REUTILIZE):\n"
+            semantic_map_text = "\n\n## MAPA SEMÂNTICO COMBINADO (EPIC + STORY - VOCÊ DEVE REUTILIZAR):\n"
             semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
-            semantic_map_text += "\n\n**IMPORTANTE:** REUTILIZE estes identificadores na Task."
+            semantic_map_text += "\n\n**OBRIGATÓRIO:** Reutilize TODOS os identificadores relevantes do Epic/Story e estenda com novos específicos desta Task."
 
-        user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para esta Task (MESMO NÍVEL DE DETALHE DO EPIC).
+        user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para esta Task.
+
+A Task deve ter o MESMO NÍVEL DE DETALHAMENTO do Epic e da Story pai.
+Os critérios de aceitação devem ser TÉCNICOS e ESPECÍFICOS para esta Task.
 
 ## CONTEXTO DO PROJETO
 **Nome:** {project.name}
-**Contexto:** {(project.context_human or project.context_semantic or 'N/A')[:3000]}
-{context_text}
+
+**Contexto do Projeto:**
+{project.context_human or project.context_semantic or 'Não disponível'}
+
+{epic_full_spec}
+{story_full_spec}
 {semantic_map_text}
 
 ## TASK A ESPECIFICAR
-**Título:** {task.title}
-**Descrição Atual:** {task.description or 'N/A'}
-**Generated Prompt Atual:** {(task.generated_prompt or '')[:1000]}
+**Título da Task:** {task.title}
 
-## INSTRUÇÕES
-1. Gere especificação TÉCNICA COMPLETA com MESMO nível de detalhe do Epic
-2. REUTILIZE os identificadores do Epic/Story
-3. INCLUA: arquivos, funções com assinaturas, validações, testes
-4. description_markdown deve ter MÍNIMO 1200 caracteres
-5. MÍNIMO 15 identificadores no mapa semântico
-6. MÍNIMO 4 critérios de aceitação
-7. INCLUA código de exemplo
+## REGRAS OBRIGATÓRIAS
 
-Retorne APENAS o JSON."""
+1. **REUTILIZE os identificadores do Epic/Story** (N1, N2, ATTR1, API1, etc.)
+2. **ESTENDA com identificadores TÉCNICOS** (FILE1, FUNC1, CLASS1, TEST1, etc.)
+3. **Critérios de Aceitação TÉCNICOS** - específicos para implementação
+4. **description_markdown MÍNIMO 1200 caracteres** com estrutura técnica completa
+5. **MÍNIMO 15 identificadores** no mapa semântico
+6. **MÍNIMO 4 critérios de aceitação** técnicos e mensuráveis
+7. **INCLUA**: arquivos específicos, funções com assinaturas, código de exemplo
+
+## EXEMPLO DE CRITÉRIOS DE ACEITAÇÃO TÉCNICOS:
+- "AC1: Endpoint POST /api/users retorna 201 com dados do usuário criado"
+- "AC2: Validação retorna 400 se email inválido ou já existente"
+- "AC3: Testes unitários cobrem casos de sucesso e erro"
+- "AC4: Logs de criação de usuário registrados corretamente"
+
+## EXEMPLO DE CRITÉRIOS GENÉRICOS (NÃO USE):
+- "Implementação completa" ❌
+- "Código revisado" ❌
+- "Funciona corretamente" ❌
+
+Retorne APENAS o JSON, sem explicações."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
@@ -2931,8 +3014,19 @@ Retorne APENAS o JSON."""
         if not project:
             raise ValueError(f"Project {subtask.project_id} not found")
 
-        # Generate FULL subtask content (same level of detail as Epic/Story/Task)
-        subtask_content = await self._generate_full_subtask_content(subtask, project)
+        # Fetch full hierarchy for complete context
+        parent_task = None
+        grandparent_story = None
+        great_grandparent_epic = None
+        if subtask.parent_id:
+            parent_task = self.db.query(Task).filter(Task.id == subtask.parent_id).first()
+            if parent_task and parent_task.parent_id:
+                grandparent_story = self.db.query(Task).filter(Task.id == parent_task.parent_id).first()
+                if grandparent_story and grandparent_story.parent_id:
+                    great_grandparent_epic = self.db.query(Task).filter(Task.id == grandparent_story.parent_id).first()
+
+        # Generate FULL subtask content with complete hierarchy context
+        subtask_content = await self._generate_full_subtask_content(subtask, project, parent_task, grandparent_story, great_grandparent_epic)
 
         # Update subtask with generated content
         subtask.description = subtask_content.get("description", subtask.description)
@@ -2972,36 +3066,44 @@ Retorne APENAS o JSON."""
             "children_generated": 0  # Subtasks don't have children
         }
 
-    async def _generate_full_subtask_content(self, subtask: Task, project: Project) -> Dict:
+    async def _generate_full_subtask_content(self, subtask: Task, project: Project, parent_task: Task = None, grandparent_story: Task = None, great_grandparent_epic: Task = None) -> Dict:
         """
         Generate FULL EPIC-LEVEL content for a subtask using AI.
 
         Uses the SAME detailed prompt structure as other items.
         Includes ALL parent context (Epic + Story + Task semantic maps).
+
+        Args:
+            subtask: The subtask to generate content for (may only have title)
+            project: The project
+            parent_task: The parent Task (passed directly for full context access)
+            grandparent_story: The grandparent Story (passed directly for full context access)
+            great_grandparent_epic: The great-grandparent Epic (passed directly for full context access)
         """
 
         # Get full hierarchy context: Task -> Story -> Epic
-        parent_task = None
-        grandparent_story = None
-        great_grandparent_epic = None
+        # Use passed parameters or fetch from DB if not provided
         task_semantic_map = {}
         story_semantic_map = {}
         epic_semantic_map = {}
 
-        if subtask.parent_id:
+        if not parent_task and subtask.parent_id:
             parent_task = self.db.query(Task).filter(Task.id == subtask.parent_id).first()
-            if parent_task:
-                if parent_task.interview_insights:
-                    task_semantic_map = parent_task.interview_insights.get("semantic_map", {})
-                if parent_task.parent_id:
-                    grandparent_story = self.db.query(Task).filter(Task.id == parent_task.parent_id).first()
-                    if grandparent_story:
-                        if grandparent_story.interview_insights:
-                            story_semantic_map = grandparent_story.interview_insights.get("semantic_map", {})
-                        if grandparent_story.parent_id:
-                            great_grandparent_epic = self.db.query(Task).filter(Task.id == grandparent_story.parent_id).first()
-                            if great_grandparent_epic and great_grandparent_epic.interview_insights:
-                                epic_semantic_map = great_grandparent_epic.interview_insights.get("semantic_map", {})
+
+        if parent_task:
+            if parent_task.interview_insights:
+                task_semantic_map = parent_task.interview_insights.get("semantic_map", {})
+            if not grandparent_story and parent_task.parent_id:
+                grandparent_story = self.db.query(Task).filter(Task.id == parent_task.parent_id).first()
+
+        if grandparent_story:
+            if grandparent_story.interview_insights:
+                story_semantic_map = grandparent_story.interview_insights.get("semantic_map", {})
+            if not great_grandparent_epic and grandparent_story.parent_id:
+                great_grandparent_epic = self.db.query(Task).filter(Task.id == grandparent_story.parent_id).first()
+
+        if great_grandparent_epic and great_grandparent_epic.interview_insights:
+            epic_semantic_map = great_grandparent_epic.interview_insights.get("semantic_map", {})
 
         # Combine all semantic maps
         combined_semantic_map = {**epic_semantic_map, **story_semantic_map, **task_semantic_map}
@@ -3124,49 +3226,101 @@ Retorne APENAS JSON válido:
 - TUDO EM PORTUGUÊS
 """
 
-        # Build full context from Epic + Story + Task
-        context_text = ""
+        # Build COMPLETE context from Epic + Story + Task - NO TRUNCATION
+        epic_full_spec = ""
+        story_full_spec = ""
+        task_full_spec = ""
+        semantic_map_text = ""
+
         if great_grandparent_epic:
-            context_text += f"\n## EPIC (Bisavô)\n**Título:** {great_grandparent_epic.title}\n"
+            epic_full_spec = f"""
+## ===== ESPECIFICAÇÃO COMPLETA DO EPIC (BISAVÔ) =====
 
-        if grandparent_story:
-            context_text += f"\n## STORY (Avô)\n**Título:** {grandparent_story.title}\n"
+**Título do Epic:** {great_grandparent_epic.title}
 
-        if parent_task:
-            context_text += f"""
-## TASK (Pai)
-**Título:** {parent_task.title}
-**Descrição:** {(parent_task.description or '')[:1000]}
-**Generated Prompt:** {(parent_task.generated_prompt or '')[:2000]}
+**Descrição do Epic:**
+{great_grandparent_epic.description or 'N/A'}
+
+**ESPECIFICAÇÃO TÉCNICA COMPLETA DO EPIC (generated_prompt):**
+{great_grandparent_epic.generated_prompt or 'N/A'}
+
+## ===== FIM DA ESPECIFICAÇÃO DO EPIC =====
 """
 
-        semantic_map_text = ""
-        if combined_semantic_map:
-            semantic_map_text = "\n\n## MAPA SEMÂNTICO COMBINADO (REUTILIZE):\n"
-            semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
+        if grandparent_story:
+            story_full_spec = f"""
+## ===== ESPECIFICAÇÃO COMPLETA DA STORY (AVÔ) =====
 
-        user_prompt = f"""Gere a ESPECIFICAÇÃO COMPLETA para esta Subtask (MESMO NÍVEL DE DETALHE DO EPIC).
+**Título da Story:** {grandparent_story.title}
+
+**Descrição da Story:**
+{grandparent_story.description or 'N/A'}
+
+**ESPECIFICAÇÃO TÉCNICA COMPLETA DA STORY (generated_prompt):**
+{grandparent_story.generated_prompt or 'N/A'}
+
+## ===== FIM DA ESPECIFICAÇÃO DA STORY =====
+"""
+
+        if parent_task:
+            task_full_spec = f"""
+## ===== ESPECIFICAÇÃO COMPLETA DA TASK (PAI DIRETO) =====
+
+**Título da Task:** {parent_task.title}
+
+**Descrição da Task:**
+{parent_task.description or 'N/A'}
+
+**ESPECIFICAÇÃO TÉCNICA COMPLETA DA TASK (generated_prompt):**
+{parent_task.generated_prompt or 'N/A'}
+
+## ===== FIM DA ESPECIFICAÇÃO DA TASK =====
+"""
+
+        if combined_semantic_map:
+            semantic_map_text = "\n\n## MAPA SEMÂNTICO COMBINADO (EPIC + STORY + TASK - VOCÊ DEVE REUTILIZAR):\n"
+            semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
+            semantic_map_text += "\n\n**OBRIGATÓRIO:** Reutilize TODOS os identificadores relevantes e estenda com novos específicos desta Subtask."
+
+        user_prompt = f"""Gere a ESPECIFICAÇÃO COMPLETA para esta Subtask.
+
+A Subtask deve ter o MESMO NÍVEL DE DETALHAMENTO do Epic/Story/Task pai.
+Os critérios de aceitação devem ser ESPECÍFICOS para esta Subtask.
 
 ## CONTEXTO DO PROJETO
 **Nome:** {project.name}
-**Contexto:** {(project.context_human or '')[:2000]}
-{context_text}
+
+**Contexto do Projeto:**
+{project.context_human or project.context_semantic or 'Não disponível'}
+
+{epic_full_spec}
+{story_full_spec}
+{task_full_spec}
 {semantic_map_text}
 
 ## SUBTASK A ESPECIFICAR
-**Título:** {subtask.title}
-**Descrição Atual:** {subtask.description or 'N/A'}
-**Generated Prompt Atual:** {(subtask.generated_prompt or '')[:500]}
+**Título da Subtask:** {subtask.title}
 
-## INSTRUÇÕES
-1. Gere especificação COMPLETA com MESMO nível de detalhe do Epic
-2. REUTILIZE os identificadores existentes
-3. INCLUA: código específico, arquivo, localização
-4. description_markdown deve ter MÍNIMO 800 caracteres
-5. MÍNIMO 10 identificadores no mapa semântico
-6. MÍNIMO 3 critérios de aceitação
+## REGRAS OBRIGATÓRIAS
 
-Retorne APENAS o JSON."""
+1. **REUTILIZE os identificadores do Epic/Story/Task** (N1, ATTR1, API1, FILE1, FUNC1, etc.)
+2. **ESTENDA com identificadores ESPECÍFICOS** (CODE1, LINE1, etc.)
+3. **Critérios de Aceitação ESPECÍFICOS** - para esta subtask exata
+4. **description_markdown MÍNIMO 800 caracteres** com estrutura técnica
+5. **MÍNIMO 10 identificadores** no mapa semântico
+6. **MÍNIMO 3 critérios de aceitação** específicos
+7. **INCLUA**: código específico a escrever, arquivo e localização exata
+
+## EXEMPLO DE CRITÉRIOS DE ACEITAÇÃO ESPECÍFICOS:
+- "AC1: Arquivo src/models/User.ts modificado com novo campo 'avatar'"
+- "AC2: Função createUser atualizada para aceitar parâmetro 'avatarUrl'"
+- "AC3: Teste unitário adicionado para validar upload de avatar"
+
+## EXEMPLO DE CRITÉRIOS GENÉRICOS (NÃO USE):
+- "Código implementado" ❌
+- "Funciona corretamente" ❌
+
+Retorne APENAS o JSON, sem explicações."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
