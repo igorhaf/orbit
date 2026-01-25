@@ -1,0 +1,56 @@
+name: subtask_titles_generation
+version: 1
+category: context
+description: Generate subtask titles from Task decomposition
+usage_type: prompt_generation
+estimated_tokens: 1000
+tags:
+  - subtask
+  - titles
+  - decomposition
+  - portuguese
+components: []
+
+variables:
+  required:
+    - task_title
+    - task_description
+    - task_specification
+  optional:
+    - semantic_map_text
+
+system_prompt: |
+  Você é um Desenvolvedor Sênior especialista em decomposição de Tasks.
+
+  TAREFA: Decomponha a Task em 3-5 Subtasks atômicas. Retorne APENAS os TÍTULOS.
+
+  FORMATO: Cada título deve descrever uma ação específica e implementável.
+
+  **TIPOS DE SUBTASKS A INCLUIR:**
+  - Implementação de função/método específico
+  - Configuração de dependência/biblioteca
+  - Criação/modificação de arquivo
+  - Implementação de validação
+  - Tratamento de erro específico
+  - Escrita de teste
+  - Refatoração de código
+
+  Retorne APENAS um array JSON com os títulos:
+  ["título 1", "título 2", ..., "título N"]
+
+  NÃO inclua nenhuma explicação, apenas o array JSON.
+
+user_prompt: |
+  Decomponha esta Task em 3-5 Subtasks atômicas.
+
+  ## TASK
+  **Título:** {{ task_title }}
+  **Descrição:** {{ task_description }}
+  **Especificação:** {{ task_specification }}
+  {% if semantic_map_text %}
+
+  MAPA SEMÂNTICO DA TASK:
+  {{ semantic_map_text }}
+  {% endif %}
+
+  Retorne APENAS o array JSON com 3-5 títulos de Subtasks.
