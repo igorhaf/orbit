@@ -1,0 +1,133 @@
+name: fixed_questions_context
+version: 1
+category: interviews
+description: Fixed questions Q1-Q3 for Context Interview mode
+usage_type: interview
+estimated_tokens: 500
+tags:
+  - interview
+  - context
+  - fixed-questions
+  - portuguese
+components: []
+
+variables:
+  required:
+    - question_number
+  optional:
+    - project_name
+    - prefilled_value
+
+# Note: This prompt is used as a reference for the fixed questions in Context Interview.
+# The actual questions are returned as structured messages, not AI-generated.
+
+system_prompt: |
+  Este arquivo define as perguntas fixas para a Entrevista de Contexto.
+
+  A Entrevista de Contexto coleta informações fundamentais sobre o projeto
+  através de 3 perguntas fixas (Q1-Q3), seguidas por perguntas contextuais
+  geradas pela IA (Q4+).
+
+  **ESTRUTURA DAS PERGUNTAS FIXAS:**
+
+  ## Q1 - Título do Projeto
+  Confirma ou edita o nome do projeto.
+  - Tipo: text
+  - Campo: project_title
+  - Obrigatório: Sim
+  - Max Length: 255
+
+  ## Q2 - Declaração do Problema
+  Coleta a descrição do problema que o projeto resolve.
+  - Tipo: text
+  - Campo: problem_statement
+  - Obrigatório: Sim
+  - Min Length: 50
+
+  ## Q3 - Visão do Projeto
+  Coleta a visão geral do que o projeto deve fazer.
+  - Tipo: text
+  - Campo: project_vision
+  - Obrigatório: Sim
+  - Min Length: 50
+
+  **APÓS Q1-Q3:**
+  A IA assume e gera perguntas contextuais abertas (Q4+) para coletar
+  mais detalhes sobre o projeto. A entrevista é ILIMITADA - o usuário
+  decide quando terminar clicando em "Gerar Contexto".
+
+user_prompt: ""
+
+# Fixed questions content (reference only - actual implementation in Python)
+fixed_questions:
+  q1:
+    content: |
+      **Pergunta 1: Qual é o título do seu projeto?**
+
+      Confirme ou edite o nome do projeto que será desenvolvido.
+    question_type: text
+    field: project_title
+    required: true
+    max_length: 255
+    uses_prefilled: true
+
+  q2:
+    content: |
+      **Pergunta 2: Qual problema você quer resolver?**
+
+      Descreva o problema ou necessidade que motivou a criação deste projeto.
+      Seja específico sobre:
+      - Qual é a dor ou dificuldade atual?
+      - Quem sofre com esse problema?
+      - Quais são as consequências de não resolver?
+    question_type: text
+    field: problem_statement
+    required: true
+    min_length: 50
+
+  q3:
+    content: |
+      **Pergunta 3: Qual é a visão geral do projeto?**
+
+      Descreva o que o projeto deve fazer quando estiver pronto.
+      Não se preocupe com detalhes técnicos, foque em:
+      - O que o sistema faz?
+      - Quais são os principais resultados esperados?
+      - Como será o sucesso do projeto?
+    question_type: text
+    field: project_vision
+    required: true
+    min_length: 50
+
+# AI contextual prompt (for Q4+)
+ai_contextual_prompt: |
+  Você é um entrevistador especializado em levantamento de requisitos de software.
+
+  Você está conduzindo uma Entrevista de Contexto para o projeto "{{ project_name }}".
+
+  ## Conversa Anterior
+  {{ qa_summary }}
+
+  ## Sua Tarefa
+  Gere UMA pergunta aberta para coletar mais informações sobre o projeto.
+
+  ## Diretrizes
+  1. Faça perguntas que ajudem a entender:
+     - Quem são os usuários do sistema
+     - Quais funcionalidades são mais importantes
+     - Quais são as restrições técnicas ou de prazo
+     - Como o sucesso do projeto será medido
+     - Integrações com outros sistemas
+     - Requisitos de segurança e performance
+     - Fluxos de trabalho e processos
+
+  2. NÃO repita perguntas já feitas
+  3. Seja específico e direto
+  4. Use linguagem simples e acessível
+  5. Aprofunde em áreas importantes baseado nas respostas anteriores
+
+  ## Formato
+  Responda APENAS com a pergunta, formatada assim:
+  **Pergunta {{ question_count }}: [Sua pergunta aqui]**
+
+  [Contexto ou explicação breve se necessário]

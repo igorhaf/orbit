@@ -1,0 +1,147 @@
+name: epic_specification_simple
+version: 1
+category: context
+description: Simplified epic specification prompt (fallback mode when full spec fails)
+usage_type: prompt_generation
+estimated_tokens: 2500
+tags:
+  - context
+  - epic
+  - specification
+  - fallback
+  - portuguese
+components: []
+
+variables:
+  required:
+    - epic_title
+    - project_name
+    - epic_description
+  optional:
+    - context_preview
+
+system_prompt: |
+  Você é um Arquiteto de Software Sênior com 20 anos de experiência.
+
+  Sua tarefa é escrever uma ESPECIFICAÇÃO TÉCNICA COMPLETA E DETALHADA para um módulo de software.
+
+  REGRAS IMPORTANTES:
+  1. Seja EXTREMAMENTE ESPECÍFICO - use nomes reais de campos, tabelas, endpoints
+  2. NÃO use placeholders genéricos como "campo1", "tabela1", "endpoint1"
+  3. BASEIE-SE no contexto do projeto para gerar nomes e estruturas realistas
+  4. Cada seção deve ter MÍNIMO 5 itens detalhados
+  5. Use Markdown formatado corretamente
+  6. Responda APENAS em PORTUGUÊS
+
+  {% if context_preview %}
+  CONTEXTO DO PROJETO PARA REFERÊNCIA:
+  {{ context_preview }}
+
+  Use este contexto para gerar especificações REALISTAS e ESPECÍFICAS para o módulo solicitado.
+  {% endif %}
+
+user_prompt: |
+  # Especificação Técnica: {{ epic_title }}
+
+  **Projeto:** {{ project_name }}
+
+  **Descrição do Módulo:** {{ epic_description }}
+
+  Por favor, gere uma especificação técnica COMPLETA e DETALHADA para este módulo seguindo EXATAMENTE esta estrutura:
+
+  ---
+
+  ## 1. VISÃO GERAL
+  Escreva 2-3 parágrafos explicando:
+  - O propósito principal do módulo
+  - Como ele se integra com o restante do sistema
+  - O valor que ele entrega para o usuário
+
+  ---
+
+  ## 2. MODELO DE DADOS
+
+  ### Entidade Principal: [Nome da Entidade]
+  | Campo | Tipo | Obrigatório | Descrição |
+  |-------|------|-------------|-----------|
+  | id | uuid | Sim | Identificador único |
+  | ... | ... | ... | ... |
+
+  Liste MÍNIMO 10 campos com seus tipos de dados reais (string, text, integer, boolean, decimal, date, datetime, json, enum, etc.)
+
+  ### Relacionamentos
+  - [Entidade] tem muitos [Outra Entidade]
+  - etc.
+
+  ---
+
+  ## 3. REGRAS DE NEGÓCIO
+
+  Liste MÍNIMO 8 regras de negócio específicas no formato:
+  - **RN1 - [Nome]**: [Descrição detalhada da regra, quando se aplica, o que acontece]
+  - **RN2 - [Nome]**: ...
+
+  ---
+
+  ## 4. ESTADOS E TRANSIÇÕES
+
+  ### Estados Possíveis
+  | Estado | Descrição | Ações Permitidas |
+  |--------|-----------|------------------|
+  | ... | ... | ... |
+
+  ### Fluxo de Transições
+  1. [Estado A] → [Estado B]: quando [condição]
+  2. ...
+
+  ---
+
+  ## 5. INTERFACE DO USUÁRIO
+
+  ### Telas Principais
+  1. **[Nome da Tela]**
+     - Propósito: ...
+     - Componentes: ...
+     - Ações disponíveis: ...
+
+  Liste MÍNIMO 4 telas com detalhes.
+
+  ### Componentes Reutilizáveis
+  - [Componente 1]: [descrição]
+  - ...
+
+  ---
+
+  ## 6. API REST
+
+  ### Endpoints
+  | Método | Rota | Descrição | Request Body | Response |
+  |--------|------|-----------|--------------|----------|
+  | ... | ... | ... | ... | ... |
+
+  Liste MÍNIMO 6 endpoints.
+
+  ---
+
+  ## 7. INTEGRAÇÕES E SERVIÇOS
+
+  - [Serviço 1]: [como interage com o módulo]
+  - ...
+
+  ---
+
+  ## 8. SEGURANÇA E PERMISSÕES
+
+  - [Regra de segurança 1]
+  - ...
+
+  ---
+
+  ## 9. CONSIDERAÇÕES DE PERFORMANCE
+
+  - [Consideração 1]
+  - ...
+
+  ---
+
+  Gere a especificação técnica completa agora.
