@@ -8,18 +8,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import dynamic from 'next/dynamic';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui';
 import { FileCode, X } from 'lucide-react';
-
-// Dynamic import to avoid SSR issues
-const SyntaxHighlighter = dynamic(
-  () => import('react-syntax-highlighter').then((mod) => mod.Prism),
-  { ssr: false }
-);
-
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 
 interface Contract {
   name: string;
@@ -40,6 +31,26 @@ const CATEGORY_COLORS: Record<string, string> = {
   discovery: 'bg-pink-100 text-pink-800',
   interviews: 'bg-cyan-100 text-cyan-800',
 };
+
+// Simple YAML syntax highlighting using regex
+function highlightYaml(content: string): string {
+  return content
+    // Comments
+    .replace(/(#.*$)/gm, '<span class="text-gray-500">$1</span>')
+    // Keys (before colon)
+    .replace(/^(\s*)([a-zA-Z_][a-zA-Z0-9_]*)(:)/gm, '$1<span class="text-cyan-400">$2</span><span class="text-white">$3</span>')
+    // Strings in quotes
+    .replace(/"([^"]*)"/g, '<span class="text-green-400">"$1"</span>')
+    .replace(/'([^']*)'/g, '<span class="text-green-400">\'$1\'</span>')
+    // Numbers
+    .replace(/:\s*(\d+(\.\d+)?)\s*$/gm, ': <span class="text-yellow-400">$1</span>')
+    // Booleans
+    .replace(/:\s*(true|false)\s*$/gm, ': <span class="text-purple-400">$1</span>')
+    // Null
+    .replace(/:\s*(null|~)\s*$/gm, ': <span class="text-red-400">$1</span>')
+    // List items
+    .replace(/^(\s*)-\s/gm, '$1<span class="text-orange-400">-</span> ');
+}
 
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -203,17 +214,12 @@ export default function ContractsPage() {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
               ) : (
-                <SyntaxHighlighter
-                  language="yaml"
-                  style={vscDarkPlus}
-                  customStyle={{
-                    margin: 0,
-                    borderRadius: '0.5rem',
-                    fontSize: '0.875rem',
+                <pre
+                  className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto text-sm font-mono whitespace-pre-wrap"
+                  dangerouslySetInnerHTML={{
+                    __html: highlightYaml(selectedContract?.content || '')
                   }}
-                >
-                  {selectedContract?.content || ''}
-                </SyntaxHighlighter>
+                />
               )}
             </div>
           </div>
