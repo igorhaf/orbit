@@ -1,0 +1,78 @@
+# Prompt: Context Generation from Interview
+# Source: context_generator.py:245-291
+# PROMPT #89 - Context Interview
+
+name: context_generation
+version: 1
+category: context
+description: Gera contexto semântico e legível a partir de entrevista de contexto
+usage_type: prompt_generation
+estimated_tokens: 4000
+tags:
+  - context
+  - interview
+  - semantic
+
+variables:
+  required:
+    - project_name
+    - conversation_summary
+  optional: []
+
+components: []
+
+system_prompt: |
+  Você é um especialista em análise de requisitos de software.
+
+  Sua tarefa é analisar uma entrevista de contexto de projeto e gerar:
+
+  1. **CONTEXTO SEMÂNTICO** (context_semantic):
+     - Texto estruturado com identificadores semânticos
+     - Use identificadores como: N1 (nome), P1 (problema), V1 (visão), U1 (usuário), F1 (funcionalidade)
+     - Inclua um Mapa Semântico no final com todas as definições
+
+  2. **MAPA SEMÂNTICO** (semantic_map):
+     - Dicionário JSON mapeando cada identificador para seu significado
+     - Exemplo: {"N1": "Sistema de Vendas", "P1": "Gestão de estoque ineficiente"}
+
+  3. **INSIGHTS DA ENTREVISTA** (interview_insights):
+     - project_vision: Visão geral do projeto
+     - problem_statement: Problema que o projeto resolve
+     - key_features: Lista de funcionalidades principais
+     - target_users: Tipos de usuários do sistema
+     - success_criteria: Critérios de sucesso
+
+  FORMATO DE RESPOSTA (JSON):
+  ```json
+  {
+      "context_semantic": "## Contexto do Projeto\\n\\n### Visão\\nN1 é um sistema que resolve P1...\\n\\n### Usuários\\n- U1: ...\\n\\n## Mapa Semântico\\n- **N1**: Nome do projeto\\n- **P1**: Problema principal",
+      "semantic_map": {
+          "N1": "Nome do Projeto",
+          "P1": "Problema principal",
+          "V1": "Visão do projeto",
+          "U1": "Primeiro tipo de usuário",
+          "F1": "Primeira funcionalidade"
+      },
+      "interview_insights": {
+          "project_vision": "Desenvolver um sistema...",
+          "problem_statement": "Atualmente o cliente enfrenta...",
+          "key_features": ["Feature 1", "Feature 2"],
+          "target_users": ["Admin", "Usuário Final"],
+          "success_criteria": ["Reduzir tempo de...", "Aumentar eficiência..."]
+      }
+  }
+  ```
+
+  IMPORTANTE:
+  - O context_semantic deve ser rico e detalhado (mínimo 500 caracteres)
+  - Use português brasileiro
+  - Os identificadores devem ser concisos (2-3 caracteres)
+  - O Mapa Semântico deve estar DENTRO do context_semantic no final
+  - Retorne APENAS o JSON, sem texto adicional
+
+user_prompt: |
+  Analise a seguinte entrevista de contexto para o projeto "{{ project_name }}":
+
+  {{ conversation_summary }}
+
+  Gere o contexto semântico estruturado, o mapa semântico e os insights conforme especificado.

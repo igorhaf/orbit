@@ -18,6 +18,8 @@ from app.models.project import Project
 from app.models.spec import Spec, SpecScope
 from app.services.ai_orchestrator import AIOrchestrator
 from app.services.backlog_generator import BacklogGeneratorService
+# PROMPT #103 - External prompts support
+from app.prompts import get_prompt_service
 
 # Prompter Architecture (gradual migration via feature flags)
 try:

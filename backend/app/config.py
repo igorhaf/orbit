@@ -51,6 +51,14 @@ class Settings(BaseSettings):
         alias="DEFAULT_PROMPT_GENERATION_MODEL"
     )
 
+    # PROMPT #103: External Prompts Feature Flag
+    # When enabled, services load prompts from YAML files instead of hardcoded strings
+    # Default: False (use hardcoded prompts for backward compatibility)
+    use_external_prompts: bool = Field(
+        default=False,
+        alias="USE_EXTERNAL_PROMPTS"
+    )
+
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 

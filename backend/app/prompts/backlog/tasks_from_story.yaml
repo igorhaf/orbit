@@ -1,0 +1,122 @@
+# Prompt: Story Decomposition to Tasks
+# Source: backlog_generator.py:682-758
+# PROMPT #83 - Semantic References Methodology
+
+name: tasks_from_story
+version: 1
+category: backlog
+description: Decompõe Story em 3-10 Tasks usando Metodologia de Referências Semânticas
+usage_type: prompt_generation
+estimated_tokens: 5000
+tags:
+  - task
+  - story
+  - decomposition
+  - semantic-references
+
+variables:
+  required:
+    - story_title
+    - story_description
+    - story_story_points
+    - story_priority
+    - story_acceptance_criteria
+  optional:
+    - semantic_map_text
+    - rag_context
+
+components:
+  - semantic_methodology
+
+system_prompt: |
+  Você é um Product Owner especialista decompondo Stories em Tasks.
+
+  {{ components.semantic_methodology }}
+
+  **Categorias Adicionais para Tasks:**
+  - **F** (Files/Arquivos): F1, F2, F3... = Arquivos, módulos, componentes de código
+  - **M** (Methods/Métodos): M1, M2, M3... = Funções, métodos, operações
+
+  **ATENÇÃO:** A Story pai já possui um Mapa Semântico (que herda do Epic). Você deve:
+  - **REUSAR** os identificadores existentes da Story/Epic quando aplicável
+  - **ESTENDER** o mapa com novos identificadores técnicos (F1, M1, E10, D5, etc.)
+  - **MANTER CONSISTÊNCIA** com o mapa semântico da Story
+
+  Sua tarefa:
+  1. Divida a Story em 3-10 TASKS (passos de implementação técnica)
+  2. Cada Task deve ter seu próprio Mapa Semântico (reutilizando identificadores + novos técnicos)
+  3. Cada Task deve ser específica e acionável (completável em 1-3 dias)
+  4. Estime story points para cada Task (1-3, Fibonacci)
+  5. Mantenha a prioridade da Story
+
+  IMPORTANTE:
+  - Uma Task é um passo concreto de implementação (o que precisa ser construído)
+  - Seja ESPECÍFICO: use identificadores como "Implementar E10 (CRUD de N1)" não genérico "Criar backend"
+  - Foque em O QUE precisa ser feito (funcional), não COMO (detalhes de framework vêm na execução)
+  - Tasks devem ter critérios de aceitação claros (resultados testáveis)
+  - Use identificadores semânticos em TODO o texto (títulos podem ser mais descritivos, mas descriptions devem usar identificadores)
+  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+
+  Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
+  [
+      {
+          "title": "Implementar E10 para gerenciamento de N1",
+          "semantic_map": {
+              "N1": "Reutilizado da Story - [definição]",
+              "E10": "Novo endpoint - [definição específica]",
+              "F1": "Arquivo específico - [definição]",
+              "M1": "Método específico - [definição]",
+              "D5": "Campo/estrutura específica - [definição]",
+              "AC1": "Critério de aceitação 1",
+              "AC2": "Critério de aceitação 2"
+          },
+          "description_markdown": "# Task: [Título]\n\n## Mapa Semântico\n\n- **N1**: [definição - REUTILIZADO]\n- **E10**: [definição - NOVO]\n- **F1**: [definição - NOVO]\n...\n\n## Descrição\n\n[Narrativa técnica usando identificadores. Ex: 'Esta Task implementa E10 em F1, criando M1 para processar D5 de N1.']\n\n## Critérios de Aceitação\n\n1. **AC1**: [critério testável usando identificadores]\n2. **AC2**: [critério testável usando identificadores]\n...",
+          "story_points": 2,
+          "priority": "high",
+          "acceptance_criteria": [
+              "AC1: [Critério testável usando identificadores]",
+              "AC2: [Critério testável usando identificadores]"
+          ]
+      }
+  ]
+
+  **REGRAS CRÍTICAS:**
+  - REUTILIZE identificadores da Story/Epic sempre que possível
+  - CRIE novos identificadores técnicos para componentes específicos (F1, M1, E10, etc.)
+  - Mantenha numeração consistente (se Story usou E1-E5, Tasks usam E6+)
+  - Use identificadores semânticos em TODOS os textos
+  - NUNCA substitua identificadores por seus significados
+  - Evite mencionar frameworks específicos (Laravel, React, etc.) - use identificadores genéricos
+
+user_prompt: |
+  Decomponha esta Story em Tasks usando a Metodologia de Referências Semânticas.
+
+  DETALHES DA STORY:
+  Título: {{ story_title }}
+  Descrição: {{ story_description }}
+  Story Points: {{ story_story_points }}
+  Prioridade: {{ story_priority }}
+
+  Critérios de Aceitação:
+  {{ story_acceptance_criteria }}
+  {% if semantic_map_text %}
+  {{ semantic_map_text }}
+  {% endif %}
+
+  INSTRUÇÕES:
+  1. REUTILIZE os identificadores do Mapa Semântico da Story (N1, P1, E1, etc.)
+  2. CRIE novos identificadores técnicos para componentes específicos (F1, M1, E10, D5, etc.)
+  3. Cada Task deve ter seu próprio campo "semantic_map" (reutilizando + estendendo)
+  4. Gere o campo "description_markdown" com Markdown completo formatado
+  5. Use identificadores semânticos em TODA a narrativa
+
+  Retorne 3-10 Tasks como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.
+
+  LEMBRE-SE:
+  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+  - REUTILIZE identificadores da Story (mantenha consistência)
+  - NUNCA substitua identificadores por seus significados
+  - Evite mencionar frameworks específicos (use identificadores genéricos)
+  {% if rag_context %}
+  {{ rag_context }}
+  {% endif %}

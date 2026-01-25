@@ -1,0 +1,76 @@
+# Prompt: Commit Message Generation
+# Source: commit_generator.py:208-266
+# Uses Gemini via AIOrchestrator
+
+name: commit_message
+version: 1
+category: commits
+description: Gera mensagens de commit profissionais seguindo Conventional Commits
+usage_type: commit_generation
+estimated_tokens: 500
+tags:
+  - commit
+  - git
+  - conventional-commits
+
+variables:
+  required:
+    - task_title
+    - task_description
+    - task_status
+    - changes
+  optional: []
+
+components: []
+
+system_prompt: ""
+
+user_prompt: |
+  Generate a professional git commit message following Conventional Commits specification.
+
+  TASK INFORMATION:
+  Title: {{ task_title }}
+  Description: {{ task_description | default('No description') }}
+  Status: {{ task_status }}
+
+  CHANGES MADE:
+  {{ changes }}
+
+  CONVENTIONAL COMMIT TYPES:
+  - feat: New feature
+  - fix: Bug fix
+  - docs: Documentation only
+  - style: Code style/formatting (no logic change)
+  - refactor: Code refactoring
+  - test: Adding tests
+  - chore: Maintenance, dependencies
+  - perf: Performance improvement
+
+  FORMAT:
+  type(scope): subject
+
+  RULES:
+  1. Subject in lowercase
+  2. No period at end
+  3. Maximum 72 characters
+  4. Be specific and clear
+  5. Use English
+  6. Use imperative mood (e.g., "add" not "added")
+
+  EXAMPLES:
+  - feat(auth): implement JWT authentication
+  - fix(api): resolve database connection timeout
+  - docs(readme): update installation guide
+  - refactor(user): simplify profile update logic
+  - perf(query): optimize database indexes
+
+  RESPONSE FORMAT (JSON):
+  {
+    "type": "feat",
+    "scope": "auth",
+    "subject": "implement JWT authentication",
+    "description": "Brief explanation of what was done"
+  }
+
+  Generate the commit message based on the task and changes above.
+  Return ONLY the JSON, no markdown or extra text.

@@ -26,6 +26,8 @@ from app.schemas.pattern_discovery import DiscoveredPattern, FileGroup
 from app.services.ai_orchestrator import AIOrchestrator
 from app.models.spec import Spec, SpecScope
 from sqlalchemy.orm import Session
+# PROMPT #103 - External prompts support
+from app.prompts import get_prompt_service
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +58,8 @@ class PatternDiscoveryService:
         """
         self.db = db
         self.ai_orchestrator = AIOrchestrator(db)
+        # PROMPT #103 - Use PromptService for external prompts
+        self.prompt_service = get_prompt_service(db)
 
         # Default ignore patterns (common noise files)
         self.default_ignore_patterns = [

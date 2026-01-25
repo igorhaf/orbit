@@ -13,6 +13,8 @@ import logging
 from app.models.task import Task
 from app.models.commit import Commit
 from app.models.chat_session import ChatSession
+# PROMPT #103 - External prompts support
+from app.prompts import get_prompt_service
 
 logger = logging.getLogger(__name__)
 

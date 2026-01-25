@@ -1,0 +1,29 @@
+# Component: Project Context Template
+# Template for including project context in prompts
+# Used in: All prompts that need project information
+
+name: project_context
+version: 1
+category: component
+description: Template padrão para contexto de projeto
+
+content: |
+  **INFORMAÇÕES DO PROJETO:**
+  - Nome: {{ project_name }}
+  {% if project_description %}
+  - Descrição: {{ project_description }}
+  {% endif %}
+  {% if stack_backend %}
+  - Backend: {{ stack_backend }}
+  {% endif %}
+  {% if stack_frontend %}
+  - Frontend: {{ stack_frontend }}
+  {% endif %}
+  {% if stack_database %}
+  - Database: {{ stack_database }}
+  {% endif %}
+  {% if context_human %}
+
+  **CONTEXTO DO PROJETO:**
+  {{ context_human }}
+  {% endif %}

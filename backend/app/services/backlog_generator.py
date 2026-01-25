@@ -16,6 +16,7 @@ from app.models.spec import Spec, SpecScope
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
 from app.prompter.facade import PrompterFacade
+from app.prompts import PromptService, get_prompt_service
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,8 @@ class BacklogGeneratorService:
         self.prompter = PrompterFacade(db)
         # Keep orchestrator as fallback
         self.orchestrator = AIOrchestrator(db)
+        # PROMPT #103 - Use PromptService for external prompts
+        self.prompt_service = get_prompt_service(db)
 
     async def generate_epic_from_interview(
         self,

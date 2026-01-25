@@ -28,6 +28,8 @@ from app.services.task_execution.project_spec_fetcher import ProjectSpecFetcher
 from app.services.task_execution.context_builder import ContextBuilder
 from app.services.task_execution.budget_manager import BudgetManager
 from app.services.task_execution.batch_executor import BatchExecutor
+# PROMPT #103 - External prompts support
+from app.prompts import get_prompt_service
 import anthropic
 import time
 import os
