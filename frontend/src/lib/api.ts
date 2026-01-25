@@ -288,43 +288,114 @@ export const tasksApi = {
 
   // PROMPT #94 - Activate/Reject Suggested Epics
   // PROMPT #102 - Extended to support all item types with hierarchical draft generation
+  // PROMPT #108 - Returns job_id for polling (background execution)
   activateSuggestedEpic: (taskId: string) =>
     request<{
-      id: string;
-      title: string;
-      description: string | null;
-      generated_prompt: string | null;
-      acceptance_criteria: string[] | null;
-      story_points: number | null;
-      priority: string;
-      activated: boolean;
-      children_generated?: number;  // PROMPT #102 - Number of draft children auto-generated
+      job_id: string;
+      status: string;
+      message: string;
     }>(`/api/v1/tasks/${taskId}/activate`, {
       method: 'POST',
     }),
+
+  // PROMPT #108 - Activate with polling (waits for completion)
+  activateSuggestedEpicWithPolling: async (
+    taskId: string,
+    onProgress?: (percent: number, message: string | null) => void
+  ) => {
+    const { job_id } = await tasksApi.activateSuggestedEpic(taskId);
+    return jobsApi.poll(job_id, onProgress);
+  },
 
   rejectSuggestedEpic: (taskId: string) =>
     request<void>(`/api/v1/tasks/${taskId}/reject`, {
       method: 'DELETE',
     }),
+
+  // PROMPT #108 - Execute single task (returns job_id)
+  execute: (taskId: string, maxAttempts: number = 3) =>
+    request<{
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`/api/v1/tasks/${taskId}/execute`, {
+      method: 'POST',
+      body: JSON.stringify({ max_attempts: maxAttempts }),
+    }),
+
+  // PROMPT #108 - Execute all tasks in project (returns job_id)
+  executeAll: (projectId: string) =>
+    request<{
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`/api/v1/tasks/projects/${projectId}/execute-all`, {
+      method: 'POST',
+    }),
 };
 
 // Backlog Generation API (JIRA Transformation - PROMPT #62)
+// PROMPT #108 - Generate methods now return job_id for polling
 export const backlogGenerationApi = {
+  // Returns job_id - use jobsApi.poll() to wait for result
   generateEpic: (interviewId: string, projectId: string) =>
-    request<any>(`/api/v1/backlog/interview/${interviewId}/generate-epic?project_id=${projectId}`, {
+    request<{
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`/api/v1/backlog/interview/${interviewId}/generate-epic?project_id=${projectId}`, {
       method: 'POST',
     }),
 
+  // PROMPT #108 - Generate with polling (waits for completion)
+  generateEpicWithPolling: async (
+    interviewId: string,
+    projectId: string,
+    onProgress?: (percent: number, message: string | null) => void
+  ) => {
+    const { job_id } = await backlogGenerationApi.generateEpic(interviewId, projectId);
+    return jobsApi.poll(job_id, onProgress);
+  },
+
+  // Returns job_id - use jobsApi.poll() to wait for result
   generateStories: (epicId: string, projectId: string) =>
-    request<any>(`/api/v1/backlog/epic/${epicId}/generate-stories?project_id=${projectId}`, {
+    request<{
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`/api/v1/backlog/epic/${epicId}/generate-stories?project_id=${projectId}`, {
       method: 'POST',
     }),
 
+  // PROMPT #108 - Generate with polling
+  generateStoriesWithPolling: async (
+    epicId: string,
+    projectId: string,
+    onProgress?: (percent: number, message: string | null) => void
+  ) => {
+    const { job_id } = await backlogGenerationApi.generateStories(epicId, projectId);
+    return jobsApi.poll(job_id, onProgress);
+  },
+
+  // Returns job_id - use jobsApi.poll() to wait for result
   generateTasks: (storyId: string, projectId: string) =>
-    request<any>(`/api/v1/backlog/story/${storyId}/generate-tasks?project_id=${projectId}`, {
+    request<{
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`/api/v1/backlog/story/${storyId}/generate-tasks?project_id=${projectId}`, {
       method: 'POST',
     }),
+
+  // PROMPT #108 - Generate with polling
+  generateTasksWithPolling: async (
+    storyId: string,
+    projectId: string,
+    onProgress?: (percent: number, message: string | null) => void
+  ) => {
+    const { job_id } = await backlogGenerationApi.generateTasks(storyId, projectId);
+    return jobsApi.poll(job_id, onProgress);
+  },
 
   approveEpic: (suggestion: any, projectId: string, interviewId: string) =>
     request<any>(`/api/v1/backlog/approve-epic?project_id=${projectId}&interview_id=${interviewId}`, {
@@ -609,6 +680,7 @@ export const chatSessionsApi = {
 };
 
 // Commits API
+// PROMPT #108 - Generate methods now return job_id for polling
 export const commitsApi = {
   list: (params?: any) => request<any>('/api/v1/commits/'),
 
@@ -634,16 +706,45 @@ export const commitsApi = {
     return request<any>(`/api/v1/commits/types/statistics${params}`);
   },
 
+  // PROMPT #108 - Returns job_id for polling
   autoGenerate: (chatSessionId: string) =>
-    request<any>(`/api/v1/commits/auto-generate/${chatSessionId}`, {
+    request<{
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`/api/v1/commits/auto-generate/${chatSessionId}`, {
       method: 'POST',
     }),
 
+  // PROMPT #108 - Generate with polling (waits for completion)
+  autoGenerateWithPolling: async (
+    chatSessionId: string,
+    onProgress?: (percent: number, message: string | null) => void
+  ) => {
+    const { job_id } = await commitsApi.autoGenerate(chatSessionId);
+    return jobsApi.poll(job_id, onProgress);
+  },
+
+  // PROMPT #108 - Returns job_id for polling
   generateManual: (taskId: string, data: { description: string }) =>
-    request<any>(`/api/v1/commits/generate-manual/${taskId}`, {
+    request<{
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`/api/v1/commits/generate-manual/${taskId}`, {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  // PROMPT #108 - Generate with polling (waits for completion)
+  generateManualWithPolling: async (
+    taskId: string,
+    data: { description: string },
+    onProgress?: (percent: number, message: string | null) => void
+  ) => {
+    const { job_id } = await commitsApi.generateManual(taskId, data);
+    return jobsApi.poll(job_id, onProgress);
+  },
 };
 
 // System Settings API
@@ -726,21 +827,27 @@ export const analyzersApi = {
     request<any>(`/api/v1/analyzers/${id}/orchestrator-code`),
 };
 
+// Job status type
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface JobResponse {
+  id: string;
+  job_type: string;
+  status: JobStatus;
+  progress_percent: number | null;
+  progress_message: string | null;
+  result: any | null;
+  error: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 // Jobs API (PROMPT #65 - Async Job System)
+// PROMPT #108 - Added polling utility for background queue
 export const jobsApi = {
   get: (jobId: string) =>
-    request<{
-      id: string;
-      job_type: string;
-      status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-      progress_percent: number | null;
-      progress_message: string | null;
-      result: any | null;
-      error: string | null;
-      created_at: string;
-      started_at: string | null;
-      completed_at: string | null;
-    }>(`/api/v1/jobs/${jobId}`),
+    request<JobResponse>(`/api/v1/jobs/${jobId}`),
 
   delete: (jobId: string) =>
     request<void>(`/api/v1/jobs/${jobId}`, { method: 'DELETE' }),
@@ -750,6 +857,47 @@ export const jobsApi = {
     request<{ id: string; status: string; message: string }>(`/api/v1/jobs/${jobId}/cancel`, {
       method: 'PATCH',
     }),
+
+  // PROMPT #108 - Poll until job completes
+  // Returns the job result when completed, throws error when failed
+  poll: async (
+    jobId: string,
+    onProgress?: (percent: number, message: string | null) => void,
+    intervalMs: number = 1000,
+    timeoutMs: number = 300000 // 5 min timeout
+  ): Promise<any> => {
+    const startTime = Date.now();
+
+    while (true) {
+      const job = await jobsApi.get(jobId);
+
+      // Update progress callback
+      if (onProgress && job.progress_percent !== null) {
+        onProgress(job.progress_percent, job.progress_message);
+      }
+
+      // Check final states
+      if (job.status === 'completed') {
+        return job.result;
+      }
+
+      if (job.status === 'failed') {
+        throw new Error(job.error || 'Job failed');
+      }
+
+      if (job.status === 'cancelled') {
+        throw new Error('Job was cancelled');
+      }
+
+      // Check timeout
+      if (Date.now() - startTime > timeoutMs) {
+        throw new Error('Job polling timeout');
+      }
+
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    }
+  },
 };
 
 // Consistency Issues API

@@ -1,6 +1,7 @@
 """
 Commits API Router
 CRUD operations for managing conventional commits.
+PROMPT #108 - Moved generation to background queue
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -8,13 +9,27 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.commit import Commit, CommitType
+from app.models.async_job import JobType
 from app.schemas.commit import CommitCreate, CommitResponse, CommitManualGenerateRequest
 from app.api.dependencies import get_commit_or_404
+from app.services.job_manager import JobManager
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+# PROMPT #108 - Response model for background job
+class CommitJobResponse(BaseModel):
+    """Response model for async commit generation job."""
+    job_id: str
+    status: str
+    message: str
 
 
 @router.get("/", response_model=List[CommitResponse])
@@ -180,31 +195,27 @@ async def get_commit_type_statistics(
     }
 
 
-@router.post("/auto-generate/{chat_session_id}", response_model=CommitResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/auto-generate/{chat_session_id}", response_model=CommitJobResponse)
 async def auto_generate_commit(
     chat_session_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Gera commit automaticamente a partir de uma chat session usando IA (Gemini).
+    Gera commit automaticamente a partir de uma chat session usando IA (Gemini) - ASYNC.
 
-    Este endpoint:
-    1. Busca a chat session e task associada
-    2. Extrai o contexto das mudanças da conversa
-    3. Usa AI Orchestrator (Gemini) para gerar commit message
-    4. Segue Conventional Commits specification
-    5. Salva o commit no banco de dados
+    PROMPT #108 - Moved to background queue
 
-    - **chat_session_id**: UUID da chat session
+    Este endpoint agora roda assincronamente em background.
+    Poll GET /api/v1/jobs/{job_id} para obter progresso e resultado.
 
-    Returns:
-        Commit gerado com message, type e metadata
+    Returns immediately:
+    {
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Commit generation started. Poll GET /api/v1/jobs/{job_id} for progress."
+    }
     """
-    from app.services.commit_generator import CommitGenerator
     from app.models.chat_session import ChatSession
-    import logging
-
-    logger = logging.getLogger(__name__)
 
     # Buscar session para pegar task_id
     session = db.query(ChatSession).filter(
@@ -217,74 +228,215 @@ async def auto_generate_commit(
             detail=f"Chat session {chat_session_id} not found"
         )
 
-    # Gerar commit usando IA
-    try:
-        generator = CommitGenerator()
-        commit = await generator.generate_from_task_completion(
-            task_id=str(session.task_id),
-            chat_session_id=str(chat_session_id),
-            db=db
+    # Create job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.COMMIT_GENERATION,
+        input_data={
+            "operation": "auto_generate",
+            "chat_session_id": str(chat_session_id),
+            "task_id": str(session.task_id)
+        },
+        project_id=session.project_id if hasattr(session, 'project_id') else None
+    )
+
+    logger.info(f"Created commit generation job {job.id} for chat session {chat_session_id}")
+
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _generate_commit_auto_async(
+            job_id=job.id,
+            task_id=session.task_id,
+            chat_session_id=chat_session_id
         )
+    )
 
-        return commit
-
-    except ValueError as e:
-        logger.error(f"Validation error during commit generation: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        logger.error(f"Failed to generate commit: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate commit: {str(e)}"
-        )
+    # Return job_id immediately
+    return CommitJobResponse(
+        job_id=str(job.id),
+        status="pending",
+        message=f"Commit generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+    )
 
 
-@router.post("/generate-manual/{task_id}", response_model=CommitResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/generate-manual/{task_id}", response_model=CommitJobResponse)
 async def generate_manual_commit(
     task_id: UUID,
     commit_request: CommitManualGenerateRequest,
     db: Session = Depends(get_db)
 ):
     """
-    Gera commit manualmente com descrição fornecida pelo usuário.
+    Gera commit manualmente com descrição fornecida pelo usuário - ASYNC.
 
-    Este endpoint permite ao usuário fornecer uma descrição das mudanças
-    e a IA (Gemini) gera uma commit message profissional seguindo
-    Conventional Commits.
+    PROMPT #108 - Moved to background queue
+
+    Este endpoint agora roda assincronamente em background.
+    Poll GET /api/v1/jobs/{job_id} para obter progresso e resultado.
 
     - **task_id**: UUID da task
     - **description**: Descrição das mudanças feitas
 
-    Returns:
-        Commit gerado
+    Returns immediately:
+    {
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Commit generation started. Poll GET /api/v1/jobs/{job_id} for progress."
+    }
     """
-    from app.services.commit_generator import CommitGenerator
-    import logging
+    from app.models.task import Task
 
-    logger = logging.getLogger(__name__)
+    # Verify task exists
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found"
+        )
+
+    # Create job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.COMMIT_GENERATION,
+        input_data={
+            "operation": "manual_generate",
+            "task_id": str(task_id),
+            "description": commit_request.description
+        },
+        project_id=task.project_id
+    )
+
+    logger.info(f"Created manual commit generation job {job.id} for task {task_id}")
+
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _generate_commit_manual_async(
+            job_id=job.id,
+            task_id=task_id,
+            description=commit_request.description
+        )
+    )
+
+    # Return job_id immediately
+    return CommitJobResponse(
+        job_id=str(job.id),
+        status="pending",
+        message=f"Commit generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+    )
+
+
+# ============================================================================
+# PROMPT #108 - BACKGROUND TASK FUNCTIONS
+# ============================================================================
+
+async def _generate_commit_auto_async(
+    job_id: UUID,
+    task_id: UUID,
+    chat_session_id: UUID
+):
+    """
+    Background task to auto-generate commit from chat session.
+
+    PROMPT #108 - Background queue for prompt executions
+    """
+    from app.database import SessionLocal
+    from app.services.commit_generator import CommitGenerator
+
+    db = SessionLocal()
 
     try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Starting commit generation job {job_id} for chat session {chat_session_id}")
+
+        job_manager.update_progress(job_id, 10.0, "Analyzing chat session...")
+
         generator = CommitGenerator()
-        commit = await generator.generate_manual(
+        commit = await generator.generate_from_task_completion(
             task_id=str(task_id),
-            changes_description=commit_request.description,
+            chat_session_id=str(chat_session_id),
             db=db
         )
 
-        return commit
+        job_manager.update_progress(job_id, 90.0, "Commit generated!")
 
-    except ValueError as e:
-        logger.error(f"Validation error during manual commit generation: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        logger.info(f"✅ Commit generation job {job_id} completed")
+
+        # Complete job with result (CommitResponse format)
+        job_manager.complete_job(job_id, {
+            "id": str(commit.id),
+            "project_id": str(commit.project_id) if commit.project_id else None,
+            "task_id": str(commit.task_id) if commit.task_id else None,
+            "type": commit.type.value if commit.type else None,
+            "scope": commit.scope,
+            "subject": commit.subject,
+            "body": commit.body,
+            "message": commit.message,
+            "timestamp": commit.timestamp.isoformat() if commit.timestamp else None,
+            "metadata": commit.metadata
+        })
+
     except Exception as e:
-        logger.error(f"Failed to generate manual commit: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate manual commit: {str(e)}"
+        logger.error(f"❌ Commit generation job {job_id} failed: {e}")
+        job_manager = JobManager(db)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
+async def _generate_commit_manual_async(
+    job_id: UUID,
+    task_id: UUID,
+    description: str
+):
+    """
+    Background task to generate commit from manual description.
+
+    PROMPT #108 - Background queue for prompt executions
+    """
+    from app.database import SessionLocal
+    from app.services.commit_generator import CommitGenerator
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Starting manual commit generation job {job_id} for task {task_id}")
+
+        job_manager.update_progress(job_id, 10.0, "Generating commit message...")
+
+        generator = CommitGenerator()
+        commit = await generator.generate_manual(
+            task_id=str(task_id),
+            changes_description=description,
+            db=db
         )
+
+        job_manager.update_progress(job_id, 90.0, "Commit generated!")
+
+        logger.info(f"✅ Manual commit generation job {job_id} completed")
+
+        # Complete job with result (CommitResponse format)
+        job_manager.complete_job(job_id, {
+            "id": str(commit.id),
+            "project_id": str(commit.project_id) if commit.project_id else None,
+            "task_id": str(commit.task_id) if commit.task_id else None,
+            "type": commit.type.value if commit.type else None,
+            "scope": commit.scope,
+            "subject": commit.subject,
+            "body": commit.body,
+            "message": commit.message,
+            "timestamp": commit.timestamp.isoformat() if commit.timestamp else None,
+            "metadata": commit.metadata
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Manual commit generation job {job_id} failed: {e}")
+        job_manager = JobManager(db)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()

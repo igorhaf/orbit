@@ -486,115 +486,158 @@ async def get_kanban_board(
 
 
 # Task Execution Endpoints
+# PROMPT #108 - Moved to background queue
 
-@router.post("/{task_id}/execute", response_model=TaskResultResponse)
+
+class ExecuteJobResponse(BaseModel):
+    """Response model for async task execution job."""
+    job_id: str
+    status: str
+    message: str
+
+
+@router.post("/{task_id}/execute", response_model=ExecuteJobResponse)
 async def execute_task(
     task_id: UUID,
     request: TaskExecuteRequest = Body(default=TaskExecuteRequest()),
     db: Session = Depends(get_db)
 ):
     """
-    Executa uma task específica com validação automática
+    Executa uma task específica com validação automática - ASYNC.
+
+    PROMPT #108 - Moved to background queue
 
     POST /api/v1/tasks/{task_id}/execute
 
-    Body:
+    This endpoint now runs asynchronously in the background.
+    Poll GET /api/v1/jobs/{job_id} for progress and result.
+
+    Returns immediately:
     {
-        "max_attempts": 3  // Número máximo de tentativas se validação falhar
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Task execution started. Poll GET /api/v1/jobs/{job_id} for progress."
     }
 
-    Retorna:
-    - Código gerado
-    - Métricas (tokens, custo, tempo)
-    - Validação (passed, issues)
-    - Número de tentativas necessárias
-
-    Custo estimado:
-    - Tasks simples (Haiku): ~$0.005
-    - Tasks complexas (Sonnet): ~$0.035
+    Poll /api/v1/jobs/{job_id} to get:
+    - status: "running" with progress_percent and progress_message
+    - status: "completed" with result (TaskResultResponse format)
+    - status: "failed" with error message
     """
+    from app.models.async_job import JobType
+    from app.services.job_manager import JobManager
 
-    try:
-        # Buscar task para obter project_id
-        task = db.query(Task).filter(Task.id == task_id).first()
+    # Buscar task para obter project_id
+    task = db.query(Task).filter(Task.id == task_id).first()
 
-        if not task:
-            raise HTTPException(status_code=404, detail="Task not found")
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
 
-        project_id = str(task.project_id)
+    # Create job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.TASK_EXECUTION,
+        input_data={
+            "task_id": str(task_id),
+            "project_id": str(task.project_id),
+            "max_attempts": request.max_attempts,
+            "task_title": task.title
+        },
+        project_id=task.project_id
+    )
 
-        # Executar
-        executor = TaskExecutor(db)
-        result = await executor.execute_task(
-            task_id=str(task_id),
-            project_id=project_id,
+    logger.info(f"Created task execution job {job.id} for task {task_id}")
+
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _execute_task_async(
+            job_id=job.id,
+            task_id=task_id,
+            project_id=task.project_id,
             max_attempts=request.max_attempts
         )
+    )
 
-        return result
-
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to execute task {task_id}: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to execute task: {str(e)}"
-        )
+    # Return job_id immediately
+    return ExecuteJobResponse(
+        job_id=str(job.id),
+        status="pending",
+        message=f"Task execution started. Poll GET /api/v1/jobs/{job.id} for progress."
+    )
 
 
-@router.post("/projects/{project_id}/execute-all", response_model=BatchExecuteResponse)
+@router.post("/projects/{project_id}/execute-all", response_model=ExecuteJobResponse)
 async def execute_all_tasks(
     project_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Executa todas as tasks de um projeto
+    Executa todas as tasks de um projeto - ASYNC.
+
+    PROMPT #108 - Moved to background queue
 
     POST /api/v1/tasks/projects/{project_id}/execute-all
+
+    This endpoint now runs asynchronously in the background.
+    Poll GET /api/v1/jobs/{job_id} for progress and result.
 
     Respeita dependências entre tasks (executa em ordem topológica).
     Tasks sem dependências são executadas primeiro.
 
-    Retorna:
-    - Total de tasks
-    - Número de sucessos
-    - Número de falhas
-    - Resultados de cada task
+    Returns immediately:
+    {
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Batch execution started. Poll GET /api/v1/jobs/{job_id} for progress."
+    }
 
-    Custo estimado para projeto com 5 tasks:
-    - ~$0.085 (3x Haiku + 2x Sonnet)
+    Poll /api/v1/jobs/{job_id} to get:
+    - status: "running" with progress (e.g., "Task 3/10 executing...")
+    - status: "completed" with result (BatchExecuteResponse format)
+    - status: "failed" with error message
     """
+    from app.models.async_job import JobType
+    from app.services.job_manager import JobManager
 
-    try:
-        # Buscar todas tasks do projeto
-        tasks = db.query(Task).filter(Task.project_id == project_id).all()
+    # Buscar todas tasks do projeto
+    tasks = db.query(Task).filter(Task.project_id == project_id).all()
 
-        if not tasks:
-            raise HTTPException(status_code=404, detail="No tasks found for project")
+    if not tasks:
+        raise HTTPException(status_code=404, detail="No tasks found for project")
 
-        task_ids = [str(t.id) for t in tasks]
+    task_ids = [str(t.id) for t in tasks]
 
-        # Executar batch
-        executor = TaskExecutor(db)
-        results = await executor.execute_batch(task_ids, str(project_id))
+    # Create job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.BATCH_EXECUTION,
+        input_data={
+            "project_id": str(project_id),
+            "task_ids": task_ids,
+            "total_tasks": len(task_ids)
+        },
+        project_id=project_id
+    )
 
-        succeeded = sum(1 for r in results if r.validation_passed)
-        failed = len(results) - succeeded
+    logger.info(f"Created batch execution job {job.id} for project {project_id} with {len(task_ids)} tasks")
 
-        return BatchExecuteResponse(
-            total=len(results),
-            succeeded=succeeded,
-            failed=failed,
-            results=results
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _execute_batch_async(
+            job_id=job.id,
+            task_ids=task_ids,
+            project_id=project_id
         )
+    )
 
-    except Exception as e:
-        logger.error(f"Failed to execute batch for project {project_id}: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to execute batch: {str(e)}"
-        )
+    # Return job_id immediately
+    return ExecuteJobResponse(
+        job_id=str(job.id),
+        status="pending",
+        message=f"Batch execution started for {len(task_ids)} tasks. Poll GET /api/v1/jobs/{job.id} for progress."
+    )
 
 
 @router.get("/{task_id}/result", response_model=TaskResultResponse)
@@ -1682,6 +1725,7 @@ async def get_blocking_analytics(
 
 # ============================================================================
 # PROMPT #94 - ACTIVATE/REJECT SUGGESTED EPICS
+# PROMPT #108 - Moved to background queue
 # ============================================================================
 
 class ActivateEpicResponse(BaseModel):
@@ -1697,60 +1741,52 @@ class ActivateEpicResponse(BaseModel):
     children_generated: Optional[int] = 0  # PROMPT #102 - Number of draft children generated
 
 
-@router.post("/{task_id}/activate", response_model=ActivateEpicResponse)
+class ActivateJobResponse(BaseModel):
+    """Response model for async activation job."""
+    job_id: str
+    status: str
+    message: str
+
+
+@router.post("/{task_id}/activate", response_model=ActivateJobResponse)
 async def activate_suggested_item(
     task_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Activate a suggested item (Epic, Story, Task, or Subtask).
+    Activate a suggested item (Epic, Story, Task, or Subtask) - ASYNC.
 
     PROMPT #94 - Original Activate Suggested Epic
     PROMPT #102 - Extended to support all item types with hierarchical draft generation
+    PROMPT #108 - Moved to background queue for better UX
+
+    This endpoint now runs asynchronously in the background.
+    Poll GET /api/v1/jobs/{job_id} for progress and result.
 
     When user approves a suggested item:
-    1. Fetch project context (context_semantic, context_human)
-    2. Generate full item content using AI:
-       - Semantic markdown (generated_prompt) for AI/child cards
-       - Human description for reading
-       - Acceptance criteria
-       - Story points estimation
-    3. Update item:
-       - Remove "suggested" label
-       - Change workflow_state from "draft" to "open"
-       - Add generated content
-    4. Auto-generate draft children based on item type:
-       - Epic → 15-20 draft Stories
-       - Story → 5-8 draft Tasks
-       - Task → 3-5 draft Subtasks
-       - Subtask → No children (leaf level)
+    1. Creates a background job
+    2. Returns job_id immediately
+    3. Background task:
+       - Fetches project context
+       - Generates full item content using AI
+       - Auto-generates draft children
 
     POST /api/v1/tasks/{task_id}/activate
 
-    Requirements:
-    - Task must have labels=["suggested"] or workflow_state="draft"
-    - Project must have context_semantic (Context Interview completed)
-
-    Returns:
-    - The activated item with full content and children_generated count
-
-    Example response:
+    Returns immediately:
     {
-        "id": "uuid",
-        "title": "Autenticação e Autorização",
-        "description": "Sistema completo de autenticação...",
-        "generated_prompt": "# Epic: Autenticação\\n\\n## Mapa Semântico...",
-        "acceptance_criteria": ["AC1: ...", "AC2: ..."],
-        "story_points": 13,
-        "priority": "critical",
-        "activated": true,
-        "children_generated": 18
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Activation started. Poll GET /api/v1/jobs/{job_id} for progress."
     }
-    """
-    from app.services.context_generator import ContextGeneratorService
-    from app.models.task import Task, ItemType
 
-    context_service = ContextGeneratorService(db)
+    Poll /api/v1/jobs/{job_id} to get:
+    - status: "running" with progress_percent and progress_message
+    - status: "completed" with result (ActivateEpicResponse format)
+    - status: "failed" with error message
+    """
+    from app.models.async_job import JobType
+    from app.services.job_manager import JobManager
 
     # Fetch the task to determine its type
     task = db.query(Task).filter(Task.id == task_id).first()
@@ -1760,37 +1796,45 @@ async def activate_suggested_item(
             detail=f"Item {task_id} not found"
         )
 
-    try:
-        # PROMPT #102 - Call appropriate activation function based on item type
-        if task.item_type == ItemType.EPIC:
-            result = await context_service.activate_suggested_epic(epic_id=task_id)
-        elif task.item_type == ItemType.STORY:
-            result = await context_service.activate_suggested_story(story_id=task_id)
-        elif task.item_type == ItemType.TASK:
-            result = await context_service.activate_suggested_task(task_id=task_id)
-        elif task.item_type == ItemType.SUBTASK:
-            result = await context_service.activate_suggested_subtask(subtask_id=task_id)
-        else:
-            # Fallback to epic activation for unknown types
-            result = await context_service.activate_suggested_epic(epic_id=task_id)
+    # Determine job type based on item type
+    job_type_map = {
+        ItemType.EPIC: JobType.EPIC_ACTIVATION,
+        ItemType.STORY: JobType.STORY_ACTIVATION,
+        ItemType.TASK: JobType.TASK_ACTIVATION,
+        ItemType.SUBTASK: JobType.SUBTASK_ACTIVATION,
+    }
+    job_type = job_type_map.get(task.item_type, JobType.EPIC_ACTIVATION)
 
-        children_count = result.get('children_generated', 0)
+    # Create job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=job_type,
+        input_data={
+            "task_id": str(task_id),
+            "item_type": task.item_type.value,
+            "title": task.title
+        },
+        project_id=task.project_id
+    )
 
-        logger.info(
-            f"✅ Suggested {task.item_type.value} activated: {task_id}\n"
-            f"   Title: {result['title']}\n"
-            f"   Description: {len(result.get('description', ''))} chars\n"
-            f"   Generated Prompt: {len(result.get('generated_prompt', ''))} chars\n"
-            f"   Children Generated: {children_count}"
+    logger.info(f"Created activation job {job.id} for {task.item_type.value} {task_id}")
+
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _activate_item_async(
+            job_id=job.id,
+            task_id=task_id,
+            item_type=task.item_type
         )
+    )
 
-        return ActivateEpicResponse(**result)
-
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+    # Return job_id immediately
+    return ActivateJobResponse(
+        job_id=str(job.id),
+        status="pending",
+        message=f"Activation started for {task.item_type.value}. Poll GET /api/v1/jobs/{job.id} for progress."
+    )
 
 
 @router.delete("/{task_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
@@ -1836,3 +1880,204 @@ async def reject_suggested_epic(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+
+
+# ============================================================================
+# PROMPT #108 - BACKGROUND TASK FUNCTIONS
+# ============================================================================
+
+async def _activate_item_async(
+    job_id: UUID,
+    task_id: UUID,
+    item_type: ItemType
+):
+    """
+    Background task to activate a suggested item (Epic, Story, Task, Subtask).
+
+    PROMPT #108 - Background queue for prompt executions
+
+    This can take 30-120 seconds depending on item type:
+    - Epic: Generate content + 15-20 story drafts
+    - Story: Generate content + 5-8 task drafts
+    - Task: Generate content + 3-5 subtask drafts
+    - Subtask: Generate content only
+
+    Updates job progress at each step.
+    """
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.services.context_generator import ContextGeneratorService
+
+    # Create new DB session for background task
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Starting activation job {job_id} for {item_type.value} {task_id}")
+
+        context_service = ContextGeneratorService(db)
+
+        # Update progress based on item type
+        item_type_messages = {
+            ItemType.EPIC: ("Generating epic content...", "Generating story drafts..."),
+            ItemType.STORY: ("Generating story content...", "Generating task drafts..."),
+            ItemType.TASK: ("Generating task content...", "Generating subtask drafts..."),
+            ItemType.SUBTASK: ("Generating subtask content...", "Finalizing..."),
+        }
+        start_msg, mid_msg = item_type_messages.get(item_type, ("Processing...", "Finalizing..."))
+
+        job_manager.update_progress(job_id, 10.0, start_msg)
+
+        # Call appropriate activation function based on item type
+        if item_type == ItemType.EPIC:
+            result = await context_service.activate_suggested_epic(epic_id=task_id)
+        elif item_type == ItemType.STORY:
+            result = await context_service.activate_suggested_story(story_id=task_id)
+        elif item_type == ItemType.TASK:
+            result = await context_service.activate_suggested_task(task_id=task_id)
+        elif item_type == ItemType.SUBTASK:
+            result = await context_service.activate_suggested_subtask(subtask_id=task_id)
+        else:
+            # Fallback to epic activation
+            result = await context_service.activate_suggested_epic(epic_id=task_id)
+
+        job_manager.update_progress(job_id, 90.0, "Activation complete!")
+
+        children_count = result.get('children_generated', 0)
+
+        logger.info(
+            f"✅ Activation job {job_id} completed for {item_type.value} {task_id}\n"
+            f"   Title: {result['title']}\n"
+            f"   Description: {len(result.get('description', ''))} chars\n"
+            f"   Generated Prompt: {len(result.get('generated_prompt', ''))} chars\n"
+            f"   Children Generated: {children_count}"
+        )
+
+        # Complete job with result (in ActivateEpicResponse format)
+        job_manager.complete_job(job_id, result)
+
+    except Exception as e:
+        logger.error(f"❌ Activation job {job_id} failed: {e}")
+        job_manager = JobManager(db)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
+async def _execute_task_async(
+    job_id: UUID,
+    task_id: UUID,
+    project_id: UUID,
+    max_attempts: int = 3
+):
+    """
+    Background task to execute a single task.
+
+    PROMPT #108 - Background queue for prompt executions
+    """
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Starting task execution job {job_id} for task {task_id}")
+
+        job_manager.update_progress(job_id, 10.0, "Loading task context...")
+
+        executor = TaskExecutor(db)
+        result = await executor.execute_task(
+            task_id=str(task_id),
+            project_id=str(project_id),
+            max_attempts=max_attempts
+        )
+
+        job_manager.update_progress(job_id, 90.0, "Execution complete!")
+
+        logger.info(f"✅ Task execution job {job_id} completed for task {task_id}")
+
+        # Complete job with result (TaskResultResponse format as dict)
+        job_manager.complete_job(job_id, result.dict() if hasattr(result, 'dict') else result)
+
+    except Exception as e:
+        logger.error(f"❌ Task execution job {job_id} failed: {e}")
+        job_manager = JobManager(db)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
+async def _execute_batch_async(
+    job_id: UUID,
+    task_ids: list,
+    project_id: UUID
+):
+    """
+    Background task to execute all tasks in a project.
+
+    PROMPT #108 - Background queue for prompt executions
+    """
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        total = len(task_ids)
+        logger.info(f"🚀 Starting batch execution job {job_id} for {total} tasks")
+
+        job_manager.update_progress(job_id, 5.0, f"Starting batch execution of {total} tasks...")
+
+        executor = TaskExecutor(db)
+
+        # Execute with progress updates
+        results = []
+        for i, task_id in enumerate(task_ids):
+            progress = 10 + (80 * i / total)
+            job_manager.update_progress(job_id, progress, f"Executing task {i+1}/{total}...")
+
+            # Check if job was cancelled
+            if job_manager.is_cancelled(job_id):
+                logger.info(f"⚠️ Batch execution job {job_id} was cancelled at task {i+1}/{total}")
+                break
+
+            try:
+                result = await executor.execute_task(
+                    task_id=task_id,
+                    project_id=str(project_id),
+                    max_attempts=3
+                )
+                results.append(result)
+            except Exception as task_error:
+                logger.error(f"Task {task_id} failed: {task_error}")
+                # Continue with other tasks even if one fails
+
+        job_manager.update_progress(job_id, 95.0, "Finalizing batch results...")
+
+        succeeded = sum(1 for r in results if hasattr(r, 'validation_passed') and r.validation_passed)
+        failed = len(results) - succeeded
+
+        logger.info(f"✅ Batch execution job {job_id} completed: {succeeded}/{total} succeeded")
+
+        # Complete job with result (BatchExecuteResponse format)
+        job_manager.complete_job(job_id, {
+            "total": total,
+            "succeeded": succeeded,
+            "failed": failed,
+            "results": [r.dict() if hasattr(r, 'dict') else r for r in results]
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Batch execution job {job_id} failed: {e}")
+        job_manager = JobManager(db)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()

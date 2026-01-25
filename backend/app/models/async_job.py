@@ -25,10 +25,20 @@ class JobStatus(str, enum.Enum):
 
 class JobType(str, enum.Enum):
     """Type of async job."""
+    # Existing types
     INTERVIEW_MESSAGE = "interview_message"        # AI response for interview
     BACKLOG_GENERATION = "backlog_generation"      # Epic → Stories → Tasks generation
     TASK_GENERATION = "task_generation"            # PROMPT #68: Direct task from task-focused interview
     PROJECT_PROVISIONING = "project_provisioning"  # Project scaffolding
+
+    # PROMPT #108: Background queue for all prompt executions (except interviews)
+    EPIC_ACTIVATION = "epic_activation"            # Activate suggested epic → generate stories
+    STORY_ACTIVATION = "story_activation"          # Activate suggested story → generate tasks
+    TASK_ACTIVATION = "task_activation"            # Activate suggested task → generate subtasks
+    SUBTASK_ACTIVATION = "subtask_activation"      # Activate suggested subtask → generate content
+    TASK_EXECUTION = "task_execution"              # Execute single task (code generation)
+    BATCH_EXECUTION = "batch_execution"            # Execute multiple tasks in batch
+    COMMIT_GENERATION = "commit_generation"        # Generate commit message
 
 
 class AsyncJob(Base):
