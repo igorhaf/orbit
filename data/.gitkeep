@@ -1,0 +1,11 @@
+# This folder contains persistent data for RAG/Local AI services
+# All subfolders are git-ignored except .gitkeep files
+#
+# Structure:
+#   data/
+#   ├── ollama/        -> Ollama models (~4-40GB per model)
+#   ├── qdrant/        -> Qdrant vector storage
+#   └── postgres-rag/  -> PostgreSQL RAG database
+#
+# Start services: docker compose up -d ollama qdrant postgres-rag
+# View logs:      docker compose logs -f ollama
