@@ -33,43 +33,44 @@ def populate_ai_models(db):
     # db.commit()
 
     ai_models_data = [
-        # ANTHROPIC MODELS (PROMPT #102 v4: Fixed to use valid Claude Sonnet 4 model ID)
+        # ANTHROPIC MODELS - PROMPT #100: Using Claude 3.5 Haiku as universal fallback
+        # All Anthropic models use the same Haiku 3.5 ID for simplicity
         {
-            "name": "Claude Sonnet 4",
+            "name": "Claude Haiku 3.5",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.TASK_EXECUTION,
             "is_active": True,
             "config": {
-                "model": "claude-sonnet-4-20250514",
-                "model_id": "claude-sonnet-4-20250514",
-                "max_tokens": 8000,
+                "model": "claude-3-5-haiku-20241022",
+                "model_id": "claude-3-5-haiku-20241022",
+                "max_tokens": 8192,
                 "temperature": 0.7
             }
         },
         {
-            "name": "Claude Sonnet 4 (Interview)",
+            "name": "Claude Haiku 3.5 (Interview)",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.INTERVIEW,
             "is_active": True,
             "config": {
-                "model": "claude-sonnet-4-20250514",
-                "model_id": "claude-sonnet-4-20250514",
-                "max_tokens": 4000,
+                "model": "claude-3-5-haiku-20241022",
+                "model_id": "claude-3-5-haiku-20241022",
+                "max_tokens": 8192,
                 "temperature": 0.7
             }
         },
         {
-            "name": "Claude Sonnet 4 (Prompt Gen)",
+            "name": "Claude Haiku 3.5 (Prompt Gen)",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.PROMPT_GENERATION,
             "is_active": True,
             "config": {
-                "model": "claude-sonnet-4-20250514",
-                "model_id": "claude-sonnet-4-20250514",
-                "max_tokens": 8000,
+                "model": "claude-3-5-haiku-20241022",
+                "model_id": "claude-3-5-haiku-20241022",
+                "max_tokens": 8192,
                 "temperature": 0.8
             }
         },

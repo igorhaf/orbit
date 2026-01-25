@@ -29,46 +29,48 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 # Default AI models configuration
+# PROMPT #100: Fixed invalid Claude model IDs - using real Anthropic API model names
 DEFAULT_MODELS = [
-    # Anthropic (Claude) - PROMPT #100 v2: Updated to Claude 4.5 (Claude 3.5 retired Jan 5, 2026)
+    # Anthropic (Claude) - PROMPT #100: Using Claude 3.5 Haiku as universal fallback
+    # All models use the same ID to simplify configuration - one model for all usage types
     {
-        "name": "Claude Sonnet 4.5",
+        "name": "Claude Haiku 3.5",
         "provider": "anthropic",
-        "model_id": "claude-sonnet-4-5-20250929",
+        "model_id": "claude-3-5-haiku-20241022",
         "usage_type": "task_execution",
         "max_tokens": 8192,
         "temperature": 0.7,
-        "description": "Most capable Claude 4.5 model - best for complex task execution",
+        "description": "Claude 3.5 Haiku - fast and cost-effective for task execution",
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Sonnet 4.5 (Prompt Gen)",
+        "name": "Claude Haiku 3.5 (Prompt Gen)",
         "provider": "anthropic",
-        "model_id": "claude-sonnet-4-5-20250929",
+        "model_id": "claude-3-5-haiku-20241022",
         "usage_type": "prompt_generation",
-        "max_tokens": 4096,
+        "max_tokens": 8192,
         "temperature": 0.8,
-        "description": "Most capable Claude 4.5 model - best for prompt generation",
+        "description": "Claude 3.5 Haiku - fast and cost-effective for prompt generation",
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Haiku 4.5 (Interview)",
+        "name": "Claude Haiku 3.5 (Interview)",
         "provider": "anthropic",
-        "model_id": "claude-haiku-4-5-20251001",
+        "model_id": "claude-3-5-haiku-20241022",
         "usage_type": "interview",
-        "max_tokens": 4096,
+        "max_tokens": 8192,
         "temperature": 0.7,
-        "description": "Fastest Claude 4.5 model - best for interviews (cost-effective)",
+        "description": "Claude 3.5 Haiku - fast and cost-effective for interviews",
         "env_var": "ANTHROPIC_API_KEY"
     },
     {
-        "name": "Claude Sonnet 4.5 (General)",
+        "name": "Claude Haiku 3.5 (General)",
         "provider": "anthropic",
-        "model_id": "claude-sonnet-4-5-20250929",
+        "model_id": "claude-3-5-haiku-20241022",
         "usage_type": "general",
         "max_tokens": 8192,
         "temperature": 0.7,
-        "description": "Most capable Claude 4.5 model - best for general purpose tasks (default)",
+        "description": "Claude 3.5 Haiku - universal fallback for all usage types (default)",
         "env_var": "ANTHROPIC_API_KEY",
         "is_default": True  # Mark as default for general usage
     },
