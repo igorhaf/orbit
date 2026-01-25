@@ -181,6 +181,12 @@ export default function AIModelsPage() {
             <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z" />
           </svg>
         );
+      case 'ollama':
+        return (
+          <svg className="w-6 h-6 text-orange-600" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+          </svg>
+        );
       default:
         return (
           <svg className="w-6 h-6 text-gray-600" fill="currentColor" viewBox="0 0 24 24">
@@ -494,6 +500,7 @@ export default function AIModelsPage() {
                   <option value="anthropic">Anthropic</option>
                   <option value="openai">OpenAI</option>
                   <option value="google">Google</option>
+                  <option value="ollama">Ollama (Local)</option>
                   <option value="local">Local</option>
                   <option value="custom">Custom</option>
                 </select>
@@ -501,10 +508,10 @@ export default function AIModelsPage() {
 
               {/* API Key */}
               <Input
-                label="API Key"
+                label={createFormData.provider === 'ollama' ? 'API Key (optional for Ollama)' : 'API Key'}
                 type="password"
-                placeholder="Enter API key (sk-..., AIza..., etc)"
-                required
+                placeholder={createFormData.provider === 'ollama' ? 'Leave empty for local Ollama' : 'Enter API key (sk-..., AIza..., etc)'}
+                required={createFormData.provider !== 'ollama'}
                 value={createFormData.api_key}
                 onChange={(e) =>
                   setCreateFormData({ ...createFormData, api_key: e.target.value })
@@ -654,6 +661,7 @@ export default function AIModelsPage() {
                   <option value="anthropic">Anthropic</option>
                   <option value="openai">OpenAI</option>
                   <option value="google">Google</option>
+                  <option value="ollama">Ollama (Local)</option>
                   <option value="local">Local</option>
                   <option value="custom">Custom</option>
                 </select>
@@ -661,9 +669,9 @@ export default function AIModelsPage() {
 
               {/* API Key */}
               <Input
-                label="API Key"
+                label={editFormData.provider === 'ollama' ? 'API Key (optional for Ollama)' : 'API Key'}
                 type="text"
-                placeholder="Enter API key (sk-..., AIza..., etc)"
+                placeholder={editFormData.provider === 'ollama' ? 'Leave empty for local Ollama' : 'Enter API key (sk-..., AIza..., etc)'}
                 value={editFormData.api_key || ''}
                 onChange={(e) =>
                   setEditFormData({ ...editFormData, api_key: e.target.value })

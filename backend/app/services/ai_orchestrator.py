@@ -170,6 +170,20 @@ class AIOrchestrator:
                         logger.info(f"✅ Google async HTTP client initialized with API key from: {model.name}")
                         initialized_providers.add("google")
 
+                    elif provider_key == "ollama":
+                        # PROMPT #106 - Ollama local LLM integration
+                        import httpx
+                        ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+                        self.clients["ollama"] = {
+                            "base_url": ollama_host,
+                            "http_client": httpx.AsyncClient(
+                                timeout=120.0,  # Longer timeout for local inference
+                                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+                            )
+                        }
+                        logger.info(f"✅ Ollama async HTTP client initialized: {ollama_host} (from model: {model.name})")
+                        initialized_providers.add("ollama")
+
             except Exception as e:
                 logger.error(f"❌ Failed to initialize {model.provider} client: {e}")
 
@@ -557,6 +571,11 @@ class AIOrchestrator:
                 result = await self._execute_google(
                     model_name, messages, system_prompt, tokens_limit, temperature
                 )
+            elif provider == "ollama":
+                # PROMPT #106 - Ollama local LLM integration
+                result = await self._execute_ollama(
+                    model_name, messages, system_prompt, tokens_limit, temperature
+                )
             else:
                 raise ValueError(f"Unknown provider: {provider}")
 
@@ -894,6 +913,67 @@ class AIOrchestrator:
                 "input_tokens": usage_metadata.get("promptTokenCount", 0),
                 "output_tokens": usage_metadata.get("candidatesTokenCount", 0),
                 "total_tokens": usage_metadata.get("totalTokenCount", 0)
+            }
+        }
+
+    async def _execute_ollama(
+        self,
+        model: str,
+        messages: List[Dict],
+        system_prompt: Optional[str],
+        max_tokens: int,
+        temperature: float
+    ) -> Dict:
+        """
+        Executa com Ollama local LLM usando configurações do banco
+        PROMPT #106 - Ollama local LLM integration
+
+        Ollama API é compatível com OpenAI, usando endpoint /api/chat
+        Docs: https://github.com/ollama/ollama/blob/main/docs/api.md
+        """
+        ollama_config = self.clients["ollama"]
+        base_url = ollama_config["base_url"]
+        http_client = ollama_config["http_client"]
+
+        # Construir mensagens no formato Ollama (compatível com OpenAI)
+        ollama_messages = []
+        if system_prompt:
+            ollama_messages.append({
+                "role": "system",
+                "content": system_prompt
+            })
+        ollama_messages.extend(messages)
+
+        # Endpoint e payload para Ollama
+        url = f"{base_url}/api/chat"
+
+        payload = {
+            "model": model,
+            "messages": ollama_messages,
+            "stream": False,
+            "options": {
+                "num_predict": max_tokens,
+                "temperature": temperature
+            }
+        }
+
+        logger.info(f"🦙 Calling Ollama: {url} with model {model}")
+
+        response = await http_client.post(url, json=payload)
+        response.raise_for_status()
+
+        data = response.json()
+        content = data.get("message", {}).get("content", "")
+
+        # Ollama retorna token counts em eval_count e prompt_eval_count
+        return {
+            "provider": "ollama",
+            "model": model,
+            "content": content,
+            "usage": {
+                "input_tokens": data.get("prompt_eval_count", 0),
+                "output_tokens": data.get("eval_count", 0),
+                "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
             }
         }
 
