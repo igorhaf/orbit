@@ -174,29 +174,6 @@ services:
     environment:
       - QDRANT__SERVICE__GRPC_PORT=6334
 
-  # PostgreSQL for RAG (separate from main Orbit database)
-  # Use this for RAG-specific data (embeddings metadata, document chunks, etc.)
-  postgres-rag:
-    image: postgres:16
-    container_name: postgres-rag
-    restart: unless-stopped
-    ports:
-      - "5433:5432"  # Port 5433 on host (5432 is used by main postgres)
-    environment:
-      POSTGRES_USER: rag
-      POSTGRES_PASSWORD: rag
-      POSTGRES_DB: rag
-    volumes:
-      # Bind mount for persistence - data stored in ./data/postgres-rag
-      - ./data/postgres-rag:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - orbit-network
-
 volumes:
   postgres_data:
     driver: local

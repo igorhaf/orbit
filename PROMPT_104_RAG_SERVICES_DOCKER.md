@@ -1,5 +1,5 @@
 # PROMPT #104 - RAG/Local AI Services Setup
-## Docker Compose with Ollama, Qdrant, and PostgreSQL for RAG
+## Docker Compose with Ollama and Qdrant (Consolidated)
 
 **Date:** January 25, 2026
 **Status:** COMPLETED

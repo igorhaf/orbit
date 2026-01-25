@@ -4,8 +4,9 @@
 # Structure:
 #   data/
 #   ├── ollama/        -> Ollama models (~4-40GB per model)
-#   ├── qdrant/        -> Qdrant vector storage
-#   └── postgres-rag/  -> PostgreSQL RAG database
+#   └── qdrant/        -> Qdrant vector storage
 #
-# Start services: docker compose up -d ollama qdrant postgres-rag
+# Note: Vector embeddings for RAG use pgvector in the main PostgreSQL database.
+#
+# Start services: docker compose up -d ollama qdrant
 # View logs:      docker compose logs -f ollama
