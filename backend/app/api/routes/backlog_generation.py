@@ -2,6 +2,7 @@
 Backlog Generation API Router
 AI-powered Epic/Story/Task generation from interviews and decomposition
 JIRA Transformation - Phase 2
+PROMPT #108 - Moved to background queue
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -9,16 +10,19 @@ from sqlalchemy.orm import Session
 from typing import Dict, List, Any
 from uuid import UUID, uuid4
 from datetime import datetime
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.task import Task, ItemType, PriorityLevel
 from app.models.interview import Interview
+from app.models.async_job import JobType
 from app.schemas.task import (
     BacklogGenerationResponse,
     TaskCreate,
     TaskResponse
 )
 from app.services.backlog_generator import BacklogGeneratorService
+from app.services.job_manager import JobManager
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,194 +30,192 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.post("/interview/{interview_id}/generate-epic", response_model=BacklogGenerationResponse)
+# PROMPT #108 - Response model for background job
+class BacklogJobResponse(BaseModel):
+    """Response model for async backlog generation job."""
+    job_id: str
+    status: str
+    message: str
+
+
+@router.post("/interview/{interview_id}/generate-epic", response_model=BacklogJobResponse)
 async def generate_epic_from_interview(
     interview_id: UUID,
     project_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Generate Epic suggestion from Interview conversation using AI.
+    Generate Epic suggestion from Interview conversation using AI - ASYNC.
+
+    PROMPT #108 - Moved to background queue
 
     POST /api/v1/backlog/interview/{interview_id}/generate-epic?project_id={project_id}
 
-    Flow:
-    1. AI analyzes interview conversation
-    2. Returns Epic suggestion JSON (NOT created in DB yet)
-    3. User reviews and approves via separate endpoint
-    4. Epic is then created with all insights
+    This endpoint now runs asynchronously in the background.
+    Poll GET /api/v1/jobs/{job_id} for progress and result.
 
-    Returns:
-    - suggestions: [Epic suggestion dict]
-    - metadata: AI execution metadata
-
-    Epic suggestion structure:
+    Returns immediately:
     {
-        "title": "Epic Title",
-        "description": "Epic description",
-        "story_points": 13,
-        "priority": "high",
-        "acceptance_criteria": ["criterion 1", "criterion 2"],
-        "interview_insights": {
-            "key_requirements": [...],
-            "business_goals": [...],
-            "technical_constraints": [...]
-        },
-        "interview_question_ids": [0, 2, 5],
-        "_metadata": {
-            "source": "interview",
-            "interview_id": "...",
-            "ai_model": "...",
-            "input_tokens": 1234,
-            "output_tokens": 567
-        }
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Epic generation started. Poll GET /api/v1/jobs/{job_id} for progress."
     }
-    """
-    try:
-        generator = BacklogGeneratorService(db)
 
-        epic_suggestion = await generator.generate_epic_from_interview(
+    Poll /api/v1/jobs/{job_id} to get:
+    - status: "completed" with result (BacklogGenerationResponse format)
+    - status: "failed" with error message
+    """
+    # Create job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.BACKLOG_GENERATION,
+        input_data={
+            "operation": "generate_epic",
+            "interview_id": str(interview_id),
+            "project_id": str(project_id)
+        },
+        project_id=project_id,
+        interview_id=interview_id
+    )
+
+    logger.info(f"Created backlog job {job.id} for Epic generation from interview {interview_id}")
+
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _generate_epic_async(
+            job_id=job.id,
             interview_id=interview_id,
             project_id=project_id
         )
+    )
 
-        return BacklogGenerationResponse(
-            suggestions=[epic_suggestion],
-            metadata=epic_suggestion.get("_metadata", {})
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to generate Epic from interview {interview_id}: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate Epic: {str(e)}"
-        )
+    # Return job_id immediately
+    return BacklogJobResponse(
+        job_id=str(job.id),
+        status="pending",
+        message=f"Epic generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+    )
 
 
-@router.post("/epic/{epic_id}/generate-stories", response_model=BacklogGenerationResponse)
+@router.post("/epic/{epic_id}/generate-stories", response_model=BacklogJobResponse)
 async def generate_stories_from_epic(
     epic_id: UUID,
     project_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Decompose Epic into Story suggestions using AI.
+    Decompose Epic into Story suggestions using AI - ASYNC.
+
+    PROMPT #108 - Moved to background queue
 
     POST /api/v1/backlog/epic/{epic_id}/generate-stories?project_id={project_id}
 
-    Flow:
-    1. AI decomposes Epic into 3-7 Stories
-    2. Returns array of Story suggestions (NOT created in DB yet)
-    3. User reviews and approves via separate endpoint
-    4. Stories are then created and linked to Epic
+    This endpoint now runs asynchronously in the background.
+    Poll GET /api/v1/jobs/{job_id} for progress and result.
 
-    Returns:
-    - suggestions: [Story suggestion dicts]
-    - metadata: AI execution metadata
-
-    Each Story suggestion structure:
+    Returns immediately:
     {
-        "title": "Story Title",
-        "description": "As a [user], I want [feature] so that [benefit]...",
-        "story_points": 5,
-        "priority": "high",
-        "acceptance_criteria": ["criterion 1", "criterion 2"],
-        "interview_insights": {...},
-        "parent_id": "epic_id",
-        "_metadata": {...}
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Story generation started. Poll GET /api/v1/jobs/{job_id} for progress."
     }
     """
-    try:
-        generator = BacklogGeneratorService(db)
+    # Verify epic exists
+    epic = db.query(Task).filter(Task.id == epic_id).first()
+    if not epic:
+        raise HTTPException(status_code=404, detail=f"Epic {epic_id} not found")
 
-        stories_suggestions = await generator.decompose_epic_to_stories(
+    # Create job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.BACKLOG_GENERATION,
+        input_data={
+            "operation": "generate_stories",
+            "epic_id": str(epic_id),
+            "project_id": str(project_id)
+        },
+        project_id=project_id
+    )
+
+    logger.info(f"Created backlog job {job.id} for Story generation from Epic {epic_id}")
+
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _generate_stories_async(
+            job_id=job.id,
             epic_id=epic_id,
             project_id=project_id
         )
+    )
 
-        # Extract metadata from first story (all have same metadata)
-        metadata = stories_suggestions[0].get("_metadata", {}) if stories_suggestions else {}
-
-        return BacklogGenerationResponse(
-            suggestions=stories_suggestions,
-            metadata=metadata
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to generate Stories from Epic {epic_id}: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate Stories: {str(e)}"
-        )
+    # Return job_id immediately
+    return BacklogJobResponse(
+        job_id=str(job.id),
+        status="pending",
+        message=f"Story generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+    )
 
 
-@router.post("/story/{story_id}/generate-tasks", response_model=BacklogGenerationResponse)
+@router.post("/story/{story_id}/generate-tasks", response_model=BacklogJobResponse)
 async def generate_tasks_from_story(
     story_id: UUID,
     project_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Decompose Story into Task suggestions using AI with Spec context.
+    Decompose Story into Task suggestions using AI with Spec context - ASYNC.
+
+    PROMPT #108 - Moved to background queue
 
     POST /api/v1/backlog/story/{story_id}/generate-tasks?project_id={project_id}
 
-    Flow:
-    1. Fetch relevant framework Specs (Laravel, Next.js, etc.)
-    2. AI decomposes Story into 3-10 technical Tasks
-    3. Returns array of Task suggestions (NOT created in DB yet)
-    4. User reviews and approves via separate endpoint
-    5. Tasks are then created and linked to Story
+    This endpoint now runs asynchronously in the background.
+    Poll GET /api/v1/jobs/{job_id} for progress and result.
 
-    Returns:
-    - suggestions: [Task suggestion dicts]
-    - metadata: AI execution metadata (includes specs_used count)
-
-    Each Task suggestion structure:
+    Returns immediately:
     {
-        "title": "Specific Task Title",
-        "description": "Technical implementation details. Include file paths, endpoints...",
-        "story_points": 2,
-        "priority": "high",
-        "acceptance_criteria": ["testable criterion 1", "testable criterion 2"],
-        "parent_id": "story_id",
-        "_metadata": {
-            "source": "story_decomposition",
-            "story_id": "...",
-            "specs_used": 3,
-            "ai_model": "...",
-            ...
-        }
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Task generation started. Poll GET /api/v1/jobs/{job_id} for progress."
     }
     """
-    try:
-        generator = BacklogGeneratorService(db)
+    # Verify story exists
+    story = db.query(Task).filter(Task.id == story_id).first()
+    if not story:
+        raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
 
-        tasks_suggestions = await generator.decompose_story_to_tasks(
+    # Create job
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.BACKLOG_GENERATION,
+        input_data={
+            "operation": "generate_tasks",
+            "story_id": str(story_id),
+            "project_id": str(project_id)
+        },
+        project_id=project_id
+    )
+
+    logger.info(f"Created backlog job {job.id} for Task generation from Story {story_id}")
+
+    # Execute in background
+    import asyncio
+    asyncio.create_task(
+        _generate_tasks_async(
+            job_id=job.id,
             story_id=story_id,
             project_id=project_id
         )
+    )
 
-        # Extract metadata from first task (all have same metadata)
-        metadata = tasks_suggestions[0].get("_metadata", {}) if tasks_suggestions else {}
-
-        return BacklogGenerationResponse(
-            suggestions=tasks_suggestions,
-            metadata=metadata
-        )
-
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Failed to generate Tasks from Story {story_id}: {str(e)}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to generate Tasks: {str(e)}"
-        )
+    # Return job_id immediately
+    return BacklogJobResponse(
+        job_id=str(job.id),
+        status="pending",
+        message=f"Task generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+    )
 
 
 @router.post("/approve-epic", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -531,3 +533,151 @@ async def migrate_semantic_to_human_descriptions(
             status_code=500,
             detail=f"Migration failed: {str(e)}"
         )
+
+
+# ============================================================================
+# PROMPT #108 - BACKGROUND TASK FUNCTIONS
+# ============================================================================
+
+async def _generate_epic_async(
+    job_id: UUID,
+    interview_id: UUID,
+    project_id: UUID
+):
+    """
+    Background task to generate Epic from interview.
+
+    PROMPT #108 - Background queue for prompt executions
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Starting Epic generation job {job_id} from interview {interview_id}")
+
+        job_manager.update_progress(job_id, 10.0, "Analyzing interview conversation...")
+
+        generator = BacklogGeneratorService(db)
+        epic_suggestion = await generator.generate_epic_from_interview(
+            interview_id=interview_id,
+            project_id=project_id
+        )
+
+        job_manager.update_progress(job_id, 90.0, "Epic generation complete!")
+
+        logger.info(f"✅ Epic generation job {job_id} completed")
+
+        # Complete job with result (BacklogGenerationResponse format)
+        job_manager.complete_job(job_id, {
+            "suggestions": [epic_suggestion],
+            "metadata": epic_suggestion.get("_metadata", {})
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Epic generation job {job_id} failed: {e}")
+        job_manager = JobManager(db)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
+async def _generate_stories_async(
+    job_id: UUID,
+    epic_id: UUID,
+    project_id: UUID
+):
+    """
+    Background task to generate Stories from Epic.
+
+    PROMPT #108 - Background queue for prompt executions
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Starting Story generation job {job_id} from Epic {epic_id}")
+
+        job_manager.update_progress(job_id, 10.0, "Decomposing Epic into Stories...")
+
+        generator = BacklogGeneratorService(db)
+        stories_suggestions = await generator.decompose_epic_to_stories(
+            epic_id=epic_id,
+            project_id=project_id
+        )
+
+        job_manager.update_progress(job_id, 90.0, f"Generated {len(stories_suggestions)} stories!")
+
+        logger.info(f"✅ Story generation job {job_id} completed with {len(stories_suggestions)} stories")
+
+        # Extract metadata from first story
+        metadata = stories_suggestions[0].get("_metadata", {}) if stories_suggestions else {}
+
+        # Complete job with result
+        job_manager.complete_job(job_id, {
+            "suggestions": stories_suggestions,
+            "metadata": metadata
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Story generation job {job_id} failed: {e}")
+        job_manager = JobManager(db)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
+async def _generate_tasks_async(
+    job_id: UUID,
+    story_id: UUID,
+    project_id: UUID
+):
+    """
+    Background task to generate Tasks from Story.
+
+    PROMPT #108 - Background queue for prompt executions
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Starting Task generation job {job_id} from Story {story_id}")
+
+        job_manager.update_progress(job_id, 10.0, "Decomposing Story into Tasks...")
+
+        generator = BacklogGeneratorService(db)
+        tasks_suggestions = await generator.decompose_story_to_tasks(
+            story_id=story_id,
+            project_id=project_id
+        )
+
+        job_manager.update_progress(job_id, 90.0, f"Generated {len(tasks_suggestions)} tasks!")
+
+        logger.info(f"✅ Task generation job {job_id} completed with {len(tasks_suggestions)} tasks")
+
+        # Extract metadata from first task
+        metadata = tasks_suggestions[0].get("_metadata", {}) if tasks_suggestions else {}
+
+        # Complete job with result
+        job_manager.complete_job(job_id, {
+            "suggestions": tasks_suggestions,
+            "metadata": metadata
+        })
+
+    except Exception as e:
+        logger.error(f"❌ Task generation job {job_id} failed: {e}")
+        job_manager = JobManager(db)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
