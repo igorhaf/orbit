@@ -1,4 +1,8 @@
 services:
+  # =============================================================================
+  # CORE ORBIT SERVICES
+  # =============================================================================
+
   # PostgreSQL Database (with pgvector extension)
   postgres:
     image: pgvector/pgvector:pg16
@@ -104,6 +108,91 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
+      retries: 5
+    networks:
+      - orbit-network
+
+  # =============================================================================
+  # RAG / LOCAL AI SERVICES (Ollama + Qdrant + PostgreSQL for RAG)
+  # =============================================================================
+  # These services use BIND MOUNTS for persistence in ./data/
+  # All data is stored in explicit host folders (not Docker named volumes)
+
+  # Ollama - Local LLM Server
+  # Docs: https://ollama.com/
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      # Bind mount for persistence - models stored in ./data/ollama
+      - ./data/ollama:/root/.ollama
+    networks:
+      - orbit-network
+    # ==========================================================================
+    # GPU NVIDIA SUPPORT (desabilitado por padrão)
+    # ==========================================================================
+    # Para habilitar GPU NVIDIA, descomente as linhas abaixo:
+    #
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all  # ou "1" para usar apenas 1 GPU
+    #           capabilities: [gpu]
+    #
+    # Requisitos para GPU:
+    # 1. NVIDIA Driver instalado no host
+    # 2. NVIDIA Container Toolkit instalado:
+    #    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    #    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+    #      sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+    #      sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    #    sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+    #    sudo nvidia-ctk runtime configure --runtime=docker
+    #    sudo systemctl restart docker
+    # 3. Verificar com: docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
+    # ==========================================================================
+
+  # Qdrant - Vector Database
+  # Docs: https://qdrant.tech/documentation/
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC API
+    volumes:
+      # Bind mount for persistence - vectors stored in ./data/qdrant
+      - ./data/qdrant:/qdrant/storage
+    networks:
+      - orbit-network
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+
+  # PostgreSQL for RAG (separate from main Orbit database)
+  # Use this for RAG-specific data (embeddings metadata, document chunks, etc.)
+  postgres-rag:
+    image: postgres:16
+    container_name: postgres-rag
+    restart: unless-stopped
+    ports:
+      - "5433:5432"  # Port 5433 on host (5432 is used by main postgres)
+    environment:
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+      POSTGRES_DB: rag
+    volumes:
+      # Bind mount for persistence - data stored in ./data/postgres-rag
+      - ./data/postgres-rag:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      interval: 10s
+      timeout: 5s
       retries: 5
     networks:
       - orbit-network

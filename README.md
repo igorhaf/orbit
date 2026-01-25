@@ -361,6 +361,108 @@ docker-compose -p orbit exec backend poetry run alembic downgrade -1
 | Backend | 8000 | FastAPI API |
 | PostgreSQL | 5432 | Database with pgvector |
 | Redis | 6379 | Cache server |
+| Ollama | 11434 | Local LLM Server |
+| Qdrant | 6333, 6334 | Vector Database (REST, gRPC) |
+| PostgreSQL RAG | 5433 | Separate database for RAG |
+
+---
+
+## RAG / Local AI Services
+
+Orbit includes optional services for local AI and RAG (Retrieval-Augmented Generation):
+
+### Data Persistence
+
+All RAG services use **bind mounts** for data persistence. Data is stored in the `./data/` folder:
+
+```
+orbit/
+└── data/                    # All persistent data (git-ignored, except .gitkeep)
+    ├── ollama/              # Ollama models (~4-40GB per model)
+    ├── qdrant/              # Qdrant vector storage
+    └── postgres-rag/        # PostgreSQL RAG database
+```
+
+### Starting RAG Services
+
+```bash
+# Start all services (including RAG)
+docker compose up -d
+
+# Or start specific RAG services
+docker compose up -d ollama qdrant postgres-rag
+```
+
+### Viewing Logs
+
+```bash
+# Ollama logs
+docker compose logs -f ollama
+
+# Qdrant logs
+docker compose logs -f qdrant
+
+# PostgreSQL RAG logs
+docker compose logs -f postgres-rag
+```
+
+### Quick Tests
+
+```bash
+# Test Ollama (list installed models)
+curl http://localhost:11434/api/tags
+
+# Test Qdrant (list collections)
+curl http://localhost:6333/collections
+
+# Test PostgreSQL RAG
+docker compose exec postgres-rag psql -U rag -d rag -c "SELECT version();"
+```
+
+### Installing Models in Ollama
+
+```bash
+# Pull a model (run inside container or via API)
+docker compose exec ollama ollama pull llama3.2
+docker compose exec ollama ollama pull nomic-embed-text
+
+# List installed models
+docker compose exec ollama ollama list
+
+# Or via API
+curl http://localhost:11434/api/pull -d '{"name": "llama3.2"}'
+```
+
+### GPU Support for Ollama
+
+GPU support is disabled by default. To enable NVIDIA GPU:
+
+1. Install NVIDIA drivers on host
+2. Install [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
+3. Uncomment the `deploy` section in `docker-compose.yml` under the `ollama` service
+
+### Service Credentials
+
+| Service | User | Password | Database |
+|---------|------|----------|----------|
+| PostgreSQL RAG | rag | rag | rag |
+
+### Qdrant API Examples
+
+```bash
+# Create a collection
+curl -X PUT http://localhost:6333/collections/my_collection \
+  -H "Content-Type: application/json" \
+  -d '{
+    "vectors": {
+      "size": 768,
+      "distance": "Cosine"
+    }
+  }'
+
+# List collections
+curl http://localhost:6333/collections
+```
 
 ---
 

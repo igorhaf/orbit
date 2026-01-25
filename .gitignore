@@ -129,6 +129,14 @@ postgres-data/
 pgdata/
 volumes/
 
+# RAG/Local AI persistent data (bind mounts)
+# Keep .gitkeep files, ignore actual data
+data/ollama/*
+data/qdrant/*
+data/postgres-rag/*
+!data/.gitkeep
+!data/**/.gitkeep
+
 # OS
 Thumbs.db
 ehthumbs.db
