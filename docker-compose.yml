@@ -51,6 +51,8 @@ services:
       # Infrastructure connections
       REDIS_HOST: ${REDIS_HOST:-redis}
       REDIS_PORT: ${REDIS_PORT:-6379}
+      # Ollama local LLM (PROMPT #106)
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
     volumes:
       - ./backend:/app
       - /app/.venv

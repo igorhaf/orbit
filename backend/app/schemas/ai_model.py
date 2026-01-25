@@ -33,13 +33,13 @@ class AIModelBase(BaseModel):
 
 class AIModelCreate(AIModelBase):
     """Schema for creating a new AIModel"""
-    api_key: str = Field(..., min_length=1, max_length=255, description="API key")
+    api_key: str = Field(..., max_length=255, description="API key (can be empty for local providers like Ollama)")
 
     @field_validator('provider')
     @classmethod
     def validate_provider(cls, v: str) -> str:
         """Validate provider is supported"""
-        supported = ['anthropic', 'openai', 'google', 'local', 'custom']
+        supported = ['anthropic', 'openai', 'google', 'ollama', 'local', 'custom']
         if v.lower() not in supported:
             raise ValueError(f"Provider must be one of: {', '.join(supported)}")
         return v.lower()
