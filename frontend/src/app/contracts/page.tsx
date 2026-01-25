@@ -11,6 +11,8 @@ import React, { useEffect, useState } from 'react';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui';
 import { FileCode, X } from 'lucide-react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 interface Contract {
   name: string;
@@ -194,9 +196,17 @@ export default function ContractsPage() {
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                 </div>
               ) : (
-                <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto text-sm font-mono whitespace-pre-wrap">
-                  {selectedContract?.content}
-                </pre>
+                <SyntaxHighlighter
+                  language="yaml"
+                  style={vscDarkPlus}
+                  customStyle={{
+                    margin: 0,
+                    borderRadius: '0.5rem',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {selectedContract?.content || ''}
+                </SyntaxHighlighter>
               )}
             </div>
           </div>
