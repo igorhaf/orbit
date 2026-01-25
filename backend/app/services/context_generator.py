@@ -1716,21 +1716,21 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
             logger.info(f"📋 Generated {len(story_titles)} story titles for epic: {epic.title}")
 
             # ============================================================
-            # STEP 2: For EACH title, generate FULL content individually
+            # STEP 2: Create SIMPLE drafts (title only) - PROMPT #107
+            # Full content is generated ONLY when user approves the item
             # ============================================================
             created_stories = []
             for i, title in enumerate(story_titles):
-                logger.info(f"🔄 Generating FULL content for story {i+1}/{len(story_titles)}: {title[:50]}...")
-
                 try:
-                    # Create basic story first
+                    # Create simple draft story with just title and placeholder description
+                    # Full content will be generated when user activates/approves this story
                     story = Task(
                         project_id=epic.project_id,
                         parent_id=epic.id,
                         item_type=ItemType.STORY,
                         title=title if isinstance(title, str) else f"Story {i+1}",
-                        description="Gerando conteúdo detalhado...",
-                        generated_prompt="",
+                        description="Conteúdo será gerado ao aprovar.",  # Simple placeholder
+                        generated_prompt="",  # Empty until approved
                         acceptance_criteria=[],
                         story_points=5,
                         priority=PriorityLevel.MEDIUM,
@@ -1744,52 +1744,14 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
                         updated_at=datetime.utcnow()
                     )
                     self.db.add(story)
-                    self.db.commit()
-                    self.db.refresh(story)
-
-                    # Generate FULL content using _generate_full_story_content
-                    # Pass epic directly to ensure full context is available
-                    full_content = await self._generate_full_story_content(story, project, epic)
-
-                    if full_content:
-                        # Update story with full content
-                        # PROMPT #100: Fixed key name - function returns "generated_prompt" not "description_markdown"
-                        semantic_map = full_content.get("semantic_map", {})
-                        description_markdown = full_content.get("generated_prompt", "") or full_content.get("description_markdown", "")
-                        human_description = _convert_semantic_to_human(description_markdown, semantic_map)
-
-                        # PROMPT #100: DO NOT overwrite title - it was correctly set in Phase 1
-                        # The AI may return a different title, but we keep the original from title generation
-                        # story.title = full_content.get("title", story.title)  # REMOVED
-                        story.description = human_description
-                        story.generated_prompt = description_markdown
-                        story.acceptance_criteria = full_content.get("acceptance_criteria", [])
-                        story.story_points = full_content.get("story_points", 5)
-
-                        priority_str = full_content.get("priority", "medium")
-                        if priority_str in ["critical", "high", "medium", "low", "trivial"]:
-                            story.priority = PriorityLevel(priority_str)
-
-                        story.interview_insights = {
-                            "semantic_map": semantic_map,
-                            "derived_from_epic": str(epic.id),
-                            **full_content.get("interview_insights", {})
-                        }
-                        story.updated_at = datetime.utcnow()
-                        self.db.commit()
-                        self.db.refresh(story)
-
-                        logger.info(f"✅ Generated FULL content for story: {story.title[:50]}")
-
                     created_stories.append(story)
+                    logger.info(f"📝 Created draft story {i+1}/{len(story_titles)}: {title[:50] if isinstance(title, str) else 'Story'}...")
 
                 except Exception as story_error:
-                    logger.error(f"❌ Error generating content for story '{title}': {str(story_error)}")
-                    # Keep the basic story even if content generation failed
-                    if story.id:
-                        created_stories.append(story)
+                    logger.error(f"❌ Error creating draft story '{title}': {str(story_error)}")
 
-            logger.info(f"✅ Created {len(created_stories)} stories with FULL EPIC-LEVEL content")
+            self.db.commit()
+            logger.info(f"✅ Created {len(created_stories)} story DRAFTS (lightweight, content on approval)")
             return created_stories
 
         except Exception as e:
@@ -1971,21 +1933,21 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
             logger.info(f"📋 Generated {len(task_titles)} task titles for story: {story.title}")
 
             # ============================================================
-            # STEP 2: For EACH title, generate FULL content individually
+            # STEP 2: Create SIMPLE drafts (title only) - PROMPT #107
+            # Full content is generated ONLY when user approves the item
             # ============================================================
             created_tasks = []
             for i, title in enumerate(task_titles):
-                logger.info(f"🔄 Generating FULL content for task {i+1}/{len(task_titles)}: {title[:50] if isinstance(title, str) else 'Task'}...")
-
                 try:
-                    # Create basic task first
+                    # Create simple draft task with just title and placeholder description
+                    # Full content will be generated when user activates/approves this task
                     task = Task(
                         project_id=story.project_id,
                         parent_id=story.id,
                         item_type=ItemType.TASK,
                         title=title if isinstance(title, str) else f"Task {i+1}",
-                        description="Gerando conteúdo detalhado...",
-                        generated_prompt="",
+                        description="Conteúdo será gerado ao aprovar.",  # Simple placeholder
+                        generated_prompt="",  # Empty until approved
                         acceptance_criteria=[],
                         story_points=3,
                         priority=story.priority or PriorityLevel.MEDIUM,
@@ -1999,46 +1961,14 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
                         updated_at=datetime.utcnow()
                     )
                     self.db.add(task)
-                    self.db.commit()
-                    self.db.refresh(task)
-
-                    # Generate FULL content using _generate_full_task_content
-                    # Pass story and epic directly to ensure full context is available
-                    full_content = await self._generate_full_task_content(task, project, story, parent_epic)
-
-                    if full_content:
-                        # Update task with full content
-                        # PROMPT #100: Fixed key name - function returns "generated_prompt" not "description_markdown"
-                        semantic_map = full_content.get("semantic_map", {})
-                        description_markdown = full_content.get("generated_prompt", "") or full_content.get("description_markdown", "")
-                        human_description = _convert_semantic_to_human(description_markdown, semantic_map)
-
-                        # PROMPT #100: DO NOT overwrite title - it was correctly set in Phase 1
-                        # task.title = full_content.get("title", task.title)  # REMOVED
-                        task.description = human_description
-                        task.generated_prompt = description_markdown
-                        task.acceptance_criteria = full_content.get("acceptance_criteria", [])
-                        task.story_points = full_content.get("story_points", 3)
-
-                        task.interview_insights = {
-                            "semantic_map": semantic_map,
-                            "derived_from_story": str(story.id),
-                            **full_content.get("interview_insights", {})
-                        }
-                        task.updated_at = datetime.utcnow()
-                        self.db.commit()
-                        self.db.refresh(task)
-
-                        logger.info(f"✅ Generated FULL content for task: {task.title[:50]}")
-
                     created_tasks.append(task)
+                    logger.info(f"📝 Created draft task {i+1}/{len(task_titles)}: {title[:50] if isinstance(title, str) else 'Task'}...")
 
                 except Exception as task_error:
-                    logger.error(f"❌ Error generating content for task '{title}': {str(task_error)}")
-                    if task.id:
-                        created_tasks.append(task)
+                    logger.error(f"❌ Error creating draft task '{title}': {str(task_error)}")
 
-            logger.info(f"✅ Created {len(created_tasks)} tasks with FULL EPIC-LEVEL content")
+            self.db.commit()
+            logger.info(f"✅ Created {len(created_tasks)} task DRAFTS (lightweight, content on approval)")
             return created_tasks
 
         except Exception as e:
@@ -2157,21 +2087,21 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
             logger.info(f"📋 Generated {len(subtask_titles)} subtask titles for task: {task.title}")
 
             # ============================================================
-            # STEP 2: For EACH title, generate FULL content individually
+            # STEP 2: Create SIMPLE drafts (title only) - PROMPT #107
+            # Full content is generated ONLY when user approves the item
             # ============================================================
             created_subtasks = []
             for i, title in enumerate(subtask_titles):
-                logger.info(f"🔄 Generating FULL content for subtask {i+1}/{len(subtask_titles)}: {title[:50] if isinstance(title, str) else 'Subtask'}...")
-
                 try:
-                    # Create basic subtask first
+                    # Create simple draft subtask with just title and placeholder description
+                    # Full content will be generated when user activates/approves this subtask
                     subtask = Task(
                         project_id=task.project_id,
                         parent_id=task.id,
                         item_type=ItemType.SUBTASK,
                         title=title if isinstance(title, str) else f"Subtask {i+1}",
-                        description="Gerando conteúdo detalhado...",
-                        generated_prompt="",
+                        description="Conteúdo será gerado ao aprovar.",  # Simple placeholder
+                        generated_prompt="",  # Empty until approved
                         acceptance_criteria=[],
                         story_points=1,
                         priority=task.priority or PriorityLevel.MEDIUM,
@@ -2185,45 +2115,14 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
                         updated_at=datetime.utcnow()
                     )
                     self.db.add(subtask)
-                    self.db.commit()
-                    self.db.refresh(subtask)
-
-                    # Generate FULL content using _generate_full_subtask_content
-                    # Pass full hierarchy: task (pai), parent_story (avô), great_grandparent_epic (bisavô)
-                    full_content = await self._generate_full_subtask_content(subtask, project, task, parent_story, great_grandparent_epic)
-
-                    if full_content:
-                        # Update subtask with full content
-                        # PROMPT #100: Fixed key name - function returns "generated_prompt" not "description_markdown"
-                        semantic_map = full_content.get("semantic_map", {})
-                        description_markdown = full_content.get("generated_prompt", "") or full_content.get("description_markdown", "")
-                        human_description = _convert_semantic_to_human(description_markdown, semantic_map)
-
-                        # PROMPT #100: DO NOT overwrite title - it was correctly set in Phase 1
-                        # subtask.title = full_content.get("title", subtask.title)  # REMOVED
-                        subtask.description = human_description
-                        subtask.generated_prompt = description_markdown
-                        subtask.acceptance_criteria = full_content.get("acceptance_criteria", [])
-
-                        subtask.interview_insights = {
-                            "semantic_map": semantic_map,
-                            "derived_from_task": str(task.id),
-                            **full_content.get("interview_insights", {})
-                        }
-                        subtask.updated_at = datetime.utcnow()
-                        self.db.commit()
-                        self.db.refresh(subtask)
-
-                        logger.info(f"✅ Generated FULL content for subtask: {subtask.title[:50]}")
-
                     created_subtasks.append(subtask)
+                    logger.info(f"📝 Created draft subtask {i+1}/{len(subtask_titles)}: {title[:50] if isinstance(title, str) else 'Subtask'}...")
 
                 except Exception as subtask_error:
-                    logger.error(f"❌ Error generating content for subtask '{title}': {str(subtask_error)}")
-                    if subtask.id:
-                        created_subtasks.append(subtask)
+                    logger.error(f"❌ Error creating draft subtask '{title}': {str(subtask_error)}")
 
-            logger.info(f"✅ Created {len(created_subtasks)} subtasks with FULL EPIC-LEVEL content")
+            self.db.commit()
+            logger.info(f"✅ Created {len(created_subtasks)} subtask DRAFTS (lightweight, content on approval)")
             return created_subtasks
 
         except Exception as e:
