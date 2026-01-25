@@ -33,7 +33,8 @@ from app.api.routes import (
     prompter,  # Prompter Architecture - Phase 1
     jobs,  # PROMPT #65 - Async Job System
     knowledge,  # PROMPT #84 - RAG Phase 2: Knowledge Search
-    discovery_queue  # PROMPT #77 - Project-Specific Specs Discovery Queue
+    discovery_queue,  # PROMPT #77 - Project-Specific Specs Discovery Queue
+    contracts  # PROMPT #104 - Contracts (YAML Prompts Management)
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -279,6 +280,13 @@ app.include_router(
     specs.router,
     prefix=f"{API_V1_PREFIX}/specs",
     tags=["Specs"]
+)
+
+# Contracts (YAML Prompts Management - PROMPT #104)
+app.include_router(
+    contracts.router,
+    prefix=f"{API_V1_PREFIX}/contracts",
+    tags=["Contracts"]
 )
 
 # Prompter (Prompt Template & Orchestration System - Prompter Architecture Phase 1)
