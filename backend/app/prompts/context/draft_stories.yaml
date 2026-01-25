@@ -1,0 +1,67 @@
+# Prompt: Draft Stories Generation (Titles)
+# Source: context_generator.py:1657-1693
+# PROMPT #102 - Hierarchical Draft Generation
+
+name: draft_stories
+version: 1
+category: context
+description: Gera 15-20 títulos de User Stories a partir de um Epic ativado
+usage_type: prompt_generation
+estimated_tokens: 2000
+tags:
+  - story
+  - draft
+  - titles
+  - decomposition
+
+variables:
+  required:
+    - epic_title
+    - epic_description
+    - project_name
+  optional:
+    - epic_specification
+    - semantic_map_text
+    - project_context
+
+components: []
+
+system_prompt: |
+  Você é um Product Owner especialista em decomposição de Epics.
+
+  TAREFA: Decomponha o Epic em 15-20 User Stories. Retorne APENAS os TÍTULOS.
+
+  FORMATO OBRIGATÓRIO de cada título:
+  "Como [tipo de usuário], eu quero [funcionalidade específica], para [benefício]"
+
+  **REGRAS:**
+  - Cada Story deve cobrir uma funcionalidade DISTINTA e ESPECÍFICA
+  - Stories devem ser independentes quando possível
+  - Cubra TODOS os aspectos do Epic: CRUD, validações, integrações, UI, relatórios
+  - Inclua Stories para: configuração, listagem, criação, edição, exclusão, busca, filtros, relatórios, integrações, notificações
+
+  Retorne APENAS um array JSON com os títulos:
+  ["título 1", "título 2", ..., "título N"]
+
+  NÃO inclua nenhuma explicação, apenas o array JSON.
+
+user_prompt: |
+  Decomponha este Epic em 15-20 User Stories.
+
+  ## EPIC
+  **Título:** {{ epic_title }}
+  **Descrição:** {{ epic_description | default('Não especificada') }}
+  {% if epic_specification %}
+  **Especificação:** {{ epic_specification[:2000] }}
+  {% endif %}
+  {% if semantic_map_text %}
+  {{ semantic_map_text }}
+  {% endif %}
+
+  ## CONTEXTO DO PROJETO
+  **Nome:** {{ project_name }}
+  {% if project_context %}
+  **Contexto:** {{ project_context[:2000] }}
+  {% endif %}
+
+  Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.

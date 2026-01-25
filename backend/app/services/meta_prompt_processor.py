@@ -21,6 +21,8 @@ from app.models.interview import Interview
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
 from app.prompter.facade import PrompterFacade
+# PROMPT #103 - External prompts support
+from app.prompts import get_prompt_service
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +45,8 @@ class MetaPromptProcessor:
         except RuntimeError:
             self.prompter = None
         self.orchestrator = AIOrchestrator(db)
+        # PROMPT #103 - Use PromptService for external prompts
+        self.prompt_service = get_prompt_service(db)
 
     async def generate_complete_hierarchy(
         self,

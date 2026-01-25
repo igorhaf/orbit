@@ -24,6 +24,8 @@ from app.models.project import Project
 from app.models.task import Task
 from app.services.ai_orchestrator import AIOrchestrator
 from app.services.interview_question_deduplicator import InterviewQuestionDeduplicator
+# PROMPT #103 - External prompts support
+from app.prompts import get_prompt_service
 from app.api.routes.interviews.option_parser import parse_ai_question_options
 from app.api.routes.interviews.response_cleaners import clean_ai_response
 # PROMPT #89: Context Interview fixed questions

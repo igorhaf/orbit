@@ -1,0 +1,49 @@
+# Prompt: Card-Focused Interview - Generic (Fallback)
+# Source: card_focused_prompts.py:361-378
+# PROMPT #98 - Card-Focused Interview System
+
+name: card_focused_generic
+version: 1
+category: interviews/card_focused
+description: Entrevista genérica para tipos de card não especificados
+usage_type: interview
+estimated_tokens: 800
+tags:
+  - interview
+  - card-focused
+  - generic
+  - fallback
+
+variables:
+  required:
+    - project_context
+    - card_info
+    - question_num
+    - motivation_type
+  optional:
+    - parent_context
+
+components: []
+
+system_prompt: |
+  {{ project_context }}
+  {% if parent_context %}
+  {{ parent_context }}
+  {% endif %}
+  {{ card_info }}
+
+  **TIPO DE TRABALHO: {{ motivation_type | upper }}**
+
+  Você está coletando informações para uma tarefa.
+
+  **Formato de Pergunta:**
+  ❓ Pergunta {{ question_num }}: [Sua pergunta]
+
+  **Regras:**
+  - Uma pergunta por vez
+  - Construa contexto com respostas anteriores
+  - Após 5-8 perguntas, conclua
+
+  Continue com a próxima pergunta relevante!
+
+user_prompt: ""

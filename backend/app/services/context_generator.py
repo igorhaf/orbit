@@ -26,6 +26,7 @@ from app.models.interview import Interview, InterviewStatus
 from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
 from app.services.ai_orchestrator import AIOrchestrator
 from app.prompter.facade import PrompterFacade
+from app.prompts import PromptService, get_prompt_service
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,8 @@ class ContextGeneratorService:
         except RuntimeError:
             self.prompter = None
         self.orchestrator = AIOrchestrator(db)
+        # PROMPT #103 - Use PromptService for external prompts
+        self.prompt_service = get_prompt_service(db)
 
     async def generate_context_from_interview(
         self,
@@ -1750,11 +1753,14 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
 
                     if full_content:
                         # Update story with full content
+                        # PROMPT #100: Fixed key name - function returns "generated_prompt" not "description_markdown"
                         semantic_map = full_content.get("semantic_map", {})
-                        description_markdown = full_content.get("description_markdown", "")
+                        description_markdown = full_content.get("generated_prompt", "") or full_content.get("description_markdown", "")
                         human_description = _convert_semantic_to_human(description_markdown, semantic_map)
 
-                        story.title = full_content.get("title", story.title)
+                        # PROMPT #100: DO NOT overwrite title - it was correctly set in Phase 1
+                        # The AI may return a different title, but we keep the original from title generation
+                        # story.title = full_content.get("title", story.title)  # REMOVED
                         story.description = human_description
                         story.generated_prompt = description_markdown
                         story.acceptance_criteria = full_content.get("acceptance_criteria", [])
@@ -2002,11 +2008,13 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
 
                     if full_content:
                         # Update task with full content
+                        # PROMPT #100: Fixed key name - function returns "generated_prompt" not "description_markdown"
                         semantic_map = full_content.get("semantic_map", {})
-                        description_markdown = full_content.get("description_markdown", "")
+                        description_markdown = full_content.get("generated_prompt", "") or full_content.get("description_markdown", "")
                         human_description = _convert_semantic_to_human(description_markdown, semantic_map)
 
-                        task.title = full_content.get("title", task.title)
+                        # PROMPT #100: DO NOT overwrite title - it was correctly set in Phase 1
+                        # task.title = full_content.get("title", task.title)  # REMOVED
                         task.description = human_description
                         task.generated_prompt = description_markdown
                         task.acceptance_criteria = full_content.get("acceptance_criteria", [])
@@ -2186,11 +2194,13 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
 
                     if full_content:
                         # Update subtask with full content
+                        # PROMPT #100: Fixed key name - function returns "generated_prompt" not "description_markdown"
                         semantic_map = full_content.get("semantic_map", {})
-                        description_markdown = full_content.get("description_markdown", "")
+                        description_markdown = full_content.get("generated_prompt", "") or full_content.get("description_markdown", "")
                         human_description = _convert_semantic_to_human(description_markdown, semantic_map)
 
-                        subtask.title = full_content.get("title", subtask.title)
+                        # PROMPT #100: DO NOT overwrite title - it was correctly set in Phase 1
+                        # subtask.title = full_content.get("title", subtask.title)  # REMOVED
                         subtask.description = human_description
                         subtask.generated_prompt = description_markdown
                         subtask.acceptance_criteria = full_content.get("acceptance_criteria", [])
@@ -2555,7 +2565,9 @@ Os critérios de aceitação devem ser ESPECÍFICOS para esta Story, não genér
 Retorne APENAS o JSON, sem explicações."""
 
         try:
-            orchestrator = AIOrchestrator(self.db)
+            # PROMPT #100: Disable cache for individual content generation
+            # Semantic cache matches similar prompts, causing duplicate content
+            orchestrator = AIOrchestrator(self.db, enable_cache=False)
             response = await orchestrator.execute(
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
@@ -2947,7 +2959,8 @@ Os critérios de aceitação devem ser TÉCNICOS e ESPECÍFICOS para esta Task.
 Retorne APENAS o JSON, sem explicações."""
 
         try:
-            orchestrator = AIOrchestrator(self.db)
+            # PROMPT #100: Disable cache for individual content generation
+            orchestrator = AIOrchestrator(self.db, enable_cache=False)
             response = await orchestrator.execute(
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
@@ -3323,7 +3336,8 @@ Os critérios de aceitação devem ser ESPECÍFICOS para esta Subtask.
 Retorne APENAS o JSON, sem explicações."""
 
         try:
-            orchestrator = AIOrchestrator(self.db)
+            # PROMPT #100: Disable cache for individual content generation
+            orchestrator = AIOrchestrator(self.db, enable_cache=False)
             response = await orchestrator.execute(
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],

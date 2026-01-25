@@ -38,6 +38,8 @@ from app.api.dependencies import get_interview_or_404
 # Services
 from app.services.provisioning import ProvisioningService
 from app.services.project_state_detector import ProjectStateDetector
+# PROMPT #103 - External prompts support
+from app.prompts import get_prompt_service
 from app.api.routes.interview_handlers import (
     handle_requirements_interview,
     handle_task_focused_interview,

@@ -4,6 +4,8 @@ from app.services.ai_orchestrator import AIOrchestrator
 from sqlalchemy.orm import Session
 import logging
 import json
+# PROMPT #103 - External prompts support
+from app.prompts import get_prompt_service
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,37 @@
+# Component: Semantic References Methodology
+# PROMPT #83 - Metodologia de Referências Semânticas
+# Used in: backlog generation, context generation, card activation
+
+name: semantic_methodology
+version: 1
+category: component
+description: Metodologia de Referências Semânticas para geração de cards estruturados
+
+content: |
+  METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+
+  Esta metodologia funciona da seguinte forma:
+
+  1. O texto principal utiliza **identificadores simbólicos** (ex: N1, N2, P1, E1, D1, S1, C1) como **referências semânticas**
+  2. Esses identificadores **NÃO são variáveis, exemplos ou placeholders**
+  3. Cada identificador possui um **significado único e imutável** definido em um **Mapa Semântico**
+  4. O texto narrativo deve ser interpretado **exclusivamente** com base nessas definições
+  5. **Não faça inferências** fora do que está explicitamente definido no Mapa Semântico
+  6. **Não substitua** os identificadores por seus significados no texto
+  7. Caso haja ambiguidade, ela deve ser apontada, não resolvida automaticamente
+  8. Caso seja necessário criar novos conceitos, eles devem ser introduzidos como novos identificadores e definidos separadamente
+
+  **Categorias de Identificadores:**
+  - **N** (Nouns/Entidades): N1, N2, N3... = Usuários, sistemas, entidades de domínio
+  - **P** (Processes/Processos): P1, P2, P3... = Processos de negócio, fluxos, workflows
+  - **E** (Endpoints): E1, E2, E3... = APIs, rotas, endpoints
+  - **D** (Data/Dados): D1, D2, D3... = Tabelas, estruturas de dados, schemas
+  - **S** (Services/Serviços): S1, S2, S3... = Serviços, integrações, bibliotecas
+  - **C** (Constraints/Critérios): C1, C2, C3... = Regras de negócio, validações, restrições
+  - **AC** (Acceptance Criteria): AC1, AC2, AC3... = Critérios de aceitação numerados
+
+  **Objetivo desta metodologia:**
+  - Reduzir ambiguidade semântica
+  - Manter consistência conceitual
+  - Permitir edição posterior manual do código
+  - Garantir rastreabilidade entre texto e implementação

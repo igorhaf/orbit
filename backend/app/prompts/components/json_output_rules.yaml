@@ -1,0 +1,36 @@
+# Component: JSON Output Rules
+# Standard rules for AI JSON responses
+# Used in: All prompts that expect JSON output
+
+name: json_output_rules
+version: 1
+category: component
+description: Regras padrão para output JSON de IAs
+
+content: |
+  REGRAS DE OUTPUT JSON:
+
+  1. Retorne APENAS JSON válido
+  2. NÃO inclua markdown code blocks (```json ... ```)
+  3. NÃO inclua explicações antes ou depois do JSON
+  4. NÃO inclua comentários dentro do JSON
+  5. Use aspas duplas para strings (padrão JSON)
+  6. Escape caracteres especiais corretamente (\n, \", \\)
+  7. Não use trailing commas
+  8. Garanta que arrays e objetos estejam fechados corretamente
+
+  FORMATO ESPERADO:
+  {
+      "campo1": "valor",
+      "campo2": 123,
+      "campo3": ["item1", "item2"],
+      "campo4": {
+          "subcampo": "valor"
+      }
+  }
+
+  ERROS COMUNS A EVITAR:
+  ❌ ```json { ... } ```
+  ❌ Aqui está o JSON: { ... }
+  ❌ { "campo": "valor", } (trailing comma)
+  ❌ { campo: "valor" } (chave sem aspas)
