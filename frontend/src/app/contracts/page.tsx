@@ -9,14 +9,18 @@
 
 import React, { useEffect, useState } from 'react';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, CardHeader, CardTitle, CardContent, Badge } from '@/components/ui';
-import { FileCode } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui';
+import { FileCode, X } from 'lucide-react';
 
 interface Contract {
   name: string;
   path: string;
   category: string;
   description: string;
+}
+
+interface ContractDetail extends Contract {
+  content: string;
 }
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -31,6 +35,9 @@ const CATEGORY_COLORS: Record<string, string> = {
 export default function ContractsPage() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedContract, setSelectedContract] = useState<ContractDetail | null>(null);
+  const [loadingYaml, setLoadingYaml] = useState(false);
 
   useEffect(() => {
     loadContracts();
@@ -49,9 +56,28 @@ export default function ContractsPage() {
     }
   };
 
-  const handleRowClick = (contract: Contract) => {
-    // For now, just log - detail page will be added in future version
-    console.log('Contract clicked:', contract);
+  const handleRowClick = async (contract: Contract) => {
+    setLoadingYaml(true);
+    setShowModal(true);
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/contracts/${contract.path}`);
+      const data = await response.json();
+      setSelectedContract(data);
+    } catch (error) {
+      console.error('Failed to load contract content:', error);
+      setSelectedContract({
+        ...contract,
+        content: '# Error loading YAML content'
+      });
+    } finally {
+      setLoadingYaml(false);
+    }
+  };
+
+  const handleCloseModal = () => {
+    setShowModal(false);
+    setSelectedContract(null);
   };
 
   const getCategoryColor = (category: string) => {
@@ -137,6 +163,45 @@ export default function ContractsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* YAML Content Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col mx-4">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">
+                  {selectedContract?.name || 'Loading...'}
+                </h2>
+                {selectedContract && (
+                  <p className="text-sm text-gray-500">{selectedContract.path}</p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleCloseModal}
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="flex-1 overflow-auto p-4">
+              {loadingYaml ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                </div>
+              ) : (
+                <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-auto text-sm font-mono whitespace-pre-wrap">
+                  {selectedContract?.content}
+                </pre>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   );
 }

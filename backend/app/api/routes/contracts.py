@@ -55,3 +55,28 @@ async def list_contracts() -> List[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error listing contracts: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{path:path}")
+async def get_contract(path: str) -> Dict[str, Any]:
+    """
+    Get a specific contract by path.
+
+    Returns the full YAML content of the contract.
+    Path format: category/name (e.g., "backlog/epic_from_interview")
+    """
+    try:
+        loader = PromptLoader()
+        template = loader.load(path)
+
+        return {
+            "name": template.metadata.name,
+            "path": path,
+            "category": template.metadata.category,
+            "description": template.metadata.description or "",
+            "content": template.raw_content
+        }
+
+    except Exception as e:
+        logger.error(f"Error loading contract {path}: {e}")
+        raise HTTPException(status_code=404, detail=f"Contract not found: {path}")
