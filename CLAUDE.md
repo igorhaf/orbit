@@ -2,8 +2,8 @@
 ## Arquivo de Instruções Permanentes para Claude Code
 
 **Data de Criação:** December 29, 2025
-**Última Atualização:** January 19, 2026
-**Versão:** 1.4 - System Administration
+**Última Atualização:** January 25, 2026
+**Versão:** 1.5 - Externalized Prompts
 
 ---
 
@@ -252,6 +252,124 @@ REDIS_PORT=6379
 - Sistema usa cache in-memory como fallback
 - Hit rate menor (apenas L1 - Exact Match)
 - Recomenda-se sempre ter Redis rodando para máxima economia!
+
+---
+
+### 0.3. PROMPTS EXTERNALIZADOS PARA YAML (CRÍTICO) 📝
+
+**⚠️ ATENÇÃO: TODOS OS PROMPTS DE IA DEVEM ESTAR EM ARQUIVOS YAML ⚠️**
+
+**REGRA FUNDAMENTAL (PROMPT #103):**
+O ORBIT utiliza um sistema de **prompts externalizados** onde TODOS os prompts de IA são armazenados em arquivos YAML na pasta `backend/app/prompts/`.
+
+**Estrutura de pastas:**
+```
+backend/app/prompts/
+├── backlog/           # Prompts de geração de backlog (Epic, Stories, Tasks)
+├── commits/           # Prompts de geração de commits
+├── components/        # Componentes reutilizáveis (semantic_methodology, etc.)
+├── context/           # Prompts de contexto e especificações
+├── discovery/         # Prompts de descoberta de padrões
+└── interviews/        # Prompts de entrevistas
+    ├── card_focused/  # Prompts por tipo de card
+    ├── sections/      # Seções especializadas (business, design, mobile)
+    └── task_types/    # Prompts por tipo de task
+```
+
+**DURANTE QUALQUER PROMPT/TAREFA, VOCÊ DEVE:**
+
+1. **VERIFICAR** se existe código de prompt hardcoded no arquivo que está modificando
+2. **SE ENCONTRAR** prompt hardcoded (system_prompt = """...""", user_prompt = """..."""):
+   - **CRIAR** arquivo YAML correspondente em `backend/app/prompts/`
+   - **SUBSTITUIR** o código hardcoded para usar o PromptLoader
+   - **TESTAR** se o YAML carrega corretamente
+
+**Como identificar prompts hardcoded:**
+```python
+# ❌ ERRADO - Prompt hardcoded
+system_prompt = """Você é um Product Owner especialista...
+METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
+...
+"""
+
+# ❌ ERRADO - F-string com prompt longo
+system_prompt = f"""Você está conduzindo uma entrevista...
+{context}
+...
+"""
+```
+
+**Como deve ser (externalizado):**
+```python
+# ✅ CORRETO - Usando PromptLoader
+from app.prompts.loader import PromptLoader
+
+loader = PromptLoader()
+system_prompt, user_prompt = loader.render(
+    "backlog/epic_from_interview",
+    {
+        "project_name": project.name,
+        "conversation_text": conversation_text
+    }
+)
+```
+
+**Formato do arquivo YAML:**
+```yaml
+name: epic_from_interview
+version: 1
+category: backlog
+description: Gera Epic a partir de conversa de entrevista
+usage_type: prompt_generation
+estimated_tokens: 2500
+tags:
+  - backlog
+  - epic
+  - portuguese
+
+variables:
+  required:
+    - project_name
+    - conversation_text
+  optional:
+    - semantic_map_text
+
+components:
+  - semantic_methodology
+
+system_prompt: |
+  Você é um Product Owner especialista...
+
+  {{ components.semantic_methodology }}
+
+  ...
+
+user_prompt: |
+  Analise esta conversa: {{ conversation_text }}
+  Projeto: {{ project_name }}
+```
+
+**NUNCA faça:**
+- ❌ Criar novos prompts hardcoded em código Python
+- ❌ Modificar prompts diretamente no código Python
+- ❌ Ignorar prompts hardcoded existentes ao trabalhar em um arquivo
+
+**SEMPRE faça:**
+- ✅ Verificar se há prompts hardcoded ao abrir qualquer arquivo de serviço
+- ✅ Externalizar prompts encontrados para YAML
+- ✅ Usar o PromptLoader para carregar prompts
+- ✅ Manter variáveis dinâmicas usando sintaxe Jinja2 ({{ variable }})
+
+**Arquivos com prompts já externalizados (51 YAMLs):**
+- Total: 51 arquivos YAML
+- Cobertura: 100% dos prompts principais
+
+**Se encontrar prompt hardcoded:**
+1. Crie o arquivo YAML na pasta apropriada
+2. Copie o conteúdo do prompt para `system_prompt:` e `user_prompt:`
+3. Identifique variáveis e adicione em `variables:`
+4. Substitua o código Python para usar PromptLoader
+5. Teste se funciona corretamente
 
 ---
 
@@ -603,8 +721,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #102 (Hierarchical Draft Generation)
-**Próximo prompt:** PROMPT #103
+**Último prompt:** PROMPT #103 (Externalize Hardcoded Prompts to YAML)
+**Próximo prompt:** PROMPT #104
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -653,6 +771,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #99**: Project Badge Fix - Substituiu badge obsoleta "Pending Stack" / "Provisioned" (baseada em `stack_backend`) por badge "Context Set" / "Draft" (baseada em `context_locked` e `context_human`). Alinha UI com novo modelo Context Interview (PROMPT #89). Badge verde "Context Set" quando projeto tem contexto definido, badge cinza "Draft" quando não tem. Também corrigiu erro de ESLint pré-existente com aspas escapadas.
 - **PROMPT #100**: Fix Invalid Claude Haiku Model ID - Corrigiu erro crítico 404 "model not found" causado por model IDs fictícios (claude-4.x) que não existem na API Anthropic. Substituiu 4 model IDs inválidos por IDs válidos: Claude Haiku 3.5 (`claude-3-5-haiku-20241022`) para interviews, Claude Sonnet 3.5 (`claude-3-5-sonnet-20241022`) para task execution e general, Claude Opus 3 (`claude-3-opus-20240229`) para prompt generation. Atualizou banco de dados (Phase 1), migration seed (Phase 2), pricing.py e populate_database.py (Phase 4). Criou model específico para usage_type="interview". Desbloqueou usuários imediatamente - entrevistas de contexto funcionando novamente.
 - **PROMPT #102**: Hierarchical Draft Generation - Implementou geração automática de cards filhos ao aprovar cards pai. Epic aprovado → 15-20 Stories draft. Story aprovada → 5-8 Tasks draft. Task aprovada → 3-5 Subtasks draft. Subtask aprovada → Conteúdo gerado (nível folha). Endpoint unificado `POST /tasks/{id}/activate` detecta item_type e chama função apropriada. Response inclui `children_generated`. Frontend mostra feedback: "Item ativado! 18 stories foram geradas como drafts." Funções adicionadas: `_generate_draft_stories`, `_generate_draft_tasks`, `_generate_draft_subtasks`, `activate_suggested_story`, `activate_suggested_task`, `activate_suggested_subtask`.
+- **PROMPT #103**: Externalize Hardcoded Prompts to YAML - Migrou TODOS os prompts de IA hardcoded para arquivos YAML externos em `backend/app/prompts/`. Criou infraestrutura completa: PromptLoader (carrega/renderiza YAML com Jinja2), PromptService (integra com AIOrchestrator), feature flag `USE_EXTERNAL_PROMPTS`. Total de 51 arquivos YAML organizados em: backlog/ (4), commits/ (1), components/ (3), context/ (16), discovery/ (2), interviews/ (25). Cobertura: 100% dos prompts principais. Adicionada regra no CLAUDE.md para verificar e externalizar prompts hardcoded durante qualquer tarefa futura.
 
 ---
 
