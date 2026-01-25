@@ -1,0 +1,66 @@
+name: pattern_discovery
+version: 1
+category: discovery
+description: AI prompt for discovering repeating code patterns in a codebase
+usage_type: prompt_generation
+estimated_tokens: 800
+tags:
+  - discovery
+  - patterns
+  - codebase
+  - analysis
+  - english
+components: []
+
+variables:
+  required:
+    - sampled_files_count
+    - file_count
+    - extension
+    - estimated_category
+    - files_text
+  optional: []
+
+system_prompt: ""
+
+user_prompt: |
+  You are analyzing a codebase to discover repeating code patterns.
+
+  I'm showing you {{ sampled_files_count }} sample files from a group of {{ file_count }} similar files.
+
+  Group Info:
+  - Extension: {{ extension }}
+  - Estimated Category: {{ estimated_category }}
+  - Total Files: {{ file_count }}
+
+  Sample Files:
+  {{ files_text }}
+
+  Your Task:
+  1. Determine if there's a **meaningful repeating pattern** across these files
+  2. If yes, extract a **template** with {{Placeholders}} for variable parts
+  3. Suggest a **category** and **name** for this pattern
+  4. **CRITICAL DECISION**: Is this pattern framework-worthy or project-specific?
+     - Framework-worthy: Generic, reusable across different projects (e.g., REST API endpoint pattern)
+     - Project-specific: Tied to this specific codebase's unique structure
+  5. Rate your **confidence** (0.0 to 1.0)
+
+  Respond with JSON ONLY (no markdown blocks):
+  {
+    "pattern_found": true/false,
+    "category": "suggested category (e.g., 'api', 'model', 'service', 'custom')",
+    "name": "suggested name (e.g., 'api_endpoint', 'data_model', 'project-name')",
+    "spec_type": "specific type (e.g., 'rest_api', 'database_model')",
+    "title": "Human-readable title",
+    "description": "What this pattern represents (2-3 sentences)",
+    "template": "Code template with {{Placeholders}} for variable parts",
+    "language": "programming language",
+    "confidence": 0.0-1.0,
+    "reasoning": "Why you identified this pattern (or why not)",
+    "key_characteristics": ["list", "of", "key", "features"],
+    "is_framework_worthy": true/false
+  }
+
+  If no meaningful pattern exists (files are too different), set pattern_found: false.
+
+  IMPORTANT: Return ONLY valid JSON, no markdown code blocks.
