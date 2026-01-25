@@ -33,40 +33,43 @@ def populate_ai_models(db):
     # db.commit()
 
     ai_models_data = [
-        # ANTHROPIC MODELS (PROMPT #100 v2: Updated to Claude 4.5 - Claude 3.5 retired Jan 5, 2026)
+        # ANTHROPIC MODELS (PROMPT #102 v4: Fixed to use valid Claude Sonnet 4 model ID)
         {
-            "name": "Claude Sonnet 4.5",
+            "name": "Claude Sonnet 4",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.TASK_EXECUTION,
             "is_active": True,
             "config": {
-                "model": "claude-sonnet-4-5-20250929",
+                "model": "claude-sonnet-4-20250514",
+                "model_id": "claude-sonnet-4-20250514",
                 "max_tokens": 8000,
                 "temperature": 0.7
             }
         },
         {
-            "name": "Claude Haiku 4.5",
+            "name": "Claude Sonnet 4 (Interview)",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.INTERVIEW,
             "is_active": True,
             "config": {
-                "model": "claude-haiku-4-5-20251001",
+                "model": "claude-sonnet-4-20250514",
+                "model_id": "claude-sonnet-4-20250514",
                 "max_tokens": 4000,
                 "temperature": 0.7
             }
         },
         {
-            "name": "Claude Sonnet 4.5 (Prompt Gen)",
+            "name": "Claude Sonnet 4 (Prompt Gen)",
             "provider": "anthropic",
             "api_key": settings.anthropic_api_key or "your-anthropic-api-key",
             "usage_type": AIModelUsageType.PROMPT_GENERATION,
             "is_active": True,
             "config": {
-                "model": "claude-sonnet-4-5-20250929",
-                "max_tokens": 4000,
+                "model": "claude-sonnet-4-20250514",
+                "model_id": "claude-sonnet-4-20250514",
+                "max_tokens": 8000,
                 "temperature": 0.8
             }
         },
