@@ -53,6 +53,7 @@ services:
       REDIS_PORT: ${REDIS_PORT:-6379}
       # Ollama local LLM (PROMPT #106)
       OLLAMA_HOST: ${OLLAMA_HOST:-http://ollama:11434}
+      OLLAMA_TIMEOUT: ${OLLAMA_TIMEOUT:-300}  # 5 min timeout for CPU inference
     volumes:
       - ./backend:/app
       - /app/.venv

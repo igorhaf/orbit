@@ -172,16 +172,18 @@ class AIOrchestrator:
 
                     elif provider_key == "ollama":
                         # PROMPT #106 - Ollama local LLM integration
+                        # PROMPT #107 - Increased timeout for CPU inference (can take 2-5 min without GPU)
                         import httpx
                         ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
+                        ollama_timeout = float(os.getenv("OLLAMA_TIMEOUT", "300"))  # 5 min default
                         self.clients["ollama"] = {
                             "base_url": ollama_host,
                             "http_client": httpx.AsyncClient(
-                                timeout=120.0,  # Longer timeout for local inference
+                                timeout=ollama_timeout,
                                 limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
                             )
                         }
-                        logger.info(f"✅ Ollama async HTTP client initialized: {ollama_host} (from model: {model.name})")
+                        logger.info(f"✅ Ollama async HTTP client initialized: {ollama_host} (timeout={ollama_timeout}s, from model: {model.name})")
                         initialized_providers.add("ollama")
 
             except Exception as e:
@@ -957,13 +959,23 @@ class AIOrchestrator:
             }
         }
 
-        logger.info(f"🦙 Calling Ollama: {url} with model {model}")
+        logger.info(f"🦙 Calling Ollama: {url} with model {model} (this may take a while without GPU...)")
 
-        response = await http_client.post(url, json=payload)
-        response.raise_for_status()
+        try:
+            response = await http_client.post(url, json=payload)
+            response.raise_for_status()
+        except Exception as e:
+            logger.error(f"❌ Ollama request failed: {e}")
+            logger.error(f"   Tip: Without GPU, large prompts can take 2-5+ minutes. Consider enabling GPU or using cloud APIs.")
+            raise
 
         data = response.json()
         content = data.get("message", {}).get("content", "")
+
+        # Log execution time info from response
+        total_duration = data.get("total_duration", 0) / 1e9  # nanoseconds to seconds
+        if total_duration > 0:
+            logger.info(f"🦙 Ollama execution completed in {total_duration:.1f}s")
 
         # Ollama retorna token counts em eval_count e prompt_eval_count
         return {
