@@ -3,79 +3,60 @@ Fixed Interview Questions
 PROMPT #69 - Refactor interviews.py
 
 Functions for generating fixed questions (Q1-Q7 for requirements mode, Q1 for task-focused mode).
-Questions have dynamic options pulled from specs database.
+Questions have static framework options.
 """
 
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import func
 
 from app.models.project import Project
-from app.models.spec import Spec
+
+
+# Static framework options (previously fetched from specs table)
+FRAMEWORK_OPTIONS = {
+    'backend': [
+        {'id': 'laravel', 'label': 'Laravel (PHP)', 'value': 'laravel'},
+        {'id': 'django', 'label': 'Django (Python)', 'value': 'django'},
+        {'id': 'fastapi', 'label': 'FastAPI (Python)', 'value': 'fastapi'},
+        {'id': 'express', 'label': 'Express.js (Node.js)', 'value': 'express'},
+    ],
+    'database': [
+        {'id': 'postgresql', 'label': 'PostgreSQL', 'value': 'postgresql'},
+        {'id': 'mysql', 'label': 'MySQL', 'value': 'mysql'},
+        {'id': 'mongodb', 'label': 'MongoDB', 'value': 'mongodb'},
+        {'id': 'sqlite', 'label': 'SQLite', 'value': 'sqlite'},
+    ],
+    'frontend': [
+        {'id': 'nextjs', 'label': 'Next.js (React)', 'value': 'nextjs'},
+        {'id': 'react', 'label': 'React', 'value': 'react'},
+        {'id': 'vue', 'label': 'Vue.js', 'value': 'vue'},
+        {'id': 'angular', 'label': 'Angular', 'value': 'angular'},
+    ],
+    'css': [
+        {'id': 'tailwind', 'label': 'Tailwind CSS', 'value': 'tailwind'},
+        {'id': 'bootstrap', 'label': 'Bootstrap', 'value': 'bootstrap'},
+        {'id': 'materialui', 'label': 'Material UI', 'value': 'materialui'},
+        {'id': 'custom', 'label': 'CSS Customizado', 'value': 'custom'},
+    ],
+    'mobile': [
+        {'id': 'react-native', 'label': 'React Native', 'value': 'react-native'},
+        {'id': 'flutter', 'label': 'Flutter', 'value': 'flutter'},
+        {'id': 'ios-swift', 'label': 'Native iOS (Swift)', 'value': 'ios-swift'},
+        {'id': 'android-kotlin', 'label': 'Native Android (Kotlin)', 'value': 'android-kotlin'},
+        {'id': 'ionic', 'label': 'Ionic', 'value': 'ionic'},
+        {'id': 'no-mobile', 'label': 'Sem Mobile', 'value': 'no-mobile'},
+    ],
+}
 
 
 def get_specs_for_category(db: Session, category: str) -> list:
     """
-    Get available frameworks from specs for a specific category.
+    Get available frameworks for a specific category.
     Returns list of choices formatted for interview options.
 
-    DYNAMIC SYSTEM: Options come from specs table, not hardcoded.
+    Returns static framework options.
     """
-    # Query distinct frameworks for this category
-    specs = db.query(
-        Spec.name,
-        func.count(Spec.id).label('count')
-    ).filter(
-        Spec.category == category,
-        Spec.is_active == True
-    ).group_by(Spec.name).all()
-
-    # Label mappings (same as in specs.py for consistency)
-    labels = {
-        # Backend
-        'laravel': 'Laravel (PHP)',
-        'django': 'Django (Python)',
-        'fastapi': 'FastAPI (Python)',
-        'express': 'Express.js (Node.js)',
-
-        # Database
-        'postgresql': 'PostgreSQL',
-        'mysql': 'MySQL',
-        'mongodb': 'MongoDB',
-        'sqlite': 'SQLite',
-
-        # Frontend
-        'nextjs': 'Next.js (React)',
-        'react': 'React',
-        'vue': 'Vue.js',
-        'angular': 'Angular',
-
-        # CSS
-        'tailwind': 'Tailwind CSS',
-        'bootstrap': 'Bootstrap',
-        'materialui': 'Material UI',
-        'custom': 'CSS Customizado',
-
-        # Mobile
-        'react-native': 'React Native',
-        'flutter': 'Flutter',
-        'ios-swift': 'Native iOS (Swift)',
-        'android-kotlin': 'Native Android (Kotlin)',
-        'ionic': 'Ionic',
-        'no-mobile': 'Sem Mobile',
-    }
-
-    # Format choices
-    choices = []
-    for name, count in specs:
-        label = labels.get(name, name.title())
-        choices.append({
-            "id": name,
-            "label": label,
-            "value": name
-        })
-
-    return choices
+    return FRAMEWORK_OPTIONS.get(category, [])
 
 
 def get_fixed_question(question_number: int, project: Project, db: Session) -> dict:

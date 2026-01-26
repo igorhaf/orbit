@@ -36,8 +36,8 @@ MODEL_PRICING = {
     "gpt-3.5-turbo": (0.50, 1.50),
 
     # Google Gemini models
-    "gemini-1.5-pro": (1.25, 5.00),
-    "gemini-1.5-flash": (0.35, 1.05),
+    "gemini-2.5-pro": (1.25, 5.00),
+    "gemini-2.5-flash": (0.35, 1.05),
     "gemini-pro": (0.50, 1.50),
 }
 

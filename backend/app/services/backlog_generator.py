@@ -12,7 +12,6 @@ import logging
 
 from app.models.task import Task, ItemType, PriorityLevel, TaskStatus
 from app.models.interview import Interview
-from app.models.spec import Spec, SpecScope
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
 from app.prompter.facade import PrompterFacade
@@ -941,74 +940,6 @@ LEMBRE-SE:
             formatted.append(f"[{i}] {role}: {content}")
 
         return "\n\n".join(formatted)
-
-    def _build_specs_context(
-        self,
-        specs: List[Spec],
-        story: Task,
-        max_specs: int = 10
-    ) -> str:
-        """
-        Build Specs context for AI (relevant specs only)
-
-        Strategy:
-        1. Filter specs by relevance (keywords in story title/description)
-        2. Limit to max_specs to avoid token bloat
-        3. Format for AI consumption
-
-        Args:
-            specs: List of available Specs
-            story: Story being decomposed
-            max_specs: Maximum number of specs to include
-
-        Returns:
-            Formatted specs context string
-        """
-        if not specs:
-            return "FRAMEWORK SPECIFICATIONS:\nNone available."
-
-        # Simple relevance scoring (keyword matching)
-        story_text = f"{story.title} {story.description}".lower()
-
-        scored_specs = []
-        for spec in specs:
-            score = 0
-            spec_keywords = [
-                spec.category.lower(),
-                spec.name.lower(),
-                spec.spec_type.lower()
-            ]
-
-            for keyword in spec_keywords:
-                if keyword in story_text:
-                    score += 1
-
-            scored_specs.append((score, spec))
-
-        # Sort by score (descending) and take top N
-        scored_specs.sort(key=lambda x: x[0], reverse=True)
-        top_specs = [spec for _, spec in scored_specs[:max_specs]]
-
-        # Format specs
-        formatted = ["FRAMEWORK SPECIFICATIONS (follow these patterns):"]
-        for spec in top_specs:
-            # PROMPT #54 - Token Optimization: Only add "..." if actually truncated
-            content = spec.content[:500]
-            truncated_suffix = "..." if len(spec.content) > 500 else ""
-
-            formatted.append(f"""
----
-Category: {spec.category}
-Framework: {spec.name}
-Type: {spec.spec_type}
-Title: {spec.title}
-
-Specification:
-{content}{truncated_suffix}
----
-""")
-
-        return "\n".join(formatted)
 
     async def generate_task_from_interview_direct(
         self,

@@ -29,11 +29,9 @@ from app.api.routes import (
     system_settings,
     orchestrators,
     project_analyses,
-    specs,
     prompter,  # Prompter Architecture - Phase 1
     jobs,  # PROMPT #65 - Async Job System
     knowledge,  # PROMPT #84 - RAG Phase 2: Knowledge Search
-    discovery_queue,  # PROMPT #77 - Project-Specific Specs Discovery Queue
     contracts  # PROMPT #104 - Contracts (YAML Prompts Management)
 )
 from app.api import websocket
@@ -275,13 +273,6 @@ app.include_router(
     tags=["Project Analyzers"]
 )
 
-# Specs (Dynamic Specifications System - PROMPT #47 Phase 2)
-app.include_router(
-    specs.router,
-    prefix=f"{API_V1_PREFIX}/specs",
-    tags=["Specs"]
-)
-
 # Contracts (YAML Prompts Management - PROMPT #104)
 app.include_router(
     contracts.router,
@@ -306,13 +297,6 @@ app.include_router(
     knowledge.router,
     prefix=f"{API_V1_PREFIX}",
     tags=["Knowledge"]
-)
-
-# Discovery Queue (Project-Specific Specs - PROMPT #77)
-app.include_router(
-    discovery_queue.router,
-    prefix=f"{API_V1_PREFIX}/discovery-queue",
-    tags=["Discovery Queue"]
 )
 
 # WebSocket (Real-time updates)

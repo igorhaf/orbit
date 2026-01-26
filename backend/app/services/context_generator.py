@@ -293,7 +293,10 @@ IMPORTANTE:
 - O Mapa Semântico deve estar DENTRO do context_semantic no final
 - Retorne APENAS o JSON, sem texto adicional"""
 
-        user_prompt = f"""Analise a seguinte entrevista de contexto para o projeto "{project.name}":
+        # Include project_id to ensure unique cache key (avoid semantic cache collisions)
+        user_prompt = f"""[PROJECT_ID: {project.id}]
+
+Analise a seguinte entrevista de contexto para o projeto "{project.name}":
 
 {conversation_summary}
 
@@ -306,8 +309,8 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=4000
-            # Note: temperature is configured in the AI model settings in the database
+            max_tokens=4000,
+            project_id=project.id  # Pass project_id for logging and cache differentiation
         )
 
         # Parse response
@@ -418,7 +421,10 @@ IMPORTANTE:
         features_text = "\n".join([f"- {f}" for f in key_features]) if key_features else "Não especificadas"
         users_text = "\n".join([f"- {u}" for u in target_users]) if target_users else "Não especificados"
 
-        user_prompt = f"""Analise o seguinte contexto de projeto e gere a lista completa de Épicos:
+        # Include project_id to ensure unique cache key (avoid semantic cache collisions)
+        user_prompt = f"""[PROJECT_ID: {project_id}]
+
+Analise o seguinte contexto de projeto e gere a lista completa de Épicos:
 
 ## CONTEXTO DO PROJETO
 {context_human}
@@ -438,7 +444,8 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=4000
+            max_tokens=4000,
+            project_id=project_id  # Pass project_id for logging and cache differentiation
         )
 
         # Parse response

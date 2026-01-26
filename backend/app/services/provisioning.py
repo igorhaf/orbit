@@ -2,8 +2,7 @@
 Project Provisioning Service
 
 Automatically creates project scaffolding based on stack configuration
-from interview responses. Uses specs from database to determine which
-technologies to provision.
+from interview responses.
 
 PROMPT #59 - Automated Project Provisioning
 """
@@ -16,9 +15,17 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.models.spec import Spec
 
 logger = logging.getLogger(__name__)
+
+# Static list of available stacks (previously fetched from specs table)
+AVAILABLE_STACKS = {
+    'backend': ['laravel', 'django', 'fastapi', 'express'],
+    'frontend': ['nextjs', 'react', 'vue', 'angular'],
+    'database': ['postgresql', 'mysql', 'mongodb', 'sqlite'],
+    'css': ['tailwind', 'bootstrap', 'materialui', 'custom'],
+    'mobile': ['react-native', 'flutter', 'ios-swift', 'android-kotlin', 'ionic', 'no-mobile'],
+}
 
 
 class ProvisioningService:
@@ -234,23 +241,12 @@ class ProvisioningService:
 
     def get_available_stacks(self) -> Dict[str, list]:
         """
-        Get available technology stacks from specs database
+        Get available technology stacks.
 
         Returns:
             Dict with available technologies by category
         """
-        categories = ["backend", "frontend", "database", "css"]
-        available = {}
-
-        for category in categories:
-            specs = self.db.query(Spec.name).filter(
-                Spec.category == category,
-                Spec.is_active == True
-            ).distinct().all()
-
-            available[category] = [spec[0] for spec in specs]
-
-        return available
+        return AVAILABLE_STACKS.copy()
 
     def validate_stack(self, stack: Dict[str, str]) -> tuple[bool, Optional[str]]:
         """
