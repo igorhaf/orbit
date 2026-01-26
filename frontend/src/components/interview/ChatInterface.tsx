@@ -7,7 +7,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { interviewsApi, backlogApi } from '@/lib/api';
+import { interviewsApi, backlogApi, projectsApi } from '@/lib/api';
 import { Interview } from '@/lib/types';
 import { Button, Badge, JobProgressBar, Dialog, DialogFooter } from '@/components/ui';
 import { ErrorDialog, formatErrorMessage } from '@/components/ui/ErrorDialog';
@@ -769,10 +769,32 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
   };
 
   const handleCancel = async () => {
-    if (!confirm('Cancel this interview?')) return;
+    // PROMPT #109 - Different confirmation for context interviews
+    const isContextInterview = interview?.interview_mode === 'context';
+    const confirmMessage = isContextInterview
+      ? 'Cancelar esta entrevista? O projeto sera excluido pois ainda nao tem contexto definido.'
+      : 'Cancel this interview?';
+
+    if (!confirm(confirmMessage)) return;
 
     try {
       await interviewsApi.updateStatus(interviewId, 'cancelled');
+
+      // PROMPT #109 - Delete project if cancelling context interview
+      if (isContextInterview && interview?.project_id) {
+        console.log('🗑️ Deleting project due to context interview cancellation:', interview.project_id);
+        try {
+          await projectsApi.delete(interview.project_id);
+          console.log('✅ Project deleted successfully');
+          // Redirect to projects list
+          router.push('/projects');
+          return;
+        } catch (deleteError) {
+          console.error('Failed to delete project:', deleteError);
+          // Continue even if project deletion fails
+        }
+      }
+
       await loadInterview();
       onStatusChange?.();
     } catch (error) {
