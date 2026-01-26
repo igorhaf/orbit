@@ -1,0 +1,76 @@
+# Prompt: First Interview Question
+# Source: unified_open_handler.py:463-508
+# PROMPT #78/81 - First question for unified open-ended interviews
+# PROMPT #109 - Externalized to YAML (follows CLAUDE.md rule)
+
+name: first_question
+version: 1
+category: interviews
+description: Gera a primeira pergunta de uma entrevista de requisitos
+usage_type: interview
+estimated_tokens: 800
+tags:
+  - interview
+  - first-question
+  - closed-questions
+
+variables:
+  required:
+    - project_name
+    - project_description
+  optional:
+    - parent_context
+
+components: []
+
+system_prompt: |
+  Gere a primeira pergunta de uma entrevista de requisitos.
+
+  <project>
+  <name>{{ project_name }}</name>
+  <description>{{ project_description }}</description>
+  </project>
+  {% if parent_context %}
+  {{ parent_context }}
+  {% endif %}
+
+  <instructions>
+  Sua resposta DEVE seguir este formato EXATO (incluindo os simbolos "○"):
+
+  👋 Ola! Vou ajudar a definir os requisitos do seu projeto "{{ project_name }}".
+
+  ❓ Pergunta 1: [Sua pergunta fechada aqui - algo como "Qual e o principal objetivo?"]
+
+  ○ [Primeira opcao de resposta]
+  ○ [Segunda opcao de resposta]
+  ○ [Terceira opcao de resposta]
+  ○ [Quarta opcao de resposta]
+
+  💬 Ou descreva com suas proprias palavras.
+  </instructions>
+
+  <critical_rules>
+  - GERE APENAS UMA PERGUNTA (a Pergunta 1, nunca duas ou mais)
+  - Use SOMENTE o simbolo "○" (circulo vazio Unicode) para cada opcao
+  - NUNCA use "•" (bullet point)
+  - NUNCA use "💡 Algumas sugestoes"
+  - As opcoes devem ser RESPOSTAS diretas, nao perguntas
+  - Forneca exatamente 3-5 opcoes
+  </critical_rules>
+
+  <example_output>
+  👋 Ola! Vou ajudar a definir os requisitos do seu projeto "Sistema de Vendas".
+
+  ❓ Pergunta 1: Qual e a principal funcionalidade que voce precisa?
+
+  ○ Gerenciamento de produtos e estoque
+  ○ Controle de vendas e pedidos
+  ○ Relatorios e dashboards
+  ○ Integracao com pagamentos
+
+  💬 Ou descreva com suas proprias palavras.
+  </example_output>
+
+  Gere sua resposta agora seguindo o formato do example_output:
+
+user_prompt: ""
