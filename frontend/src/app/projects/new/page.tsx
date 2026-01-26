@@ -19,6 +19,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Label } from '@/components/ui/Label';
+import { FolderPicker } from '@/components/ui/FolderPicker';  // PROMPT #111 - Folder picker
 import { projectsApi, interviewsApi } from '@/lib/api';
 import { ChatInterface } from '@/components/interview/ChatInterface';
 
@@ -34,6 +35,7 @@ export default function NewProjectPage() {
   const [name, setName] = useState('');
   // PROMPT #111 - code_path obrigatório (pasta do código existente)
   const [codePath, setCodePath] = useState('');
+  const [showFolderPicker, setShowFolderPicker] = useState(false);  // PROMPT #111 - Folder picker dialog
   const [projectId, setProjectId] = useState<string | null>(null);
   const [interviewId, setInterviewId] = useState<string | null>(null);
 
@@ -238,20 +240,43 @@ export default function NewProjectPage() {
                 </p>
               </div>
 
-              {/* PROMPT #111 - code_path obrigatório */}
+              {/* PROMPT #111 - code_path obrigatório com folder picker */}
               <div>
                 <Label htmlFor="codePath">Code Folder Path *</Label>
-                <Input
-                  id="codePath"
-                  value={codePath}
-                  onChange={(e) => setCodePath(e.target.value)}
-                  placeholder="/home/user/projects/my-existing-code"
-                  className="mt-1"
-                />
+                <div className="flex gap-2 mt-1">
+                  <Input
+                    id="codePath"
+                    value={codePath}
+                    onChange={(e) => setCodePath(e.target.value)}
+                    placeholder="/projects/my-existing-code"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowFolderPicker(true)}
+                    title="Browse folders"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                  </Button>
+                </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Full path to your existing code folder. ORBIT analyzes existing code, it doesn't provision new projects.
+                  Select or type the path to your existing code folder within <code className="bg-gray-100 px-1 rounded">/projects</code>.
                   <strong className="block text-gray-600 mt-1">This path cannot be changed after project creation.</strong>
                 </p>
+
+                {/* Folder Picker Dialog */}
+                <FolderPicker
+                  open={showFolderPicker}
+                  onClose={() => setShowFolderPicker(false)}
+                  onSelect={(path) => {
+                    setCodePath(path);
+                    setShowFolderPicker(false);
+                  }}
+                  title="Select Code Folder"
+                />
               </div>
 
               <div className="flex justify-end gap-3">

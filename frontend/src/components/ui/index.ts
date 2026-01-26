@@ -39,3 +39,6 @@ export { Checkbox } from './Checkbox';
 export type { CheckboxProps } from './Checkbox';
 
 export { JobProgressBar } from './JobProgressBar'; // PROMPT #65 - Async Job System
+
+export { FolderPicker } from './FolderPicker'; // PROMPT #111 - Folder picker for project creation
+export type { FolderPickerProps } from './FolderPicker';

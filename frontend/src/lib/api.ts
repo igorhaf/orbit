@@ -130,6 +130,22 @@ export const projectsApi = {
 
   lockContext: (id: string) =>
     request<any>(`/api/v1/projects/${id}/lock-context`, { method: 'POST' }),
+
+  // PROMPT #111 - Browse folders for project creation
+  browseFolders: (path: string = '') =>
+    request<{
+      current_path: string;
+      relative_path: string;
+      parent_path: string | null;
+      folders: Array<{
+        name: string;
+        path: string;
+        full_path: string;
+        is_project: boolean;
+      }>;
+      can_select: boolean;
+      error?: string;
+    }>(`/api/v1/projects/browse-folders?path=${encodeURIComponent(path)}`),
 };
 
 // Tasks (Kanban) API
