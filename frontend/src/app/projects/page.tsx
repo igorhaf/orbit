@@ -30,10 +30,10 @@ export default function ProjectsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
-  const [formData, setFormData] = useState<ProjectCreate>({
+  // PROMPT #111 - formData não inclui code_path (imutável após criação)
+  const [formData, setFormData] = useState<Omit<ProjectCreate, 'code_path'>>({
     name: '',
     description: '',
-    code_path: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -59,10 +59,10 @@ export default function ProjectsPage() {
 
   const handleOpenEdit = (project: Project) => {
     setProjectToEdit(project);
+    // PROMPT #111 - code_path é imutável, não incluir no formData
     setFormData({
       name: project.name,
       description: project.description || '',
-      code_path: project.code_path || '',
     });
     setShowEditDialog(true);
   };
@@ -77,7 +77,8 @@ export default function ProjectsPage() {
       await projectsApi.update(projectToEdit.id, formData);
       setShowEditDialog(false);
       setProjectToEdit(null);
-      setFormData({ name: '', description: '', code_path: '' });
+      // PROMPT #111 - code_path removido (imutável)
+      setFormData({ name: '', description: '' });
       fetchProjects();
     } catch (error) {
       console.error('Error updating project:', error);
@@ -192,9 +193,15 @@ export default function ProjectsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-gray-600 line-clamp-3 mb-4">
+                  <p className="text-sm text-gray-600 line-clamp-3 mb-2">
                     {project.description || 'No description'}
                   </p>
+                  {/* PROMPT #111 - Show code_path */}
+                  {project.code_path && (
+                    <div className="text-xs text-gray-500 mb-2 font-mono truncate" title={project.code_path}>
+                      📁 {project.code_path}
+                    </div>
+                  )}
                   {/* Show stack info if provisioned */}
                   {project.stack_backend && (
                     <div className="text-xs text-gray-500 mb-2 flex flex-wrap gap-1">
@@ -327,19 +334,18 @@ export default function ProjectsPage() {
                   setFormData({ ...formData, description: e.target.value })
                 }
               />
-              <div>
-                <Input
-                  label="Code Path"
-                  placeholder="/app/projects/my-legacy-app"
-                  value={formData.code_path || ''}
-                  onChange={(e) =>
-                    setFormData({ ...formData, code_path: e.target.value })
-                  }
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Path to project code in Docker container. Required for AI-powered pattern discovery.
-                </p>
-              </div>
+              {/* PROMPT #111 - code_path é imutável, exibir apenas como read-only */}
+              {projectToEdit?.code_path && (
+                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                  <div className="text-xs font-medium text-gray-500 mb-1">Code Folder (immutable)</div>
+                  <div className="text-sm text-gray-700 font-mono break-all">
+                    {projectToEdit.code_path}
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    This path cannot be changed after project creation.
+                  </p>
+                </div>
+              )}
             </div>
             <DialogFooter>
               <Button

@@ -87,19 +87,38 @@ async def create_project(
     """
     Create a new project.
 
+    PROMPT #111 - code_path é OBRIGATÓRIO e IMUTÁVEL
+
     - **name**: Project name (required, max 255 characters)
-    - **description**: Project description (required, max 2000 characters) - PROMPT #80
+    - **code_path**: Path to existing code folder (REQUIRED, IMMUTABLE after creation)
+    - **description**: Project description (optional)
     - **git_repository_info**: Git repository information as JSON (optional)
 
-    Creates:
-    - Database record for the project
-    - Empty project folder in backend/projects/{sanitized-name}/
+    Validates:
+    - code_path must exist
+    - code_path must be a directory
+
+    Note: ORBIT focuses on analyzing existing code, not provisioning.
     """
-    # Create new project instance
+    # PROMPT #111 - Validar que pasta existe e é um diretório
+    code_path = Path(project.code_path)
+    if not code_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Code path does not exist: {project.code_path}"
+        )
+    if not code_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Code path is not a directory: {project.code_path}"
+        )
+
+    # Create new project instance with code_path
     db_project = Project(
         name=project.name,
         description=project.description,
         git_repository_info=project.git_repository_info,
+        code_path=project.code_path,  # PROMPT #111 - Obrigatório e imutável
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -108,25 +127,7 @@ async def create_project(
     db.commit()
     db.refresh(db_project)
 
-    # Create project folder (empty, will be populated during provisioning)
-    try:
-        sanitized_name = _sanitize_project_name(project.name)
-        # Projects created in /projects/ (mounted from ./projects/ on host)
-        projects_dir = Path("/projects")
-        projects_dir.mkdir(exist_ok=True)
-
-        project_path = projects_dir / sanitized_name
-        project_path.mkdir(exist_ok=True)
-
-        # Save folder path to database
-        db_project.project_folder = sanitized_name
-        db.commit()
-        db.refresh(db_project)
-
-        logger.info(f"✅ Created project folder: {project_path}")
-    except Exception as e:
-        logger.warning(f"Failed to create project folder: {e}")
-        # Don't fail the request if folder creation fails
+    logger.info(f"✅ Created project '{project.name}' with code_path: {project.code_path}")
 
     return db_project
 

@@ -28,12 +28,15 @@ class ProjectBase(BaseModel):
     project_folder: Optional[str] = Field(None, description="Sanitized project folder name")
 
     # Pattern Discovery (PROMPT #62 - Week 1)
-    code_path: Optional[str] = Field(None, description="Path to project code in Docker container (required for pattern discovery)")
+    # PROMPT #111 - code_path agora é OPCIONAL em ProjectBase pois será obrigatório apenas em ProjectCreate
+    code_path: Optional[str] = Field(None, description="Path to project code folder")
 
 
 class ProjectCreate(ProjectBase):
     """Schema for creating a new Project"""
-    pass
+    # PROMPT #111 - code_path é OBRIGATÓRIO na criação (não pode ser editado depois)
+    # O ORBIT foca em análise de código existente, não em provisionamento
+    code_path: str = Field(..., min_length=1, max_length=500, description="Path to project code folder (required, immutable after creation)")
 
 
 class ProjectUpdate(BaseModel):
@@ -49,8 +52,8 @@ class ProjectUpdate(BaseModel):
     stack_css: Optional[str] = None
     stack_mobile: Optional[str] = None  # PROMPT #67
 
-    # Pattern Discovery (PROMPT #62 - Week 1)
-    code_path: Optional[str] = None
+    # PROMPT #111 - code_path REMOVIDO de ProjectUpdate (imutável após criação)
+    # code_path só pode ser definido na criação do projeto
 
 
 class ProjectResponse(ProjectBase):
