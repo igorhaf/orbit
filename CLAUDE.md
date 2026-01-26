@@ -360,6 +360,20 @@ user_prompt: |
 - ✅ Usar o PromptLoader para carregar prompts
 - ✅ Manter variáveis dinâmicas usando sintaxe Jinja2 ({{ variable }})
 
+**REGRA DE OURO PARA MODIFICAÇÕES DE PROMPTS (PROMPT #109):**
+Quando precisar modificar QUALQUER prompt de IA (seja para corrigir formato de perguntas,
+ajustar instruções, ou melhorar resultados):
+
+1. **PRIMEIRO**: Localize o arquivo YAML correspondente em `backend/app/prompts/`
+2. **FAÇA AS ALTERAÇÕES NO YAML**: Modifique `system_prompt:` ou `user_prompt:`
+3. **VERIFIQUE**: Se o código Python ainda usa prompt hardcoded, migre para PromptLoader
+4. **TESTE**: Reinicie o servidor e teste a funcionalidade
+
+Exemplo de fluxo correto:
+- Problema: "Gemini não está gerando perguntas fechadas com opções"
+- Solução: Edite `backend/app/prompts/interviews/context_interview_ai.yaml`
+- Não faça: Modificar strings de prompt diretamente no Python
+
 **Arquivos com prompts já externalizados (51 YAMLs):**
 - Total: 51 arquivos YAML
 - Cobertura: 100% dos prompts principais
@@ -721,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #103 (Externalize Hardcoded Prompts to YAML)
-**Próximo prompt:** PROMPT #104
+**Último prompt:** PROMPT #109 (Error Dialog + Closed Questions Fix)
+**Próximo prompt:** PROMPT #110
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -772,6 +786,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #100**: Fix Invalid Claude Haiku Model ID - Corrigiu erro crítico 404 "model not found" causado por model IDs fictícios (claude-4.x) que não existem na API Anthropic. Substituiu 4 model IDs inválidos por IDs válidos: Claude Haiku 3.5 (`claude-3-5-haiku-20241022`) para interviews, Claude Sonnet 3.5 (`claude-3-5-sonnet-20241022`) para task execution e general, Claude Opus 3 (`claude-3-opus-20240229`) para prompt generation. Atualizou banco de dados (Phase 1), migration seed (Phase 2), pricing.py e populate_database.py (Phase 4). Criou model específico para usage_type="interview". Desbloqueou usuários imediatamente - entrevistas de contexto funcionando novamente.
 - **PROMPT #102**: Hierarchical Draft Generation - Implementou geração automática de cards filhos ao aprovar cards pai. Epic aprovado → 15-20 Stories draft. Story aprovada → 5-8 Tasks draft. Task aprovada → 3-5 Subtasks draft. Subtask aprovada → Conteúdo gerado (nível folha). Endpoint unificado `POST /tasks/{id}/activate` detecta item_type e chama função apropriada. Response inclui `children_generated`. Frontend mostra feedback: "Item ativado! 18 stories foram geradas como drafts." Funções adicionadas: `_generate_draft_stories`, `_generate_draft_tasks`, `_generate_draft_subtasks`, `activate_suggested_story`, `activate_suggested_task`, `activate_suggested_subtask`.
 - **PROMPT #103**: Externalize Hardcoded Prompts to YAML - Migrou TODOS os prompts de IA hardcoded para arquivos YAML externos em `backend/app/prompts/`. Criou infraestrutura completa: PromptLoader (carrega/renderiza YAML com Jinja2), PromptService (integra com AIOrchestrator), feature flag `USE_EXTERNAL_PROMPTS`. Total de 51 arquivos YAML organizados em: backlog/ (4), commits/ (1), components/ (3), context/ (16), discovery/ (2), interviews/ (25). Cobertura: 100% dos prompts principais. Adicionada regra no CLAUDE.md para verificar e externalizar prompts hardcoded durante qualquer tarefa futura.
+- **PROMPT #109**: Error Dialog + Closed Questions Fix - Corrigiu 3 problemas relacionados a entrevistas com Gemini: (1) Substituiu alerts JavaScript rústicos por componente ErrorDialog estilizado com modal pattern do projeto. (2) Adicionou validação para opções vazias no handleOptionSubmit, evitando erro `[object Object]` ao submeter opção sem label. (3) Atualizou `context_interview_ai.yaml` e `context_questions.py` para forçar geração de perguntas FECHADAS com opções (símbolo ○) ao invés de perguntas abertas. Adicionada "Regra de Ouro" no CLAUDE.md: sempre modificar prompts nos arquivos YAML em `backend/app/prompts/`, nunca hardcoded.
 
 ---
 
