@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #109 (Error Dialog + Closed Questions Fix)
-**Próximo prompt:** PROMPT #110
+**Último prompt:** PROMPT #111 (Mandatory Project Folder)
+**Próximo prompt:** PROMPT #112
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -787,6 +787,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #102**: Hierarchical Draft Generation - Implementou geração automática de cards filhos ao aprovar cards pai. Epic aprovado → 15-20 Stories draft. Story aprovada → 5-8 Tasks draft. Task aprovada → 3-5 Subtasks draft. Subtask aprovada → Conteúdo gerado (nível folha). Endpoint unificado `POST /tasks/{id}/activate` detecta item_type e chama função apropriada. Response inclui `children_generated`. Frontend mostra feedback: "Item ativado! 18 stories foram geradas como drafts." Funções adicionadas: `_generate_draft_stories`, `_generate_draft_tasks`, `_generate_draft_subtasks`, `activate_suggested_story`, `activate_suggested_task`, `activate_suggested_subtask`.
 - **PROMPT #103**: Externalize Hardcoded Prompts to YAML - Migrou TODOS os prompts de IA hardcoded para arquivos YAML externos em `backend/app/prompts/`. Criou infraestrutura completa: PromptLoader (carrega/renderiza YAML com Jinja2), PromptService (integra com AIOrchestrator), feature flag `USE_EXTERNAL_PROMPTS`. Total de 51 arquivos YAML organizados em: backlog/ (4), commits/ (1), components/ (3), context/ (16), discovery/ (2), interviews/ (25). Cobertura: 100% dos prompts principais. Adicionada regra no CLAUDE.md para verificar e externalizar prompts hardcoded durante qualquer tarefa futura.
 - **PROMPT #109**: Error Dialog + Closed Questions Fix - Corrigiu 3 problemas relacionados a entrevistas com Gemini: (1) Substituiu alerts JavaScript rústicos por componente ErrorDialog estilizado com modal pattern do projeto. (2) Adicionou validação para opções vazias no handleOptionSubmit, evitando erro `[object Object]` ao submeter opção sem label. (3) Atualizou `context_interview_ai.yaml` e `context_questions.py` para forçar geração de perguntas FECHADAS com opções (símbolo ○) ao invés de perguntas abertas. Adicionada "Regra de Ouro" no CLAUDE.md: sempre modificar prompts nos arquivos YAML em `backend/app/prompts/`, nunca hardcoded.
+- **PROMPT #110**: RAG Evolution - Implementou evolução do sistema RAG com 4 melhorias: (1) pgvector ativado no init-db.sh. (2) SpecRAGSync service para sincronizar specs com RAG. (3) Endpoints `/specs/sync-rag` para sincronização manual. (4) Dashboard RAG Analytics em `/rag` com estatísticas de uso.
+- **PROMPT #111**: Mandatory Project Folder - Tornou `code_path` OBRIGATÓRIO e IMUTÁVEL na criação de projetos. ORBIT foca em análise de código existente, não provisionamento. Backend: code_path required em ProjectCreate, removed de ProjectUpdate, validação de existência de pasta, migration NOT NULL. Frontend: input obrigatório no wizard, code_path read-only no Edit Dialog. Princípio: projeto = pasta de código existente.
 
 ---
 
