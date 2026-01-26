@@ -23,6 +23,13 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "postgres" <<-EOSQL
     GRANT ALL PRIVILEGES ON DATABASE ai_orchestrator TO $POSTGRES_USER;
 EOSQL
 
+# Enable pgvector extension (PROMPT #110 - RAG Evolution)
+# This enables vector similarity search for RAG functionality
+echo "🧮 Enabling pgvector extension..."
+psql -v ON_ERROR_STOP=0 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    CREATE EXTENSION IF NOT EXISTS vector;
+EOSQL
+
 echo "✅ Database initialization complete!"
 echo "   Database: ai_orchestrator"
 echo "   User: $POSTGRES_USER"

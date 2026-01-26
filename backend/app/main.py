@@ -90,6 +90,29 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to load custom orchestrators: {e}")
 
+    # PROMPT #110 - RAG Evolution: Sync framework specs to RAG on startup
+    try:
+        from app.database import get_db
+        from app.services.spec_rag_sync import SpecRAGSync
+
+        # Get a database session
+        db_gen = get_db()
+        db = next(db_gen)
+
+        try:
+            sync_service = SpecRAGSync(db)
+            results = sync_service.sync_all_framework_specs()
+            logger.info(
+                f"RAG Sync: {results['synced']} specs indexed, "
+                f"{results['skipped']} already indexed, "
+                f"{results['errors']} errors"
+            )
+        finally:
+            db.close()
+
+    except Exception as e:
+        logger.warning(f"RAG sync skipped (non-fatal): {e}")
+
     yield
 
     # Shutdown
