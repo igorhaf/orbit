@@ -202,13 +202,13 @@ Be specific and follow PHP best practices.
 
     async def test_google(self) -> Dict:
         """
-        Testa Google Gemini 1.5 Flash
+        Testa Google Gemini 2.5 Flash
         """
-        logger.info("🧪 Testing Google Gemini 1.5 Flash...")
+        logger.info("🧪 Testing Google Gemini 2.5 Flash...")
 
         result = {
             "provider": "google",
-            "model": "gemini-1.5-flash",
+            "model": "gemini-2.5-flash",
             "success": False,
             "error": None,
             "response_time": 0,
@@ -220,7 +220,7 @@ Be specific and follow PHP best practices.
         try:
             start_time = time.time()
 
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.5-flash')
             response = model.generate_content(self.test_prompt)
 
             end_time = time.time()

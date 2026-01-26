@@ -121,7 +121,7 @@ def populate_ai_models(db):
             "usage_type": AIModelUsageType.COMMIT_GENERATION,
             "is_active": True,
             "config": {
-                "model": "gemini-1.5-pro",
+                "model": "gemini-2.5-pro",
                 "max_tokens": 8000,
                 "temperature": 0.5
             }
@@ -133,7 +133,7 @@ def populate_ai_models(db):
             "usage_type": AIModelUsageType.GENERAL,
             "is_active": False,
             "config": {
-                "model": "gemini-1.5-flash",
+                "model": "gemini-2.5-flash",
                 "max_tokens": 4000,
                 "temperature": 0.7
             }
@@ -207,11 +207,6 @@ def populate_system_settings(db):
             "description": "Número máximo de mensagens recentes a manter em contexto de entrevista"
         },
         {
-            "key": "specs_max_per_request",
-            "value": 10,
-            "description": "Número máximo de specs a incluir por requisição"
-        },
-        {
             "key": "enable_ai_execution_logging",
             "value": True,
             "description": "Habilitar log detalhado de execuções de IA"
@@ -225,11 +220,6 @@ def populate_system_settings(db):
             "key": "max_interview_questions",
             "value": 12,
             "description": "Número máximo de perguntas em uma entrevista"
-        },
-        {
-            "key": "enable_specs_filtering",
-            "value": True,
-            "description": "Habilitar filtragem seletiva de specs (PROMPT #54)"
         },
         {
             "key": "enable_context_truncation",

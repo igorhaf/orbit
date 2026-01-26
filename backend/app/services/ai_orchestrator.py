@@ -217,8 +217,8 @@ class AIOrchestrator:
 
             # Verificar se o provider está inicializado
             if provider in self.clients:
-                # Extrair configurações do banco
-                model_name = db_model.config.get("model_id", "")
+                # Extrair configurações do banco (aceita "model_id" ou "model")
+                model_name = db_model.config.get("model_id") or db_model.config.get("model", "")
                 max_tokens = db_model.config.get("max_tokens", 4096)
                 temperature = db_model.config.get("temperature", 0.7)
 
@@ -251,7 +251,7 @@ class AIOrchestrator:
 
         if fallback_model and fallback_model.provider.lower() in self.clients:
             provider = fallback_model.provider.lower()
-            model_name = fallback_model.config.get("model_id", "")
+            model_name = fallback_model.config.get("model_id") or fallback_model.config.get("model", "")
             max_tokens = fallback_model.config.get("max_tokens", 4096)
             temperature = fallback_model.config.get("temperature", 0.7)
 
@@ -287,7 +287,7 @@ class AIOrchestrator:
         defaults = {
             "anthropic": "claude-sonnet-4-20250514",
             "openai": "gpt-4o",
-            "google": "gemini-1.5-flash"
+            "google": "gemini-2.5-flash"
         }
         return defaults.get(provider, "claude-sonnet-4-20250514")
 
@@ -330,7 +330,7 @@ class AIOrchestrator:
                 if provider in self.clients:
                     return {
                         "provider": provider,
-                        "model": db_model.config.get("model_id", self._get_default_model(provider)),
+                        "model": db_model.config.get("model_id") or db_model.config.get("model") or self._get_default_model(provider),
                         "max_tokens": db_model.config.get("max_tokens", 4096),
                         "temperature": db_model.config.get("temperature", 0.7),
                         "db_model_id": str(db_model.id),

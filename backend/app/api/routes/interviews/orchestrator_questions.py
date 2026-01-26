@@ -25,69 +25,9 @@ from sqlalchemy.orm import Session
 from typing import Optional, Dict
 
 from app.models.project import Project
-from app.models.spec import Spec
-from sqlalchemy import func
 
-
-def get_specs_for_category(db: Session, category: str) -> list:
-    """
-    Get available frameworks from specs for a specific category.
-    Returns list of choices formatted for interview options.
-
-    Opções DINÂMICAS extraídas do banco de specs.
-    """
-    specs = db.query(
-        Spec.name,
-        func.count(Spec.id).label('count')
-    ).filter(
-        Spec.category == category,
-        Spec.is_active == True
-    ).group_by(Spec.name).all()
-
-    # Label mappings
-    labels = {
-        # Backend
-        'laravel': 'Laravel (PHP)',
-        'django': 'Django (Python)',
-        'fastapi': 'FastAPI (Python)',
-        'express': 'Express.js (Node.js)',
-
-        # Database
-        'postgresql': 'PostgreSQL',
-        'mysql': 'MySQL',
-        'mongodb': 'MongoDB',
-        'sqlite': 'SQLite',
-
-        # Frontend
-        'nextjs': 'Next.js (React)',
-        'react': 'React',
-        'vue': 'Vue.js',
-        'angular': 'Angular',
-
-        # CSS
-        'tailwind': 'Tailwind CSS',
-        'bootstrap': 'Bootstrap',
-        'materialui': 'Material UI',
-        'custom': 'CSS Customizado',
-
-        # Mobile
-        'react-native': 'React Native',
-        'flutter': 'Flutter',
-        'ios-swift': 'Native iOS (Swift)',
-        'android-kotlin': 'Native Android (Kotlin)',
-        'ionic': 'Ionic',
-    }
-
-    choices = []
-    for name, count in specs:
-        label = labels.get(name, name.title())
-        choices.append({
-            "id": name,
-            "label": label,
-            "value": name
-        })
-
-    return choices
+# Import static framework options from fixed_questions
+from app.api.routes.interviews.fixed_questions import get_specs_for_category
 
 
 def get_orchestrator_fixed_question(
