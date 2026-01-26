@@ -218,6 +218,33 @@ Different AI providers (Gemini, Claude, GPT) may interpret formatting instructio
 
 ---
 
+## Additional Fix: Bullet Symbol Normalization (Phase 2)
+
+After initial implementation, the user reported that Gemini was still generating open questions.
+Investigation revealed that the `option_parser.py` only recognized the exact `○` symbol (U+25CB).
+Gemini sometimes uses different bullet symbols like `•`, `-`, `●`, etc.
+
+### Fix Applied:
+
+1. **Extended option_parser.py** to recognize 13+ bullet symbols:
+   - `○`, `●`, `•`, `◦`, `◉`, `◯`, `⚪`, `⚫`, `·`, `-`, `*`, `–`, `—`
+   - Checkbox variants: `☐`, `☑`, `☒`, `□`, `■`, `▢`, `▣`
+
+2. **Added normalization step** (`_normalize_bullets()`) that converts all bullet variants to `○` before parsing
+
+3. **Increased max_tokens**:
+   - From 1000 → 1500 for regular questions
+   - From 500 → 1000 for first question
+   - Prevents response truncation ("picotadas")
+
+4. **Added detailed logging** to debug bullet detection
+
+### Files Modified (Phase 2):
+- [backend/app/api/routes/interviews/option_parser.py](backend/app/api/routes/interviews/option_parser.py)
+- [backend/app/api/routes/interviews/unified_open_handler.py](backend/app/api/routes/interviews/unified_open_handler.py)
+
+---
+
 ## Status: COMPLETE
 
 **Key Achievements:**
@@ -225,9 +252,13 @@ Different AI providers (Gemini, Claude, GPT) may interpret formatting instructio
 - Eliminated all crude browser alerts in ChatInterface
 - Added option validation preventing `[object Object]` errors
 - Enforced closed questions format for Gemini compatibility
+- Extended bullet symbol recognition (13+ symbols)
+- Added bullet normalization for cross-AI compatibility
+- Increased max_tokens to prevent truncation
 - Documented golden rule for future prompt modifications
 
 **Impact:**
 - Better user experience with styled error modals
-- Consistent question format across AI providers
+- Consistent question format across AI providers (Claude, GPT, Gemini)
 - Clear guidelines for future prompt changes
+- Questions no longer get cut off mid-sentence

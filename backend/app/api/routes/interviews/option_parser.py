@@ -1,6 +1,7 @@
 """
 Option Parser for AI-Generated Questions
 PROMPT #99 - Parse AI responses to extract structured options
+PROMPT #109 - Extended to accept multiple bullet symbols (Gemini compatibility)
 
 Parses AI responses that contain options in text format and converts them
 to structured options that the frontend can render as radio/checkbox buttons.
@@ -12,10 +13,66 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# PROMPT #109 - Common bullet symbols that AI might use instead of ○
+# We normalize all of these to ○ before parsing
+BULLET_SYMBOLS = [
+    '○',  # White circle (U+25CB) - our standard
+    '●',  # Black circle (U+25CF)
+    '•',  # Bullet (U+2022)
+    '◦',  # White bullet (U+25E6)
+    '◉',  # Fisheye (U+25C9)
+    '◯',  # Large circle (U+25EF)
+    '⚪',  # White circle emoji
+    '⚫',  # Black circle emoji
+    '·',  # Middle dot (U+00B7)
+    '-',  # Hyphen (common fallback)
+    '*',  # Asterisk (common fallback)
+    '–',  # En dash (U+2013)
+    '—',  # Em dash (U+2014)
+]
+
+# Checkbox symbols
+CHECKBOX_SYMBOLS = [
+    '☐',  # Ballot box (U+2610) - our standard
+    '☑',  # Ballot box with check (U+2611)
+    '☒',  # Ballot box with X (U+2612)
+    '□',  # White square (U+25A1)
+    '■',  # Black square (U+25A0)
+    '▢',  # White square with rounded corners (U+25A2)
+    '▣',  # White square containing black small square (U+25A3)
+]
+
+
+def _normalize_bullets(content: str) -> str:
+    """
+    PROMPT #109 - Normalize various bullet symbols to our standard ○
+
+    This ensures that AI responses using different bullet styles are
+    still parsed correctly.
+    """
+    normalized = content
+
+    # First, handle checkbox symbols (convert to ☐)
+    for symbol in CHECKBOX_SYMBOLS:
+        if symbol != '☐' and symbol != '☑':
+            normalized = normalized.replace(symbol, '☐')
+
+    # Then, handle regular bullets (convert to ○)
+    # Only convert if they appear at the start of a line (option context)
+    for symbol in BULLET_SYMBOLS:
+        if symbol != '○':
+            # Replace symbol at start of line (with optional whitespace before)
+            pattern = rf'(^|\n)\s*{re.escape(symbol)}\s+'
+            normalized = re.sub(pattern, r'\1○ ', normalized)
+
+    return normalized
+
 
 def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
     """
     Parse AI question content to extract options and determine question type.
+
+    PROMPT #109 - Extended to normalize bullets before parsing (Gemini compatibility)
 
     The AI generates questions with options in this format:
 
@@ -38,9 +95,10 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
         ☑️ Selecione todas que se aplicam.
 
     This function:
-    1. Detects if question has options (○ for radio, ☐ for checkbox)
-    2. Extracts the options from the text
-    3. Returns structured data for frontend rendering
+    1. Normalizes various bullet symbols to ○ (for Gemini compatibility)
+    2. Detects if question has options (○ for radio, ☐ for checkbox)
+    3. Extracts the options from the text
+    4. Returns structured data for frontend rendering
 
     Args:
         content: Raw AI response content
@@ -60,9 +118,23 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
                 }
             }
     """
-    # Detect question type by symbols
-    has_radio = '○' in content  # Single choice (radio buttons)
-    has_checkbox = '☐' in content or '☑' in content  # Multiple choice (checkboxes)
+    # PROMPT #109 - First, check if we have ANY bullet-like symbols
+    found_symbols = [s for s in BULLET_SYMBOLS + CHECKBOX_SYMBOLS if s in content]
+    has_any_bullet = len(found_symbols) > 0
+
+    if has_any_bullet:
+        logger.info(f"🔄 Found bullet symbols in AI response: {found_symbols}")
+        # Normalize bullets for parsing
+        normalized_content = _normalize_bullets(content)
+        logger.info(f"📝 After normalization - has ○: {'○' in normalized_content}, has ☐: {'☐' in normalized_content}")
+    else:
+        logger.warning(f"⚠️  No bullet symbols found in AI response (length: {len(content)} chars)")
+        logger.warning(f"⚠️  First 500 chars: {content[:500]}")
+        normalized_content = content
+
+    # Detect question type by symbols (after normalization)
+    has_radio = '○' in normalized_content  # Single choice (radio buttons)
+    has_checkbox = '☐' in normalized_content or '☑' in normalized_content  # Multiple choice (checkboxes)
 
     if not has_radio and not has_checkbox:
         # No options found, return as-is (open question - should not happen if AI follows instructions)
@@ -81,12 +153,12 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
         # Extract radio options
         option_pattern = r'○\s*(.+?)(?=\n|$)'
 
-    # Extract all options
-    matches = re.findall(option_pattern, content, re.MULTILINE)
+    # Extract all options (use normalized_content for parsing)
+    matches = re.findall(option_pattern, normalized_content, re.MULTILINE)
 
     if not matches:
         logger.warning(f"⚠️  Found {question_type} symbols but could not extract options")
-        return content, None
+        return normalized_content, None
 
     # Build choices array
     choices = []
@@ -110,12 +182,12 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
 
     if not choices:
         logger.warning("⚠️  No valid options extracted after filtering instruction lines")
-        return content, None
+        return normalized_content, None
 
     logger.info(f"✅ Parsed {question_type} question with {len(choices)} options")
 
-    # Return original content + structured options
-    return content, {
+    # Return normalized content (for consistent display) + structured options
+    return normalized_content, {
         "question_type": question_type,
         "options": {
             "type": option_type,
