@@ -186,3 +186,86 @@ Path validation happens at project creation time, failing fast if the path is in
 **Commit:** `15ff343` - feat: make code_path required and immutable for projects
 
 ---
+
+## Enhancement: Folder Picker Component
+
+**Date:** January 26, 2026
+**Commit:** `92146b3` - feat: add FolderPicker component for code path selection
+
+### Objective
+
+Add a visual folder browser to the project creation wizard, similar to VS Code's project opening experience. Users can now click a browse button to navigate and select folders from the mounted `/projects` directory.
+
+### What Was Added
+
+#### 1. Backend - Browse Folders Endpoint
+
+**File:** `backend/app/api/routes/projects.py`
+- New endpoint `GET /browse-folders?path=<relative_path>`
+- Lists directories within `/projects` mount point
+- Detects project folders (has `.git`, `package.json`, etc.)
+- Sanitizes paths to prevent directory traversal attacks
+- Returns: current_path, relative_path, parent_path, folders[], can_select
+
+```python
+@router.get("/browse-folders")
+async def browse_folders(path: str = Query("", description="Relative path within /projects")):
+    """Browse folders within the mounted /projects directory."""
+    # Returns list of directories with is_project detection
+```
+
+#### 2. Frontend - API Function
+
+**File:** `frontend/src/lib/api.ts`
+- Added `browseFolders(path: string)` function to projectsApi
+
+#### 3. Frontend - FolderPicker Component
+
+**File:** `frontend/src/components/ui/FolderPicker.tsx` (NEW - 273 lines)
+- Full directory navigation with breadcrumbs
+- Single-click to select folder
+- Double-click to navigate into folder
+- Up/Root navigation buttons
+- Project detection (shows "Project" badge for folders with .git, package.json, etc.)
+- Selected folder preview before confirmation
+- Dialog-based UI following project patterns
+
+#### 4. Frontend - Wizard Integration
+
+**File:** `frontend/src/app/projects/new/page.tsx`
+- Import FolderPicker component
+- Added `showFolderPicker` state
+- Browse button next to code path input
+- FolderPicker integration with onSelect callback
+
+### Files Created/Modified
+
+| File | Action | Description |
+|------|--------|-------------|
+| `frontend/src/components/ui/FolderPicker.tsx` | **Created** | 273 lines - Full folder picker component |
+| `frontend/src/components/ui/index.ts` | Modified | Export FolderPicker |
+| `frontend/src/lib/api.ts` | Modified | Added browseFolders function |
+| `frontend/src/app/projects/new/page.tsx` | Modified | Integrated FolderPicker |
+| `backend/app/api/routes/projects.py` | Modified | Added /browse-folders endpoint |
+
+### User Experience
+
+1. User clicks folder icon button next to "Code Folder Path" input
+2. Dialog opens showing `/projects` directory contents
+3. User navigates by double-clicking folders or using Up/Root buttons
+4. Single-click selects a folder (highlighted in blue)
+5. "Select Folder" button confirms selection
+6. Path is automatically filled in the input field
+
+### Success Metrics
+
+| Feature | Status |
+|---------|--------|
+| Backend endpoint returns folder list | Working |
+| Project detection (git, package.json) | Working |
+| Navigation (Up, Root, double-click) | Working |
+| Single-click folder selection | Working |
+| Path injection into wizard | Working |
+| Dialog follows UI patterns | Consistent |
+
+---
