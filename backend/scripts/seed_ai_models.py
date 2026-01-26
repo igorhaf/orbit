@@ -103,7 +103,7 @@ def seed_ai_models():
                 provider="google",
                 api_key=settings.google_ai_api_key,
                 config={
-                    "model_id": "gemini-2.5-flash",
+                    "model": "gemini-1.5-flash",
                     "max_tokens": 2000,
                     "temperature": 0.5
                 },

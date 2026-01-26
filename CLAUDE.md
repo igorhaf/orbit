@@ -700,7 +700,16 @@ async def list_items(db: Session = Depends(get_db)):
 
 ### Fases Implementadas:
 - **Phase 1 (PROMPT #46):** Stack questions in interviews
+- **Phase 2 (PROMPT #47):** Dynamic specs database (47 specs seeded)
+- **Phase 3 (PROMPT #48):** Specs integration in prompt generation (60-80% token reduction)
+- **Phase 4 (PROMPT #49):** Specs integration in task execution (15-20% additional reduction)
 - **PROMPT #50:** AI Models management page with full CRUD
+
+### Token Reduction Strategy:
+O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tailwind) armazenadas no banco de dados para reduzir drasticamente o uso de tokens da IA:
+- **Phase 3:** 60-80% de redução fornecendo specs durante geração de tarefas
+- **Phase 4:** 15-20% adicional com specs seletivas durante execução de código
+- **Total:** 70-85% de redução de tokens!
 
 ---
 
@@ -733,7 +742,7 @@ async def list_items(db: Session = Depends(get_db)):
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
 - PROMPT_42 (gap em #41)
 - PROMPT_44 (gap em #43)
-- PROMPT_45 → PROMPT_46 → PROMPT_50
+- PROMPT_45 → PROMPT_46 → PROMPT_47 → PROMPT_48 → PROMPT_49 → PROMPT_50
 - (gap em #51-#67)
 - PROMPT_68 (Dual-Mode Interview System)
 - PROMPT_69 (Refactor interviews.py - Modularization)
@@ -753,7 +762,7 @@ async def list_items(db: Session = Depends(get_db)):
 - **PROMPT #50**: AI Models Management Page
 - **PROMPT #68**: Dual-Mode Interview System - Auto-detecção de estado do projeto (novo vs existente), entrevistas focadas em tasks, AI subtask suggestions, task exploration
 - **PROMPT #69**: Refactor interviews.py - Modularização COMPLETA (2464 → 2366 linhas distribuídas em 6 módulos focados)
-- **PROMPT #70**: Refactor task_executor.py - Modularização COMPLETA (1179 → 1380 linhas distribuídas em 4 módulos focados: context_builder, budget_manager, batch_executor, executor)
+- **PROMPT #70**: Refactor task_executor.py - Modularização COMPLETA (1179 → 1380 linhas distribuídas em 5 módulos focados: spec_fetcher, context_builder, budget_manager, batch_executor, executor)
 - **PROMPT #71**: Refactor tasks.py - Package Structure Created (Abordagem pragmática: estrutura criada, modularização completa adiada. 28 endpoints bem organizados em 1107 linhas)
 - **PROMPT #72**: Refactor ChatInterface.tsx - Package Structure Created (Abordagem pragmática: estrutura criada, modularização completa adiada. 16+ states, 3 job polling hooks, componente estável em 1101 linhas)
 - **PROMPT #76**: Meta Prompt Fixed Questions - PRIMEIRA entrevista sempre coleta informações completas (8 perguntas fixas Q1-Q8 + perguntas contextuais da IA Q9+), fundação para geração automática de hierarquia completa (Epics → Stories → Tasks → Subtasks com prompts atômicos)

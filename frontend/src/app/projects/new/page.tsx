@@ -40,12 +40,6 @@ export default function NewProjectPage() {
   // and the cleanup effect would still see the old value when navigating away
   const wizardCompletedRef = useRef(false);
 
-  // PROMPT #109 - Protect against React StrictMode double mount/unmount
-  // StrictMode unmounts and remounts components in development, which triggers
-  // the cleanup effect incorrectly on the first unmount
-  const isMountedRef = useRef(false);
-  const cleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
   // Context data (PROMPT #89)
   const [contextHuman, setContextHuman] = useState<string | null>(null);
   const [contextSemantic, setContextSemantic] = useState<string | null>(null);
@@ -129,21 +123,9 @@ export default function NewProjectPage() {
 
   // PROMPT #98 (v2) - Cleanup project if wizard is abandoned
   // PROMPT #101 FIX: Use ref.current for synchronous access to completion state
-  // PROMPT #109 - StrictMode protection with delayed cleanup
   useEffect(() => {
-    // Mark as mounted
-    isMountedRef.current = true;
-
-    // Cancel any pending cleanup from previous StrictMode unmount
-    if (cleanupTimeoutRef.current) {
-      clearTimeout(cleanupTimeoutRef.current);
-      cleanupTimeoutRef.current = null;
-      console.log('🔄 StrictMode remount detected, cancelled cleanup');
-    }
-
     const cleanupProject = async () => {
-      // Only cleanup if wizard wasn't completed and component is truly unmounted
-      if (projectId && !wizardCompletedRef.current && !isMountedRef.current) {
+      if (projectId && !wizardCompletedRef.current) {
         try {
           await projectsApi.delete(projectId);
           console.log('✅ Cleanup: Deleted incomplete project:', projectId);
@@ -168,13 +150,7 @@ export default function NewProjectPage() {
     // Cleanup on component unmount (router navigation)
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      isMountedRef.current = false;
-
-      // Use timeout to allow StrictMode remount to cancel cleanup
-      // If component remounts within 100ms, cleanup will be cancelled
-      cleanupTimeoutRef.current = setTimeout(() => {
-        cleanupProject();
-      }, 100);
+      cleanupProject();
     };
   }, [projectId]);
 
@@ -291,7 +267,6 @@ export default function NewProjectPage() {
                 </div>
               ) : (
                 <ChatInterface
-                  key={interviewId}  // Force remount when interviewId changes
                   interviewId={interviewId}
                   onComplete={handleInterviewComplete}
                   interviewMode="context"

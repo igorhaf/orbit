@@ -338,10 +338,10 @@ export default function AIModelsPage() {
                 <CardContent>
                   <div className="space-y-3">
                     {/* Model ID */}
-                    {(model.config?.model || model.config?.model_id) && (
+                    {model.config?.model && (
                       <div className="text-xs text-gray-500">
                         <span className="font-medium">Model ID:</span>{' '}
-                        <span className="font-mono">{model.config.model || model.config.model_id}</span>
+                        <span className="font-mono">{model.config.model}</span>
                       </div>
                     )}
 
@@ -550,7 +550,7 @@ export default function AIModelsPage() {
                 onChange={(e) =>
                   setCreateFormData({
                     ...createFormData,
-                    config: { ...createFormData.config, model: e.target.value, model_id: e.target.value },
+                    config: { ...createFormData.config, model: e.target.value },
                   })
                 }
               />
@@ -705,15 +705,13 @@ export default function AIModelsPage() {
               <Input
                 label="Model ID"
                 placeholder="e.g., claude-sonnet-4-20250514"
-                value={editFormData.config?.model || editFormData.config?.model_id || ''}
-                onChange={(e) => {
-                  // Update both 'model' and 'model_id' for consistency
-                  const { model_id, ...restConfig } = editFormData.config || {};
+                value={editFormData.config?.model || ''}
+                onChange={(e) =>
                   setEditFormData({
                     ...editFormData,
-                    config: { ...restConfig, model: e.target.value, model_id: e.target.value },
-                  });
-                }}
+                    config: { ...editFormData.config, model: e.target.value },
+                  })
+                }
               />
 
               {/* Max Tokens */}
