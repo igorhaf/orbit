@@ -499,3 +499,105 @@ async def get_project_discovered_frameworks(
     )
 
     return project_specs
+
+
+# ============================================================================
+# RAG SYNC ENDPOINTS (PROMPT #110 - RAG Evolution Phase 2)
+# Synchronize specs with RAG index for semantic search
+# ============================================================================
+
+@router.post("/sync-rag")
+async def sync_specs_to_rag(
+    db: Session = Depends(get_db)
+):
+    """
+    Sync all framework specs to RAG index.
+
+    PROMPT #110 - RAG Evolution Phase 2
+
+    Indexes all active framework specs in RAG for semantic search.
+    This enables specs to be retrieved during task execution and interviews.
+
+    Returns:
+        Dict with sync results:
+            - total: Total framework specs
+            - synced: Newly synced specs
+            - skipped: Already indexed specs
+            - errors: Specs that failed to sync
+    """
+    from app.services.spec_rag_sync import SpecRAGSync
+
+    logger.info("Manual RAG sync triggered")
+
+    sync_service = SpecRAGSync(db)
+    results = sync_service.sync_all_framework_specs()
+
+    return {
+        "message": "RAG sync completed",
+        "results": results
+    }
+
+
+@router.get("/sync-rag/status")
+async def get_rag_sync_status(
+    db: Session = Depends(get_db)
+):
+    """
+    Get sync status between specs and RAG.
+
+    PROMPT #110 - RAG Evolution Phase 2
+
+    Returns:
+        Dict with:
+            - total_framework_specs: Total active framework specs
+            - indexed_specs: Specs currently in RAG
+            - pending_specs: Specs not yet indexed
+            - sync_percentage: Percentage synced
+    """
+    from app.services.spec_rag_sync import SpecRAGSync
+
+    sync_service = SpecRAGSync(db)
+    status = sync_service.get_sync_status()
+
+    return status
+
+
+@router.post("/{spec_id}/sync-rag")
+async def sync_single_spec_to_rag(
+    spec_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Sync a single spec to RAG index.
+
+    PROMPT #110 - RAG Evolution Phase 2
+
+    - **spec_id**: UUID of the spec to sync
+
+    Returns:
+        Dict with sync result
+    """
+    from app.services.spec_rag_sync import SpecRAGSync
+
+    # Validate spec exists
+    spec = db.query(Spec).filter(Spec.id == spec_id).first()
+
+    if not spec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Spec {spec_id} not found"
+        )
+
+    sync_service = SpecRAGSync(db)
+    success = sync_service.sync_spec(spec_id)
+
+    if success:
+        return {
+            "message": f"Spec {spec_id} synced to RAG",
+            "spec_name": f"{spec.name}/{spec.spec_type}"
+        }
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to sync spec {spec_id}"
+        )
