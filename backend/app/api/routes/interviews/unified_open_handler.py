@@ -26,6 +26,7 @@ from app.services.ai_orchestrator import AIOrchestrator
 from app.services.interview_question_deduplicator import InterviewQuestionDeduplicator
 # PROMPT #103 - External prompts support
 from app.prompts import get_prompt_service
+from app.prompts.loader import PromptLoader
 from app.api.routes.interviews.option_parser import parse_ai_question_options
 from app.api.routes.interviews.response_cleaners import clean_ai_response
 # PROMPT #89: Context Interview fixed questions
@@ -52,6 +53,7 @@ def build_unified_open_prompt(
     Build the system prompt for unified open-ended interviews.
 
     PROMPT #78 - Unified Open-Ended Interview System
+    PROMPT #109 - Now uses PromptLoader to load from YAML (follows CLAUDE.md rule)
 
     Key principles:
     1. Questions are OPEN-ENDED (like GPT)
@@ -72,7 +74,7 @@ def build_unified_open_prompt(
     previous_answers = previous_answers or {}
     question_number = (message_count // 2) + 1
 
-    # Build project context
+    # Build project context (dynamic, passed to template)
     project_context = f"""
 **PROJETO:**
 - Nome: {project.name or 'Não definido'}
@@ -100,75 +102,16 @@ def build_unified_open_prompt(
 - Descrição: {parent_task.description or 'Não definida'}
 """
 
-    # PROMPT #81 - Use XML structure for clarity
-    system_prompt = f"""Você está conduzindo uma entrevista de requisitos de software.
-
-<project>
-{project_context}
-</project>
-{parent_context}
-
-<instructions>
-Gere a próxima pergunta (Pergunta {question_number}) usando este formato EXATO:
-
-❓ Pergunta {question_number}: [Sua pergunta fechada aqui]
-
-○ [Primeira opção]
-○ [Segunda opção]
-○ [Terceira opção]
-○ [Quarta opção]
-
-💬 Ou descreva com suas próprias palavras.
-</instructions>
-
-<critical_rules>
-- GERE APENAS UMA PERGUNTA POR RESPOSTA (nunca duas ou mais)
-- Use SOMENTE "○" (círculo vazio Unicode)
-- NUNCA use "•" ou "💡 Algumas sugestões"
-- Opções são RESPOSTAS, não perguntas
-- 3-5 opções obrigatórias
-- Contextualize com respostas anteriores
-</critical_rules>
-
-<example_output>
-❓ Pergunta {question_number}: Qual tipo de usuário terá acesso ao sistema?
-
-○ Administradores com acesso total
-○ Usuários internos da empresa
-○ Clientes externos
-○ Parceiros e fornecedores
-
-💬 Ou descreva com suas próprias palavras.
-</example_output>
-
-Gere a Pergunta {question_number} agora:
-
-**TÓPICOS A EXPLORAR (não pergunte tudo, use bom senso):**
-
-- Visão geral e objetivo do projeto
-- Principais funcionalidades esperadas
-- Quem são os usuários
-- Regras de negócio importantes
-- Integrações necessárias
-- Prioridades e MVP
-- Requisitos técnicos especiais
-
-**QUANDO CONCLUIR:**
-
-Após 8-15 perguntas (ou quando tiver informações suficientes), conclua a entrevista:
-```
-✅ Obrigado! Coletei as informações necessárias para gerar o projeto.
-
-Resumo do que entendi:
-- [Ponto 1]
-- [Ponto 2]
-- [Ponto 3]
-
-Vou gerar as tarefas do projeto agora.
-```
-
-**OUTPUT:** Português (Brasil). Continue com a próxima pergunta!
-"""
+    # PROMPT #109 - Load from YAML (no hardcoded prompts - follows CLAUDE.md rule)
+    loader = PromptLoader()
+    system_prompt, _ = loader.render(
+        "interviews/unified_open",
+        {
+            "project_context": project_context,
+            "question_number": question_number,
+            "parent_context": parent_context
+        }
+    )
 
     return system_prompt
 
@@ -512,57 +455,20 @@ async def generate_first_question(
     parent_context = ""
     if parent_task:
         parent_context = f"""
-Você está criando um item dentro de "{parent_task.title}" ({parent_task.item_type}).
+Voce esta criando um item dentro de "{parent_task.title}" ({parent_task.item_type}).
 Contextualize sua primeira pergunta com base no card pai.
 """
 
-    # PROMPT #81 - Use XML structure for clarity
-    first_question_prompt = f"""Gere a primeira pergunta de uma entrevista de requisitos.
-
-<project>
-<name>{project.name or 'Novo Projeto'}</name>
-<description>{project.description or 'Não definida'}</description>
-</project>
-{parent_context}
-
-<instructions>
-Sua resposta DEVE seguir este formato EXATO (incluindo os símbolos "○"):
-
-👋 Olá! Vou ajudar a definir os requisitos do seu projeto "{project.name or 'Novo Projeto'}".
-
-❓ Pergunta 1: [Sua pergunta fechada aqui - algo como "Qual é o principal objetivo?"]
-
-○ [Primeira opção de resposta]
-○ [Segunda opção de resposta]
-○ [Terceira opção de resposta]
-○ [Quarta opção de resposta]
-
-💬 Ou descreva com suas próprias palavras.
-</instructions>
-
-<critical_rules>
-- GERE APENAS UMA PERGUNTA (a Pergunta 1, nunca duas ou mais)
-- Use SOMENTE o símbolo "○" (círculo vazio Unicode) para cada opção
-- NUNCA use "•" (bullet point)
-- NUNCA use "💡 Algumas sugestões"
-- As opções devem ser RESPOSTAS diretas, não perguntas
-- Forneça exatamente 3-5 opções
-</critical_rules>
-
-<example_output>
-👋 Olá! Vou ajudar a definir os requisitos do seu projeto "Sistema de Vendas".
-
-❓ Pergunta 1: Qual é a principal funcionalidade que você precisa?
-
-○ Gerenciamento de produtos e estoque
-○ Controle de vendas e pedidos
-○ Relatórios e dashboards
-○ Integração com pagamentos
-
-💬 Ou descreva com suas próprias palavras.
-</example_output>
-
-Gere sua resposta agora seguindo o formato do example_output:"""
+    # PROMPT #109 - Load from YAML (no hardcoded prompts - follows CLAUDE.md rule)
+    loader = PromptLoader()
+    first_question_prompt, _ = loader.render(
+        "interviews/first_question",
+        {
+            "project_name": project.name or 'Novo Projeto',
+            "project_description": project.description or 'Nao definida',
+            "parent_context": parent_context
+        }
+    )
 
     # Call AI Orchestrator
     # PROMPT #82 - Disable cache for interviews to avoid question repetition

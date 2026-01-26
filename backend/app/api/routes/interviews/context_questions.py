@@ -199,70 +199,17 @@ def get_context_ai_prompt(conversation_data: list, project: Project) -> str:
     # Count current questions (both fixed and AI)
     question_count = len([m for m in conversation_data if m.get('role') == 'assistant'])
 
-    # PROMPT #109 - Load prompt from YAML with closed questions format
-    try:
-        loader = PromptLoader()
-        system_prompt, _ = loader.render(
-            "interviews/context_interview_ai",
-            {
-                "project_name": project.name,
-                "qa_summary": qa_summary,
-                "question_count": question_count + 1
-            }
-        )
-        return system_prompt
-    except Exception as e:
-        # Fallback to hardcoded prompt if loader fails
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"Failed to load context_interview_ai prompt: {e}. Using fallback.")
-
-        # PROMPT #109 - Fallback prompt with closed questions format
-        prompt = f"""Voce e um entrevistador especializado em levantamento de requisitos de software.
-
-Voce esta conduzindo uma Entrevista de Contexto para o projeto "{project.name}".
-
-## Conversa Anterior
-{qa_summary}
-
-## Sua Tarefa
-Gere UMA pergunta FECHADA para coletar mais informacoes sobre o projeto.
-
-## Formato OBRIGATORIO
-Responda EXATAMENTE neste formato:
-
-**Pergunta {question_count + 1}: [Sua pergunta aqui]**
-
-○ [Primeira opcao]
-○ [Segunda opcao]
-○ [Terceira opcao]
-○ [Quarta opcao]
-
-💬 Ou descreva com suas proprias palavras.
-
-## REGRAS CRITICAS
-- GERE APENAS UMA PERGUNTA POR RESPOSTA (nunca duas ou mais)
-- Use SOMENTE "○" (circulo vazio Unicode) para marcar opcoes
-- NUNCA use "•" (bullet) ou outros simbolos
-- Forneca entre 3-5 opcoes de resposta
-- Opcoes devem ser RESPOSTAS concretas, nao perguntas
-- SEMPRE inclua a linha "💬 Ou descreva com suas proprias palavras."
-- Contextualize com respostas anteriores
-
-## Topicos a Explorar
-1. Quem sao os usuarios do sistema (perfis, permissoes)
-2. Quais funcionalidades sao mais importantes (prioridades)
-3. Quais sao as restricoes tecnicas ou de prazo
-4. Como o sucesso do projeto sera medido (metricas)
-5. Integracoes com outros sistemas
-6. Requisitos de seguranca e performance
-7. Fluxos de trabalho e processos de negocios
-
-## NAO Repita Perguntas Ja Feitas
-Analise a conversa anterior e evite repetir topicos ja abordados.
-"""
-
-        return prompt
+    # PROMPT #109 - Load prompt from YAML (no hardcoded fallback - follows CLAUDE.md rule)
+    loader = PromptLoader()
+    system_prompt, _ = loader.render(
+        "interviews/context_interview_ai",
+        {
+            "project_name": project.name,
+            "qa_summary": qa_summary,
+            "question_count": question_count + 1
+        }
+    )
+    return system_prompt
 
 
 def should_end_context_interview(conversation_data: list) -> bool:
