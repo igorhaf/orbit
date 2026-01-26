@@ -38,6 +38,7 @@ export const Breadcrumbs: React.FC = () => {
     'ai-models': 'AI Models',
     'ai-executions': 'AI Executions',
     'ai-config': 'AI Config',
+    'specs': 'Specs',
     'contracts': 'Contracts',
     'prompts': 'Prompts',
     'projects': 'Projects',

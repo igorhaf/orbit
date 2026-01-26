@@ -111,7 +111,7 @@ DEFAULT_MODELS = [
     {
         "name": "Gemini 1.5 Pro",
         "provider": "google",
-        "model_id": "gemini-2.5-pro",
+        "model_id": "gemini-1.5-pro",
         "usage_type": "general",
         "max_tokens": 8192,
         "temperature": 0.7,
@@ -131,7 +131,7 @@ DEFAULT_MODELS = [
     {
         "name": "Gemini 1.5 Flash",
         "provider": "google",
-        "model_id": "gemini-2.5-flash",
+        "model_id": "gemini-1.5-flash",
         "usage_type": "general",
         "max_tokens": 8192,
         "temperature": 0.7,

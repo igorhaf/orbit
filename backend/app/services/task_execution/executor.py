@@ -24,6 +24,7 @@ from app.models.prompt import Prompt
 from app.orchestrators.registry import OrchestratorRegistry
 from app.services.ai_orchestrator import AIOrchestrator
 from app.api.websocket import broadcast_event
+from app.services.task_execution.project_spec_fetcher import ProjectSpecFetcher
 from app.services.task_execution.context_builder import ContextBuilder
 from app.services.task_execution.budget_manager import BudgetManager
 from app.services.task_execution.batch_executor import BatchExecutor
@@ -67,6 +68,7 @@ class TaskExecutor:
         self.ai_orchestrator = AIOrchestrator(db)
 
         # Initialize helper modules
+        self.spec_fetcher = ProjectSpecFetcher(db)  # Project-specific specs from database
         self.context_builder = ContextBuilder(db)
         self.budget_manager = BudgetManager(db)
         self.batch_executor = BatchExecutor(db)
@@ -329,19 +331,29 @@ class TaskExecutor:
         orchestrator
     ) -> str:
         """
-        Build surgical context using context builder.
+        Build surgical context using spec fetcher and context builder.
+
+        Project-Specific Specs: Now uses discovered project patterns
+        instead of generic JSON framework specs.
 
         Includes:
+        - Project-specific discovered patterns (from specs table)
         - Outputs of dependent tasks
         - Patterns from stack
         - Conventions
+
+        If no specs found for project, adds to discovery_queue for later.
         """
+        # Fetch project-specific specs from database
+        specs = self.spec_fetcher.fetch_relevant_specs(task, project)
+        specs_context = self.spec_fetcher.format_specs_for_execution(specs, task, project)
+
         # Build context with orchestrator
         context = await self.context_builder.build_context(
             task=task,
             project=project,
             orchestrator=orchestrator,
-            specs_context=""
+            specs_context=specs_context
         )
 
         return context
