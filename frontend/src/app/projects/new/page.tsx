@@ -32,6 +32,8 @@ export default function NewProjectPage() {
 
   // Form data
   const [name, setName] = useState('');
+  // PROMPT #111 - code_path obrigatório (pasta do código existente)
+  const [codePath, setCodePath] = useState('');
   const [projectId, setProjectId] = useState<string | null>(null);
   const [interviewId, setInterviewId] = useState<string | null>(null);
 
@@ -60,11 +62,18 @@ export default function NewProjectPage() {
       return;
     }
 
+    // PROMPT #111 - code_path é obrigatório
+    if (!codePath.trim()) {
+      alert('Please enter the path to your existing code folder');
+      return;
+    }
+
     setLoading(true);
     try {
-      // Create project (no description - will be filled from context)
+      // Create project with code_path (PROMPT #111)
       const projectRes = await projectsApi.create({
         name,
+        code_path: codePath,  // PROMPT #111 - Obrigatório e imutável
         description: null,  // PROMPT #89 - Description comes from context interview
       });
 
@@ -174,7 +183,7 @@ export default function NewProjectPage() {
         {/* Progress Steps */}
         <div className="flex items-center justify-center mb-8">
           {[
-            { id: 'basic', label: '1. Name' },
+            { id: 'basic', label: '1. Basic Info' },  // PROMPT #111 - Updated label
             { id: 'interview', label: '2. Context Interview' },
             { id: 'review', label: '3. Review' },
             { id: 'confirm', label: '4. Complete' },
@@ -208,9 +217,9 @@ export default function NewProjectPage() {
         {step === 'basic' && (
           <Card>
             <CardHeader>
-              <CardTitle>Project Name</CardTitle>
+              <CardTitle>Project Information</CardTitle>
               <p className="text-sm text-gray-600 mt-1">
-                Enter a name for your project. You'll define the details in the next step through an AI interview.
+                Enter a name and the path to your existing code folder. You'll define the details in the next step through an AI interview.
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -229,6 +238,22 @@ export default function NewProjectPage() {
                 </p>
               </div>
 
+              {/* PROMPT #111 - code_path obrigatório */}
+              <div>
+                <Label htmlFor="codePath">Code Folder Path *</Label>
+                <Input
+                  id="codePath"
+                  value={codePath}
+                  onChange={(e) => setCodePath(e.target.value)}
+                  placeholder="/home/user/projects/my-existing-code"
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Full path to your existing code folder. ORBIT analyzes existing code, it doesn't provision new projects.
+                  <strong className="block text-gray-600 mt-1">This path cannot be changed after project creation.</strong>
+                </p>
+              </div>
+
               <div className="flex justify-end gap-3">
                 <Button
                   variant="outline"
@@ -239,7 +264,7 @@ export default function NewProjectPage() {
                 <Button
                   variant="primary"
                   onClick={handleBasicSubmit}
-                  disabled={loading || !name.trim()}
+                  disabled={loading || !name.trim() || !codePath.trim()}
                 >
                   {loading ? 'Creating...' : 'Next: Context Interview'}
                 </Button>

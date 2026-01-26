@@ -49,10 +49,11 @@ class Project(Base):
     # Project folder path (stores the sanitized folder name)
     project_folder = Column(String(255), nullable=True)    # 'my-project-name' (sanitized)
 
-    # Pattern Discovery (PROMPT #62 - Week 1)
-    code_path = Column(String(500), nullable=True, index=True)  # Path to project code in Docker container
-    # Example: "/app/projects/legacy-app"
-    # Required for AI-powered pattern discovery
+    # PROMPT #111 - code_path é OBRIGATÓRIO e IMUTÁVEL
+    # ORBIT foca em análise de código existente, não em provisionamento
+    code_path = Column(String(500), nullable=False, index=True)  # Path to project code folder
+    # Example: "/home/user/my-project"
+    # REQUIRED: Project must be tied to an existing code folder
 
     # Context fields (PROMPT #89 - Context Interview)
     context_semantic = Column(Text, nullable=True)       # Structured semantic text for AI consumption

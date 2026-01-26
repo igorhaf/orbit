@@ -105,6 +105,9 @@ export interface Project {
   description: string | null;
   git_repository_info: Record<string, any> | null;
 
+  // PROMPT #111 - code_path é OBRIGATÓRIO e IMUTÁVEL
+  code_path: string;
+
   // Stack configuration (PROMPT #46 - Phase 1)
   stack_backend?: string | null;
   stack_database?: string | null;
@@ -123,6 +126,8 @@ export interface Project {
 
 export interface ProjectCreate {
   name: string;
+  // PROMPT #111 - code_path é OBRIGATÓRIO na criação (imutável depois)
+  code_path: string;
   description?: string | null;
   git_repository_info?: Record<string, any> | null;
 
@@ -137,6 +142,7 @@ export interface ProjectUpdate {
   name?: string;
   description?: string | null;
   git_repository_info?: Record<string, any> | null;
+  // PROMPT #111 - code_path NÃO está aqui porque é IMUTÁVEL após criação
 
   // Stack configuration (PROMPT #46 - Phase 1)
   stack_backend?: string | null;
