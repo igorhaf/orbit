@@ -347,7 +347,7 @@ Gere uma pergunta DIFERENTE das acima.
             usage_type="interview",
             messages=messages,  # PROMPT #82 - Full context (not summarized)
             system_prompt=system_prompt,
-            max_tokens=1000,
+            max_tokens=1500,  # PROMPT #109 - Increased from 1000 to prevent truncation
             project_id=interview.project_id,
             interview_id=interview.id
         )
@@ -590,7 +590,7 @@ Gere sua resposta agora seguindo o formato do example_output:"""
             usage_type="interview",
             messages=initial_messages,
             system_prompt=first_question_prompt,
-            max_tokens=500,
+            max_tokens=1000,  # PROMPT #109 - Increased from 500 to prevent truncation
             project_id=interview.project_id,
             interview_id=interview.id
         )
