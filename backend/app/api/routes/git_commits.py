@@ -77,6 +77,42 @@ class GitRepoInfo(BaseModel):
     has_uncommitted_changes: Optional[bool] = None
 
 
+class GitFileChange(BaseModel):
+    """Model for a file change in a commit."""
+    filename: str
+    status: str  # A=Added, M=Modified, D=Deleted, R=Renamed
+    additions: int = 0
+    deletions: int = 0
+    diff: Optional[str] = None
+
+
+class GitCommitDiff(BaseModel):
+    """Model for commit diff details."""
+    hash: str
+    short_hash: str
+    subject: str
+    author_name: str
+    author_email: str
+    date: datetime
+    body: Optional[str] = None
+    files: List[GitFileChange]
+    stats: dict
+
+
+class GitOperationRequest(BaseModel):
+    """Request model for Git operations."""
+    commit_hash: str
+    branch_name: Optional[str] = None  # For create branch
+    reset_mode: Optional[str] = None  # soft, mixed, hard
+
+
+class GitOperationResponse(BaseModel):
+    """Response model for Git operations."""
+    success: bool
+    message: str
+    details: Optional[dict] = None
+
+
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
@@ -451,3 +487,355 @@ async def get_git_repo_info(
         remote_url=remote_url,
         has_uncommitted_changes=has_uncommitted_changes
     )
+
+
+# ============================================================================
+# GIT OPERATIONS ENDPOINTS
+# ============================================================================
+
+def get_project_repo(project_id: UUID, db: Session) -> tuple[Project, str]:
+    """Helper to get project and validate it's a git repo."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+
+    if not project.code_path or not is_git_repository(project.code_path):
+        raise HTTPException(status_code=400, detail="Project is not a Git repository")
+
+    return project, project.code_path
+
+
+@router.get("/projects/{project_id}/git/commits/{commit_hash}/diff", response_model=GitCommitDiff)
+async def get_commit_diff(
+    project_id: UUID,
+    commit_hash: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed diff for a specific commit.
+    Shows all files changed with their diffs.
+    """
+    project, code_path = get_project_repo(project_id, db)
+
+    # Get commit info
+    format_str = "%H|%h|%s|%an|%ae|%aI|%b"
+    success, output = run_git_command(code_path, ["log", "-1", f"--format={format_str}", commit_hash])
+    if not success or not output:
+        raise HTTPException(status_code=404, detail=f"Commit {commit_hash} not found")
+
+    parts = output.split("|", 6)
+    if len(parts) < 6:
+        raise HTTPException(status_code=500, detail="Failed to parse commit")
+
+    # Get file list with stats
+    success, files_output = run_git_command(
+        code_path,
+        ["diff-tree", "--no-commit-id", "--name-status", "-r", commit_hash]
+    )
+
+    # Get numstat for additions/deletions
+    success, numstat_output = run_git_command(
+        code_path,
+        ["diff-tree", "--no-commit-id", "--numstat", "-r", commit_hash]
+    )
+
+    # Parse numstat
+    numstat_map = {}
+    if success and numstat_output:
+        for line in numstat_output.split("\n"):
+            if line.strip():
+                stat_parts = line.split("\t")
+                if len(stat_parts) >= 3:
+                    adds = int(stat_parts[0]) if stat_parts[0] != "-" else 0
+                    dels = int(stat_parts[1]) if stat_parts[1] != "-" else 0
+                    numstat_map[stat_parts[2]] = (adds, dels)
+
+    files = []
+    if files_output:
+        for line in files_output.split("\n"):
+            if line.strip():
+                file_parts = line.split("\t")
+                if len(file_parts) >= 2:
+                    status = file_parts[0]
+                    filename = file_parts[1]
+                    adds, dels = numstat_map.get(filename, (0, 0))
+
+                    # Get file diff (limited to prevent huge responses)
+                    diff = None
+                    success, diff_output = run_git_command(
+                        code_path,
+                        ["diff", f"{commit_hash}^!", "--", filename]
+                    )
+                    if success and diff_output:
+                        # Limit diff size
+                        diff = diff_output[:10000] if len(diff_output) > 10000 else diff_output
+
+                    files.append(GitFileChange(
+                        filename=filename,
+                        status=status,
+                        additions=adds,
+                        deletions=dels,
+                        diff=diff
+                    ))
+
+    # Get overall stats
+    success, stat_output = run_git_command(
+        code_path,
+        ["diff", "--shortstat", f"{commit_hash}^!", "--"]
+    )
+
+    stats = {"files_changed": len(files), "insertions": 0, "deletions": 0}
+    if success and stat_output:
+        import re
+        match = re.search(r"(\d+) insertions?", stat_output)
+        if match:
+            stats["insertions"] = int(match.group(1))
+        match = re.search(r"(\d+) deletions?", stat_output)
+        if match:
+            stats["deletions"] = int(match.group(1))
+
+    return GitCommitDiff(
+        hash=parts[0],
+        short_hash=parts[1],
+        subject=parts[2],
+        author_name=parts[3],
+        author_email=parts[4],
+        date=datetime.fromisoformat(parts[5].replace("Z", "+00:00")),
+        body=parts[6] if len(parts) > 6 and parts[6].strip() else None,
+        files=files,
+        stats=stats
+    )
+
+
+@router.post("/projects/{project_id}/git/checkout", response_model=GitOperationResponse)
+async def checkout_commit(
+    project_id: UUID,
+    request: GitOperationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Checkout to a specific commit (detached HEAD).
+    WARNING: This will change the working directory state.
+    """
+    project, code_path = get_project_repo(project_id, db)
+
+    # Check for uncommitted changes
+    success, status = run_git_command(code_path, ["status", "--porcelain"])
+    if success and status:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot checkout: you have uncommitted changes. Commit or stash them first."
+        )
+
+    success, output = run_git_command(code_path, ["checkout", request.commit_hash])
+
+    if success:
+        return GitOperationResponse(
+            success=True,
+            message=f"Checked out to commit {request.commit_hash[:8]}",
+            details={"commit": request.commit_hash, "state": "detached HEAD"}
+        )
+    else:
+        raise HTTPException(status_code=500, detail=f"Checkout failed: {output}")
+
+
+@router.post("/projects/{project_id}/git/branch", response_model=GitOperationResponse)
+async def create_branch_from_commit(
+    project_id: UUID,
+    request: GitOperationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new branch from a specific commit.
+    """
+    project, code_path = get_project_repo(project_id, db)
+
+    if not request.branch_name:
+        raise HTTPException(status_code=400, detail="Branch name is required")
+
+    # Validate branch name
+    if " " in request.branch_name or ".." in request.branch_name:
+        raise HTTPException(status_code=400, detail="Invalid branch name")
+
+    success, output = run_git_command(
+        code_path,
+        ["branch", request.branch_name, request.commit_hash]
+    )
+
+    if success:
+        return GitOperationResponse(
+            success=True,
+            message=f"Created branch '{request.branch_name}' from {request.commit_hash[:8]}",
+            details={"branch": request.branch_name, "from_commit": request.commit_hash}
+        )
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to create branch: {output}")
+
+
+@router.post("/projects/{project_id}/git/revert", response_model=GitOperationResponse)
+async def revert_commit(
+    project_id: UUID,
+    request: GitOperationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Revert a specific commit (creates a new commit that undoes the changes).
+    """
+    project, code_path = get_project_repo(project_id, db)
+
+    # Check for uncommitted changes
+    success, status = run_git_command(code_path, ["status", "--porcelain"])
+    if success and status:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot revert: you have uncommitted changes. Commit or stash them first."
+        )
+
+    success, output = run_git_command(
+        code_path,
+        ["revert", "--no-edit", request.commit_hash]
+    )
+
+    if success:
+        # Get the new revert commit hash
+        success, new_hash = run_git_command(code_path, ["rev-parse", "HEAD"])
+        return GitOperationResponse(
+            success=True,
+            message=f"Reverted commit {request.commit_hash[:8]}",
+            details={
+                "reverted_commit": request.commit_hash,
+                "new_commit": new_hash if success else None
+            }
+        )
+    else:
+        # Abort revert if it failed
+        run_git_command(code_path, ["revert", "--abort"])
+        raise HTTPException(status_code=500, detail=f"Revert failed: {output}")
+
+
+@router.post("/projects/{project_id}/git/cherry-pick", response_model=GitOperationResponse)
+async def cherry_pick_commit(
+    project_id: UUID,
+    request: GitOperationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Cherry-pick a specific commit to the current branch.
+    """
+    project, code_path = get_project_repo(project_id, db)
+
+    # Check for uncommitted changes
+    success, status = run_git_command(code_path, ["status", "--porcelain"])
+    if success and status:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot cherry-pick: you have uncommitted changes. Commit or stash them first."
+        )
+
+    success, output = run_git_command(
+        code_path,
+        ["cherry-pick", request.commit_hash]
+    )
+
+    if success:
+        success, new_hash = run_git_command(code_path, ["rev-parse", "HEAD"])
+        return GitOperationResponse(
+            success=True,
+            message=f"Cherry-picked commit {request.commit_hash[:8]}",
+            details={
+                "cherry_picked_commit": request.commit_hash,
+                "new_commit": new_hash if success else None
+            }
+        )
+    else:
+        # Abort cherry-pick if it failed
+        run_git_command(code_path, ["cherry-pick", "--abort"])
+        raise HTTPException(status_code=500, detail=f"Cherry-pick failed: {output}")
+
+
+@router.post("/projects/{project_id}/git/reset", response_model=GitOperationResponse)
+async def reset_to_commit(
+    project_id: UUID,
+    request: GitOperationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Reset the current branch to a specific commit.
+
+    Modes:
+    - soft: Keep changes staged
+    - mixed (default): Keep changes unstaged
+    - hard: Discard all changes (DANGEROUS)
+    """
+    project, code_path = get_project_repo(project_id, db)
+
+    mode = request.reset_mode or "mixed"
+    if mode not in ["soft", "mixed", "hard"]:
+        raise HTTPException(status_code=400, detail="Invalid reset mode. Use: soft, mixed, or hard")
+
+    # Extra warning for hard reset
+    if mode == "hard":
+        success, status = run_git_command(code_path, ["status", "--porcelain"])
+        if success and status:
+            logger.warning(f"Hard reset with uncommitted changes in {code_path}")
+
+    success, output = run_git_command(
+        code_path,
+        ["reset", f"--{mode}", request.commit_hash]
+    )
+
+    if success:
+        return GitOperationResponse(
+            success=True,
+            message=f"Reset ({mode}) to commit {request.commit_hash[:8]}",
+            details={
+                "target_commit": request.commit_hash,
+                "mode": mode
+            }
+        )
+    else:
+        raise HTTPException(status_code=500, detail=f"Reset failed: {output}")
+
+
+@router.post("/projects/{project_id}/git/stash", response_model=GitOperationResponse)
+async def stash_changes(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Stash current uncommitted changes.
+    """
+    project, code_path = get_project_repo(project_id, db)
+
+    success, output = run_git_command(code_path, ["stash", "push", "-m", "Stashed by ORBIT"])
+
+    if success:
+        return GitOperationResponse(
+            success=True,
+            message="Changes stashed successfully",
+            details={"output": output}
+        )
+    else:
+        raise HTTPException(status_code=500, detail=f"Stash failed: {output}")
+
+
+@router.post("/projects/{project_id}/git/stash/pop", response_model=GitOperationResponse)
+async def stash_pop(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Pop the most recent stash.
+    """
+    project, code_path = get_project_repo(project_id, db)
+
+    success, output = run_git_command(code_path, ["stash", "pop"])
+
+    if success:
+        return GitOperationResponse(
+            success=True,
+            message="Stash applied and dropped",
+            details={"output": output}
+        )
+    else:
+        raise HTTPException(status_code=500, detail=f"Stash pop failed: {output}")
