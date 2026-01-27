@@ -49,7 +49,8 @@ class AIModelUpdate(BaseModel):
     """Schema for updating an existing AIModel"""
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     provider: Optional[str] = Field(None, min_length=1, max_length=50)
-    api_key: Optional[str] = Field(None, min_length=1, max_length=255)
+    # Allow empty string for local providers like Ollama that don't require API keys
+    api_key: Optional[str] = Field(None, max_length=255)
     usage_type: Optional[AIModelUsageType] = None
     is_active: Optional[bool] = None
     config: Optional[Dict[str, Any]] = None
