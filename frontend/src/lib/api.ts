@@ -770,10 +770,9 @@ export const settingsApi = {
   get: (key: string) => request<any>(`/api/v1/settings/${key}`),
 
   set: (key: string, value: any, description?: string) => {
-    const params = description ? `?description=${encodeURIComponent(description)}` : '';
-    return request<any>(`/api/v1/settings/${key}${params}`, {
+    return request<any>(`/api/v1/settings/${key}`, {
       method: 'PUT',
-      body: JSON.stringify(value),
+      body: JSON.stringify({ value, description }),
     });
   },
 
