@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react';
 import { commitsApi } from '@/lib/api';
 import { Commit } from '@/lib/types';
-import { Card } from '@/components/ui/card';
+import { Card } from '@/components/ui';
 
 interface Props {
   projectId: string;
