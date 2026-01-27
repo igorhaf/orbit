@@ -7,3 +7,4 @@ export * from './useDebounce';
 export * from './useSafeState';
 export * from './useWebSocket';
 export * from './useJobPolling'; // PROMPT #65 - Async Job System
+export * from './useNotification'; // PROMPT #112 - Styled notifications

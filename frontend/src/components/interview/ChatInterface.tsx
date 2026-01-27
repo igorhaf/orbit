@@ -63,12 +63,19 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
   const [showEpicErrorModal, setShowEpicErrorModal] = useState(false);
   const [epicResult, setEpicResult] = useState<{ title?: string; error?: string } | null>(null);
 
-  // PROMPT #109 - Error dialog state (replaces crude browser alerts)
-  const [errorDialog, setErrorDialog] = useState<{ open: boolean; title: string; message: string; details?: string }>({
+  // PROMPT #109 - Notification dialog state (replaces crude browser alerts)
+  const [notificationDialog, setNotificationDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    details?: string;
+    type: 'error' | 'warning' | 'info' | 'success';
+  }>({
     open: false,
     title: '',
     message: '',
-    details: undefined
+    details: undefined,
+    type: 'error'
   });
 
   // PROMPT #65 - Async job tracking
@@ -105,11 +112,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     localStorage.removeItem(`sendMessageJob_${interviewId}`);
 
     setSendMessageJobId(null);
-    setErrorDialog({
+    setNotificationDialog({
       open: true,
       title: 'Erro ao enviar mensagem',
       message: formatErrorMessage(error),
-      details: typeof error === 'string' ? undefined : JSON.stringify(error, null, 2)
+      details: typeof error === 'string' ? undefined : JSON.stringify(error, null, 2),
+      type: 'error'
     });
   }, [interviewId]);
 
@@ -132,11 +140,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     const tasksCount = result?.total_items || result?.tasks_created || 0;
     const storiesCount = result?.stories_created || 0;
 
-    alert(
-      `✅ Success!\n\n` +
-      `${storiesCount} stories and ${tasksCount} tasks were created automatically from your interview.\n\n` +
-      `Check your Backlog to see them!`
-    );
+    setNotificationDialog({
+      open: true,
+      title: 'Success!',
+      message: `${storiesCount} stories and ${tasksCount} tasks were created automatically from your interview.\n\nCheck your Backlog to see them!`,
+      type: 'success'
+    });
 
     loadInterview();
   }, [interviewId]);
@@ -157,10 +166,11 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
       });
     } else {
-      setErrorDialog({
+      setNotificationDialog({
         open: true,
         title: 'Erro ao gerar prompts',
-        message: formatErrorMessage(error)
+        message: formatErrorMessage(error),
+        type: 'error'
       });
     }
   }, [interviewId]);
@@ -204,10 +214,11 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     localStorage.removeItem(`provisioningJob_${interviewId}`);
 
     setProvisioningJobId(null);
-    setErrorDialog({
+    setNotificationDialog({
       open: true,
       title: 'Erro ao provisionar projeto',
-      message: formatErrorMessage(error)
+      message: formatErrorMessage(error),
+      type: 'error'
     });
   }, [interviewId]);
 
@@ -362,10 +373,11 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         setNotFound(true);
       } else {
         // For other errors, show error dialog
-        setErrorDialog({
+        setNotificationDialog({
           open: true,
           title: 'Erro ao carregar entrevista',
-          message: 'Falha ao carregar a entrevista. Por favor, tente novamente.'
+          message: 'Falha ao carregar a entrevista. Por favor, tente novamente.',
+          type: 'error'
         });
       }
     } finally {
@@ -428,10 +440,11 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
       // PROMPT #56 - Enhanced error reporting
       const errorMessage = error.response?.data?.detail || error.message || 'Unknown error';
-      setErrorDialog({
+      setNotificationDialog({
         open: true,
         title: 'Falha ao iniciar entrevista',
-        message: `${formatErrorMessage(errorMessage)}\n\nVoce pode enviar uma mensagem manualmente para comecar a conversa.`
+        message: `${formatErrorMessage(errorMessage)}\n\nVoce pode enviar uma mensagem manualmente para comecar a conversa.`,
+        type: 'error'
       });
     } finally {
       setInitializing(false);
@@ -537,11 +550,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         });
       } else {
         // Generic error - show error dialog instead of crude alert
-        setErrorDialog({
+        setNotificationDialog({
           open: true,
           title: 'Erro',
           message: formatErrorMessage(errorDetail),
-          details: typeof errorDetail === 'object' ? JSON.stringify(errorDetail, null, 2) : undefined
+          details: typeof errorDetail === 'object' ? JSON.stringify(errorDetail, null, 2) : undefined,
+          type: 'error'
         });
       }
 
@@ -557,10 +571,11 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     const validLabels = selectedLabels.filter(label => label && label.trim() !== '');
 
     if (validLabels.length === 0) {
-      setErrorDialog({
+      setNotificationDialog({
         open: true,
         title: 'Opcao invalida',
-        message: 'Por favor, selecione uma opcao valida ou digite sua resposta no campo de texto.'
+        message: 'Por favor, selecione uma opcao valida ou digite sua resposta no campo de texto.',
+        type: 'warning'
       });
       return;
     }
@@ -627,11 +642,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         });
       } else {
         // Generic error - show error dialog instead of crude alert
-        setErrorDialog({
+        setNotificationDialog({
           open: true,
           title: 'Erro',
           message: formatErrorMessage(errorDetail),
-          details: typeof errorDetail === 'object' ? JSON.stringify(errorDetail, null, 2) : undefined
+          details: typeof errorDetail === 'object' ? JSON.stringify(errorDetail, null, 2) : undefined,
+          type: 'error'
         });
       }
     } finally {
@@ -760,10 +776,11 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       onStatusChange?.();
     } catch (error) {
       console.error('Failed to complete interview:', error);
-      setErrorDialog({
+      setNotificationDialog({
         open: true,
         title: 'Erro',
-        message: 'Falha ao completar entrevista. Por favor, tente novamente.'
+        message: 'Falha ao completar entrevista. Por favor, tente novamente.',
+        type: 'error'
       });
     }
   };
@@ -799,10 +816,11 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       onStatusChange?.();
     } catch (error) {
       console.error('Failed to cancel interview:', error);
-      setErrorDialog({
+      setNotificationDialog({
         open: true,
         title: 'Erro',
-        message: 'Falha ao cancelar entrevista. Por favor, tente novamente.'
+        message: 'Falha ao cancelar entrevista. Por favor, tente novamente.',
+        type: 'error'
       });
     }
   };
@@ -1412,14 +1430,14 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         </DialogFooter>
       </Dialog>
 
-      {/* PROMPT #109 - Generic Error Dialog (replaces crude browser alerts) */}
+      {/* PROMPT #112 - Notification Dialog (replaces crude browser alerts) */}
       <ErrorDialog
-        open={errorDialog.open}
-        onClose={() => setErrorDialog({ ...errorDialog, open: false })}
-        title={errorDialog.title}
-        message={errorDialog.message}
-        details={errorDialog.details}
-        type="error"
+        open={notificationDialog.open}
+        onClose={() => setNotificationDialog({ ...notificationDialog, open: false })}
+        title={notificationDialog.title}
+        message={notificationDialog.message}
+        details={notificationDialog.details}
+        type={notificationDialog.type}
       />
     </div>
   );

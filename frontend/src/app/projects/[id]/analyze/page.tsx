@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 import { FileUploader } from '@/components/analyzer/FileUploader';
 import { AnalysisResults } from '@/components/analyzer/AnalysisResults';
 import { analyzersApi } from '@/lib/api';
+import { useNotification } from '@/hooks';
 
 interface Analysis {
   id: string;
@@ -34,6 +35,7 @@ interface Analysis {
 export default function AnalyzePage() {
   const params = useParams();
   const projectId = params.id as string;
+  const { showError, showSuccess, NotificationComponent } = useNotification();
 
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [selectedAnalysis, setSelectedAnalysis] = useState<Analysis | null>(null);
@@ -81,7 +83,7 @@ export default function AnalyzePage() {
       pollAnalysisStatus(newAnalysis.id);
     } catch (error) {
       console.error('Upload failed:', error);
-      alert('Failed to upload file. Please try again.');
+      showError('Failed to upload file. Please try again.');
     } finally {
       setUploading(false);
     }
@@ -116,11 +118,11 @@ export default function AnalyzePage() {
 
     try {
       await analyzersApi.generateOrchestrator(selectedAnalysis.id);
-      alert('Orchestrator generated successfully!');
+      showSuccess('Orchestrator generated successfully!');
       loadAnalyses();
     } catch (error) {
       console.error('Failed to generate orchestrator:', error);
-      alert('Failed to generate orchestrator. Please try again.');
+      showError('Failed to generate orchestrator. Please try again.');
     }
   };
 
@@ -232,6 +234,7 @@ export default function AnalyzePage() {
           </div>
         </div>
       </div>
+      {NotificationComponent}
     </Layout>
   );
 }

@@ -18,6 +18,7 @@ import { InterviewList } from '@/components/interview';
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
 import { projectsApi, tasksApi, interviewsApi, ragApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
+import { useNotification } from '@/hooks';
 
 type Tab = 'kanban' | 'overview' | 'interviews' | 'backlog' | 'rag' | 'analytics';
 
@@ -25,6 +26,7 @@ export default function ProjectDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params.id as string;
+  const { showError, NotificationComponent } = useNotification();
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -229,7 +231,7 @@ export default function ProjectDetailsPage() {
       await loadProjectData();
     } catch (error) {
       console.error('Error saving description:', error);
-      alert('Failed to save description. Please try again.');
+      showError('Failed to save description. Please try again.');
     }
   };
 
@@ -410,7 +412,7 @@ export default function ProjectDetailsPage() {
                     router.push(`/projects/${projectId}/interviews/${interviewId}`);
                   } catch (error) {
                     console.error('Failed to create interview:', error);
-                    alert('Failed to create interview. Please try again.');
+                    showError('Failed to create interview. Please try again.');
                   }
                 }}
                 title={!project?.context_locked ? 'Start Context Interview to establish project foundation' : 'Start Epic Interview'}
@@ -987,6 +989,7 @@ export default function ProjectDetailsPage() {
           </div>
         )}
       </div>
+      {NotificationComponent}
     </Layout>
   );
 }

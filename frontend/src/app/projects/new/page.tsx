@@ -22,11 +22,13 @@ import { Label } from '@/components/ui/Label';
 import { FolderPicker } from '@/components/ui/FolderPicker';  // PROMPT #111 - Folder picker
 import { projectsApi, interviewsApi } from '@/lib/api';
 import { ChatInterface } from '@/components/interview/ChatInterface';
+import { useNotification } from '@/hooks';
 
 type Step = 'basic' | 'interview' | 'review' | 'confirm';
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const { showError, showWarning, NotificationComponent } = useNotification();
   const [step, setStep] = useState<Step>('basic');
   const [loading, setLoading] = useState(false);
   const [generatingContext, setGeneratingContext] = useState(false);
@@ -60,13 +62,13 @@ export default function NewProjectPage() {
   const handleBasicSubmit = async () => {
     // PROMPT #89 - Only name is required, description comes from context interview
     if (!name.trim()) {
-      alert('Please enter a project name');
+      showWarning('Please enter a project name');
       return;
     }
 
     // PROMPT #111 - code_path é obrigatório
     if (!codePath.trim()) {
-      alert('Please enter the path to your existing code folder');
+      showWarning('Please enter the path to your existing code folder');
       return;
     }
 
@@ -96,7 +98,7 @@ export default function NewProjectPage() {
       setStep('interview');
     } catch (error) {
       console.error('Failed to create project:', error);
-      alert('Failed to create project. Please try again.');
+      showError('Failed to create project. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -122,11 +124,11 @@ export default function NewProjectPage() {
         }
         setStep('review');
       } else {
-        alert('Failed to generate context. Please try again.');
+        showError('Failed to generate context. Please try again.');
       }
     } catch (error) {
       console.error('Failed to generate context:', error);
-      alert('Failed to generate context. Please try again.');
+      showError('Failed to generate context. Please try again.');
     } finally {
       setGeneratingContext(false);
     }
@@ -531,6 +533,7 @@ export default function NewProjectPage() {
             </CardContent>
           </Card>
         )}
+        {NotificationComponent}
       </div>
     </Layout>
   );

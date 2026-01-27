@@ -15,7 +15,7 @@ export interface ErrorDialogProps {
   onClose: () => void;
   title?: string;
   message: string;
-  type?: 'error' | 'warning' | 'info';
+  type?: 'error' | 'warning' | 'info' | 'success';
   details?: string;
 }
 
@@ -43,18 +43,25 @@ export const ErrorDialog: React.FC<ErrorDialogProps> = ({
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
       </svg>
     ),
+    success: (
+      <svg className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
   };
 
   const colors = {
     error: 'bg-red-50 border-red-200',
     warning: 'bg-yellow-50 border-yellow-200',
     info: 'bg-blue-50 border-blue-200',
+    success: 'bg-green-50 border-green-200',
   };
 
   const defaultTitles = {
-    error: 'Erro',
-    warning: 'Aviso',
-    info: 'Informacao',
+    error: 'Error',
+    warning: 'Warning',
+    info: 'Information',
+    success: 'Success',
   };
 
   return (
@@ -76,7 +83,7 @@ export const ErrorDialog: React.FC<ErrorDialogProps> = ({
             {details && (
               <details className="mt-2">
                 <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
-                  Detalhes tecnicos
+                  Technical details
                 </summary>
                 <pre className="mt-2 p-2 bg-gray-100 rounded text-xs text-gray-600 overflow-x-auto">
                   {details}
@@ -89,7 +96,7 @@ export const ErrorDialog: React.FC<ErrorDialogProps> = ({
 
       <DialogFooter>
         <Button onClick={onClose} variant="primary">
-          Fechar
+          OK
         </Button>
       </DialogFooter>
     </Dialog>
@@ -132,5 +139,5 @@ export function formatErrorMessage(error: unknown): string {
     }
   }
 
-  return 'Um erro inesperado ocorreu. Por favor, tente novamente.';
+  return 'An unexpected error occurred. Please try again.';
 }

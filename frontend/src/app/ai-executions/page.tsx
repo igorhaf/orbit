@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { aiExecutionsApi } from '@/lib/api';
 import { Activity, RefreshCw, TrendingUp, Database, Clock, AlertCircle } from 'lucide-react';
+import { useNotification } from '@/hooks';
 
 interface AIExecution {
   id: string;
@@ -56,6 +57,7 @@ interface Stats {
 }
 
 export default function AIExecutionsPage() {
+  const { showError, NotificationComponent } = useNotification();
   const [executions, setExecutions] = useState<AIExecution[]>([]);
   const [selectedExecution, setSelectedExecution] = useState<AIExecutionDetail | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -96,7 +98,7 @@ export default function AIExecutionsPage() {
       setSelectedExecution(detail);
     } catch (err: any) {
       console.error('Failed to load execution detail:', err);
-      alert('Failed to load execution details');
+      showError('Failed to load execution details');
     }
   };
 
@@ -531,6 +533,8 @@ export default function AIExecutionsPage() {
             </div>
           </div>
         )}
+
+        {NotificationComponent}
       </div>
     </Layout>
   );

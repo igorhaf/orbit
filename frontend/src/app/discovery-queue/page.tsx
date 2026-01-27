@@ -21,6 +21,7 @@ import {
   FolderSearch,
   RefreshCw
 } from 'lucide-react';
+import { useNotification } from '@/hooks';
 
 interface DiscoveryQueueItem {
   id: string;
@@ -51,6 +52,7 @@ const STATUS_CONFIG = {
 
 export default function DiscoveryQueuePage() {
   const router = useRouter();
+  const { showError, NotificationComponent } = useNotification();
   const [items, setItems] = useState<DiscoveryQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -85,7 +87,7 @@ export default function DiscoveryQueuePage() {
       loadQueue();
     } catch (error) {
       console.error('Failed to process item:', error);
-      alert('Failed to process item. Please try again.');
+      showError('Failed to process item. Please try again.');
     } finally {
       setProcessingId(null);
     }
@@ -457,6 +459,8 @@ export default function DiscoveryQueuePage() {
           </div>
         </div>
       )}
+
+      {NotificationComponent}
     </Layout>
   );
 }

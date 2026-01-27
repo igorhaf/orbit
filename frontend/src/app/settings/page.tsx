@@ -16,8 +16,10 @@ import { Badge } from '@/components/ui/Badge';
 import { settingsApi, aiModelsApi } from '@/lib/api';
 import { SystemSettings, AIModel, AIModelUsageType } from '@/lib/types';
 import { Settings as SettingsIcon, Save, Plus, Trash2, RefreshCw } from 'lucide-react';
+import { useNotification } from '@/hooks';
 
 export default function SettingsPage() {
+  const { showError, showWarning, NotificationComponent } = useNotification();
   const [settings, setSettings] = useState<SystemSettings[]>([]);
   const [models, setModels] = useState<AIModel[]>([]);
   const [loading, setLoading] = useState(true);
@@ -78,7 +80,7 @@ export default function SettingsPage() {
 
   const handleAddSetting = async () => {
     if (!newKey.trim()) {
-      alert('Please enter a setting key');
+      showWarning('Please enter a setting key');
       return;
     }
 
@@ -89,7 +91,7 @@ export default function SettingsPage() {
       setNewDescription('');
       await loadData();
     } catch (err: any) {
-      alert(`Failed to add setting: ${err.message}`);
+      showError(`Failed to add setting: ${err.message}`);
     }
   };
 
@@ -98,7 +100,7 @@ export default function SettingsPage() {
       await settingsApi.set(key, value, description);
       await loadData();
     } catch (err: any) {
-      alert(`Failed to update setting: ${err.message}`);
+      showError(`Failed to update setting: ${err.message}`);
     }
   };
 
@@ -117,7 +119,7 @@ export default function SettingsPage() {
       setSettingToDelete(null);
       await loadData();
     } catch (err: any) {
-      alert(`Failed to delete setting: ${err.message}`);
+      showError(`Failed to delete setting: ${err.message}`);
     } finally {
       setIsDeleting(false);
     }
@@ -136,7 +138,7 @@ export default function SettingsPage() {
       await settingsApi.bulk(updates);
       await loadData();
     } catch (err: any) {
-      alert(`Failed to save default models: ${err.message}`);
+      showError(`Failed to save default models: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -434,6 +436,8 @@ export default function SettingsPage() {
           </div>
         </div>
       )}
+
+      {NotificationComponent}
     </Layout>
   );
 }
