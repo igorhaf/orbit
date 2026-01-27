@@ -25,7 +25,9 @@ RUN apt-get update && apt-get install -y \
     # Node.js and npm for Next.js (using default Debian Node)
     nodejs \
     npm \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    # Configure Git to trust mounted project directories (avoid "dubious ownership" error)
+    && git config --global --add safe.directory '*'
 
 # Install Composer for Laravel dependency management
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
