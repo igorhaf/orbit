@@ -129,10 +129,9 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       const updates: Record<string, any> = {};
+      // Always include all usage types, even empty values (for "No default model")
       Object.entries(defaultModels).forEach(([usageType, modelId]) => {
-        if (modelId) {
-          updates[`default_model_${usageType}`] = modelId;
-        }
+        updates[`default_model_${usageType}`] = modelId || '';
       });
 
       await settingsApi.bulk(updates);
