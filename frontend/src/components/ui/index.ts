@@ -42,3 +42,6 @@ export { JobProgressBar } from './JobProgressBar'; // PROMPT #65 - Async Job Sys
 
 export { FolderPicker } from './FolderPicker'; // PROMPT #111 - Folder picker for project creation
 export type { FolderPickerProps } from './FolderPicker';
+
+export { ErrorDialog, formatErrorMessage } from './ErrorDialog'; // PROMPT #112 - Styled notifications
+export type { ErrorDialogProps } from './ErrorDialog';

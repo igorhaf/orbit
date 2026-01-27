@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, Button, Input, Badge, Checkbox } from '@/components/ui';
+import { useNotification } from '@/hooks';
 
 // Types
 interface Project {
@@ -43,6 +44,7 @@ enum WizardStep {
 
 export default function SpecGeneratePage() {
   const router = useRouter();
+  const { showError, showWarning, NotificationComponent } = useNotification();
 
   // Wizard state
   const [currentStep, setCurrentStep] = useState<WizardStep>(WizardStep.SELECT_PROJECT);
@@ -98,7 +100,7 @@ export default function SpecGeneratePage() {
     if (!selectedProject) return;
 
     if (!selectedProject.code_path) {
-      alert('This project does not have a code path configured. Please configure it in project settings first.');
+      showWarning('This project does not have a code path configured. Please configure it in project settings first.');
       return;
     }
 
@@ -171,7 +173,7 @@ export default function SpecGeneratePage() {
     const selectedPatterns = patterns.filter(p => p.selected);
 
     if (selectedPatterns.length === 0) {
-      alert('Please select at least one pattern to save.');
+      showWarning('Please select at least one pattern to save.');
       return;
     }
 
@@ -700,6 +702,7 @@ export default function SpecGeneratePage() {
 
   return (
     <Layout>
+      {NotificationComponent}
       <Breadcrumbs
         items={[
           { label: 'Specs', href: '/specs' },

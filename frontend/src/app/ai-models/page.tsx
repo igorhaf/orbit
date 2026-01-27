@@ -18,9 +18,11 @@ import {
   DialogFooter,
 } from '@/components/ui';
 import { aiModelsApi } from '@/lib/api';
+import { useNotification } from '@/hooks';
 import { AIModel, AIModelCreate, AIModelUpdate, AIModelUsageType } from '@/lib/types';
 
 export default function AIModelsPage() {
+  const { showError, NotificationComponent } = useNotification();
   const [models, setModels] = useState<AIModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
@@ -94,7 +96,7 @@ export default function AIModelsPage() {
       fetchModels();
     } catch (error) {
       console.error('Error creating model:', error);
-      alert('Error creating model. Please check the console for details.');
+      showError('Error creating model. Please check the console for details.');
     } finally {
       setIsSubmitting(false);
     }
@@ -127,7 +129,7 @@ export default function AIModelsPage() {
       fetchModels();
     } catch (error) {
       console.error('Error updating model:', error);
-      alert('Error updating model. Please check the console for details.');
+      showError('Error updating model. Please check the console for details.');
     } finally {
       setIsSubmitting(false);
     }
@@ -150,7 +152,7 @@ export default function AIModelsPage() {
       fetchModels();
     } catch (error) {
       console.error('Error deleting model:', error);
-      alert('Error deleting model. Please check the console for details.');
+      showError('Error deleting model. Please check the console for details.');
     } finally {
       setIsSubmitting(false);
     }
@@ -822,6 +824,8 @@ export default function AIModelsPage() {
             </div>
           )}
         </Dialog>
+
+        {NotificationComponent}
       </div>
     </Layout>
   );

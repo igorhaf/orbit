@@ -11,6 +11,7 @@ import { useRouter } from 'next/navigation';
 import { interviewsApi, projectsApi } from '@/lib/api';
 import { Interview, Project } from '@/lib/types';
 import { Button, Badge, Card, CardHeader, CardTitle, CardContent, Dialog, DialogFooter, Select } from '@/components/ui';
+import { useNotification } from '@/hooks';
 
 interface InterviewListProps {
   projectId?: string;
@@ -26,6 +27,7 @@ export function InterviewList({
   project: projectProp  // PROMPT #90 - Project passed from parent
 }: InterviewListProps) {
   const router = useRouter();
+  const { showError, showWarning, NotificationComponent } = useNotification();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,7 @@ export function InterviewList({
     const targetProjectId = projectId || selectedProject;
 
     if (!targetProjectId) {
-      alert('Please select a project');
+      showWarning('Please select a project');
       return;
     }
 
@@ -110,7 +112,7 @@ export function InterviewList({
       router.push(`/projects/${targetProjectId}/interviews/${interviewId}`);
     } catch (error) {
       console.error('Failed to create interview:', error);
-      alert('Failed to create interview. Please try again.');
+      showError('Failed to create interview. Please try again.');
       setCreating(false);
     }
     // Note: Don't setCreating(false) on success - we're navigating away
@@ -135,7 +137,7 @@ export function InterviewList({
       await loadData(); // Refresh list
     } catch (error) {
       console.error('Failed to delete interview:', error);
-      alert('Failed to delete interview. Please try again.');
+      showError('Failed to delete interview. Please try again.');
     } finally {
       setIsDeleting(false);
     }
@@ -159,6 +161,7 @@ export function InterviewList({
 
   return (
     <div className="space-y-6">
+      {NotificationComponent}
       {/* Header */}
       {showHeader && (
         <div className="flex justify-between items-center">

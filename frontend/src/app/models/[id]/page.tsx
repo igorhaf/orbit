@@ -16,11 +16,13 @@ import { aiModelsApi } from '@/lib/api';
 import { AIModel, AIModelUpdate } from '@/lib/types';
 import { ArrowLeft, Cpu, Trash2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
+import { useNotification } from '@/hooks';
 
 export default function EditModelPage() {
   const params = useParams();
   const router = useRouter();
   const modelId = params.id as string;
+  const { showError, showWarning, NotificationComponent } = useNotification();
 
   const [model, setModel] = useState<AIModel | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,22 +59,23 @@ export default function EditModelPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDeleteClick = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteConfirm = async () => {
     if (!model) return;
 
-    const confirmed = confirm(
-      `Are you sure you want to delete "${model.name}"?\n\nThis action cannot be undone.`
-    );
-
-    if (!confirmed) return;
-
+    setShowDeleteConfirm(false);
     setDeleting(true);
     try {
       await aiModelsApi.delete(modelId);
       router.push('/models');
     } catch (error: any) {
       console.error('Failed to delete model:', error);
-      alert(`Failed to delete model: ${error.message}`);
+      showError(`Failed to delete model: ${error.message}`);
       setDeleting(false);
     }
   };
@@ -156,7 +159,7 @@ export default function EditModelPage() {
           </div>
           <Button
             variant="outline"
-            onClick={handleDelete}
+            onClick={handleDeleteClick}
             disabled={deleting}
             className="text-red-600 hover:text-red-700 hover:border-red-300"
           >
@@ -191,6 +194,36 @@ export default function EditModelPage() {
           onCancel={handleCancel}
         />
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Delete Model
+            </h3>
+            <p className="text-gray-600 mb-4">
+              Are you sure you want to delete "{model?.name}"? This action cannot be undone.
+            </p>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setShowDeleteConfirm(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleDeleteConfirm}
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {NotificationComponent}
     </Layout>
   );
 }

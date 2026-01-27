@@ -12,6 +12,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { IssuesList } from '@/components/consistency/IssuesList';
 import { consistencyApi } from '@/lib/api';
+import { useNotification } from '@/hooks';
 
 interface ConsistencyIssue {
   id: string;
@@ -31,6 +32,7 @@ interface ConsistencyIssue {
 export default function ConsistencyPage() {
   const params = useParams();
   const projectId = params.id as string;
+  const { showError, NotificationComponent } = useNotification();
 
   const [issues, setIssues] = useState<ConsistencyIssue[]>([]);
   const [loading, setLoading] = useState(true);
@@ -63,7 +65,7 @@ export default function ConsistencyPage() {
       await loadIssues();
     } catch (error) {
       console.error('Analysis failed:', error);
-      alert('Failed to analyze consistency. Please try again.');
+      showError('Failed to analyze consistency. Please try again.');
     } finally {
       setAnalyzing(false);
     }
@@ -285,6 +287,7 @@ export default function ConsistencyPage() {
         ) : (
           <IssuesList issues={filteredIssues} onUpdateIssue={handleUpdateIssue} />
         )}
+        {NotificationComponent}
       </div>
     </Layout>
   );

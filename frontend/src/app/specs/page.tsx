@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Badge, Dialog } from '@/components/ui';
 import { Plus, Edit, Trash2, Filter, X, FileCode, Database, Layout as LayoutIcon, Palette, Sparkles } from 'lucide-react';
+import { useNotification } from '@/hooks';
 
 interface Spec {
   id: string;
@@ -38,6 +39,7 @@ const CATEGORIES = [
 
 export default function SpecsAdminPage() {
   const router = useRouter();
+  const { showError, showSuccess, showWarning, NotificationComponent } = useNotification();
   const [specs, setSpecs] = useState<Spec[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterCategory, setFilterCategory] = useState<string>('all');
@@ -154,7 +156,7 @@ export default function SpecsAdminPage() {
       loadSpecs();
     } catch (error) {
       console.error('Failed to create spec:', error);
-      alert('Failed to create spec. Please try again.');
+      showError('Failed to create spec. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -176,7 +178,7 @@ export default function SpecsAdminPage() {
       loadSpecs();
     } catch (error) {
       console.error('Failed to update spec:', error);
-      alert('Failed to update spec. Please try again.');
+      showError('Failed to update spec. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
