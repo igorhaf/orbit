@@ -223,7 +223,7 @@ The implementation mirrors PhpStorm's Git log functionality:
 ## Commits
 
 - `b01f377` - feat: add Git operations to commits view (PROMPT #114)
-- (pending) - fix: contracts page YAML display and add editing (PROMPT #114)
+- `397c063` - fix: contracts page YAML display and add editing (PROMPT #114)
 
 ---
 
