@@ -1,11 +1,11 @@
-# PROMPT #114 - Git Operations: Interactive Git History
-## PhpStorm-like Git operations from ORBIT interface
+# PROMPT #114 - Git Operations & Contracts Page Fix
+## PhpStorm-like Git operations + YAML editing for contracts
 
 **Date:** January 27, 2026
 **Status:** ✅ COMPLETED
 **Priority:** HIGH
-**Type:** Feature Implementation
-**Impact:** Users can now perform Git operations directly from ORBIT without leaving the interface
+**Type:** Feature Implementation + Bug Fix
+**Impact:** Users can perform Git operations directly from ORBIT and edit YAML prompt contracts
 
 ---
 
@@ -75,11 +75,21 @@ Updated `GitCommitsList.tsx` with:
    - Added 8 new endpoints for Git operations
    - Helper function `get_project_repo()` for validation
 
+2. **[backend/app/api/routes/contracts.py](backend/app/api/routes/contracts.py)**
+   - Added PUT endpoint for saving contracts
+   - YAML validation before saving
+   - Cache clearing after save
+
 ### Frontend
 1. **[frontend/src/components/commits/GitCommitsList.tsx](frontend/src/components/commits/GitCommitsList.tsx)**
    - Complete rewrite with 946 lines
    - Action menu, diff viewer, dialogs, notifications
    - New state management for operations
+
+2. **[frontend/src/app/contracts/page.tsx](frontend/src/app/contracts/page.tsx)**
+   - Fixed YAML display with proper HTML escaping
+   - Added editing capability with Edit/Save buttons
+   - Search and category filters
 
 ---
 
@@ -167,12 +177,19 @@ Each commit row has a ⋮ button with options:
 
 ## Success Metrics
 
+### Git Operations
 ✅ **8 Git operations** available from UI
 ✅ **Diff viewer** with syntax highlighting
 ✅ **Safety checks** for uncommitted changes
 ✅ **Error handling** with user feedback
 ✅ **Loading states** for all operations
 ✅ **Responsive design** for all dialogs
+
+### Contracts Page
+✅ **YAML display fixed** - proper HTML escaping prevents class names showing as text
+✅ **Editing capability** - Edit/Save buttons with textarea
+✅ **YAML validation** - Backend validates syntax before saving
+✅ **Search and filters** - Find contracts by name, category
 
 ---
 
@@ -191,11 +208,22 @@ The implementation mirrors PhpStorm's Git log functionality:
 - Branch creation from any commit
 - Reset with mode selection
 
+### 4. Contracts Page YAML Display Fix
+**Problem:** When viewing YAML contracts, HTML class names were appearing as visible text (e.g., `"text-gray-500">#`).
+
+**Root Cause:** The `highlightYaml()` function applied syntax highlighting using HTML spans, but the YAML content containing special characters (`<`, `>`, `&`, quotes) was being interpreted as HTML.
+
+**Solution:**
+1. Added `escapeHtml()` function to escape HTML entities BEFORE applying syntax highlighting
+2. Escape order: `&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`, `"` → `&quot;`, `'` → `&#039;`
+3. Updated regex patterns to match escaped entities
+
 ---
 
 ## Commits
 
 - `b01f377` - feat: add Git operations to commits view (PROMPT #114)
+- (pending) - fix: contracts page YAML display and add editing (PROMPT #114)
 
 ---
 
