@@ -2,8 +2,10 @@
  * GitCommitsList Component
  * PROMPT #113 - Git Integration: Display Git commits from project code_path
  * PROMPT #114 - Git Operations: Interactive Git history with operations
+ *              + Inline diff viewer (click row to expand diff below)
  *
  * Shows real Git commit history with PhpStorm-like operations
+ * Click on a commit row to see the diff inline below it
  */
 
 'use client';
@@ -110,10 +112,9 @@ export function GitCommitsList({ projectId }: Props) {
   // Action menu
   const [actionMenuCommit, setActionMenuCommit] = useState<string | null>(null);
 
-  // Diff viewer
-  const [diffData, setDiffData] = useState<GitCommitDiff | null>(null);
-  const [loadingDiff, setLoadingDiff] = useState(false);
-  const [showDiff, setShowDiff] = useState(false);
+  // Inline diff viewer (per commit)
+  const [inlineDiffData, setInlineDiffData] = useState<Record<string, GitCommitDiff>>({});
+  const [loadingDiffFor, setLoadingDiffFor] = useState<string | null>(null);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
   // Operation dialogs
@@ -211,25 +212,39 @@ export function GitCommitsList({ projectId }: Props) {
     }
   }, [projectId, selectedBranch, searchQuery, currentPage]);
 
-  // Load commit diff
-  const loadDiff = async (commitHash: string) => {
-    setLoadingDiff(true);
+  // Load commit diff inline
+  const loadInlineDiff = async (commitHash: string) => {
+    // If already loaded, just toggle expansion
+    if (inlineDiffData[commitHash]) {
+      if (expandedCommit === commitHash) {
+        setExpandedCommit(null);
+      } else {
+        setExpandedCommit(commitHash);
+        // Expand first 3 files by default
+        const initialExpanded = new Set(inlineDiffData[commitHash].files.slice(0, 3).map(f => `${commitHash}-${f.filename}`));
+        setExpandedFiles(initialExpanded);
+      }
+      return;
+    }
+
+    setLoadingDiffFor(commitHash);
+    setExpandedCommit(commitHash);
     try {
       const response = await fetch(
         `http://localhost:8000/api/v1/projects/${projectId}/git/commits/${commitHash}/diff`
       );
       if (!response.ok) throw new Error('Failed to load diff');
       const data: GitCommitDiff = await response.json();
-      setDiffData(data);
-      setShowDiff(true);
+      setInlineDiffData(prev => ({ ...prev, [commitHash]: data }));
       // Expand first 3 files by default
-      const initialExpanded = new Set(data.files.slice(0, 3).map(f => f.filename));
+      const initialExpanded = new Set(data.files.slice(0, 3).map(f => `${commitHash}-${f.filename}`));
       setExpandedFiles(initialExpanded);
     } catch (err) {
       console.error('Failed to load diff:', err);
       setOperationResult({ success: false, message: 'Failed to load commit diff' });
+      setExpandedCommit(null);
     } finally {
-      setLoadingDiff(false);
+      setLoadingDiffFor(null);
     }
   };
 
@@ -579,9 +594,7 @@ export function GitCommitsList({ projectId }: Props) {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <button
-                        onClick={() => setExpandedCommit(
-                          expandedCommit === commit.hash ? null : commit.hash
-                        )}
+                        onClick={() => loadInlineDiff(commit.hash)}
                         className="text-left flex-1"
                       >
                         <p className="font-medium text-gray-900 hover:text-blue-600 transition-colors">
@@ -620,7 +633,7 @@ export function GitCommitsList({ projectId }: Props) {
                             <div className="absolute right-0 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-20 py-1">
                               <button
                                 onClick={() => {
-                                  loadDiff(commit.hash);
+                                  loadInlineDiff(commit.hash);
                                   setActionMenuCommit(null);
                                 }}
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
@@ -695,12 +708,95 @@ export function GitCommitsList({ projectId }: Props) {
                       )}
                     </div>
 
-                    {/* Expanded body */}
-                    {expandedCommit === commit.hash && commit.body && (
+                    {/* Expanded inline diff */}
+                    {expandedCommit === commit.hash && (
                       <div className="mt-3 pt-3 border-t">
-                        <pre className="text-sm text-gray-600 whitespace-pre-wrap font-sans">
-                          {commit.body}
-                        </pre>
+                        {/* Commit body if exists */}
+                        {commit.body && (
+                          <pre className="text-sm text-gray-600 whitespace-pre-wrap font-sans mb-4">
+                            {commit.body}
+                          </pre>
+                        )}
+
+                        {/* Loading state */}
+                        {loadingDiffFor === commit.hash && (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
+                            <span className="ml-2 text-gray-600">Loading diff...</span>
+                          </div>
+                        )}
+
+                        {/* Diff content */}
+                        {inlineDiffData[commit.hash] && (
+                          <div className="space-y-3">
+                            {/* Stats summary */}
+                            <div className="flex items-center gap-4 text-sm text-gray-600 pb-2 border-b">
+                              <span>{inlineDiffData[commit.hash].stats.files_changed} files changed</span>
+                              <span className="text-green-600">+{inlineDiffData[commit.hash].stats.insertions}</span>
+                              <span className="text-red-600">-{inlineDiffData[commit.hash].stats.deletions}</span>
+                            </div>
+
+                            {/* File list with diffs */}
+                            {inlineDiffData[commit.hash].files.map((file) => {
+                              const fileKey = `${commit.hash}-${file.filename}`;
+                              return (
+                                <div key={fileKey} className="border rounded-lg overflow-hidden">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newExpanded = new Set(expandedFiles);
+                                      if (newExpanded.has(fileKey)) {
+                                        newExpanded.delete(fileKey);
+                                      } else {
+                                        newExpanded.add(fileKey);
+                                      }
+                                      setExpandedFiles(newExpanded);
+                                    }}
+                                    className="w-full px-4 py-2 bg-gray-50 flex items-center justify-between hover:bg-gray-100"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {getStatusIcon(file.status)}
+                                      <span className="font-mono text-sm">{file.filename}</span>
+                                      <Badge variant="default" className="text-xs">
+                                        {getStatusLabel(file.status)}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs">
+                                      <span className="text-green-600">+{file.additions}</span>
+                                      <span className="text-red-600">-{file.deletions}</span>
+                                      {expandedFiles.has(fileKey) ? (
+                                        <ChevronUp className="w-4 h-4" />
+                                      ) : (
+                                        <ChevronDown className="w-4 h-4" />
+                                      )}
+                                    </div>
+                                  </button>
+
+                                  {expandedFiles.has(fileKey) && file.diff && (
+                                    <pre className="p-4 text-xs font-mono overflow-x-auto bg-gray-900 text-gray-100 max-h-96">
+                                      {file.diff.split('\n').map((line, i) => (
+                                        <div
+                                          key={i}
+                                          className={`${
+                                            line.startsWith('+') && !line.startsWith('+++')
+                                              ? 'bg-green-900/30 text-green-300'
+                                              : line.startsWith('-') && !line.startsWith('---')
+                                              ? 'bg-red-900/30 text-red-300'
+                                              : line.startsWith('@@')
+                                              ? 'text-blue-300'
+                                              : ''
+                                          }`}
+                                        >
+                                          {line}
+                                        </div>
+                                      ))}
+                                    </pre>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -731,91 +827,6 @@ export function GitCommitsList({ projectId }: Props) {
               </Button>
             </div>
           )}
-        </div>
-      )}
-
-      {/* Diff Viewer Modal */}
-      {showDiff && diffData && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
-            {/* Header */}
-            <div className="p-4 border-b flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-semibold">{diffData.subject}</h2>
-                <p className="text-sm text-gray-500">
-                  {diffData.author_name} • {diffData.short_hash} • {diffData.stats.files_changed} files
-                  <span className="text-green-600 ml-2">+{diffData.stats.insertions}</span>
-                  <span className="text-red-600 ml-1">-{diffData.stats.deletions}</span>
-                </p>
-              </div>
-              <button
-                onClick={() => setShowDiff(false)}
-                className="p-2 hover:bg-gray-100 rounded-lg"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* File list */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="space-y-3">
-                {diffData.files.map((file) => (
-                  <div key={file.filename} className="border rounded-lg overflow-hidden">
-                    <button
-                      onClick={() => {
-                        const newExpanded = new Set(expandedFiles);
-                        if (newExpanded.has(file.filename)) {
-                          newExpanded.delete(file.filename);
-                        } else {
-                          newExpanded.add(file.filename);
-                        }
-                        setExpandedFiles(newExpanded);
-                      }}
-                      className="w-full px-4 py-2 bg-gray-50 flex items-center justify-between hover:bg-gray-100"
-                    >
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(file.status)}
-                        <span className="font-mono text-sm">{file.filename}</span>
-                        <Badge variant="default" className="text-xs">
-                          {getStatusLabel(file.status)}
-                        </Badge>
-                      </div>
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-green-600">+{file.additions}</span>
-                        <span className="text-red-600">-{file.deletions}</span>
-                        {expandedFiles.has(file.filename) ? (
-                          <ChevronUp className="w-4 h-4" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4" />
-                        )}
-                      </div>
-                    </button>
-
-                    {expandedFiles.has(file.filename) && file.diff && (
-                      <pre className="p-4 text-xs font-mono overflow-x-auto bg-gray-900 text-gray-100">
-                        {file.diff.split('\n').map((line, i) => (
-                          <div
-                            key={i}
-                            className={`${
-                              line.startsWith('+') && !line.startsWith('+++')
-                                ? 'bg-green-900/30 text-green-300'
-                                : line.startsWith('-') && !line.startsWith('---')
-                                ? 'bg-red-900/30 text-red-300'
-                                : line.startsWith('@@')
-                                ? 'text-blue-300'
-                                : ''
-                            }`}
-                          >
-                            {line}
-                          </div>
-                        ))}
-                      </pre>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
       )}
 
@@ -919,16 +930,6 @@ export function GitCommitsList({ projectId }: Props) {
                 {operationLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Reset'}
               </Button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Loading diff overlay */}
-      {loadingDiff && (
-        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center">
-          <div className="bg-white rounded-lg p-6 flex items-center gap-3">
-            <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
-            <span>Loading diff...</span>
           </div>
         </div>
       )}
