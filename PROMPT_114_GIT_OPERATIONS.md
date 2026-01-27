@@ -191,6 +191,12 @@ Each commit row has a ⋮ button with options:
 ✅ **YAML validation** - Backend validates syntax before saving
 ✅ **Search and filters** - Find contracts by name, category
 
+### Inline Diff Viewer
+✅ **Click to expand** - Click any commit row to see diff inline below
+✅ **Cached diffs** - Diffs are cached per commit, no re-fetch on toggle
+✅ **Auto-expand files** - First 3 files auto-expanded when viewing
+✅ **Syntax highlighting** - Additions (green), deletions (red), hunks (blue)
+
 ---
 
 ## Key Insights
@@ -218,12 +224,23 @@ The implementation mirrors PhpStorm's Git log functionality:
 2. Escape order: `&` → `&amp;`, `<` → `&lt;`, `>` → `&gt;`, `"` → `&quot;`, `'` → `&#039;`
 3. Updated regex patterns to match escaped entities
 
+### 5. Inline Diff Viewer (Similar to Contracts Pattern)
+**Objective:** Click on a commit row to show diff content inline below it (instead of opening a modal).
+
+**Implementation:**
+- Changed from modal-based diff viewer to inline expansion
+- Diffs are cached per commit in `inlineDiffData` state
+- Toggle behavior: clicking expanded commit collapses it, clicking collapsed expands
+- File keys use `${commitHash}-${filename}` to avoid conflicts between commits
+- First 3 files auto-expanded when viewing a new diff
+
 ---
 
 ## Commits
 
 - `b01f377` - feat: add Git operations to commits view (PROMPT #114)
 - `397c063` - fix: contracts page YAML display and add editing (PROMPT #114)
+- `4aee17b` - feat: add inline diff viewer to commits list (PROMPT #114)
 
 ---
 
