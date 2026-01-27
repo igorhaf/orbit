@@ -196,7 +196,7 @@ async def list_git_commits(
         "log",
         f"--format={format_str}",
         f"--skip={skip}",
-        f"-n={limit + 1}",  # +1 to check if there are more
+        f"--max-count={limit + 1}",  # +1 to check if there are more
     ]
 
     if branch:
