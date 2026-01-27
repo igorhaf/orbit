@@ -1,5 +1,5 @@
-# PROMPT #113 - Git Integration: Project Commits Tab
-## Display Git commit history from project's code_path
+# PROMPT #113 - Git Integration: Commits System
+## Display Git commit history in project view and global commits page
 
 **Date:** January 27, 2026
 **Status:** ✅ COMPLETED
@@ -219,5 +219,38 @@ Git integration feature is fully implemented. Users can now:
 
 **Integration Point:**
 This feature leverages the `code_path` field (made mandatory in PROMPT #111) to connect ORBIT projects with their actual Git repositories.
+
+---
+
+## Global Commits Page Update
+
+In addition to the project-level commits tab, the global `/commits` page was updated to include Git commits:
+
+### Two-Tab Interface
+
+| Tab | Description |
+|-----|-------------|
+| **Git Commits** (default) | Real Git commits from all project repositories |
+| **ORBIT Commits** | AI-generated commits (original functionality) |
+
+### Git Commits Tab Features
+- Project filter with branch display
+- Shows commits from all Git-enabled projects
+- Pagination and search
+- Expandable commit details
+- Copy hash functionality
+
+### File Modified
+- **[frontend/src/app/commits/page.tsx](frontend/src/app/commits/page.tsx)**
+  - Completely rewritten with tab-based interface
+  - GitCommitsTab component for Git history
+  - OrbitCommitsTab component (preserved original)
+  - ~765 lines total
+
+---
+
+## Commits
+- `bfbf4c3` - feat: add Git commits tab to project view
+- `1e072bb` - feat: add Git commits tab to global commits page
 
 ---
