@@ -34,7 +34,8 @@ from app.api.routes import (
     jobs,  # PROMPT #65 - Async Job System
     knowledge,  # PROMPT #84 - RAG Phase 2: Knowledge Search
     discovery_queue,  # PROMPT #77 - Project-Specific Specs Discovery Queue
-    contracts  # PROMPT #104 - Contracts (YAML Prompts Management)
+    contracts,  # PROMPT #104 - Contracts (YAML Prompts Management)
+    git_commits  # PROMPT #113 - Git Integration: Commits from project code_path
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -336,6 +337,13 @@ app.include_router(
     discovery_queue.router,
     prefix=f"{API_V1_PREFIX}/discovery-queue",
     tags=["Discovery Queue"]
+)
+
+# Git Commits (Git Integration - PROMPT #113)
+app.include_router(
+    git_commits.router,
+    prefix=f"{API_V1_PREFIX}",
+    tags=["Git"]
 )
 
 # WebSocket (Real-time updates)

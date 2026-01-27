@@ -16,11 +16,12 @@ import BacklogListView from '@/components/backlog/BacklogListView';
 import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 import { InterviewList } from '@/components/interview';
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
+import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
 import { projectsApi, tasksApi, interviewsApi, ragApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
 
-type Tab = 'kanban' | 'overview' | 'interviews' | 'backlog' | 'rag' | 'analytics';
+type Tab = 'kanban' | 'overview' | 'interviews' | 'backlog' | 'rag' | 'analytics' | 'commits';  // PROMPT #113 - Added commits tab
 
 export default function ProjectDetailsPage() {
   const params = useParams();
@@ -443,6 +444,7 @@ export default function ProjectDetailsPage() {
               { id: 'overview', label: 'Overview' },
               { id: 'backlog', label: 'Backlog' },
               { id: 'kanban', label: 'Kanban Board' },
+              { id: 'commits', label: 'Commits' },  // PROMPT #113 - Git Integration
               { id: 'interviews', label: 'Interviews' },
               { id: 'rag', label: '📊 RAG Analytics' },
               { id: 'analytics', label: '🚨 Blocking Analytics' },
@@ -527,6 +529,13 @@ export default function ProjectDetailsPage() {
         {activeTab === 'kanban' && (
           <div>
             <KanbanBoard projectId={projectId} />
+          </div>
+        )}
+
+        {/* Git Commits Tab (PROMPT #113) */}
+        {activeTab === 'commits' && (
+          <div>
+            <GitCommitsList projectId={projectId} />
           </div>
         )}
 
