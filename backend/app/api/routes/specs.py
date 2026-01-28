@@ -562,6 +562,74 @@ async def get_rag_sync_status(
     return status
 
 
+@router.get("/sync-rag/full-status")
+async def get_full_rag_sync_status(
+    db: Session = Depends(get_db)
+):
+    """
+    Get comprehensive RAG sync status including discovered patterns.
+
+    PROMPT #116 - Pattern Discovery RAG Integration
+
+    Returns:
+        Dict with:
+            - framework_specs: Framework spec sync status
+            - discovered_patterns: Discovered pattern counts in RAG
+            - total_rag_documents: Total documents in RAG
+    """
+    from app.services.spec_rag_sync import SpecRAGSync
+    from sqlalchemy import text
+
+    sync_service = SpecRAGSync(db)
+    framework_status = sync_service.get_sync_status()
+
+    # Count discovered patterns in RAG
+    discovered_query = text("""
+        SELECT COUNT(*) as count
+        FROM rag_documents
+        WHERE metadata->>'type' = 'discovered_pattern'
+    """)
+    discovered_result = db.execute(discovered_query).fetchone()
+    discovered_count = discovered_result.count if discovered_result else 0
+
+    # Count framework-worthy discovered patterns (global)
+    global_discovered_query = text("""
+        SELECT COUNT(*) as count
+        FROM rag_documents
+        WHERE metadata->>'type' = 'discovered_pattern'
+        AND project_id IS NULL
+    """)
+    global_result = db.execute(global_discovered_query).fetchone()
+    global_discovered_count = global_result.count if global_result else 0
+
+    # Total RAG documents
+    total_query = text("SELECT COUNT(*) as count FROM rag_documents")
+    total_result = db.execute(total_query).fetchone()
+    total_count = total_result.count if total_result else 0
+
+    # Count discovered specs in database
+    discovered_specs_db = db.query(Spec).filter(
+        Spec.discovery_metadata.isnot(None)
+    ).count()
+
+    framework_discovered_specs = db.query(Spec).filter(
+        Spec.discovery_metadata.isnot(None),
+        Spec.scope == SpecScope.FRAMEWORK
+    ).count()
+
+    return {
+        "framework_specs": framework_status,
+        "discovered_patterns": {
+            "total_in_rag": discovered_count,
+            "global_in_rag": global_discovered_count,
+            "project_specific_in_rag": discovered_count - global_discovered_count,
+            "total_in_database": discovered_specs_db,
+            "framework_worthy_in_database": framework_discovered_specs
+        },
+        "total_rag_documents": total_count
+    }
+
+
 @router.post("/{spec_id}/sync-rag")
 async def sync_single_spec_to_rag(
     spec_id: UUID,

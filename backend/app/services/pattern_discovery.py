@@ -566,10 +566,16 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
         saved_specs = []
 
         try:
+            from sqlalchemy import or_
+
             for pattern in patterns:
-                # Check if spec with same category/name/type already exists for this project
+                # PROMPT #116: Check for existing spec (both project-specific and global)
+                # Framework-worthy patterns may have been previously saved as project-specific
                 existing = self.db.query(Spec).filter(
-                    Spec.project_id == project_id,
+                    or_(
+                        Spec.project_id == project_id,  # Project-specific spec
+                        Spec.project_id.is_(None)       # Global/framework spec
+                    ),
                     Spec.category == pattern.category,
                     Spec.name == pattern.name,
                     Spec.spec_type == pattern.spec_type
@@ -590,17 +596,31 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
                         "reasoning": pattern.reasoning,
                         "is_framework_worthy": pattern.is_framework_worthy,
                         "discovered_at": datetime.utcnow().isoformat(),
-                        "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition')
+                        "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition'),
+                        "source_project_id": str(project_id)
                     }
                     existing.updated_at = datetime.utcnow()
+
+                    # PROMPT #116: Upgrade scope if pattern is now framework-worthy
+                    if pattern.is_framework_worthy and existing.scope != SpecScope.FRAMEWORK:
+                        existing.scope = SpecScope.FRAMEWORK
+                        existing.project_id = None  # Make it global
+                        logger.debug(f"   Upgraded spec to FRAMEWORK scope: {pattern.title}")
+
                     saved_specs.append(existing)
                     logger.debug(f"   Updated existing spec: {pattern.title}")
                 else:
                     # Create new spec
+                    # PROMPT #116: Framework-worthy patterns use FRAMEWORK scope
+                    # This allows them to be synced to RAG via SpecRAGSync
+                    spec_scope = SpecScope.FRAMEWORK if pattern.is_framework_worthy else SpecScope.PROJECT
+                    # Framework-worthy specs are global (project_id=None), project-specific keep project_id
+                    spec_project_id = None if pattern.is_framework_worthy else project_id
+
                     spec = Spec(
                         id=uuid4(),
-                        project_id=project_id,
-                        scope=SpecScope.PROJECT,
+                        project_id=spec_project_id,
+                        scope=spec_scope,
                         category=pattern.category,
                         name=pattern.name,
                         spec_type=pattern.spec_type,
@@ -618,19 +638,38 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
                             "reasoning": pattern.reasoning,
                             "is_framework_worthy": pattern.is_framework_worthy,
                             "discovered_at": datetime.utcnow().isoformat(),
-                            "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition')
+                            "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition'),
+                            "source_project_id": str(project_id)  # Track original discovery project
                         },
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow()
                     )
                     self.db.add(spec)
                     saved_specs.append(spec)
-                    logger.debug(f"   Created new spec: {pattern.title}")
+                    scope_label = "FRAMEWORK (global)" if pattern.is_framework_worthy else "PROJECT"
+                    logger.debug(f"   Created new spec: {pattern.title} (scope: {scope_label})")
 
             # Commit all changes
             self.db.commit()
 
             logger.info(f"✅ Database: Saved {len(saved_specs)} specs for project {project_id}")
+
+            # PROMPT #116: Sync framework-worthy specs to RAG via SpecRAGSync
+            # This ensures they appear in the SpecSync status dashboard
+            framework_specs = [s for s in saved_specs if s.scope == SpecScope.FRAMEWORK]
+            if framework_specs:
+                try:
+                    from app.services.spec_rag_sync import SpecRAGSync
+                    rag_sync = SpecRAGSync(self.db)
+
+                    synced_count = 0
+                    for spec in framework_specs:
+                        if rag_sync.sync_spec(spec.id):
+                            synced_count += 1
+
+                    logger.info(f"✅ RAG Sync: Synced {synced_count}/{len(framework_specs)} framework specs to RAG")
+                except Exception as sync_error:
+                    logger.warning(f"⚠️  RAG Sync failed (non-critical): {sync_error}")
 
         except Exception as e:
             logger.error(f"❌ Failed to save patterns to database: {e}")
