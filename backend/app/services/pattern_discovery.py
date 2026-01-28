@@ -387,8 +387,24 @@ Your Task:
 2. If yes, extract a **template** with {{Placeholders}} for variable parts
 3. Suggest a **category** and **name** for this pattern
 4. **CRITICAL DECISION**: Is this pattern framework-worthy or project-specific?
-   - Framework-worthy: Generic, reusable across different projects (e.g., REST API endpoint pattern)
-   - Project-specific: Tied to this specific codebase's unique structure
+
+   **Mark as framework-worthy (is_framework_worthy: true) if ANY of these apply:**
+   - Standard architectural patterns (Controllers, Services, Repositories, Models)
+   - API endpoint patterns (REST, GraphQL)
+   - Database model/migration patterns
+   - Test file structures
+   - Configuration file patterns
+   - Component patterns (React, Vue, Angular)
+   - Standard coding conventions for the language/framework
+   - Patterns that follow industry best practices
+
+   **Mark as project-specific (is_framework_worthy: false) ONLY if:**
+   - Contains hard-coded business logic specific to this project
+   - Uses proprietary/internal naming that wouldn't make sense elsewhere
+   - Heavily tied to project-specific domain concepts
+
+   **Default to true** when in doubt - it's better to share useful patterns globally.
+
 5. Rate your **confidence** (0.0 to 1.0)
 
 Respond with JSON ONLY (no markdown blocks):
