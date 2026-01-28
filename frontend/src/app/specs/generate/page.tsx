@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, Button, Input, Badge, Checkbox } from '@/components/ui';
+import { Card, Button, Input, Badge, Checkbox, Select } from '@/components/ui';
 import { useNotification } from '@/hooks';
 
 // Types
@@ -302,50 +302,51 @@ export default function SpecGeneratePage() {
         <div className="flex items-center justify-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
+      ) : projects.length === 0 ? (
+        <Card className="p-6">
+          <p className="text-gray-500 text-center">No projects found. Create a project first.</p>
+        </Card>
       ) : (
-        <div className="space-y-4">
-          {projects.length === 0 ? (
-            <Card className="p-6">
-              <p className="text-gray-500 text-center">No projects found. Create a project first.</p>
+        <div className="space-y-6">
+          {/* Project Selection Dropdown */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Project *
+            </label>
+            <Select
+              value={selectedProjectId}
+              onChange={(e) => handleProjectSelect(e.target.value)}
+              options={[
+                { value: '', label: 'Select a project...' },
+                ...projects.map(p => ({
+                  value: p.id,
+                  label: p.name
+                }))
+              ]}
+            />
+          </div>
+
+          {/* Selected Project Details */}
+          {selectedProject && (
+            <Card className="p-6 border-blue-200 bg-blue-50">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                {selectedProject.name}
+              </h3>
+              {selectedProject.description && (
+                <p className="text-sm text-gray-600 mb-3">{selectedProject.description}</p>
+              )}
+              <div>
+                {selectedProject.code_path ? (
+                  <Badge className="bg-green-100 text-green-800">
+                    Path: {selectedProject.code_path}
+                  </Badge>
+                ) : (
+                  <Badge className="bg-red-100 text-red-800">
+                    No code path configured
+                  </Badge>
+                )}
+              </div>
             </Card>
-          ) : (
-            projects.map(project => (
-              <Card
-                key={project.id}
-                className={`p-6 cursor-pointer transition-all ${
-                  selectedProjectId === project.id
-                    ? 'border-blue-600 border-2'
-                    : 'border-gray-200 hover:border-blue-300'
-                }`}
-                onClick={() => handleProjectSelect(project.id)}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="text-lg font-semibold text-gray-900">{project.name}</h3>
-                    {project.description && (
-                      <p className="text-sm text-gray-500 mt-1">{project.description}</p>
-                    )}
-                    <div className="mt-3">
-                      {project.code_path ? (
-                        <Badge className="bg-green-100 text-green-800">
-                          Path: {project.code_path}
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-red-100 text-red-800">
-                          No code path configured
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                  <div className="ml-4">
-                    <Checkbox
-                      checked={selectedProjectId === project.id}
-                      onChange={() => handleProjectSelect(project.id)}
-                    />
-                  </div>
-                </div>
-              </Card>
-            ))
           )}
         </div>
       )}
@@ -356,7 +357,7 @@ export default function SpecGeneratePage() {
         </Button>
         <Button
           onClick={handleNextFromSelectProject}
-          disabled={!selectedProject}
+          disabled={!selectedProject || !selectedProject.code_path}
           className="bg-blue-600 hover:bg-blue-700"
         >
           Next: Confirm Path
