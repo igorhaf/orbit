@@ -34,6 +34,20 @@ interface SpecSyncStatus {
   sync_percentage: number;
 }
 
+interface DiscoveredPatternsStatus {
+  total_in_rag: number;
+  global_in_rag: number;
+  project_specific_in_rag: number;
+  total_in_database: number;
+  framework_worthy_in_database: number;
+}
+
+interface FullSyncStatus {
+  framework_specs: SpecSyncStatus;
+  discovered_patterns: DiscoveredPatternsStatus;
+  total_rag_documents: number;
+}
+
 interface SyncResult {
   message: string;
   results: {
@@ -48,6 +62,7 @@ interface SyncResult {
 export default function RagPage() {
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
   const [syncStatus, setSyncStatus] = useState<SpecSyncStatus | null>(null);
+  const [fullStatus, setFullStatus] = useState<FullSyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
@@ -68,10 +83,18 @@ export default function RagPage() {
 
   const fetchSyncStatus = useCallback(async () => {
     try {
+      // Fetch basic status for backward compatibility
       const response = await fetch(`${API_BASE}/api/v1/specs/sync-rag/status`);
       if (response.ok) {
         const data = await response.json();
         setSyncStatus(data);
+      }
+
+      // Fetch full status including discovered patterns
+      const fullResponse = await fetch(`${API_BASE}/api/v1/specs/sync-rag/full-status`);
+      if (fullResponse.ok) {
+        const fullData = await fullResponse.json();
+        setFullStatus(fullData);
       }
     } catch (error) {
       console.error('Error fetching sync status:', error);
@@ -248,6 +271,62 @@ export default function RagPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Discovered Patterns Status */}
+        {fullStatus?.discovered_patterns && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <FileText className="w-5 h-5 mr-2" />
+                Discovered Patterns Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-500 mb-4">
+                Patterns discovered via AI code analysis from your projects.
+                Framework-worthy patterns are indexed globally for cross-project use.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <StatCard
+                  title="Total in Database"
+                  value={fullStatus.discovered_patterns.total_in_database}
+                  icon={<Database className="w-6 h-6 text-blue-600" />}
+                  color="blue"
+                />
+                <StatCard
+                  title="Framework-worthy"
+                  value={fullStatus.discovered_patterns.framework_worthy_in_database}
+                  icon={<CheckCircle className="w-6 h-6 text-green-600" />}
+                  color="green"
+                />
+                <StatCard
+                  title="In RAG (Total)"
+                  value={fullStatus.discovered_patterns.total_in_rag}
+                  icon={<Database className="w-6 h-6 text-purple-600" />}
+                  color="purple"
+                />
+                <StatCard
+                  title="Global (Cross-Project)"
+                  value={fullStatus.discovered_patterns.global_in_rag}
+                  icon={<CheckCircle className="w-6 h-6 text-green-600" />}
+                  color="green"
+                />
+                <StatCard
+                  title="Project-Specific"
+                  value={fullStatus.discovered_patterns.project_specific_in_rag}
+                  icon={<FileText className="w-6 h-6 text-yellow-600" />}
+                  color="yellow"
+                />
+              </div>
+              <div className="mt-4 pt-4 border-t">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-500">Total RAG Documents:</span>
+                  <span className="font-semibold text-gray-900">{fullStatus.total_rag_documents}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Charts and Table Row */}
         {ragStats && ragStats.by_usage_type && ragStats.by_usage_type.length > 0 && (
