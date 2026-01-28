@@ -1,6 +1,10 @@
 /**
  * Specs Administration Page
  * Manage framework specifications for dynamic interview questions
+ *
+ * PROMPT #117 - Project-specific Specs
+ * - Added project filter dropdown (same pattern as commits/rag pages)
+ * - Specs are now filtered by selected project
  */
 
 'use client';
@@ -8,9 +12,11 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Badge, Dialog } from '@/components/ui';
-import { Plus, Edit, Trash2, Filter, X, FileCode, Database, Layout as LayoutIcon, Palette, Sparkles } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardContent, Button, Input, Badge, Select } from '@/components/ui';
+import { Plus, Edit, Trash2, X, FileCode, Database, Layout as LayoutIcon, Palette, Sparkles, RefreshCw, FolderOpen, AlertCircle } from 'lucide-react';
 import { useNotification } from '@/hooks';
+import { projectsApi } from '@/lib/api';
+import { Project } from '@/lib/types';
 
 interface Spec {
   id: string;
@@ -28,6 +34,7 @@ interface Spec {
   usage_count: number;
   created_at: string;
   updated_at: string;
+  project_id?: string;
 }
 
 const CATEGORIES = [
@@ -40,8 +47,15 @@ const CATEGORIES = [
 export default function SpecsAdminPage() {
   const router = useRouter();
   const { showError, showSuccess, showWarning, NotificationComponent } = useNotification();
+
+  // Project state
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>('');
+  const [loadingProjects, setLoadingProjects] = useState(true);
+
+  // Specs state
   const [specs, setSpecs] = useState<Spec[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -67,14 +81,44 @@ export default function SpecsAdminPage() {
     is_active: true,
   });
 
+  // Load projects on mount
   useEffect(() => {
-    loadSpecs();
+    const loadProjects = async () => {
+      setLoadingProjects(true);
+      try {
+        const data = await projectsApi.list();
+        const projectsList = Array.isArray(data) ? data : data.data || [];
+        setProjects(projectsList);
+      } catch (error) {
+        console.error('Failed to load projects:', error);
+      } finally {
+        setLoadingProjects(false);
+      }
+    };
+    loadProjects();
   }, []);
 
+  // Auto-select first project when projects load
+  useEffect(() => {
+    if (!selectedProject && projects.length > 0) {
+      setSelectedProject(projects[0].id);
+    }
+  }, [projects, selectedProject]);
+
+  // Load specs when project changes
+  useEffect(() => {
+    if (selectedProject) {
+      loadSpecs();
+    }
+  }, [selectedProject]);
+
   const loadSpecs = async () => {
+    if (!selectedProject) return;
+
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/v1/specs/');
+      const url = `http://localhost:8000/api/v1/specs/?project_id=${selectedProject}`;
+      const response = await fetch(url);
       const data = await response.json();
       setSpecs(data);
     } catch (error) {
@@ -150,7 +194,10 @@ export default function SpecsAdminPage() {
       await fetch('http://localhost:8000/api/v1/specs/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          project_id: selectedProject,
+        }),
       });
       setShowCreateDialog(false);
       loadSpecs();
@@ -217,265 +264,343 @@ export default function SpecsAdminPage() {
     return cat?.color || 'gray';
   };
 
+  const selectedProjectData = projects.find(p => p.id === selectedProject);
+
+  if (loadingProjects) {
+    return (
+      <Layout>
+        <Breadcrumbs />
+        <div className="flex items-center justify-center h-64">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Loading projects...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
-      {/* Breadcrumb and action button aligned on same row */}
-      <div className="flex justify-between items-center mb-6">
-        <Breadcrumbs />
-        <div className="flex gap-3">
-          <Button variant="secondary" onClick={() => router.push('/specs/generate')}>
-            <Sparkles className="w-4 h-4 mr-2" />
-            Generate from Code
-          </Button>
-          <Button variant="primary" onClick={handleOpenCreate}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Spec
-          </Button>
-        </div>
-      </div>
-
+      <Breadcrumbs />
       <div className="space-y-6">
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Specifications</h1>
-          <p className="mt-2 text-gray-600">
-            Manage framework specifications for dynamic interview questions and prompt generation using prompter architecture, where specs serve as contracts
-          </p>
-        </div>
-
-        {/* Statistics */}
-        <div className="grid grid-cols-6 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Total Specs</p>
-                <p className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="pt-6">
-              <div className="text-center">
-                <p className="text-sm text-gray-500">Active</p>
-                <p className="text-3xl font-bold text-green-600 mt-1">{stats.active}</p>
-              </div>
-            </CardContent>
-          </Card>
-          {stats.byCategory.map(cat => {
-            const Icon = cat.icon;
-            return (
-              <Card key={cat.value}>
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <Icon className={`w-5 h-5 mx-auto text-${cat.color}-600 mb-1`} />
-                    <p className="text-sm text-gray-500">{cat.label}</p>
-                    <p className={`text-3xl font-bold text-${cat.color}-600 mt-1`}>{cat.count}</p>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Filters */}
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex flex-wrap gap-4">
-              <div className="flex-1 min-w-[200px]">
-                <Input
-                  placeholder="Search specs..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full"
-                />
-              </div>
-              <div>
-                <select
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={filterCategory}
-                  onChange={(e) => setFilterCategory(e.target.value)}
-                >
-                  <option value="all">All Categories</option>
-                  {CATEGORIES.map(cat => (
-                    <option key={cat.value} value={cat.value}>{cat.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <select
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  value={filterStatus}
-                  onChange={(e) => setFilterStatus(e.target.value)}
-                >
-                  <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-              {(searchTerm || filterCategory !== 'all' || filterStatus !== 'all') && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setSearchTerm('');
-                    setFilterCategory('all');
-                    setFilterStatus('all');
-                  }}
-                >
-                  <X className="w-4 h-4 mr-2" />
-                  Clear Filters
-                </Button>
-              )}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <FileCode className="w-6 h-6 text-blue-600" />
             </div>
-          </CardContent>
-        </Card>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Specifications</h1>
+              <p className="text-gray-600 mt-1">
+                Manage framework specifications for dynamic interview questions
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={() => router.push('/specs/generate')}>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Generate from Code
+            </Button>
+            <Button variant="primary" onClick={handleOpenCreate} disabled={!selectedProject}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Spec
+            </Button>
+          </div>
+        </div>
 
-        {/* Specs Table */}
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              Specifications ({filteredSpecs.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+        {projects.length === 0 ? (
+          <Card>
+            <CardContent className="py-12 text-center">
+              <AlertCircle className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">No Projects Found</h3>
+              <p className="text-gray-600 mb-4">
+                Create a project to start managing specifications.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-4">
+            {/* Project Filter */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex flex-col md:flex-row gap-4">
+                  {/* Project Dropdown */}
+                  <div className="w-full md:w-64">
+                    <Select
+                      value={selectedProject}
+                      onChange={(e) => setSelectedProject(e.target.value)}
+                      options={projects.map(project => ({
+                        value: project.id,
+                        label: project.name,
+                      }))}
+                    />
+                  </div>
+
+                  {/* Search */}
+                  <div className="flex-1">
+                    <Input
+                      placeholder="Search specs..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+
+                  {/* Category Filter */}
+                  <select
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={filterCategory}
+                    onChange={(e) => setFilterCategory(e.target.value)}
+                  >
+                    <option value="all">All Categories</option>
+                    {CATEGORIES.map(cat => (
+                      <option key={cat.value} value={cat.value}>{cat.label}</option>
+                    ))}
+                  </select>
+
+                  {/* Status Filter */}
+                  <select
+                    className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                  >
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </select>
+
+                  {/* Refresh */}
+                  <Button variant="outline" onClick={loadSpecs} disabled={loading}>
+                    <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+                  </Button>
+                </div>
+
+                {/* Stats Row */}
+                <div className="flex items-center gap-4 mt-4 pt-4 border-t border-gray-100">
+                  <div className="flex items-center gap-2">
+                    <FolderOpen className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">
+                      Project: <strong>{selectedProjectData?.name || 'None'}</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">
+                      {stats.total} specs ({stats.active} active)
+                    </span>
+                  </div>
+                  {selectedProjectData?.code_path && (
+                    <div className="text-sm text-gray-400 truncate max-w-xs" title={selectedProjectData.code_path}>
+                      {selectedProjectData.code_path}
+                    </div>
+                  )}
+                  {(searchTerm || filterCategory !== 'all' || filterStatus !== 'all') && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSearchTerm('');
+                        setFilterCategory('all');
+                        setFilterStatus('all');
+                      }}
+                    >
+                      <X className="w-4 h-4 mr-1" />
+                      Clear Filters
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Loading */}
             {loading ? (
-              <div className="text-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-              </div>
-            ) : filteredSpecs.length === 0 ? (
-              <div className="text-center py-12">
-                <FileCode className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No specs found</p>
-                {searchTerm && (
-                  <p className="text-sm text-gray-400 mt-1">
-                    Try adjusting your search or filters
-                  </p>
-                )}
+              <div className="flex items-center justify-center h-64">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading specs...</p>
+                </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Category
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Framework
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Type
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Title
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Language
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Version
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Usage
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredSpecs.map((spec) => {
-                      const Icon = getCategoryIcon(spec.category);
-                      const color = getCategoryColor(spec.category);
+              <>
+                {/* Statistics */}
+                <div className="grid grid-cols-6 gap-4">
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center">
+                        <p className="text-sm text-gray-500">Total Specs</p>
+                        <p className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-6">
+                      <div className="text-center">
+                        <p className="text-sm text-gray-500">Active</p>
+                        <p className="text-3xl font-bold text-green-600 mt-1">{stats.active}</p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  {stats.byCategory.map(cat => {
+                    const Icon = cat.icon;
+                    return (
+                      <Card key={cat.value}>
+                        <CardContent className="pt-6">
+                          <div className="text-center">
+                            <Icon className={`w-5 h-5 mx-auto text-${cat.color}-600 mb-1`} />
+                            <p className="text-sm text-gray-500">{cat.label}</p>
+                            <p className={`text-3xl font-bold text-${cat.color}-600 mt-1`}>{cat.count}</p>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
 
-                      return (
-                        <tr key={spec.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center">
-                              <Icon className={`w-4 h-4 text-${color}-600 mr-2`} />
-                              <span className="text-sm font-medium text-gray-900 capitalize">
-                                {spec.category}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm text-gray-900">{spec.name}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm text-gray-600">{spec.spec_type}</span>
-                          </td>
-                          <td className="px-6 py-4">
-                            <div className="text-sm text-gray-900">{spec.title}</div>
-                            {spec.description && (
-                              <div className="text-xs text-gray-500 mt-1 line-clamp-1">
-                                {spec.description}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm text-gray-600">{spec.language || '-'}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm text-gray-600">{spec.framework_version || '-'}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="text-sm text-gray-900">{spec.usage_count}</span>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <Badge variant={spec.is_active ? 'success' : 'default'}>
-                              {spec.is_active ? 'Active' : 'Inactive'}
-                            </Badge>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div className="flex justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleOpenEdit(spec)}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => handleDelete(spec)}
-                                className="text-red-600 hover:text-red-700"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                {/* Specs Table */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>
+                      Specifications ({filteredSpecs.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {filteredSpecs.length === 0 ? (
+                      <div className="text-center py-12">
+                        <FileCode className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                        <p className="text-gray-500">No specs found for this project</p>
+                        <p className="text-sm text-gray-400 mt-1">
+                          Run Pattern Discovery or add specs manually
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Category
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Framework
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Type
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Title
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Language
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Version
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Usage
+                              </th>
+                              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                              </th>
+                              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Actions
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {filteredSpecs.map((spec) => {
+                              const Icon = getCategoryIcon(spec.category);
+                              const color = getCategoryColor(spec.category);
+
+                              return (
+                                <tr key={spec.id} className="hover:bg-gray-50">
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex items-center">
+                                      <Icon className={`w-4 h-4 text-${color}-600 mr-2`} />
+                                      <span className="text-sm font-medium text-gray-900 capitalize">
+                                        {spec.category}
+                                      </span>
+                                    </div>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className="text-sm text-gray-900">{spec.name}</span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className="text-sm text-gray-600">{spec.spec_type}</span>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                    <div className="text-sm text-gray-900">{spec.title}</div>
+                                    {spec.description && (
+                                      <div className="text-xs text-gray-500 mt-1 line-clamp-1">
+                                        {spec.description}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className="text-sm text-gray-600">{spec.language || '-'}</span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className="text-sm text-gray-600">{spec.framework_version || '-'}</span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <span className="text-sm text-gray-900">{spec.usage_count}</span>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap">
+                                    <Badge variant={spec.is_active ? 'success' : 'default'}>
+                                      {spec.is_active ? 'Active' : 'Inactive'}
+                                    </Badge>
+                                  </td>
+                                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                    <div className="flex justify-end gap-2">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleOpenEdit(spec)}
+                                      >
+                                        <Edit className="w-4 h-4" />
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => handleDelete(spec)}
+                                        className="text-red-600 hover:text-red-700"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Info Card */}
+                <Card className="bg-blue-50 border-blue-200">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-3">
+                      <div className="text-blue-600 text-xl">💡</div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-blue-900 mb-1">
+                          Project-Specific Specs (PROMPT #117)
+                        </h3>
+                        <p className="text-sm text-blue-800">
+                          Specs are now project-specific. Each project has its own set of specifications
+                          discovered from its codebase. Use the project dropdown to switch between projects
+                          and view their specs. Run Pattern Discovery to automatically discover code patterns.
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </>
             )}
-          </CardContent>
-        </Card>
-
-        {/* Info Card */}
-        <Card className="bg-blue-50 border-blue-200">
-          <CardContent className="pt-6">
-            <div className="flex items-start gap-3">
-              <div className="text-blue-600 text-xl">💡</div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-blue-900 mb-1">
-                  Dynamic System & Prompter Architecture
-                </h3>
-                <p className="text-sm text-blue-800">
-                  Specs power the dynamic interview system and serve as contracts for prompt generation.
-                  Adding new specs automatically makes them available in interview questions and enhances
-                  AI-driven code generation with architectural guidelines. No code changes needed!
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+          </div>
+        )}
       </div>
 
       {/* Create Dialog */}
@@ -857,7 +982,7 @@ export default function SpecsAdminPage() {
                 <div>
                   <h4 className="font-semibold text-red-900 mb-1">Warning: This action cannot be undone!</h4>
                   <p className="text-sm text-red-800">
-                    Spec "{specToDelete?.title}" will be permanently deleted. This may affect interview questions that rely on this specification.
+                    Spec &quot;{specToDelete?.title}&quot; will be permanently deleted. This may affect interview questions that rely on this specification.
                   </p>
                 </div>
               </div>
@@ -883,6 +1008,8 @@ export default function SpecsAdminPage() {
           </div>
         </div>
       )}
+
+      {NotificationComponent}
     </Layout>
   );
 }
