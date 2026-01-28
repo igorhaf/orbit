@@ -564,69 +564,56 @@ async def get_rag_sync_status(
 
 @router.get("/sync-rag/full-status")
 async def get_full_rag_sync_status(
+    project_id: Optional[UUID] = Query(None, description="Filter by project ID"),
     db: Session = Depends(get_db)
 ):
     """
-    Get comprehensive RAG sync status including discovered patterns.
+    Get RAG status for specs.
 
-    PROMPT #116 - Pattern Discovery RAG Integration
+    PROMPT #117 - Project-specific RAG
 
     Returns:
         Dict with:
-            - framework_specs: Framework spec sync status
-            - discovered_patterns: Discovered pattern counts in RAG
+            - total_specs: Total specs (optionally filtered by project)
+            - total_in_rag: Specs indexed in RAG
             - total_rag_documents: Total documents in RAG
     """
-    from app.services.spec_rag_sync import SpecRAGSync
     from sqlalchemy import text
 
-    sync_service = SpecRAGSync(db)
-    framework_status = sync_service.get_sync_status()
+    # Count specs (filtered by project if provided)
+    if project_id:
+        total_specs = db.query(Spec).filter(
+            Spec.project_id == project_id,
+            Spec.is_active == True
+        ).count()
 
-    # Count discovered patterns in RAG
-    discovered_query = text("""
-        SELECT COUNT(*) as count
-        FROM rag_documents
-        WHERE metadata->>'type' = 'discovered_pattern'
-    """)
-    discovered_result = db.execute(discovered_query).fetchone()
-    discovered_count = discovered_result.count if discovered_result else 0
+        # Count RAG documents for this project
+        rag_query = text("""
+            SELECT COUNT(*) as count
+            FROM rag_documents
+            WHERE project_id = :project_id
+        """)
+        rag_result = db.execute(rag_query, {"project_id": str(project_id)}).fetchone()
+        total_in_rag = rag_result.count if rag_result else 0
+    else:
+        total_specs = db.query(Spec).filter(Spec.is_active == True).count()
 
-    # Count framework-worthy discovered patterns (global)
-    global_discovered_query = text("""
-        SELECT COUNT(*) as count
-        FROM rag_documents
-        WHERE metadata->>'type' = 'discovered_pattern'
-        AND project_id IS NULL
-    """)
-    global_result = db.execute(global_discovered_query).fetchone()
-    global_discovered_count = global_result.count if global_result else 0
+        # Count all RAG documents
+        rag_query = text("SELECT COUNT(*) as count FROM rag_documents")
+        rag_result = db.execute(rag_query).fetchone()
+        total_in_rag = rag_result.count if rag_result else 0
 
-    # Total RAG documents
-    total_query = text("SELECT COUNT(*) as count FROM rag_documents")
-    total_result = db.execute(total_query).fetchone()
-    total_count = total_result.count if total_result else 0
-
-    # Count discovered specs in database
-    discovered_specs_db = db.query(Spec).filter(
-        Spec.discovery_metadata.isnot(None)
-    ).count()
-
-    framework_discovered_specs = db.query(Spec).filter(
-        Spec.discovery_metadata.isnot(None),
-        Spec.scope == SpecScope.FRAMEWORK
-    ).count()
+    # Count discovered specs
+    discovered_query = db.query(Spec).filter(Spec.discovery_metadata.isnot(None))
+    if project_id:
+        discovered_query = discovered_query.filter(Spec.project_id == project_id)
+    discovered_specs = discovered_query.count()
 
     return {
-        "framework_specs": framework_status,
-        "discovered_patterns": {
-            "total_in_rag": discovered_count,
-            "global_in_rag": global_discovered_count,
-            "project_specific_in_rag": discovered_count - global_discovered_count,
-            "total_in_database": discovered_specs_db,
-            "framework_worthy_in_database": framework_discovered_specs
-        },
-        "total_rag_documents": total_count
+        "project_id": str(project_id) if project_id else None,
+        "total_specs": total_specs,
+        "discovered_specs": discovered_specs,
+        "total_in_rag": total_in_rag
     }
 
 
@@ -671,77 +658,92 @@ async def sync_single_spec_to_rag(
         )
 
 
-@router.post("/migrate-discovered-to-framework")
-async def migrate_discovered_specs_to_framework(
+@router.post("/project/{project_id}/sync-rag")
+async def sync_project_specs_to_rag(
+    project_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Migrate all discovered specs to FRAMEWORK scope and sync to RAG.
+    Sync all specs from a specific project to RAG.
 
-    PROMPT #116 - Fix for existing discovered specs
+    PROMPT #117 - Project-specific RAG
 
     This endpoint:
-    1. Finds all specs with discovery_metadata (discovered patterns)
-    2. Updates them to scope=FRAMEWORK (global)
-    3. Updates project_id to NULL (no longer project-specific)
-    4. Updates discovery_metadata.is_framework_worthy to true
-    5. Syncs all migrated specs to RAG
+    1. Finds all specs for the given project
+    2. Syncs them to RAG with project_id
 
     Returns:
-        Dict with migration results
+        Dict with sync results
     """
-    from app.services.spec_rag_sync import SpecRAGSync
+    from app.services.rag_service import RAGService
 
-    logger.info("Starting migration of discovered specs to FRAMEWORK scope")
+    logger.info(f"Syncing specs for project {project_id} to RAG")
 
-    # Find all discovered specs (have discovery_metadata)
-    discovered_specs = db.query(Spec).filter(
-        Spec.discovery_metadata.isnot(None)
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    # Find all specs for this project
+    project_specs = db.query(Spec).filter(
+        Spec.project_id == project_id,
+        Spec.is_active == True
     ).all()
 
-    if not discovered_specs:
+    if not project_specs:
         return {
-            "message": "No discovered specs found to migrate",
-            "migrated": 0,
-            "synced_to_rag": 0
+            "message": "No specs found for this project",
+            "project_id": str(project_id),
+            "synced": 0
         }
 
-    migrated_count = 0
     synced_count = 0
+    rag_service = RAGService(db)
 
-    for spec in discovered_specs:
-        # Update scope to FRAMEWORK
-        if spec.scope != SpecScope.FRAMEWORK:
-            spec.scope = SpecScope.FRAMEWORK
-            spec.project_id = None  # Make it global
-
-            # Update discovery_metadata to mark as framework-worthy
-            if spec.discovery_metadata:
-                metadata = dict(spec.discovery_metadata)
-                metadata["is_framework_worthy"] = True
-                metadata["migrated_to_framework_at"] = datetime.utcnow().isoformat()
-                spec.discovery_metadata = metadata
-
-            migrated_count += 1
-            logger.info(f"Migrated spec to FRAMEWORK: {spec.name}/{spec.spec_type}")
-
-    # Commit all changes
-    db.commit()
-
-    # Sync all discovered specs to RAG
-    sync_service = SpecRAGSync(db)
-    for spec in discovered_specs:
+    for spec in project_specs:
         try:
-            if sync_service.sync_spec(spec.id):
-                synced_count += 1
+            # Build content for RAG
+            content_parts = [
+                f"# {spec.title}",
+                f"Category: {spec.category}",
+                f"Name: {spec.name}",
+                f"Type: {spec.spec_type}",
+            ]
+            if spec.description:
+                content_parts.append(f"\n## Description\n{spec.description}")
+            if spec.language:
+                content_parts.append(f"Language: {spec.language}")
+            content_parts.append(f"\n## Specification\n{spec.content}")
+
+            content = "\n".join(content_parts)
+
+            # Store in RAG with project_id
+            rag_service.store(
+                content=content,
+                metadata={
+                    "type": f"spec_{spec.category}",
+                    "spec_id": str(spec.id),
+                    "category": spec.category,
+                    "name": spec.name,
+                    "spec_type": spec.spec_type,
+                    "title": spec.title
+                },
+                project_id=project_id
+            )
+            synced_count += 1
+            logger.debug(f"Synced spec {spec.name}/{spec.spec_type} to RAG")
+
         except Exception as e:
             logger.warning(f"Failed to sync spec {spec.id} to RAG: {e}")
 
-    logger.info(f"Migration complete: {migrated_count} migrated, {synced_count} synced to RAG")
+    logger.info(f"Sync complete: {synced_count}/{len(project_specs)} specs synced for project {project_id}")
 
     return {
-        "message": "Migration completed",
-        "total_discovered_specs": len(discovered_specs),
-        "migrated_to_framework": migrated_count,
-        "synced_to_rag": synced_count
+        "message": "Sync completed",
+        "project_id": str(project_id),
+        "total_specs": len(project_specs),
+        "synced": synced_count
     }
