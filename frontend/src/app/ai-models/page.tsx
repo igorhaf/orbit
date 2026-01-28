@@ -261,7 +261,7 @@ export default function AIModelsPage() {
                 </h3>
                 <div className="mt-2 text-sm text-yellow-700">
                   <p>
-                    You don't have an active model with <strong>Usage Type: General</strong>.
+                    You don&apos;t have an active model with <strong>Usage Type: General</strong>.
                     This type serves as a fallback when no specific model is configured for a task.
                     Without it, the system may fail if a required model is not available.
                   </p>
