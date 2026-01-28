@@ -91,6 +91,12 @@ Updated `GitCommitsList.tsx` with:
    - Added editing capability with Edit/Save buttons
    - Search and category filters
 
+3. **[frontend/src/app/commits/page.tsx](frontend/src/app/commits/page.tsx)**
+   - Added inline diff viewer to global commits page
+   - Same behavior as project commits: click row to expand diff below
+   - Cached diffs per commit for performance
+   - File expansion with syntax-highlighted diff
+
 ---
 
 ## API Examples
@@ -191,12 +197,18 @@ Each commit row has a ⋮ button with options:
 ✅ **YAML validation** - Backend validates syntax before saving
 ✅ **Search and filters** - Find contracts by name, category
 
-### Dual Diff Viewer (Inline + Modal)
+### Dual Diff Viewer (Inline + Modal) - Project Commits
 ✅ **Click row → inline diff** - Click any commit row to see diff inline below
 ✅ **Eye icon → modal diff** - Action menu "View Diff" opens modal
 ✅ **Cached inline diffs** - Inline diffs are cached per commit, no re-fetch on toggle
 ✅ **Auto-expand files** - First 3 files auto-expanded when viewing
 ✅ **Syntax highlighting** - Additions (green), deletions (red), hunks (blue)
+
+### Global Commits Page (/commits)
+✅ **Inline diff viewer** - Same click-to-expand behavior as project commits
+✅ **Cached diffs** - Performance optimization with caching
+✅ **File expansion** - Individual file diffs can be expanded/collapsed
+✅ **Chevron indicator** - Visual feedback showing expand/collapse state
 
 ---
 
@@ -243,6 +255,7 @@ The implementation mirrors PhpStorm's Git log functionality:
 - `397c063` - fix: contracts page YAML display and add editing (PROMPT #114)
 - `4aee17b` - feat: add inline diff viewer to commits list (PROMPT #114)
 - `170468b` - feat: add modal diff viewer via eye icon action (PROMPT #114)
+- `pending` - feat: add inline diff viewer to global commits page (PROMPT #114)
 
 ---
 
