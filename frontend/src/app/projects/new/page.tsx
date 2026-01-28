@@ -227,22 +227,7 @@ export default function NewProjectPage() {
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div>
-                <Label htmlFor="name">Project Name *</Label>
-                <Input
-                  id="name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="My Awesome Project"
-                  className="mt-1"
-                  autoFocus
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Choose a descriptive name for your project
-                </p>
-              </div>
-
-              {/* PROMPT #111 - code_path obrigatório com folder picker */}
+              {/* PROMPT #111 - code_path obrigatório com folder picker (moved above project name) */}
               <div>
                 <Label htmlFor="codePath">Code Folder Path *</Label>
                 <div className="flex gap-2 mt-1">
@@ -252,6 +237,7 @@ export default function NewProjectPage() {
                     onChange={(e) => setCodePath(e.target.value)}
                     placeholder="/projects/my-existing-code"
                     className="flex-1"
+                    autoFocus
                   />
                   <Button
                     type="button"
@@ -279,6 +265,20 @@ export default function NewProjectPage() {
                   }}
                   title="Select Code Folder"
                 />
+              </div>
+
+              <div>
+                <Label htmlFor="name">Project Name *</Label>
+                <Input
+                  id="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="My Awesome Project"
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Choose a descriptive name for your project
+                </p>
               </div>
 
               <div className="flex justify-end gap-3">
