@@ -244,15 +244,6 @@ export default function SpecsAdminPage() {
     return matchesCategory && matchesStatus && matchesSearch;
   });
 
-  const stats = {
-    total: specs.length,
-    active: specs.filter(s => s.is_active).length,
-    byCategory: CATEGORIES.map(cat => ({
-      ...cat,
-      count: specs.filter(s => s.category === cat.value).length,
-    })),
-  };
-
   const getCategoryIcon = (category: string) => {
     const cat = CATEGORIES.find(c => c.value === category);
     if (!cat) return FileCode;
@@ -387,7 +378,7 @@ export default function SpecsAdminPage() {
                   <div className="flex items-center gap-2">
                     <FileCode className="w-4 h-4 text-gray-400" />
                     <span className="text-sm text-gray-600">
-                      {stats.total} specs ({stats.active} active)
+                      {specs.length} specs ({specs.filter(s => s.is_active).length} active)
                     </span>
                   </div>
                   {selectedProjectData?.code_path && (
@@ -423,40 +414,6 @@ export default function SpecsAdminPage() {
               </div>
             ) : (
               <>
-                {/* Statistics */}
-                <div className="grid grid-cols-6 gap-4">
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-center">
-                        <p className="text-sm text-gray-500">Total Specs</p>
-                        <p className="text-3xl font-bold text-gray-900 mt-1">{stats.total}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  <Card>
-                    <CardContent className="pt-6">
-                      <div className="text-center">
-                        <p className="text-sm text-gray-500">Active</p>
-                        <p className="text-3xl font-bold text-green-600 mt-1">{stats.active}</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                  {stats.byCategory.map(cat => {
-                    const Icon = cat.icon;
-                    return (
-                      <Card key={cat.value}>
-                        <CardContent className="pt-6">
-                          <div className="text-center">
-                            <Icon className={`w-5 h-5 mx-auto text-${cat.color}-600 mb-1`} />
-                            <p className="text-sm text-gray-500">{cat.label}</p>
-                            <p className={`text-3xl font-bold text-${cat.color}-600 mt-1`}>{cat.count}</p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    );
-                  })}
-                </div>
-
                 {/* Specs Table */}
                 <Card>
                   <CardHeader>
