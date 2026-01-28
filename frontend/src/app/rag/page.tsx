@@ -65,7 +65,14 @@ export default function RagPage() {
   const [fullStatus, setFullStatus] = useState<FullSyncStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [migrating, setMigrating] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
+  const [lastMigrationResult, setLastMigrationResult] = useState<{
+    message: string;
+    total_discovered_specs: number;
+    migrated_to_framework: number;
+    synced_to_rag: number;
+  } | null>(null);
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -119,6 +126,27 @@ export default function RagPage() {
       console.error('Error syncing specs to RAG:', error);
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const migrateDiscoveredToFramework = async () => {
+    setMigrating(true);
+    setLastMigrationResult(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/specs/migrate-discovered-to-framework`, {
+        method: 'POST',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setLastMigrationResult(data);
+        // Refresh stats after migration
+        await fetchRagStats();
+        await fetchSyncStatus();
+      }
+    } catch (error) {
+      console.error('Error migrating discovered specs:', error);
+    } finally {
+      setMigrating(false);
     }
   };
 
@@ -318,6 +346,57 @@ export default function RagPage() {
                   color="yellow"
                 />
               </div>
+
+              {/* Migration Button - Show only if there are discovered specs not yet in RAG */}
+              {fullStatus.discovered_patterns.total_in_database > 0 &&
+               fullStatus.discovered_patterns.framework_worthy_in_database < fullStatus.discovered_patterns.total_in_database && (
+                <div className="mt-4 pt-4 border-t">
+                  <div className="flex items-center space-x-4">
+                    <Button
+                      onClick={migrateDiscoveredToFramework}
+                      disabled={migrating}
+                      className="bg-purple-600 hover:bg-purple-700"
+                    >
+                      {migrating ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Migrating...
+                        </>
+                      ) : (
+                        <>
+                          <Database className="w-4 h-4 mr-2" />
+                          Migrate All to Framework + RAG
+                        </>
+                      )}
+                    </Button>
+                    <span className="text-sm text-gray-500">
+                      Converts all discovered patterns to global framework specs and syncs to RAG
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Migration Result */}
+              {lastMigrationResult && (
+                <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                  <h4 className="font-medium text-green-700 mb-2">Migration Completed</h4>
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-gray-500">Total Discovered:</span>{' '}
+                      <span className="font-medium">{lastMigrationResult.total_discovered_specs}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Migrated to Framework:</span>{' '}
+                      <span className="font-medium text-purple-600">{lastMigrationResult.migrated_to_framework}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Synced to RAG:</span>{' '}
+                      <span className="font-medium text-green-600">{lastMigrationResult.synced_to_rag}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-4 pt-4 border-t">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-500">Total RAG Documents:</span>
