@@ -355,6 +355,7 @@ export default function AIModelsPage() {
                         model.usage_type === 'task_execution' ? 'bg-orange-50 text-orange-700' :
                         model.usage_type === 'commit_generation' ? 'bg-green-50 text-green-700' :
                         model.usage_type === 'pattern_discovery' ? 'bg-cyan-50 text-cyan-700' :
+                        model.usage_type === 'memory' ? 'bg-pink-50 text-pink-700' :
                         'bg-gray-50 text-gray-700'
                       }`}>
                         {model.usage_type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -542,6 +543,7 @@ export default function AIModelsPage() {
                   <option value={AIModelUsageType.TASK_EXECUTION}>Task Execution</option>
                   <option value={AIModelUsageType.COMMIT_GENERATION}>Commit Generation</option>
                   <option value={AIModelUsageType.PATTERN_DISCOVERY}>Pattern Discovery</option>
+                  <option value={AIModelUsageType.MEMORY}>Memory (Codebase Scan)</option>
                   <option value={AIModelUsageType.GENERAL}>General</option>
                 </select>
               </div>
@@ -702,6 +704,7 @@ export default function AIModelsPage() {
                   <option value={AIModelUsageType.TASK_EXECUTION}>Task Execution</option>
                   <option value={AIModelUsageType.COMMIT_GENERATION}>Commit Generation</option>
                   <option value={AIModelUsageType.PATTERN_DISCOVERY}>Pattern Discovery</option>
+                  <option value={AIModelUsageType.MEMORY}>Memory (Codebase Scan)</option>
                   <option value={AIModelUsageType.GENERAL}>General</option>
                 </select>
               </div>

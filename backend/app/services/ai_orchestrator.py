@@ -25,6 +25,7 @@ UsageType = Literal[
     "commit_generation",
     "interview",
     "pattern_discovery",  # PROMPT #62 - AI-powered pattern discovery
+    "memory",  # PROMPT #118 - Codebase memory scan and business rules extraction
     "general"
 ]
 

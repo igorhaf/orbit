@@ -21,6 +21,7 @@ from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
 from app.api.dependencies import get_project_or_404
 from app.services.consistency_validator import ConsistencyValidator
 from app.services.codebase_indexer import CodebaseIndexer
+from app.services.codebase_memory import CodebaseMemoryService
 from app.services.job_manager import JobManager
 from app.services.rag_service import RAGService
 from app.services.pattern_discovery import PatternDiscoveryService
@@ -143,6 +144,97 @@ def _sanitize_project_name(name: str) -> str:
     sanitized = re.sub(r'[\s_]+', '-', sanitized)
     sanitized = sanitized.strip('-')
     return sanitized or 'project'
+
+
+@router.post("/scan-memory")
+async def scan_codebase_memory(
+    code_path: str = Query(..., description="Absolute path to the codebase folder"),
+    project_id: Optional[UUID] = Query(None, description="Optional project ID for RAG storage"),
+    db: Session = Depends(get_db)
+):
+    """
+    Scan a codebase and extract memory (business rules, features, context).
+
+    PROMPT #118 - Initial codebase memory scan during project creation
+
+    This endpoint is called when a user selects a code folder during project creation.
+    It performs an initial scan of the codebase to:
+    1. Detect the technology stack
+    2. Extract business rules from the code
+    3. Identify key features and modules
+    4. Suggest a project title
+    5. Prepare context for the AI interview
+
+    **POST** `/api/v1/projects/scan-memory?code_path=/projects/my-app`
+
+    **Query Parameters:**
+    - `code_path` (required): Absolute path to the codebase folder
+    - `project_id` (optional): Project UUID for storing results in RAG
+
+    **Response:**
+    ```json
+    {
+        "suggested_title": "E-commerce Platform",
+        "stack_info": {
+            "detected_stack": "laravel",
+            "confidence": 85,
+            "description": "Laravel (PHP MVC Framework)"
+        },
+        "business_rules": [
+            "Users must verify email before posting",
+            "Orders over $100 get free shipping"
+        ],
+        "key_features": [
+            "User authentication and registration",
+            "Product catalog with categories"
+        ],
+        "interview_context": "This is an e-commerce platform built with Laravel...",
+        "files_indexed": 145,
+        "scan_summary": {
+            "total_files": 200,
+            "code_files": 150,
+            "languages": {"PHP": 100, "JavaScript": 50}
+        }
+    }
+    ```
+
+    **Errors:**
+    - 400: If code_path doesn't exist or is not a directory
+    - 500: If scan fails
+    """
+    # Validate code_path
+    path = Path(code_path)
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Code path does not exist: {code_path}"
+        )
+    if not path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Code path is not a directory: {code_path}"
+        )
+
+    try:
+        memory_service = CodebaseMemoryService(db)
+        result = await memory_service.scan_and_memorize(
+            code_path=code_path,
+            project_id=project_id
+        )
+
+        return result
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        logger.error(f"Codebase memory scan failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Codebase scan failed: {str(e)}"
+        )
 
 
 @router.get("/", response_model=List[ProjectResponse])

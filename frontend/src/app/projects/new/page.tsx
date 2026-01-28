@@ -1,10 +1,12 @@
 /**
  * New Project Wizard
  * PROMPT #89 - Context Interview Flow
+ * PROMPT #118 - Codebase Memory Scan
+ *
  * Multi-step wizard for creating a new project with context interview
  *
  * Flow:
- * 1. Basic Info (name only)
+ * 1. Basic Info (folder selection triggers memory scan)
  * 2. Context Interview (establish project foundation)
  * 3. Review Context (preview generated context)
  * 4. Confirm (go to project)
@@ -26,12 +28,35 @@ import { useNotification } from '@/hooks';
 
 type Step = 'basic' | 'interview' | 'review' | 'confirm';
 
+// PROMPT #118 - Memory scan result interface
+interface MemoryScanResult {
+  suggested_title: string;
+  stack_info: {
+    detected_stack?: string;
+    confidence?: number;
+    description?: string;
+  };
+  business_rules: string[];
+  key_features: string[];
+  interview_context: string;
+  files_indexed: number;
+  scan_summary: {
+    total_files: number;
+    code_files: number;
+    languages: Record<string, number>;
+  };
+}
+
 export default function NewProjectPage() {
   const router = useRouter();
-  const { showError, showWarning, NotificationComponent } = useNotification();
+  const { showError, showWarning, showSuccess, NotificationComponent } = useNotification();
   const [step, setStep] = useState<Step>('basic');
   const [loading, setLoading] = useState(false);
   const [generatingContext, setGeneratingContext] = useState(false);
+
+  // PROMPT #118 - Memory scan state
+  const [scanning, setScanning] = useState(false);
+  const [memoryScanResult, setMemoryScanResult] = useState<MemoryScanResult | null>(null);
 
   // Form data
   const [name, setName] = useState('');
@@ -58,6 +83,42 @@ export default function NewProjectPage() {
     priority: string;
     order: number;
   }>>([]);
+
+  // PROMPT #118 - Scan codebase when folder is selected
+  const handleFolderSelect = async (path: string) => {
+    setCodePath(path);
+    setShowFolderPicker(false);
+
+    // Start memory scan
+    setScanning(true);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const response = await fetch(
+        `${API_BASE}/api/v1/projects/scan-memory?code_path=${encodeURIComponent(path)}`,
+        { method: 'POST' }
+      );
+
+      if (response.ok) {
+        const result: MemoryScanResult = await response.json();
+        setMemoryScanResult(result);
+
+        // Suggest title if user hasn't entered one
+        if (!name && result.suggested_title) {
+          setName(result.suggested_title);
+        }
+
+        showSuccess('Codebase analyzed successfully!');
+      } else {
+        const error = await response.json();
+        showWarning(`Scan completed with warnings: ${error.detail || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Memory scan failed:', error);
+      showWarning('Could not analyze codebase. You can still proceed manually.');
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const handleBasicSubmit = async () => {
     // PROMPT #89 - Only name is required, description comes from context interview
@@ -259,10 +320,7 @@ export default function NewProjectPage() {
                 <FolderPicker
                   open={showFolderPicker}
                   onClose={() => setShowFolderPicker(false)}
-                  onSelect={(path) => {
-                    setCodePath(path);
-                    setShowFolderPicker(false);
-                  }}
+                  onSelect={handleFolderSelect}
                   title="Select Code Folder"
                 />
               </div>
@@ -278,8 +336,114 @@ export default function NewProjectPage() {
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Choose a descriptive name for your project
+                  {memoryScanResult?.suggested_title && name === memoryScanResult.suggested_title && (
+                    <span className="text-blue-600 ml-1">(AI suggested)</span>
+                  )}
                 </p>
               </div>
+
+              {/* PROMPT #118 - Scanning overlay */}
+              {scanning && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                  <div className="flex items-center gap-4">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <div>
+                      <h4 className="font-medium text-blue-900">Analyzing codebase...</h4>
+                      <p className="text-sm text-blue-700 mt-1">
+                        Scanning files, detecting technologies, and extracting business rules.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* PROMPT #118 - Memory scan results */}
+              {memoryScanResult && !scanning && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-4">
+                  <div className="flex items-start gap-3">
+                    <svg className="w-5 h-5 text-green-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="flex-1">
+                      <h4 className="font-medium text-green-900">Codebase Analyzed</h4>
+                      <p className="text-sm text-green-700 mt-1">
+                        {memoryScanResult.scan_summary.code_files} code files scanned from {memoryScanResult.scan_summary.total_files} total files
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Stack Info */}
+                  {memoryScanResult.stack_info.detected_stack && (
+                    <div className="pl-8">
+                      <span className="text-xs font-medium text-gray-500">Detected Stack:</span>
+                      <span className="ml-2 px-2 py-1 bg-purple-100 text-purple-700 text-xs rounded-full font-medium">
+                        {memoryScanResult.stack_info.detected_stack}
+                        {memoryScanResult.stack_info.confidence && (
+                          <span className="ml-1 text-purple-500">({memoryScanResult.stack_info.confidence}%)</span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Languages */}
+                  {Object.keys(memoryScanResult.scan_summary.languages).length > 0 && (
+                    <div className="pl-8">
+                      <span className="text-xs font-medium text-gray-500">Languages:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {Object.entries(memoryScanResult.scan_summary.languages).map(([lang, count]) => (
+                          <span key={lang} className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
+                            {lang}: {count}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Key Features */}
+                  {memoryScanResult.key_features.length > 0 && (
+                    <details className="pl-8">
+                      <summary className="text-xs font-medium text-gray-500 cursor-pointer hover:text-gray-700">
+                        Key Features Detected ({memoryScanResult.key_features.length})
+                      </summary>
+                      <ul className="mt-2 space-y-1">
+                        {memoryScanResult.key_features.slice(0, 5).map((feature, idx) => (
+                          <li key={idx} className="text-xs text-gray-600 flex items-start gap-2">
+                            <span className="text-green-500">•</span>
+                            {feature}
+                          </li>
+                        ))}
+                        {memoryScanResult.key_features.length > 5 && (
+                          <li className="text-xs text-gray-400 italic">
+                            +{memoryScanResult.key_features.length - 5} more...
+                          </li>
+                        )}
+                      </ul>
+                    </details>
+                  )}
+
+                  {/* Business Rules */}
+                  {memoryScanResult.business_rules.length > 0 && (
+                    <details className="pl-8">
+                      <summary className="text-xs font-medium text-gray-500 cursor-pointer hover:text-gray-700">
+                        Business Rules Extracted ({memoryScanResult.business_rules.length})
+                      </summary>
+                      <ul className="mt-2 space-y-1">
+                        {memoryScanResult.business_rules.slice(0, 5).map((rule, idx) => (
+                          <li key={idx} className="text-xs text-gray-600 flex items-start gap-2">
+                            <span className="text-blue-500">•</span>
+                            {rule}
+                          </li>
+                        ))}
+                        {memoryScanResult.business_rules.length > 5 && (
+                          <li className="text-xs text-gray-400 italic">
+                            +{memoryScanResult.business_rules.length - 5} more...
+                          </li>
+                        )}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
 
               <div className="flex justify-end gap-3">
                 <Button

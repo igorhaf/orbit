@@ -19,6 +19,7 @@ class AIModelUsageType(str, enum.Enum):
     COMMIT_GENERATION = "commit_generation"
     TASK_EXECUTION = "task_execution"
     PATTERN_DISCOVERY = "pattern_discovery"  # PROMPT #62 - AI-powered pattern discovery
+    MEMORY = "memory"  # PROMPT #118 - Codebase memory scan and business rules extraction
     GENERAL = "general"
 
 
