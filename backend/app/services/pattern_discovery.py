@@ -370,6 +370,7 @@ class PatternDiscoveryService:
             for i, f in enumerate(sampled_files[:5])
         ])
 
+        # PROMPT #117: Simplified prompt - all patterns are project-specific
         prompt = f"""You are analyzing a codebase to discover repeating code patterns.
 
 I'm showing you {len(sampled_files)} sample files from a group of {file_group.file_count} similar files.
@@ -386,41 +387,21 @@ Your Task:
 1. Determine if there's a **meaningful repeating pattern** across these files
 2. If yes, extract a **template** with {{Placeholders}} for variable parts
 3. Suggest a **category** and **name** for this pattern
-4. **CRITICAL DECISION**: Is this pattern framework-worthy or project-specific?
-
-   **Mark as framework-worthy (is_framework_worthy: true) if ANY of these apply:**
-   - Standard architectural patterns (Controllers, Services, Repositories, Models)
-   - API endpoint patterns (REST, GraphQL)
-   - Database model/migration patterns
-   - Test file structures
-   - Configuration file patterns
-   - Component patterns (React, Vue, Angular)
-   - Standard coding conventions for the language/framework
-   - Patterns that follow industry best practices
-
-   **Mark as project-specific (is_framework_worthy: false) ONLY if:**
-   - Contains hard-coded business logic specific to this project
-   - Uses proprietary/internal naming that wouldn't make sense elsewhere
-   - Heavily tied to project-specific domain concepts
-
-   **Default to true** when in doubt - it's better to share useful patterns globally.
-
-5. Rate your **confidence** (0.0 to 1.0)
+4. Rate your **confidence** (0.0 to 1.0)
 
 Respond with JSON ONLY (no markdown blocks):
 {{
   "pattern_found": true/false,
-  "category": "suggested category (e.g., 'api', 'model', 'service', 'custom')",
-  "name": "suggested name (e.g., 'api_endpoint', 'data_model', 'project-name')",
-  "spec_type": "specific type (e.g., 'rest_api', 'database_model')",
+  "category": "suggested category (e.g., 'api', 'model', 'service', 'component')",
+  "name": "suggested name (e.g., 'fastapi_router', 'react_component', 'sqlalchemy_model')",
+  "spec_type": "specific type (e.g., 'rest_api', 'database_model', 'ui_component')",
   "title": "Human-readable title",
   "description": "What this pattern represents (2-3 sentences)",
   "template": "Code template with {{Placeholders}} for variable parts",
   "language": "programming language",
   "confidence": 0.0-1.0,
   "reasoning": "Why you identified this pattern (or why not)",
-  "key_characteristics": ["list", "of", "key", "features"],
-  "is_framework_worthy": true/false
+  "key_characteristics": ["list", "of", "key", "features"]
 }}
 
 If no meaningful pattern exists (files are too different), set pattern_found: false.
@@ -521,12 +502,9 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
 
                 content = "\n".join(content_parts)
 
-                # Determine scope: project-specific or global (framework-worthy)
-                # Framework-worthy patterns stored globally (project_id=None)
-                # Project-specific patterns stored with project_id
-                storage_project_id = None if pattern.is_framework_worthy else project_id
-
-                # Store in RAG
+                # PROMPT #117: All patterns are project-specific
+                # RAG is organized per-project, not global
+                # Store in RAG with project_id
                 rag_service.store(
                     content=content,
                     metadata={
@@ -536,22 +514,18 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
                         "spec_type": pattern.spec_type,
                         "language": pattern.language,
                         "confidence_score": pattern.confidence_score,
-                        "is_framework_worthy": pattern.is_framework_worthy,
                         "occurrences": pattern.occurrences,
                         "sample_files": pattern.sample_files[:3],  # First 3 samples
                         "discovered_at": datetime.utcnow().isoformat(),
-                        "source_project_id": str(project_id),  # Always track source
                         "discovery_method": pattern.discovery_method
                     },
-                    project_id=storage_project_id
+                    project_id=project_id  # Always project-specific
                 )
 
                 indexed_count += 1
+                logger.debug(f"   Indexed pattern '{pattern.title}' for project {project_id}")
 
-                scope = "global (framework-worthy)" if pattern.is_framework_worthy else f"project {project_id}"
-                logger.debug(f"   Indexed pattern '{pattern.title}' ({scope})")
-
-            logger.info(f"✅ RAG: Indexed {indexed_count} discovered patterns ({sum(1 for p in patterns if p.is_framework_worthy)} global, {sum(1 for p in patterns if not p.is_framework_worthy)} project-specific)")
+            logger.info(f"✅ RAG: Indexed {indexed_count} discovered patterns for project {project_id}")
 
         except Exception as e:
             # Don't fail pattern discovery if RAG indexing fails
@@ -582,16 +556,11 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
         saved_specs = []
 
         try:
-            from sqlalchemy import or_
-
             for pattern in patterns:
-                # PROMPT #116: Check for existing spec (both project-specific and global)
-                # Framework-worthy patterns may have been previously saved as project-specific
+                # PROMPT #117: All specs are project-specific
+                # Check for existing spec in this project only
                 existing = self.db.query(Spec).filter(
-                    or_(
-                        Spec.project_id == project_id,  # Project-specific spec
-                        Spec.project_id.is_(None)       # Global/framework spec
-                    ),
+                    Spec.project_id == project_id,
                     Spec.category == pattern.category,
                     Spec.name == pattern.name,
                     Spec.spec_type == pattern.spec_type
@@ -610,33 +579,18 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
                         "sample_files": pattern.sample_files[:5],
                         "key_characteristics": pattern.key_characteristics,
                         "reasoning": pattern.reasoning,
-                        "is_framework_worthy": pattern.is_framework_worthy,
                         "discovered_at": datetime.utcnow().isoformat(),
-                        "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition'),
-                        "source_project_id": str(project_id)
+                        "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition')
                     }
                     existing.updated_at = datetime.utcnow()
-
-                    # PROMPT #116: Upgrade scope if pattern is now framework-worthy
-                    if pattern.is_framework_worthy and existing.scope != SpecScope.FRAMEWORK:
-                        existing.scope = SpecScope.FRAMEWORK
-                        existing.project_id = None  # Make it global
-                        logger.debug(f"   Upgraded spec to FRAMEWORK scope: {pattern.title}")
-
                     saved_specs.append(existing)
                     logger.debug(f"   Updated existing spec: {pattern.title}")
                 else:
-                    # Create new spec
-                    # PROMPT #116: Framework-worthy patterns use FRAMEWORK scope
-                    # This allows them to be synced to RAG via SpecRAGSync
-                    spec_scope = SpecScope.FRAMEWORK if pattern.is_framework_worthy else SpecScope.PROJECT
-                    # Framework-worthy specs are global (project_id=None), project-specific keep project_id
-                    spec_project_id = None if pattern.is_framework_worthy else project_id
-
+                    # Create new spec - always PROJECT scope with project_id
                     spec = Spec(
                         id=uuid4(),
-                        project_id=spec_project_id,
-                        scope=spec_scope,
+                        project_id=project_id,
+                        scope=SpecScope.PROJECT,
                         category=pattern.category,
                         name=pattern.name,
                         spec_type=pattern.spec_type,
@@ -652,40 +606,20 @@ IMPORTANT: Return ONLY valid JSON, no markdown code blocks."""
                             "sample_files": pattern.sample_files[:5],
                             "key_characteristics": pattern.key_characteristics,
                             "reasoning": pattern.reasoning,
-                            "is_framework_worthy": pattern.is_framework_worthy,
                             "discovered_at": datetime.utcnow().isoformat(),
-                            "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition'),
-                            "source_project_id": str(project_id)  # Track original discovery project
+                            "discovery_method": getattr(pattern, 'discovery_method', 'ai_pattern_recognition')
                         },
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow()
                     )
                     self.db.add(spec)
                     saved_specs.append(spec)
-                    scope_label = "FRAMEWORK (global)" if pattern.is_framework_worthy else "PROJECT"
-                    logger.debug(f"   Created new spec: {pattern.title} (scope: {scope_label})")
+                    logger.debug(f"   Created new spec: {pattern.title}")
 
             # Commit all changes
             self.db.commit()
 
             logger.info(f"✅ Database: Saved {len(saved_specs)} specs for project {project_id}")
-
-            # PROMPT #116: Sync framework-worthy specs to RAG via SpecRAGSync
-            # This ensures they appear in the SpecSync status dashboard
-            framework_specs = [s for s in saved_specs if s.scope == SpecScope.FRAMEWORK]
-            if framework_specs:
-                try:
-                    from app.services.spec_rag_sync import SpecRAGSync
-                    rag_sync = SpecRAGSync(self.db)
-
-                    synced_count = 0
-                    for spec in framework_specs:
-                        if rag_sync.sync_spec(spec.id):
-                            synced_count += 1
-
-                    logger.info(f"✅ RAG Sync: Synced {synced_count}/{len(framework_specs)} framework specs to RAG")
-                except Exception as sync_error:
-                    logger.warning(f"⚠️  RAG Sync failed (non-critical): {sync_error}")
 
         except Exception as e:
             logger.error(f"❌ Failed to save patterns to database: {e}")
