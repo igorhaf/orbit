@@ -135,11 +135,13 @@ export default function NewProjectPage() {
 
     setLoading(true);
     try {
-      // Create project with code_path (PROMPT #111)
+      // Create project with code_path (PROMPT #111) and memory context (PROMPT #118)
       const projectRes = await projectsApi.create({
         name,
         code_path: codePath,  // PROMPT #111 - Obrigatório e imutável
         description: null,  // PROMPT #89 - Description comes from context interview
+        // PROMPT #118 - Pass memory scan context to skip Q2/Q3 in context interview
+        initial_memory_context: memoryScanResult?.interview_context || null,
       });
 
       // Handle both response formats (with or without .data wrapper)

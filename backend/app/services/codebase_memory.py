@@ -74,11 +74,48 @@ class CodebaseMemoryService:
         ".env.example", "docker-compose.yml"
     }
 
-    # Maximum files to send to AI for analysis
-    MAX_FILES_FOR_AI = 20
+    # PROMPT #118 FIX - Maximum files to send to AI for analysis (increased)
+    MAX_FILES_FOR_AI = 30
 
-    # Maximum content size per file (chars)
-    MAX_CONTENT_PER_FILE = 3000
+    # PROMPT #118 FIX - Maximum content size per file (chars) - increased for better analysis
+    MAX_CONTENT_PER_FILE = 5000
+
+    # PROMPT #118 FIX - Directories that contain business logic
+    BUSINESS_LOGIC_DIRS = {
+        "models", "model", "entities", "entity",
+        "controllers", "controller", "handlers", "handler",
+        "services", "service", "usecases", "use_cases",
+        "repositories", "repository", "repos",
+        "validators", "validation", "rules",
+        "migrations", "database/migrations",
+        "middleware", "middlewares",
+        "requests", "forms", "dtos",
+        "policies", "guards", "permissions",
+        "observers", "listeners", "events",
+        "jobs", "commands", "actions"
+    }
+
+    # PROMPT #118 FIX - Files that typically contain business logic
+    BUSINESS_LOGIC_PATTERNS = {
+        # Models and entities
+        "model", "entity", "domain",
+        # Controllers and handlers
+        "controller", "handler", "endpoint",
+        # Services and use cases
+        "service", "usecase", "interactor",
+        # Validation and rules
+        "validator", "rule", "policy", "guard",
+        # Data and repositories
+        "repository", "repo", "dao",
+        # Migrations (database schema = business rules)
+        "migration", "schema",
+        # Middleware (business rules enforcement)
+        "middleware", "filter",
+        # Request validation (business rules)
+        "request", "form", "dto",
+        # Events and jobs
+        "event", "listener", "job", "command"
+    }
 
     def __init__(self, db: Session):
         """
@@ -183,7 +220,8 @@ class CodebaseMemoryService:
         ai_analysis = await self._ai_analyze_codebase(
             code_samples=code_samples,
             stack_info=stack_info,
-            scan_summary=result["scan_summary"]
+            scan_summary=result["scan_summary"],
+            root_path=path  # PROMPT #118 FIX - Pass root path for folder name
         )
 
         result["suggested_title"] = ai_analysis.get("suggested_title", "")
@@ -283,34 +321,44 @@ class CodebaseMemoryService:
         """
         Determine if a file is a key file worth analyzing.
 
-        Key files are typically:
-        - Models (User.php, user.py, UserModel.ts)
-        - Controllers/Routes
-        - Main entry points
-        - Configuration
+        PROMPT #118 FIX - Expanded to capture more business logic files:
+        - Models, Entities, Domains
+        - Controllers, Handlers, Endpoints
+        - Services, UseCases, Interactors
+        - Validators, Rules, Policies
+        - Migrations (database schema = business rules!)
+        - Middleware (business rules enforcement)
+        - Requests/Forms/DTOs (validation rules)
+        - Events, Listeners, Jobs
         """
         lower_name = filename.lower()
         path_parts = [p.lower() for p in file_path.parts]
 
-        # Check for model files
-        if "model" in lower_name or "models" in path_parts:
-            return True
+        # Check if file is in a business logic directory
+        for part in path_parts:
+            if part in self.BUSINESS_LOGIC_DIRS:
+                return True
 
-        # Check for controller files
-        if "controller" in lower_name or "controllers" in path_parts:
-            return True
+        # Check if filename contains business logic patterns
+        for pattern in self.BUSINESS_LOGIC_PATTERNS:
+            if pattern in lower_name:
+                return True
 
-        # Check for route files
+        # Check for route files (often contain business rules)
         if "route" in lower_name or "routes" in path_parts:
-            return True
-
-        # Check for service files
-        if "service" in lower_name or "services" in path_parts:
             return True
 
         # Check for main entry files
         entry_files = {"main.py", "app.py", "index.js", "index.ts", "server.js", "server.ts"}
         if lower_name in entry_files:
+            return True
+
+        # Laravel specific - check for common business files
+        laravel_patterns = {
+            "kernel.php", "routes.php", "web.php", "api.php",
+            "appserviceprovider.php", "authserviceprovider.php"
+        }
+        if lower_name in laravel_patterns:
             return True
 
         return False
@@ -375,7 +423,27 @@ class CodebaseMemoryService:
                         logger.warning(f"Failed to read {config_file}: {e}")
 
         # Priority 3: Key files (models, controllers, services)
-        for key_file in scan_data.get("key_files", [])[:10]:  # Limit to 10 key files
+        # PROMPT #118 FIX - Increased limit and prioritize business logic files
+        key_files = scan_data.get("key_files", [])
+
+        # PROMPT #118 FIX - Sort key files to prioritize migrations, models, then controllers
+        def sort_priority(f):
+            f_lower = f.lower()
+            if "migration" in f_lower:
+                return 0  # Highest priority - database schema = business rules
+            if "model" in f_lower or "entity" in f_lower:
+                return 1  # Models define domain
+            if "service" in f_lower or "usecase" in f_lower:
+                return 2  # Services contain logic
+            if "controller" in f_lower or "handler" in f_lower:
+                return 3  # Controllers have validation
+            if "request" in f_lower or "validator" in f_lower:
+                return 4  # Validation rules
+            return 5
+
+        key_files_sorted = sorted(key_files, key=sort_priority)
+
+        for key_file in key_files_sorted[:20]:  # PROMPT #118 FIX - Increased from 10 to 20
             if len(samples) >= self.MAX_FILES_FOR_AI:
                 break
 
@@ -397,7 +465,8 @@ class CodebaseMemoryService:
         self,
         code_samples: List[Dict[str, str]],
         stack_info: Dict,
-        scan_summary: Dict
+        scan_summary: Dict,
+        root_path: Optional[Path] = None  # PROMPT #118 FIX - Added for folder name
     ) -> Dict[str, Any]:
         """
         Use AI to analyze codebase and extract insights.
@@ -406,6 +475,7 @@ class CodebaseMemoryService:
             code_samples: List of code sample dicts
             stack_info: Stack detection results
             scan_summary: Scan statistics
+            root_path: Root path of the codebase (for folder name)
 
         Returns:
             Dict with AI analysis results
@@ -441,33 +511,90 @@ class CodebaseMemoryService:
 
         full_context = "\n".join(context_parts)
 
-        # Build system prompt
-        system_prompt = """You are an expert software architect analyzing a codebase.
-Your task is to extract key insights that will help establish project context.
+        # PROMPT #118 FIX - Build comprehensive system prompt for deep analysis
+        # Get folder name for better title suggestion
+        folder_name = root_path.name if root_path else (
+            Path(code_samples[0]["filename"]).parts[0] if code_samples else "Projeto"
+        )
 
-Based on the code samples and statistics provided, you must:
+        system_prompt = f"""Você é um arquiteto de software especialista analisando uma base de código.
+Sua tarefa é EXTRAIR PROFUNDAMENTE as regras de negócio e entender o propósito do sistema.
 
-1. **Suggest a Project Title**: A clear, professional name based on what the code does
-2. **Extract Business Rules**: Specific rules embedded in the code (e.g., "Users must verify email before posting", "Orders over $100 get free shipping")
-3. **Identify Key Features**: Main features/modules the application provides
-4. **Prepare Interview Context**: A summary that helps an AI interviewer ask relevant questions
+## O QUE VOCÊ DEVE FAZER:
 
-IMPORTANT: Focus on BUSINESS LOGIC, not technical implementation details.
-Business rules should be actionable statements about what the system does/enforces.
+1. **Sugerir um Título de Projeto**:
+   - Baseie-se no DOMÍNIO e PROPÓSITO do sistema, NÃO na tecnologia
+   - O nome da pasta é "{folder_name}" - use isso como pista do domínio
+   - Exemplos BONS: "Sistema de Gestão Financeira", "Controle de Contas a Pagar/Receber", "Plataforma de Vendas"
+   - Exemplos RUINS: "Laravel Project", "PHP Application", "Sistema Web"
 
-Respond in JSON format:
-{
-    "suggested_title": "Project Name",
+2. **Extrair Regras de Negócio** (MÍNIMO 5-10 regras):
+   Analise CADA arquivo de código e extraia regras como:
+   - Validações de dados (ex: "CPF deve ser válido", "Valor mínimo de R$ 10")
+   - Restrições de acesso (ex: "Apenas admin pode excluir", "Usuário só vê seus próprios dados")
+   - Cálculos e fórmulas (ex: "Desconto de 10% para pagamento à vista", "Juros de 2% ao mês")
+   - Estados e transições (ex: "Pedido pode ser cancelado apenas se não foi enviado")
+   - Relacionamentos obrigatórios (ex: "Toda venda deve ter um cliente")
+   - Limites e constraints (ex: "Máximo de 5 parcelas", "Prazo máximo de 30 dias")
+
+3. **Identificar Funcionalidades Principais** (MÍNIMO 5-8 features):
+   - Liste os módulos/funcionalidades que o sistema oferece
+   - Seja específico: "Cadastro de clientes com histórico de compras" ao invés de "CRUD de clientes"
+
+4. **Preparar Contexto para Entrevista**:
+   - Escreva um PARÁGRAFO DETALHADO (mínimo 200 palavras) explicando:
+     - O que o sistema faz
+     - Para quem ele foi feito (público-alvo)
+     - Quais problemas ele resolve
+     - Quais são as principais entidades/conceitos do domínio
+     - Pontos que precisam de mais esclarecimento
+
+## COMO IDENTIFICAR REGRAS DE NEGÓCIO NO CÓDIGO:
+
+### Em Migrations/Schema:
+- Campos required/nullable = obrigatoriedade
+- Foreign keys = relacionamentos
+- Unique constraints = unicidade
+- Default values = valores padrão do negócio
+
+### Em Models/Entities:
+- Relacionamentos = regras de associação
+- Scopes/Queries = filtros de negócio
+- Mutators/Accessors = transformações de dados
+- Casts/Formatters = tipos de dados do domínio
+
+### Em Controllers/Services:
+- Validações = regras de entrada
+- Condicionais (if/else) = regras de fluxo
+- Cálculos = fórmulas de negócio
+- Status/Estados = ciclo de vida de entidades
+
+### Em Validators/Requests:
+- Required fields = campos obrigatórios
+- Rules = validações específicas do domínio
+- Messages = regras traduzidas para usuário
+
+### Em Middleware/Policies:
+- Verificações de permissão = regras de acesso
+- Verificações de estado = pré-condições
+
+## FORMATO DE RESPOSTA (JSON):
+{{
+    "suggested_title": "Nome Descritivo do Sistema (baseado no domínio, não na tecnologia)",
     "business_rules": [
-        "Rule 1: Description of business rule found in code",
-        "Rule 2: Another business rule"
+        "Regra 1: Descrição clara da regra de negócio encontrada no código",
+        "Regra 2: Outra regra de negócio...",
+        "... (mínimo 5-10 regras)"
     ],
     "key_features": [
-        "Feature 1: What it does",
-        "Feature 2: What it does"
+        "Funcionalidade 1: Descrição do que faz",
+        "Funcionalidade 2: Descrição do que faz",
+        "... (mínimo 5-8 funcionalidades)"
     ],
-    "interview_context": "A paragraph summarizing the project purpose and key areas to explore..."
-}"""
+    "interview_context": "Parágrafo detalhado (mínimo 200 palavras) explicando o sistema, seu propósito, público-alvo, problemas que resolve, entidades principais e pontos que precisam de esclarecimento para a entrevista de contexto..."
+}}
+
+IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extraia TODO o conhecimento possível do código."""
 
         try:
             # Use "memory" usage_type if configured, otherwise fall back to "general"
@@ -499,20 +626,29 @@ Respond in JSON format:
 
         except Exception as e:
             logger.error(f"AI analysis failed: {e}")
-            # Return fallback based on stack detection
+            # PROMPT #118 FIX - Return fallback based on folder name and stack detection
             return {
-                "suggested_title": self._generate_fallback_title(stack_info),
+                "suggested_title": self._generate_fallback_title(stack_info, folder_name),
                 "business_rules": [],
                 "key_features": [],
-                "interview_context": f"This appears to be a {stack_info.get('detected_stack', 'software')} project."
+                "interview_context": f"Este projeto parece ser um sistema {stack_info.get('detected_stack', 'de software')}. A análise automática não conseguiu extrair detalhes específicos do código. Recomenda-se explorar manualmente as funcionalidades durante a entrevista de contexto."
             }
 
-    def _generate_fallback_title(self, stack_info: Dict) -> str:
-        """Generate fallback title based on stack detection."""
-        stack = stack_info.get("detected_stack", "")
+    def _generate_fallback_title(self, stack_info: Dict, folder_name: str = "") -> str:
+        """
+        Generate fallback title based on folder name and stack detection.
 
+        PROMPT #118 FIX - Prioritize folder name over stack name.
+        """
+        # PROMPT #118 FIX - Use folder name as primary source
+        if folder_name and folder_name not in {"src", "app", "project", "code", "backend", "frontend"}:
+            # Clean up folder name: my-project -> My Project
+            clean_name = folder_name.replace("-", " ").replace("_", " ").title()
+            return f"Sistema {clean_name}"
+
+        stack = stack_info.get("detected_stack", "")
         if stack:
-            return f"{stack.replace('_', ' ').title()} Project"
+            return f"Sistema {stack.replace('_', ' ').title()}"
 
         return "Software Project"
 
