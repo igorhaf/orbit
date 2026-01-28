@@ -669,3 +669,79 @@ async def sync_single_spec_to_rag(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to sync spec {spec_id}"
         )
+
+
+@router.post("/migrate-discovered-to-framework")
+async def migrate_discovered_specs_to_framework(
+    db: Session = Depends(get_db)
+):
+    """
+    Migrate all discovered specs to FRAMEWORK scope and sync to RAG.
+
+    PROMPT #116 - Fix for existing discovered specs
+
+    This endpoint:
+    1. Finds all specs with discovery_metadata (discovered patterns)
+    2. Updates them to scope=FRAMEWORK (global)
+    3. Updates project_id to NULL (no longer project-specific)
+    4. Updates discovery_metadata.is_framework_worthy to true
+    5. Syncs all migrated specs to RAG
+
+    Returns:
+        Dict with migration results
+    """
+    from app.services.spec_rag_sync import SpecRAGSync
+
+    logger.info("Starting migration of discovered specs to FRAMEWORK scope")
+
+    # Find all discovered specs (have discovery_metadata)
+    discovered_specs = db.query(Spec).filter(
+        Spec.discovery_metadata.isnot(None)
+    ).all()
+
+    if not discovered_specs:
+        return {
+            "message": "No discovered specs found to migrate",
+            "migrated": 0,
+            "synced_to_rag": 0
+        }
+
+    migrated_count = 0
+    synced_count = 0
+
+    for spec in discovered_specs:
+        # Update scope to FRAMEWORK
+        if spec.scope != SpecScope.FRAMEWORK:
+            spec.scope = SpecScope.FRAMEWORK
+            spec.project_id = None  # Make it global
+
+            # Update discovery_metadata to mark as framework-worthy
+            if spec.discovery_metadata:
+                metadata = dict(spec.discovery_metadata)
+                metadata["is_framework_worthy"] = True
+                metadata["migrated_to_framework_at"] = datetime.utcnow().isoformat()
+                spec.discovery_metadata = metadata
+
+            migrated_count += 1
+            logger.info(f"Migrated spec to FRAMEWORK: {spec.name}/{spec.spec_type}")
+
+    # Commit all changes
+    db.commit()
+
+    # Sync all discovered specs to RAG
+    sync_service = SpecRAGSync(db)
+    for spec in discovered_specs:
+        try:
+            if sync_service.sync_spec(spec.id):
+                synced_count += 1
+        except Exception as e:
+            logger.warning(f"Failed to sync spec {spec.id} to RAG: {e}")
+
+    logger.info(f"Migration complete: {migrated_count} migrated, {synced_count} synced to RAG")
+
+    return {
+        "message": "Migration completed",
+        "total_discovered_specs": len(discovered_specs),
+        "migrated_to_framework": migrated_count,
+        "synced_to_rag": synced_count
+    }
