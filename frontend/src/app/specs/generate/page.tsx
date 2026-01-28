@@ -81,7 +81,9 @@ export default function SpecGeneratePage() {
     try {
       const response = await fetch('http://localhost:8000/api/v1/projects/');
       const data = await response.json();
-      setProjects(data);
+      // Handle both array and object with data property
+      const projectsList = Array.isArray(data) ? data : data.data || [];
+      setProjects(projectsList);
     } catch (error) {
       console.error('Failed to load projects:', error);
     } finally {
