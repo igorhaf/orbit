@@ -92,6 +92,7 @@ export enum AIModelUsageType {
   PROMPT_GENERATION = 'prompt_generation',
   COMMIT_GENERATION = 'commit_generation',
   TASK_EXECUTION = 'task_execution',
+  PATTERN_DISCOVERY = 'pattern_discovery',
   GENERAL = 'general',
 }
 

@@ -40,6 +40,7 @@ export default function SettingsPage() {
     prompt_generation: '',
     commit_generation: '',
     task_execution: '',
+    pattern_discovery: '',
     general: '',
   });
 
@@ -281,6 +282,27 @@ export default function SettingsPage() {
                   ]}
                   className="mt-1"
                 />
+              </div>
+
+              {/* Pattern Discovery */}
+              <div>
+                <Label htmlFor="model-pattern">Pattern Discovery</Label>
+                <Select
+                  id="model-pattern"
+                  value={defaultModels.pattern_discovery || ''}
+                  onChange={(e) => setDefaultModels({ ...defaultModels, pattern_discovery: e.target.value })}
+                  options={[
+                    { value: '', label: 'No default model' },
+                    ...getModelsForUsageType(AIModelUsageType.PATTERN_DISCOVERY).map(m => ({
+                      value: m.id,
+                      label: m.name,
+                    })),
+                  ]}
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Used for AI-powered code pattern discovery (specs generation)
+                </p>
               </div>
 
               {/* General */}
