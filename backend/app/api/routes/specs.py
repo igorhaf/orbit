@@ -18,12 +18,13 @@ from pathlib import Path
 import logging
 
 from app.database import get_db
-from app.models.spec import Spec, SpecScope
+from app.models.spec import Spec, SpecScope, SpecHistory
 from app.models.project import Project
 from app.schemas.spec import (
     SpecCreate,
     SpecUpdate,
     SpecResponse,
+    SpecHistoryResponse,
     InterviewOptions,
     InterviewOption
 )
@@ -34,10 +35,32 @@ from app.schemas.pattern_discovery import (
     DiscoveredPattern
 )
 from app.services.pattern_discovery import PatternDiscoveryService
+import subprocess
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def get_current_git_commit() -> Optional[str]:
+    """
+    Get the current git commit hash.
+
+    PROMPT #117: Used to track which git version a spec was created/updated at.
+    Returns short hash (7 chars) for display, or None if not in a git repo.
+    """
+    try:
+        result = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except Exception as e:
+        logger.debug(f"Could not get git commit hash: {e}")
+    return None
 
 
 @router.get("/interview-options", response_model=InterviewOptions)
@@ -146,8 +169,10 @@ async def create_spec(
             detail=f"Spec already exists: {spec_data.category}/{spec_data.name}/{spec_data.spec_type}"
         )
 
-    # Create in database
-    spec = Spec(**spec_data.model_dump())
+    # Create in database with git commit hash (PROMPT #117)
+    spec_dict = spec_data.model_dump()
+    spec_dict['git_commit_hash'] = get_current_git_commit()
+    spec = Spec(**spec_dict)
     db.add(spec)
     db.commit()
     db.refresh(spec)
@@ -167,6 +192,7 @@ async def update_spec(
     - **spec_id**: UUID of the spec
 
     PROMPT #77: Now updates directly in database (no JSON files)
+    PROMPT #117: Added versioning - saves history before update, increments version
     """
     spec = db.query(Spec).filter(Spec.id == spec_id).first()
 
@@ -176,8 +202,47 @@ async def update_spec(
             detail=f"Spec {spec_id} not found"
         )
 
-    # Update fields
+    # PROMPT #117: Save current state to history before updating
     update_data = spec_update.model_dump(exclude_unset=True)
+
+    # Only save history if there are actual content changes (not just change_reason)
+    content_fields = {'category', 'name', 'spec_type', 'title', 'description', 'content', 'language', 'framework_version'}
+    has_content_changes = any(field in update_data for field in content_fields)
+
+    if has_content_changes:
+        # Extract change_reason before creating history
+        change_reason = update_data.pop('change_reason', 'manual edit')
+
+        # Get current git commit hash
+        git_commit = get_current_git_commit()
+
+        # Save current version to history
+        history_entry = SpecHistory(
+            spec_id=spec.id,
+            version=spec.version,
+            category=spec.category,
+            name=spec.name,
+            spec_type=spec.spec_type,
+            title=spec.title,
+            description=spec.description,
+            content=spec.content,
+            language=spec.language,
+            framework_version=spec.framework_version,
+            change_reason=change_reason,
+            changed_by="user",
+            git_commit_hash=spec.git_commit_hash  # Save the previous commit hash
+        )
+        db.add(history_entry)
+
+        # Increment version and update git commit
+        spec.version = spec.version + 1
+        spec.git_commit_hash = git_commit
+        logger.info(f"Spec {spec_id} updated: v{spec.version - 1} -> v{spec.version} (commit: {git_commit}, reason: {change_reason})")
+    else:
+        # Remove change_reason if no content changes
+        update_data.pop('change_reason', None)
+
+    # Update fields
     for field, value in update_data.items():
         setattr(spec, field, value)
 
@@ -185,6 +250,33 @@ async def update_spec(
     db.refresh(spec)
 
     return spec
+
+
+@router.get("/{spec_id}/history", response_model=List[SpecHistoryResponse])
+async def get_spec_history(
+    spec_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get version history of a spec.
+
+    PROMPT #117: Spec versioning
+
+    Returns all previous versions of the spec, ordered by version descending.
+    """
+    spec = db.query(Spec).filter(Spec.id == spec_id).first()
+
+    if not spec:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Spec {spec_id} not found"
+        )
+
+    history = db.query(SpecHistory).filter(
+        SpecHistory.spec_id == spec_id
+    ).order_by(SpecHistory.version.desc()).all()
+
+    return history
 
 
 @router.delete("/{spec_id}", status_code=status.HTTP_204_NO_CONTENT)

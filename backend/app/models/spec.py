@@ -6,6 +6,10 @@ PROMPT #62 - Week 1: Added pattern discovery support
 - project_id: Link to project for project-specific patterns
 - scope: Distinguish framework vs project-specific specs
 - discovery_metadata: AI decision reasoning and metadata
+
+PROMPT #117: Added spec versioning
+- version: Track spec version (increments on each update)
+- SpecHistory: Store previous versions for audit trail
 """
 
 import enum
@@ -22,6 +26,56 @@ class SpecScope(str, enum.Enum):
     """Spec scope enumeration"""
     FRAMEWORK = "framework"  # Global framework spec (reusable across projects)
     PROJECT = "project"      # Project-specific discovered pattern
+
+
+class SpecHistory(Base):
+    """
+    SpecHistory model - Stores previous versions of specs
+
+    PROMPT #117: Spec versioning history
+
+    When a spec is updated, the previous version is saved here
+    before applying changes. This allows:
+    - Audit trail of all changes
+    - Rollback to previous versions if needed
+    - Understanding how specs evolved over time
+    """
+
+    __tablename__ = "spec_history"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
+
+    # Reference to the spec
+    spec_id = Column(UUID(as_uuid=True), ForeignKey("specs.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # Version that was saved
+    version = Column(Integer, nullable=False)
+
+    # Snapshot of the spec at this version
+    category = Column(String(50), nullable=False)
+    name = Column(String(100), nullable=False)
+    spec_type = Column(String(50), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    content = Column(Text, nullable=False)
+    language = Column(String(50), nullable=True)
+    framework_version = Column(String(20), nullable=True)
+
+    # Who/what made the change
+    change_reason = Column(String(255), nullable=True)  # e.g., "manual edit", "pattern discovery sync", "AI inference"
+    changed_by = Column(String(100), nullable=True)  # e.g., "user", "system", "ai_model_name"
+
+    # Git commit reference (PROMPT #117)
+    git_commit_hash = Column(String(40), nullable=True)  # SHA-1 hash of the git commit
+
+    # When
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationship
+    spec = relationship("Spec", back_populates="history")
+
+    def __repr__(self) -> str:
+        return f"<SpecHistory(spec_id={self.spec_id}, version={self.version})>"
 
 
 class Spec(Base):
@@ -76,6 +130,10 @@ class Spec(Base):
     is_active = Column(Boolean, nullable=False, default=True, index=True)
     usage_count = Column(Integer, nullable=False, default=0)
 
+    # Versioning (PROMPT #117)
+    version = Column(Integer, nullable=False, default=1)  # Starts at 1, increments on each update
+    git_commit_hash = Column(String(40), nullable=True)  # SHA-1 hash of the git commit when created/updated
+
     # Pattern Discovery (PROMPT #62 - Week 1)
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True)
     scope = Column(
@@ -108,6 +166,7 @@ class Spec(Base):
 
     # Relationships
     project = relationship("Project", back_populates="discovered_specs")
+    history = relationship("SpecHistory", back_populates="spec", cascade="all, delete-orphan", order_by="SpecHistory.version.desc()")
 
     def __repr__(self) -> str:
         scope_str = f", scope='{self.scope.value}'" if self.scope else ""
