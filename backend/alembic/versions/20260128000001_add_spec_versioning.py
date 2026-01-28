@@ -5,7 +5,7 @@ PROMPT #117 - Spec versioning
 - Create spec_history table for audit trail
 
 Revision ID: 20260128000001
-Revises:
+Revises: 20260127100000
 Create Date: 2026-01-28
 
 """
@@ -17,7 +17,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '20260128000001'
-down_revision: Union[str, None] = None
+down_revision: Union[str, None] = '20260127100000'  # Previous: seed_pattern_discovery_model
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
