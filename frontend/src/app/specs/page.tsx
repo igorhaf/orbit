@@ -32,6 +32,8 @@ interface Spec {
   file_extensions?: string[];
   is_active: boolean;
   usage_count: number;
+  version: number;
+  git_commit_hash?: string;
   created_at: string;
   updated_at: string;
   project_id?: string;
@@ -497,7 +499,14 @@ export default function SpecsAdminPage() {
                                     <span className="text-sm text-gray-600">{spec.language || '-'}</span>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="text-sm text-gray-600">{spec.framework_version || '-'}</span>
+                                    <div className="flex items-center gap-1">
+                                      <span className="text-sm font-medium text-gray-900">v{spec.version || 1}</span>
+                                      {spec.git_commit_hash && (
+                                        <span className="text-xs text-gray-400 font-mono">
+                                          @{spec.git_commit_hash}
+                                        </span>
+                                      )}
+                                    </div>
                                   </td>
                                   <td className="px-6 py-4 whitespace-nowrap">
                                     <span className="text-sm text-gray-900">{spec.usage_count}</span>

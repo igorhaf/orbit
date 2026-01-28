@@ -1,6 +1,10 @@
 """
 Spec Pydantic Schemas (PROMPT #47 - Phase 2)
 Request/Response models for Spec endpoints
+
+PROMPT #117: Added spec versioning
+- version field tracks spec changes
+- SpecHistoryResponse for audit trail
 """
 
 from datetime import datetime
@@ -51,13 +55,40 @@ class SpecUpdate(BaseModel):
 
     is_active: Optional[bool] = None
 
+    # Versioning metadata (PROMPT #117)
+    change_reason: Optional[str] = Field(None, description="Reason for this change (e.g., 'manual edit', 'sync update')")
+
 
 class SpecResponse(SpecBase):
     """Schema for Spec response"""
     id: UUID
     usage_count: int
+    version: int = Field(1, description="Spec version number")
+    git_commit_hash: Optional[str] = Field(None, description="Git commit hash when spec was last updated")
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class SpecHistoryResponse(BaseModel):
+    """Schema for Spec history entry (PROMPT #117)"""
+    id: UUID
+    spec_id: UUID
+    version: int
+    category: str
+    name: str
+    spec_type: str
+    title: str
+    description: Optional[str]
+    content: str
+    language: Optional[str]
+    framework_version: Optional[str]
+    change_reason: Optional[str]
+    changed_by: Optional[str]
+    git_commit_hash: Optional[str] = Field(None, description="Git commit hash at this version")
+    created_at: datetime
 
     class Config:
         from_attributes = True
