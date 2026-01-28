@@ -38,6 +38,10 @@ class ProjectCreate(ProjectBase):
     # O ORBIT foca em análise de código existente, não em provisionamento
     code_path: str = Field(..., min_length=1, max_length=500, description="Path to project code folder (required, immutable after creation)")
 
+    # PROMPT #118 - Initial memory context from codebase scan
+    # If provided, context interview skips Q2/Q3 (problem/vision) and goes directly to AI questions
+    initial_memory_context: Optional[str] = Field(None, description="Context from codebase memory scan")
+
 
 class ProjectUpdate(BaseModel):
     """Schema for updating an existing Project"""

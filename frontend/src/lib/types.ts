@@ -138,6 +138,10 @@ export interface ProjectCreate {
   stack_database?: string | null;
   stack_frontend?: string | null;
   stack_css?: string | null;
+
+  // PROMPT #118 - Initial memory context from codebase scan
+  // If provided, context interview skips Q2/Q3 (problem/vision)
+  initial_memory_context?: string | null;
 }
 
 export interface ProjectUpdate {
