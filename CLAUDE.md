@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #111 (Mandatory Project Folder)
-**Próximo prompt:** PROMPT #112
+**Último prompt:** PROMPT #118 (Codebase Memory Scan)
+**Próximo prompt:** PROMPT #119
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -789,6 +789,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #109**: Error Dialog + Closed Questions Fix - Corrigiu 3 problemas relacionados a entrevistas com Gemini: (1) Substituiu alerts JavaScript rústicos por componente ErrorDialog estilizado com modal pattern do projeto. (2) Adicionou validação para opções vazias no handleOptionSubmit, evitando erro `[object Object]` ao submeter opção sem label. (3) Atualizou `context_interview_ai.yaml` e `context_questions.py` para forçar geração de perguntas FECHADAS com opções (símbolo ○) ao invés de perguntas abertas. Adicionada "Regra de Ouro" no CLAUDE.md: sempre modificar prompts nos arquivos YAML em `backend/app/prompts/`, nunca hardcoded.
 - **PROMPT #110**: RAG Evolution - Implementou evolução do sistema RAG com 4 melhorias: (1) pgvector ativado no init-db.sh. (2) SpecRAGSync service para sincronizar specs com RAG. (3) Endpoints `/specs/sync-rag` para sincronização manual. (4) Dashboard RAG Analytics em `/rag` com estatísticas de uso.
 - **PROMPT #111**: Mandatory Project Folder - Tornou `code_path` OBRIGATÓRIO e IMUTÁVEL na criação de projetos. ORBIT foca em análise de código existente, não provisionamento. Backend: code_path required em ProjectCreate, removed de ProjectUpdate, validação de existência de pasta, migration NOT NULL. Frontend: input obrigatório no wizard, code_path read-only no Edit Dialog. Princípio: projeto = pasta de código existente.
+- **PROMPT #118**: Codebase Memory Scan - Implementou scan automático de codebase durante criação de projeto. Ao selecionar pasta: (1) AI analisa estrutura do código usando novo usage_type "memory". (2) Detecta stack tecnológica. (3) Extrai regras de negócio do código. (4) Identifica features principais. (5) Sugere título do projeto. (6) Armazena findings no RAG. Novo serviço `CodebaseMemoryService`, endpoint `/scan-memory`, overlay de loading no wizard, display de resultados com stack/languages/features/business rules. Regra crítica: todas análises de código devem armazenar regras de negócio.
 
 ---
 
