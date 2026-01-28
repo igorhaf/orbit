@@ -117,6 +117,12 @@ export function GitCommitsList({ projectId }: Props) {
   const [loadingDiffFor, setLoadingDiffFor] = useState<string | null>(null);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
 
+  // Modal diff viewer
+  const [showDiffModal, setShowDiffModal] = useState(false);
+  const [modalDiffData, setModalDiffData] = useState<GitCommitDiff | null>(null);
+  const [loadingModalDiff, setLoadingModalDiff] = useState(false);
+  const [modalExpandedFiles, setModalExpandedFiles] = useState<Set<string>>(new Set());
+
   // Operation dialogs
   const [showBranchDialog, setShowBranchDialog] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
@@ -245,6 +251,29 @@ export function GitCommitsList({ projectId }: Props) {
       setExpandedCommit(null);
     } finally {
       setLoadingDiffFor(null);
+    }
+  };
+
+  // Load commit diff in modal
+  const loadModalDiff = async (commitHash: string) => {
+    setLoadingModalDiff(true);
+    setShowDiffModal(true);
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/v1/projects/${projectId}/git/commits/${commitHash}/diff`
+      );
+      if (!response.ok) throw new Error('Failed to load diff');
+      const data: GitCommitDiff = await response.json();
+      setModalDiffData(data);
+      // Expand first 3 files by default
+      const initialExpanded = new Set(data.files.slice(0, 3).map(f => f.filename));
+      setModalExpandedFiles(initialExpanded);
+    } catch (err) {
+      console.error('Failed to load diff:', err);
+      setOperationResult({ success: false, message: 'Failed to load commit diff' });
+      setShowDiffModal(false);
+    } finally {
+      setLoadingModalDiff(false);
     }
   };
 
@@ -633,7 +662,7 @@ export function GitCommitsList({ projectId }: Props) {
                             <div className="absolute right-0 top-full mt-1 w-48 bg-white border rounded-lg shadow-lg z-20 py-1">
                               <button
                                 onClick={() => {
-                                  loadInlineDiff(commit.hash);
+                                  loadModalDiff(commit.hash);
                                   setActionMenuCommit(null);
                                 }}
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
@@ -929,6 +958,107 @@ export function GitCommitsList({ projectId }: Props) {
               >
                 {operationLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Reset'}
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Diff Viewer Modal */}
+      {showDiffModal && (
+        <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="p-4 border-b flex items-center justify-between">
+              {loadingModalDiff ? (
+                <div className="flex items-center gap-2">
+                  <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" />
+                  <span className="text-gray-600">Loading diff...</span>
+                </div>
+              ) : modalDiffData ? (
+                <div>
+                  <h2 className="text-lg font-semibold">{modalDiffData.subject}</h2>
+                  <p className="text-sm text-gray-500">
+                    {modalDiffData.author_name} • {modalDiffData.short_hash} • {modalDiffData.stats.files_changed} files
+                    <span className="text-green-600 ml-2">+{modalDiffData.stats.insertions}</span>
+                    <span className="text-red-600 ml-1">-{modalDiffData.stats.deletions}</span>
+                  </p>
+                </div>
+              ) : null}
+              <button
+                onClick={() => {
+                  setShowDiffModal(false);
+                  setModalDiffData(null);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* File list */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {loadingModalDiff ? (
+                <div className="flex items-center justify-center h-64">
+                  <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
+                </div>
+              ) : modalDiffData ? (
+                <div className="space-y-3">
+                  {modalDiffData.files.map((file) => (
+                    <div key={file.filename} className="border rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => {
+                          const newExpanded = new Set(modalExpandedFiles);
+                          if (newExpanded.has(file.filename)) {
+                            newExpanded.delete(file.filename);
+                          } else {
+                            newExpanded.add(file.filename);
+                          }
+                          setModalExpandedFiles(newExpanded);
+                        }}
+                        className="w-full px-4 py-2 bg-gray-50 flex items-center justify-between hover:bg-gray-100"
+                      >
+                        <div className="flex items-center gap-2">
+                          {getStatusIcon(file.status)}
+                          <span className="font-mono text-sm">{file.filename}</span>
+                          <Badge variant="default" className="text-xs">
+                            {getStatusLabel(file.status)}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs">
+                          <span className="text-green-600">+{file.additions}</span>
+                          <span className="text-red-600">-{file.deletions}</span>
+                          {modalExpandedFiles.has(file.filename) ? (
+                            <ChevronUp className="w-4 h-4" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4" />
+                          )}
+                        </div>
+                      </button>
+
+                      {modalExpandedFiles.has(file.filename) && file.diff && (
+                        <pre className="p-4 text-xs font-mono overflow-x-auto bg-gray-900 text-gray-100">
+                          {file.diff.split('\n').map((line, i) => (
+                            <div
+                              key={i}
+                              className={`${
+                                line.startsWith('+') && !line.startsWith('+++')
+                                  ? 'bg-green-900/30 text-green-300'
+                                  : line.startsWith('-') && !line.startsWith('---')
+                                  ? 'bg-red-900/30 text-red-300'
+                                  : line.startsWith('@@')
+                                  ? 'text-blue-300'
+                                  : ''
+                              }`}
+                            >
+                              {line}
+                            </div>
+                          ))}
+                        </pre>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
