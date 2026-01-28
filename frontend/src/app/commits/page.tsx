@@ -6,12 +6,12 @@
 
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardContent, Button, Badge, Input, Select } from '@/components/ui';
 import { commitsApi, projectsApi } from '@/lib/api';
 import { Commit, Project } from '@/lib/types';
-import { GitCommit, GitBranch, RefreshCw, Search, Filter, ChevronDown, Copy, Check, AlertCircle } from 'lucide-react';
+import { GitCommit, GitBranch, RefreshCw, Search, Filter, ChevronDown, ChevronUp, Copy, Check, AlertCircle, Plus, Minus, FileCode } from 'lucide-react';
 import Link from 'next/link';
 
 // ============================================================================
@@ -27,6 +27,30 @@ interface GitCommitData {
   relative_date: string;
   subject: string;
   body?: string;
+}
+
+interface GitFileChange {
+  filename: string;
+  status: string;
+  additions: number;
+  deletions: number;
+  diff?: string;
+}
+
+interface GitCommitDiff {
+  hash: string;
+  short_hash: string;
+  subject: string;
+  author_name: string;
+  author_email: string;
+  date: string;
+  body?: string;
+  files: GitFileChange[];
+  stats: {
+    files_changed: number;
+    insertions: number;
+    deletions: number;
+  };
 }
 
 interface GitCommitsResponse {
@@ -205,6 +229,12 @@ function GitCommitsTab({ projects, loadingProjects, onRefresh }: GitCommitsTabPr
   const [page, setPage] = useState(0);
   const [copiedHash, setCopiedHash] = useState<string | null>(null);
 
+  // Inline diff viewer state
+  const [expandedCommit, setExpandedCommit] = useState<string | null>(null);
+  const [inlineDiffData, setInlineDiffData] = useState<Record<string, GitCommitDiff>>({});
+  const [loadingDiffFor, setLoadingDiffFor] = useState<string | null>(null);
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+
   const gitProjects = projects.filter(p => p.is_git_repo);
 
   // Auto-select first git project
@@ -292,6 +322,61 @@ function GitCommitsTab({ projects, loadingProjects, onRefresh }: GitCommitsTabPr
       setTimeout(() => setCopiedHash(null), 2000);
     } catch (err) {
       console.error('Failed to copy:', err);
+    }
+  };
+
+  // Load commit diff inline
+  const loadInlineDiff = async (commitHash: string) => {
+    // If already loaded, just toggle expansion
+    if (inlineDiffData[commitHash]) {
+      if (expandedCommit === commitHash) {
+        setExpandedCommit(null);
+      } else {
+        setExpandedCommit(commitHash);
+        // Expand first 3 files by default
+        const initialExpanded = new Set(inlineDiffData[commitHash].files.slice(0, 3).map(f => `${commitHash}-${f.filename}`));
+        setExpandedFiles(initialExpanded);
+      }
+      return;
+    }
+
+    setLoadingDiffFor(commitHash);
+    setExpandedCommit(commitHash);
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/v1/projects/${selectedProject}/git/commits/${commitHash}/diff`
+      );
+      if (!response.ok) throw new Error('Failed to load diff');
+      const data: GitCommitDiff = await response.json();
+      setInlineDiffData(prev => ({ ...prev, [commitHash]: data }));
+      // Expand first 3 files by default
+      const initialExpanded = new Set(data.files.slice(0, 3).map(f => `${commitHash}-${f.filename}`));
+      setExpandedFiles(initialExpanded);
+    } catch (err) {
+      console.error('Failed to load diff:', err);
+      setExpandedCommit(null);
+    } finally {
+      setLoadingDiffFor(null);
+    }
+  };
+
+  // Helper functions for diff display
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'A': return <Plus className="w-4 h-4 text-green-600" />;
+      case 'D': return <Minus className="w-4 h-4 text-red-600" />;
+      case 'M': return <FileCode className="w-4 h-4 text-yellow-600" />;
+      default: return <FileCode className="w-4 h-4 text-gray-600" />;
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'A': return 'Added';
+      case 'D': return 'Deleted';
+      case 'M': return 'Modified';
+      case 'R': return 'Renamed';
+      default: return status;
     }
   };
 
@@ -432,13 +517,23 @@ function GitCommitsTab({ projects, loadingProjects, onRefresh }: GitCommitsTabPr
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="font-medium text-gray-900">{commit.subject}</p>
+                      <button
+                        onClick={() => loadInlineDiff(commit.hash)}
+                        className="text-left flex-1"
+                      >
+                        <p className="font-medium text-gray-900 hover:text-blue-600 transition-colors">
+                          {commit.subject}
+                        </p>
+                      </button>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <code className="text-xs text-gray-500 font-mono bg-gray-100 px-2 py-0.5 rounded">
                           {commit.short_hash}
                         </code>
                         <button
-                          onClick={() => handleCopyHash(commit.hash)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCopyHash(commit.hash);
+                          }}
                           className="p-1 text-gray-400 hover:text-gray-600"
                           title="Copy full hash"
                         >
@@ -448,6 +543,14 @@ function GitCommitsTab({ projects, loadingProjects, onRefresh }: GitCommitsTabPr
                             <Copy className="w-3.5 h-3.5" />
                           )}
                         </button>
+                        {/* Expand/collapse indicator */}
+                        <span className="p-1 text-gray-400">
+                          {expandedCommit === commit.hash ? (
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          )}
+                        </span>
                       </div>
                     </div>
 
@@ -457,10 +560,103 @@ function GitCommitsTab({ projects, loadingProjects, onRefresh }: GitCommitsTabPr
                       <Link
                         href={`/projects/${selectedProject}`}
                         className="text-blue-600 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         {selectedProjectData?.name}
                       </Link>
                     </div>
+
+                    {/* Expanded inline diff */}
+                    {expandedCommit === commit.hash && (
+                      <div className="mt-3 pt-3 border-t">
+                        {/* Commit body if exists */}
+                        {commit.body && (
+                          <pre className="text-sm text-gray-600 whitespace-pre-wrap font-sans mb-4">
+                            {commit.body}
+                          </pre>
+                        )}
+
+                        {/* Loading state */}
+                        {loadingDiffFor === commit.hash && (
+                          <div className="flex items-center justify-center py-8">
+                            <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
+                            <span className="ml-2 text-gray-600">Loading diff...</span>
+                          </div>
+                        )}
+
+                        {/* Diff content */}
+                        {inlineDiffData[commit.hash] && (
+                          <div className="space-y-3">
+                            {/* Stats summary */}
+                            <div className="flex items-center gap-4 text-sm text-gray-600 pb-2 border-b">
+                              <span>{inlineDiffData[commit.hash].stats.files_changed} files changed</span>
+                              <span className="text-green-600">+{inlineDiffData[commit.hash].stats.insertions}</span>
+                              <span className="text-red-600">-{inlineDiffData[commit.hash].stats.deletions}</span>
+                            </div>
+
+                            {/* File list with diffs */}
+                            {inlineDiffData[commit.hash].files.map((file) => {
+                              const fileKey = `${commit.hash}-${file.filename}`;
+                              return (
+                                <div key={fileKey} className="border rounded-lg overflow-hidden">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newExpanded = new Set(expandedFiles);
+                                      if (newExpanded.has(fileKey)) {
+                                        newExpanded.delete(fileKey);
+                                      } else {
+                                        newExpanded.add(fileKey);
+                                      }
+                                      setExpandedFiles(newExpanded);
+                                    }}
+                                    className="w-full px-4 py-2 bg-gray-50 flex items-center justify-between hover:bg-gray-100"
+                                  >
+                                    <div className="flex items-center gap-2">
+                                      {getStatusIcon(file.status)}
+                                      <span className="font-mono text-sm">{file.filename}</span>
+                                      <Badge variant="default" className="text-xs">
+                                        {getStatusLabel(file.status)}
+                                      </Badge>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-xs">
+                                      <span className="text-green-600">+{file.additions}</span>
+                                      <span className="text-red-600">-{file.deletions}</span>
+                                      {expandedFiles.has(fileKey) ? (
+                                        <ChevronUp className="w-4 h-4" />
+                                      ) : (
+                                        <ChevronDown className="w-4 h-4" />
+                                      )}
+                                    </div>
+                                  </button>
+
+                                  {expandedFiles.has(fileKey) && file.diff && (
+                                    <pre className="p-4 text-xs font-mono overflow-x-auto bg-gray-900 text-gray-100 max-h-96">
+                                      {file.diff.split('\n').map((line, i) => (
+                                        <div
+                                          key={i}
+                                          className={`${
+                                            line.startsWith('+') && !line.startsWith('+++')
+                                              ? 'bg-green-900/30 text-green-300'
+                                              : line.startsWith('-') && !line.startsWith('---')
+                                              ? 'bg-red-900/30 text-red-300'
+                                              : line.startsWith('@@')
+                                              ? 'text-blue-300'
+                                              : ''
+                                          }`}
+                                        >
+                                          {line}
+                                        </div>
+                                      ))}
+                                    </pre>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </CardContent>
