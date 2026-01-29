@@ -202,6 +202,17 @@ class ContextGeneratorService:
             logger.error(f"Failed to generate suggested epics: {e}")
             context_result["suggested_epics"] = []
 
+        # 8. PROMPT #120 - Generate closed cards for verified business rules
+        try:
+            business_rule_cards = await self.generate_business_rule_cards(
+                project_id=project_id
+            )
+            context_result["business_rule_cards"] = business_rule_cards
+            logger.info(f"   - Business Rule Cards: {len(business_rule_cards)}")
+        except Exception as e:
+            logger.error(f"Failed to generate business rule cards: {e}")
+            context_result["business_rule_cards"] = []
+
         return context_result
 
     def _build_conversation_summary(self, conversation_data: List[Dict]) -> str:
@@ -293,9 +304,24 @@ IMPORTANTE:
 - O Mapa Semântico deve estar DENTRO do context_semantic no final
 - Retorne APENAS o JSON, sem texto adicional"""
 
+        # PROMPT #120 - Include business rules from memory scan in context
+        business_rules_section = ""
+        if project.initial_memory_context:
+            memory_ctx = project.initial_memory_context
+            business_rules = memory_ctx.get("business_rules", [])
+            if business_rules:
+                business_rules_section = "\n\n## REGRAS DE NEGÓCIO VERIFICADAS NO CÓDIGO\n"
+                business_rules_section += "(Estas regras foram extraídas automaticamente do código-fonte existente)\n\n"
+                for i, rule in enumerate(business_rules, 1):
+                    business_rules_section += f"{i}. {rule}\n"
+
         user_prompt = f"""Analise a seguinte entrevista de contexto para o projeto "{project.name}":
 
 {conversation_summary}
+{business_rules_section}
+
+IMPORTANTE: Se houver "REGRAS DE NEGÓCIO VERIFICADAS NO CÓDIGO" acima, inclua-as no context_semantic
+em uma seção dedicada "## Regras de Negócio Existentes" com identificadores RN1, RN2, etc.
 
 Gere o contexto semântico estruturado, o mapa semântico e os insights conforme especificado."""
 
@@ -497,6 +523,135 @@ Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto.
         logger.info(f"✅ Generated {len(saved_epics)} suggested epics for project {project_id}")
 
         return saved_epics
+
+    async def generate_business_rule_cards(
+        self,
+        project_id: UUID
+    ) -> List[Dict]:
+        """
+        PROMPT #120 - Generate closed cards for verified business rules.
+
+        Creates cards for business rules that were extracted from the codebase
+        during the memory scan. These are facts verified in the existing code,
+        so they are created as CLOSED/IMPLEMENTED cards.
+
+        Structure:
+        - Parent Epic: "Regras de Negócio Documentadas" (closed)
+        - Child Stories: One for each business rule (closed)
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            List of created business rule card dictionaries
+        """
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            logger.error(f"Project {project_id} not found")
+            return []
+
+        # Check if project has memory context with business rules
+        if not project.initial_memory_context:
+            logger.info(f"Project {project_id} has no initial_memory_context, skipping business rules")
+            return []
+
+        business_rules = project.initial_memory_context.get("business_rules", [])
+        if not business_rules:
+            logger.info(f"Project {project_id} has no business rules in memory context")
+            return []
+
+        logger.info(f"📋 Generating {len(business_rules)} business rule cards for project {project.name}")
+
+        saved_cards = []
+
+        # Create parent Epic: "Regras de Negócio Documentadas"
+        parent_epic = Task(
+            id=uuid4(),
+            project_id=project_id,
+            title="Regras de Negócio Documentadas",
+            description=f"""# Regras de Negócio Verificadas
+
+Este épico contém as regras de negócio que foram **automaticamente identificadas**
+no código-fonte existente durante a análise inicial do projeto.
+
+**Total de Regras:** {len(business_rules)}
+**Status:** Implementadas e verificadas no código
+**Fonte:** Análise automática via Memory Scan (PROMPT #118)
+
+Cada story filha representa uma regra de negócio específica que já está
+funcionando no sistema atual.""",
+            item_type=ItemType.EPIC,
+            status=TaskStatus.DONE,  # Already done - verified in code
+            priority=PriorityLevel.HIGH,
+            order=0,  # First position - foundational
+            labels=["business_rule", "verified", "from_code"],
+            workflow_state="closed",  # Closed - already implemented
+            resolution="fixed",  # Resolution: implemented
+            reporter="system",
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        self.db.add(parent_epic)
+
+        saved_cards.append({
+            "id": str(parent_epic.id),
+            "title": parent_epic.title,
+            "item_type": "epic",
+            "workflow_state": "closed"
+        })
+
+        # Create Story for each business rule
+        for i, rule in enumerate(business_rules, 1):
+            # Extract a short title from the rule (first sentence or first 80 chars)
+            rule_title = rule.split(":")[0] if ":" in rule else rule[:80]
+            if len(rule_title) > 80:
+                rule_title = rule_title[:77] + "..."
+
+            story = Task(
+                id=uuid4(),
+                project_id=project_id,
+                parent_id=parent_epic.id,
+                title=f"RN{i}: {rule_title}",
+                description=f"""## Regra de Negócio #{i}
+
+**Descrição Completa:**
+{rule}
+
+---
+
+**Status:** ✅ Verificada no código-fonte
+**Identificador:** RN{i}
+**Origem:** Análise automática do codebase
+
+Esta regra foi identificada durante a análise do código existente e representa
+um comportamento já implementado no sistema.""",
+                generated_prompt=f"RN{i}: {rule}",  # Semantic reference
+                item_type=ItemType.STORY,
+                status=TaskStatus.DONE,
+                priority=PriorityLevel.MEDIUM,
+                order=i,
+                labels=["business_rule", "verified", "from_code"],
+                workflow_state="closed",
+                resolution="fixed",
+                reporter="system",
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            self.db.add(story)
+
+            saved_cards.append({
+                "id": str(story.id),
+                "title": story.title,
+                "item_type": "story",
+                "workflow_state": "closed",
+                "rule_index": i
+            })
+
+        self.db.commit()
+
+        logger.info(f"✅ Generated {len(saved_cards)} business rule cards (1 epic + {len(business_rules)} stories)")
+
+        return saved_cards
 
     async def lock_context(self, project_id: UUID) -> bool:
         """
