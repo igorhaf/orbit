@@ -61,10 +61,11 @@ class Project(Base):
     context_locked = Column(Boolean, default=False, nullable=False)  # Lock after first epic
     context_locked_at = Column(DateTime, nullable=True)  # When context was locked
 
-    # PROMPT #118 - Initial memory context from codebase scan
+    # PROMPT #118 - Initial memory context from codebase scan (JSON dict)
     # This is set when project is created after a memory scan
-    # If present, context interview skips Q2/Q3 and goes directly to AI questions
-    initial_memory_context = Column(Text, nullable=True)
+    # Contains: suggested_title, stack_info, business_rules, key_features, interview_context
+    # If present, context interview uses this rich context for better questions
+    initial_memory_context = Column(JSON, nullable=True)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
