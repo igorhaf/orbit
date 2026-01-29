@@ -38,9 +38,9 @@ class ProjectCreate(ProjectBase):
     # O ORBIT foca em análise de código existente, não em provisionamento
     code_path: str = Field(..., min_length=1, max_length=500, description="Path to project code folder (required, immutable after creation)")
 
-    # PROMPT #118 - Initial memory context from codebase scan
-    # If provided, context interview skips Q2/Q3 (problem/vision) and goes directly to AI questions
-    initial_memory_context: Optional[str] = Field(None, description="Context from codebase memory scan")
+    # PROMPT #118 - Initial memory context from codebase scan (JSON dict)
+    # Contains: suggested_title, stack_info, business_rules, key_features, interview_context
+    initial_memory_context: Optional[dict] = Field(None, description="Context from codebase memory scan")
 
 
 class ProjectUpdate(BaseModel):
@@ -59,6 +59,9 @@ class ProjectUpdate(BaseModel):
     # PROMPT #111 - code_path REMOVIDO de ProjectUpdate (imutável após criação)
     # code_path só pode ser definido na criação do projeto
 
+    # PROMPT #118 - Initial memory context from codebase scan (can be set after creation)
+    initial_memory_context: Optional[dict] = Field(None, description="Context from codebase memory scan")
+
 
 class ProjectResponse(ProjectBase):
     """Schema for Project response"""
@@ -71,6 +74,9 @@ class ProjectResponse(ProjectBase):
     context_human: Optional[str] = Field(None, description="Human-readable project context")
     context_locked: bool = Field(False, description="Whether context is locked (immutable after first epic)")
     context_locked_at: Optional[datetime] = Field(None, description="When context was locked")
+
+    # PROMPT #118 - Initial memory context from codebase scan
+    initial_memory_context: Optional[dict] = Field(None, description="Context from codebase memory scan")
 
     class Config:
         from_attributes = True
