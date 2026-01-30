@@ -302,7 +302,7 @@ class AIOrchestrator:
             "anthropic": "claude-sonnet-4-20250514",
             "openai": "gpt-4o",
             "google": "gemini-1.5-flash",
-            "cohere": "command-r-plus"  # PROMPT #122 - Cohere AI integration
+            "cohere": "command-r-plus-08-2024"  # PROMPT #122 - Cohere AI (note: old command-r deprecated Sept 2025)
         }
         return defaults.get(provider, "claude-sonnet-4-20250514")
 

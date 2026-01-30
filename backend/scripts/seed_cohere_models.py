@@ -38,13 +38,15 @@ def seed_cohere_models():
 
     try:
         # Define Cohere models to seed
+        # NOTE: Model IDs updated January 2026 - old 'command-r' was deprecated Sept 2025
+        # See: https://docs.cohere.com/docs/models#command
         cohere_models = [
             {
                 "name": "Cohere Command R+ (Most Powerful)",
                 "provider": "cohere",
                 "api_key": "configure-via-web-interface",
                 "config": {
-                    "model_id": "command-r-plus",
+                    "model_id": "command-r-plus-08-2024",  # Updated from deprecated command-r-plus
                     "max_tokens": 4096,
                     "temperature": 0.7
                 },
@@ -56,7 +58,7 @@ def seed_cohere_models():
                 "provider": "cohere",
                 "api_key": "configure-via-web-interface",
                 "config": {
-                    "model_id": "command-r",
+                    "model_id": "command-r-08-2024",  # Updated from deprecated command-r
                     "max_tokens": 4096,
                     "temperature": 0.7
                 },
@@ -68,7 +70,7 @@ def seed_cohere_models():
                 "provider": "cohere",
                 "api_key": "configure-via-web-interface",
                 "config": {
-                    "model_id": "command-r",
+                    "model_id": "command-r-08-2024",  # Updated from deprecated command-r
                     "max_tokens": 2048,
                     "temperature": 0.5
                 },
@@ -80,7 +82,7 @@ def seed_cohere_models():
                 "provider": "cohere",
                 "api_key": "configure-via-web-interface",
                 "config": {
-                    "model_id": "command-light",
+                    "model_id": "command-light-nightly",  # Updated from deprecated command-light
                     "max_tokens": 2048,
                     "temperature": 0.7
                 },

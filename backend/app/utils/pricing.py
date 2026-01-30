@@ -41,12 +41,15 @@ MODEL_PRICING = {
     "gemini-pro": (0.50, 1.50),
 
     # Cohere models (PROMPT #122 - Cohere AI integration)
-    "command-r-plus": (2.50, 10.00),        # Command R+ (most powerful)
-    "command-r-plus-08-2024": (2.50, 10.00),
-    "command-r": (0.50, 1.50),              # Command R (balanced)
-    "command-r-08-2024": (0.50, 1.50),
-    "command-light": (0.30, 0.60),          # Command Light (fast)
-    "command": (1.00, 2.00),                # Legacy Command
+    # NOTE: command-r and command-r-plus were deprecated Sept 2025, use dated versions
+    "command-r-plus-08-2024": (2.50, 10.00),  # Command R+ (most powerful, current)
+    "command-r-08-2024": (0.50, 1.50),        # Command R (balanced, current)
+    "command-light-nightly": (0.30, 0.60),    # Command Light (fast, current)
+    # Legacy aliases for backwards compatibility
+    "command-r-plus": (2.50, 10.00),
+    "command-r": (0.50, 1.50),
+    "command-light": (0.30, 0.60),
+    "command": (1.00, 2.00)
 }
 
 
