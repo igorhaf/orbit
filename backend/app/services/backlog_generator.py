@@ -286,7 +286,8 @@ LEMBRE-SE:
                 system_prompt=system_prompt,
                 project_id=project_id,
                 interview_id=interview_id,
-                metadata={"operation": "generate_epic_from_interview"}
+                metadata={"operation": "generate_epic_from_interview"},
+                enable_rag=True  # PROMPT #124 - Enable RAG for backlog generation
             )
             # Normalize result format
             result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
@@ -573,7 +574,8 @@ LEMBRE-SE:
                 metadata={
                     "operation": "decompose_epic_to_stories",
                     "epic_id": str(epic_id)
-                }
+                },
+                enable_rag=True  # PROMPT #124 - Enable RAG for backlog generation
             )
             # Normalize result format
             result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
@@ -865,7 +867,8 @@ LEMBRE-SE:
                 metadata={
                     "operation": "decompose_story_to_tasks",
                     "story_id": str(story_id)
-                }
+                },
+                enable_rag=True  # PROMPT #124 - Enable RAG for backlog generation
             )
             # Normalize result format
             result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
@@ -1112,7 +1115,8 @@ Return ONLY valid JSON in this format:
             system_prompt=system_prompt,
             max_tokens=2000,
             project_id=project.id,
-            interview_id=interview.id
+            interview_id=interview.id,
+            enable_rag=True  # PROMPT #124 - Enable RAG for backlog generation
         )
 
         # Parse AI response

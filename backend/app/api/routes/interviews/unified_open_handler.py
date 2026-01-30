@@ -203,21 +203,28 @@ async def handle_unified_open_interview(
         # After fixed questions, use AI to generate contextual questions
         logger.info(f"📋 Context Interview - generating AI contextual question (Q{question_number})")
 
-    # Extract previous answers from conversation
-    previous_answers = {}
-    for i, msg in enumerate(interview.conversation_data):
-        if msg.get('role') == 'user':
-            question_num = (i + 1) // 2
-            previous_answers[f'q{question_num}'] = msg.get('content', '')
+        # PROMPT #118 FIX - Use get_context_ai_prompt() which includes initial_memory_context
+        # This ensures the AI has the rich context from codebase scan
+        system_prompt = get_context_ai_prompt(interview.conversation_data, project)
+        logger.info(f"📋 Context Interview - using context AI prompt with memory_context")
 
-    # Build system prompt
-    system_prompt = build_unified_open_prompt(
-        project=project,
-        interview=interview,
-        message_count=message_count,
-        parent_task=parent_task,
-        previous_answers=previous_answers
-    )
+    else:
+        # Non-context interviews use the unified open prompt
+        # Extract previous answers from conversation
+        previous_answers = {}
+        for i, msg in enumerate(interview.conversation_data):
+            if msg.get('role') == 'user':
+                question_num = (i + 1) // 2
+                previous_answers[f'q{question_num}'] = msg.get('content', '')
+
+        # Build system prompt
+        system_prompt = build_unified_open_prompt(
+            project=project,
+            interview=interview,
+            message_count=message_count,
+            parent_task=parent_task,
+            previous_answers=previous_answers
+        )
 
     # PROMPT #82 - Retrieve previous questions from RAG for deduplication (IMPROVED)
     previous_questions_context = ""
@@ -292,7 +299,8 @@ Gere uma pergunta DIFERENTE das acima.
             system_prompt=system_prompt,
             max_tokens=1500,  # PROMPT #109 - Increased from 1000 to prevent truncation
             project_id=interview.project_id,
-            interview_id=interview.id
+            interview_id=interview.id,
+            enable_rag=True  # PROMPT #124 - Enable RAG for interviews
         )
 
         # Clean response
@@ -498,7 +506,8 @@ Contextualize sua primeira pergunta com base no card pai.
             system_prompt=first_question_prompt,
             max_tokens=1000,  # PROMPT #109 - Increased from 500 to prevent truncation
             project_id=interview.project_id,
-            interview_id=interview.id
+            interview_id=interview.id,
+            enable_rag=True  # PROMPT #124 - Enable RAG for interviews
         )
 
         # Clean response

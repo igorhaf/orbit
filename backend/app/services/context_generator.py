@@ -147,17 +147,31 @@ class ContextGeneratorService:
                 f"(mode: {interview.interview_mode}). Only 'context' mode supported."
             )
 
-        # Minimum 6 messages (3 Q&A pairs - Q1, Q2, Q3 at least)
-        if not interview.conversation_data or len(interview.conversation_data) < 6:
-            raise ValueError(
-                f"Interview {interview_id} has insufficient data. "
-                f"Need at least 6 messages (3 Q&A pairs), got {len(interview.conversation_data or [])}."
-            )
-
-        # 2. Get project
+        # PROMPT #122 - Allow generating context from memory scan even without conversation
+        # If project has initial_memory_context from codebase scan, we can generate context
+        # with minimal conversation (just the AI greeting is enough)
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
             raise ValueError(f"Project {project_id} not found")
+
+        has_memory_context = bool(project.initial_memory_context)
+        message_count = len(interview.conversation_data or [])
+
+        if has_memory_context:
+            # With memory context, we only need 1 message (AI greeting) minimum
+            if message_count < 1:
+                raise ValueError(
+                    f"Interview {interview_id} has no messages. "
+                    "At least the initial AI message is required."
+                )
+            logger.info(f"📝 Generating context from memory scan + {message_count} messages")
+        else:
+            # Without memory context, require 6 messages (3 Q&A pairs)
+            if message_count < 6:
+                raise ValueError(
+                    f"Interview {interview_id} has insufficient data. "
+                    f"Need at least 6 messages (3 Q&A pairs), got {message_count}."
+                )
 
         # Check if context is already locked
         if project.context_locked:
@@ -167,7 +181,14 @@ class ContextGeneratorService:
             )
 
         # 3. Build conversation summary for AI
-        conversation_summary = self._build_conversation_summary(interview.conversation_data)
+        # PROMPT #122 - When conversation is minimal, use memory context as the main source
+        if has_memory_context and message_count <= 2:
+            # Use memory context as the primary source
+            conversation_summary = self._build_memory_context_summary(project.initial_memory_context)
+            logger.info("📋 Using memory context as primary source (minimal conversation)")
+        else:
+            # Use conversation as the primary source
+            conversation_summary = self._build_conversation_summary(interview.conversation_data)
 
         # 4. Generate context using AI
         context_result = await self._generate_context_with_ai(
@@ -238,6 +259,64 @@ class ContextGeneratorService:
                 # User answer
                 summary_parts.append(f"**Resposta:** {content}")
                 summary_parts.append("")  # Empty line between Q&A pairs
+
+        return "\n".join(summary_parts)
+
+    def _build_memory_context_summary(self, memory_context: Dict) -> str:
+        """
+        PROMPT #122 - Build a structured summary from memory scan context.
+
+        When user skips the interview (clicks "Gerar Contexto" immediately),
+        we use the codebase scan results as the primary context source.
+
+        Args:
+            memory_context: Dict with stack_info, key_features, business_rules, etc.
+
+        Returns:
+            Formatted context summary for AI processing
+        """
+        summary_parts = []
+
+        # Stack info
+        stack_info = memory_context.get("stack_info", {})
+        if stack_info.get("detected_stack"):
+            summary_parts.append(f"**Stack Tecnológica:** {stack_info['detected_stack']}")
+            if stack_info.get("description"):
+                summary_parts.append(f"   {stack_info['description']}")
+            summary_parts.append("")
+
+        # Scan summary
+        scan_summary = memory_context.get("scan_summary", {})
+        if scan_summary:
+            langs = scan_summary.get("languages", {})
+            if langs:
+                lang_str = ", ".join([f"{k}: {v}" for k, v in langs.items()])
+                summary_parts.append(f"**Linguagens Detectadas:** {lang_str}")
+            summary_parts.append(f"**Arquivos Analisados:** {scan_summary.get('code_files', 0)} arquivos de código")
+            summary_parts.append("")
+
+        # Key features
+        key_features = memory_context.get("key_features", [])
+        if key_features:
+            summary_parts.append("**Funcionalidades Principais Detectadas:**")
+            for feature in key_features:
+                summary_parts.append(f"- {feature}")
+            summary_parts.append("")
+
+        # Business rules
+        business_rules = memory_context.get("business_rules", [])
+        if business_rules:
+            summary_parts.append("**Regras de Negócio Extraídas do Código:**")
+            for i, rule in enumerate(business_rules, 1):
+                summary_parts.append(f"{i}. {rule}")
+            summary_parts.append("")
+
+        # Interview context (the AI-generated summary from memory scan)
+        interview_context = memory_context.get("interview_context", "")
+        if interview_context:
+            summary_parts.append("**Análise do Codebase:**")
+            summary_parts.append(interview_context)
+            summary_parts.append("")
 
         return "\n".join(summary_parts)
 
@@ -332,7 +411,8 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=4000
+            max_tokens=4000,
+            enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             # Note: temperature is configured in the AI model settings in the database
         )
 
@@ -498,7 +578,8 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=4000
+            max_tokens=4000,
+            enable_rag=True  # PROMPT #124 - Enable RAG for context generation
         )
 
         # Parse response
@@ -1195,7 +1276,8 @@ Retorne como JSON seguindo o schema do system prompt."""
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=8000  # Increased to allow for detailed specifications
+            max_tokens=8000,  # Increased to allow for detailed specifications
+            enable_rag=True  # PROMPT #124 - Enable RAG for context generation
         )
 
         # Parse response - PROMPT #95: Enhanced JSON extraction
@@ -1603,7 +1685,8 @@ GERE A ESPECIFICAÇÃO COMPLETA AGORA, preenchendo TODOS os campos com dados REA
                     usage_type="prompt_generation",
                     messages=simple_messages,
                     system_prompt=simple_system_prompt,
-                    max_tokens=6000  # Increased to allow more detailed response
+                    max_tokens=6000,  # Increased to allow more detailed response
+                    enable_rag=True  # PROMPT #124 - Enable RAG for context generation
                 )
 
                 raw_content = simple_response.get("content", "")
@@ -1891,7 +1974,8 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": titles_user_prompt}],
                 system_prompt=titles_system_prompt,
-                max_tokens=2000
+                max_tokens=2000,
+                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
             titles_content = titles_response.get("content", "")
@@ -2108,7 +2192,8 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": titles_user_prompt}],
                 system_prompt=titles_system_prompt,
-                max_tokens=1500
+                max_tokens=1500,
+                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
             titles_content = titles_response.get("content", "")
@@ -2262,7 +2347,8 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": titles_user_prompt}],
                 system_prompt=titles_system_prompt,
-                max_tokens=1000
+                max_tokens=1000,
+                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
             titles_content = titles_response.get("content", "")
@@ -2660,7 +2746,8 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=8000
+                max_tokens=8000,
+                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
             content = response.get("content", "")
@@ -3053,7 +3140,8 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=6000
+                max_tokens=6000,
+                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
             content = response.get("content", "")
@@ -3430,7 +3518,8 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=4000
+                max_tokens=4000,
+                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
             content = response.get("content", "")

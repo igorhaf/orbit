@@ -728,7 +728,8 @@ async def _execute_ai_question(
             system_prompt=system_prompt,
             max_tokens=1000,
             project_id=interview.project_id,
-            interview_id=interview.id
+            interview_id=interview.id,
+            enable_rag=True  # PROMPT #124 - Enable RAG for interviews
         )
 
         # Clean response
@@ -1930,7 +1931,8 @@ async def _handle_card_focused_ai_question(
         messages=interview.conversation_data,
         system_prompt=system_prompt,
         max_tokens=1000,
-        temperature=0.7
+        temperature=0.7,
+        enable_rag=True  # PROMPT #124 - Enable RAG for interviews
     )
 
     if not response.get('success'):
