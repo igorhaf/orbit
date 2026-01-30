@@ -127,7 +127,8 @@ class CodebaseMemoryService:
         self.db = db
         self.stack_detector = StackDetector()
         self.rag = RAGService(db)
-        self.orchestrator = AIOrchestrator(db)
+        # PROMPT #118 FIX - Disable cache for memory scan to avoid stale/corrupted responses
+        self.orchestrator = AIOrchestrator(db, enable_cache=False)
 
     async def scan_and_memorize(
         self,
@@ -598,15 +599,17 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
 
         try:
             # Use "memory" usage_type if configured, otherwise fall back to "general"
+            # PROMPT #118 FIX - Increased max_tokens for comprehensive analysis (was 2000, now 8000)
             response = await self.orchestrator.execute(
                 usage_type="memory",
                 messages=[{"role": "user", "content": full_context}],
                 system_prompt=system_prompt,
-                max_tokens=2000
+                max_tokens=8000
             )
 
             # Parse JSON response
             import json
+            import re
             content = response.get("content", "{}")
 
             # Try to extract JSON from response (might have markdown)
@@ -615,7 +618,24 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
             elif "```" in content:
                 content = content.split("```")[1].split("```")[0]
 
-            result = json.loads(content.strip())
+            # PROMPT #121 FIX - Sanitize invalid escape sequences before JSON parse
+            # AI sometimes returns regex patterns with \s, \d, etc. that are invalid in JSON
+            # Replace invalid escapes with double backslash to make them valid
+            def fix_invalid_escapes(s):
+                # Replace invalid escape sequences with double backslash
+                # JSON only allows: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
+                invalid_escapes = ['\\a', '\\c', '\\d', '\\e', '\\g', '\\h', '\\i', '\\j',
+                                   '\\k', '\\l', '\\m', '\\o', '\\p', '\\q', '\\s', '\\v',
+                                   '\\w', '\\x', '\\y', '\\z', '\\A', '\\B', '\\C', '\\D',
+                                   '\\E', '\\F', '\\G', '\\H', '\\I', '\\J', '\\K', '\\L',
+                                   '\\M', '\\N', '\\O', '\\P', '\\Q', '\\R', '\\S', '\\T',
+                                   '\\U', '\\V', '\\W', '\\X', '\\Y', '\\Z']
+                for esc in invalid_escapes:
+                    s = s.replace(esc, '\\\\' + esc[1])
+                return s
+
+            content = fix_invalid_escapes(content.strip())
+            result = json.loads(content)
 
             return {
                 "suggested_title": result.get("suggested_title", ""),
