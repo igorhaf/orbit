@@ -42,6 +42,9 @@ export default function ProjectDetailsPage() {
   const [showBacklogFilters, setShowBacklogFilters] = useState(true);
   const [selectedBacklogItem, setSelectedBacklogItem] = useState<BacklogItem | null>(null);
   const [backlogRefreshKey, setBacklogRefreshKey] = useState(0);  // PROMPT #96 - Trigger backlog refresh
+  // PROMPT #123 - Available filter options from backlog
+  const [availableLabels, setAvailableLabels] = useState<string[]>([]);
+  const [availableAssignees, setAvailableAssignees] = useState<string[]>([]);
 
   // RAG states (PROMPT #90)
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
@@ -498,6 +501,8 @@ export default function ProjectDetailsPage() {
                     filters={backlogFilters}
                     onFiltersChange={setBacklogFilters}
                     onClearFilters={() => setBacklogFilters({})}
+                    availableLabels={availableLabels}
+                    availableAssignees={availableAssignees}
                   />
                 </div>
               )}
@@ -510,6 +515,10 @@ export default function ProjectDetailsPage() {
                   onItemSelect={setSelectedBacklogItem}
                   refreshKey={backlogRefreshKey}
                   selectedItemId={selectedBacklogItem?.id}
+                  onFilterOptionsChange={(options) => {
+                    setAvailableLabels(options.labels);
+                    setAvailableAssignees(options.assignees);
+                  }}
                 />
               </div>
             </div>

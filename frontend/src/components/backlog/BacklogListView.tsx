@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
+import { useNotification } from '@/hooks';
 import { tasksApi } from '@/lib/api';
 import { BacklogItem, ItemType, PriorityLevel, TaskStatus } from '@/lib/types';
 import { TaskCard } from './TaskCard'; // PROMPT #68
@@ -16,6 +17,12 @@ import { TaskCard } from './TaskCard'; // PROMPT #68
 const isSuggestedItem = (item: BacklogItem): boolean => {
   return item.labels?.includes('suggested') || item.workflow_state === 'draft';
 };
+
+// PROMPT #123 - Interface for available filter options
+interface FilterOptions {
+  labels: string[];
+  assignees: string[];
+}
 
 interface BacklogListViewProps {
   projectId: string;
@@ -28,10 +35,13 @@ interface BacklogListViewProps {
     assignee?: string;
     labels?: string[];
     status?: TaskStatus[];
+    search?: string;  // PROMPT #123 - Local search filter
   };
   // PROMPT #96 - Props for refresh and selected item sync
   refreshKey?: number;  // When this changes, backlog is refreshed
   selectedItemId?: string;  // Currently selected item ID to update after refresh
+  // PROMPT #123 - Callback to expose available filter options
+  onFilterOptionsChange?: (options: FilterOptions) => void;
 }
 
 // Helper function to get item type icon
@@ -115,30 +125,114 @@ export default function BacklogListView({
   onSelectionChange,
   filters,
   refreshKey,  // PROMPT #96
-  selectedItemId  // PROMPT #96
+  selectedItemId,  // PROMPT #96
+  onFilterOptionsChange  // PROMPT #123
 }: BacklogListViewProps) {
   const [backlog, setBacklog] = useState<BacklogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree'); // PROMPT #68
+  const { showError, showSuccess, NotificationComponent } = useNotification();
 
   // PROMPT #94 - State for approve/reject actions
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
 
+  // PROMPT #123 - Extract labels and assignees from backlog items
+  const extractFilterOptions = (items: BacklogItem[]): FilterOptions => {
+    const labelsSet = new Set<string>();
+    const assigneesSet = new Set<string>();
+
+    const traverse = (item: BacklogItem) => {
+      if (item.labels) {
+        item.labels.forEach(label => labelsSet.add(label));
+      }
+      if (item.assignee) {
+        assigneesSet.add(item.assignee);
+      }
+      if (item.children && item.children.length > 0) {
+        item.children.forEach(child => traverse(child as BacklogItem));
+      }
+    };
+
+    items.forEach(traverse);
+
+    return {
+      labels: Array.from(labelsSet).sort(),
+      assignees: Array.from(assigneesSet).sort()
+    };
+  };
+
+  // PROMPT #123 - Filter items locally by search text
+  const filterBySearch = (items: BacklogItem[], searchText: string): BacklogItem[] => {
+    if (!searchText || searchText.trim() === '') {
+      return items;
+    }
+
+    const lowerSearch = searchText.toLowerCase();
+
+    const itemMatches = (item: BacklogItem): boolean => {
+      return (
+        item.title.toLowerCase().includes(lowerSearch) ||
+        (item.description && item.description.toLowerCase().includes(lowerSearch)) ||
+        (item.assignee && item.assignee.toLowerCase().includes(lowerSearch)) ||
+        (item.labels && item.labels.some(label => label.toLowerCase().includes(lowerSearch)))
+      );
+    };
+
+    const filterRecursive = (items: BacklogItem[]): BacklogItem[] => {
+      return items.reduce((acc: BacklogItem[], item) => {
+        const children = item.children ? filterRecursive(item.children as BacklogItem[]) : [];
+        const hasMatchingChildren = children.length > 0;
+        const selfMatches = itemMatches(item);
+
+        if (selfMatches || hasMatchingChildren) {
+          acc.push({
+            ...item,
+            children: selfMatches ? item.children : children  // Keep all children if parent matches
+          });
+        }
+
+        return acc;
+      }, []);
+    };
+
+    return filterRecursive(items);
+  };
+
+  // PROMPT #123 - Get filtered backlog for display
+  const getFilteredBacklog = (): BacklogItem[] => {
+    return filterBySearch(backlog, filters?.search || '');
+  };
+
   useEffect(() => {
     fetchBacklog();
-  }, [projectId, filters, refreshKey]);  // PROMPT #96 - Added refreshKey to dependencies
+  }, [projectId, filters?.item_type, filters?.priority, filters?.assignee, filters?.labels, filters?.status, refreshKey]);  // PROMPT #123 - Don't re-fetch on search change
 
   const fetchBacklog = async () => {
     setLoading(true);
     try {
-      const data = await tasksApi.getBacklog(projectId, filters);
+      // PROMPT #123 - Don't send search to API (not supported), only send other filters
+      const apiFilters = filters ? {
+        item_type: filters.item_type,
+        priority: filters.priority,
+        assignee: filters.assignee,
+        labels: filters.labels,
+        status: filters.status
+      } : undefined;
+
+      const data = await tasksApi.getBacklog(projectId, apiFilters);
       setBacklog(data || []);
 
       // Auto-expand all items on load
       if (data && data.length > 0) {
         expandAllItems(data);
+
+        // PROMPT #123 - Extract and expose filter options
+        if (onFilterOptionsChange) {
+          const options = extractFilterOptions(data);
+          onFilterOptionsChange(options);
+        }
       }
     } catch (error) {
       console.error('Error fetching backlog:', error);
@@ -239,7 +333,7 @@ export default function BacklogListView({
       fetchBacklog();
     } catch (error: any) {
       console.error('❌ Failed to activate item:', error);
-      alert(`Failed to activate item: ${error.message}`);
+      showError(`Failed to activate item: ${error.message}`);
     } finally {
       setActivatingId(null);
     }
@@ -258,7 +352,7 @@ export default function BacklogListView({
       fetchBacklog();
     } catch (error: any) {
       console.error('❌ Failed to reject item:', error);
-      alert(`Failed to reject item: ${error.message}`);
+      showError(`Failed to reject item: ${error.message}`);
     } finally {
       setRejectingId(null);
     }
@@ -449,6 +543,9 @@ export default function BacklogListView({
     );
   }
 
+  // PROMPT #123 - Get filtered items for display
+  const filteredBacklog = getFilteredBacklog();
+
   if (backlog.length === 0) {
     return (
       <Card>
@@ -475,6 +572,33 @@ export default function BacklogListView({
     );
   }
 
+  // PROMPT #123 - Show "no results" when search doesn't match anything
+  if (filteredBacklog.length === 0 && filters?.search) {
+    return (
+      <Card>
+        <CardContent className="p-12 text-center">
+          <svg
+            className="mx-auto h-12 w-12 text-gray-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+            />
+          </svg>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No matching items</h3>
+          <p className="mt-1 text-sm text-gray-500">
+            No items match &quot;{filters.search}&quot;. Try adjusting your search.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card variant="bordered">
       <CardHeader>
@@ -482,14 +606,23 @@ export default function BacklogListView({
           <CardTitle>Backlog</CardTitle>
           <div className="flex items-center gap-4">
             <div className="text-sm text-gray-500">
-              {backlog.length} item{backlog.length !== 1 ? 's' : ''}
+              {/* PROMPT #123 - Show filtered count vs total */}
+              {filters?.search ? (
+                <>
+                  {filteredBacklog.length} of {backlog.length} item{backlog.length !== 1 ? 's' : ''}
+                </>
+              ) : (
+                <>
+                  {backlog.length} item{backlog.length !== 1 ? 's' : ''}
+                </>
+              )}
               {selectedIds.size > 0 && (
                 <span className="ml-2 text-blue-600 font-medium">
                   ({selectedIds.size} selected)
                 </span>
               )}
             </div>
-            {backlog.length > 0 && (
+            {filteredBacklog.length > 0 && (
               <div className="flex gap-2">
                 {/* PROMPT #68 - View Mode Toggle */}
                 <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
@@ -545,14 +678,16 @@ export default function BacklogListView({
         {/* Tree View (Original) */}
         {viewMode === 'tree' && (
           <div className="divide-y divide-gray-100">
-            {backlog.map((item) => renderTreeItem(item, 0))}
+            {/* PROMPT #123 - Use filtered backlog */}
+            {filteredBacklog.map((item) => renderTreeItem(item, 0))}
           </div>
         )}
 
         {/* Card View (PROMPT #68) */}
         {viewMode === 'card' && (
           <div className="space-y-4">
-            {flattenBacklog(backlog).map((item) => (
+            {/* PROMPT #123 - Use filtered backlog */}
+            {flattenBacklog(filteredBacklog).map((item) => (
               <TaskCard
                 key={item.id}
                 task={item}
