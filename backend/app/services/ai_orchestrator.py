@@ -187,6 +187,19 @@ class AIOrchestrator:
                         logger.info(f"✅ Ollama async HTTP client initialized: {ollama_host} (timeout={ollama_timeout}s, from model: {model.name})")
                         initialized_providers.add("ollama")
 
+                    elif provider_key == "cohere":
+                        # PROMPT #122 - Cohere AI integration
+                        import httpx
+                        self.clients["cohere"] = {
+                            "api_key": model.api_key,
+                            "http_client": httpx.AsyncClient(
+                                timeout=60.0,
+                                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10)
+                            )
+                        }
+                        logger.info(f"✅ Cohere async HTTP client initialized with API key from: {model.name}")
+                        initialized_providers.add("cohere")
+
             except Exception as e:
                 logger.error(f"❌ Failed to initialize {model.provider} client: {e}")
 
@@ -280,7 +293,7 @@ class AIOrchestrator:
         Retorna modelo padrão caso não esteja configurado no banco
 
         Args:
-            provider: Nome do provider (anthropic, openai, google)
+            provider: Nome do provider (anthropic, openai, google, cohere)
 
         Returns:
             Nome do modelo padrão
@@ -288,7 +301,8 @@ class AIOrchestrator:
         defaults = {
             "anthropic": "claude-sonnet-4-20250514",
             "openai": "gpt-4o",
-            "google": "gemini-1.5-flash"
+            "google": "gemini-1.5-flash",
+            "cohere": "command-r-plus"  # PROMPT #122 - Cohere AI integration
         }
         return defaults.get(provider, "claude-sonnet-4-20250514")
 
@@ -577,6 +591,11 @@ class AIOrchestrator:
             elif provider == "ollama":
                 # PROMPT #106 - Ollama local LLM integration
                 result = await self._execute_ollama(
+                    model_name, messages, system_prompt, tokens_limit, temperature
+                )
+            elif provider == "cohere":
+                # PROMPT #122 - Cohere AI integration
+                result = await self._execute_cohere(
                     model_name, messages, system_prompt, tokens_limit, temperature
                 )
             else:
@@ -899,11 +918,43 @@ class AIOrchestrator:
         }
 
         # PROMPT #75 - Await async HTTP call to yield to event loop during API request
-        response = await http_client.post(url, json=payload)
+        try:
+            response = await http_client.post(url, json=payload, timeout=120.0)
+        except Exception as http_error:
+            raise Exception(f"HTTP request failed: {type(http_error).__name__}: {str(http_error)}")
+
+        # PROMPT #118 FIX - Better error handling for Gemini API
+        try:
+            data = response.json()
+        except Exception as json_error:
+            raise Exception(f"Failed to parse JSON response: {response.text[:500]}")
+
+        # Check for API error in response body (Gemini can return errors with 200 status)
+        if "error" in data:
+            error_msg = data.get("error", {}).get("message", str(data["error"]))
+            raise Exception(f"Gemini API Error: {error_msg}")
+
+        # Check HTTP status
         response.raise_for_status()
 
-        data = response.json()
-        content = data["candidates"][0]["content"]["parts"][0]["text"]
+        # Check if candidates exist
+        candidates = data.get("candidates", [])
+        if not candidates:
+            # Check for safety blocks or other issues
+            prompt_feedback = data.get("promptFeedback", {})
+            block_reason = prompt_feedback.get("blockReason", "Unknown")
+            raise Exception(f"Gemini returned no candidates. Block reason: {block_reason}")
+
+        # Extract content from response
+        candidate = candidates[0]
+        content_data = candidate.get("content", {})
+        parts = content_data.get("parts", [])
+
+        if not parts:
+            finish_reason = candidate.get("finishReason", "Unknown")
+            raise Exception(f"Gemini returned empty content. Finish reason: {finish_reason}")
+
+        content = parts[0].get("text", "")
 
         # Extract token usage from response (Gemini provides usageMetadata)
         usage_metadata = data.get("usageMetadata", {})
@@ -987,6 +1038,118 @@ class AIOrchestrator:
                 "input_tokens": data.get("prompt_eval_count", 0),
                 "output_tokens": data.get("eval_count", 0),
                 "total_tokens": data.get("prompt_eval_count", 0) + data.get("eval_count", 0)
+            }
+        }
+
+    async def _execute_cohere(
+        self,
+        model: str,
+        messages: List[Dict],
+        system_prompt: Optional[str],
+        max_tokens: int,
+        temperature: float
+    ) -> Dict:
+        """
+        Executa com Cohere AI usando configurações do banco
+        PROMPT #122 - Cohere AI integration
+
+        Cohere Chat API docs: https://docs.cohere.com/reference/chat
+
+        Modelos disponíveis:
+        - command-r-plus: Modelo mais poderoso para tarefas complexas
+        - command-r: Modelo balanceado para uso geral
+        - command-light: Modelo leve e rápido
+        """
+        cohere_config = self.clients["cohere"]
+        api_key = cohere_config["api_key"]
+        http_client = cohere_config["http_client"]
+
+        # Converter mensagens para formato Cohere Chat
+        # Cohere usa: role="USER" ou "CHATBOT", message="..."
+        chat_history = []
+        current_message = ""
+
+        for msg in messages:
+            role = msg.get("role", "user").lower()
+            content = msg.get("content", "")
+
+            # Cohere usa "USER" e "CHATBOT" como roles
+            if role == "user":
+                cohere_role = "USER"
+            elif role == "assistant":
+                cohere_role = "CHATBOT"
+            else:
+                cohere_role = "USER"
+
+            chat_history.append({
+                "role": cohere_role,
+                "message": content
+            })
+
+        # A última mensagem do usuário vai no campo "message" separado
+        if chat_history and chat_history[-1]["role"] == "USER":
+            current_message = chat_history.pop()["message"]
+        else:
+            # Se não houver última mensagem do usuário, usar placeholder
+            current_message = "Continue the conversation."
+
+        # Construir payload para Cohere Chat API
+        url = "https://api.cohere.ai/v1/chat"
+
+        payload = {
+            "model": model,
+            "message": current_message,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+        # Adicionar chat_history se existir
+        if chat_history:
+            payload["chat_history"] = chat_history
+
+        # Adicionar preamble (system prompt) se fornecido
+        if system_prompt:
+            payload["preamble"] = system_prompt
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+
+        logger.info(f"🟠 Calling Cohere: {url} with model {model}")
+
+        try:
+            response = await http_client.post(url, json=payload, headers=headers)
+        except Exception as http_error:
+            raise Exception(f"HTTP request failed: {type(http_error).__name__}: {str(http_error)}")
+
+        # Parse response
+        try:
+            data = response.json()
+        except Exception as json_error:
+            raise Exception(f"Failed to parse JSON response: {response.text[:500]}")
+
+        # Check for API error
+        if response.status_code != 200:
+            error_msg = data.get("message", str(data))
+            raise Exception(f"Cohere API Error ({response.status_code}): {error_msg}")
+
+        # Extract content from response
+        content = data.get("text", "")
+
+        # Extract token usage from response
+        meta = data.get("meta", {})
+        tokens = meta.get("tokens", {})
+
+        return {
+            "provider": "cohere",
+            "model": model,
+            "content": content,
+            "usage": {
+                "input_tokens": tokens.get("input_tokens", 0),
+                "output_tokens": tokens.get("output_tokens", 0),
+                "total_tokens": tokens.get("input_tokens", 0) + tokens.get("output_tokens", 0)
             }
         }
 
