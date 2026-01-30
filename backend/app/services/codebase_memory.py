@@ -599,12 +599,13 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
 
         try:
             # Use "memory" usage_type if configured, otherwise fall back to "general"
-            # PROMPT #118 FIX - Increased max_tokens for comprehensive analysis (was 2000, now 8000)
+            # PROMPT #122 FIX - Removed hardcoded max_tokens to use model's config
+            # (Cohere has max 4096, was causing 400 error with hardcoded 8000)
             response = await self.orchestrator.execute(
                 usage_type="memory",
                 messages=[{"role": "user", "content": full_context}],
-                system_prompt=system_prompt,
-                max_tokens=8000
+                system_prompt=system_prompt
+                # max_tokens now comes from ai_models.config
             )
 
             # Parse JSON response
