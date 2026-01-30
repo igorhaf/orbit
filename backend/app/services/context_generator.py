@@ -381,9 +381,15 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
     ) -> List[Dict]:
         """
         PROMPT #92 - Generate suggested epics from project context.
+        PROMPT #121 - Exclude existing features from memory scan.
 
         Generates a comprehensive list of macro-level epics (modules) that
         cover the entire scope of the project based on the context interview.
+
+        IMPORTANT (PROMPT #121): Features already existing in the code (detected
+        by memory scan) are NOT included as suggested epics. These are already
+        documented as closed cards (PROMPT #120). Suggested epics are only for
+        NEW functionality to be developed.
 
         All epics are created as suggestions (inactive) with labels=["suggested"].
         They appear grayed out in the UI until the user activates them.
@@ -396,34 +402,60 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
         Returns:
             List of suggested epic dictionaries
         """
+        # PROMPT #121 - Get existing features from memory scan
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        existing_features = []
+        existing_business_rules = []
+        if project and project.initial_memory_context:
+            memory_ctx = project.initial_memory_context
+            existing_features = memory_ctx.get("key_features", [])
+            existing_business_rules = memory_ctx.get("business_rules", [])
+
+        # Build section about existing features
+        existing_section = ""
+        if existing_features or existing_business_rules:
+            existing_section = """
+
+⚠️ ATENÇÃO - FUNCIONALIDADES JÁ EXISTENTES NO CÓDIGO:
+As seguintes funcionalidades JÁ FORAM IMPLEMENTADAS e verificadas no código-fonte.
+NÃO gere épicos para estas features - elas já existem e estão documentadas como cards fechados.
+Sugira apenas funcionalidades NOVAS que ainda precisam ser desenvolvidas."""
+
+            if existing_features:
+                existing_section += "\n\nFEATURES JÁ IMPLEMENTADAS (não sugerir épicos para estas):"
+                for f in existing_features:
+                    existing_section += f"\n- ❌ {f}"
+
+            if existing_business_rules:
+                existing_section += "\n\nREGRAS DE NEGÓCIO JÁ IMPLEMENTADAS (não sugerir épicos para estas):"
+                for rule in existing_business_rules[:5]:  # Limit to first 5 for brevity
+                    existing_section += f"\n- ❌ {rule[:100]}..."
+
         system_prompt = """Você é um arquiteto de software especialista em decomposição de sistemas.
 
-Sua tarefa é analisar o contexto de um projeto e gerar uma lista ABRANGENTE de Épicos (módulos macro) que cubram TODO o escopo do sistema.
+Sua tarefa é analisar o contexto de um projeto e gerar uma lista de Épicos (módulos macro) para NOVAS funcionalidades a serem desenvolvidas.
 
-REGRAS:
+REGRAS CRÍTICAS:
+1. NÃO sugira épicos para funcionalidades que JÁ EXISTEM no código (marcadas com ❌)
+2. Sugira APENAS épicos para funcionalidades NOVAS que ainda precisam ser desenvolvidas
+3. Se uma feature já existe (❌), NÃO inclua épico similar ou relacionado
+4. Foque em melhorias, extensões e novas capacidades que o sistema AINDA NÃO TEM
+
+REGRAS GERAIS:
 1. Cada épico representa um MÓDULO ou ÁREA FUNCIONAL macro do sistema
-2. A lista deve ser COMPLETA - cobrir 100% das funcionalidades mencionadas no contexto
-3. Pense em termos de módulos de software (Autenticação, Dashboard, Relatórios, Configurações, etc.)
-4. Inclua também épicos de infraestrutura se relevante (Setup Inicial, Deploy, Integrações)
-5. Use nomes CURTOS e DESCRITIVOS para os épicos (máx 50 caracteres)
-6. A descrição deve ser breve (1-2 frases) explicando o escopo do módulo
-7. Ordene por prioridade/dependência lógica (fundacionais primeiro)
+2. Use nomes CURTOS e DESCRITIVOS para os épicos (máx 50 caracteres)
+3. A descrição deve ser breve (1-2 frases) explicando o escopo do módulo
+4. Ordene por prioridade/dependência lógica (fundacionais primeiro)
 
 FORMATO DE RESPOSTA (JSON):
 ```json
 {
     "epics": [
         {
-            "title": "Autenticação e Autorização",
-            "description": "Sistema de login, registro, recuperação de senha e controle de permissões por perfil.",
-            "priority": "critical",
-            "order": 1
-        },
-        {
-            "title": "Dashboard Principal",
-            "description": "Tela inicial com indicadores chave, resumos e acesso rápido às principais funcionalidades.",
+            "title": "Nova Funcionalidade X",
+            "description": "Descrição da nova funcionalidade que ainda não existe no sistema.",
             "priority": "high",
-            "order": 2
+            "order": 1
         }
     ]
 }
@@ -432,9 +464,9 @@ FORMATO DE RESPOSTA (JSON):
 PRIORIDADES VÁLIDAS: critical, high, medium, low
 
 IMPORTANTE:
-- Gere entre 8 e 20 épicos dependendo da complexidade do projeto
-- Cubra TODAS as áreas mencionadas no contexto
-- Inclua épicos implícitos (toda aplicação precisa de autenticação, configurações, etc.)
+- Se o sistema já tem muitas features implementadas, é normal ter POUCOS épicos sugeridos
+- Pode retornar lista vazia se todas as features principais já existem
+- NÃO repita funcionalidades existentes com nomes diferentes
 - Retorne APENAS o JSON, sem texto adicional"""
 
         # Build user prompt with context
@@ -444,18 +476,20 @@ IMPORTANTE:
         features_text = "\n".join([f"- {f}" for f in key_features]) if key_features else "Não especificadas"
         users_text = "\n".join([f"- {u}" for u in target_users]) if target_users else "Não especificados"
 
-        user_prompt = f"""Analise o seguinte contexto de projeto e gere a lista completa de Épicos:
+        user_prompt = f"""Analise o seguinte contexto de projeto e gere épicos apenas para NOVAS funcionalidades:
 
 ## CONTEXTO DO PROJETO
 {context_human}
 
-## FUNCIONALIDADES IDENTIFICADAS
+## FUNCIONALIDADES DESEJADAS (da entrevista)
 {features_text}
 
 ## USUÁRIOS DO SISTEMA
 {users_text}
+{existing_section}
 
-Gere a lista de Épicos (módulos macro) que cubra 100% do escopo deste projeto."""
+Gere a lista de Épicos apenas para funcionalidades NOVAS que ainda não existem no sistema.
+Se todas as principais features já existem, retorne uma lista com poucos ou nenhum épico."""
 
         # Call AI
         messages = [{"role": "user", "content": user_prompt}]
