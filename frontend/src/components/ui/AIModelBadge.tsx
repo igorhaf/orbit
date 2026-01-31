@@ -1,24 +1,14 @@
 /**
  * AIModelBadge Component
- * PROMPT #127 - Displays AI model name with tooltip showing details
+ * PROMPT #127 - Displays AI model icon with tooltip showing details
  *
- * Shows a small red badge with the model name, and on hover displays
+ * Shows an icon representing the AI type, and on hover displays
  * a tooltip with detailed information about the model.
  */
 
 'use client';
 
 import { useState } from 'react';
-
-interface AIModelInfo {
-  model: string;
-  provider?: string;
-  usage_type?: string;
-  tokens_used?: number;
-  cost?: number;
-  latency_ms?: number;
-  cached?: boolean;
-}
 
 interface Props {
   model: string;
@@ -48,12 +38,45 @@ const MODEL_NAMES: Record<string, string> = {
   'system/fallback': 'Sistema (Fallback)',
 };
 
-// Map providers to colors for tooltip
-const PROVIDER_COLORS: Record<string, string> = {
-  'anthropic': 'text-orange-600',
-  'openai': 'text-green-600',
-  'google': 'text-blue-600',
-  'system': 'text-gray-600',
+// Icon mapping by usage_type
+const USAGE_TYPE_ICONS: Record<string, string> = {
+  'interview': '🧠🔍',        // IA investigativa / RAG
+  'task_execution': '🛠️🤖',   // IA construtora / geradora
+  'prompt_generation': '🧠🧩', // raciocínio complexo, arquitetura
+  'commit_generation': '🧩⚙️', // engine inteligente
+  'memory': '🧠🔍',           // IA investigativa / RAG
+  'rag': '🧠📊',              // IA analítica / dados
+  'general': '🧠',            // inteligência, cognição
+  'context': '🧠🏗️',         // inteligência arquitetada
+  'backlog': '🧠🧩',          // raciocínio complexo
+  'discovery': '🔮',          // predição / visão de futuro
+};
+
+// Icon mapping by provider (fallback)
+const PROVIDER_ICONS: Record<string, string> = {
+  'anthropic': '🧠',     // inteligência, cognição
+  'openai': '⚡🤖',      // poder computacional
+  'google': '🌐🧠',      // inteligência distribuída
+  'cohere': '🧬🧠',      // inteligência emergente
+  'ollama': '🏗️🤖',     // arquitetura + IA
+  'system': '⚙️',        // processamento, engine, lógica
+};
+
+// Icon descriptions for tooltip
+const ICON_DESCRIPTIONS: Record<string, string> = {
+  '🧠': 'Inteligência / Cognição',
+  '🧠🔍': 'IA Investigativa / RAG',
+  '🛠️🤖': 'IA Construtora / Geradora',
+  '🧠🧩': 'Raciocínio Complexo',
+  '🧩⚙️': 'Engine Inteligente',
+  '🧠📊': 'IA Analítica',
+  '🧠🏗️': 'Inteligência Arquitetada',
+  '⚡🤖': 'Poder Computacional',
+  '🌐🧠': 'Inteligência Distribuída',
+  '🧬🧠': 'Inteligência Emergente',
+  '🏗️🤖': 'Arquitetura + IA',
+  '⚙️': 'Processamento / Engine',
+  '🔮': 'Predição / Visão de Futuro',
 };
 
 export function AIModelBadge({
@@ -78,6 +101,20 @@ export function AIModelBadge({
      model.includes('gemini') ? 'google' :
      model.includes('system') ? 'system' : 'unknown');
 
+  // Get icon based on usage_type first, then provider
+  const getIcon = () => {
+    if (usage_type && USAGE_TYPE_ICONS[usage_type]) {
+      return USAGE_TYPE_ICONS[usage_type];
+    }
+    if (detectedProvider && PROVIDER_ICONS[detectedProvider]) {
+      return PROVIDER_ICONS[detectedProvider];
+    }
+    return '🧠'; // Default: intelligence
+  };
+
+  const icon = getIcon();
+  const iconDescription = ICON_DESCRIPTIONS[icon] || 'IA';
+
   // Format cost
   const formatCost = (cost: number) => {
     if (cost < 0.01) return `$${cost.toFixed(4)}`;
@@ -87,21 +124,31 @@ export function AIModelBadge({
   return (
     <div className={`relative inline-block ${className}`}>
       <span
-        className="text-[11px] text-red-500 font-medium cursor-help hover:text-red-600 transition-colors"
+        className="cursor-help text-base hover:scale-110 transition-transform inline-block"
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
+        title={displayName}
       >
-        {displayName}
-        {cached && <span className="ml-1 text-green-500">●</span>}
+        {icon}
+        {cached && <span className="ml-0.5 text-[8px] text-green-500 align-top">●</span>}
       </span>
 
       {/* Tooltip */}
       {showTooltip && (
-        <div className="absolute z-50 bottom-full left-0 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl">
+        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl">
           {/* Arrow */}
-          <div className="absolute top-full left-4 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900"></div>
+          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900"></div>
 
           <div className="space-y-1.5">
+            {/* Icon Type */}
+            <div className="flex justify-between items-center">
+              <span className="text-gray-400">Tipo:</span>
+              <span className="text-white">
+                <span className="mr-1">{icon}</span>
+                <span className="text-gray-300 text-[10px]">{iconDescription}</span>
+              </span>
+            </div>
+
             {/* Model */}
             <div className="flex justify-between">
               <span className="text-gray-400">Modelo:</span>
@@ -111,7 +158,7 @@ export function AIModelBadge({
             {/* Model ID */}
             <div className="flex justify-between">
               <span className="text-gray-400">ID:</span>
-              <span className="text-cyan-400 font-mono text-[10px]">{model}</span>
+              <span className="text-cyan-400 font-mono text-[10px] truncate max-w-[140px]">{model}</span>
             </div>
 
             {/* Provider */}
@@ -121,6 +168,8 @@ export function AIModelBadge({
                 detectedProvider === 'anthropic' ? 'text-orange-400' :
                 detectedProvider === 'openai' ? 'text-green-400' :
                 detectedProvider === 'google' ? 'text-blue-400' :
+                detectedProvider === 'cohere' ? 'text-purple-400' :
+                detectedProvider === 'ollama' ? 'text-teal-400' :
                 'text-gray-400'
               }`}>
                 {detectedProvider.charAt(0).toUpperCase() + detectedProvider.slice(1)}
