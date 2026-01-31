@@ -103,7 +103,7 @@ export function MessageBubble({
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${compact ? 'mb-2' : 'mb-3'}`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${compact ? 'mb-2 pb-2' : 'mb-3 pb-3'} border-b border-gray-100`}>
       {/* PROMPT #130 - WhatsApp-style width: max-w-[75%] for both user and assistant */}
       <div className={`max-w-[75%] ${isUser ? 'order-2' : 'order-1'}`}>
         {/* Role Badge with AI Model indicator */}
