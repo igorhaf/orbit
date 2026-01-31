@@ -11,7 +11,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Dialog, DialogFooter } from '@/components/ui';
 import { AIModelBadge } from '@/components/ui/AIModelBadge';
-import { tasksApi } from '@/lib/api';
+import { ChatInterface } from '@/components/interview';  // PROMPT #130 - Embedded interview
+import { tasksApi, interviewsApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import WorkflowActions from './WorkflowActions';
@@ -24,6 +25,7 @@ import {
   StatusTransition,
   CommentType,
   RelationshipType,
+  Interview,  // PROMPT #130
 } from '@/lib/types';
 
 interface ItemDetailPanelProps {
@@ -71,6 +73,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   // Check if item is a suggested/draft item
   const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
 
+  // PROMPT #130 - Card interview state
+  const [cardInterview, setCardInterview] = useState<Interview | null>(null);
+  const [loadingInterview, setLoadingInterview] = useState(false);
+  const [creatingCardInterview, setCreatingCardInterview] = useState(false);
+
   useEffect(() => {
     fetchItemDetails();
   }, [item.id]);
@@ -105,10 +112,53 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         const parentData = await tasksApi.get(item.parent_id);
         setParent(parentData);
       }
+
+      // PROMPT #130 - Fetch card interview if exists
+      await fetchCardInterview();
     } catch (error) {
       console.error('Error fetching item details:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // PROMPT #130 - Fetch interview for this card
+  const fetchCardInterview = async () => {
+    setLoadingInterview(true);
+    try {
+      const interviewsRes = await interviewsApi.list();
+      const interviews = interviewsRes.data || interviewsRes;
+      // Find interview with parent_task_id = this item's id
+      const cardInt = Array.isArray(interviews)
+        ? interviews.find((i: Interview) => i.parent_task_id === item.id)
+        : null;
+      setCardInterview(cardInt || null);
+    } catch (error) {
+      console.error('Error fetching card interview:', error);
+      setCardInterview(null);
+    } finally {
+      setLoadingInterview(false);
+    }
+  };
+
+  // PROMPT #130 - Create new interview for this card
+  const handleCreateCardInterview = async () => {
+    setCreatingCardInterview(true);
+    try {
+      const response = await interviewsApi.create({
+        project_id: item.project_id,
+        ai_model_used: 'claude-3-sonnet',
+        conversation_data: [],
+        parent_task_id: item.id,
+        use_card_focused: true,
+      });
+      const newInterview = response.data || response;
+      setCardInterview(newInterview);
+    } catch (error) {
+      console.error('Failed to create card interview:', error);
+      showError('Failed to create interview');
+    } finally {
+      setCreatingCardInterview(false);
     }
   };
 
@@ -1082,10 +1132,57 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </div>
               )}
 
-              {/* Interview Tab */}
+              {/* Interview Tab - PROMPT #130 */}
               {activeTab === 'interview' && (
                 <div className="space-y-6">
+                  {/* Card Interview Chat */}
                   <div>
+                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Card Interview</h3>
+
+                    {loadingInterview ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      </div>
+                    ) : cardInterview ? (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden h-[400px]">
+                        <ChatInterface
+                          interviewId={cardInterview.id}
+                          interviewMode="card_inference"
+                          onStatusChange={() => fetchCardInterview()}
+                        />
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
+                        <svg
+                          className="mx-auto h-10 w-10 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+                          />
+                        </svg>
+                        <p className="mt-2 text-sm text-gray-600">No interview for this card yet</p>
+                        <p className="text-xs text-gray-500 mt-1">Start an interview to refine this card with AI assistance</p>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          className="mt-4"
+                          onClick={handleCreateCardInterview}
+                          disabled={creatingCardInterview}
+                        >
+                          {creatingCardInterview ? 'Creating...' : 'Start Card Interview'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Interview Traceability (from original interview that created this card) */}
+                  <div className="pt-4 border-t border-gray-200">
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">Interview Traceability</h3>
 
                     {/* Question IDs */}

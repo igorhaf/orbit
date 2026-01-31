@@ -515,21 +515,11 @@ export default function ProjectDetailsPage() {
             <InterviewTree
               projectId={projectId}
               project={project || undefined}
-              onCreateInterview={async (parentTaskId?: string) => {
-                try {
-                  const response = await interviewsApi.create({
-                    project_id: projectId,
-                    ai_model_used: 'claude-3-sonnet',
-                    conversation_data: [],
-                    parent_task_id: parentTaskId || null,
-                    use_card_focused: !!parentTaskId,  // Card inference mode if has parent
-                  });
-                  const interviewId = response.data?.id || response.id;
-                  router.push(`/projects/${projectId}/interviews/${interviewId}`);
-                } catch (error) {
-                  console.error('Failed to create interview:', error);
-                  showError('Failed to create interview. Please try again.');
-                }
+              onSelectCard={(card, openInterviewTab) => {
+                // Switch to backlog tab and select the card
+                setActiveTab('backlog');
+                setSelectedBacklogItem(card);
+                // TODO: If openInterviewTab is true, ItemDetailPanel should open interview tab
               }}
             />
           </div>

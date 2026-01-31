@@ -3,23 +3,23 @@
  * PROMPT #130 - Hierarchical tree view for interviews
  *
  * Structure:
- * - Context Interview (root, if exists)
- * - Cards (Epics, Stories, Tasks, Subtasks) with their interviews
+ * - Context Interview (root, opens in modal)
+ * - Cards (Epics, Stories, Tasks, Subtasks) with their interviews (opens in card panel)
  */
 
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
 import { interviewsApi, tasksApi } from '@/lib/api';
 import { Interview, BacklogItem, Project, ItemType } from '@/lib/types';
 import { Card, CardContent, Badge, Button, Dialog, DialogFooter } from '@/components/ui';
+import { ChatInterface } from './ChatInterface';
 import { useNotification } from '@/hooks';
 
 interface InterviewTreeProps {
   projectId: string;
   project?: Project;
-  onCreateInterview?: (parentTaskId?: string) => void;
+  onSelectCard?: (card: BacklogItem, openInterviewTab?: boolean) => void;  // PROMPT #130 - Open card in ItemDetailPanel
 }
 
 // Helper: Get item type icon
@@ -94,14 +94,18 @@ interface TreeNode {
   depth: number;
 }
 
-export function InterviewTree({ projectId, project, onCreateInterview }: InterviewTreeProps) {
-  const router = useRouter();
+export function InterviewTree({ projectId, project, onSelectCard }: InterviewTreeProps) {
   const { showError, showSuccess, NotificationComponent } = useNotification();
 
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [backlog, setBacklog] = useState<BacklogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  // Context Interview Modal state
+  const [showContextModal, setShowContextModal] = useState(false);
+  const [contextInterviewId, setContextInterviewId] = useState<string | null>(null);
+  const [creatingContextInterview, setCreatingContextInterview] = useState(false);
 
   // Delete modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -127,11 +131,11 @@ export function InterviewTree({ projectId, project, onCreateInterview }: Intervi
       setInterviews(projectInterviews);
       setBacklog(Array.isArray(backlogData) ? backlogData : []);
 
-      // Auto-expand context interview and all epics
+      // Auto-expand all epics
       const autoExpand = new Set<string>();
-      projectInterviews.forEach((i: Interview) => {
-        if (i.interview_mode === 'context' || !i.parent_task_id) {
-          autoExpand.add(`interview-${i.id}`);
+      (Array.isArray(backlogData) ? backlogData : []).forEach((item: BacklogItem) => {
+        if (item.item_type === 'epic') {
+          autoExpand.add(`task-${item.id}`);
         }
       });
       setExpandedIds(autoExpand);
@@ -262,8 +266,76 @@ export function InterviewTree({ projectId, project, onCreateInterview }: Intervi
     });
   };
 
-  const handleInterviewClick = (interview: Interview) => {
-    router.push(`/projects/${projectId}/interviews/${interview.id}`);
+  // Handle click on context interview - opens modal
+  const handleContextInterviewClick = (interview: Interview) => {
+    setContextInterviewId(interview.id);
+    setShowContextModal(true);
+  };
+
+  // Handle click on any interview
+  const handleInterviewClick = (node: TreeNode) => {
+    if (!node.interview) return;
+
+    // Context interview -> open modal
+    if (node.interview.interview_mode === 'context') {
+      handleContextInterviewClick(node.interview);
+      return;
+    }
+
+    // Card interview -> find parent task and open in panel
+    if (node.interview.parent_task_id) {
+      // Find the task in backlog
+      const findTask = (items: BacklogItem[], taskId: string): BacklogItem | null => {
+        for (const item of items) {
+          if (item.id === taskId) return item;
+          if (item.children) {
+            const found = findTask(item.children as BacklogItem[], taskId);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      const task = findTask(backlog, node.interview.parent_task_id);
+      if (task && onSelectCard) {
+        onSelectCard(task, true);
+      }
+    }
+  };
+
+  // Create context interview
+  const handleCreateContextInterview = async () => {
+    setCreatingContextInterview(true);
+    try {
+      const response = await interviewsApi.create({
+        project_id: projectId,
+        ai_model_used: 'claude-3-sonnet',
+        conversation_data: [],
+        parent_task_id: null,
+      });
+      const newInterview = response.data || response;
+      setContextInterviewId(newInterview.id);
+      setShowContextModal(true);
+      await loadData();
+    } catch (error) {
+      console.error('Failed to create context interview:', error);
+      showError('Failed to create interview');
+    } finally {
+      setCreatingContextInterview(false);
+    }
+  };
+
+  // Handle card click - opens card in ItemDetailPanel
+  const handleCardClick = (task: BacklogItem) => {
+    if (onSelectCard) {
+      onSelectCard(task, false);  // false = don't force interview tab
+    }
+  };
+
+  // Handle create interview for card
+  const handleCreateCardInterview = (task: BacklogItem) => {
+    if (onSelectCard) {
+      onSelectCard(task, true);  // true = open interview tab (will create if needed)
+    }
   };
 
   const handleDeleteClick = (e: React.MouseEvent, interview: Interview) => {
@@ -291,10 +363,10 @@ export function InterviewTree({ projectId, project, onCreateInterview }: Intervi
     }
   };
 
-  const handleCreateCardInterview = (taskId: string) => {
-    if (onCreateInterview) {
-      onCreateInterview(taskId);
-    }
+  // Handle context interview completion
+  const handleContextInterviewComplete = () => {
+    setShowContextModal(false);
+    loadData();
   };
 
   // Render tree node recursively
@@ -313,8 +385,9 @@ export function InterviewTree({ projectId, project, onCreateInterview }: Intervi
           style={{ paddingLeft: `${paddingLeft}px` }}
           onClick={() => {
             if (node.type === 'interview' && node.interview) {
-              handleInterviewClick(node.interview);
+              handleInterviewClick(node);
             } else if (node.type === 'task' && node.task) {
+              // Click on task title toggles expand
               toggleExpand(node.id);
             }
           }}
@@ -374,12 +447,29 @@ export function InterviewTree({ projectId, project, onCreateInterview }: Intervi
 
           {/* Actions */}
           <div className="flex items-center gap-1">
+            {/* Open card button for tasks */}
+            {node.type === 'task' && node.task && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCardClick(node.task!);
+                }}
+                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                title="Open card details"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+              </button>
+            )}
+
             {/* Add interview button for tasks */}
             {node.type === 'task' && node.task && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleCreateCardInterview(node.task!.id);
+                  handleCreateCardInterview(node.task!);
                 }}
                 className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
                 title="Start interview for this card"
@@ -458,14 +548,15 @@ export function InterviewTree({ projectId, project, onCreateInterview }: Intervi
           <Button
             variant="primary"
             size="sm"
-            onClick={() => onCreateInterview?.()}
+            onClick={handleCreateContextInterview}
+            disabled={creatingContextInterview}
             leftIcon={
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
             }
           >
-            Start Context Interview
+            {creatingContextInterview ? 'Creating...' : 'Start Context Interview'}
           </Button>
         )}
       </div>
@@ -499,14 +590,37 @@ export function InterviewTree({ projectId, project, onCreateInterview }: Intervi
             </p>
             {!project?.context_locked && (
               <div className="mt-6">
-                <Button variant="primary" onClick={() => onCreateInterview?.()}>
-                  Start Context Interview
+                <Button
+                  variant="primary"
+                  onClick={handleCreateContextInterview}
+                  disabled={creatingContextInterview}
+                >
+                  {creatingContextInterview ? 'Creating...' : 'Start Context Interview'}
                 </Button>
               </div>
             )}
           </CardContent>
         </Card>
       )}
+
+      {/* Context Interview Modal */}
+      <Dialog
+        open={showContextModal}
+        onClose={() => setShowContextModal(false)}
+        title="Context Interview"
+        size="lg"
+      >
+        <div className="h-[600px] overflow-hidden">
+          {contextInterviewId && (
+            <ChatInterface
+              interviewId={contextInterviewId}
+              interviewMode="context"
+              onComplete={handleContextInterviewComplete}
+              onStatusChange={() => loadData()}
+            />
+          )}
+        </div>
+      </Dialog>
 
       {/* Delete Confirmation Modal */}
       <Dialog
