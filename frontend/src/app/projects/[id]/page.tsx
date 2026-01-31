@@ -14,7 +14,7 @@ import { Card, CardHeader, CardTitle, CardContent, Button, Badge, AIModelBadge }
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
 import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
-import { InterviewList } from '@/components/interview';
+import { InterviewTree } from '@/components/interview';  // PROMPT #130 - Tree view for interviews
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
 import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
 import { projectsApi, tasksApi, interviewsApi, ragApi } from '@/lib/api';
@@ -397,46 +397,7 @@ export default function ProjectDetailsPage() {
               </Button>
             </Link>
 
-            {/* New Interview button - only show on interviews tab */}
-            {/* PROMPT #90 - Show correct button based on context state */}
-            {activeTab === 'interviews' && (
-              <Button
-                variant="primary"
-                className="h-10"
-                onClick={async () => {
-                  try {
-                    // PROMPT #90 - Backend auto-detects context vs meta_prompt based on context_locked
-                    const response = await interviewsApi.create({
-                      project_id: projectId,
-                      ai_model_used: 'claude-3-sonnet',
-                      conversation_data: [],
-                      parent_task_id: null,  // PROMPT #97 - Null = context (if not locked) or meta_prompt (if locked)
-                    });
-                    const interviewId = response.data?.id || response.id;
-                    router.push(`/projects/${projectId}/interviews/${interviewId}`);
-                  } catch (error) {
-                    console.error('Failed to create interview:', error);
-                    showError('Failed to create interview. Please try again.');
-                  }
-                }}
-                title={!project?.context_locked ? 'Start Context Interview to establish project foundation' : 'Start Epic Interview'}
-              >
-                <svg
-                  className="w-4 h-4 mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                {!project?.context_locked ? 'Context Interview' : 'New Epic Interview'}
-              </Button>
-            )}
+            {/* PROMPT #130 - Removed duplicate New Interview button - now handled by InterviewTree component */}
           </div>
         </div>
 
@@ -550,8 +511,27 @@ export default function ProjectDetailsPage() {
 
         {activeTab === 'interviews' && (
           <div>
-            {/* PROMPT #90 - Pass project to detect context state for interview type */}
-            <InterviewList projectId={projectId} showHeader={false} showCreateButton={false} project={project} />
+            {/* PROMPT #130 - Tree view showing Context Interview + Card Interviews */}
+            <InterviewTree
+              projectId={projectId}
+              project={project || undefined}
+              onCreateInterview={async (parentTaskId?: string) => {
+                try {
+                  const response = await interviewsApi.create({
+                    project_id: projectId,
+                    ai_model_used: 'claude-3-sonnet',
+                    conversation_data: [],
+                    parent_task_id: parentTaskId || null,
+                    use_card_focused: !!parentTaskId,  // Card inference mode if has parent
+                  });
+                  const interviewId = response.data?.id || response.id;
+                  router.push(`/projects/${projectId}/interviews/${interviewId}`);
+                } catch (error) {
+                  console.error('Failed to create interview:', error);
+                  showError('Failed to create interview. Please try again.');
+                }
+              }}
+            />
           </div>
         )}
 

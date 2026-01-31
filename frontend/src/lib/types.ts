@@ -485,15 +485,19 @@ export interface Interview {
   conversation_data: ConversationMessage[];
   status: InterviewStatus;
   created_at: string;
-  interview_mode?: string; // "meta_prompt" | "requirements" | "task_focused"
+  interview_mode?: string; // "meta_prompt" | "requirements" | "task_focused" | "context" | "card_inference"
   task_type_selection?: string; // For task-focused interviews
   focus_topics?: string[]; // For meta prompt interviews (PROMPT #77)
+  parent_task_id?: string | null; // PROMPT #130 - Parent task for card interviews
+  motivation_type?: string; // PROMPT #130 - Card motivation type (bug, feature, etc.)
 }
 
 export interface InterviewCreate {
   project_id: string;
   ai_model_used: string;
   conversation_data?: ConversationMessage[];
+  parent_task_id?: string | null; // PROMPT #130 - Parent task for card interviews
+  use_card_focused?: boolean; // PROMPT #130 - Enable card inference mode
 }
 
 export interface InterviewUpdate {

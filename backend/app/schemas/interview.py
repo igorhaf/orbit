@@ -59,9 +59,11 @@ class InterviewResponse(InterviewBase):
     id: UUID
     project_id: UUID
     created_at: datetime
-    interview_mode: Optional[str] = Field(None, description="Interview mode: meta_prompt, requirements, or task_focused")
+    interview_mode: Optional[str] = Field(None, description="Interview mode: meta_prompt, requirements, task_focused, context, or card_inference")
     task_type_selection: Optional[str] = Field(None, description="Selected task type for task-focused interviews")
     focus_topics: Optional[List[str]] = Field(default_factory=list, description="Selected focus topics for meta prompt interviews (PROMPT #77)")
+    parent_task_id: Optional[UUID] = Field(None, description="Parent task ID for card interviews (PROMPT #130)")
+    motivation_type: Optional[str] = Field(None, description="Card motivation type (bug, feature, etc.) (PROMPT #130)")
 
     class Config:
         from_attributes = True
