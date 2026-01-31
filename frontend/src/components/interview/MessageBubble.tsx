@@ -104,8 +104,8 @@ export function MessageBubble({
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${compact ? 'mb-2' : 'mb-3'}`}>
-      {/* PROMPT #127 - Improved layout: wider messages, better spacing */}
-      <div className={`${isUser ? 'max-w-[85%] md:max-w-[70%]' : 'w-full'} ${isUser ? 'order-2' : 'order-1'}`}>
+      {/* PROMPT #130 - WhatsApp-style width: max-w-[75%] for both user and assistant */}
+      <div className={`max-w-[75%] ${isUser ? 'order-2' : 'order-1'}`}>
         {/* Role Badge with AI Model indicator */}
         <div className={`text-xs ${compact ? 'mb-1' : 'mb-1.5'} flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
           <Badge variant={isUser ? 'info' : 'default'} size="sm">
