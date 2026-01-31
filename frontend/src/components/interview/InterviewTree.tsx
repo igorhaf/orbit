@@ -622,7 +622,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
                 </svg>
               </button>
             </div>
-            {/* Chat Content */}
+            {/* Chat Content - PROMPT #130 - Display only, no interaction */}
             <div className="flex-1 overflow-hidden">
               {contextInterviewId && (
                 <ChatInterface
@@ -631,6 +631,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
                   onComplete={handleContextInterviewComplete}
                   onStatusChange={() => loadData()}
                   embedded={true}
+                  readOnly={true}
                 />
               )}
             </div>

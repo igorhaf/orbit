@@ -22,9 +22,10 @@ interface Props {
   onComplete?: () => void;  // PROMPT #89 - Called when interview is completed (for context generation)
   interviewMode?: 'context' | 'meta_prompt' | 'orchestrator' | string;  // PROMPT #89 - Interview mode hint
   embedded?: boolean;  // PROMPT #130 - When true, removes outer container styling for embedding in modals/panels
+  readOnly?: boolean;  // PROMPT #130 - When true, hides input and action buttons (display mode only)
 }
 
-export function ChatInterface({ interviewId, onStatusChange, onComplete, interviewMode, embedded = false }: Props) {
+export function ChatInterface({ interviewId, onStatusChange, onComplete, interviewMode, embedded = false, readOnly = false }: Props) {
   const router = useRouter();
   const [interview, setInterview] = useState<Interview | null>(null);
   const [message, setMessage] = useState('');
@@ -1028,59 +1029,62 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
           </Badge>
         </div>
 
-        <div className="flex gap-2">
-          {/* PROMPT #89 - Context Interview: Generate Context Button */}
-          {/* PROMPT #80 - Meta Prompt: Generate Epic Button */}
-          {/* PROMPT #122 - Allow generating context immediately if memory scan captured context */}
-          {interviewMode === 'context' ? (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => onComplete?.()}
-              disabled={generatingPrompts || !interview || interview.conversation_data.length < 1}
-            >
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              📝 Gerar Contexto
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={handleGenerateEpic}
-              disabled={generatingPrompts || !interview || interview.conversation_data.length === 0}
-            >
-              {generatingPrompts ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
-                  Generating Epic...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  🎯 Gerar Épico
-                </>
-              )}
-            </Button>
-          )}
-
-          {isActive && (
-            <>
-              <Button variant="outline" size="sm" onClick={handleComplete}>
+        {/* PROMPT #130 - Hide action buttons in readOnly mode */}
+        {!readOnly && (
+          <div className="flex gap-2">
+            {/* PROMPT #89 - Context Interview: Generate Context Button */}
+            {/* PROMPT #80 - Meta Prompt: Generate Epic Button */}
+            {/* PROMPT #122 - Allow generating context immediately if memory scan captured context */}
+            {interviewMode === 'context' ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => onComplete?.()}
+                disabled={generatingPrompts || !interview || interview.conversation_data.length < 1}
+              >
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Complete
+                📝 Gerar Contexto
               </Button>
-              <Button variant="danger" size="sm" onClick={handleCancel}>
-                Cancel
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleGenerateEpic}
+                disabled={generatingPrompts || !interview || interview.conversation_data.length === 0}
+              >
+                {generatingPrompts ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                    Generating Epic...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    🎯 Gerar Épico
+                  </>
+                )}
               </Button>
-            </>
-          )}
-        </div>
+            )}
+
+            {isActive && (
+              <>
+                <Button variant="outline" size="sm" onClick={handleComplete}>
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Complete
+                </Button>
+                <Button variant="danger" size="sm" onClick={handleCancel}>
+                  Cancel
+                </Button>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* PROMPT #81 - Fallback Warning Banner */}
@@ -1309,6 +1313,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       </div>
 
       {/* Input Area - PROMPT #127 - Improved spacing */}
+      {/* PROMPT #130 - Hide input area in readOnly mode */}
+      {!readOnly && (
       <div className={`border-t bg-white ${
         embedded
           ? 'px-3 py-2'
@@ -1387,6 +1393,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         )}
         </div>
       </div>
+      )}
 
       {/* PROMPT #87 - Epic Generation Confirmation Modal */}
       <Dialog
