@@ -23,7 +23,7 @@ from app.models.interview import Interview
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
 from app.services.interview_question_deduplicator import InterviewQuestionDeduplicator
-from app.api.routes.interviews.option_parser import parse_ai_question_options  # PROMPT #99: Parse AI options
+from app.api.routes.interviews.option_parser import parse_ai_question_options, analyze_and_convert_choice_type  # PROMPT #99/#125: Parse AI options
 
 # Prompter Architecture
 try:
@@ -735,13 +735,16 @@ async def _execute_ai_question(
         # Clean response
         cleaned_content = clean_ai_response_func(response["content"])
 
-        # PROMPT #99: Parse AI response to extract structured options
-        logger.info(f"🔍 DEBUG: AI response length: {len(cleaned_content)} chars")
-        logger.info(f"🔍 DEBUG: Has ○ symbol: {'○' in cleaned_content}")
-        logger.info(f"🔍 DEBUG: Has ☐ symbol: {'☐' in cleaned_content}")
-        logger.info(f"🔍 DEBUG: Content preview: {cleaned_content[:200]}")
+        # PROMPT #125 - Use AI to analyze and determine correct choice type (single vs multiple)
+        analyzed_content = await analyze_and_convert_choice_type(cleaned_content, db)
 
-        parsed_content, parsed_options = parse_ai_question_options(cleaned_content)
+        # PROMPT #99: Parse AI response to extract structured options
+        logger.info(f"🔍 DEBUG: AI response length: {len(analyzed_content)} chars")
+        logger.info(f"🔍 DEBUG: Has ○ symbol: {'○' in analyzed_content}")
+        logger.info(f"🔍 DEBUG: Has ☐ symbol: {'☐' in analyzed_content}")
+        logger.info(f"🔍 DEBUG: Content preview: {analyzed_content[:200]}")
+
+        parsed_content, parsed_options = parse_ai_question_options(analyzed_content)
 
         if not parsed_options:
             logger.error(f"❌ PROMPT #99: Parser returned None! AI sent open question. Full content:\n{cleaned_content}")

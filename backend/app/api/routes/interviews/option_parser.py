@@ -2,6 +2,7 @@
 Option Parser for AI-Generated Questions
 PROMPT #99 - Parse AI responses to extract structured options
 PROMPT #109 - Extended to accept multiple bullet symbols (Gemini compatibility)
+PROMPT #125 - Added AI-powered choice type analysis
 
 Parses AI responses that contain options in text format and converts them
 to structured options that the frontend can render as radio/checkbox buttons.
@@ -12,6 +13,9 @@ from typing import Dict, List, Optional, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
+
+# Flag to track if we're inside an async context (for AI analysis)
+_db_session = None
 
 # PROMPT #109 - Common bullet symbols that AI might use instead of ○
 # We normalize all of these to ○ before parsing
@@ -215,3 +219,115 @@ def _slugify(text: str) -> str:
     text = text.strip('_')
 
     return text[:50]  # Limit length
+
+
+async def analyze_and_convert_choice_type(content: str, db) -> str:
+    """
+    PROMPT #125 - Use AI to analyze question and determine correct choice type.
+
+    This function:
+    1. Extracts the question text and options from the content
+    2. Calls AI to determine if it should be single_choice or multiple_choice
+    3. Converts the symbols if needed (○ to ☐ or vice versa)
+
+    Args:
+        content: The AI-generated question content with options
+        db: Database session for AI orchestrator
+
+    Returns:
+        Content with correct symbols (○ for single, ☐ for multiple)
+    """
+    from app.services.ai_orchestrator import AIOrchestrator
+    from app.prompts.loader import PromptLoader
+
+    # First normalize the content
+    normalized = _normalize_bullets(content)
+
+    # Check if we have options
+    has_radio = '○' in normalized
+    has_checkbox = '☐' in normalized or '☑' in normalized
+
+    if not has_radio and not has_checkbox:
+        # No options, nothing to analyze
+        return content
+
+    # Extract question text (everything before first option)
+    question_match = re.search(r'(?:❓\s*)?(?:Pergunta\s*\d+:?\s*)?([^\n○☐]+)', normalized)
+    question_text = question_match.group(1).strip() if question_match else ""
+
+    # Extract options text
+    if has_radio:
+        options = re.findall(r'○\s*(.+?)(?=\n|$)', normalized)
+    else:
+        options = re.findall(r'[☐☑]\s*(.+?)(?=\n|$)', normalized)
+
+    # Filter out instruction lines
+    options = [opt.strip() for opt in options if not any(
+        kw in opt.lower() for kw in ['escolha', 'selecione', 'marque', 'indique', 'todas que se aplicam']
+    )]
+
+    if not options or not question_text:
+        return normalized
+
+    options_text = "\n".join(f"- {opt}" for opt in options)
+
+    try:
+        # Load the analyzer prompt
+        loader = PromptLoader()
+        system_prompt, user_prompt = loader.render(
+            "interviews/choice_type_analyzer",
+            {
+                "question_text": question_text,
+                "options_text": options_text
+            }
+        )
+
+        # Call AI to analyze (using prompt_generation for speed)
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=10,  # We only need "SINGLE" or "MULTIPLE"
+            temperature=0  # Deterministic response
+        )
+
+        ai_answer = response.get("content", "").strip().upper()
+        logger.info(f"🤖 Choice type analysis: '{question_text[:50]}...' -> {ai_answer}")
+
+        # Determine current and desired type
+        current_is_multiple = has_checkbox
+        should_be_multiple = "MULTIPLE" in ai_answer
+
+        if current_is_multiple == should_be_multiple:
+            # Already correct type
+            logger.info(f"✅ Choice type already correct: {'multiple' if should_be_multiple else 'single'}")
+            return normalized
+
+        # Need to convert
+        if should_be_multiple:
+            # Convert ○ to ☐
+            logger.info("🔄 Converting single_choice (○) to multiple_choice (☐)")
+            converted = re.sub(r'○\s*', '☐ ', normalized)
+            # Add "Selecione todas que se aplicam" if not present
+            if 'selecione todas' not in converted.lower():
+                # Find the question line and add after it
+                converted = re.sub(
+                    r'((?:❓\s*)?Pergunta\s*\d+:?\s*[^\n]+)',
+                    r'\1\n☑️ Selecione todas que se aplicam.',
+                    converted,
+                    count=1
+                )
+            return converted
+        else:
+            # Convert ☐ to ○
+            logger.info("🔄 Converting multiple_choice (☐) to single_choice (○)")
+            converted = re.sub(r'[☐☑]\s*', '○ ', normalized)
+            # Remove "Selecione todas que se aplicam" line
+            converted = re.sub(r'\n?☑️?\s*[Ss]elecione todas que se aplicam\.?\n?', '\n', converted)
+            return converted
+
+    except Exception as e:
+        logger.error(f"❌ Error analyzing choice type: {e}")
+        # Return normalized content on error (keeps original type)
+        return normalized

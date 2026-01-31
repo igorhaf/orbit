@@ -27,7 +27,7 @@ from app.services.interview_question_deduplicator import InterviewQuestionDedupl
 # PROMPT #103 - External prompts support
 from app.prompts import get_prompt_service
 from app.prompts.loader import PromptLoader
-from app.api.routes.interviews.option_parser import parse_ai_question_options
+from app.api.routes.interviews.option_parser import parse_ai_question_options, analyze_and_convert_choice_type
 from app.api.routes.interviews.response_cleaners import clean_ai_response
 # PROMPT #89: Context Interview fixed questions
 from app.api.routes.interviews.context_questions import (
@@ -306,8 +306,11 @@ Gere uma pergunta DIFERENTE das acima.
         # Clean response
         cleaned_content = clean_ai_response(response["content"])
 
+        # PROMPT #125 - Use AI to analyze and determine correct choice type (single vs multiple)
+        analyzed_content = await analyze_and_convert_choice_type(cleaned_content, db)
+
         # Parse for structured options (optional - for suggestion clicks)
-        parsed_content, parsed_options = parse_ai_question_options(cleaned_content)
+        parsed_content, parsed_options = parse_ai_question_options(analyzed_content)
 
         # Build assistant message
         question_number = (message_count // 2) + 1
@@ -513,8 +516,11 @@ Contextualize sua primeira pergunta com base no card pai.
         # Clean response
         cleaned_content = clean_ai_response(response["content"])
 
+        # PROMPT #125 - Use AI to analyze and determine correct choice type (single vs multiple)
+        analyzed_content = await analyze_and_convert_choice_type(cleaned_content, db)
+
         # Parse for suggestions
-        parsed_content, parsed_options = parse_ai_question_options(cleaned_content)
+        parsed_content, parsed_options = parse_ai_question_options(analyzed_content)
 
         # Build assistant message with proper question type
         if parsed_options:
