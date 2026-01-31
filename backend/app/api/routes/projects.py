@@ -307,6 +307,26 @@ async def create_project(
             detail=f"Code path is not a directory: {project.code_path}"
         )
 
+    # PROMPT #127 - Determine initial status based on memory scan results
+    # If codebase already has business rules or key features developed,
+    # the project starts as "active" (existing code = completed work)
+    from app.models.project import ProjectStatus
+
+    initial_status = ProjectStatus.draft  # Default status
+
+    if project.initial_memory_context:
+        memory_ctx = project.initial_memory_context
+        has_business_rules = bool(memory_ctx.get("business_rules", []))
+        has_key_features = bool(memory_ctx.get("key_features", []))
+
+        if has_business_rules or has_key_features:
+            initial_status = ProjectStatus.active
+            logger.info(f"🚀 Project will start as 'active' - detected existing code:")
+            if has_business_rules:
+                logger.info(f"   - {len(memory_ctx.get('business_rules', []))} business rules")
+            if has_key_features:
+                logger.info(f"   - {len(memory_ctx.get('key_features', []))} key features")
+
     # Create new project instance with code_path
     db_project = Project(
         name=project.name,
@@ -314,6 +334,7 @@ async def create_project(
         git_repository_info=project.git_repository_info,
         code_path=project.code_path,  # PROMPT #111 - Obrigatório e imutável
         initial_memory_context=project.initial_memory_context,  # PROMPT #118 - Memory scan context
+        status=initial_status,  # PROMPT #127 - Active if existing code detected
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -322,7 +343,7 @@ async def create_project(
     db.commit()
     db.refresh(db_project)
 
-    logger.info(f"✅ Created project '{project.name}' with code_path: {project.code_path}")
+    logger.info(f"✅ Created project '{project.name}' with code_path: {project.code_path} (status: {initial_status.value})")
 
     return db_project
 
