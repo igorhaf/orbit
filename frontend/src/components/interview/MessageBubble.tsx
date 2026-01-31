@@ -123,7 +123,7 @@ export function MessageBubble({
               : 'bg-white text-gray-800 border border-gray-100'
           }`}
         >
-          <div className={`whitespace-pre-wrap break-words ${compact ? 'text-sm leading-normal' : 'text-base leading-relaxed'}`}>
+          <div className="whitespace-pre-wrap break-words text-base leading-relaxed">
             {displayContent}
           </div>
 
@@ -168,15 +168,15 @@ export function MessageBubble({
                       checked={isSelected}
                       onChange={() => {}}
                       disabled={submitted || readOnly}
-                      className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50`}
+                      className="w-5 h-5 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     />
-                    <span className={`${compact ? 'ml-2 text-xs' : 'ml-3 text-sm'} font-medium flex-1 ${
+                    <span className={`ml-3 text-sm font-medium flex-1 ${
                       submitted ? 'text-gray-500' : 'text-gray-900'
                     }`}>
                       {option.label}
                     </span>
                     {isSelected && !submitted && !readOnly && (
-                      <svg className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} text-blue-600`} fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
@@ -212,7 +212,7 @@ export function MessageBubble({
                         <div className="w-full border-t border-gray-300"></div>
                       </div>
                       <div className="relative flex justify-center">
-                        <span className={`bg-gray-50 ${compact ? 'px-2 py-0.5 text-[10px]' : 'px-4 py-1 text-xs'} font-medium text-gray-600 rounded-full border border-gray-300`}>
+                        <span className="bg-gray-50 px-4 py-1 text-xs font-medium text-gray-600 rounded-full border border-gray-300">
                           or type your own answer below
                         </span>
                       </div>
@@ -240,7 +240,7 @@ export function MessageBubble({
           {/* Timestamp and AI Model - PROMPT #127 */}
           <div className={`flex items-center gap-3 ${compact ? 'mt-1' : 'mt-2'} ${isUser ? 'justify-end' : 'justify-start'}`}>
             {message.timestamp && (
-              <span className={`${compact ? 'text-[10px]' : 'text-xs'} ${isUser ? 'text-blue-100' : 'text-gray-400'}`}>
+              <span className={`text-xs ${isUser ? 'text-blue-100' : 'text-gray-400'}`}>
                 {new Date(message.timestamp).toLocaleTimeString()}
               </span>
             )}
