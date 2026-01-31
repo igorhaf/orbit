@@ -1285,7 +1285,7 @@ Retorne como JSON seguindo o schema do system prompt."""
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=8000,  # Increased to allow for detailed specifications
+            max_tokens=4000,  # Increased to allow for detailed specifications
             enable_rag=True  # PROMPT #124 - Enable RAG for context generation
         )
 
@@ -1697,7 +1697,7 @@ GERE A ESPECIFICAÇÃO COMPLETA AGORA, preenchendo TODOS os campos com dados REA
                     usage_type="prompt_generation",
                     messages=simple_messages,
                     system_prompt=simple_system_prompt,
-                    max_tokens=6000,  # Increased to allow more detailed response
+                    max_tokens=4000,  # Increased to allow more detailed response
                     enable_rag=True  # PROMPT #124 - Enable RAG for context generation
                 )
 
@@ -2762,7 +2762,7 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=8000,
+                max_tokens=4000,
                 enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
@@ -3164,7 +3164,7 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=6000,
+                max_tokens=4000,
                 enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
