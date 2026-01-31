@@ -313,6 +313,7 @@ async def create_project(
         description=project.description,
         git_repository_info=project.git_repository_info,
         code_path=project.code_path,  # PROMPT #111 - Obrigatório e imutável
+        initial_memory_context=project.initial_memory_context,  # PROMPT #118 - Memory scan context
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -999,4 +1000,69 @@ async def toggle_spec_active(
         "id": str(spec.id),
         "title": spec.title,
         "is_active": spec.is_active
+    }
+
+
+# ============================================================================
+# CLEANUP ENDPOINTS - PROMPT #126
+# ============================================================================
+
+@router.delete("/cleanup/incomplete")
+async def cleanup_incomplete_projects(
+    db: Session = Depends(get_db)
+):
+    """
+    Delete all incomplete projects (projects without context).
+
+    PROMPT #126 - Cleanup Incomplete Projects
+
+    A project is considered incomplete if:
+    - context_locked = False (context not generated)
+    - Has no tasks associated
+
+    These are projects where the user abandoned the wizard before
+    completing the Context Interview.
+
+    Returns:
+        {
+            "deleted_count": 5,
+            "deleted_projects": [
+                {"id": "uuid", "name": "Project Name"},
+                ...
+            ]
+        }
+    """
+    from sqlalchemy import func
+
+    # Find incomplete projects (no context and no tasks)
+    subquery = db.query(
+        Project.id,
+        func.count(Task.id).label('task_count')
+    ).outerjoin(Task, Task.project_id == Project.id).filter(
+        Project.context_locked == False
+    ).group_by(Project.id).having(
+        func.count(Task.id) == 0
+    ).subquery()
+
+    incomplete_projects = db.query(Project).join(
+        subquery, Project.id == subquery.c.id
+    ).all()
+
+    # Collect info before deletion
+    deleted_projects = [
+        {"id": str(p.id), "name": p.name}
+        for p in incomplete_projects
+    ]
+
+    # Delete projects
+    for project in incomplete_projects:
+        db.delete(project)
+
+    db.commit()
+
+    logger.info(f"🧹 Cleaned up {len(deleted_projects)} incomplete projects")
+
+    return {
+        "deleted_count": len(deleted_projects),
+        "deleted_projects": deleted_projects
     }
