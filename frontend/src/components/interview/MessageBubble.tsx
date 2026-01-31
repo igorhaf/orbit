@@ -6,7 +6,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Badge, Button } from '@/components/ui';
+import { Badge, Button, AIModelBadge } from '@/components/ui';
 import { ConversationMessage } from '@/lib/types';
 import { parseMessage } from './MessageParser';
 
@@ -99,24 +99,25 @@ export function MessageBubble({
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
-      <div className={`max-w-[70%] ${isUser ? 'order-2' : 'order-1'}`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
+      {/* PROMPT #127 - Improved layout: wider messages, better spacing */}
+      <div className={`${isUser ? 'max-w-[85%] md:max-w-[70%]' : 'w-full'} ${isUser ? 'order-2' : 'order-1'}`}>
         {/* Role Badge */}
-        <div className={`text-xs mb-1 ${isUser ? 'text-right' : 'text-left'}`}>
+        <div className={`text-xs mb-1.5 ${isUser ? 'text-right' : 'text-left'}`}>
           <Badge variant={isUser ? 'info' : 'default'} size="sm">
-            {isUser ? 'You' : 'AI Assistant'}
+            {isUser ? 'Você' : 'Assistente IA'}
           </Badge>
         </div>
 
         {/* Message Card - PROMPT #56: Using div instead of Card to avoid bg-white override */}
         <div
-          className={`p-4 rounded-lg border ${
+          className={`px-5 py-4 rounded-xl shadow-sm ${
             isUser
-              ? 'bg-blue-500 text-white border-blue-500'
-              : 'bg-gray-100 text-gray-900 border-gray-200'
+              ? 'bg-blue-600 text-white border border-blue-600'
+              : 'bg-white text-gray-800 border border-gray-100'
           }`}
         >
-          <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+          <div className="whitespace-pre-wrap break-words text-base leading-relaxed">
             {displayContent}
           </div>
 
@@ -218,11 +219,18 @@ export function MessageBubble({
             </div>
           )}
 
-          {message.timestamp && (
-            <div className={`text-xs mt-2 ${isUser ? 'text-blue-100' : 'text-gray-400'}`}>
-              {new Date(message.timestamp).toLocaleTimeString()}
-            </div>
-          )}
+          {/* Timestamp and AI Model - PROMPT #127 */}
+          <div className={`flex items-center gap-3 mt-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            {message.timestamp && (
+              <span className={`text-xs ${isUser ? 'text-blue-100' : 'text-gray-400'}`}>
+                {new Date(message.timestamp).toLocaleTimeString()}
+              </span>
+            )}
+            {/* Show AI model badge for assistant messages */}
+            {!isUser && message.model && (
+              <AIModelBadge model={message.model} />
+            )}
+          </div>
         </div>
       </div>
     </div>

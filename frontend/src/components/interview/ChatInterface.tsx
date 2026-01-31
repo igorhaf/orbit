@@ -11,6 +11,7 @@ import { interviewsApi, backlogApi, projectsApi } from '@/lib/api';
 import { Interview } from '@/lib/types';
 import { Button, Badge, JobProgressBar, Dialog, DialogFooter } from '@/components/ui';
 import { ErrorDialog, formatErrorMessage } from '@/components/ui/ErrorDialog';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { MessageBubble } from './MessageBubble';
 import { ProvisioningStatusCard } from './ProvisioningStatusCard';
 import { useJobPolling } from '@/hooks';
@@ -76,6 +77,25 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     message: '',
     details: undefined,
     type: 'error'
+  });
+
+  // PROMPT #118 - Confirm dialog states (replaces crude browser confirm())
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    type: 'warning' | 'danger' | 'info';
+    onConfirm: () => void;
+    confirmLabel?: string;
+    isLoading?: boolean;
+  }>({
+    open: false,
+    title: '',
+    message: '',
+    type: 'warning',
+    onConfirm: () => {},
+    confirmLabel: 'OK',
+    isLoading: false
   });
 
   // PROMPT #65 - Async job tracking
@@ -768,61 +788,85 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
   };
 
   const handleComplete = async () => {
-    if (!confirm('Mark this interview as completed?')) return;
-
-    try {
-      await interviewsApi.updateStatus(interviewId, 'completed');
-      await loadInterview();
-      onStatusChange?.();
-    } catch (error) {
-      console.error('Failed to complete interview:', error);
-      setNotificationDialog({
-        open: true,
-        title: 'Erro',
-        message: 'Falha ao completar entrevista. Por favor, tente novamente.',
-        type: 'error'
-      });
-    }
+    // PROMPT #118 - Use ConfirmDialog instead of native confirm()
+    setConfirmDialog({
+      open: true,
+      title: 'Completar Entrevista',
+      message: 'Marcar esta entrevista como completa?',
+      type: 'info',
+      confirmLabel: 'Completar',
+      isLoading: false,
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isLoading: true }));
+        try {
+          await interviewsApi.updateStatus(interviewId, 'completed');
+          await loadInterview();
+          onStatusChange?.();
+          setConfirmDialog(prev => ({ ...prev, open: false, isLoading: false }));
+        } catch (error) {
+          console.error('Failed to complete interview:', error);
+          setConfirmDialog(prev => ({ ...prev, open: false, isLoading: false }));
+          setNotificationDialog({
+            open: true,
+            title: 'Erro',
+            message: 'Falha ao completar entrevista. Por favor, tente novamente.',
+            type: 'error'
+          });
+        }
+      }
+    });
   };
 
   const handleCancel = async () => {
-    // PROMPT #109 - Different confirmation for context interviews
+    // PROMPT #118 - Use ConfirmDialog instead of native confirm()
     const isContextInterview = interview?.interview_mode === 'context';
     const confirmMessage = isContextInterview
       ? 'Cancelar esta entrevista? O projeto sera excluido pois ainda nao tem contexto definido.'
-      : 'Cancel this interview?';
+      : 'Cancelar esta entrevista?';
 
-    if (!confirm(confirmMessage)) return;
-
-    try {
-      await interviewsApi.updateStatus(interviewId, 'cancelled');
-
-      // PROMPT #109 - Delete project if cancelling context interview
-      if (isContextInterview && interview?.project_id) {
-        console.log('🗑️ Deleting project due to context interview cancellation:', interview.project_id);
+    setConfirmDialog({
+      open: true,
+      title: isContextInterview ? 'Cancelar Entrevista e Projeto' : 'Cancelar Entrevista',
+      message: confirmMessage,
+      type: 'danger',
+      confirmLabel: 'Cancelar Entrevista',
+      isLoading: false,
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, isLoading: true }));
         try {
-          await projectsApi.delete(interview.project_id);
-          console.log('✅ Project deleted successfully');
-          // Redirect to projects list
-          router.push('/projects');
-          return;
-        } catch (deleteError) {
-          console.error('Failed to delete project:', deleteError);
-          // Continue even if project deletion fails
+          await interviewsApi.updateStatus(interviewId, 'cancelled');
+
+          // PROMPT #109 - Delete project if cancelling context interview
+          if (isContextInterview && interview?.project_id) {
+            console.log('🗑️ Deleting project due to context interview cancellation:', interview.project_id);
+            try {
+              await projectsApi.delete(interview.project_id);
+              console.log('✅ Project deleted successfully');
+              setConfirmDialog(prev => ({ ...prev, open: false, isLoading: false }));
+              // Redirect to projects list
+              router.push('/projects');
+              return;
+            } catch (deleteError) {
+              console.error('Failed to delete project:', deleteError);
+              // Continue even if project deletion fails
+            }
+          }
+
+          await loadInterview();
+          onStatusChange?.();
+          setConfirmDialog(prev => ({ ...prev, open: false, isLoading: false }));
+        } catch (error) {
+          console.error('Failed to cancel interview:', error);
+          setConfirmDialog(prev => ({ ...prev, open: false, isLoading: false }));
+          setNotificationDialog({
+            open: true,
+            title: 'Erro',
+            message: 'Falha ao cancelar entrevista. Por favor, tente novamente.',
+            type: 'error'
+          });
         }
       }
-
-      await loadInterview();
-      onStatusChange?.();
-    } catch (error) {
-      console.error('Failed to cancel interview:', error);
-      setNotificationDialog({
-        open: true,
-        title: 'Erro',
-        message: 'Falha ao cancelar entrevista. Por favor, tente novamente.',
-        type: 'error'
-      });
-    }
+    });
   };
 
   // PROMPT #80/87 - Generate Epic only (not full backlog)
@@ -957,11 +1001,11 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
   const isActive = interview.status === 'active';
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)] bg-white rounded-lg shadow-lg">
-      {/* Header */}
-      <div className="border-b p-4 flex justify-between items-center bg-gray-50 rounded-t-lg">
+    <div className="flex flex-col h-[calc(100vh-6rem)] bg-white rounded-xl shadow-lg border border-gray-100">
+      {/* Header - PROMPT #127 - Improved layout */}
+      <div className="border-b px-6 py-3 flex justify-between items-center bg-gradient-to-r from-blue-50 to-white rounded-t-xl">
         <div className="flex items-center gap-3">
-          <h2 className="text-xl font-bold text-gray-900">Interview Session</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Entrevista</h2>
           <Badge
             variant={
               interview.status === 'active'
@@ -978,12 +1022,13 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         <div className="flex gap-2">
           {/* PROMPT #89 - Context Interview: Generate Context Button */}
           {/* PROMPT #80 - Meta Prompt: Generate Epic Button */}
+          {/* PROMPT #122 - Allow generating context immediately if memory scan captured context */}
           {interviewMode === 'context' ? (
             <Button
               variant="primary"
               size="sm"
               onClick={() => onComplete?.()}
-              disabled={generatingPrompts || !interview || interview.conversation_data.length < 6}
+              disabled={generatingPrompts || !interview || interview.conversation_data.length < 1}
             >
               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -1133,12 +1178,13 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         </div>
       )}
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-50 to-white">
+      {/* Messages Area - PROMPT #127 - Improved spacing and layout */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 lg:px-12 bg-gray-50">
+        <div className="max-w-4xl mx-auto">
         {interview.conversation_data.length === 0 ? (
-          <div className="text-center text-gray-400 py-12">
+          <div className="text-center text-gray-400 py-16">
             <svg
-              className="w-16 h-16 mx-auto mb-4 text-gray-300"
+              className="w-12 h-12 mx-auto mb-3 text-gray-300"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -1150,8 +1196,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               />
             </svg>
-            <p className="text-lg mb-2 font-medium">Initializing AI...</p>
-            <p className="text-sm">The AI assistant will greet you shortly</p>
+            <p className="text-base mb-1 font-medium">Iniciando IA...</p>
+            <p className="text-sm">O assistente vai te cumprimentar em instantes</p>
           </div>
         ) : (
           <>
@@ -1246,10 +1292,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
             </div>
           </div>
         )}
+        </div>
       </div>
 
-      {/* Input Area */}
-      <div className="border-t p-4 bg-gray-50 rounded-b-lg">
+      {/* Input Area - PROMPT #127 - Improved spacing */}
+      <div className="border-t px-4 py-3 md:px-8 lg:px-12 bg-white rounded-b-xl">
+        <div className="max-w-4xl mx-auto">
         {isActive ? (
           <div className="flex flex-col gap-2">
             {/* Show selected options indicator */}
@@ -1259,12 +1307,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <span className="text-sm text-blue-800 font-medium">
-                  {selectedOptions.length} option{selectedOptions.length > 1 ? 's' : ''} selected
+                  {selectedOptions.length} opção(ões) selecionada(s)
                 </span>
                 <button
                   onClick={() => setSelectedOptions([])}
                   className="ml-auto text-blue-600 hover:text-blue-800"
-                  title="Clear selection"
+                  title="Limpar seleção"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1273,15 +1321,15 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
               </div>
             )}
 
-            <div className="flex gap-2">
+            <div className="flex gap-3">
               <textarea
                 ref={textareaRef}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={selectedOptions.length > 0 ? "Or type a custom response..." : "Type your response... (Shift+Enter for new line, Enter to send)"}
+                placeholder={selectedOptions.length > 0 ? "Ou digite uma resposta personalizada..." : "Digite sua resposta... (Shift+Enter para nova linha, Enter para enviar)"}
                 disabled={sending || isSendingMessage}
-                className="flex-1 border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 bg-white min-h-[44px] max-h-[200px] overflow-y-auto"
+                className="flex-1 border border-gray-200 rounded-xl px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 bg-white min-h-[48px] max-h-[200px] overflow-y-auto shadow-sm"
                 rows={1}
               />
             <Button
@@ -1320,6 +1368,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
             </p>
           </div>
         )}
+        </div>
       </div>
 
       {/* PROMPT #87 - Epic Generation Confirmation Modal */}
@@ -1438,6 +1487,18 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         message={notificationDialog.message}
         details={notificationDialog.details}
         type={notificationDialog.type}
+      />
+
+      {/* PROMPT #118 - Confirm Dialog (replaces crude browser confirm()) */}
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog({ ...confirmDialog, open: false })}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        confirmLabel={confirmDialog.confirmLabel}
+        isLoading={confirmDialog.isLoading}
       />
     </div>
   );

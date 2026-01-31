@@ -45,3 +45,5 @@ export type { FolderPickerProps } from './FolderPicker';
 
 export { ErrorDialog, formatErrorMessage } from './ErrorDialog'; // PROMPT #112 - Styled notifications
 export type { ErrorDialogProps } from './ErrorDialog';
+
+export { AIModelBadge } from './AIModelBadge'; // PROMPT #127 - AI Model badge with tooltip
