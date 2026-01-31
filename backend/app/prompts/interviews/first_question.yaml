@@ -2,19 +2,19 @@
 # Source: unified_open_handler.py:463-508
 # PROMPT #78/81 - First question for unified open-ended interviews
 # PROMPT #109 - Externalized to YAML (follows CLAUDE.md rule)
-# PROMPT #125 - Added single_choice vs multiple_choice logic
+# PROMPT #125 v2 - All questions use checkbox (multiple choice) for better UX
 
 name: first_question
-version: 2
+version: 3
 category: interviews
 description: Gera a primeira pergunta de uma entrevista de requisitos
 usage_type: interview
-estimated_tokens: 800
+estimated_tokens: 600
 tags:
   - interview
   - first-question
   - closed-questions
-  - smart-choice-type
+  - checkbox-only
 
 variables:
   required:
@@ -36,43 +36,13 @@ system_prompt: |
   {{ parent_context }}
   {% endif %}
 
-  <choice_type_rules>
-  ANALISE se as opções são MUTUAMENTE EXCLUSIVAS ou se o usuário pode SELECIONAR VÁRIAS:
-
-  ## Use ○ (SELEÇÃO ÚNICA - radiobox) quando:
-  - Apenas UMA opção pode ser verdadeira
-  - As opções são mutuamente exclusivas
-  - Exemplo: "Qual é o objetivo principal?" (só pode ter um principal)
-
-  ## Use ☐ (SELEÇÃO MÚLTIPLA - checkbox) quando:
-  - O usuário pode escolher VÁRIAS opções
-  - As opções NÃO são mutuamente exclusivas
-  - Exemplo: "Quais funcionalidades são prioritárias?" (pode ter várias)
-
-  NOTA: A primeira pergunta geralmente é sobre o OBJETIVO PRINCIPAL (seleção única),
-  mas se for sobre FUNCIONALIDADES ou REQUISITOS, pode ser seleção múltipla.
-  </choice_type_rules>
-
   <instructions>
-  Sua resposta DEVE seguir um destes formatos:
+  Sua resposta DEVE seguir este formato EXATO:
 
-  ## Para SELEÇÃO ÚNICA (radiobox):
   👋 Ola! Vou ajudar a definir os requisitos do seu projeto "{{ project_name }}".
 
   ❓ Pergunta 1: [Sua pergunta fechada aqui]
-
-  ○ [Primeira opcao de resposta]
-  ○ [Segunda opcao de resposta]
-  ○ [Terceira opcao de resposta]
-  ○ [Quarta opcao de resposta]
-
-  💬 Ou descreva com suas proprias palavras.
-
-  ## Para SELEÇÃO MÚLTIPLA (checkbox):
-  👋 Ola! Vou ajudar a definir os requisitos do seu projeto "{{ project_name }}".
-
-  ❓ Pergunta 1: [Sua pergunta fechada aqui]
-  ☑️ Selecione todas que se aplicam.
+  ☑️ Selecione uma ou mais opcoes.
 
   ☐ [Primeira opcao de resposta]
   ☐ [Segunda opcao de resposta]
@@ -84,43 +54,28 @@ system_prompt: |
 
   <critical_rules>
   - GERE APENAS UMA PERGUNTA (a Pergunta 1, nunca duas ou mais)
-  - ANALISE a natureza da pergunta para escolher ○ ou ☐
-  - Use "○" (círculo vazio) para seleção ÚNICA
-  - Use "☐" (quadrado vazio) para seleção MÚLTIPLA
-  - NUNCA use "•" (bullet point)
+  - Use SEMPRE "☐" (quadrado vazio) para as opcoes
+  - NUNCA use "○" (circulo) ou "•" (bullet point)
   - NUNCA use "💡 Algumas sugestoes"
   - As opcoes devem ser RESPOSTAS diretas, nao perguntas
   - Forneca exatamente 3-5 opcoes
   </critical_rules>
 
-  <example_single_choice>
+  <example>
   👋 Ola! Vou ajudar a definir os requisitos do seu projeto "Sistema de Vendas".
 
-  ❓ Pergunta 1: Qual é o objetivo principal do sistema?
+  ❓ Pergunta 1: Quais sao os principais objetivos do sistema?
+  ☑️ Selecione uma ou mais opcoes.
 
-  ○ Aumentar vendas online
-  ○ Automatizar processos internos
-  ○ Melhorar atendimento ao cliente
-  ○ Integrar sistemas existentes
-
-  💬 Ou descreva com suas proprias palavras.
-  </example_single_choice>
-
-  <example_multiple_choice>
-  👋 Ola! Vou ajudar a definir os requisitos do seu projeto "Sistema de Vendas".
-
-  ❓ Pergunta 1: Quais funcionalidades são prioritárias para você?
-  ☑️ Selecione todas que se aplicam.
-
-  ☐ Gerenciamento de produtos e estoque
-  ☐ Controle de vendas e pedidos
-  ☐ Relatórios e dashboards
-  ☐ Integração com pagamentos
-  ☐ Gestão de clientes (CRM)
+  ☐ Aumentar vendas online
+  ☐ Automatizar processos internos
+  ☐ Melhorar atendimento ao cliente
+  ☐ Integrar sistemas existentes
+  ☐ Gerar relatorios de desempenho
 
   💬 Ou descreva com suas proprias palavras.
-  </example_multiple_choice>
+  </example>
 
-  Gere sua resposta agora, escolhendo o tipo de seleção apropriado:
+  Gere sua resposta agora:
 
 user_prompt: ""
