@@ -939,6 +939,13 @@ um comportamento já implementado no sistema.""",
             project.context_locked_at = datetime.utcnow()
             logger.info(f"🔒 Context locked for project {project.name} (first item activated)")
 
+        # PROMPT #126 - Update project status to "active" when first epic is approved
+        if epic.item_type == ItemType.EPIC and hasattr(project, 'status'):
+            from app.models.project import ProjectStatus
+            if project.status != ProjectStatus.active:
+                project.status = ProjectStatus.active
+                logger.info(f"✅ Project status changed to 'active': {project.name}")
+
         self.db.commit()
         self.db.refresh(epic)
 

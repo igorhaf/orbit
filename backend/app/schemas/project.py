@@ -4,7 +4,7 @@ Request/Response models for Project endpoints
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Literal
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -77,6 +77,9 @@ class ProjectResponse(ProjectBase):
 
     # PROMPT #118 - Initial memory context from codebase scan
     initial_memory_context: Optional[dict] = Field(None, description="Context from codebase memory scan")
+
+    # PROMPT #126 - Project lifecycle status
+    status: Literal["draft", "active"] = Field("draft", description="Project status: draft (no epics approved) or active (at least one epic approved)")
 
     class Config:
         from_attributes = True

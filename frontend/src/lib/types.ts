@@ -122,6 +122,11 @@ export interface Project {
   context_locked?: boolean;
   context_locked_at?: string | null;
 
+  // PROMPT #126 - Project lifecycle status
+  // draft: Context created, but no epics approved yet
+  // active: At least one epic has been approved
+  status?: 'draft' | 'active';
+
   created_at: string;
   updated_at: string;
 }

@@ -5,11 +5,25 @@ Represents a project in the AI Orchestrator system
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, Text, DateTime, JSON, Boolean
+from sqlalchemy import Column, String, Text, DateTime, JSON, Boolean, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+import enum
 
 from app.database import Base
+
+
+class ProjectStatus(str, enum.Enum):
+    """
+    Project status enum.
+
+    PROMPT #126 - Project Lifecycle Status
+
+    - draft: Context created, suggested epics exist, but none approved yet
+    - active: At least one epic has been approved/created
+    """
+    draft = "draft"
+    active = "active"
 
 
 class Project(Base):
@@ -60,6 +74,16 @@ class Project(Base):
     context_human = Column(Text, nullable=True)          # Human-readable project description
     context_locked = Column(Boolean, default=False, nullable=False)  # Lock after first epic
     context_locked_at = Column(DateTime, nullable=True)  # When context was locked
+
+    # PROMPT #126 - Project lifecycle status
+    # draft: Context created, suggested epics exist, but none approved yet
+    # active: At least one epic has been approved/created
+    status = Column(
+        Enum(ProjectStatus),
+        default=ProjectStatus.draft,
+        nullable=False,
+        server_default="draft"
+    )
 
     # PROMPT #118 - Initial memory context from codebase scan (JSON dict)
     # This is set when project is created after a memory scan
