@@ -1144,11 +1144,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                       </div>
                     ) : cardInterview ? (
-                      <div className="border border-gray-200 rounded-lg overflow-hidden h-[400px]">
+                      <div className="border border-gray-200 rounded-lg overflow-hidden h-[500px]">
                         <ChatInterface
                           interviewId={cardInterview.id}
                           interviewMode="card_inference"
                           onStatusChange={() => fetchCardInterview()}
+                          embedded={true}
                         />
                       </div>
                     ) : (

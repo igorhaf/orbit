@@ -603,24 +603,40 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
         </Card>
       )}
 
-      {/* Context Interview Modal */}
-      <Dialog
-        open={showContextModal}
-        onClose={() => setShowContextModal(false)}
-        title="Context Interview"
-        size="card"
-      >
-        <div className="h-[600px] overflow-hidden">
-          {contextInterviewId && (
-            <ChatInterface
-              interviewId={contextInterviewId}
-              interviewMode="context"
-              onComplete={handleContextInterviewComplete}
-              onStatusChange={() => loadData()}
-            />
-          )}
+      {/* Context Interview Modal - PROMPT #130 - Same size as ItemDetailPanel */}
+      {showContextModal && (
+        <div className="fixed inset-0 z-50 overflow-hidden bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-[90%] h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🌐</span>
+                <h2 className="text-xl font-semibold text-gray-900">Context Interview</h2>
+              </div>
+              <button
+                onClick={() => setShowContextModal(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            {/* Chat Content */}
+            <div className="flex-1 overflow-hidden">
+              {contextInterviewId && (
+                <ChatInterface
+                  interviewId={contextInterviewId}
+                  interviewMode="context"
+                  onComplete={handleContextInterviewComplete}
+                  onStatusChange={() => loadData()}
+                  embedded={true}
+                />
+              )}
+            </div>
+          </div>
         </div>
-      </Dialog>
+      )}
 
       {/* Delete Confirmation Modal */}
       <Dialog

@@ -21,9 +21,10 @@ interface Props {
   onStatusChange?: () => void;
   onComplete?: () => void;  // PROMPT #89 - Called when interview is completed (for context generation)
   interviewMode?: 'context' | 'meta_prompt' | 'orchestrator' | string;  // PROMPT #89 - Interview mode hint
+  embedded?: boolean;  // PROMPT #130 - When true, removes outer container styling for embedding in modals/panels
 }
 
-export function ChatInterface({ interviewId, onStatusChange, onComplete, interviewMode }: Props) {
+export function ChatInterface({ interviewId, onStatusChange, onComplete, interviewMode, embedded = false }: Props) {
   const router = useRouter();
   const [interview, setInterview] = useState<Interview | null>(null);
   const [message, setMessage] = useState('');
@@ -1001,9 +1002,17 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
   const isActive = interview.status === 'active';
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)] bg-white rounded-xl shadow-lg border border-gray-100">
+    <div className={`flex flex-col bg-white ${
+      embedded
+        ? 'h-full'
+        : 'h-[calc(100vh-6rem)] rounded-xl shadow-lg border border-gray-100'
+    }`}>
       {/* Header - PROMPT #127 - Improved layout */}
-      <div className="border-b px-6 py-3 flex justify-between items-center bg-gradient-to-r from-blue-50 to-white rounded-t-xl">
+      <div className={`border-b px-4 py-2 flex justify-between items-center ${
+        embedded
+          ? 'bg-gray-50'
+          : 'px-6 py-3 bg-gradient-to-r from-blue-50 to-white rounded-t-xl'
+      }`}>
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-gray-800">Entrevista</h2>
           <Badge
@@ -1179,8 +1188,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       )}
 
       {/* Messages Area - PROMPT #127 - Improved spacing and layout */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 md:px-8 lg:px-12 bg-gray-50">
-        <div className="max-w-4xl mx-auto">
+      <div className={`flex-1 overflow-y-auto ${
+        embedded
+          ? 'px-3 py-2 bg-white'
+          : 'px-4 py-4 md:px-8 lg:px-12 bg-gray-50'
+      }`}>
+        <div className={embedded ? '' : 'max-w-4xl mx-auto'}>
         {interview.conversation_data.length === 0 ? (
           <div className="text-center text-gray-400 py-16">
             <svg
@@ -1296,8 +1309,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       </div>
 
       {/* Input Area - PROMPT #127 - Improved spacing */}
-      <div className="border-t px-4 py-3 md:px-8 lg:px-12 bg-white rounded-b-xl">
-        <div className="max-w-4xl mx-auto">
+      <div className={`border-t bg-white ${
+        embedded
+          ? 'px-3 py-2'
+          : 'px-4 py-3 md:px-8 lg:px-12 rounded-b-xl'
+      }`}>
+        <div className={embedded ? '' : 'max-w-4xl mx-auto'}>
         {isActive ? (
           <div className="flex flex-col gap-2">
             {/* Show selected options indicator */}
