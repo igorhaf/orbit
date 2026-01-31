@@ -30,8 +30,8 @@ export const Breadcrumbs: React.FC = () => {
 
   // Routes that don't have list pages (only detail pages)
   // These segments should be skipped in breadcrumbs
-  // Note: Removed 'interviews' since it's now project-scoped (/projects/{id}/interviews/{id})
-  const segmentsWithoutListPages = new Set<string>([]);
+  // PROMPT #130 - 'interviews' is a tab inside project page, not a separate page
+  const segmentsWithoutListPages = new Set<string>(['interviews']);
 
   // Custom labels for specific routes
   const routeLabels: Record<string, string> = {
