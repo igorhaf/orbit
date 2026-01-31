@@ -854,6 +854,10 @@ export default function ProjectDetailsPage() {
                       <ReactMarkdown>
                         {editedDescription || project.description}
                       </ReactMarkdown>
+                      {/* PROMPT #128 - Show AI model icon if description was AI-formatted */}
+                      <div className="mt-2 flex justify-end not-prose">
+                        <AIModelBadge model="description-format" usage_type="general" />
+                      </div>
                     </div>
                   )}
                 </CardContent>

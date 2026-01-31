@@ -338,10 +338,14 @@ export default function NewProjectPage() {
                   placeholder="My Awesome Project"
                   className="mt-1"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                   Choose a descriptive name for your project
+                  {/* PROMPT #128 - Show AI model icon for AI-suggested title */}
                   {memoryScanResult?.suggested_title && name === memoryScanResult.suggested_title && (
-                    <span className="text-blue-600 ml-1">(AI suggested)</span>
+                    <>
+                      <AIModelBadge model="memory-scan" usage_type="memory" />
+                      <span className="text-blue-600">(AI suggested)</span>
+                    </>
                   )}
                 </p>
               </div>
@@ -369,7 +373,11 @@ export default function NewProjectPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div className="flex-1">
-                      <h4 className="font-medium text-green-900">Codebase Analyzed</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-green-900">Codebase Analyzed</h4>
+                        {/* PROMPT #128 - Show AI model icon for memory scan */}
+                        <AIModelBadge model="memory-scan" usage_type="memory" />
+                      </div>
                       <p className="text-sm text-green-700 mt-1">
                         {memoryScanResult.scan_summary.code_files} code files scanned from {memoryScanResult.scan_summary.total_files} total files
                       </p>
@@ -609,6 +617,8 @@ export default function NewProjectPage() {
                     <h4 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
                       <span>🎯 Suggested Epics</span>
                       <span className="text-sm font-normal text-gray-500">({suggestedEpics.length} modules)</span>
+                      {/* PROMPT #128 - Show AI model icon for suggested epics */}
+                      <AIModelBadge model="context" usage_type="context" />
                     </h4>
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                       <p className="text-sm text-gray-600 mb-3">

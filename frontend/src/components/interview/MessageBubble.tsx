@@ -102,11 +102,13 @@ export function MessageBubble({
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
       {/* PROMPT #127 - Improved layout: wider messages, better spacing */}
       <div className={`${isUser ? 'max-w-[85%] md:max-w-[70%]' : 'w-full'} ${isUser ? 'order-2' : 'order-1'}`}>
-        {/* Role Badge */}
-        <div className={`text-xs mb-1.5 ${isUser ? 'text-right' : 'text-left'}`}>
+        {/* Role Badge with AI Model indicator */}
+        <div className={`text-xs mb-1.5 flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
           <Badge variant={isUser ? 'info' : 'default'} size="sm">
             {isUser ? 'Você' : 'Assistente IA'}
           </Badge>
+          {/* PROMPT #128 - Show AI model icon for assistant messages */}
+          {!isUser && <AIModelBadge model="interview" usage_type="interview" />}
         </div>
 
         {/* Message Card - PROMPT #56: Using div instead of Card to avoid bg-white override */}

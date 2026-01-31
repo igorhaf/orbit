@@ -18,6 +18,7 @@ import {
   Input,
   Dialog,
   DialogFooter,
+  AIModelBadge,
 } from '@/components/ui';
 import { projectsApi } from '@/lib/api';
 import { Project, ProjectCreate } from '@/lib/types';
@@ -193,9 +194,15 @@ export default function ProjectsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-sm text-gray-600 line-clamp-3 mb-2">
-                    {project.description || 'No description'}
-                  </p>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <p className="text-sm text-gray-600 line-clamp-3">
+                      {project.description || 'No description'}
+                    </p>
+                    {/* PROMPT #128 - Show AI model icon if project has AI-generated context */}
+                    {project.context_human && (
+                      <AIModelBadge model="context" usage_type="context" />
+                    )}
+                  </div>
                   {/* PROMPT #111 - Show code_path */}
                   {project.code_path && (
                     <div className="text-xs text-gray-500 mb-2 font-mono truncate" title={project.code_path}>

@@ -1258,9 +1258,13 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   ) : (
                     <>
                       <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          🤖 AI-Suggested Subtasks ({item.subtask_suggestions.length})
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-semibold text-gray-900">
+                            🤖 AI-Suggested Subtasks ({item.subtask_suggestions.length})
+                          </h3>
+                          {/* PROMPT #128 - Show AI model icon for AI suggestions */}
+                          <AIModelBadge model="interview" usage_type="interview" />
+                        </div>
                       </div>
 
                       {/* Subtasks List */}

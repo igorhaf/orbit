@@ -66,6 +66,9 @@ class TaskBase(BaseModel):
     # Generated Prompt (Meta Prompt Feature)
     generated_prompt: Optional[str] = Field(None, description="Assembled atomic prompt for task execution")
 
+    # PROMPT #128 - Track which AI model generated the content
+    created_by_ai_model: Optional[str] = Field(None, description="AI model that generated this content")
+
     # Legacy Kanban fields (for backward compatibility)
     status: TaskStatus = Field(default=TaskStatus.BACKLOG, description="Legacy Kanban status")
     column: str = Field(default="backlog", max_length=50, description="Legacy Kanban column")
