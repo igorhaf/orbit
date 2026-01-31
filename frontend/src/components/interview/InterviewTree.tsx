@@ -608,7 +608,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
         open={showContextModal}
         onClose={() => setShowContextModal(false)}
         title="Context Interview"
-        size="lg"
+        size="card"
       >
         <div className="h-[600px] overflow-hidden">
           {contextInterviewId && (

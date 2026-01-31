@@ -14,7 +14,7 @@ export interface DialogProps {
   title?: string;
   description?: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'full';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | 'card' | 'full';
   showCloseButton?: boolean;
 }
 
@@ -55,6 +55,7 @@ export const Dialog: React.FC<DialogProps> = ({
     lg: 'max-w-lg',
     xl: 'max-w-xl',
     '2xl': 'max-w-6xl',
+    card: 'max-w-2xl',  // ~672px - same as card width
     full: 'max-w-[90%]',
   };
 
