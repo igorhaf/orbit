@@ -130,8 +130,10 @@ export function MessageBubble({
           {/* Predefined Options */}
           {hasOptions && !isUser && (
             <div className={`${compact ? 'mt-2 p-2' : 'mt-4 p-4'} rounded-lg border-2 ${compact ? 'space-y-1' : 'space-y-2'} ${
-              submitted || readOnly
+              submitted
                 ? 'bg-gray-100 border-gray-300 opacity-60'
+                : readOnly
+                ? 'bg-gray-50 border-gray-300'
                 : 'bg-gray-50 border-gray-200'
             }`}>
               {submitted && !readOnly && (
@@ -150,8 +152,10 @@ export function MessageBubble({
                   <div
                     key={option.id}
                     className={`flex items-center ${compact ? 'p-2' : 'p-3'} rounded-lg border-2 transition-all ${
-                      submitted || readOnly
+                      submitted
                         ? 'border-gray-300 bg-gray-200 cursor-default opacity-60'
+                        : readOnly
+                        ? 'border-gray-300 bg-gray-100 cursor-default'
                         : isSelected
                         ? 'border-blue-500 bg-blue-50 shadow-sm cursor-pointer'
                         : 'border-gray-300 bg-white hover:border-blue-300 hover:bg-gray-50 cursor-pointer'
@@ -167,7 +171,7 @@ export function MessageBubble({
                       className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50`}
                     />
                     <span className={`${compact ? 'ml-2 text-xs' : 'ml-3 text-sm'} font-medium flex-1 ${
-                      submitted || readOnly ? 'text-gray-500' : 'text-gray-900'
+                      submitted ? 'text-gray-500' : 'text-gray-900'
                     }`}>
                       {option.label}
                     </span>
