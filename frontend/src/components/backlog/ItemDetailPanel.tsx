@@ -12,7 +12,7 @@ import { useRouter } from 'next/navigation';  // PROMPT #131 - Navigation to int
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Dialog, DialogFooter } from '@/components/ui';
 import { AIModelBadge } from '@/components/ui/AIModelBadge';
-// PROMPT #131 - Removed ChatInterface, now using list view
+import { ChatInterface } from '@/components/interview';  // PROMPT #131 - Restored for modal view
 import { tasksApi, interviewsApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -34,13 +34,16 @@ interface ItemDetailPanelProps {
   onClose: () => void;
   onUpdate?: () => void;
   onNavigateToItem?: (item: BacklogItem) => void;
+  initialInterviewId?: string | null;  // PROMPT #131 - Open specific interview
 }
 
-export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToItem }: ItemDetailPanelProps) {
+export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToItem, initialInterviewId }: ItemDetailPanelProps) {
   const router = useRouter();  // PROMPT #131 - Navigation to interview page
   const { showError, showSuccess, NotificationComponent } = useNotification();
   const { addJob } = useNotifications(); // PROMPT #128 - Background notifications
   const [activeTab, setActiveTab] = useState<string>('overview');
+  // PROMPT #131 - Selected interview for ChatInterface display
+  const [selectedInterviewId, setSelectedInterviewId] = useState<string | null>(initialInterviewId || null);
   const [relationships, setRelationships] = useState<TaskRelationship[]>([]);
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [transitions, setTransitions] = useState<StatusTransition[]>([]);
@@ -89,6 +92,14 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     setEditedDescription(item.description || '');
     setIsEditingDescription(false);
   }, [item.id, item.description]);
+
+  // PROMPT #131 - Switch to interview tab when initialInterviewId is set
+  useEffect(() => {
+    if (initialInterviewId) {
+      setSelectedInterviewId(initialInterviewId);
+      setActiveTab('interview');
+    }
+  }, [initialInterviewId]);
 
   const fetchItemDetails = async () => {
     setLoading(true);
@@ -1135,108 +1146,136 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </div>
               )}
 
-              {/* Interview Tab - PROMPT #131 - List view like Criteria */}
+              {/* Interview Tab - PROMPT #131 - List view or ChatInterface */}
               {activeTab === 'interview' && (
                 <div className="space-y-4">
-                  {/* Header with count and add button */}
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Interviews ({cardInterviews.length})
-                    </h3>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={handleCreateCardInterview}
-                      disabled={creatingCardInterview}
-                    >
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      {creatingCardInterview ? 'Creating...' : 'New Interview'}
-                    </Button>
-                  </div>
+                  {/* PROMPT #131 - Show ChatInterface when interview is selected */}
+                  {selectedInterviewId ? (
+                    <div className="space-y-3">
+                      {/* Back button */}
+                      <button
+                        onClick={() => setSelectedInterviewId(null)}
+                        className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                        </svg>
+                        Back to interview list
+                      </button>
 
-                  {/* Interview List - Similar to Criteria */}
-                  {loadingInterview ? (
-                    <div className="flex items-center justify-center py-8">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      {/* ChatInterface */}
+                      <div className="border border-gray-200 rounded-lg overflow-hidden" style={{ height: 'calc(100vh - 400px)', minHeight: '400px' }}>
+                        <ChatInterface
+                          interviewId={selectedInterviewId}
+                          interviewMode="card_inference"
+                          onStatusChange={() => fetchCardInterview()}
+                          embedded={true}
+                        />
+                      </div>
                     </div>
-                  ) : cardInterviews.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">No interviews for this card yet</p>
                   ) : (
-                    <ul className="space-y-2">
-                      {cardInterviews.map((interview) => (
-                        <li
-                          key={interview.id}
-                          onClick={() => router.push(`/projects/${item.project_id}/interviews/${interview.id}`)}
-                          className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-colors"
+                    <>
+                      {/* Header with count and add button */}
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          Interviews ({cardInterviews.length})
+                        </h3>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={handleCreateCardInterview}
+                          disabled={creatingCardInterview}
                         >
-                          {/* Interview icon */}
-                          <span className="text-lg">💬</span>
-
-                          {/* Interview info */}
-                          <div className="flex-1 min-w-0">
-                            <span className="text-sm font-medium text-blue-700">
-                              {interview.interview_mode === 'context' ? 'Context Interview' :
-                               interview.interview_mode === 'meta_prompt' ? 'Epic Interview' :
-                               interview.interview_mode === 'card_inference' ? 'Card Interview' :
-                               interview.interview_mode === 'task_focused' ? 'Task Interview' :
-                               'Interview'}
-                            </span>
-                            <span className="text-xs text-gray-500 ml-2">
-                              {interview.conversation_data?.length || 0} messages
-                            </span>
-                          </div>
-
-                          {/* Status badge */}
-                          <span className={`px-2 py-0.5 text-xs rounded-full ${
-                            interview.status === 'completed'
-                              ? 'bg-green-100 text-green-700 border border-green-200'
-                              : interview.status === 'active'
-                              ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                              : 'bg-gray-100 text-gray-700 border border-gray-200'
-                          }`}>
-                            {interview.status}
-                          </span>
-
-                          {/* Arrow icon */}
-                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                           </svg>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                          {creatingCardInterview ? 'Creating...' : 'New Interview'}
+                        </Button>
+                      </div>
 
-                  {/* Interview Traceability (from original interview that created this card) */}
-                  {(item.interview_question_ids?.length > 0 || (item.interview_insights && Object.keys(item.interview_insights).length > 0)) && (
-                    <div className="pt-4 border-t border-gray-200">
-                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Interview Traceability</h3>
+                      {/* Interview List - Similar to Criteria */}
+                      {loadingInterview ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                        </div>
+                      ) : cardInterviews.length === 0 ? (
+                        <p className="text-sm text-gray-500 italic">No interviews for this card yet</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {cardInterviews.map((interview) => (
+                            <li
+                              key={interview.id}
+                              onClick={() => setSelectedInterviewId(interview.id)}
+                              className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-colors"
+                            >
+                              {/* Interview icon */}
+                              <span className="text-lg">💬</span>
 
-                      {/* Question IDs */}
-                      {item.interview_question_ids && item.interview_question_ids.length > 0 && (
-                        <div className="mb-4">
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Referenced Questions</span>
-                          <div className="flex flex-wrap gap-2 mt-2">
-                            {item.interview_question_ids.map((qid) => (
-                              <span key={qid} className="px-2 py-1 text-xs rounded bg-green-100 text-green-700 border border-green-200">
-                                Q{qid}
+                              {/* Interview info */}
+                              <div className="flex-1 min-w-0">
+                                <span className="text-sm font-medium text-blue-700">
+                                  {interview.interview_mode === 'context' ? 'Context Interview' :
+                                   interview.interview_mode === 'meta_prompt' ? 'Epic Interview' :
+                                   interview.interview_mode === 'card_inference' ? 'Card Interview' :
+                                   interview.interview_mode === 'task_focused' ? 'Task Interview' :
+                                   'Interview'}
+                                </span>
+                                <span className="text-xs text-gray-500 ml-2">
+                                  {interview.conversation_data?.length || 0} messages
+                                </span>
+                              </div>
+
+                              {/* Status badge */}
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                interview.status === 'completed'
+                                  ? 'bg-green-100 text-green-700 border border-green-200'
+                                  : interview.status === 'active'
+                                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                                  : 'bg-gray-100 text-gray-700 border border-gray-200'
+                              }`}>
+                                {interview.status}
                               </span>
-                            ))}
-                          </div>
-                        </div>
+
+                              {/* Arrow icon */}
+                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                              </svg>
+                            </li>
+                          ))}
+                        </ul>
                       )}
 
-                      {/* Interview Insights */}
-                      {item.interview_insights && Object.keys(item.interview_insights).length > 0 && (
-                        <div>
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Insights</span>
-                          <pre className="text-xs bg-gray-50 p-3 rounded border border-gray-200 overflow-x-auto mt-2">
-                            {JSON.stringify(item.interview_insights, null, 2)}
-                          </pre>
+                      {/* Interview Traceability (from original interview that created this card) */}
+                      {(item.interview_question_ids?.length > 0 || (item.interview_insights && Object.keys(item.interview_insights).length > 0)) && (
+                        <div className="pt-4 border-t border-gray-200">
+                          <h3 className="text-sm font-semibold text-gray-900 mb-3">Interview Traceability</h3>
+
+                          {/* Question IDs */}
+                          {item.interview_question_ids && item.interview_question_ids.length > 0 && (
+                            <div className="mb-4">
+                              <span className="text-xs font-semibold text-gray-500 uppercase">Referenced Questions</span>
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {item.interview_question_ids.map((qid) => (
+                                  <span key={qid} className="px-2 py-1 text-xs rounded bg-green-100 text-green-700 border border-green-200">
+                                    Q{qid}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Interview Insights */}
+                          {item.interview_insights && Object.keys(item.interview_insights).length > 0 && (
+                            <div>
+                              <span className="text-xs font-semibold text-gray-500 uppercase">Insights</span>
+                              <pre className="text-xs bg-gray-50 p-3 rounded border border-gray-200 overflow-x-auto mt-2">
+                                {JSON.stringify(item.interview_insights, null, 2)}
+                              </pre>
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
+                    </>
                   )}
                 </div>
               )}

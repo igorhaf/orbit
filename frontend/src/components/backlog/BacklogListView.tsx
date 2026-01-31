@@ -8,7 +8,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';  // PROMPT #131 - Navigation to interview page
+// PROMPT #131 - Removed useRouter, now using onInterviewClick callback
 import { Card, CardHeader, CardTitle, CardContent, AIModelBadge } from '@/components/ui';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -45,6 +45,8 @@ interface BacklogListViewProps {
   selectedItemId?: string;  // Currently selected item ID to update after refresh
   // PROMPT #123 - Callback to expose available filter options
   onFilterOptionsChange?: (options: FilterOptions) => void;
+  // PROMPT #131 - Callback when interview is clicked (opens card with interview tab)
+  onInterviewClick?: (item: BacklogItem, interviewId: string) => void;
 }
 
 // Helper function to get item type icon
@@ -129,9 +131,10 @@ export default function BacklogListView({
   filters,
   refreshKey,  // PROMPT #96
   selectedItemId,  // PROMPT #96
-  onFilterOptionsChange  // PROMPT #123
+  onFilterOptionsChange,  // PROMPT #123
+  onInterviewClick  // PROMPT #131 - Interview click callback
 }: BacklogListViewProps) {
-  const router = useRouter();  // PROMPT #131 - Navigation to interview page
+  // PROMPT #131 - Removed router, now using onInterviewClick callback
   const [backlog, setBacklog] = useState<BacklogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -586,7 +589,7 @@ export default function BacklogListView({
         {interviewsMap.get(item.id)?.map((interview) => (
           <div
             key={interview.id}
-            onClick={() => router.push(`/projects/${projectId}/interviews/${interview.id}`)}
+            onClick={() => onInterviewClick?.(item, interview.id)}
             className="flex items-center gap-2 py-1.5 px-4 hover:bg-blue-50 cursor-pointer transition-colors border-t border-gray-100"
             style={{ paddingLeft: `${depth * 1.5 + 2.5}rem` }}
           >

@@ -45,6 +45,8 @@ export default function ProjectDetailsPage() {
   // PROMPT #123 - Available filter options from backlog
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
   const [availableAssignees, setAvailableAssignees] = useState<string[]>([]);
+  // PROMPT #131 - Selected interview to open in ItemDetailPanel
+  const [selectedInterviewId, setSelectedInterviewId] = useState<string | null>(null);
 
   // RAG states (PROMPT #90)
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
@@ -473,12 +475,20 @@ export default function ProjectDetailsPage() {
                 <BacklogListView
                   projectId={projectId}
                   filters={backlogFilters}
-                  onItemSelect={setSelectedBacklogItem}
+                  onItemSelect={(item) => {
+                    setSelectedBacklogItem(item);
+                    setSelectedInterviewId(null);  // Clear interview when selecting item normally
+                  }}
                   refreshKey={backlogRefreshKey}
                   selectedItemId={selectedBacklogItem?.id}
                   onFilterOptionsChange={(options) => {
                     setAvailableLabels(options.labels);
                     setAvailableAssignees(options.assignees);
+                  }}
+                  onInterviewClick={(item, interviewId) => {
+                    // PROMPT #131 - Open card with interview tab and specific interview
+                    setSelectedBacklogItem(item);
+                    setSelectedInterviewId(interviewId);
                   }}
                 />
               </div>
@@ -488,9 +498,13 @@ export default function ProjectDetailsPage() {
             {selectedBacklogItem && (
               <ItemDetailPanel
                 item={selectedBacklogItem}
-                onClose={() => setSelectedBacklogItem(null)}
+                onClose={() => {
+                  setSelectedBacklogItem(null);
+                  setSelectedInterviewId(null);
+                }}
                 onUpdate={handleTasksUpdate}
                 onNavigateToItem={(item) => setSelectedBacklogItem(item)}
+                initialInterviewId={selectedInterviewId}  // PROMPT #131 - Open specific interview
               />
             )}
           </div>
