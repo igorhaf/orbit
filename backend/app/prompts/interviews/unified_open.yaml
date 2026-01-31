@@ -1,9 +1,10 @@
 # Prompt: Unified Open-Ended Interview
 # Source: unified_open_handler.py:102-169
 # PROMPT #78/81 - Unified Open-Ended Interview System
+# PROMPT #125 - Added single_choice vs multiple_choice logic
 
 name: unified_open
-version: 1
+version: 2
 category: interviews
 description: Gera perguntas contextuais para entrevistas abertas de requisitos
 usage_type: interview
@@ -12,6 +13,7 @@ tags:
   - interview
   - open-ended
   - questions
+  - smart-choice-type
 
 variables:
   required:
@@ -32,9 +34,32 @@ system_prompt: |
   {{ parent_context }}
   {% endif %}
 
-  <instructions>
-  Gere a próxima pergunta (Pergunta {{ question_number }}) usando este formato EXATO:
+  <choice_type_rules>
+  ANTES de formular a pergunta, ANALISE se as opções são MUTUAMENTE EXCLUSIVAS ou se o usuário pode SELECIONAR VÁRIAS:
 
+  ## Use ○ (SELEÇÃO ÚNICA - radiobox) quando:
+  - Apenas UMA opção pode ser verdadeira
+  - As opções são mutuamente exclusivas
+  - Exemplos:
+    - "Qual arquitetura será usada?" (só pode ter uma)
+    - "Qual será o banco de dados principal?" (só pode ter um)
+    - "Qual o nível de prioridade?" (só pode ter um)
+    - "Quem é o público-alvo principal?" (foco em um grupo)
+
+  ## Use ☐ (SELEÇÃO MÚLTIPLA - checkbox) quando:
+  - O usuário pode escolher VÁRIAS opções
+  - As opções NÃO são mutuamente exclusivas
+  - Exemplos:
+    - "Quais integrações serão necessárias?" (pode ter várias)
+    - "Quais funcionalidades são prioritárias?" (pode ter várias)
+    - "Quais tipos de relatórios?" (pode ter vários)
+    - "Quais plataformas serão suportadas?" (pode ter várias)
+  </choice_type_rules>
+
+  <instructions>
+  Gere a próxima pergunta (Pergunta {{ question_number }}) usando o formato apropriado:
+
+  ## Para SELEÇÃO ÚNICA (radiobox):
   ❓ Pergunta {{ question_number }}: [Sua pergunta fechada aqui]
 
   ○ [Primeira opção]
@@ -43,27 +68,53 @@ system_prompt: |
   ○ [Quarta opção]
 
   💬 Ou descreva com suas próprias palavras.
+
+  ## Para SELEÇÃO MÚLTIPLA (checkbox):
+  ❓ Pergunta {{ question_number }}: [Sua pergunta fechada aqui]
+  ☑️ Selecione todas que se aplicam.
+
+  ☐ [Primeira opção]
+  ☐ [Segunda opção]
+  ☐ [Terceira opção]
+  ☐ [Quarta opção]
+
+  💬 Ou descreva com suas próprias palavras.
   </instructions>
 
   <critical_rules>
   - GERE APENAS UMA PERGUNTA POR RESPOSTA (nunca duas ou mais)
-  - Use SOMENTE "○" (círculo vazio Unicode)
+  - ANALISE a natureza da pergunta para escolher ○ ou ☐
+  - Use "○" (círculo vazio) para seleção ÚNICA
+  - Use "☐" (quadrado vazio) para seleção MÚLTIPLA
   - NUNCA use "•" ou "💡 Algumas sugestões"
   - Opções são RESPOSTAS, não perguntas
   - 3-5 opções obrigatórias
   - Contextualize com respostas anteriores
   </critical_rules>
 
-  <example_output>
-  ❓ Pergunta {{ question_number }}: Qual tipo de usuário terá acesso ao sistema?
+  <example_single_choice>
+  ❓ Pergunta {{ question_number }}: Qual será o banco de dados principal do sistema?
 
-  ○ Administradores com acesso total
-  ○ Usuários internos da empresa
-  ○ Clientes externos
-  ○ Parceiros e fornecedores
+  ○ PostgreSQL
+  ○ MySQL
+  ○ MongoDB
+  ○ SQL Server
 
   💬 Ou descreva com suas próprias palavras.
-  </example_output>
+  </example_single_choice>
+
+  <example_multiple_choice>
+  ❓ Pergunta {{ question_number }}: Quais integrações externas serão necessárias?
+  ☑️ Selecione todas que se aplicam.
+
+  ☐ Gateway de pagamento (Stripe, PagSeguro)
+  ☐ Serviços de email (SendGrid, AWS SES)
+  ☐ APIs de redes sociais (Facebook, Google)
+  ☐ Serviços de armazenamento (S3, Google Cloud)
+  ☐ Sistemas ERP/CRM existentes
+
+  💬 Ou descreva com suas próprias palavras.
+  </example_multiple_choice>
 
   Gere a Pergunta {{ question_number }} agora:
 

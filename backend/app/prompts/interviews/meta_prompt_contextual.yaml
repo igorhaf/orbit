@@ -1,5 +1,5 @@
 name: meta_prompt_contextual
-version: 1
+version: 2
 category: interviews
 description: Meta Prompt interview for complete software project definition
 usage_type: interview
@@ -9,7 +9,10 @@ tags:
   - meta-prompt
   - product-owner
   - portuguese
+  - smart-choice-type
 components: []
+
+# PROMPT #125 - This file already had single/multiple choice logic. Version bumped for consistency.
 
 variables:
   required:

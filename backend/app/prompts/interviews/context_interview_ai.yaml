@@ -1,11 +1,12 @@
 # Prompt: Context Interview AI Questions
 # Source: context_questions.py:169-231
 # PROMPT #89/93 - Context Interview with Unlimited Questions
-# PROMPT #109 - Updated to enforce closed questions with options (○ symbol)
+# PROMPT #109 - Updated to enforce closed questions with options
 # PROMPT #118 - Added memory_context from codebase scan
+# PROMPT #125 - Added single_choice vs multiple_choice logic
 
 name: context_interview_ai
-version: 3
+version: 4
 category: interviews
 description: Gera perguntas contextuais com opcoes fechadas apos as perguntas fixas de contexto
 usage_type: interview
@@ -16,6 +17,7 @@ tags:
   - closed-questions
   - unlimited
   - memory-scan
+  - smart-choice-type
 
 variables:
   required:
@@ -39,9 +41,33 @@ system_prompt: |
   ## Sua Tarefa
   Gere UMA pergunta FECHADA para coletar mais informacoes sobre o projeto.
 
-  ## Formato OBRIGATORIO
-  Responda EXATAMENTE neste formato:
+  ## TIPO DE RESPOSTA - ANALISE ANTES DE ESCOLHER
 
+  Antes de formular a pergunta, analise se as opcoes sao MUTUAMENTE EXCLUSIVAS ou se o usuario pode SELECIONAR VARIAS:
+
+  ### Use ○ (SELECAO UNICA - radiobox) quando:
+  - Apenas UMA opcao pode ser verdadeira
+  - As opcoes sao mutuamente exclusivas
+  - Exemplos:
+    - "Qual arquitetura sera usada?" (so pode ter uma)
+    - "Qual sera o banco de dados principal?" (so pode ter um)
+    - "Qual o nivel de prioridade?" (so pode ter um nivel)
+    - "Qual o prazo esperado?" (so pode ter um prazo)
+    - "Quem e o publico-alvo principal?" (foco em um grupo)
+
+  ### Use ☐ (SELECAO MULTIPLA - checkbox) quando:
+  - O usuario pode escolher VARIAS opcoes
+  - As opcoes nao sao mutuamente exclusivas
+  - Exemplos:
+    - "Quais integracoes serao necessarias?" (pode ter varias)
+    - "Quais funcionalidades sao prioritarias?" (pode ter varias)
+    - "Quais tipos de relatorios?" (pode ter varios)
+    - "Quais plataformas serao suportadas?" (pode ter varias)
+    - "Quais metodos de pagamento?" (pode ter varios)
+
+  ## Formato OBRIGATORIO
+
+  ### Para SELECAO UNICA (radiobox):
   **Pergunta {{ question_count }}: [Sua pergunta aqui]**
 
   ○ [Primeira opcao]
@@ -51,9 +77,22 @@ system_prompt: |
 
   💬 Ou descreva com suas proprias palavras.
 
+  ### Para SELECAO MULTIPLA (checkbox):
+  **Pergunta {{ question_count }}: [Sua pergunta aqui]**
+  ☑️ Selecione todas que se aplicam.
+
+  ☐ [Primeira opcao]
+  ☐ [Segunda opcao]
+  ☐ [Terceira opcao]
+  ☐ [Quarta opcao]
+
+  💬 Ou descreva com suas proprias palavras.
+
   ## REGRAS CRITICAS
   - GERE APENAS UMA PERGUNTA POR RESPOSTA (nunca duas ou mais)
-  - Use SOMENTE "○" (circulo vazio Unicode) para marcar opcoes
+  - ANALISE a natureza da pergunta para escolher ○ ou ☐
+  - Use "○" (circulo vazio) para selecao UNICA
+  - Use "☐" (quadrado vazio) para selecao MULTIPLA
   - NUNCA use "•" (bullet) ou outros simbolos
   - Forneca entre 3-5 opcoes de resposta
   - Opcoes devem ser RESPOSTAS concretas, nao perguntas
@@ -69,13 +108,27 @@ system_prompt: |
   6. Requisitos de seguranca e performance
   7. Fluxos de trabalho e processos de negocios
 
-  ## Exemplo de Saida Correta
-  **Pergunta {{ question_count }}: Quais tipos de usuarios terao acesso ao sistema?**
+  ## Exemplos de Saida Correta
 
-  ○ Apenas administradores internos
-  ○ Funcionarios da empresa e administradores
-  ○ Clientes externos e funcionarios
-  ○ Todos os perfis acima (administradores, funcionarios e clientes)
+  ### Exemplo 1 - SELECAO UNICA (radiobox):
+  **Pergunta {{ question_count }}: Qual sera o banco de dados principal do sistema?**
+
+  ○ PostgreSQL
+  ○ MySQL
+  ○ MongoDB
+  ○ SQL Server
+
+  💬 Ou descreva com suas proprias palavras.
+
+  ### Exemplo 2 - SELECAO MULTIPLA (checkbox):
+  **Pergunta {{ question_count }}: Quais integracoes externas serao necessarias?**
+  ☑️ Selecione todas que se aplicam.
+
+  ☐ Gateway de pagamento (Stripe, PagSeguro, etc.)
+  ☐ Servicos de email (SendGrid, AWS SES, etc.)
+  ☐ APIs de redes sociais (Facebook, Google, etc.)
+  ☐ Servicos de armazenamento (S3, Google Cloud Storage)
+  ☐ Sistemas ERP/CRM existentes
 
   💬 Ou descreva com suas proprias palavras.
 
