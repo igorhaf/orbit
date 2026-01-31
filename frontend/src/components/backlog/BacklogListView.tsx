@@ -8,11 +8,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';  // PROMPT #131 - Navigation to interview page
 import { Card, CardHeader, CardTitle, CardContent, AIModelBadge } from '@/components/ui';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
-import { tasksApi } from '@/lib/api';
-import { BacklogItem, ItemType, PriorityLevel, TaskStatus } from '@/lib/types';
+import { tasksApi, interviewsApi } from '@/lib/api';  // PROMPT #131 - Added interviewsApi
+import { BacklogItem, ItemType, PriorityLevel, TaskStatus, Interview } from '@/lib/types';  // PROMPT #131 - Added Interview
 import { TaskCard } from './TaskCard'; // PROMPT #68
 
 // PROMPT #94 - Helper to check if item is suggested
@@ -130,6 +131,7 @@ export default function BacklogListView({
   selectedItemId,  // PROMPT #96
   onFilterOptionsChange  // PROMPT #123
 }: BacklogListViewProps) {
+  const router = useRouter();  // PROMPT #131 - Navigation to interview page
   const [backlog, setBacklog] = useState<BacklogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -140,6 +142,9 @@ export default function BacklogListView({
   // PROMPT #94 - State for approve/reject actions
   const [activatingId, setActivatingId] = useState<string | null>(null);
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+
+  // PROMPT #131 - Interviews state (map of taskId -> interviews)
+  const [interviewsMap, setInterviewsMap] = useState<Map<string, Interview[]>>(new Map());
 
   // PROMPT #123 - Extract labels and assignees from backlog items
   const extractFilterOptions = (items: BacklogItem[]): FilterOptions => {
@@ -210,7 +215,33 @@ export default function BacklogListView({
 
   useEffect(() => {
     fetchBacklog();
+    fetchInterviews();  // PROMPT #131 - Fetch interviews
   }, [projectId, filters?.item_type, filters?.priority, filters?.assignee, filters?.labels, filters?.status, refreshKey]);  // PROMPT #123 - Don't re-fetch on search change
+
+  // PROMPT #131 - Fetch interviews for all items in the project
+  const fetchInterviews = async () => {
+    try {
+      const interviewsRes = await interviewsApi.list();
+      const interviews = interviewsRes.data || interviewsRes;
+
+      // Build map of taskId -> interviews
+      const map = new Map<string, Interview[]>();
+      if (Array.isArray(interviews)) {
+        interviews
+          .filter((i: Interview) => i.project_id === projectId && i.parent_task_id)
+          .forEach((interview: Interview) => {
+            const taskId = interview.parent_task_id!;
+            const existing = map.get(taskId) || [];
+            existing.push(interview);
+            map.set(taskId, existing);
+          });
+      }
+      setInterviewsMap(map);
+    } catch (error) {
+      console.error('Error fetching interviews:', error);
+      setInterviewsMap(new Map());
+    }
+  };
 
   const fetchBacklog = async () => {
     setLoading(true);
@@ -550,6 +581,37 @@ export default function BacklogListView({
             </div>
           )}
         </div>
+
+        {/* PROMPT #131 - Render Interviews for this item */}
+        {interviewsMap.get(item.id)?.map((interview) => (
+          <div
+            key={interview.id}
+            onClick={() => router.push(`/projects/${projectId}/interviews/${interview.id}`)}
+            className="flex items-center gap-2 py-1.5 px-4 hover:bg-blue-50 cursor-pointer transition-colors border-t border-gray-100"
+            style={{ paddingLeft: `${depth * 1.5 + 2.5}rem` }}
+          >
+            <span className="text-sm">💬</span>
+            <span className="text-sm font-medium text-blue-700">
+              {interview.interview_mode === 'context' ? 'Context Interview' :
+               interview.interview_mode === 'meta_prompt' ? 'Epic Interview' :
+               interview.interview_mode === 'card_inference' ? 'Card Interview' :
+               interview.interview_mode === 'task_focused' ? 'Task Interview' :
+               'Interview'}
+            </span>
+            <span className="text-xs text-gray-500">
+              {interview.conversation_data?.length || 0} msgs
+            </span>
+            <span className={`ml-auto px-1.5 py-0.5 text-xs rounded ${
+              interview.status === 'completed'
+                ? 'bg-green-100 text-green-700'
+                : interview.status === 'active'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-gray-100 text-gray-600'
+            }`}>
+              {interview.status}
+            </span>
+          </div>
+        ))}
 
         {/* Render Children (if expanded) */}
         {hasChildren && isExpanded && (

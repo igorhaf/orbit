@@ -8,10 +8,11 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';  // PROMPT #131 - Navigation to interview page
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Dialog, DialogFooter } from '@/components/ui';
 import { AIModelBadge } from '@/components/ui/AIModelBadge';
-import { ChatInterface } from '@/components/interview';  // PROMPT #130 - Embedded interview
+// PROMPT #131 - Removed ChatInterface, now using list view
 import { tasksApi, interviewsApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -36,6 +37,7 @@ interface ItemDetailPanelProps {
 }
 
 export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToItem }: ItemDetailPanelProps) {
+  const router = useRouter();  // PROMPT #131 - Navigation to interview page
   const { showError, showSuccess, NotificationComponent } = useNotification();
   const { addJob } = useNotifications(); // PROMPT #128 - Background notifications
   const [activeTab, setActiveTab] = useState<string>('overview');
@@ -73,8 +75,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   // Check if item is a suggested/draft item
   const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
 
-  // PROMPT #130 - Card interview state
-  const [cardInterview, setCardInterview] = useState<Interview | null>(null);
+  // PROMPT #131 - Card interviews state (list instead of single)
+  const [cardInterviews, setCardInterviews] = useState<Interview[]>([]);
   const [loadingInterview, setLoadingInterview] = useState(false);
   const [creatingCardInterview, setCreatingCardInterview] = useState(false);
 
@@ -122,26 +124,26 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     }
   };
 
-  // PROMPT #130 - Fetch interview for this card
+  // PROMPT #131 - Fetch ALL interviews for this card (list)
   const fetchCardInterview = async () => {
     setLoadingInterview(true);
     try {
       const interviewsRes = await interviewsApi.list();
       const interviews = interviewsRes.data || interviewsRes;
-      // Find interview with parent_task_id = this item's id
-      const cardInt = Array.isArray(interviews)
-        ? interviews.find((i: Interview) => i.parent_task_id === item.id)
-        : null;
-      setCardInterview(cardInt || null);
+      // Find ALL interviews with parent_task_id = this item's id
+      const cardInts = Array.isArray(interviews)
+        ? interviews.filter((i: Interview) => i.parent_task_id === item.id)
+        : [];
+      setCardInterviews(cardInts);
     } catch (error) {
-      console.error('Error fetching card interview:', error);
-      setCardInterview(null);
+      console.error('Error fetching card interviews:', error);
+      setCardInterviews([]);
     } finally {
       setLoadingInterview(false);
     }
   };
 
-  // PROMPT #130 - Create new interview for this card
+  // PROMPT #131 - Create new interview for this card and navigate to it
   const handleCreateCardInterview = async () => {
     setCreatingCardInterview(true);
     try {
@@ -153,7 +155,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         use_card_focused: true,
       });
       const newInterview = response.data || response;
-      setCardInterview(newInterview);
+      // Navigate to the new interview page
+      router.push(`/projects/${item.project_id}/interviews/${newInterview.id}`);
     } catch (error) {
       console.error('Failed to create card interview:', error);
       showError('Failed to create interview');
@@ -439,10 +442,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   ];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-black bg-opacity-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-[90%] h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-start justify-between p-6 border-b">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-lg shadow-2xl w-full max-w-[90%] max-h-[90vh] overflow-y-auto">
+        {/* Header - PROMPT #131 - Now scrollable, not fixed */}
+        <div className="flex items-start justify-between p-6 border-b sticky top-0 bg-white z-10">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
               <span className="text-2xl">{getItemTypeIcon(item.item_type)}</span>
@@ -524,8 +527,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 px-6 pt-4 border-b overflow-x-auto">
+        {/* Tabs - PROMPT #131 - Sticky for usability */}
+        <div className="flex gap-1 px-6 pt-4 border-b overflow-x-auto sticky top-[92px] bg-white z-10">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -552,8 +555,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           ))}
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        {/* Content - PROMPT #131 - No longer needs overflow, parent scrolls */}
+        <div className="p-6">
           {loading && (
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -1132,86 +1135,109 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </div>
               )}
 
-              {/* Interview Tab - PROMPT #130 */}
+              {/* Interview Tab - PROMPT #131 - List view like Criteria */}
               {activeTab === 'interview' && (
-                <div className="space-y-6">
-                  {/* Card Interview Chat */}
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Card Interview</h3>
-
-                    {loadingInterview ? (
-                      <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                      </div>
-                    ) : cardInterview ? (
-                      <div className="border border-gray-200 rounded-lg overflow-hidden h-[500px]">
-                        <ChatInterface
-                          interviewId={cardInterview.id}
-                          interviewMode="card_inference"
-                          onStatusChange={() => fetchCardInterview()}
-                          embedded={true}
-                        />
-                      </div>
-                    ) : (
-                      <div className="text-center py-8 bg-gray-50 rounded-lg border border-gray-200">
-                        <svg
-                          className="mx-auto h-10 w-10 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                          />
-                        </svg>
-                        <p className="mt-2 text-sm text-gray-600">No interview for this card yet</p>
-                        <p className="text-xs text-gray-500 mt-1">Start an interview to refine this card with AI assistance</p>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          className="mt-4"
-                          onClick={handleCreateCardInterview}
-                          disabled={creatingCardInterview}
-                        >
-                          {creatingCardInterview ? 'Creating...' : 'Start Card Interview'}
-                        </Button>
-                      </div>
-                    )}
+                <div className="space-y-4">
+                  {/* Header with count and add button */}
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Interviews ({cardInterviews.length})
+                    </h3>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleCreateCardInterview}
+                      disabled={creatingCardInterview}
+                    >
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      {creatingCardInterview ? 'Creating...' : 'New Interview'}
+                    </Button>
                   </div>
+
+                  {/* Interview List - Similar to Criteria */}
+                  {loadingInterview ? (
+                    <div className="flex items-center justify-center py-8">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    </div>
+                  ) : cardInterviews.length === 0 ? (
+                    <p className="text-sm text-gray-500 italic">No interviews for this card yet</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {cardInterviews.map((interview) => (
+                        <li
+                          key={interview.id}
+                          onClick={() => router.push(`/projects/${item.project_id}/interviews/${interview.id}`)}
+                          className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-colors"
+                        >
+                          {/* Interview icon */}
+                          <span className="text-lg">💬</span>
+
+                          {/* Interview info */}
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-medium text-blue-700">
+                              {interview.interview_mode === 'context' ? 'Context Interview' :
+                               interview.interview_mode === 'meta_prompt' ? 'Epic Interview' :
+                               interview.interview_mode === 'card_inference' ? 'Card Interview' :
+                               interview.interview_mode === 'task_focused' ? 'Task Interview' :
+                               'Interview'}
+                            </span>
+                            <span className="text-xs text-gray-500 ml-2">
+                              {interview.conversation_data?.length || 0} messages
+                            </span>
+                          </div>
+
+                          {/* Status badge */}
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            interview.status === 'completed'
+                              ? 'bg-green-100 text-green-700 border border-green-200'
+                              : interview.status === 'active'
+                              ? 'bg-blue-100 text-blue-700 border border-blue-200'
+                              : 'bg-gray-100 text-gray-700 border border-gray-200'
+                          }`}>
+                            {interview.status}
+                          </span>
+
+                          {/* Arrow icon */}
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   {/* Interview Traceability (from original interview that created this card) */}
-                  <div className="pt-4 border-t border-gray-200">
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Interview Traceability</h3>
+                  {(item.interview_question_ids?.length > 0 || (item.interview_insights && Object.keys(item.interview_insights).length > 0)) && (
+                    <div className="pt-4 border-t border-gray-200">
+                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Interview Traceability</h3>
 
-                    {/* Question IDs */}
-                    {item.interview_question_ids && item.interview_question_ids.length > 0 ? (
-                      <div className="mb-4">
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Referenced Questions</span>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {item.interview_question_ids.map((qid) => (
-                            <span key={qid} className="px-2 py-1 text-xs rounded bg-green-100 text-green-700 border border-green-200">
-                              Q{qid}
-                            </span>
-                          ))}
+                      {/* Question IDs */}
+                      {item.interview_question_ids && item.interview_question_ids.length > 0 && (
+                        <div className="mb-4">
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Referenced Questions</span>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {item.interview_question_ids.map((qid) => (
+                              <span key={qid} className="px-2 py-1 text-xs rounded bg-green-100 text-green-700 border border-green-200">
+                                Q{qid}
+                              </span>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ) : (
-                      <p className="text-sm text-gray-500 italic mb-4">Not linked to any interview questions</p>
-                    )}
+                      )}
 
-                    {/* Interview Insights */}
-                    {item.interview_insights && Object.keys(item.interview_insights).length > 0 && (
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Insights</span>
-                        <pre className="text-xs bg-gray-50 p-3 rounded border border-gray-200 overflow-x-auto mt-2">
-                          {JSON.stringify(item.interview_insights, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
+                      {/* Interview Insights */}
+                      {item.interview_insights && Object.keys(item.interview_insights).length > 0 && (
+                        <div>
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Insights</span>
+                          <pre className="text-xs bg-gray-50 p-3 rounded border border-gray-200 overflow-x-auto mt-2">
+                            {JSON.stringify(item.interview_insights, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1472,8 +1498,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between p-6 border-t bg-gray-50">
+        {/* Footer - PROMPT #131 - Now part of scrollable content, not fixed */}
+        <div className="flex items-center justify-between p-6 border-t bg-gray-50 mt-6">
           <Button variant="ghost" onClick={onClose}>
             Close
           </Button>

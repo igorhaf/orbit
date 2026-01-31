@@ -6,7 +6,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';  // PROMPT #131 - Removed useRouter
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { Layout, Breadcrumbs } from '@/components/layout';
@@ -14,18 +14,18 @@ import { Card, CardHeader, CardTitle, CardContent, Button, Badge, AIModelBadge }
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
 import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
-import { InterviewTree } from '@/components/interview';  // PROMPT #130 - Tree view for interviews
+// PROMPT #131 - Removed InterviewTree, interviews now shown below backlog items
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
 import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
-import { projectsApi, tasksApi, interviewsApi, ragApi } from '@/lib/api';
+import { projectsApi, tasksApi, ragApi } from '@/lib/api';  // PROMPT #131 - Removed interviewsApi
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
 
-type Tab = 'kanban' | 'overview' | 'interviews' | 'backlog' | 'rag' | 'analytics' | 'commits';  // PROMPT #113 - Added commits tab
+type Tab = 'kanban' | 'overview' | 'backlog' | 'rag' | 'analytics' | 'commits';  // PROMPT #131 - Removed interviews tab
 
 export default function ProjectDetailsPage() {
   const params = useParams();
-  const router = useRouter();
+  // PROMPT #131 - Removed unused router
   const projectId = params.id as string;
   const { showError, NotificationComponent } = useNotification();
 
@@ -404,12 +404,12 @@ export default function ProjectDetailsPage() {
         {/* Tabs */}
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
+            {/* PROMPT #131 - Removed Interviews tab, now shown below backlog items */}
             {[
               { id: 'overview', label: 'Overview' },
               { id: 'backlog', label: 'Backlog' },
               { id: 'kanban', label: 'Kanban Board' },
               { id: 'commits', label: 'Commits' },  // PROMPT #113 - Git Integration
-              { id: 'interviews', label: 'Interviews' },
               { id: 'rag', label: '📊 RAG Analytics' },
               { id: 'analytics', label: '🚨 Blocking Analytics' },
             ].map((tab) => (
@@ -509,21 +509,7 @@ export default function ProjectDetailsPage() {
           </div>
         )}
 
-        {activeTab === 'interviews' && (
-          <div>
-            {/* PROMPT #130 - Tree view showing Context Interview + Card Interviews */}
-            <InterviewTree
-              projectId={projectId}
-              project={project || undefined}
-              onSelectCard={(card, openInterviewTab) => {
-                // Switch to backlog tab and select the card
-                setActiveTab('backlog');
-                setSelectedBacklogItem(card);
-                // TODO: If openInterviewTab is true, ItemDetailPanel should open interview tab
-              }}
-            />
-          </div>
-        )}
+        {/* PROMPT #131 - Removed Interviews tab, now integrated into BacklogListView */}
 
         {/* RAG Analytics Tab (PROMPT #90) */}
         {activeTab === 'rag' && (
