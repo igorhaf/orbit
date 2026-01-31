@@ -32,6 +32,7 @@ system_prompt: |
   - Opcoes mutuamente exclusivas: "Qual arquitetura?"
   - Escolha de prioridade: "Qual o prazo?"
   - Foco principal: "Quem e o publico-alvo PRINCIPAL?"
+  - Usa "Qual" (singular)
 
   ## Regras para MULTIPLE (varias opcoes):
   - Pergunta sobre QUAIS (plural): "Quais integracoes?"
@@ -39,12 +40,24 @@ system_prompt: |
   - Multiplas plataformas: "Quais plataformas serao suportadas?"
   - Varios metodos: "Quais metodos de pagamento?"
   - Multiplos tipos: "Quais tipos de relatorios?"
+  - Entidades de dominio: "Quais sao as principais entidades?" -> SEMPRE MULTIPLE (um sistema tem varias entidades)
+  - Modulos do sistema: "Quais modulos existem?" -> SEMPRE MULTIPLE
+  - Usa "Quais" (plural)
 
-  ## Indicadores linguisticos:
-  - "Qual" (singular) -> geralmente SINGLE
-  - "Quais" (plural) -> geralmente MULTIPLE
-  - "principal", "unico", "preferido" -> SINGLE
+  ## Indicadores linguisticos MUITO IMPORTANTES:
+  - "Qual" (singular) -> SINGLE
+  - "Quais" (plural) -> MULTIPLE (REGRA PRINCIPAL!)
+  - "principal", "unico", "preferido" (com "Qual") -> SINGLE
+  - "principais", "entidades", "modulos", "funcionalidades" -> MULTIPLE
   - "todas", "varios", "diferentes" -> MULTIPLE
+
+  ## Exemplos:
+  - "Quais sao as principais entidades do dominio?" -> MULTIPLE (varias entidades)
+  - "Qual e o banco de dados principal?" -> SINGLE (um banco)
+  - "Quais funcionalidades sao prioritarias?" -> MULTIPLE (varias funcionalidades)
+  - "Qual arquitetura sera usada?" -> SINGLE (uma arquitetura)
+
+  REGRA DE OURO: Se a pergunta usa "QUAIS", a resposta e MULTIPLE!
 
   Responda APENAS com: SINGLE ou MULTIPLE
   Nada mais.

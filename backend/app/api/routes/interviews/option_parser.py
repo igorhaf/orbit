@@ -249,11 +249,32 @@ async def analyze_and_convert_choice_type(content: str, db) -> str:
 
     if not has_radio and not has_checkbox:
         # No options, nothing to analyze
+        logger.info("📋 No options found (no ○ or ☐), skipping choice type analysis")
         return content
 
-    # Extract question text (everything before first option)
-    question_match = re.search(r'(?:❓\s*)?(?:Pergunta\s*\d+:?\s*)?([^\n○☐]+)', normalized)
-    question_text = question_match.group(1).strip() if question_match else ""
+    # PROMPT #125 FIX - Extract question text, handling markdown **bold** format
+    # Format can be: **Pergunta 5: Quais são...** or ❓ Pergunta 5: Quais são...
+    # First, try to find the question line (before options)
+    lines = normalized.split('\n')
+    question_text = ""
+    for line in lines:
+        # Skip empty lines and option lines
+        line_stripped = line.strip()
+        if not line_stripped:
+            continue
+        if line_stripped.startswith('○') or line_stripped.startswith('☐') or line_stripped.startswith('☑'):
+            break
+        # Check if this looks like a question line
+        if 'pergunta' in line_stripped.lower() or '❓' in line_stripped:
+            # Remove markdown bold markers and emoji
+            clean_line = re.sub(r'\*\*', '', line_stripped)
+            clean_line = re.sub(r'^❓\s*', '', clean_line)
+            # Remove "Pergunta N:" prefix
+            clean_line = re.sub(r'^Pergunta\s*\d+:?\s*', '', clean_line)
+            question_text = clean_line.strip()
+            break
+
+    logger.info(f"📋 Extracted question for analysis: '{question_text[:80]}...' (has_radio={has_radio}, has_checkbox={has_checkbox})")
 
     # Extract options text
     if has_radio:
@@ -267,8 +288,10 @@ async def analyze_and_convert_choice_type(content: str, db) -> str:
     )]
 
     if not options or not question_text:
+        logger.warning(f"⚠️  Cannot analyze choice type: question_text='{question_text[:50] if question_text else 'EMPTY'}', options={len(options) if options else 0}")
         return normalized
 
+    logger.info(f"📋 Options extracted for analysis: {options[:3]}... (total: {len(options)})")
     options_text = "\n".join(f"- {opt}" for opt in options)
 
     try:
@@ -312,12 +335,24 @@ async def analyze_and_convert_choice_type(content: str, db) -> str:
             # Add "Selecione todas que se aplicam" if not present
             if 'selecione todas' not in converted.lower():
                 # Find the question line and add after it
-                converted = re.sub(
-                    r'((?:❓\s*)?Pergunta\s*\d+:?\s*[^\n]+)',
-                    r'\1\n☑️ Selecione todas que se aplicam.',
-                    converted,
-                    count=1
-                )
+                # PROMPT #125 FIX - Handle both formats: **Pergunta N:...** and ❓ Pergunta N:...
+                # Try markdown format first
+                if re.search(r'\*\*Pergunta\s*\d+:', converted):
+                    converted = re.sub(
+                        r'(\*\*Pergunta\s*\d+:?\s*[^\n]+\*\*)',
+                        r'\1\n☑️ Selecione todas que se aplicam.',
+                        converted,
+                        count=1
+                    )
+                else:
+                    # Try emoji format
+                    converted = re.sub(
+                        r'((?:❓\s*)?Pergunta\s*\d+:?\s*[^\n]+)',
+                        r'\1\n☑️ Selecione todas que se aplicam.',
+                        converted,
+                        count=1
+                    )
+            logger.info(f"✅ Converted to multiple_choice. First 200 chars: {converted[:200]}")
             return converted
         else:
             # Convert ☐ to ○
@@ -325,6 +360,7 @@ async def analyze_and_convert_choice_type(content: str, db) -> str:
             converted = re.sub(r'[☐☑]\s*', '○ ', normalized)
             # Remove "Selecione todas que se aplicam" line
             converted = re.sub(r'\n?☑️?\s*[Ss]elecione todas que se aplicam\.?\n?', '\n', converted)
+            logger.info(f"✅ Converted to single_choice. First 200 chars: {converted[:200]}")
             return converted
 
     except Exception as e:
