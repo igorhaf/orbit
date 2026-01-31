@@ -1237,6 +1237,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                   onOptionSubmit={handleOptionSubmit}
                   selectedOptions={isUnanswered ? selectedOptions : undefined}
                   setSelectedOptions={isUnanswered ? setSelectedOptions : undefined}
+                  readOnly={readOnly}
                 />
               );
             })}

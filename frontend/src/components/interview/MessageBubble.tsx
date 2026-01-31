@@ -19,13 +19,15 @@ interface Props {
   onOptionSubmit?: (selectedOptions: string[]) => void;
   selectedOptions?: string[];
   setSelectedOptions?: (options: string[]) => void;
+  readOnly?: boolean;  // PROMPT #130 - When true, disables all interactive elements
 }
 
 export function MessageBubble({
   message,
   onOptionSubmit,
   selectedOptions: externalSelectedOptions,
-  setSelectedOptions: externalSetSelectedOptions
+  setSelectedOptions: externalSetSelectedOptions,
+  readOnly = false
 }: Props) {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
@@ -126,83 +128,91 @@ export function MessageBubble({
           {/* Predefined Options */}
           {hasOptions && !isUser && (
             <div className={`mt-4 p-4 rounded-lg border-2 space-y-2 ${
-              submitted
+              submitted || readOnly
                 ? 'bg-gray-100 border-gray-300 opacity-60'
                 : 'bg-gray-50 border-gray-200'
             }`}>
-              {submitted && (
+              {submitted && !readOnly && (
                 <div className="mb-3 p-2 bg-green-100 border border-green-300 rounded text-xs text-green-800 font-medium">
                   ✓ Response submitted
                 </div>
               )}
-              <div className="text-xs font-semibold text-gray-700 mb-3">
-                {isSingleChoice ? '📍 Select one option:' : '✅ Select one or more options:'}
-              </div>
+              {!readOnly && (
+                <div className="text-xs font-semibold text-gray-700 mb-3">
+                  {isSingleChoice ? '📍 Select one option:' : '✅ Select one or more options:'}
+                </div>
+              )}
               {effectiveOptions!.choices.map((option) => {
                 const isSelected = selectedOptions.includes(option.id);
                 return (
-                  <label
+                  <div
                     key={option.id}
                     className={`flex items-center p-3 rounded-lg border-2 transition-all ${
-                      submitted
-                        ? 'border-gray-300 bg-gray-200 cursor-not-allowed opacity-60'
+                      submitted || readOnly
+                        ? 'border-gray-300 bg-gray-200 cursor-default opacity-60'
                         : isSelected
                         ? 'border-blue-500 bg-blue-50 shadow-sm cursor-pointer'
                         : 'border-gray-300 bg-white hover:border-blue-300 hover:bg-gray-50 cursor-pointer'
                     }`}
+                    onClick={() => !submitted && !readOnly && handleOptionToggle(option.id)}
                   >
                     <input
                       type={isSingleChoice ? 'radio' : 'checkbox'}
                       name={isSingleChoice ? 'option-group' : undefined}
                       checked={isSelected}
-                      onChange={() => !submitted && handleOptionToggle(option.id)}
-                      disabled={submitted}
+                      onChange={() => {}}
+                      disabled={submitted || readOnly}
                       className="w-5 h-5 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     />
                     <span className={`ml-3 text-sm font-medium flex-1 ${
-                      submitted ? 'text-gray-500' : 'text-gray-900'
+                      submitted || readOnly ? 'text-gray-500' : 'text-gray-900'
                     }`}>
                       {option.label}
                     </span>
-                    {isSelected && !submitted && (
+                    {isSelected && !submitted && !readOnly && (
                       <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
-                  </label>
+                  </div>
                 );
               })}
 
-              <Button
-                onClick={handleSubmitOptions}
-                disabled={selectedOptions.length === 0 || submitted}
-                variant="primary"
-                size="sm"
-                className="w-full mt-4"
-              >
-                {submitted ? (
-                  '✓ Submitted'
-                ) : isSingleChoice ? (
-                  selectedOptions.length > 0 ? '✓ Submit Answer' : 'Select an option'
-                ) : (
-                  selectedOptions.length > 0
-                    ? `✓ Submit Selected (${selectedOptions.length})`
-                    : 'Select at least one option'
-                )}
-              </Button>
+              {/* Hide submit button and separator in readOnly mode */}
+              {!readOnly && (
+                <>
+                  <Button
+                    onClick={handleSubmitOptions}
+                    disabled={selectedOptions.length === 0 || submitted}
+                    variant="primary"
+                    size="sm"
+                    className="w-full mt-4"
+                  >
+                    {submitted ? (
+                      '✓ Submitted'
+                    ) : isSingleChoice ? (
+                      selectedOptions.length > 0 ? '✓ Submit Answer' : 'Select an option'
+                    ) : (
+                      selectedOptions.length > 0
+                        ? `✓ Submit Selected (${selectedOptions.length})`
+                        : 'Select at least one option'
+                    )}
+                  </Button>
 
-              {/* Visual Separator - only show if not submitted */}
-              {!submitted && (
-                <div className="relative my-4">
-                  <div className="absolute inset-0 flex items-center">
-                    <div className="w-full border-t border-gray-300"></div>
-                  </div>
-                  <div className="relative flex justify-center">
-                    <span className="bg-gray-50 px-4 py-1 text-xs font-medium text-gray-600 rounded-full border border-gray-300">
-                      or type your own answer below
-                    </span>
-                  </div>
-                </div>
+                  {/* Visual Separator - only show if not submitted */}
+                  {!submitted && (
+                    <div className="relative my-4">
+                      <div className="absolute inset-0 flex items-center">
+                        <div className="w-full border-t border-gray-300"></div>
+                      </div>
+                      <div className="relative flex justify-center">
+                        <span className="bg-gray-50 px-4 py-1 text-xs font-medium text-gray-600 rounded-full border border-gray-300">
+                          or type your own answer below
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
