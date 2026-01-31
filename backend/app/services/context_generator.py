@@ -912,6 +912,8 @@ um comportamento já implementado no sistema.""",
         epic.generated_prompt = epic_content["generated_prompt"]
         epic.acceptance_criteria = epic_content.get("acceptance_criteria", [])
         epic.story_points = epic_content.get("story_points")
+        # PROMPT #127 - Track which AI model generated the content
+        epic.created_by_ai_model = epic_content.get("ai_model_used")
 
         # PROMPT #95 - Store complete interview_insights for traceability
         # Includes semantic_map, key_requirements, business_goals, technical_constraints
@@ -1286,6 +1288,9 @@ Retorne como JSON seguindo o schema do system prompt."""
             max_tokens=8000,  # Increased to allow for detailed specifications
             enable_rag=True  # PROMPT #124 - Enable RAG for context generation
         )
+
+        # PROMPT #127 - Capture AI model used for tracking
+        ai_model_used = response.get("model", "unknown")
 
         # Parse response - PROMPT #95: Enhanced JSON extraction
         response_text = response.get("content", "")
@@ -1848,6 +1853,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         description = description.strip()
 
         # PROMPT #95 - Include interview_insights in return
+        # PROMPT #127 - Include AI model used for tracking
         return {
             "title": result.get("title", epic_title),
             "description": description,
@@ -1855,7 +1861,8 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
             "semantic_map": semantic_map,
             "acceptance_criteria": result.get("acceptance_criteria", []),
             "story_points": result.get("story_points"),
-            "interview_insights": result.get("interview_insights", {})
+            "interview_insights": result.get("interview_insights", {}),
+            "ai_model_used": ai_model_used  # PROMPT #127
         }
 
     async def reject_suggested_epic(self, epic_id: UUID) -> bool:
@@ -2462,6 +2469,8 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
         story.generated_prompt = story_content.get("generated_prompt")
         story.acceptance_criteria = story_content.get("acceptance_criteria", [])
         story.story_points = story_content.get("story_points", story.story_points)
+        # PROMPT #127 - Track which AI model generated the content
+        story.created_by_ai_model = story_content.get("ai_model_used")
 
         # Store insights
         story.interview_insights = story.interview_insights or {}
@@ -2757,6 +2766,9 @@ Retorne APENAS o JSON, sem explicações."""
                 enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
+            # PROMPT #127 - Capture AI model used for tracking
+            ai_model_used = response.get("model", "unknown")
+
             content = response.get("content", "")
             result = self._parse_json_response(content)
 
@@ -2766,6 +2778,7 @@ Retorne APENAS o JSON, sem explicações."""
                 description_markdown = result.get("description_markdown", "")
                 result["description"] = _convert_semantic_to_human(description_markdown, semantic_map)
                 result["generated_prompt"] = description_markdown
+                result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
             # Fallback with more detail
@@ -2775,7 +2788,8 @@ Retorne APENAS o JSON, sem explicações."""
                 "acceptance_criteria": ["AC1: Funcionalidade implementada", "AC2: Testes passam", "AC3: Código revisado", "AC4: Documentação atualizada", "AC5: Deploy realizado"],
                 "semantic_map": epic_semantic_map,
                 "story_points": story.story_points or 5,
-                "interview_insights": {"derived_from_epic": str(parent_epic.id) if parent_epic else None}
+                "interview_insights": {"derived_from_epic": str(parent_epic.id) if parent_epic else None},
+                "ai_model_used": ai_model_used  # PROMPT #127
             }
 
         except Exception as e:
@@ -2785,7 +2799,8 @@ Retorne APENAS o JSON, sem explicações."""
                 "generated_prompt": "",
                 "acceptance_criteria": [],
                 "semantic_map": {},
-                "story_points": story.story_points or 5
+                "story_points": story.story_points or 5,
+                "ai_model_used": None  # PROMPT #127
             }
 
     async def activate_suggested_task(self, task_id: UUID) -> Dict:
@@ -2834,6 +2849,8 @@ Retorne APENAS o JSON, sem explicações."""
         task.generated_prompt = task_content.get("generated_prompt")
         task.acceptance_criteria = task_content.get("acceptance_criteria", [])
         task.story_points = task_content.get("story_points", task.story_points)
+        # PROMPT #127 - Track which AI model generated the content
+        task.created_by_ai_model = task_content.get("ai_model_used")
 
         # Store insights
         task.interview_insights = task.interview_insights or {}
@@ -3151,6 +3168,9 @@ Retorne APENAS o JSON, sem explicações."""
                 enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
+            # PROMPT #127 - Capture AI model used for tracking
+            ai_model_used = response.get("model", "unknown")
+
             content = response.get("content", "")
             result = self._parse_json_response(content)
 
@@ -3160,6 +3180,7 @@ Retorne APENAS o JSON, sem explicações."""
                 description_markdown = result.get("description_markdown", "")
                 result["description"] = _convert_semantic_to_human(description_markdown, semantic_map)
                 result["generated_prompt"] = description_markdown
+                result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
             return {
@@ -3167,7 +3188,8 @@ Retorne APENAS o JSON, sem explicações."""
                 "generated_prompt": f"# Task: {task.title}\n\n## Descrição\n{task.description or ''}\n\n## Contexto da Story\n{parent_story.title if parent_story else 'N/A'}",
                 "acceptance_criteria": ["AC1: Implementação completa", "AC2: Testes passam", "AC3: Code review aprovado", "AC4: Sem bugs"],
                 "semantic_map": combined_semantic_map,
-                "story_points": task.story_points or 3
+                "story_points": task.story_points or 3,
+                "ai_model_used": ai_model_used  # PROMPT #127
             }
 
         except Exception as e:
@@ -3176,7 +3198,8 @@ Retorne APENAS o JSON, sem explicações."""
                 "description": task.description or "",
                 "generated_prompt": "",
                 "acceptance_criteria": [],
-                "story_points": task.story_points or 2
+                "story_points": task.story_points or 2,
+                "ai_model_used": None  # PROMPT #127
             }
 
     async def activate_suggested_subtask(self, subtask_id: UUID) -> Dict:
@@ -3228,6 +3251,8 @@ Retorne APENAS o JSON, sem explicações."""
         subtask.description = subtask_content.get("description", subtask.description)
         subtask.generated_prompt = subtask_content.get("generated_prompt")
         subtask.acceptance_criteria = subtask_content.get("acceptance_criteria", [])
+        # PROMPT #127 - Track which AI model generated the content
+        subtask.created_by_ai_model = subtask_content.get("ai_model_used")
 
         # Store semantic map and insights
         subtask.interview_insights = subtask.interview_insights or {}
@@ -3529,6 +3554,9 @@ Retorne APENAS o JSON, sem explicações."""
                 enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             )
 
+            # PROMPT #127 - Capture AI model used for tracking
+            ai_model_used = response.get("model", "unknown")
+
             content = response.get("content", "")
             result = self._parse_json_response(content)
 
@@ -3537,13 +3565,15 @@ Retorne APENAS o JSON, sem explicações."""
                 description_markdown = result.get("description_markdown", "")
                 result["description"] = _convert_semantic_to_human(description_markdown, semantic_map)
                 result["generated_prompt"] = description_markdown
+                result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
             return {
                 "description": subtask.description or "",
                 "generated_prompt": f"# Subtask: {subtask.title}\n\n## Descrição\n{subtask.description or ''}\n\n## Contexto\nTask pai: {parent_task.title if parent_task else 'N/A'}",
                 "acceptance_criteria": ["AC1: Implementação completa", "AC2: Testes passam", "AC3: Code review aprovado"],
-                "semantic_map": combined_semantic_map
+                "semantic_map": combined_semantic_map,
+                "ai_model_used": ai_model_used  # PROMPT #127
             }
 
         except Exception as e:
@@ -3552,5 +3582,6 @@ Retorne APENAS o JSON, sem explicações."""
                 "description": subtask.description or "",
                 "generated_prompt": "",
                 "acceptance_criteria": [],
-                "semantic_map": {}
+                "semantic_map": {},
+                "ai_model_used": None  # PROMPT #127
             }

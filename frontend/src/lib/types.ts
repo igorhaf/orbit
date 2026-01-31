@@ -227,6 +227,9 @@ export interface Task {
   // Meta Prompt Feature - Generated atomic prompt for task execution
   generated_prompt?: string | null;
 
+  // PROMPT #127 - Track which AI model generated the content
+  created_by_ai_model?: string | null;
+
   // PROMPT #95 - Blocking System for Modification Detection
   blocked_reason?: string | null;
   pending_modification?: {
