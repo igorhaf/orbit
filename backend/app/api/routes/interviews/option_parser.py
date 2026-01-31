@@ -311,8 +311,7 @@ async def analyze_and_convert_choice_type(content: str, db) -> str:
             usage_type="prompt_generation",
             messages=[{"role": "user", "content": user_prompt}],
             system_prompt=system_prompt,
-            max_tokens=10,  # We only need "SINGLE" or "MULTIPLE"
-            temperature=0  # Deterministic response
+            max_tokens=10  # We only need "SINGLE" or "MULTIPLE"
         )
 
         ai_answer = response.get("content", "").strip().upper()
