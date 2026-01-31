@@ -20,6 +20,7 @@ interface Props {
   selectedOptions?: string[];
   setSelectedOptions?: (options: string[]) => void;
   readOnly?: boolean;  // PROMPT #130 - When true, disables all interactive elements
+  compact?: boolean;   // PROMPT #130 - When true, reduces vertical spacing for embedded mode
 }
 
 export function MessageBubble({
@@ -27,7 +28,8 @@ export function MessageBubble({
   onOptionSubmit,
   selectedOptions: externalSelectedOptions,
   setSelectedOptions: externalSetSelectedOptions,
-  readOnly = false
+  readOnly = false,
+  compact = false
 }: Props) {
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
@@ -101,11 +103,11 @@ export function MessageBubble({
   };
 
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} ${compact ? 'mb-2' : 'mb-3'}`}>
       {/* PROMPT #127 - Improved layout: wider messages, better spacing */}
       <div className={`${isUser ? 'max-w-[85%] md:max-w-[70%]' : 'w-full'} ${isUser ? 'order-2' : 'order-1'}`}>
         {/* Role Badge with AI Model indicator */}
-        <div className={`text-xs mb-1.5 flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
+        <div className={`text-xs ${compact ? 'mb-1' : 'mb-1.5'} flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
           <Badge variant={isUser ? 'info' : 'default'} size="sm">
             {isUser ? 'Você' : 'Assistente IA'}
           </Badge>
@@ -115,30 +117,30 @@ export function MessageBubble({
 
         {/* Message Card - PROMPT #56: Using div instead of Card to avoid bg-white override */}
         <div
-          className={`px-5 py-4 rounded-xl shadow-sm ${
+          className={`${compact ? 'px-3 py-2' : 'px-5 py-4'} rounded-xl shadow-sm ${
             isUser
               ? 'bg-blue-600 text-white border border-blue-600'
               : 'bg-white text-gray-800 border border-gray-100'
           }`}
         >
-          <div className="whitespace-pre-wrap break-words text-base leading-relaxed">
+          <div className={`whitespace-pre-wrap break-words ${compact ? 'text-sm leading-normal' : 'text-base leading-relaxed'}`}>
             {displayContent}
           </div>
 
           {/* Predefined Options */}
           {hasOptions && !isUser && (
-            <div className={`mt-4 p-4 rounded-lg border-2 space-y-2 ${
+            <div className={`${compact ? 'mt-2 p-2' : 'mt-4 p-4'} rounded-lg border-2 ${compact ? 'space-y-1' : 'space-y-2'} ${
               submitted || readOnly
                 ? 'bg-gray-100 border-gray-300 opacity-60'
                 : 'bg-gray-50 border-gray-200'
             }`}>
               {submitted && !readOnly && (
-                <div className="mb-3 p-2 bg-green-100 border border-green-300 rounded text-xs text-green-800 font-medium">
+                <div className={`${compact ? 'mb-2 p-1.5' : 'mb-3 p-2'} bg-green-100 border border-green-300 rounded text-xs text-green-800 font-medium`}>
                   ✓ Response submitted
                 </div>
               )}
               {!readOnly && (
-                <div className="text-xs font-semibold text-gray-700 mb-3">
+                <div className={`text-xs font-semibold text-gray-700 ${compact ? 'mb-2' : 'mb-3'}`}>
                   {isSingleChoice ? '📍 Select one option:' : '✅ Select one or more options:'}
                 </div>
               )}
@@ -147,7 +149,7 @@ export function MessageBubble({
                 return (
                   <div
                     key={option.id}
-                    className={`flex items-center p-3 rounded-lg border-2 transition-all ${
+                    className={`flex items-center ${compact ? 'p-2' : 'p-3'} rounded-lg border-2 transition-all ${
                       submitted || readOnly
                         ? 'border-gray-300 bg-gray-200 cursor-default opacity-60'
                         : isSelected
@@ -162,15 +164,15 @@ export function MessageBubble({
                       checked={isSelected}
                       onChange={() => {}}
                       disabled={submitted || readOnly}
-                      className="w-5 h-5 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                      className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50`}
                     />
-                    <span className={`ml-3 text-sm font-medium flex-1 ${
+                    <span className={`${compact ? 'ml-2 text-xs' : 'ml-3 text-sm'} font-medium flex-1 ${
                       submitted || readOnly ? 'text-gray-500' : 'text-gray-900'
                     }`}>
                       {option.label}
                     </span>
                     {isSelected && !submitted && !readOnly && (
-                      <svg className="w-5 h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className={`${compact ? 'w-4 h-4' : 'w-5 h-5'} text-blue-600`} fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
                       </svg>
                     )}
@@ -186,7 +188,7 @@ export function MessageBubble({
                     disabled={selectedOptions.length === 0 || submitted}
                     variant="primary"
                     size="sm"
-                    className="w-full mt-4"
+                    className={`w-full ${compact ? 'mt-2' : 'mt-4'}`}
                   >
                     {submitted ? (
                       '✓ Submitted'
@@ -201,12 +203,12 @@ export function MessageBubble({
 
                   {/* Visual Separator - only show if not submitted */}
                   {!submitted && (
-                    <div className="relative my-4">
+                    <div className={`relative ${compact ? 'my-2' : 'my-4'}`}>
                       <div className="absolute inset-0 flex items-center">
                         <div className="w-full border-t border-gray-300"></div>
                       </div>
                       <div className="relative flex justify-center">
-                        <span className="bg-gray-50 px-4 py-1 text-xs font-medium text-gray-600 rounded-full border border-gray-300">
+                        <span className={`bg-gray-50 ${compact ? 'px-2 py-0.5 text-[10px]' : 'px-4 py-1 text-xs'} font-medium text-gray-600 rounded-full border border-gray-300`}>
                           or type your own answer below
                         </span>
                       </div>
@@ -219,7 +221,7 @@ export function MessageBubble({
 
           {/* User's Selected Options Display */}
           {isUser && message.selected_options && message.selected_options.length > 0 && (
-            <div className="mt-3 pt-3 border-t border-blue-400">
+            <div className={`${compact ? 'mt-2 pt-2' : 'mt-3 pt-3'} border-t border-blue-400`}>
               <div className="text-xs text-blue-100 mb-1">Selected options:</div>
               <div className="flex flex-wrap gap-1">
                 {message.selected_options.map((optionId) => (
@@ -232,9 +234,9 @@ export function MessageBubble({
           )}
 
           {/* Timestamp and AI Model - PROMPT #127 */}
-          <div className={`flex items-center gap-3 mt-2 ${isUser ? 'justify-end' : 'justify-start'}`}>
+          <div className={`flex items-center gap-3 ${compact ? 'mt-1' : 'mt-2'} ${isUser ? 'justify-end' : 'justify-start'}`}>
             {message.timestamp && (
-              <span className={`text-xs ${isUser ? 'text-blue-100' : 'text-gray-400'}`}>
+              <span className={`${compact ? 'text-[10px]' : 'text-xs'} ${isUser ? 'text-blue-100' : 'text-gray-400'}`}>
                 {new Date(message.timestamp).toLocaleTimeString()}
               </span>
             )}
