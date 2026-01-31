@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
+import { ClientProviders } from '@/components/providers/ClientProviders'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -25,10 +26,12 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className={inter.variable}>
       <body className="min-h-screen antialiased">
-        <div className="flex min-h-screen flex-col">
-          {/* Main content */}
-          <main className="flex-1">{children}</main>
-        </div>
+        <ClientProviders>
+          <div className="flex min-h-screen flex-col">
+            {/* Main content */}
+            <main className="flex-1">{children}</main>
+          </div>
+        </ClientProviders>
       </body>
     </html>
   )

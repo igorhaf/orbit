@@ -47,3 +47,5 @@ export { ErrorDialog, formatErrorMessage } from './ErrorDialog'; // PROMPT #112 
 export type { ErrorDialogProps } from './ErrorDialog';
 
 export { AIModelBadge } from './AIModelBadge'; // PROMPT #127 - AI Model badge with tooltip
+
+export { NotificationBell } from './NotificationBell'; // PROMPT #128 - Background job notifications

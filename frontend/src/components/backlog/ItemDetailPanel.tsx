@@ -2,6 +2,7 @@
  * Item Detail Panel Component
  * Comprehensive detail view with 8 sections for backlog items
  * JIRA Transformation - PROMPT #62 - Phase 4
+ * PROMPT #128 - Background Job Notifications
  */
 
 'use client';
@@ -12,6 +13,7 @@ import { Card, CardHeader, CardTitle, CardContent, Button, Input, Dialog, Dialog
 import { AIModelBadge } from '@/components/ui/AIModelBadge';
 import { tasksApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
+import { useNotifications } from '@/contexts/NotificationContext';
 import WorkflowActions from './WorkflowActions';
 import {
   BacklogItem,
@@ -33,6 +35,7 @@ interface ItemDetailPanelProps {
 
 export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToItem }: ItemDetailPanelProps) {
   const { showError, showSuccess, NotificationComponent } = useNotification();
+  const { addJob } = useNotifications(); // PROMPT #128 - Background notifications
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [relationships, setRelationships] = useState<TaskRelationship[]>([]);
   const [comments, setComments] = useState<TaskComment[]>([]);
@@ -149,28 +152,44 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
 
   // PROMPT #96 - Approve suggested item handler
   // PROMPT #102 - Extended to show children generated feedback
+  // PROMPT #128 - Registers job in notification system for background tracking
   const handleApprove = async () => {
     setIsApproving(true);
     try {
       const result = await tasksApi.activateSuggestedEpic(item.id);
-      console.log('✅ Item approved and activated:', item.title);
+      console.log('✅ Item activation started:', item.title);
 
-      // PROMPT #102 - Show feedback about children generated
-      const childrenCount = result.children_generated || 0;
-      if (childrenCount > 0) {
-        const childType = item.item_type === 'epic' ? 'stories' :
-                          item.item_type === 'story' ? 'tasks' :
-                          item.item_type === 'task' ? 'subtasks' : 'items';
-        console.log(`📝 Generated ${childrenCount} draft ${childType}`);
-        // Show a brief notification (optional: could use toast library)
-        showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
+      // PROMPT #128 - Register job in notification system
+      if (result.job_id) {
+        const jobType = item.item_type === 'epic' ? 'epic_activation' :
+                        item.item_type === 'story' ? 'story_activation' :
+                        item.item_type === 'task' ? 'task_activation' : 'subtask_activation';
+        addJob(
+          result.job_id,
+          jobType,
+          `Ativando ${item.item_type}: ${item.title.substring(0, 30)}...`,
+          item.title
+        );
+        // Reset state - notification will show when complete
+        setIsApproving(false);
+        showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
+      } else {
+        // Legacy flow (synchronous response)
+        const childrenCount = result.children_generated || 0;
+        if (childrenCount > 0) {
+          const childType = item.item_type === 'epic' ? 'stories' :
+                            item.item_type === 'story' ? 'tasks' :
+                            item.item_type === 'task' ? 'subtasks' : 'items';
+          console.log(`📝 Generated ${childrenCount} draft ${childType}`);
+          showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
+        }
+        setIsApproving(false);
       }
 
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('❌ Failed to approve item:', error);
       showError(`Failed to approve item: ${error.message || 'Unknown error'}`);
-    } finally {
       setIsApproving(false);
     }
   };

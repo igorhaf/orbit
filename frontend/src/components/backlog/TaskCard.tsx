@@ -2,6 +2,7 @@
  * TaskCard Component
  * PROMPT #68 - Dual-Mode Interview System
  * PROMPT #94 - Activate/Reject Suggested Epics
+ * PROMPT #128 - Background Job Notifications
  *
  * Displays task with:
  * - Title, description, status, priority
@@ -18,6 +19,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge, AIModelBadge } from '@/components/ui';
 import { useNotification } from '@/hooks';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { tasksApi } from '@/lib/api';
 import { Task, SubtaskSuggestion, ItemType, PriorityLevel } from '@/lib/types';
 import { SimilarityBadge } from '@/components/kanban/SimilarityBadge'; // PROMPT #95
@@ -96,6 +98,7 @@ const getItemTypeIcon = (type: ItemType) => {
 export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true }: TaskCardProps) {
   const router = useRouter();
   const { showError, showSuccess, NotificationComponent } = useNotification();
+  const { addJob } = useNotifications(); // PROMPT #128 - Background notifications
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [acceptingSubtasks, setAcceptingSubtasks] = useState(false);
   const [creatingInterview, setCreatingInterview] = useState(false);
@@ -166,20 +169,38 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
 
   // PROMPT #94 - Activate suggested epic
   // PROMPT #102 - Extended to show children generated feedback
+  // PROMPT #128 - Registers job in notification system for background tracking
   const handleActivateEpic = async () => {
     setActivatingEpic(true);
     try {
       const result = await tasksApi.activateSuggestedEpic(task.id);
-      console.log('✅ Item activated:', result);
+      console.log('✅ Item activation started:', result);
 
-      // PROMPT #102 - Show feedback about children generated
-      const childrenCount = result.children_generated || 0;
-      if (childrenCount > 0) {
-        const childType = task.item_type === 'epic' ? 'stories' :
-                          task.item_type === 'story' ? 'tasks' :
-                          task.item_type === 'task' ? 'subtasks' : 'items';
-        console.log(`📝 Generated ${childrenCount} draft ${childType}`);
-        showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
+      // PROMPT #128 - Register job in notification system
+      if (result.job_id) {
+        const jobType = task.item_type === 'epic' ? 'epic_activation' :
+                        task.item_type === 'story' ? 'story_activation' :
+                        task.item_type === 'task' ? 'task_activation' : 'subtask_activation';
+        addJob(
+          result.job_id,
+          jobType,
+          `Ativando ${task.item_type}: ${task.title.substring(0, 30)}...`,
+          task.title
+        );
+        // Reset state - notification will show when complete
+        setActivatingEpic(false);
+        showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
+      } else {
+        // Legacy flow (synchronous response)
+        const childrenCount = result.children_generated || 0;
+        if (childrenCount > 0) {
+          const childType = task.item_type === 'epic' ? 'stories' :
+                            task.item_type === 'story' ? 'tasks' :
+                            task.item_type === 'task' ? 'subtasks' : 'items';
+          console.log(`📝 Generated ${childrenCount} draft ${childType}`);
+          showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
+        }
+        setActivatingEpic(false);
       }
 
       if (onUpdate) {
@@ -188,7 +209,6 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
     } catch (error: any) {
       console.error('❌ Failed to activate item:', error);
       showError(`Failed to activate item: ${error.message}`);
-    } finally {
       setActivatingEpic(false);
     }
   };

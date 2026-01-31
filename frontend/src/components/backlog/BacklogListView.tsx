@@ -2,6 +2,7 @@
  * Backlog List View Component
  * Hierarchical tree view for Epics, Stories, Tasks, Subtasks, and Bugs
  * JIRA Transformation - PROMPT #62 - Phase 3
+ * PROMPT #128 - Background Job Notifications
  */
 
 'use client';
@@ -9,6 +10,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
 import { useNotification } from '@/hooks';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { tasksApi } from '@/lib/api';
 import { BacklogItem, ItemType, PriorityLevel, TaskStatus } from '@/lib/types';
 import { TaskCard } from './TaskCard'; // PROMPT #68
@@ -133,6 +135,7 @@ export default function BacklogListView({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree'); // PROMPT #68
   const { showError, showSuccess, NotificationComponent } = useNotification();
+  const { addJob } = useNotifications(); // PROMPT #128 - Background notifications
 
   // PROMPT #94 - State for approve/reject actions
   const [activatingId, setActivatingId] = useState<string | null>(null);
@@ -325,16 +328,35 @@ export default function BacklogListView({
   };
 
   // PROMPT #94 - Activate suggested item
+  // PROMPT #128 - Registers job in notification system for background tracking
   const handleActivateItem = async (item: BacklogItem) => {
     setActivatingId(item.id);
     try {
-      await tasksApi.activateSuggestedEpic(item.id);
-      console.log('✅ Item activated:', item.title);
+      const result = await tasksApi.activateSuggestedEpic(item.id);
+      console.log('✅ Item activation started:', item.title);
+
+      // PROMPT #128 - Register job in notification system
+      if (result.job_id) {
+        const jobType = item.item_type === 'epic' ? 'epic_activation' :
+                        item.item_type === 'story' ? 'story_activation' :
+                        item.item_type === 'task' ? 'task_activation' : 'subtask_activation';
+        addJob(
+          result.job_id,
+          jobType,
+          `Ativando ${item.item_type}: ${item.title.substring(0, 30)}...`,
+          item.title
+        );
+        setActivatingId(null);
+        showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
+      } else {
+        // Legacy flow - immediate response
+        setActivatingId(null);
+      }
+
       fetchBacklog();
     } catch (error: any) {
       console.error('❌ Failed to activate item:', error);
       showError(`Failed to activate item: ${error.message}`);
-    } finally {
       setActivatingId(null);
     }
   };

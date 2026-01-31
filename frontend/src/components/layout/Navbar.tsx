@@ -1,6 +1,7 @@
 /**
  * Navbar Component
  * Top navigation bar with app branding and user actions
+ * PROMPT #128 - Added NotificationBell for background job notifications
  */
 
 'use client';
@@ -8,6 +9,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 
 export const Navbar: React.FC = () => {
   const appName = process.env.NEXT_PUBLIC_APP_NAME || 'Orbit';
@@ -69,7 +71,10 @@ export const Navbar: React.FC = () => {
           </div>
 
           {/* Right side actions */}
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-2">
+            {/* PROMPT #128 - Notification Bell */}
+            <NotificationBell />
+
             {/* Settings */}
             <Link href="/settings">
               <Button variant="ghost" size="sm">

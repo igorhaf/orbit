@@ -4,11 +4,14 @@ CRUD operations for tracking background job status.
 
 PROMPT #65 - Async Job System
 Allows clients to poll job status instead of blocking on long operations.
+
+PROMPT #128 - Background Job Notifications
+Added /active endpoint to list all active (pending/running) jobs.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Optional, List
 from uuid import UUID
 import logging
 
@@ -19,6 +22,25 @@ from app.services.job_cleanup import JobCleanupService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.get("/active")
+async def list_active_jobs(
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #128 - List all active (pending or running) jobs.
+
+    Used by the frontend notification bell to show in-progress jobs.
+
+    Returns:
+        List of job objects with status pending or running.
+    """
+    active_jobs = db.query(AsyncJob).filter(
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+    ).order_by(AsyncJob.created_at.desc()).all()
+
+    return [job.to_dict() for job in active_jobs]
 
 
 @router.get("/{job_id}")
