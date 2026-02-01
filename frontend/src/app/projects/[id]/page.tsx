@@ -47,6 +47,8 @@ export default function ProjectDetailsPage() {
   const [availableAssignees, setAvailableAssignees] = useState<string[]>([]);
   // PROMPT #131 - Selected interview to open in ItemDetailPanel
   const [selectedInterviewId, setSelectedInterviewId] = useState<string | null>(null);
+  // PROMPT #131 - Bulk selection for mass actions
+  const [selectedBacklogIds, setSelectedBacklogIds] = useState<Set<string>>(new Set());
 
   // RAG states (PROMPT #90)
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
@@ -490,6 +492,8 @@ export default function ProjectDetailsPage() {
                     setSelectedBacklogItem(item);
                     setSelectedInterviewId(interviewId);
                   }}
+                  selectedIds={selectedBacklogIds}
+                  onSelectionChange={setSelectedBacklogIds}
                 />
               </div>
             </div>
@@ -526,6 +530,7 @@ export default function ProjectDetailsPage() {
         {/* PROMPT #131 - Removed Interviews tab, now integrated into BacklogListView */}
 
         {/* RAG Analytics Tab (PROMPT #90) */}
+        {/* PROMPT #136 - Fixed: CodeIndexingPanel always visible */}
         {activeTab === 'rag' && (
           <div className="space-y-6">
             {loadingRag ? (
@@ -535,31 +540,36 @@ export default function ProjectDetailsPage() {
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
               </div>
-            ) : ragStats ? (
+            ) : (
               <>
-                {/* Stats Cards */}
-                <RagStatsCard stats={ragStats} />
+                {/* RAG Stats - only show if we have data */}
+                {ragStats && ragStats.total_rag_enabled > 0 ? (
+                  <>
+                    {/* Stats Cards */}
+                    <RagStatsCard stats={ragStats} />
 
-                {/* Charts and Table */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <RagHitRatePieChart usageTypes={ragStats.by_usage_type} />
-                  <RagUsageTypeTable usageTypes={ragStats.by_usage_type} />
-                </div>
+                    {/* Charts and Table */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      <RagHitRatePieChart usageTypes={ragStats.by_usage_type} />
+                      <RagUsageTypeTable usageTypes={ragStats.by_usage_type} />
+                    </div>
+                  </>
+                ) : (
+                  <Card>
+                    <CardContent className="py-12 text-center text-gray-500">
+                      <p>No RAG data available yet</p>
+                      <p className="text-sm mt-2">Index your code below to enable RAG-enhanced AI operations</p>
+                    </CardContent>
+                  </Card>
+                )}
 
-                {/* Code Indexing Panel */}
+                {/* Code Indexing Panel - ALWAYS visible (PROMPT #136) */}
                 <CodeIndexingPanel
                   projectId={projectId}
                   stats={codeStats}
                   onIndexComplete={loadRagStats}
                 />
               </>
-            ) : (
-              <Card>
-                <CardContent className="py-12 text-center text-gray-500">
-                  <p>No RAG data available yet</p>
-                  <p className="text-sm mt-2">RAG analytics will appear after AI operations are executed</p>
-                </CardContent>
-              </Card>
             )}
           </div>
         )}
