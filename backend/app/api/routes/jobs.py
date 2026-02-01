@@ -7,21 +7,242 @@ Allows clients to poll job status instead of blocking on long operations.
 
 PROMPT #128 - Background Job Notifications
 Added /active endpoint to list all active (pending/running) jobs.
+
+PROMPT #135 - Job Queue Manager
+Added comprehensive endpoints for job queue visualization and management.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func, desc, and_
 from typing import Optional, List
 from uuid import UUID
+from datetime import datetime, timedelta
 import logging
 
 from app.database import get_db
-from app.models.async_job import AsyncJob, JobStatus
+from app.models.async_job import AsyncJob, JobStatus, JobType
 from app.services.job_manager import JobManager
 from app.services.job_cleanup import JobCleanupService
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.get("/")
+async def list_all_jobs(
+    db: Session = Depends(get_db),
+    status: Optional[str] = Query(None, description="Filter by status (pending, running, completed, failed, cancelled)"),
+    job_type: Optional[str] = Query(None, description="Filter by job type"),
+    project_id: Optional[str] = Query(None, description="Filter by project ID"),
+    limit: int = Query(50, ge=1, le=500, description="Number of jobs to return"),
+    offset: int = Query(0, ge=0, description="Number of jobs to skip"),
+    sort_by: str = Query("created_at", description="Field to sort by"),
+    sort_order: str = Query("desc", description="Sort order (asc or desc)")
+):
+    """
+    PROMPT #135 - List all jobs with filtering and pagination.
+
+    Used by the Job Queue Manager page to display all jobs.
+
+    Args:
+        status: Filter by job status
+        job_type: Filter by job type
+        project_id: Filter by project ID
+        limit: Max number of jobs to return
+        offset: Number of jobs to skip
+        sort_by: Field to sort by (created_at, started_at, completed_at)
+        sort_order: Sort order (asc or desc)
+
+    Returns:
+        {
+            "jobs": [...],
+            "total": 100,
+            "limit": 50,
+            "offset": 0
+        }
+    """
+    query = db.query(AsyncJob)
+
+    # Apply filters
+    if status:
+        try:
+            status_enum = JobStatus(status)
+            query = query.filter(AsyncJob.status == status_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+
+    if job_type:
+        try:
+            job_type_enum = JobType(job_type)
+            query = query.filter(AsyncJob.job_type == job_type_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid job_type: {job_type}")
+
+    if project_id:
+        query = query.filter(AsyncJob.project_id == project_id)
+
+    # Get total count before pagination
+    total = query.count()
+
+    # Apply sorting
+    sort_column = getattr(AsyncJob, sort_by, AsyncJob.created_at)
+    if sort_order.lower() == "desc":
+        query = query.order_by(desc(sort_column))
+    else:
+        query = query.order_by(sort_column)
+
+    # Apply pagination
+    jobs = query.offset(offset).limit(limit).all()
+
+    return {
+        "jobs": [job.to_dict() for job in jobs],
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+
+@router.get("/stats")
+async def get_job_stats(
+    db: Session = Depends(get_db),
+    project_id: Optional[str] = Query(None, description="Filter by project ID"),
+    hours: int = Query(24, ge=1, le=720, description="Stats for the last N hours")
+):
+    """
+    PROMPT #135 - Get comprehensive job statistics.
+
+    Returns aggregated statistics about jobs for the Job Queue Manager dashboard.
+
+    Args:
+        project_id: Optional filter by project
+        hours: Time range for statistics (default: 24 hours)
+
+    Returns:
+        {
+            "total_jobs": 100,
+            "by_status": {"pending": 5, "running": 3, ...},
+            "by_type": {"memory_scan": 10, "interview_question": 20, ...},
+            "avg_duration_seconds": 15.5,
+            "jobs_per_hour": [...],
+            "error_rate": 0.05,
+            "recent_errors": [...]
+        }
+    """
+    cutoff_time = datetime.utcnow() - timedelta(hours=hours)
+
+    # Base query
+    base_query = db.query(AsyncJob)
+    if project_id:
+        base_query = base_query.filter(AsyncJob.project_id == project_id)
+
+    # Total jobs in time range
+    total_jobs = base_query.filter(AsyncJob.created_at >= cutoff_time).count()
+
+    # Jobs by status
+    status_counts = {}
+    for status_val in JobStatus:
+        count = base_query.filter(
+            AsyncJob.status == status_val,
+            AsyncJob.created_at >= cutoff_time
+        ).count()
+        status_counts[status_val.value] = count
+
+    # Jobs by type
+    type_counts = {}
+    for type_val in JobType:
+        count = base_query.filter(
+            AsyncJob.job_type == type_val,
+            AsyncJob.created_at >= cutoff_time
+        ).count()
+        if count > 0:  # Only include types with jobs
+            type_counts[type_val.value] = count
+
+    # Average duration for completed jobs
+    completed_jobs = base_query.filter(
+        AsyncJob.status == JobStatus.COMPLETED,
+        AsyncJob.started_at.isnot(None),
+        AsyncJob.completed_at.isnot(None),
+        AsyncJob.created_at >= cutoff_time
+    ).all()
+
+    durations = []
+    for job in completed_jobs:
+        if job.started_at and job.completed_at:
+            duration = (job.completed_at - job.started_at).total_seconds()
+            durations.append(duration)
+
+    avg_duration = sum(durations) / len(durations) if durations else 0
+
+    # Error rate
+    failed_count = status_counts.get("failed", 0)
+    completed_count = status_counts.get("completed", 0)
+    total_finished = failed_count + completed_count
+    error_rate = failed_count / total_finished if total_finished > 0 else 0
+
+    # Recent errors
+    recent_errors = base_query.filter(
+        AsyncJob.status == JobStatus.FAILED,
+        AsyncJob.created_at >= cutoff_time
+    ).order_by(desc(AsyncJob.completed_at)).limit(10).all()
+
+    # Jobs per hour (last 24 hours)
+    jobs_per_hour = []
+    for i in range(min(hours, 24)):
+        hour_start = datetime.utcnow() - timedelta(hours=i+1)
+        hour_end = datetime.utcnow() - timedelta(hours=i)
+        count = base_query.filter(
+            AsyncJob.created_at >= hour_start,
+            AsyncJob.created_at < hour_end
+        ).count()
+        jobs_per_hour.append({
+            "hour": hour_start.strftime("%H:%M"),
+            "count": count
+        })
+
+    jobs_per_hour.reverse()  # Oldest first
+
+    return {
+        "total_jobs": total_jobs,
+        "by_status": status_counts,
+        "by_type": type_counts,
+        "avg_duration_seconds": round(avg_duration, 2),
+        "jobs_per_hour": jobs_per_hour,
+        "error_rate": round(error_rate, 4),
+        "recent_errors": [
+            {
+                "id": str(job.id),
+                "job_type": job.job_type.value,
+                "error": job.error,
+                "notification_title": job.notification_title,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None
+            }
+            for job in recent_errors
+        ],
+        "time_range_hours": hours
+    }
+
+
+@router.get("/types")
+async def list_job_types():
+    """
+    PROMPT #135 - List all available job types.
+
+    Returns:
+        List of job type values for filter dropdowns.
+    """
+    return [{"value": jt.value, "label": jt.value.replace("_", " ").title()} for jt in JobType]
+
+
+@router.get("/statuses")
+async def list_job_statuses():
+    """
+    PROMPT #135 - List all available job statuses.
+
+    Returns:
+        List of job status values for filter dropdowns.
+    """
+    return [{"value": js.value, "label": js.value.title()} for js in JobStatus]
 
 
 @router.get("/active")
@@ -269,4 +490,70 @@ async def cleanup_old_jobs(
         "deleted_count": deleted_count,
         "cutoff_days": days,
         "message": f"Successfully deleted {deleted_count} old jobs (older than {days} days)"
+    }
+
+
+@router.delete("/bulk")
+async def bulk_delete_jobs(
+    status: Optional[str] = Query(None, description="Delete jobs with this status"),
+    job_type: Optional[str] = Query(None, description="Delete jobs with this type"),
+    older_than_hours: Optional[int] = Query(None, description="Delete jobs older than N hours"),
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #135 - Bulk delete jobs with filters.
+
+    At least one filter must be provided for safety.
+
+    Args:
+        status: Filter by status
+        job_type: Filter by job type
+        older_than_hours: Filter by age
+
+    Returns:
+        {
+            "deleted_count": 25,
+            "message": "Successfully deleted 25 jobs"
+        }
+    """
+    if not status and not job_type and not older_than_hours:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one filter (status, job_type, or older_than_hours) must be provided"
+        )
+
+    query = db.query(AsyncJob)
+
+    # Don't allow deleting active jobs
+    query = query.filter(AsyncJob.status.notin_([JobStatus.PENDING, JobStatus.RUNNING]))
+
+    if status:
+        try:
+            status_enum = JobStatus(status)
+            if status_enum in [JobStatus.PENDING, JobStatus.RUNNING]:
+                raise HTTPException(status_code=400, detail="Cannot bulk delete pending or running jobs")
+            query = query.filter(AsyncJob.status == status_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+
+    if job_type:
+        try:
+            job_type_enum = JobType(job_type)
+            query = query.filter(AsyncJob.job_type == job_type_enum)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid job_type: {job_type}")
+
+    if older_than_hours:
+        cutoff = datetime.utcnow() - timedelta(hours=older_than_hours)
+        query = query.filter(AsyncJob.created_at < cutoff)
+
+    count = query.count()
+    query.delete(synchronize_session=False)
+    db.commit()
+
+    logger.info(f"Bulk deleted {count} jobs")
+
+    return {
+        "deleted_count": count,
+        "message": f"Successfully deleted {count} jobs"
     }

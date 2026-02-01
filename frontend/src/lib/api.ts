@@ -348,6 +348,13 @@ export const tasksApi = {
     }>(`/api/v1/tasks/projects/${projectId}/execute-all`, {
       method: 'POST',
     }),
+
+  // PROMPT #131 - Run card inference from interview data
+  runCardInference: (taskId: string, interviewId: string) =>
+    request<any>(`/api/v1/tasks/${taskId}/card-inference`, {
+      method: 'POST',
+      body: JSON.stringify({ interview_id: interviewId }),
+    }),
 };
 
 // Backlog Generation API (JIRA Transformation - PROMPT #62)
@@ -860,6 +867,7 @@ export interface JobResponse {
 
 // Jobs API (PROMPT #65 - Async Job System)
 // PROMPT #108 - Added polling utility for background queue
+// PROMPT #135 - Added comprehensive job queue management endpoints
 export const jobsApi = {
   get: (jobId: string) =>
     request<JobResponse>(`/api/v1/jobs/${jobId}`),
@@ -871,6 +879,90 @@ export const jobsApi = {
   cancel: (jobId: string) =>
     request<{ id: string; status: string; message: string }>(`/api/v1/jobs/${jobId}/cancel`, {
       method: 'PATCH',
+    }),
+
+  // PROMPT #135 - List all jobs with filtering and pagination
+  list: (params?: {
+    status?: string;
+    job_type?: string;
+    project_id?: string;
+    limit?: number;
+    offset?: number;
+    sort_by?: string;
+    sort_order?: string;
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.job_type) queryParams.append('job_type', params.job_type);
+    if (params?.project_id) queryParams.append('project_id', params.project_id);
+    if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
+    if (params?.offset !== undefined) queryParams.append('offset', params.offset.toString());
+    if (params?.sort_by) queryParams.append('sort_by', params.sort_by);
+    if (params?.sort_order) queryParams.append('sort_order', params.sort_order);
+
+    const queryString = queryParams.toString();
+    return request<{
+      jobs: JobResponse[];
+      total: number;
+      limit: number;
+      offset: number;
+    }>(`/api/v1/jobs/${queryString ? '?' + queryString : ''}`);
+  },
+
+  // PROMPT #135 - Get job statistics
+  stats: (params?: { project_id?: string; hours?: number }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.project_id) queryParams.append('project_id', params.project_id);
+    if (params?.hours !== undefined) queryParams.append('hours', params.hours.toString());
+
+    const queryString = queryParams.toString();
+    return request<{
+      total_jobs: number;
+      by_status: Record<string, number>;
+      by_type: Record<string, number>;
+      avg_duration_seconds: number;
+      jobs_per_hour: Array<{ hour: string; count: number }>;
+      error_rate: number;
+      recent_errors: Array<{
+        id: string;
+        job_type: string;
+        error: string;
+        notification_title: string | null;
+        completed_at: string | null;
+      }>;
+      time_range_hours: number;
+    }>(`/api/v1/jobs/stats${queryString ? '?' + queryString : ''}`);
+  },
+
+  // PROMPT #135 - List available job types
+  types: () =>
+    request<Array<{ value: string; label: string }>>('/api/v1/jobs/types'),
+
+  // PROMPT #135 - List available job statuses
+  statuses: () =>
+    request<Array<{ value: string; label: string }>>('/api/v1/jobs/statuses'),
+
+  // PROMPT #135 - Bulk delete jobs
+  bulkDelete: (params: {
+    status?: string;
+    job_type?: string;
+    older_than_hours?: number;
+  }) => {
+    const queryParams = new URLSearchParams();
+    if (params.status) queryParams.append('status', params.status);
+    if (params.job_type) queryParams.append('job_type', params.job_type);
+    if (params.older_than_hours !== undefined) queryParams.append('older_than_hours', params.older_than_hours.toString());
+
+    const queryString = queryParams.toString();
+    return request<{ deleted_count: number; message: string }>(`/api/v1/jobs/bulk?${queryString}`, {
+      method: 'DELETE',
+    });
+  },
+
+  // PROMPT #135 - Cleanup old jobs
+  cleanup: (days: number = 7) =>
+    request<{ deleted_count: number; cutoff_days: number; message: string }>(`/api/v1/jobs/cleanup?days=${days}`, {
+      method: 'POST',
     }),
 
   // PROMPT #108 - Poll until job completes
