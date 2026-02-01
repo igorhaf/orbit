@@ -8,9 +8,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Gerenciar conexões ativas
+# Gerenciar conexões ativas por projeto
 # {project_id: Set[WebSocket]}
 active_connections: Dict[str, Set[WebSocket]] = {}
+
+# PROMPT #134 - Conexões globais para notificações de jobs
+# Todas as conexões recebem updates de jobs (não filtrado por projeto)
+notification_connections: Set[WebSocket] = set()
 
 
 class ConnectionManager:
@@ -154,3 +158,141 @@ async def broadcast_event(
     }
     
     await ConnectionManager.broadcast(project_id, message)
+
+
+# ============================================================================
+# PROMPT #134 - WebSocket para Notificações de Jobs (Global)
+# ============================================================================
+
+class NotificationManager:
+    """
+    Gerencia conexões WebSocket globais para notificações de jobs.
+
+    Diferente do ConnectionManager (por projeto), este gerencia conexões
+    globais onde todos os clientes recebem updates de todos os jobs.
+
+    PROMPT #134 - Migração de polling para WebSocket
+    """
+
+    @staticmethod
+    async def connect(websocket: WebSocket):
+        """Adiciona conexão global de notificações"""
+        await websocket.accept()
+        notification_connections.add(websocket)
+        logger.info(f"🔔 Notification WebSocket connected (total: {len(notification_connections)})")
+
+    @staticmethod
+    async def disconnect(websocket: WebSocket):
+        """Remove conexão de notificações"""
+        notification_connections.discard(websocket)
+        logger.info(f"🔕 Notification WebSocket disconnected (total: {len(notification_connections)})")
+
+    @staticmethod
+    async def broadcast(message: dict):
+        """
+        Envia mensagem para TODAS as conexões de notificação.
+
+        Args:
+            message: Mensagem dict (será convertida para JSON)
+        """
+        if not notification_connections:
+            logger.debug("No notification connections, skipping broadcast")
+            return
+
+        message_json = json.dumps(message)
+        disconnected = set()
+
+        for connection in notification_connections.copy():
+            try:
+                await connection.send_text(message_json)
+            except Exception as e:
+                logger.error(f"Failed to send notification: {e}")
+                disconnected.add(connection)
+
+        # Remover conexões que falharam
+        for conn in disconnected:
+            notification_connections.discard(conn)
+
+        logger.debug(f"🔔 Broadcasted {message.get('event')} to {len(notification_connections)} notification clients")
+
+
+@router.websocket("/ws/notifications")
+async def notification_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint global para notificações de jobs em tempo real.
+
+    PROMPT #134 - Migração de polling para WebSocket
+
+    URL: ws://localhost:8000/api/v1/ws/notifications
+
+    Eventos enviados ao cliente:
+    - job_started: Job iniciou processamento
+    - job_progress: Progresso do job atualizado
+    - job_completed: Job completou com sucesso
+    - job_failed: Job falhou
+    - job_cancelled: Job foi cancelado
+
+    Exemplo de mensagem:
+    {
+      "event": "job_completed",
+      "timestamp": "2026-02-01T12:00:00.000Z",
+      "data": {
+        "job_id": "...",
+        "job_type": "memory_scan",
+        "status": "completed",
+        "notification_title": "✅ Análise concluída: 'MeuProjeto'",
+        "deep_link": "/projects/new?projectId=xxx&step=1",
+        "result": {...}
+      }
+    }
+    """
+    await NotificationManager.connect(websocket)
+
+    try:
+        while True:
+            # Aguardar mensagem do cliente (keepalive)
+            data = await websocket.receive_text()
+
+            try:
+                message = json.loads(data)
+                if message.get("command") == "ping":
+                    await websocket.send_text(json.dumps({"event": "pong"}))
+            except json.JSONDecodeError:
+                pass
+
+    except WebSocketDisconnect:
+        await NotificationManager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"Notification WebSocket error: {e}")
+        await NotificationManager.disconnect(websocket)
+
+
+async def broadcast_job_event(event_type: str, job_data: dict):
+    """
+    Broadcast evento de job para todos os clientes de notificação.
+
+    PROMPT #134 - Usar no JobManager para enviar updates em tempo real.
+
+    Args:
+        event_type: Tipo do evento (job_started, job_progress, job_completed, job_failed, job_cancelled)
+        job_data: Dados do job (job_id, status, progress, result, etc.)
+
+    Exemplo:
+        await broadcast_job_event(
+            "job_completed",
+            {
+                "job_id": "abc123",
+                "job_type": "memory_scan",
+                "status": "completed",
+                "notification_title": "✅ Análise concluída",
+                "deep_link": "/projects/new?projectId=xxx"
+            }
+        )
+    """
+    message = {
+        "event": event_type,
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": job_data
+    }
+
+    await NotificationManager.broadcast(message)

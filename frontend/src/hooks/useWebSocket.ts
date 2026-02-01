@@ -59,11 +59,19 @@ export function useWebSocket({
   const [isConnected, setIsConnected] = useState(false);
 
   const clientRef = useRef<WebSocketClient | null>(null);
-  const checkConnectionInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize WebSocket client
   useEffect(() => {
     clientRef.current = getWebSocketClient(projectId, baseUrl);
+
+    // PROMPT #134 - Use callbacks instead of polling for connection status
+    clientRef.current.onConnect(() => {
+      setIsConnected(true);
+    });
+
+    clientRef.current.onDisconnect(() => {
+      setIsConnected(false);
+    });
 
     if (autoConnect) {
       clientRef.current.connect();
@@ -74,26 +82,8 @@ export function useWebSocket({
       if (clientRef.current) {
         clientRef.current.disconnect();
       }
-      if (checkConnectionInterval.current) {
-        clearInterval(checkConnectionInterval.current);
-      }
     };
   }, [projectId, baseUrl, autoConnect]);
-
-  // Monitor connection status
-  useEffect(() => {
-    checkConnectionInterval.current = setInterval(() => {
-      if (clientRef.current) {
-        setIsConnected(clientRef.current.isConnected());
-      }
-    }, 1000);
-
-    return () => {
-      if (checkConnectionInterval.current) {
-        clearInterval(checkConnectionInterval.current);
-      }
-    };
-  }, []);
 
   // Subscribe to all messages to update state
   useEffect(() => {

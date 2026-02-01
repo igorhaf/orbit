@@ -89,6 +89,9 @@ export default function AnalyzePage() {
     }
   };
 
+  // TODO: PROMPT #134 - Migrate to WebSocket when analysis system uses AsyncJob
+  // Currently the analysis system has its own model (ProjectAnalysis) separate from AsyncJob.
+  // To migrate: modify backend to create AsyncJob for analysis and broadcast via WebSocket.
   const pollAnalysisStatus = async (analysisId: string) => {
     const interval = setInterval(async () => {
       try {

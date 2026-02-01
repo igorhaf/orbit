@@ -1,9 +1,10 @@
 /**
  * useJobPolling Hook
  * PROMPT #65 - Async Job System
+ * PROMPT #134 - Migrated from polling to WebSocket
  *
- * Polls async job status until completion or failure.
- * Provides real-time progress updates for long-running background tasks.
+ * Now uses WebSocket via NotificationContext for real-time updates.
+ * No more polling - receives instant updates when job status changes.
  *
  * Usage:
  *   const { job, isPolling } = useJobPolling(jobId);
@@ -18,6 +19,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { jobsApi } from '@/lib/api';
 
 export interface AsyncJob {
@@ -31,12 +33,18 @@ export interface AsyncJob {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  // PROMPT #133 - Deep linking
+  deep_link?: string | null;
+  notification_title?: string | null;
+  project_id?: string | null;
+  task_id?: string | null;
+  interview_id?: string | null;
 }
 
 interface UseJobPollingOptions {
   /**
    * Polling interval in milliseconds
-   * @default 1500
+   * @deprecated PROMPT #134 - No longer used, WebSocket provides instant updates
    */
   interval?: number;
 
@@ -62,12 +70,18 @@ interface UseJobPollingOptions {
   onCancelled?: () => void;
 }
 
+/**
+ * Hook to track async job status via WebSocket.
+ * PROMPT #134 - Migrated from polling to WebSocket for instant updates.
+ *
+ * @param jobId - The job ID to track
+ * @param options - Configuration options
+ */
 export function useJobPolling(
   jobId: string | null,
   options: UseJobPollingOptions = {}
 ) {
   const {
-    interval = 1500,
     enabled = true,
     onComplete,
     onError,
@@ -78,12 +92,69 @@ export function useJobPolling(
   const [isPolling, setIsPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // PROMPT #134 - Use NotificationContext to track job via WebSocket
+  const { activeJobs, notifications, addJob } = useNotifications();
+
+  // Find job in activeJobs or notifications
+  const trackedJob = jobId
+    ? activeJobs.find(j => j.job_id === jobId) || notifications.find(n => n.job_id === jobId)
+    : null;
+
+  // Sync job state from NotificationContext
+  useEffect(() => {
+    if (!trackedJob) return;
+
+    const asyncJob: AsyncJob = {
+      id: trackedJob.job_id,
+      job_type: trackedJob.job_type,
+      status: trackedJob.status,
+      progress_percent: trackedJob.progress_percent,
+      progress_message: trackedJob.progress_message,
+      result: trackedJob.result || null,
+      error: trackedJob.error || null,
+      created_at: trackedJob.created_at,
+      started_at: null,
+      completed_at: trackedJob.completed_at || null,
+      deep_link: trackedJob.deep_link,
+      notification_title: trackedJob.notification_title,
+      project_id: trackedJob.project_id,
+      task_id: trackedJob.task_id,
+      interview_id: trackedJob.interview_id,
+    };
+
+    setJob(asyncJob);
+
+    // Update isPolling based on status
+    if (['completed', 'failed', 'cancelled'].includes(trackedJob.status)) {
+      setIsPolling(false);
+    } else {
+      setIsPolling(true);
+    }
+
+    // Trigger callbacks
+    if (trackedJob.status === 'completed' && onComplete) {
+      onComplete(trackedJob.result);
+    } else if (trackedJob.status === 'failed' && onError) {
+      setError(trackedJob.error || 'Job failed');
+      onError(trackedJob.error || 'Job failed');
+    } else if (trackedJob.status === 'cancelled' && onCancelled) {
+      onCancelled();
+    }
+  }, [trackedJob, onComplete, onError, onCancelled]);
+
+  // Initial fetch when jobId changes (in case job started before WebSocket connected)
   const fetchJobStatus = useCallback(async () => {
     if (!jobId) return;
 
     try {
       const response = await jobsApi.get(jobId);
       const data = response.data || response;
+
+      // Add job to NotificationContext if not already tracked
+      if (!trackedJob) {
+        addJob(jobId, data.job_type, data.notification_title || 'Processando...');
+      }
+
       setJob(data);
 
       // If job is completed, failed, or cancelled, stop polling
@@ -103,34 +174,22 @@ export function useJobPolling(
       setError(err.message || 'Failed to fetch job status');
       setIsPolling(false);
     }
-  }, [jobId, onComplete, onError, onCancelled]);
+  }, [jobId, trackedJob, addJob, onComplete, onError, onCancelled]);
 
+  // Fetch job status once on mount/jobId change
   useEffect(() => {
-    console.log('🔄 useJobPolling effect triggered:', { jobId, enabled });
-
     if (!jobId || !enabled) {
-      console.log('⏹️ Stopping polling (no jobId or disabled)');
       setIsPolling(false);
       return;
     }
 
-    console.log('▶️ Starting polling for job:', jobId);
-    setIsPolling(true);
-    setError(null);
-
-    // Fetch immediately
-    fetchJobStatus();
-
-    // Set up polling interval
-    const pollInterval = setInterval(() => {
+    // Only fetch if not already tracked
+    if (!trackedJob) {
+      setIsPolling(true);
+      setError(null);
       fetchJobStatus();
-    }, interval);
-
-    return () => {
-      console.log('🛑 Cleaning up polling for job:', jobId);
-      clearInterval(pollInterval);
-    };
-  }, [jobId, enabled, interval, fetchJobStatus]);
+    }
+  }, [jobId, enabled, trackedJob, fetchJobStatus]);
 
   return {
     job,

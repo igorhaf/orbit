@@ -7,7 +7,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { interviewsApi, backlogApi, projectsApi } from '@/lib/api';
+import { interviewsApi, backlogApi, projectsApi, tasksApi } from '@/lib/api';
 import { Interview } from '@/lib/types';
 import { Button, Badge, JobProgressBar, Dialog, DialogFooter } from '@/components/ui';
 import { ErrorDialog, formatErrorMessage } from '@/components/ui/ErrorDialog';
@@ -20,12 +20,14 @@ interface Props {
   interviewId: string;
   onStatusChange?: () => void;
   onComplete?: () => void;  // PROMPT #89 - Called when interview is completed (for context generation)
-  interviewMode?: 'context' | 'meta_prompt' | 'orchestrator' | string;  // PROMPT #89 - Interview mode hint
+  interviewMode?: 'context' | 'meta_prompt' | 'orchestrator' | 'card_inference' | string;  // PROMPT #89 - Interview mode hint
   embedded?: boolean;  // PROMPT #130 - When true, removes outer container styling for embedding in modals/panels
   readOnly?: boolean;  // PROMPT #130 - When true, hides input and action buttons (display mode only)
+  parentTaskId?: string;  // PROMPT #131 - Parent task ID for card_inference mode
+  hideHeader?: boolean;  // PROMPT #131 - When true, hides internal header (parent handles it)
 }
 
-export function ChatInterface({ interviewId, onStatusChange, onComplete, interviewMode, embedded = false, readOnly = false }: Props) {
+export function ChatInterface({ interviewId, onStatusChange, onComplete, interviewMode, embedded = false, readOnly = false, parentTaskId, hideHeader = false }: Props) {
   const router = useRouter();
   const [interview, setInterview] = useState<Interview | null>(null);
   const [message, setMessage] = useState('');
@@ -256,34 +258,9 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     checkForPendingJobs(); // PROMPT #65 - Check for pending jobs on mount
   }, [interviewId]);
 
-  // PROMPT #65 - Continuously sync jobIds from localStorage (survives Fast Refresh)
-  // This catches jobIds that were saved AFTER component mounted (due to Fast Refresh timing)
-  useEffect(() => {
-    const syncInterval = setInterval(() => {
-      // Check for generatePromptsJobId
-      const savedGenerateJobId = localStorage.getItem(`generateJob_${interviewId}`);
-      if (savedGenerateJobId && savedGenerateJobId !== generatePromptsJobId) {
-        console.log('🔄 Syncing generatePromptsJobId from localStorage:', savedGenerateJobId);
-        setGeneratePromptsJobId(savedGenerateJobId);
-      }
-
-      // Check for provisioningJobId
-      const savedProvisioningJobId = localStorage.getItem(`provisioningJob_${interviewId}`);
-      if (savedProvisioningJobId && savedProvisioningJobId !== provisioningJobId) {
-        console.log('🔄 Syncing provisioningJobId from localStorage:', savedProvisioningJobId);
-        setProvisioningJobId(savedProvisioningJobId);
-      }
-
-      // Check for sendMessageJobId
-      const savedSendMessageJobId = localStorage.getItem(`sendMessageJob_${interviewId}`);
-      if (savedSendMessageJobId && savedSendMessageJobId !== sendMessageJobId) {
-        console.log('🔄 Syncing sendMessageJobId from localStorage:', savedSendMessageJobId);
-        setSendMessageJobId(savedSendMessageJobId);
-      }
-    }, 100); // Check every 100ms
-
-    return () => clearInterval(syncInterval);
-  }, [interviewId, generatePromptsJobId, provisioningJobId, sendMessageJobId]);
+  // PROMPT #134 - Removed 100ms localStorage polling
+  // WebSocket now provides real-time updates for job status.
+  // Job IDs are restored from localStorage on mount via checkForPendingJobs().
 
   // PROMPT #65 - Check for pending/running jobs when component mounts
   const checkForPendingJobs = async () => {
@@ -790,17 +767,33 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
   };
 
   const handleComplete = async () => {
-    // PROMPT #118 - Use ConfirmDialog instead of native confirm()
+    // PROMPT #131 - Card inference mode: complete and run inference
+    const isCardInference = interviewMode === 'card_inference';
+
     setConfirmDialog({
       open: true,
-      title: 'Completar Entrevista',
-      message: 'Marcar esta entrevista como completa?',
+      title: isCardInference ? 'Completar e Atualizar Card' : 'Completar Entrevista',
+      message: isCardInference
+        ? 'Completar esta entrevista e atualizar o card com as informações coletadas?'
+        : 'Marcar esta entrevista como completa?',
       type: 'info',
-      confirmLabel: 'Completar',
+      confirmLabel: isCardInference ? 'Completar e Atualizar' : 'Completar',
       isLoading: false,
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, isLoading: true }));
         try {
+          // PROMPT #131 - Run card inference if in card_inference mode
+          if (isCardInference && parentTaskId) {
+            console.log('🔄 Running card inference for task:', parentTaskId);
+            try {
+              await tasksApi.runCardInference(parentTaskId, interviewId);
+              console.log('✅ Card inference completed');
+            } catch (inferenceError) {
+              console.error('⚠️ Card inference failed, continuing with completion:', inferenceError);
+              // Continue even if inference fails
+            }
+          }
+
           await interviewsApi.updateStatus(interviewId, 'completed');
           await loadInterview();
           onStatusChange?.();
@@ -1009,83 +1002,88 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         : 'h-[calc(100vh-6rem)] rounded-xl shadow-lg border border-gray-100'
     }`}>
       {/* Header - PROMPT #127 - Improved layout */}
-      <div className={`border-b px-4 py-2 flex justify-between items-center ${
-        embedded
-          ? 'bg-gray-50'
-          : 'px-6 py-3 bg-gradient-to-r from-blue-50 to-white rounded-t-xl'
-      }`}>
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-gray-800">Entrevista</h2>
-          <Badge
-            variant={
-              interview.status === 'active'
-                ? 'success'
-                : interview.status === 'completed'
-                ? 'default'
-                : 'danger'
-            }
-          >
-            {interview.status.toUpperCase()}
-          </Badge>
-        </div>
-
-        {/* PROMPT #130 - Hide action buttons in readOnly mode */}
-        {!readOnly && (
-          <div className="flex gap-2">
-            {/* PROMPT #89 - Context Interview: Generate Context Button */}
-            {/* PROMPT #80 - Meta Prompt: Generate Epic Button */}
-            {/* PROMPT #122 - Allow generating context immediately if memory scan captured context */}
-            {interviewMode === 'context' ? (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={() => onComplete?.()}
-                disabled={generatingPrompts || !interview || interview.conversation_data.length < 1}
-              >
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                📝 Gerar Contexto
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                onClick={handleGenerateEpic}
-                disabled={generatingPrompts || !interview || interview.conversation_data.length === 0}
-              >
-                {generatingPrompts ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
-                    Generating Epic...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                    🎯 Gerar Épico
-                  </>
-                )}
-              </Button>
-            )}
-
-            {isActive && (
-              <>
-                <Button variant="outline" size="sm" onClick={handleComplete}>
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Complete
-                </Button>
-                <Button variant="danger" size="sm" onClick={handleCancel}>
-                  Cancel
-                </Button>
-              </>
-            )}
+      {/* PROMPT #131 - When hideHeader is true, hide completely (parent handles header and buttons) */}
+      {!hideHeader && (
+        <div className={`border-b px-4 py-2 flex justify-between items-center flex-shrink-0 ${
+          embedded
+            ? 'bg-gray-50'
+            : 'px-6 py-3 bg-gradient-to-r from-blue-50 to-white rounded-t-xl'
+        }`}>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-gray-800">Entrevista</h2>
+            <Badge
+              variant={
+                interview.status === 'active'
+                  ? 'success'
+                  : interview.status === 'completed'
+                  ? 'default'
+                  : 'danger'
+              }
+            >
+              {interview.status.toUpperCase()}
+            </Badge>
           </div>
-        )}
-      </div>
+
+          {/* PROMPT #130 - Hide action buttons in readOnly mode */}
+          {!readOnly && (
+            <div className="flex gap-2">
+              {/* PROMPT #89 - Context Interview: Generate Context Button */}
+              {/* PROMPT #80 - Meta Prompt: Generate Epic Button */}
+              {/* PROMPT #131 - Hide Gerar Épico for card_inference mode */}
+              {/* PROMPT #122 - Allow generating context immediately if memory scan captured context */}
+              {interviewMode === 'context' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => onComplete?.()}
+                  disabled={generatingPrompts || !interview || interview.conversation_data.length < 1}
+                >
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  📝 Gerar Contexto
+                </Button>
+              )}
+              {interviewMode !== 'context' && interviewMode !== 'card_inference' && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleGenerateEpic}
+                  disabled={generatingPrompts || !interview || interview.conversation_data.length === 0}
+                >
+                  {generatingPrompts ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                      Generating Epic...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                      🎯 Gerar Épico
+                    </>
+                  )}
+                </Button>
+              )}
+
+              {isActive && (
+                <>
+                  <Button variant="outline" size="sm" onClick={handleComplete}>
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Complete
+                  </Button>
+                  <Button variant="danger" size="sm" onClick={handleCancel}>
+                    Cancel
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* PROMPT #81 - Fallback Warning Banner */}
       {fallbackWarning && (
@@ -1316,8 +1314,9 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
       {/* Input Area - PROMPT #127 - Improved spacing */}
       {/* PROMPT #130 - Hide input area in readOnly mode */}
+      {/* PROMPT #131 - flex-shrink-0 to prevent shrinking */}
       {!readOnly && (
-      <div className={`border-t bg-white ${
+      <div className={`border-t bg-white flex-shrink-0 ${
         embedded
           ? 'px-3 py-2'
           : 'px-4 py-3 md:px-8 lg:px-12 rounded-b-xl'

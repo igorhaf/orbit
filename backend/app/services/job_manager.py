@@ -4,6 +4,9 @@ Utility functions for managing async jobs.
 
 PROMPT #65 - Async Job System
 Provides helpers for creating, updating, and completing jobs.
+
+PROMPT #134 - WebSocket Integration
+All job status changes now broadcast via WebSocket for real-time updates.
 """
 
 from sqlalchemy.orm import Session
@@ -11,10 +14,32 @@ from uuid import UUID, uuid4
 from datetime import datetime
 from typing import Dict, Any, Optional
 import logging
+import asyncio
 
 from app.models.async_job import AsyncJob, JobStatus, JobType
 
 logger = logging.getLogger(__name__)
+
+
+def _broadcast_job_event(event_type: str, job_data: dict):
+    """
+    Helper to broadcast job event via WebSocket.
+    PROMPT #134 - WebSocket integration for real-time updates.
+
+    Uses asyncio.create_task to avoid blocking the synchronous methods.
+    """
+    try:
+        from app.api.websocket import broadcast_job_event
+
+        # Get or create event loop
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(broadcast_job_event(event_type, job_data))
+        except RuntimeError:
+            # No running loop - create one (shouldn't happen in FastAPI context)
+            asyncio.run(broadcast_job_event(event_type, job_data))
+    except Exception as e:
+        logger.warning(f"Failed to broadcast job event: {e}")
 
 
 class JobManager:
@@ -109,6 +134,14 @@ class JobManager:
         self.db.commit()
         logger.info(f"Started job {job_id}")
 
+        # PROMPT #134 - Broadcast via WebSocket
+        _broadcast_job_event("job_started", {
+            "job_id": str(job_id),
+            "job_type": job.job_type.value,
+            "status": "running",
+            "notification_title": job.notification_title
+        })
+
     def update_progress(
         self,
         job_id: UUID,
@@ -135,6 +168,14 @@ class JobManager:
         self.db.commit()
         logger.debug(f"Job {job_id} progress: {progress_percent}% - {progress_message}")
 
+        # PROMPT #134 - Broadcast via WebSocket
+        _broadcast_job_event("job_progress", {
+            "job_id": str(job_id),
+            "job_type": job.job_type.value,
+            "progress_percent": progress_percent,
+            "progress_message": progress_message
+        })
+
     def complete_job(self, job_id: UUID, result: Dict[str, Any]) -> None:
         """
         Mark job as completed with result.
@@ -156,6 +197,19 @@ class JobManager:
         self.db.commit()
         logger.info(f"Completed job {job_id}")
 
+        # PROMPT #134 - Broadcast via WebSocket
+        _broadcast_job_event("job_completed", {
+            "job_id": str(job_id),
+            "job_type": job.job_type.value,
+            "status": "completed",
+            "result": result,
+            "notification_title": job.notification_title,
+            "deep_link": job.deep_link,
+            "project_id": str(job.project_id) if job.project_id else None,
+            "task_id": str(job.task_id) if job.task_id else None,
+            "interview_id": str(job.interview_id) if job.interview_id else None
+        })
+
     def fail_job(self, job_id: UUID, error: str) -> None:
         """
         Mark job as failed with error message.
@@ -175,6 +229,19 @@ class JobManager:
 
         self.db.commit()
         logger.error(f"Failed job {job_id}: {error}")
+
+        # PROMPT #134 - Broadcast via WebSocket
+        _broadcast_job_event("job_failed", {
+            "job_id": str(job_id),
+            "job_type": job.job_type.value,
+            "status": "failed",
+            "error": error,
+            "notification_title": job.notification_title,
+            "deep_link": job.deep_link,
+            "project_id": str(job.project_id) if job.project_id else None,
+            "task_id": str(job.task_id) if job.task_id else None,
+            "interview_id": str(job.interview_id) if job.interview_id else None
+        })
 
     def get_job(self, job_id: UUID) -> Optional[AsyncJob]:
         """
@@ -215,6 +282,14 @@ class JobManager:
 
         self.db.commit()
         logger.info(f"Cancelled job {job_id}")
+
+        # PROMPT #134 - Broadcast via WebSocket
+        _broadcast_job_event("job_cancelled", {
+            "job_id": str(job_id),
+            "job_type": job.job_type.value,
+            "status": "cancelled"
+        })
+
         return True
 
     def is_cancelled(self, job_id: UUID) -> bool:

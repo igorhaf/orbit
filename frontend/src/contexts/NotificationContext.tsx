@@ -3,9 +3,17 @@
 /**
  * NotificationContext - Global notification state management
  * PROMPT #128 - Background Job Notifications
+ * PROMPT #134 - Migrated from polling to WebSocket for real-time updates
  *
  * Manages active jobs, completed notifications, and provides
  * real-time updates for the notification bell in the navbar.
+ *
+ * WebSocket Events:
+ * - job_started: Job started processing
+ * - job_progress: Job progress updated
+ * - job_completed: Job completed successfully
+ * - job_failed: Job failed
+ * - job_cancelled: Job was cancelled
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
@@ -51,10 +59,8 @@ interface NotificationContextType {
   clearNotification: (notificationId: string) => void;
   clearAllNotifications: () => void;
 
-  // Polling control
-  startPolling: () => void;
-  stopPolling: () => void;
-  isPolling: boolean;
+  // PROMPT #134 - WebSocket connection status (replaces polling)
+  isConnected: boolean;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -102,9 +108,17 @@ export const JOB_TYPE_ICONS: Record<string, string> = {
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const [activeJobs, setActiveJobs] = useState<JobNotification[]>([]);
   const [notifications, setNotifications] = useState<JobNotification[]>([]);
-  const [isPolling, setIsPolling] = useState(false);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api/v1';
+  const [isConnected, setIsConnected] = useState(false);
+
+  // PROMPT #134 - WebSocket refs
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // API and WebSocket URLs
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const WS_URL = API_BASE.replace('http', 'ws');
 
   // Calculate unread count
   const unreadCount = notifications.filter(n => !n.read).length;
@@ -124,13 +138,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       description,
     };
 
-    setActiveJobs(prev => [...prev, newJob]);
-
-    // Start polling if not already
-    if (!isPolling) {
-      startPolling();
-    }
-  }, [isPolling]);
+    setActiveJobs(prev => {
+      // Avoid duplicates
+      if (prev.some(j => j.job_id === jobId)) return prev;
+      return [...prev, newJob];
+    });
+  }, []);
 
   // Update job status
   const updateJob = useCallback((jobId: string, updates: Partial<JobNotification>) => {
@@ -181,79 +194,165 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     setNotifications([]);
   }, []);
 
-  // Poll active jobs for updates
-  const pollJobs = useCallback(async () => {
-    if (activeJobs.length === 0) return;
+  // PROMPT #134 - Handle WebSocket events
+  const handleWebSocketEvent = useCallback((message: any) => {
+    const { event, data } = message;
 
-    for (const job of activeJobs) {
-      try {
-        const response = await fetch(`${API_URL}/jobs/${job.job_id}`);
-        if (response.ok) {
-          const data = await response.json();
-          // PROMPT #133 - Include deep_link and notification_title from API
-          const updates: Partial<JobNotification> = {
-            status: data.status,
-            progress_percent: data.progress_percent,
-            progress_message: data.progress_message,
-            result: data.result,
-            error: data.error,
-            deep_link: data.deep_link,
-            project_id: data.project_id,
-            task_id: data.task_id,
-            interview_id: data.interview_id,
-          };
-          // Update title from notification_title if available (e.g., "✅ Pergunta gerada...")
-          if (data.notification_title) {
-            updates.title = data.notification_title;
-          }
-          updateJob(job.job_id, updates);
+    if (!data?.job_id) {
+      // Handle non-job events (pong, etc.)
+      if (event === 'pong') return;
+      console.log('WebSocket event without job_id:', event);
+      return;
+    }
+
+    // Check if we're tracking this job
+    setActiveJobs(prevJobs => {
+      const jobExists = prevJobs.some(j => j.job_id === data.job_id);
+
+      // If job doesn't exist in activeJobs, add it (for jobs started in other tabs)
+      if (!jobExists && event === 'job_started') {
+        const newJob: JobNotification = {
+          id: `notif-${data.job_id}`,
+          job_id: data.job_id,
+          job_type: data.job_type,
+          status: 'running',
+          progress_percent: null,
+          progress_message: 'Processando...',
+          created_at: new Date().toISOString(),
+          read: false,
+          title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Processando...',
+        };
+        return [...prevJobs, newJob];
+      }
+
+      return prevJobs;
+    });
+
+    // Now update the job
+    switch (event) {
+      case 'job_started':
+        updateJob(data.job_id, {
+          status: 'running',
+          progress_message: 'Processando...',
+        });
+        break;
+
+      case 'job_progress':
+        updateJob(data.job_id, {
+          status: 'running',
+          progress_percent: data.progress_percent,
+          progress_message: data.progress_message,
+        });
+        break;
+
+      case 'job_completed':
+        updateJob(data.job_id, {
+          status: 'completed',
+          result: data.result,
+          title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Concluído',
+          deep_link: data.deep_link,
+          project_id: data.project_id,
+          task_id: data.task_id,
+          interview_id: data.interview_id,
+        });
+        break;
+
+      case 'job_failed':
+        updateJob(data.job_id, {
+          status: 'failed',
+          error: data.error,
+          title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Falhou',
+          deep_link: data.deep_link,
+          project_id: data.project_id,
+          task_id: data.task_id,
+          interview_id: data.interview_id,
+        });
+        break;
+
+      case 'job_cancelled':
+        updateJob(data.job_id, {
+          status: 'cancelled',
+        });
+        break;
+    }
+  }, [updateJob]);
+
+  // PROMPT #134 - Connect to WebSocket
+  const connect = useCallback(() => {
+    // Don't connect if already connected or connecting
+    if (wsRef.current?.readyState === WebSocket.OPEN ||
+        wsRef.current?.readyState === WebSocket.CONNECTING) {
+      return;
+    }
+
+    try {
+      const ws = new WebSocket(`${WS_URL}/api/v1/ws/notifications`);
+
+      ws.onopen = () => {
+        setIsConnected(true);
+        reconnectAttemptsRef.current = 0;
+        console.log('🔔 Notification WebSocket connected');
+
+        // Start ping interval to keep connection alive
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
         }
-      } catch (error) {
-        console.error(`Error polling job ${job.job_id}:`, error);
-      }
+        pingIntervalRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ command: 'ping' }));
+          }
+        }, 30000);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          handleWebSocketEvent(message);
+        } catch (e) {
+          console.error('Failed to parse WebSocket message:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        setIsConnected(false);
+        wsRef.current = null;
+
+        // Clear ping interval
+        if (pingIntervalRef.current) {
+          clearInterval(pingIntervalRef.current);
+          pingIntervalRef.current = null;
+        }
+
+        // Reconnect with exponential backoff
+        const maxAttempts = 10;
+        if (reconnectAttemptsRef.current < maxAttempts) {
+          const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
+          reconnectAttemptsRef.current++;
+          console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
+          reconnectTimeoutRef.current = setTimeout(connect, delay);
+        } else {
+          console.error('Max reconnection attempts reached');
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      wsRef.current = ws;
+    } catch (error) {
+      console.error('Failed to create WebSocket:', error);
     }
-  }, [activeJobs, API_URL, updateJob]);
+  }, [WS_URL, handleWebSocketEvent]);
 
-  // Start polling
-  const startPolling = useCallback(() => {
-    if (pollingIntervalRef.current) return;
-
-    setIsPolling(true);
-    pollingIntervalRef.current = setInterval(() => {
-      pollJobs();
-    }, 2000); // Poll every 2 seconds
-  }, [pollJobs]);
-
-  // Stop polling
-  const stopPolling = useCallback(() => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-    setIsPolling(false);
-  }, []);
-
-  // Auto-stop polling when no active jobs
+  // PROMPT #134 - Connect WebSocket on mount
   useEffect(() => {
-    if (activeJobs.length === 0 && isPolling) {
-      stopPolling();
-    }
-  }, [activeJobs.length, isPolling, stopPolling]);
+    connect();
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (pollingIntervalRef.current) {
-        clearInterval(pollingIntervalRef.current);
-      }
-    };
-  }, []);
-
-  // Fetch active jobs on mount
-  useEffect(() => {
+    // Fetch active jobs on mount (for jobs that started before connection)
     const fetchActiveJobs = async () => {
       try {
-        const response = await fetch(`${API_URL}/jobs/active`);
+        const response = await fetch(`${API_BASE}/api/v1/jobs/active`);
         if (response.ok) {
           const jobs = await response.json();
           if (jobs.length > 0) {
@@ -267,24 +366,39 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               created_at: job.created_at,
               read: false,
               title: job.notification_title || JOB_TYPE_TITLES[job.job_type] || 'Processando...',
-              // PROMPT #133 - Include deep link fields
               deep_link: job.deep_link,
               project_id: job.project_id,
               task_id: job.task_id,
               interview_id: job.interview_id,
             }));
-            setActiveJobs(mappedJobs);
-            startPolling();
+            setActiveJobs(prev => {
+              // Merge, avoiding duplicates
+              const existingIds = new Set(prev.map(j => j.job_id));
+              const newJobs = mappedJobs.filter(j => !existingIds.has(j.job_id));
+              return [...prev, ...newJobs];
+            });
           }
         }
       } catch (error) {
-        // Silently fail - endpoint might not exist yet
         console.log('Could not fetch active jobs:', error);
       }
     };
 
     fetchActiveJobs();
-  }, [API_URL, startPolling]);
+
+    // Cleanup on unmount
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [connect, API_BASE]);
 
   return (
     <NotificationContext.Provider
@@ -298,9 +412,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         markAllAsRead,
         clearNotification,
         clearAllNotifications,
-        startPolling,
-        stopPolling,
-        isPolling,
+        isConnected,
       }}
     >
       {children}
