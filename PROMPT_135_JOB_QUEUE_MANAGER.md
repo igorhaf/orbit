@@ -215,7 +215,7 @@ Implemented a complete Job Queue Manager with real-time visualization of all bac
 
 **Key Achievements:**
 - Full CRUD operations for jobs
-- Real-time WebSocket updates
+- Real-time WebSocket updates (no polling!)
 - Comprehensive statistics dashboard
 - Filtering and pagination
 - Bulk cleanup operations
@@ -226,6 +226,28 @@ Implemented a complete Job Queue Manager with real-time visualization of all bac
 - Easy troubleshooting of failed jobs
 - Performance monitoring
 - Quick cleanup of old jobs
+
+---
+
+## Real-Time Implementation (FIX - Commit 1ed20a0)
+
+The Job Queue page now uses **true WebSocket push** instead of polling:
+
+1. **Dedicated WebSocket connection** to `/ws/notifications`
+2. **In-place updates** when events arrive:
+   - `job_started` → Add new job or update status to "running"
+   - `job_progress` → Update progress_percent and progress_message
+   - `job_completed` → Update status, result, deep_link
+   - `job_failed` → Update status, error
+   - `job_cancelled` → Update status
+3. **Immediate stats update** when status changes
+4. **30s ping** to keep connection alive
+5. **Auto-reconnect** on disconnect (3s delay)
+
+**No more HTTP polling** - the page only fetches data on:
+- Initial load
+- Filter changes
+- Manual refresh button
 
 ---
 
