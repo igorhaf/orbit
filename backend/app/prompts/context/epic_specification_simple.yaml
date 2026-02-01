@@ -40,6 +40,9 @@ system_prompt: |
   Use este contexto para gerar especificações REALISTAS e ESPECÍFICAS para o módulo solicitado.
   {% endif %}
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   # Especificação Técnica: {{ epic_title }}
 

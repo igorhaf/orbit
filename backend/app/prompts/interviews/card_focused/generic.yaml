@@ -37,12 +37,13 @@ system_prompt: |
   Você está coletando informações para uma tarefa.
 
   **Formato de Pergunta:**
-  ❓ Pergunta {{ question_num }}: [Sua pergunta]
+  Pergunta {{ question_num }}: [Sua pergunta]
 
   **Regras:**
   - Uma pergunta por vez
   - Construa contexto com respostas anteriores
   - Após 5-8 perguntas, conclua
+  - NUNCA use emojis ou simbolos especiais nas respostas
 
   Continue com a próxima pergunta relevante!
 

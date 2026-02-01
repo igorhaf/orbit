@@ -1,11 +1,14 @@
 /**
  * MessageParser Utility
- * Parses AI messages to detect and extract interactive options from Unicode symbols
+ * Parses AI messages to detect and extract interactive options
+ * PROMPT #143 - Updated to use hyphen format (no emojis)
  *
- * Supports:
+ * Primary format (PROMPT #143):
+ * - Option text (hyphen prefix)
+ *
+ * Legacy format (backwards compatibility):
  * - Checkboxes: ☐ ☑ (multiple choice)
  * - Radio buttons: ○ ● (single choice)
- * - Mixed content: text + options
  */
 
 interface ParsedOption {
@@ -27,32 +30,35 @@ export interface ParsedMessage {
 
 /**
  * Parse message content to extract question text and interactive options
- * Enhanced version with robust Unicode detection and debugging
+ * PROMPT #142 - Handle Unicode variation selector (U+FE0F)
+ * PROMPT #143 - Prioritize hyphen format (no emojis)
  */
 export function parseMessage(content: string): ParsedMessage {
   if (!content) {
     return { question: '', hasOptions: false };
   }
 
-  console.log('🔍 MessageParser: Parsing content:', content.substring(0, 100) + '...');
+  // PROMPT #142 - Remove Unicode variation selector (U+FE0F) that appears after emojis
+  const normalizedContent = content.replace(/\uFE0F/g, '');
 
-  // Detect checkbox/radio patterns - ENHANCED with more variants
+  // PROMPT #143 - Detect hyphen options (primary format - no emojis)
+  const hasHyphens = /^[\s]*-\s+\S/m.test(normalizedContent);
+
+  // Legacy: Detect checkbox/radio patterns (backwards compatibility)
   const checkboxPattern = /[\u2610\u2611\u2612\u2713\u2714\u2715\u2716☐☑□■▪▫]/g;
   const radioPattern = /[\u25CB\u25CF\u25C9\u25C8○●◯◉]/g;
 
-  const hasCheckboxes = checkboxPattern.test(content);
-  const hasRadios = radioPattern.test(content);
+  const hasCheckboxes = checkboxPattern.test(normalizedContent);
+  const hasRadios = radioPattern.test(normalizedContent);
 
-  console.log('🔍 MessageParser: hasCheckboxes=', hasCheckboxes, 'hasRadios=', hasRadios);
-
-  if (!hasCheckboxes && !hasRadios) {
-    console.log('🔍 MessageParser: No options detected, returning as plain text');
-    return { question: content, hasOptions: false };
+  // PROMPT #143 - Check for any option format
+  if (!hasHyphens && !hasCheckboxes && !hasRadios) {
+    return { question: normalizedContent, hasOptions: false };
   }
 
-  // Split into lines and clean
-  const lines = content.split('\n').map(line => line.trimEnd()); // Keep leading spaces for now
-  console.log('🔍 MessageParser: Total lines:', lines.length);
+  // Split into lines and clean (using normalized content)
+  const lines = normalizedContent.split('\n').map(line => line.trimEnd()); // Keep leading spaces for now
+  console.log('MessageParser: Total lines:', lines.length);
 
   const questionLines: string[] = [];
   const optionLines: string[] = [];
@@ -75,7 +81,7 @@ export function parseMessage(content: string): ParsedMessage {
         trimmed.toUpperCase() === 'OPTIONS' ||
         trimmed.toUpperCase() === 'SELECT:' ||
         trimmed.toUpperCase() === 'CHOOSE:') {
-      console.log('🔍 MessageParser: Skipping header line:', trimmed);
+      console.log('MessageParser: Skipping header line:', trimmed);
       foundOptions = true; // Start looking for options after this
       continue;
     }
@@ -90,26 +96,26 @@ export function parseMessage(content: string): ParsedMessage {
     const isIndicatorLine = /[\[\]]/.test(trimmed);
 
     if ((startsWithCheckbox || startsWithRadio || startsWithDash) && !isIndicatorLine) {
-      console.log('🔍 MessageParser: Found option line:', trimmed);
+      console.log('MessageParser: Found option line:', trimmed);
       foundOptions = true;
       optionLines.push(trimmed);
     } else if (!foundOptions) {
       // Lines before options are part of the question
       questionLines.push(line);
     } else if (isIndicatorLine) {
-      console.log('🔍 MessageParser: Skipping indicator line:', trimmed);
+      console.log('MessageParser: Skipping indicator line:', trimmed);
       // Indicator lines are ignored (not added to question or options)
     }
     // Lines after options are ignored
   }
 
-  console.log('🔍 MessageParser: Question lines:', questionLines.length);
-  console.log('🔍 MessageParser: Option lines:', optionLines.length);
+  console.log('MessageParser: Question lines:', questionLines.length);
+  console.log('MessageParser: Option lines:', optionLines.length);
 
   // If no option lines found, return as plain text
   if (optionLines.length === 0) {
-    console.log('🔍 MessageParser: No option lines found, returning as plain text');
-    return { question: content, hasOptions: false };
+    console.log('MessageParser: No option lines found, returning as plain text');
+    return { question: normalizedContent, hasOptions: false };
   }
 
   // Parse options
@@ -120,7 +126,7 @@ export function parseMessage(content: string): ParsedMessage {
       .replace(/^[\s]*[\u2610\u2611\u2612\u2713\u2714\u2715\u2716☐☑□■▪▫\u25CB\u25CF\u25C9\u25C8○●◯◉\-=][\s]*/, '')
       .trim();
 
-    console.log('🔍 MessageParser: Option', index, '- Label:', label);
+    console.log('MessageParser: Option', index, '- Label:', label);
 
     // Generate clean value from label
     const value = label
@@ -144,29 +150,34 @@ export function parseMessage(content: string): ParsedMessage {
     .replace(/\n*SELECT:\s*\n*/gi, '\n')   // Remove SELECT: header
     .trim();
 
-  console.log('🔍 MessageParser: Final question:', question);
-  console.log('🔍 MessageParser: Final choices:', choices.length, 'options');
+  console.log('MessageParser: Final question:', question);
+  console.log('MessageParser: Final choices:', choices.length, 'options');
 
+  // PROMPT #143 - All options are now multiple choice
   const result = {
     question: question,
     options: {
-      type: (hasCheckboxes ? 'multiple' : 'single') as 'single' | 'multiple',
+      type: 'multiple' as 'single' | 'multiple',
       choices: choices
     },
     hasOptions: true
   };
 
-  console.log('🔍 MessageParser: Result:', JSON.stringify(result, null, 2));
+  console.log('MessageParser: Result:', JSON.stringify(result, null, 2));
 
   return result;
 }
 
 /**
  * Check if a message contains option patterns
+ * PROMPT #142 - Normalize variation selector before checking
+ * PROMPT #143 - Prioritize hyphen format (no emojis)
  */
 export function hasOptionPattern(content: string): boolean {
   if (!content) return false;
-  return /[☐☑○●]/g.test(content);
+  const normalized = content.replace(/\uFE0F/g, '');
+  // PROMPT #143 - Check for hyphen options (primary) or legacy symbols
+  return /^[\s]*-\s+\S/m.test(normalized) || /[☐☑○●]/g.test(normalized);
 }
 
 /**

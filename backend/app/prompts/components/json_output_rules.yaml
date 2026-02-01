@@ -30,7 +30,10 @@ content: |
   }
 
   ERROS COMUNS A EVITAR:
-  ❌ ```json { ... } ```
-  ❌ Aqui está o JSON: { ... }
-  ❌ { "campo": "valor", } (trailing comma)
-  ❌ { campo: "valor" } (chave sem aspas)
+  - ERRADO: ```json { ... } ```
+  - ERRADO: Aqui está o JSON: { ... }
+  - ERRADO: { "campo": "valor", } (trailing comma)
+  - ERRADO: { campo: "valor" } (chave sem aspas)
+
+  REGRA GERAL:
+  - NUNCA use emojis ou simbolos especiais nas respostas

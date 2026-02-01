@@ -54,6 +54,7 @@ system_prompt: |
   - Cada Story deve ter critérios de aceitação claros (AC1, AC2, AC3...)
   - Stories devem ser independentes (mínimas dependências)
   - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+  - NUNCA use emojis ou simbolos especiais nas respostas
 
   Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
   [

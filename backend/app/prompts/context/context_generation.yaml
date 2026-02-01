@@ -69,6 +69,7 @@ system_prompt: |
   - Os identificadores devem ser concisos (2-3 caracteres)
   - O Mapa Semântico deve estar DENTRO do context_semantic no final
   - Retorne APENAS o JSON, sem texto adicional
+  - NUNCA use emojis ou simbolos especiais nas respostas
 
 user_prompt: |
   Analise a seguinte entrevista de contexto para o projeto "{{ project_name }}":

@@ -40,6 +40,9 @@ system_prompt: |
 
   NÃO inclua nenhuma explicação, apenas o array JSON.
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   Decomponha esta Task em 3-5 Subtasks atômicas.
 

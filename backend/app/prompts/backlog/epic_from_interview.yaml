@@ -39,6 +39,7 @@ system_prompt: |
   - Use identificadores semânticos em TODO o texto (narrativa, critérios, insights)
   - Seja específico e acionável nos critérios de aceitação
   - TUDO DEVE SER EM PORTUGUÊS (título, descrição, critérios, identificadores)
+  - NUNCA use emojis ou simbolos especiais nas respostas
 
   Retorne APENAS JSON válido (sem markdown code blocks, sem explicação):
   {

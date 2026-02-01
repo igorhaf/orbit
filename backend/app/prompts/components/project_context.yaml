@@ -27,3 +27,6 @@ content: |
   **CONTEXTO DO PROJETO:**
   {{ context_human }}
   {% endif %}
+
+  **REGRA GERAL:**
+  - NUNCA use emojis ou simbolos especiais nas respostas

@@ -54,6 +54,10 @@ interface NotificationContextType {
   // Unread count for badge
   unreadCount: number;
 
+  // PROMPT #141 - Toast notification for bell tooltip
+  toastNotification: JobNotification | null;
+  dismissToast: () => void;
+
   // Methods
   // PROMPT #140 - watching param: if true, job completion won't show unread notification
   addJob: (jobId: string, jobType: string, title: string, description?: string, watching?: boolean) => void;
@@ -116,6 +120,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const [notifications, setNotifications] = useState<JobNotification[]>([]);
   const [isConnected, setIsConnected] = useState(false);
 
+  // PROMPT #141 - Toast notification state
+  const [toastNotification, setToastNotification] = useState<JobNotification | null>(null);
+  const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   // PROMPT #134 - WebSocket refs
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -128,6 +136,31 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   // Calculate unread count
   const unreadCount = notifications.filter(n => !n.read).length;
+
+  // PROMPT #141 - Dismiss toast notification
+  const dismissToast = useCallback(() => {
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+      toastTimeoutRef.current = null;
+    }
+    setToastNotification(null);
+  }, []);
+
+  // PROMPT #141 - Show toast notification (auto-dismiss after 4 seconds)
+  const showToast = useCallback((notification: JobNotification) => {
+    // Clear any existing toast timeout
+    if (toastTimeoutRef.current) {
+      clearTimeout(toastTimeoutRef.current);
+    }
+
+    setToastNotification(notification);
+
+    // Auto-dismiss after 4 seconds
+    toastTimeoutRef.current = setTimeout(() => {
+      setToastNotification(null);
+      toastTimeoutRef.current = null;
+    }, 4000);
+  }, []);
 
   // Add a new job to track
   // PROMPT #140 - watching: if true, user is on the page watching this job
@@ -178,6 +211,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         // This prevents notification badge when user is on the page seeing the result
         if (updatedJob.watching) {
           updatedJob.read = true;
+        } else {
+          // PROMPT #141 - Show toast notification when user is NOT watching
+          // This gives a brief visual alert for background jobs
+          showToast(updatedJob);
         }
 
         // Remove from active jobs
@@ -192,7 +229,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       updatedJobs[jobIndex] = updatedJob;
       return updatedJobs;
     });
-  }, []);
+  }, [showToast]);
 
   // Mark notification as read
   const markAsRead = useCallback((notificationId: string) => {
@@ -416,6 +453,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (pingIntervalRef.current) {
         clearInterval(pingIntervalRef.current);
       }
+      if (toastTimeoutRef.current) {
+        clearTimeout(toastTimeoutRef.current);
+      }
       if (wsRef.current) {
         wsRef.current.close();
       }
@@ -428,6 +468,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         activeJobs,
         notifications,
         unreadCount,
+        toastNotification, // PROMPT #141
+        dismissToast, // PROMPT #141
         addJob,
         updateJob,
         markAsRead,

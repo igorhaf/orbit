@@ -4,9 +4,11 @@
  * NotificationBell Component
  * PROMPT #128 - Background Job Notifications
  * PROMPT #133 - Deep linking support for notifications
+ * PROMPT #141 - Toast tooltip for new notifications
  *
  * Bell icon in navbar that shows active jobs and notification history.
  * Displays badge with count of active/unread notifications.
+ * Shows toast tooltip when new notification arrives (if user not watching).
  * Clicking a notification navigates to the relevant screen via deep_link.
  */
 
@@ -22,6 +24,8 @@ export function NotificationBell() {
     activeJobs,
     notifications,
     unreadCount,
+    toastNotification,
+    dismissToast,
     markAsRead,
     markAllAsRead,
     clearNotification,
@@ -142,30 +146,110 @@ export function NotificationBell() {
         )}
       </button>
 
+      {/* PROMPT #141 - Toast Tooltip for new notifications */}
+      {toastNotification && !isOpen && (
+        <div
+          className="absolute right-0 top-full mt-2 w-72 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden animate-in slide-in-from-top-2 fade-in duration-200"
+          onClick={() => {
+            handleNotificationClick(toastNotification);
+            dismissToast();
+          }}
+        >
+          {/* Toast Header with close button */}
+          <div className="flex items-start gap-3 p-3 cursor-pointer hover:bg-gray-50 transition-colors">
+            {/* Status indicator */}
+            <div className={`flex-shrink-0 mt-0.5 ${
+              toastNotification.status === 'completed' ? 'text-green-500' :
+              toastNotification.status === 'failed' ? 'text-red-500' :
+              'text-blue-500'
+            }`}>
+              {toastNotification.status === 'completed' ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : toastNotification.status === 'failed' ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {toastNotification.title}
+              </p>
+              <p className={`text-xs truncate mt-0.5 ${getStatusColor(toastNotification.status)}`}>
+                {getStatusText(toastNotification.status)}
+                {toastNotification.error && `: ${toastNotification.error}`}
+              </p>
+              {toastNotification.deep_link && (
+                <p className="text-xs text-blue-600 mt-1">Clique para ver →</p>
+              )}
+            </div>
+
+            {/* Close button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissToast();
+              }}
+              className="flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Progress bar animation at bottom */}
+          <div className="h-1 bg-gray-100">
+            <div
+              className={`h-full ${
+                toastNotification.status === 'completed' ? 'bg-green-500' :
+                toastNotification.status === 'failed' ? 'bg-red-500' :
+                'bg-blue-500'
+              } animate-shrink-width`}
+              style={{ animation: 'shrink-width 4s linear forwards' }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Dropdown */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-xl border border-gray-200 z-50 overflow-hidden">
           {/* Header */}
           <div className="px-4 py-3 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
             <h3 className="text-sm font-semibold text-gray-900">Notificações</h3>
-            {(notifications.length > 0 || activeJobs.length > 0) && (
-              <div className="flex items-center gap-2">
-                {unreadCount > 0 && (
-                  <button
-                    onClick={markAllAsRead}
-                    className="text-xs text-blue-600 hover:text-blue-800"
-                  >
-                    Marcar todas como lidas
-                  </button>
-                )}
+            <div className="flex items-center gap-2">
+              {/* PROMPT #141 - Show "Mark as read" only when unread exists */}
+              {unreadCount > 0 && (
                 <button
-                  onClick={clearAllNotifications}
-                  className="text-xs text-gray-500 hover:text-gray-700"
+                  onClick={markAllAsRead}
+                  className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
                 >
-                  Limpar
+                  Marcar como lidas
                 </button>
-              </div>
-            )}
+              )}
+              {/* PROMPT #141 - Show "Clear" only when there are notifications (completed jobs) */}
+              {notifications.length > 0 && (
+                <button
+                  onClick={() => {
+                    clearAllNotifications();
+                    // Close dropdown after clearing
+                    setIsOpen(false);
+                  }}
+                  className="text-xs text-red-500 hover:text-red-700 transition-colors"
+                >
+                  Limpar histórico
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Content */}

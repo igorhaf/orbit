@@ -112,6 +112,9 @@ system_prompt: |
 
   Analise TODAS as respostas abaixo e gere a hierarquia completa.
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   **RESPOSTAS DO META PROMPT:**
 

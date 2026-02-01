@@ -56,6 +56,9 @@ system_prompt: |
   mais detalhes sobre o projeto. A entrevista é ILIMITADA - o usuário
   decide quando terminar clicando em "Gerar Contexto".
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: ""
 
 # Fixed questions content (reference only - actual implementation in Python)
@@ -116,20 +119,20 @@ ai_contextual_prompt: |
 
   **Pergunta {{ question_count }}: [Sua pergunta aqui]**
 
-  ○ [Primeira opcao]
-  ○ [Segunda opcao]
-  ○ [Terceira opcao]
-  ○ [Quarta opcao]
+  -  [Primeira opcao]
+  -  [Segunda opcao]
+  -  [Terceira opcao]
+  -  [Quarta opcao]
 
-  💬 Ou descreva com suas proprias palavras.
+  Ou descreva com suas proprias palavras.
 
   ## REGRAS CRITICAS
   - GERE APENAS UMA PERGUNTA POR RESPOSTA (nunca duas ou mais)
-  - Use SOMENTE "○" (circulo vazio Unicode) para marcar opcoes
+  - Use SOMENTE "- " (circulo vazio Unicode) para marcar opcoes
   - NUNCA use "•" (bullet) ou outros simbolos
   - Forneca entre 3-5 opcoes de resposta
   - Opcoes devem ser RESPOSTAS concretas, nao perguntas
-  - SEMPRE inclua a linha "💬 Ou descreva com suas proprias palavras."
+  - SEMPRE inclua a linha "Ou descreva com suas proprias palavras."
 
   ## Topicos a Explorar
   1. Quem sao os usuarios do sistema (perfis, permissoes)

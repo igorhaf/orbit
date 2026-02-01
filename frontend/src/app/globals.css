@@ -87,3 +87,32 @@ html {
     text-wrap: balance;
   }
 }
+
+/* PROMPT #141 - Toast notification animations */
+@keyframes shrink-width {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0%;
+  }
+}
+
+@keyframes slide-in-from-top {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-shrink-width {
+  animation: shrink-width 4s linear forwards;
+}
+
+.animate-in {
+  animation: slide-in-from-top 0.2s ease-out;
+}

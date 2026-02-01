@@ -25,6 +25,9 @@ components: []
 
 system_prompt: ""
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   Generate a professional git commit message following Conventional Commits specification.
 

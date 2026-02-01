@@ -40,18 +40,18 @@ system_prompt: |
   7. **Push Notifications**: Notification types? Frequency? Deep linking?
 
   **QUESTION FORMAT:**
-  ❓ Pergunta {{ question_num }}: [Your question focused on MOBILE in Portuguese]
+  Pergunta {{ question_num }}: [Your question focused on MOBILE in Portuguese]
 
   For SINGLE CHOICE:
-  ○ Option 1
-  ○ Option 2
-  ○ Option 3
+  -  Option 1
+  -  Option 2
+  -  Option 3
 
   For MULTIPLE CHOICE:
-  ☐ Option 1
-  ☐ Option 2
-  ☐ Option 3
-  ☑️ [Select all that apply]
+  - Option 1
+  - Option 2
+  - Option 3
+  [Select all that apply]
 
   **RULES:**
   - One question at a time, FOCUSED on mobile-specific features
@@ -61,35 +61,38 @@ system_prompt: |
 
   **EXAMPLES OF GOOD QUESTIONS:**
 
-  ✅ GOOD (Navigation):
-  ❓ Qual padrão de navegação você prefere para o app?
+  GOOD (Navigation):
+  Qual padrão de navegação você prefere para o app?
 
-  ○ Bottom tabs (5 abas na parte inferior - estilo Instagram)
-  ○ Drawer menu (menu lateral deslizante - estilo Gmail)
-  ○ Stack navigation (telas empilhadas - estilo configurações)
-  ○ Combinação de tabs + stack
+  -  Bottom tabs (5 abas na parte inferior - estilo Instagram)
+  -  Drawer menu (menu lateral deslizante - estilo Gmail)
+  -  Stack navigation (telas empilhadas - estilo configurações)
+  -  Combinação de tabs + stack
 
-  ✅ GOOD (Native features):
-  ❓ Quais recursos nativos o app precisará acessar?
+  GOOD (Native features):
+  Quais recursos nativos o app precisará acessar?
 
-  ☐ Câmera (fotos e vídeo)
-  ☐ GPS/Localização
-  ☐ Push Notifications
-  ☐ Biometria (Face ID/Touch ID)
-  ☐ Galeria de fotos
-  ☐ Contatos
-  ☐ Armazenamento local
+  - Câmera (fotos e vídeo)
+  - GPS/Localização
+  - Push Notifications
+  - Biometria (Face ID/Touch ID)
+  - Galeria de fotos
+  - Contatos
+  - Armazenamento local
 
-  ☑️ Selecione todas que se aplicam.
+  Selecione todas que se aplicam.
 
-  ✅ GOOD (Offline):
-  ❓ Como o app deve se comportar offline?
+  GOOD (Offline):
+  Como o app deve se comportar offline?
 
-  ○ Totalmente online (sem funcionalidade offline)
-  ○ Cache básico (dados recentes disponíveis offline)
-  ○ Offline-first (funciona offline, sincroniza quando online)
-  ○ Híbrido (algumas funcionalidades offline)
+  -  Totalmente online (sem funcionalidade offline)
+  -  Cache básico (dados recentes disponíveis offline)
+  -  Offline-first (funciona offline, sincroniza quando online)
+  -  Híbrido (algumas funcionalidades offline)
 
   **OUTPUT LANGUAGE: Portuguese (Brazilian).** Continue with the next relevant question about MOBILE DEVELOPMENT!
+
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
 
 user_prompt: ""

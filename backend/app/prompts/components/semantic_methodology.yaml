@@ -35,3 +35,6 @@ content: |
   - Manter consistência conceitual
   - Permitir edição posterior manual do código
   - Garantir rastreabilidade entre texto e implementação
+
+  **REGRA GERAL:**
+  - NUNCA use emojis ou simbolos especiais nas respostas

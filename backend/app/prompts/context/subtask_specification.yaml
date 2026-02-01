@@ -148,6 +148,9 @@ system_prompt: |
   - MÍNIMO 3 critérios de aceitação
   - TUDO EM PORTUGUÊS
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   Gere a ESPECIFICAÇÃO COMPLETA para esta Subtask.
 

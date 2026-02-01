@@ -119,6 +119,9 @@ system_prompt: |
   - A descrição deve ter MÍNIMO 1500 caracteres
   - TUDO EM PORTUGUÊS
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para este Epic/Módulo.
 

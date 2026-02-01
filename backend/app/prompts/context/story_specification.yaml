@@ -190,6 +190,9 @@ system_prompt: |
   - MÍNIMO 5 critérios de aceitação
   - TUDO EM PORTUGUÊS
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para a User Story abaixo.
 

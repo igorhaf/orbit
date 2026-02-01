@@ -46,15 +46,24 @@ CHECKBOX_SYMBOLS = [
     '▣',  # White square containing black small square (U+25A3)
 ]
 
+# PROMPT #142 - Unicode variation selector (U+FE0F) that appears after emojis
+# Example: ☑️ = ☑ (U+2611) + ️ (U+FE0F)
+VARIATION_SELECTOR = '\uFE0F'
+
 
 def _normalize_bullets(content: str) -> str:
     """
     PROMPT #109 - Normalize various bullet symbols to our standard ○
+    PROMPT #142 - Handle Unicode variation selector (U+FE0F)
 
     This ensures that AI responses using different bullet styles are
     still parsed correctly.
     """
     normalized = content
+
+    # PROMPT #142 - Remove variation selectors that can cause parsing issues
+    # Example: ☑️ becomes ☑, ☐️ becomes ☐
+    normalized = normalized.replace(VARIATION_SELECTOR, '')
 
     # First, handle checkbox symbols (convert to ☐)
     for symbol in CHECKBOX_SYMBOLS:
@@ -77,32 +86,23 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
     Parse AI question content to extract options and determine question type.
 
     PROMPT #109 - Extended to normalize bullets before parsing (Gemini compatibility)
+    PROMPT #143 - Updated to use "-" (hyphen) as primary option marker (no emojis)
 
     The AI generates questions with options in this format:
 
-    Single choice (radio):
-        ❓ Pergunta 19: Qual arquitetura?
+    **Pergunta 19:** Qual arquitetura?
+    Selecione uma ou mais opcoes:
 
-        ○ Opção 1
-        ○ Opção 2
-        ○ Opção 3
+    - Opcao 1
+    - Opcao 2
+    - Opcao 3
 
-        Escolha UMA opção.
-
-    Multiple choice (checkbox):
-        ❓ Pergunta 20: Quais integrações?
-
-        ☐ Opção 1
-        ☐ Opção 2
-        ☐ Opção 3
-
-        ☑️ Selecione todas que se aplicam.
+    Ou descreva com suas proprias palavras.
 
     This function:
-    1. Normalizes various bullet symbols to ○ (for Gemini compatibility)
-    2. Detects if question has options (○ for radio, ☐ for checkbox)
-    3. Extracts the options from the text
-    4. Returns structured data for frontend rendering
+    1. Detects if question has options (lines starting with "- ")
+    2. Extracts the options from the text
+    3. Returns structured data for frontend rendering
 
     Args:
         content: Raw AI response content
@@ -112,67 +112,68 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
         - cleaned_content: Original content (kept for display)
         - options_dict: Structured options or None if no options found
             {
-                "question_type": "single_choice" | "multiple_choice",
+                "question_type": "multiple_choice",
                 "options": {
-                    "type": "single" | "multiple",
+                    "type": "multiple",
                     "choices": [
-                        {"id": "option_1", "label": "Opção 1", "value": "option_1"},
+                        {"id": "option_1", "label": "Opcao 1", "value": "option_1"},
                         ...
                     ]
                 }
             }
     """
-    # PROMPT #109 - First, check if we have ANY bullet-like symbols
-    found_symbols = [s for s in BULLET_SYMBOLS + CHECKBOX_SYMBOLS if s in content]
-    has_any_bullet = len(found_symbols) > 0
+    # PROMPT #143 - Remove variation selector for compatibility
+    normalized_content = _normalize_bullets(content)
 
-    if has_any_bullet:
-        logger.info(f"🔄 Found bullet symbols in AI response: {found_symbols}")
-        # Normalize bullets for parsing
-        normalized_content = _normalize_bullets(content)
-        logger.info(f"📝 After normalization - has ○: {'○' in normalized_content}, has ☐: {'☐' in normalized_content}")
+    # PROMPT #143 - Detect options by hyphen at start of line (primary format)
+    # Pattern: line starting with "- " followed by option text
+    hyphen_options = re.findall(r'^[\s]*-\s+(.+?)$', normalized_content, re.MULTILINE)
+
+    # Also check for legacy checkbox/radio symbols (backwards compatibility)
+    checkbox_options = re.findall(r'☐\s*(.+?)(?=\n|$)', normalized_content, re.MULTILINE)
+    radio_options = re.findall(r'○\s*(.+?)(?=\n|$)', normalized_content, re.MULTILINE)
+
+    # PROMPT #143 - Prioritize hyphen format (new format without emojis)
+    if hyphen_options:
+        matches = hyphen_options
+        logger.info(f"Found {len(hyphen_options)} hyphen options (-)")
+    elif checkbox_options:
+        matches = checkbox_options
+        logger.info(f"Found {len(checkbox_options)} checkbox options (legacy)")
+    elif radio_options:
+        matches = radio_options
+        logger.info(f"Found {len(radio_options)} radio options (legacy)")
     else:
-        logger.warning(f"⚠️  No bullet symbols found in AI response (length: {len(content)} chars)")
-        logger.warning(f"⚠️  First 500 chars: {content[:500]}")
-        normalized_content = content
-
-    # Detect question type by symbols (after normalization)
-    has_radio = '○' in normalized_content  # Single choice (radio buttons)
-    has_checkbox = '☐' in normalized_content or '☑' in normalized_content  # Multiple choice (checkboxes)
-
-    if not has_radio and not has_checkbox:
-        # No options found, return as-is (open question - should not happen if AI follows instructions)
-        logger.warning("⚠️  AI question has no options (○ or ☐). AI may not be following instructions!")
+        logger.warning(f"No options found in AI response (length: {len(content)} chars)")
         return content, None
 
-    # Determine question type
-    if has_checkbox:
-        question_type = "multiple_choice"
-        option_type = "multiple"
-        # Extract checkbox options
-        option_pattern = r'(?:☐|☑)\s*(.+?)(?=\n|$)'
-    else:
-        question_type = "single_choice"
-        option_type = "single"
-        # Extract radio options
-        option_pattern = r'○\s*(.+?)(?=\n|$)'
-
-    # Extract all options (use normalized_content for parsing)
-    matches = re.findall(option_pattern, normalized_content, re.MULTILINE)
-
-    if not matches:
-        logger.warning(f"⚠️  Found {question_type} symbols but could not extract options")
-        return normalized_content, None
+    # PROMPT #143 - All questions are now multiple choice
+    question_type = "multiple_choice"
+    option_type = "multiple"
 
     # Build choices array
     choices = []
     for i, match in enumerate(matches, 1):
         option_text = match.strip()
 
-        # Skip if this looks like an instruction line (not an actual option)
-        if any(keyword in option_text.lower() for keyword in [
-            'escolha', 'selecione', 'marque', 'indique', 'todas que se aplicam'
-        ]):
+        # PROMPT #142 - Only filter out COMPLETE instruction phrases, not partial matches
+        # This allows options like "Selecione a versão mais recente" to pass through
+        instruction_phrases = [
+            'selecione uma ou mais',
+            'selecione todas',
+            'escolha uma ou mais',
+            'escolha todas',
+            'marque todas',
+            'indique todas',
+            'todas que se aplicam',
+            'ou descreva com suas proprias palavras',
+            'ou descreva com suas próprias palavras',
+        ]
+
+        is_instruction = any(phrase in option_text.lower() for phrase in instruction_phrases)
+
+        if is_instruction:
+            logger.info(f"Skipping instruction line: '{option_text[:50]}...'")
             continue
 
         # Create option ID from text (slugified)
@@ -185,10 +186,10 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
         })
 
     if not choices:
-        logger.warning("⚠️  No valid options extracted after filtering instruction lines")
+        logger.warning("No valid options extracted after filtering instruction lines")
         return normalized_content, None
 
-    logger.info(f"✅ Parsed {question_type} question with {len(choices)} options")
+    logger.info(f"Parsed {question_type} question with {len(choices)} options")
 
     # Return normalized content (for consistent display) + structured options
     return normalized_content, {
@@ -223,63 +224,66 @@ def _slugify(text: str) -> str:
 
 async def analyze_and_convert_choice_type(content: str, db) -> str:
     """
-    PROMPT #125 v2 - Always convert to multiple choice (checkbox).
+    PROMPT #125 v2 - Always convert to multiple choice.
+    PROMPT #143 - Updated to use "-" format without emojis.
 
-    Simplified approach: ALL questions should be multiple choice (☐) to provide
+    Simplified approach: ALL questions should be multiple choice to provide
     better UX. Users can select one or more options as needed.
 
     This function:
-    1. Normalizes bullet symbols
-    2. Converts all ○ (radio) to ☐ (checkbox)
-    3. Adds "Selecione todas que se aplicam" instruction if needed
+    1. Normalizes bullet symbols (removes variation selectors)
+    2. Converts legacy symbols to "-" format if needed
+    3. Adds "Selecione uma ou mais opcoes:" instruction if needed
 
     Args:
         content: The AI-generated question content with options
         db: Database session (kept for API compatibility, not used)
 
     Returns:
-        Content with checkbox symbols (☐ for all options)
+        Content normalized for parsing
     """
-    # First normalize the content
+    # First normalize the content (remove variation selectors)
     normalized = _normalize_bullets(content)
 
-    # Check if we have options
+    # PROMPT #143 - Check if we have options (new format with "-" or legacy)
+    has_hyphen = bool(re.search(r'^[\s]*-\s+', normalized, re.MULTILINE))
     has_radio = '○' in normalized
     has_checkbox = '☐' in normalized or '☑' in normalized
 
-    if not has_radio and not has_checkbox:
-        # No options, nothing to convert
-        logger.info("📋 No options found (no ○ or ☐), skipping conversion")
-        return content
-
-    # If already checkbox, return as is
-    if has_checkbox and not has_radio:
-        logger.info("☑️ Already multiple choice, no conversion needed")
+    # If using new hyphen format, return as is
+    if has_hyphen:
+        logger.info("Already using hyphen format (-), no conversion needed")
         return normalized
 
-    # Convert ○ to ☐ (always use checkbox)
-    logger.info("🔄 Converting single_choice (○) to multiple_choice (☐)")
-    converted = re.sub(r'○\s*', '☐ ', normalized)
+    if not has_radio and not has_checkbox:
+        # No options, nothing to convert
+        logger.info("No options found, skipping conversion")
+        return content
 
-    # Add "Selecione todas que se aplicam" if not present
-    if 'selecione todas' not in converted.lower() and 'selecione uma ou mais' not in converted.lower():
+    # Convert legacy ○ and ☐ to hyphen format
+    logger.info("Converting legacy symbols to hyphen format")
+    converted = normalized
+    converted = re.sub(r'○\s*', '- ', converted)
+    converted = re.sub(r'☐\s*', '- ', converted)
+    converted = re.sub(r'☑\s*', '', converted)  # Remove checked checkbox (instruction line)
+
+    # Add "Selecione uma ou mais opcoes:" if not present
+    if 'selecione' not in converted.lower():
         # Find the question line and add after it
-        # Handle both formats: **Pergunta N:...** and ❓ Pergunta N:...
         if re.search(r'\*\*Pergunta\s*\d+:', converted):
             converted = re.sub(
                 r'(\*\*Pergunta\s*\d+:?\s*[^\n]+\*\*)',
-                r'\1\n☑️ Selecione uma ou mais opções.',
+                r'\1\nSelecione uma ou mais opcoes:',
                 converted,
                 count=1
             )
         else:
-            # Try emoji format
             converted = re.sub(
-                r'((?:❓\s*)?Pergunta\s*\d+:?\s*[^\n]+)',
-                r'\1\n☑️ Selecione uma ou mais opções.',
+                r'(Pergunta\s*\d+:?\s*[^\n]+)',
+                r'\1\nSelecione uma ou mais opcoes:',
                 converted,
                 count=1
             )
 
-    logger.info(f"✅ Converted to multiple_choice. First 200 chars: {converted[:200]}")
+    logger.info(f"Converted to hyphen format. First 200 chars: {converted[:200]}")
     return converted

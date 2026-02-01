@@ -42,6 +42,9 @@ system_prompt: |
 
   NÃO inclua nenhuma explicação, apenas o array JSON.
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   Decomponha esta User Story em 5-8 Tasks técnicas.
 

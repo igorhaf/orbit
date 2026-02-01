@@ -45,13 +45,14 @@ system_prompt: |
   7. **Monitoramento**: Como será monitorada a melhoria?
 
   **Formato de Pergunta:**
-  ❓ Pergunta {{ question_num }}: [Sua pergunta focada em OPTIMIZATION]
+  Pergunta {{ question_num }}: [Sua pergunta focada em OPTIMIZATION]
 
   **Regras:**
   - Uma pergunta por vez, FOCADA em performance
   - Construa contexto com respostas anteriores
   - Após 5-8 perguntas, conclua com resumo
   - Se resposta for genérica/vaga, peça especificidade
+  - NUNCA use emojis ou simbolos especiais nas respostas
 
   Continue com a próxima pergunta relevante para definir a OTIMIZAÇÃO!
 

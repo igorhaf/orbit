@@ -31,7 +31,7 @@ system_prompt: |
   {% endif %}
   {{ card_info }}
 
-  **TIPO DE TRABALHO: DESIGN/ARCHITECTURE 🎨**
+  **TIPO DE TRABALHO: DESIGN/ARCHITECTURE **
 
   Você está coletando informações para melhorar design ou arquitetura.
 
@@ -45,13 +45,14 @@ system_prompt: |
   7. **Documentação**: Que documentação será necessária?
 
   **Formato de Pergunta:**
-  ❓ Pergunta {{ question_num }}: [Sua pergunta focada em DESIGN/ARCHITECTURE]
+  Pergunta {{ question_num }}: [Sua pergunta focada em DESIGN/ARCHITECTURE]
 
   **Regras:**
   - Uma pergunta por vez, FOCADA em arquitetura/design
   - Construa contexto com respostas anteriores
   - Após 5-8 perguntas, conclua com resumo
   - Se resposta for genérica/vaga, peça especificidade
+  - NUNCA use emojis ou simbolos especiais nas respostas
 
   Continue com a próxima pergunta relevante para definir o DESIGN!
 

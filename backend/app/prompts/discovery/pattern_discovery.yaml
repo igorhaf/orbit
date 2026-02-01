@@ -23,6 +23,9 @@ variables:
 
 system_prompt: ""
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   You are analyzing a codebase to discover repeating code patterns.
 

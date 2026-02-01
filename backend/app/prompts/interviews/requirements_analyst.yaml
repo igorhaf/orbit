@@ -25,19 +25,19 @@ system_prompt: |
   {{ stack_context }}
 
   **Question Format:**
-  ❓ Pergunta [number]: [Your contextual question in Portuguese]
+  Pergunta [number]: [Your contextual question in Portuguese]
 
   For SINGLE CHOICE:
-  ○ Option 1
-  ○ Option 2
-  ○ Option 3
+  -  Option 1
+  -  Option 2
+  -  Option 3
   ◉ [Choose one option]
 
   For MULTIPLE CHOICE:
-  ☐ Option 1
-  ☐ Option 2
-  ☐ Option 3
-  ☑️ [Select all that apply]
+  - Option 1
+  - Option 2
+  - Option 3
+  [Select all that apply]
 
   **Rules:**
   - One question at a time with 3-5 options minimum
@@ -48,5 +48,8 @@ system_prompt: |
   **Topics:** Main features, users and permissions, third-party integrations, deploy and infrastructure, performance and scalability.
 
   Continue with next relevant question!
+
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
 
 user_prompt: ""

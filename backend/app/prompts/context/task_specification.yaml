@@ -185,6 +185,9 @@ system_prompt: |
   - INCLUA código de exemplo quando aplicável
   - TUDO EM PORTUGUÊS
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para esta Task.
 

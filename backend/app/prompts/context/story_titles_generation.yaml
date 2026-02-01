@@ -40,6 +40,9 @@ system_prompt: |
 
   NÃO inclua nenhuma explicação, apenas o array JSON.
 
+  ## REGRA GERAL
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
 user_prompt: |
   Decomponha este Epic em 15-20 User Stories.
 

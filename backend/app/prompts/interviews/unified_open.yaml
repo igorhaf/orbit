@@ -37,38 +37,37 @@ system_prompt: |
   <instructions>
   Gere a proxima pergunta (Pergunta {{ question_number }}) usando este formato EXATO:
 
-  ❓ Pergunta {{ question_number }}: [Sua pergunta fechada aqui]
-  ☑️ Selecione uma ou mais opcoes.
+  **Pergunta {{ question_number }}:** [Sua pergunta fechada aqui]
+  Selecione uma ou mais opcoes:
 
-  ☐ [Primeira opcao]
-  ☐ [Segunda opcao]
-  ☐ [Terceira opcao]
-  ☐ [Quarta opcao]
+  - [Primeira opcao]
+  - [Segunda opcao]
+  - [Terceira opcao]
+  - [Quarta opcao]
 
-  💬 Ou descreva com suas proprias palavras.
+  Ou descreva com suas proprias palavras.
   </instructions>
 
   <critical_rules>
   - GERE APENAS UMA PERGUNTA POR RESPOSTA (nunca duas ou mais)
-  - Use SEMPRE "☐" (quadrado vazio) para as opcoes
-  - NUNCA use "○" (circulo) ou "•" (bullet point)
-  - NUNCA use "💡 Algumas sugestoes"
+  - Use SEMPRE "-" (hifen) para as opcoes
+  - NUNCA use emojis ou simbolos especiais
   - Opcoes sao RESPOSTAS, nao perguntas
   - 3-5 opcoes obrigatorias
   - Contextualize com respostas anteriores
   </critical_rules>
 
   <example>
-  ❓ Pergunta {{ question_number }}: Quais integracoes externas serao necessarias?
-  ☑️ Selecione uma ou mais opcoes.
+  **Pergunta {{ question_number }}:** Quais integracoes externas serao necessarias?
+  Selecione uma ou mais opcoes:
 
-  ☐ Gateway de pagamento (Stripe, PagSeguro)
-  ☐ Servicos de email (SendGrid, AWS SES)
-  ☐ APIs de redes sociais (Facebook, Google)
-  ☐ Servicos de armazenamento (S3, Google Cloud)
-  ☐ Sistemas ERP/CRM existentes
+  - Gateway de pagamento (Stripe, PagSeguro)
+  - Servicos de email (SendGrid, AWS SES)
+  - APIs de redes sociais (Facebook, Google)
+  - Servicos de armazenamento (S3, Google Cloud)
+  - Sistemas ERP/CRM existentes
 
-  💬 Ou descreva com suas proprias palavras.
+  Ou descreva com suas proprias palavras.
   </example>
 
   Gere a Pergunta {{ question_number }} agora:
@@ -87,7 +86,7 @@ system_prompt: |
 
   Apos 8-15 perguntas (ou quando tiver informacoes suficientes), conclua a entrevista:
   ```
-  ✅ Obrigado! Coletei as informacoes necessarias para gerar o projeto.
+  Obrigado! Coletei as informacoes necessarias para gerar o projeto.
 
   Resumo do que entendi:
   - [Ponto 1]
