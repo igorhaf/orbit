@@ -298,6 +298,191 @@ async def _process_memory_scan_async(
         db.close()
 
 
+@router.post("/quick-create")
+async def quick_create_project(
+    code_path: str = Query(..., description="Absolute path to existing code folder"),
+    db: Session = Depends(get_db)
+):
+    """
+    Create project immediately when folder is selected.
+
+    PROMPT #137 - Immediate Project Creation
+
+    This endpoint:
+    1. Validates code_path exists
+    2. Creates project with temporary name based on folder name
+    3. Starts memory scan job in background
+    4. Returns project + job_id for tracking
+
+    The memory scan will:
+    - Analyze codebase structure
+    - Suggest a better title (auto-update project name)
+    - Extract business rules and key features
+    - Store findings for Context Interview
+
+    **POST** `/api/v1/projects/quick-create?code_path=/projects/my-app`
+
+    **Response:**
+    ```json
+    {
+        "project": { ... project data ... },
+        "job_id": "uuid-of-memory-scan-job",
+        "status": "created",
+        "message": "Project created. Memory scan running in background."
+    }
+    ```
+    """
+    # Validate code_path
+    path = Path(code_path)
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Code path does not exist: {code_path}"
+        )
+    if not path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Code path is not a directory: {code_path}"
+        )
+
+    # Use folder name as temporary title
+    folder_name = path.name
+    temp_name = folder_name.replace("-", " ").replace("_", " ").title()
+
+    # Create project as draft (no context yet)
+    from app.models.project import ProjectStatus
+
+    db_project = Project(
+        name=temp_name,
+        code_path=code_path,
+        context_locked=False,  # Draft status - needs Context Interview
+        status=ProjectStatus.draft,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+
+    db.add(db_project)
+    db.commit()
+    db.refresh(db_project)
+
+    logger.info(f"✅ Quick-created project '{temp_name}' (ID: {db_project.id}) with code_path: {code_path}")
+
+    # Start memory scan in background
+    job_manager = JobManager(db)
+
+    deep_link = f"/projects/{db_project.id}"
+
+    job = job_manager.create_job(
+        job_type=JobType.MEMORY_SCAN,
+        input_data={
+            "code_path": code_path,
+            "project_id": str(db_project.id),
+            "update_project_name": True  # Flag to auto-update project name
+        },
+        project_id=db_project.id,
+        deep_link=deep_link,
+        notification_title=f"Analisando '{folder_name}'..."
+    )
+
+    # Launch background task that will update project with results
+    asyncio.create_task(_process_quick_create_scan(job.id, db_project.id, code_path))
+
+    return {
+        "project": {
+            "id": str(db_project.id),
+            "name": db_project.name,
+            "code_path": db_project.code_path,
+            "context_locked": db_project.context_locked,
+            "status": db_project.status.value if db_project.status else "draft",
+            "created_at": db_project.created_at.isoformat() if db_project.created_at else None,
+        },
+        "job_id": str(job.id),
+        "status": "created",
+        "message": "Project created. Memory scan running in background."
+    }
+
+
+async def _process_quick_create_scan(
+    job_id: UUID,
+    project_id: UUID,
+    code_path: str
+):
+    """
+    Background task for quick-create memory scan.
+
+    PROMPT #137 - Updates project name with AI-suggested title.
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Quick-create scan started for project {project_id}")
+
+        folder_name = Path(code_path).name
+
+        job_manager.update_progress(job_id, 10.0, "Scanning codebase structure...")
+
+        memory_service = CodebaseMemoryService(db)
+
+        job_manager.update_progress(job_id, 30.0, "Analyzing code and extracting patterns...")
+
+        result = await memory_service.scan_and_memorize(
+            code_path=code_path,
+            project_id=project_id
+        )
+
+        job_manager.update_progress(job_id, 80.0, "Updating project with findings...")
+
+        # PROMPT #137 - Update project name with suggested title
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if project:
+            suggested_title = result.get("suggested_title")
+
+            # Update name if we have a better suggestion
+            folder_based_name = folder_name.replace("-", " ").replace("_", " ").title()
+            if suggested_title and project.name == folder_based_name:
+                project.name = suggested_title
+                logger.info(f"📝 Updated project name to: {suggested_title}")
+
+            # Store memory context for Context Interview
+            project.initial_memory_context = result
+            project.updated_at = datetime.utcnow()
+            db.commit()
+
+        job_manager.update_progress(job_id, 90.0, "Finalizing...")
+
+        # Update notification title for success
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            final_title = project.name if project else folder_name
+            job.notification_title = f"✅ Projeto criado: '{final_title}'"
+            db.commit()
+
+        job_manager.complete_job(job_id, result)
+        logger.info(f"✅ Quick-create scan completed for project {project_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Quick-create scan failed for project {project_id}: {str(e)}", exc_info=True)
+
+        # Update notification title for failure
+        try:
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                error_msg = str(e)[:80]
+                job.notification_title = f"❌ Erro na análise: {error_msg}"
+                db.commit()
+        except Exception:
+            pass
+
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
 @router.get("/", response_model=List[ProjectResponse])
 async def list_projects(
     skip: int = Query(0, ge=0, description="Number of records to skip"),

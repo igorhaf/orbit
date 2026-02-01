@@ -92,6 +92,15 @@ export function InterviewList({
       return;
     }
 
+    // PROMPT #137 - Block Epic creation if project has no context
+    // Find the target project to check its context
+    const targetProject = projectProp || projects.find(p => p.id === targetProjectId);
+    if (targetProject && !targetProject.context_locked && !targetProject.context_human) {
+      showWarning('Please complete the Context Interview before creating Epics. Go to project page and click "Configure Context".');
+      setIsCreateOpen(false);
+      return;
+    }
+
     setCreating(true);
     try {
       // PROMPT #97 - First interview with no parent → always meta_prompt

@@ -159,83 +159,77 @@ export default function NewProjectPage() {
     onError: handleContextJobError,
   });
 
-  // PROMPT #118 - Scan codebase when folder is selected
-  // PROMPT #133 - Now uses background jobs
+  // PROMPT #137 - Create project immediately when folder is selected
+  // Project is created as draft, memory scan runs in background
   const handleFolderSelect = async (path: string) => {
     setCodePath(path);
     setShowFolderPicker(false);
-
-    // Start memory scan as background job
     setScanning(true);
+
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+      // PROMPT #137 - Call quick-create to create project immediately
       const response = await fetch(
-        `${API_BASE}/api/v1/projects/scan-memory?code_path=${encodeURIComponent(path)}`,
+        `${API_BASE}/api/v1/projects/quick-create?code_path=${encodeURIComponent(path)}`,
         { method: 'POST' }
       );
 
       if (response.ok) {
         const data = await response.json();
 
-        // PROMPT #133 - API now returns job_id for background processing
+        // Project created immediately!
+        setProjectId(data.project.id);
+        setName(data.project.name);  // Temporary name from folder
+
+        // PROMPT #137 - Project exists now, no cleanup needed on abandon
+        // User can leave and project will remain as draft
+        wizardCompletedRef.current = true;
+
+        // Track memory scan job for progress/completion
         if (data.job_id) {
           setMemoryScanJobId(data.job_id);
 
           // Add to notification bell
           const folderName = path.split('/').pop() || 'pasta';
           addJob(data.job_id, 'memory_scan', `Analisando ${folderName}...`, path);
-        } else {
-          // Fallback for old API format (direct result)
-          setMemoryScanResult(data);
-          setScanning(false);
-          if (!name && data.suggested_title) {
-            setName(data.suggested_title);
-          }
-          showSuccess('Codebase analyzed successfully!');
         }
+
+        showSuccess('Project created! Analyzing codebase...');
       } else {
         const error = await response.json();
         setScanning(false);
-        showWarning(`Scan completed with warnings: ${error.detail || 'Unknown error'}`);
+        showError(`Failed to create project: ${error.detail || 'Unknown error'}`);
       }
     } catch (error) {
-      console.error('Memory scan failed:', error);
+      console.error('Quick create failed:', error);
       setScanning(false);
-      showWarning('Could not analyze codebase. You can still proceed manually.');
+      showError('Failed to create project. Please try again.');
     }
   };
 
   const handleBasicSubmit = async () => {
-    // PROMPT #89 - Only name is required, description comes from context interview
+    // PROMPT #137 - Project already created when folder was selected
+    // This step now just updates name (if changed) and starts Context Interview
+
+    if (!projectId) {
+      showWarning('Please select a code folder first');
+      return;
+    }
+
     if (!name.trim()) {
       showWarning('Please enter a project name');
       return;
     }
 
-    // PROMPT #111 - code_path é obrigatório
-    if (!codePath.trim()) {
-      showWarning('Please enter the path to your existing code folder');
-      return;
-    }
-
     setLoading(true);
     try {
-      // Create project with code_path (PROMPT #111) and memory context (PROMPT #118)
-      const projectRes = await projectsApi.create({
-        name,
-        code_path: codePath,  // PROMPT #111 - Obrigatório e imutável
-        description: null,  // PROMPT #89 - Description comes from context interview
-        // PROMPT #118 - Pass memory scan context to skip Q2/Q3 in context interview
-        initial_memory_context: memoryScanResult || null,
-      });
-
-      // Handle both response formats (with or without .data wrapper)
-      const createdProject = projectRes.data || projectRes;
-      setProjectId(createdProject.id);
+      // PROMPT #137 - Update project name if user modified it
+      await projectsApi.update(projectId, { name });
 
       // Create interview (PROMPT #89 - First interview = context mode)
       const interviewRes = await interviewsApi.create({
-        project_id: createdProject.id,
+        project_id: projectId,
         ai_model_used: 'claude-sonnet-4-20250514',
         parent_task_id: null,  // PROMPT #89 - Null + context_locked=false = context mode
       });
@@ -245,8 +239,8 @@ export default function NewProjectPage() {
       setInterviewId(createdInterview.id);
       setStep('interview');
     } catch (error) {
-      console.error('Failed to create project:', error);
-      showError('Failed to create project. Please try again.');
+      console.error('Failed to start context interview:', error);
+      showError('Failed to start context interview. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -292,38 +286,10 @@ export default function NewProjectPage() {
     }
   };
 
-  // PROMPT #98 (v2) - Cleanup project if wizard is abandoned
-  // PROMPT #101 FIX: Use ref.current for synchronous access to completion state
-  useEffect(() => {
-    const cleanupProject = async () => {
-      if (projectId && !wizardCompletedRef.current) {
-        try {
-          await projectsApi.delete(projectId);
-          console.log('✅ Cleanup: Deleted incomplete project:', projectId);
-        } catch (error) {
-          console.error('❌ Failed to cleanup project:', error);
-        }
-      }
-    };
-
-    // Cleanup on page unload (browser close, navigation away)
-    const handleBeforeUnload = () => {
-      if (projectId && !wizardCompletedRef.current) {
-        // Synchronous cleanup for beforeunload
-        navigator.sendBeacon(`/api/v1/projects/${projectId}`,
-          new Blob([JSON.stringify({ method: 'DELETE' })], { type: 'application/json' })
-        );
-      }
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-
-    // Cleanup on component unmount (router navigation)
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      cleanupProject();
-    };
-  }, [projectId]);
+  // PROMPT #137 - No cleanup needed anymore
+  // Project is created as draft when folder is selected
+  // User can leave wizard and come back later to complete Context Interview
+  // Draft projects are intentionally kept for later completion
 
   const handleConfirm = () => {
     // PROMPT #98 (v2) - Mark wizard as completed before navigating
@@ -550,20 +516,35 @@ export default function NewProjectPage() {
                 </div>
               )}
 
-              <div className="flex justify-end gap-3">
-                <Button
-                  variant="outline"
-                  onClick={() => router.push('/projects')}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleBasicSubmit}
-                  disabled={loading || !name.trim() || !codePath.trim()}
-                >
-                  {loading ? 'Creating...' : 'Next: Context Interview'}
-                </Button>
+              <div className="flex justify-between gap-3">
+                {/* PROMPT #137 - Skip to Project button (available after project is created) */}
+                <div>
+                  {projectId && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => router.push(`/projects/${projectId}`)}
+                      className="text-gray-500"
+                    >
+                      Skip to Project →
+                    </Button>
+                  )}
+                </div>
+
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => router.push('/projects')}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleBasicSubmit}
+                    disabled={loading || !projectId || !name.trim()}
+                  >
+                    {loading ? 'Starting...' : 'Next: Context Interview'}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -573,11 +554,25 @@ export default function NewProjectPage() {
         {step === 'interview' && interviewId && (
           <Card>
             <CardHeader>
-              <CardTitle>Context Interview</CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
-                Tell the AI about your project. This interview will establish the foundational context
-                that guides all future development.
-              </p>
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle>Context Interview</CardTitle>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Tell the AI about your project. This interview will establish the foundational context
+                    that guides all future development.
+                  </p>
+                </div>
+                {/* PROMPT #137 - Skip button */}
+                {projectId && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => router.push(`/projects/${projectId}`)}
+                    className="text-gray-500 whitespace-nowrap"
+                  >
+                    Skip to Project →
+                  </Button>
+                )}
+              </div>
             </CardHeader>
             <CardContent>
               {generatingContext ? (

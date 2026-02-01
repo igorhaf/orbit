@@ -1,0 +1,350 @@
+/**
+ * Setup Context Page
+ * PROMPT #137 - Context Interview for draft projects
+ *
+ * This page allows users to complete the Context Interview
+ * for projects that were created but skipped the interview.
+ */
+
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { Layout, Breadcrumbs } from '@/components/layout';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { projectsApi, interviewsApi } from '@/lib/api';
+import { ChatInterface } from '@/components/interview/ChatInterface';
+import { useNotification, useJobPolling } from '@/hooks';
+import { useNotifications } from '@/contexts/NotificationContext';
+import ReactMarkdown from 'react-markdown';
+import { Project } from '@/lib/types';
+
+type Step = 'interview' | 'review' | 'complete';
+
+export default function SetupContextPage() {
+  const params = useParams();
+  const router = useRouter();
+  const projectId = params.id as string;
+  const { showError, showSuccess, NotificationComponent } = useNotification();
+  const { addJob } = useNotifications();
+
+  const [project, setProject] = useState<Project | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [step, setStep] = useState<Step>('interview');
+  const [interviewId, setInterviewId] = useState<string | null>(null);
+  const [generatingContext, setGeneratingContext] = useState(false);
+
+  // Context data
+  const [contextHuman, setContextHuman] = useState<string | null>(null);
+  const [contextSemantic, setContextSemantic] = useState<string | null>(null);
+  const [suggestedEpics, setSuggestedEpics] = useState<Array<{
+    id: string;
+    title: string;
+    description: string;
+    priority: string;
+  }>>([]);
+
+  // Context generation job
+  const [contextJobId, setContextJobId] = useState<string | null>(null);
+
+  // Load project data
+  const loadProject = useCallback(async () => {
+    try {
+      const res = await projectsApi.get(projectId);
+      const projectData = res.data || res;
+      setProject(projectData);
+
+      // If project already has context, redirect to project page
+      if (projectData.context_locked || projectData.context_human) {
+        showSuccess('Project context already configured!');
+        router.push(`/projects/${projectId}`);
+        return;
+      }
+    } catch (error) {
+      console.error('Failed to load project:', error);
+      showError('Failed to load project');
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId, router, showError, showSuccess]);
+
+  useEffect(() => {
+    loadProject();
+  }, [loadProject]);
+
+  // Create interview when page loads
+  useEffect(() => {
+    const createInterview = async () => {
+      if (!project || interviewId) return;
+
+      try {
+        const interviewRes = await interviewsApi.create({
+          project_id: projectId,
+          ai_model_used: 'claude-sonnet-4-20250514',
+          parent_task_id: null,  // Context mode
+        });
+
+        const createdInterview = interviewRes.data || interviewRes;
+        setInterviewId(createdInterview.id);
+      } catch (error) {
+        console.error('Failed to create interview:', error);
+        showError('Failed to start context interview');
+      }
+    };
+
+    createInterview();
+  }, [project, projectId, interviewId, showError]);
+
+  // Handle context generation job completion
+  const handleContextJobComplete = (result: any) => {
+    setGeneratingContext(false);
+    setContextJobId(null);
+
+    if (result && result.success) {
+      setContextHuman(result.context_human);
+      setContextSemantic(result.context_semantic);
+      if (result.suggested_epics) {
+        setSuggestedEpics(result.suggested_epics);
+      }
+      setStep('review');
+    } else {
+      showError('Failed to generate context. Please try again.');
+    }
+  };
+
+  const handleContextJobError = (error: string) => {
+    setGeneratingContext(false);
+    setContextJobId(null);
+    showError('Failed to generate context. Please try again.');
+  };
+
+  // Poll context generation job
+  useJobPolling(contextJobId, {
+    enabled: !!contextJobId,
+    onComplete: handleContextJobComplete,
+    onError: handleContextJobError,
+  });
+
+  // Handle interview complete
+  const handleInterviewComplete = async () => {
+    if (!interviewId) return;
+
+    setGeneratingContext(true);
+    try {
+      const contextRes = await interviewsApi.generateContext(interviewId);
+      const contextData = contextRes.data || contextRes;
+
+      if (contextData.job_id) {
+        setContextJobId(contextData.job_id);
+        addJob(contextData.job_id, 'context_generation', `Generating context for ${project?.name || 'project'}...`);
+      } else if (contextData.success) {
+        setContextHuman(contextData.context_human);
+        setContextSemantic(contextData.context_semantic);
+        if (contextData.suggested_epics) {
+          setSuggestedEpics(contextData.suggested_epics);
+        }
+        setStep('review');
+        setGeneratingContext(false);
+      } else {
+        setGeneratingContext(false);
+        showError('Failed to generate context. Please try again.');
+      }
+    } catch (error) {
+      console.error('Failed to generate context:', error);
+      setGeneratingContext(false);
+      showError('Failed to generate context. Please try again.');
+    }
+  };
+
+  const handleConfirm = () => {
+    setStep('complete');
+    showSuccess('Context configured successfully!');
+    router.push(`/projects/${projectId}`);
+  };
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (!project) {
+    return (
+      <Layout>
+        <div className="text-center py-12">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Project Not Found</h2>
+          <Button variant="primary" onClick={() => router.push('/projects')}>
+            Back to Projects
+          </Button>
+        </div>
+      </Layout>
+    );
+  }
+
+  return (
+    <Layout>
+      <Breadcrumbs />
+      <div className="max-w-4xl mx-auto">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          Configure Project Context
+        </h1>
+        <p className="text-gray-600 mb-8">
+          Complete the Context Interview for <strong>{project.name}</strong>
+        </p>
+
+        {/* Progress Steps */}
+        <div className="flex items-center justify-center mb-8">
+          {[
+            { id: 'interview', label: '1. Interview' },
+            { id: 'review', label: '2. Review' },
+            { id: 'complete', label: '3. Complete' },
+          ].map((s, i) => (
+            <div key={s.id} className="flex items-center">
+              <div
+                className={`flex items-center justify-center w-10 h-10 rounded-full ${
+                  step === s.id
+                    ? 'bg-blue-600 text-white'
+                    : step === 'complete' || (step === 'review' && i === 0)
+                    ? 'bg-green-500 text-white'
+                    : 'bg-gray-200 text-gray-600'
+                }`}
+              >
+                {step === 'complete' || (step === 'review' && i === 0) ? (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  i + 1
+                )}
+              </div>
+              {i < 2 && <div className="w-12 h-0.5 bg-gray-200 mx-2" />}
+            </div>
+          ))}
+        </div>
+
+        {/* Step 1: Interview */}
+        {step === 'interview' && interviewId && (
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-start">
+                <div>
+                  <CardTitle>Context Interview</CardTitle>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Tell the AI about your project. This establishes the foundation for all future development.
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={() => router.push(`/projects/${projectId}`)}
+                  className="text-gray-500"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {generatingContext ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                  <p className="text-gray-600">Generating project context...</p>
+                  <p className="text-sm text-gray-500 mt-1">This may take a moment</p>
+                </div>
+              ) : (
+                <ChatInterface
+                  interviewId={interviewId}
+                  onComplete={handleInterviewComplete}
+                  interviewMode="context"
+                />
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Step 2: Review */}
+        {step === 'review' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Review Context</CardTitle>
+              <p className="text-sm text-gray-600 mt-1">
+                Review the generated context for your project.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {/* Human-readable context */}
+                <div>
+                  <h4 className="font-semibold text-gray-900 mb-2">Project Description</h4>
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <div className="prose prose-sm max-w-none">
+                      {contextHuman ? (
+                        <ReactMarkdown>{contextHuman}</ReactMarkdown>
+                      ) : (
+                        <p className="text-gray-500 italic">No context generated</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Suggested Epics */}
+                {suggestedEpics.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-2">
+                      Suggested Epics ({suggestedEpics.length})
+                    </h4>
+                    <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                      <div className="grid gap-2">
+                        {suggestedEpics.map((epic, idx) => (
+                          <div
+                            key={epic.id}
+                            className="flex items-start gap-3 p-3 bg-white rounded border border-gray-200 border-dashed opacity-60"
+                          >
+                            <span className="text-gray-400 font-mono text-sm">{idx + 1}.</span>
+                            <div className="flex-1">
+                              <span className="text-gray-500 font-medium">{epic.title}</span>
+                              <p className="text-xs text-gray-400 mt-1">{epic.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Semantic context (collapsible) */}
+                <details className="group">
+                  <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800 flex items-center gap-2">
+                    <svg className="w-4 h-4 transform group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    View Semantic Context (for AI)
+                  </summary>
+                  <div className="mt-2 bg-gray-900 rounded-lg p-4 border border-gray-700">
+                    <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">
+                      {contextSemantic || 'No semantic context generated'}
+                    </pre>
+                  </div>
+                </details>
+
+                <div className="flex justify-end gap-3 pt-4">
+                  <Button variant="outline" onClick={() => setStep('interview')}>
+                    Back to Interview
+                  </Button>
+                  <Button variant="primary" onClick={handleConfirm}>
+                    Confirm & Go to Project
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {NotificationComponent}
+      </div>
+    </Layout>
+  );
+}
