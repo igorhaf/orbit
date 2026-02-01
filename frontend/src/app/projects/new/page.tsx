@@ -189,7 +189,8 @@ export default function NewProjectPage() {
 
         // Project created immediately!
         setProjectId(data.project.id);
-        setName(data.project.name);  // Temporary name from folder
+        // PROMPT #139 - Don't set name here, wait for AI suggestion from memory scan
+        // setName(data.project.name);  // Removed - field stays empty during scan
 
         // PROMPT #137 - Project exists now, no cleanup needed on abandon
         // User can leave and project will remain as draft
@@ -398,22 +399,30 @@ export default function NewProjectPage() {
                 />
               </div>
 
+              {/* PROMPT #139 - Project name disabled during scan, filled by AI */}
               <div>
                 <Label htmlFor="name">Project Name *</Label>
                 <Input
                   id="name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="My Awesome Project"
-                  className="mt-1"
+                  placeholder={scanning ? "Aguardando sugestão da IA..." : "Nome do Projeto"}
+                  disabled={scanning}
+                  className={`mt-1 ${scanning ? 'bg-gray-100 cursor-wait' : ''}`}
                 />
                 <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                  Choose a descriptive name for your project
-                  {/* PROMPT #128 - Show AI model icon for AI-suggested title */}
-                  {memoryScanResult?.suggested_title && name === memoryScanResult.suggested_title && (
+                  {scanning ? (
+                    <span className="text-blue-600">A IA está analisando o código para sugerir um nome...</span>
+                  ) : (
                     <>
-                      <AIModelBadge model="memory-scan" usage_type="memory" />
-                      <span className="text-blue-600">(AI suggested)</span>
+                      {memoryScanResult?.suggested_title && name === memoryScanResult.suggested_title ? (
+                        <>
+                          <AIModelBadge model="memory-scan" usage_type="memory" />
+                          <span className="text-blue-600">(AI suggested - you can edit)</span>
+                        </>
+                      ) : (
+                        'Choose a descriptive name for your project'
+                      )}
                     </>
                   )}
                 </p>
