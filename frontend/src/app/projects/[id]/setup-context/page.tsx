@@ -27,7 +27,8 @@ export default function SetupContextPage() {
   const router = useRouter();
   const projectId = params.id as string;
   const { showError, showSuccess, NotificationComponent } = useNotification();
-  const { addJob } = useNotifications();
+  // PROMPT #140 - stopWatching for when user leaves page
+  const { addJob, stopWatching } = useNotifications();
 
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
@@ -47,6 +48,13 @@ export default function SetupContextPage() {
 
   // Context generation job
   const [contextJobId, setContextJobId] = useState<string | null>(null);
+
+  // PROMPT #140 - Stop watching job when user leaves the page
+  useEffect(() => {
+    return () => {
+      if (contextJobId) stopWatching(contextJobId);
+    };
+  }, [contextJobId, stopWatching]);
 
   // Load project data
   const loadProject = useCallback(async () => {
@@ -137,7 +145,8 @@ export default function SetupContextPage() {
 
       if (contextData.job_id) {
         setContextJobId(contextData.job_id);
-        addJob(contextData.job_id, 'context_generation', `Generating context for ${project?.name || 'project'}...`);
+        // PROMPT #140 - watching=true since user is on this page
+        addJob(contextData.job_id, 'context_generation', `Generating context for ${project?.name || 'project'}...`, undefined, true);
       } else if (contextData.success) {
         setContextHuman(contextData.context_human);
         setContextSemantic(contextData.context_semantic);

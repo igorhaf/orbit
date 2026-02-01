@@ -53,7 +53,8 @@ interface MemoryScanResult {
 export default function NewProjectPage() {
   const router = useRouter();
   const { showError, showWarning, showSuccess, NotificationComponent } = useNotification();
-  const { addJob } = useNotifications();  // PROMPT #133 - Background notifications
+  // PROMPT #140 - stopWatching to mark jobs as "not watched" when leaving page
+  const { addJob, stopWatching } = useNotifications();
   const [step, setStep] = useState<Step>('basic');
   const [loading, setLoading] = useState(false);
   const [generatingContext, setGeneratingContext] = useState(false);
@@ -67,6 +68,16 @@ export default function NewProjectPage() {
 
   // PROMPT #133 - Background job state for context generation
   const [contextJobId, setContextJobId] = useState<string | null>(null);
+
+  // PROMPT #140 - Stop watching jobs when user leaves the page
+  useEffect(() => {
+    return () => {
+      // User is leaving the page - stop watching these jobs
+      // If they complete now, user will get notification badge
+      if (memoryScanJobId) stopWatching(memoryScanJobId);
+      if (contextJobId) stopWatching(contextJobId);
+    };
+  }, [memoryScanJobId, contextJobId, stopWatching]);
 
   // Form data
   const [name, setName] = useState('');
@@ -200,9 +211,10 @@ export default function NewProjectPage() {
         if (data.job_id) {
           setMemoryScanJobId(data.job_id);
 
-          // Add to notification bell
+          // PROMPT #140 - Add to notification bell with watching=true
+          // Since user is on this page, no notification badge when it completes
           const folderName = path.split('/').pop() || 'pasta';
-          addJob(data.job_id, 'memory_scan', `Analisando ${folderName}...`, path);
+          addJob(data.job_id, 'memory_scan', `Analisando ${folderName}...`, path, true);
         }
 
         // PROMPT #138 - Removed showSuccess() modal that was blocking navigation
@@ -274,8 +286,8 @@ export default function NewProjectPage() {
       if (contextData.job_id) {
         setContextJobId(contextData.job_id);
 
-        // Add to notification bell
-        addJob(contextData.job_id, 'context_generation', `Gerando contexto para ${name || 'projeto'}...`);
+        // PROMPT #140 - Add to notification bell with watching=true
+        addJob(contextData.job_id, 'context_generation', `Gerando contexto para ${name || 'projeto'}...`, undefined, true);
       } else if (contextData.success) {
         // Fallback for old API format (direct result)
         setContextHuman(contextData.context_human);

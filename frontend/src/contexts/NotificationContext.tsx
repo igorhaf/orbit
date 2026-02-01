@@ -39,6 +39,9 @@ export interface JobNotification {
   project_id?: string | null;
   task_id?: string | null;
   interview_id?: string | null;
+  // PROMPT #140 - Track if user is watching this job on the page
+  // If watching=true when job completes, it's auto-marked as read (no notification badge)
+  watching?: boolean;
 }
 
 interface NotificationContextType {
@@ -52,12 +55,15 @@ interface NotificationContextType {
   unreadCount: number;
 
   // Methods
-  addJob: (jobId: string, jobType: string, title: string, description?: string) => void;
+  // PROMPT #140 - watching param: if true, job completion won't show unread notification
+  addJob: (jobId: string, jobType: string, title: string, description?: string, watching?: boolean) => void;
   updateJob: (jobId: string, updates: Partial<JobNotification>) => void;
   markAsRead: (notificationId: string) => void;
   markAllAsRead: () => void;
   clearNotification: (notificationId: string) => void;
   clearAllNotifications: () => void;
+  // PROMPT #140 - Stop watching a job (called when user leaves the page)
+  stopWatching: (jobId: string) => void;
 
   // PROMPT #134 - WebSocket connection status (replaces polling)
   isConnected: boolean;
@@ -124,7 +130,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const unreadCount = notifications.filter(n => !n.read).length;
 
   // Add a new job to track
-  const addJob = useCallback((jobId: string, jobType: string, title: string, description?: string) => {
+  // PROMPT #140 - watching: if true, user is on the page watching this job
+  // When job completes, it will be auto-marked as read (no notification badge)
+  const addJob = useCallback((jobId: string, jobType: string, title: string, description?: string, watching: boolean = false) => {
     const newJob: JobNotification = {
       id: `notif-${jobId}`,
       job_id: jobId,
@@ -136,6 +144,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       read: false,
       title: title || JOB_TYPE_TITLES[jobType] || 'Processando...',
       description,
+      watching, // PROMPT #140
     };
 
     setActiveJobs(prev => {
@@ -143,6 +152,13 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (prev.some(j => j.job_id === jobId)) return prev;
       return [...prev, newJob];
     });
+  }, []);
+
+  // PROMPT #140 - Stop watching a job (user left the page)
+  const stopWatching = useCallback((jobId: string) => {
+    setActiveJobs(prev =>
+      prev.map(j => j.job_id === jobId ? { ...j, watching: false } : j)
+    );
   }, []);
 
   // Update job status
@@ -157,6 +173,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       // If job completed/failed/cancelled, move to notifications
       if (['completed', 'failed', 'cancelled'].includes(updatedJob.status)) {
         updatedJob.completed_at = new Date().toISOString();
+
+        // PROMPT #140 - If user was watching this job, auto-mark as read
+        // This prevents notification badge when user is on the page seeing the result
+        if (updatedJob.watching) {
+          updatedJob.read = true;
+        }
 
         // Remove from active jobs
         updatedJobs.splice(jobIndex, 1);
@@ -412,6 +434,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         markAllAsRead,
         clearNotification,
         clearAllNotifications,
+        stopWatching, // PROMPT #140
         isConnected,
       }}
     >

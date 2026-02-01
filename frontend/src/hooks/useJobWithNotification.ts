@@ -22,6 +22,9 @@ interface UseJobWithNotificationOptions {
   // Notification options
   title?: string;
   description?: string;
+  // PROMPT #140 - If true, job completion won't show unread notification
+  // (user is on the page watching the result)
+  watching?: boolean;
 }
 
 export function useJobWithNotification(
@@ -40,6 +43,7 @@ export function useJobWithNotification(
     onCancelled,
     title,
     description,
+    watching = true,  // PROMPT #140 - Default to watching (user is on page)
   } = options;
 
   // Wrap callbacks to update notification
@@ -74,12 +78,13 @@ export function useJobWithNotification(
   });
 
   // Add job to notifications when it starts
+  // PROMPT #140 - Pass watching param to auto-mark as read when done
   useEffect(() => {
     if (jobId && !hasAddedJob) {
-      addJob(jobId, jobType, title || '', description);
+      addJob(jobId, jobType, title || '', description, watching);
       setHasAddedJob(true);
     }
-  }, [jobId, jobType, title, description, addJob, hasAddedJob]);
+  }, [jobId, jobType, title, description, watching, addJob, hasAddedJob]);
 
   // Update job progress in notifications
   useEffect(() => {
