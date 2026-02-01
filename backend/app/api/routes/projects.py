@@ -12,11 +12,14 @@ from pathlib import Path
 import re
 import logging
 
+import asyncio
+
 from app.database import get_db
 from app.models.project import Project
 from app.models.interview import Interview
 from app.models.prompt import Prompt
 from app.models.task import Task
+from app.models.async_job import AsyncJob, JobType, JobStatus  # PROMPT #133
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
 from app.api.dependencies import get_project_or_404
 from app.services.consistency_validator import ConsistencyValidator
@@ -156,14 +159,11 @@ async def scan_codebase_memory(
     Scan a codebase and extract memory (business rules, features, context).
 
     PROMPT #118 - Initial codebase memory scan during project creation
+    PROMPT #133 - Now runs as background job with notifications
 
-    This endpoint is called when a user selects a code folder during project creation.
-    It performs an initial scan of the codebase to:
-    1. Detect the technology stack
-    2. Extract business rules from the code
-    3. Identify key features and modules
-    4. Suggest a project title
-    5. Prepare context for the AI interview
+    This endpoint creates a background job to scan the codebase.
+    The user can navigate freely while the scan processes.
+    A notification will appear when the scan completes.
 
     **POST** `/api/v1/projects/scan-memory?code_path=/projects/my-app`
 
@@ -174,33 +174,17 @@ async def scan_codebase_memory(
     **Response:**
     ```json
     {
-        "suggested_title": "E-commerce Platform",
-        "stack_info": {
-            "detected_stack": "laravel",
-            "confidence": 85,
-            "description": "Laravel (PHP MVC Framework)"
-        },
-        "business_rules": [
-            "Users must verify email before posting",
-            "Orders over $100 get free shipping"
-        ],
-        "key_features": [
-            "User authentication and registration",
-            "Product catalog with categories"
-        ],
-        "interview_context": "This is an e-commerce platform built with Laravel...",
-        "files_indexed": 145,
-        "scan_summary": {
-            "total_files": 200,
-            "code_files": 150,
-            "languages": {"PHP": 100, "JavaScript": 50}
-        }
+        "job_id": "uuid-of-job",
+        "status": "pending",
+        "message": "Memory scan started...",
+        "deep_link": "/projects/new?projectId=xxx&step=1"
     }
     ```
 
+    Poll GET /api/v1/jobs/{job_id} for status and result.
+
     **Errors:**
     - 400: If code_path doesn't exist or is not a directory
-    - 500: If scan fails
     """
     # Validate code_path
     path = Path(code_path)
@@ -215,26 +199,103 @@ async def scan_codebase_memory(
             detail=f"Code path is not a directory: {code_path}"
         )
 
+    # PROMPT #133 - Create background job for memory scan
+    job_manager = JobManager(db)
+
+    # Build deep link for notification
+    if project_id:
+        deep_link = f"/projects/new?projectId={project_id}&step=1"
+    else:
+        deep_link = "/projects/new"
+
+    # Get folder name for notification title
+    folder_name = path.name
+
+    job = job_manager.create_job(
+        job_type=JobType.MEMORY_SCAN,
+        input_data={
+            "code_path": code_path,
+            "project_id": str(project_id) if project_id else None
+        },
+        project_id=project_id,
+        deep_link=deep_link,
+        notification_title=f"Analisando código em '{folder_name}'..."
+    )
+
+    # Start background task
+    asyncio.create_task(_process_memory_scan_async(job.id, code_path, project_id))
+
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Memory scan started. You can navigate freely - a notification will appear when complete.",
+        "deep_link": deep_link,
+        "notification_title": job.notification_title
+    }
+
+
+async def _process_memory_scan_async(
+    job_id: UUID,
+    code_path: str,
+    project_id: Optional[UUID]
+):
+    """
+    Background task to process codebase memory scan.
+
+    PROMPT #133 - Background jobs for memory scan
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+
     try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Memory scan background task started for job {job_id}")
+
+        # Get folder name for notification
+        folder_name = Path(code_path).name
+
+        job_manager.update_progress(job_id, 10.0, "Scanning codebase structure...")
+
         memory_service = CodebaseMemoryService(db)
+
+        job_manager.update_progress(job_id, 30.0, "Analyzing code and extracting patterns...")
+
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
             project_id=project_id
         )
 
-        return result
+        job_manager.update_progress(job_id, 90.0, "Finalizing results...")
 
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        # PROMPT #133 - Update notification_title for success
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            suggested_title = result.get("suggested_title", folder_name)
+            job.notification_title = f"✅ Análise concluída: '{suggested_title}'"
+            db.commit()
+
+        job_manager.complete_job(job_id, result)
+        logger.info(f"✅ Memory scan job {job_id} completed")
+
     except Exception as e:
-        logger.error(f"Codebase memory scan failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Codebase scan failed: {str(e)}"
-        )
+        logger.error(f"❌ Memory scan job {job_id} failed: {str(e)}", exc_info=True)
+
+        # PROMPT #133 - Update notification_title for failure
+        try:
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                error_msg = str(e)[:80]
+                job.notification_title = f"❌ Erro na análise: {error_msg}"
+                db.commit()
+        except Exception:
+            pass
+
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
 
 
 @router.get("/", response_model=List[ProjectResponse])

@@ -51,7 +51,10 @@ class JobManager:
         job_type: JobType,
         input_data: Dict[str, Any],
         project_id: Optional[UUID] = None,
-        interview_id: Optional[UUID] = None
+        interview_id: Optional[UUID] = None,
+        task_id: Optional[UUID] = None,  # PROMPT #133
+        deep_link: Optional[str] = None,  # PROMPT #133
+        notification_title: Optional[str] = None  # PROMPT #133
     ) -> AsyncJob:
         """
         Create a new pending job.
@@ -61,6 +64,9 @@ class JobManager:
             input_data: Parameters for the job
             project_id: Optional project ID
             interview_id: Optional interview ID
+            task_id: Optional task ID for card operations (PROMPT #133)
+            deep_link: URL to navigate when notification clicked (PROMPT #133)
+            notification_title: Title for notification display (PROMPT #133)
 
         Returns:
             AsyncJob instance with status=PENDING
@@ -72,6 +78,9 @@ class JobManager:
             input_data=input_data,
             project_id=project_id,
             interview_id=interview_id,
+            task_id=task_id,  # PROMPT #133
+            deep_link=deep_link,  # PROMPT #133
+            notification_title=notification_title,  # PROMPT #133
             created_at=datetime.utcnow()
         )
 

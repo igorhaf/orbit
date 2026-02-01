@@ -25,7 +25,8 @@ import { FolderPicker } from '@/components/ui/FolderPicker';  // PROMPT #111 - F
 import { AIModelBadge } from '@/components/ui/AIModelBadge';  // PROMPT #127 - AI Model badge
 import { projectsApi, interviewsApi } from '@/lib/api';
 import { ChatInterface } from '@/components/interview/ChatInterface';
-import { useNotification } from '@/hooks';
+import { useNotification, useJobPolling } from '@/hooks';
+import { useNotifications } from '@/contexts/NotificationContext';
 import ReactMarkdown from 'react-markdown';
 
 type Step = 'basic' | 'interview' | 'review' | 'confirm';
@@ -52,6 +53,7 @@ interface MemoryScanResult {
 export default function NewProjectPage() {
   const router = useRouter();
   const { showError, showWarning, showSuccess, NotificationComponent } = useNotification();
+  const { addJob } = useNotifications();  // PROMPT #133 - Background notifications
   const [step, setStep] = useState<Step>('basic');
   const [loading, setLoading] = useState(false);
   const [generatingContext, setGeneratingContext] = useState(false);
@@ -59,6 +61,12 @@ export default function NewProjectPage() {
   // PROMPT #118 - Memory scan state
   const [scanning, setScanning] = useState(false);
   const [memoryScanResult, setMemoryScanResult] = useState<MemoryScanResult | null>(null);
+
+  // PROMPT #133 - Background job state for memory scan
+  const [memoryScanJobId, setMemoryScanJobId] = useState<string | null>(null);
+
+  // PROMPT #133 - Background job state for context generation
+  const [contextJobId, setContextJobId] = useState<string | null>(null);
 
   // Form data
   const [name, setName] = useState('');
@@ -86,12 +94,78 @@ export default function NewProjectPage() {
     order: number;
   }>>([]);
 
+  // PROMPT #133 - Handle memory scan job completion
+  const handleMemoryScanComplete = (result: any) => {
+    console.log('✅ Memory scan job completed:', result);
+    setScanning(false);
+    setMemoryScanJobId(null);
+
+    if (result) {
+      setMemoryScanResult(result as MemoryScanResult);
+
+      // Suggest title if user hasn't entered one
+      if (!name && result.suggested_title) {
+        setName(result.suggested_title);
+      }
+
+      showSuccess('Codebase analyzed successfully!');
+    }
+  };
+
+  const handleMemoryScanError = (error: string) => {
+    console.error('❌ Memory scan job failed:', error);
+    setScanning(false);
+    setMemoryScanJobId(null);
+    showWarning('Could not analyze codebase. You can still proceed manually.');
+  };
+
+  // PROMPT #133 - Poll memory scan job status
+  const { job: memoryScanJob } = useJobPolling(memoryScanJobId, {
+    enabled: !!memoryScanJobId,
+    onComplete: handleMemoryScanComplete,
+    onError: handleMemoryScanError,
+  });
+
+  // PROMPT #133 - Handle context generation job completion
+  const handleContextJobComplete = (result: any) => {
+    console.log('✅ Context generation job completed:', result);
+    setGeneratingContext(false);
+    setContextJobId(null);
+
+    if (result && result.success) {
+      setContextHuman(result.context_human);
+      setContextSemantic(result.context_semantic);
+      // PROMPT #92 - Store suggested epics
+      if (result.suggested_epics) {
+        setSuggestedEpics(result.suggested_epics);
+      }
+      setStep('review');
+    } else {
+      showError('Failed to generate context. Please try again.');
+    }
+  };
+
+  const handleContextJobError = (error: string) => {
+    console.error('❌ Context generation job failed:', error);
+    setGeneratingContext(false);
+    setContextJobId(null);
+    showError('Failed to generate context. Please try again.');
+  };
+
+  // PROMPT #133 - Poll context generation job status
+  const { job: contextJob } = useJobPolling(contextJobId, {
+    enabled: !!contextJobId,
+    onComplete: handleContextJobComplete,
+    onError: handleContextJobError,
+  });
+
   // PROMPT #118 - Scan codebase when folder is selected
+  // PROMPT #133 - Now uses background jobs
   const handleFolderSelect = async (path: string) => {
     setCodePath(path);
     setShowFolderPicker(false);
 
-    // Start memory scan
+    // Start memory scan as background job
     setScanning(true);
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -101,24 +175,33 @@ export default function NewProjectPage() {
       );
 
       if (response.ok) {
-        const result: MemoryScanResult = await response.json();
-        setMemoryScanResult(result);
+        const data = await response.json();
 
-        // Suggest title if user hasn't entered one
-        if (!name && result.suggested_title) {
-          setName(result.suggested_title);
+        // PROMPT #133 - API now returns job_id for background processing
+        if (data.job_id) {
+          setMemoryScanJobId(data.job_id);
+
+          // Add to notification bell
+          const folderName = path.split('/').pop() || 'pasta';
+          addJob(data.job_id, 'memory_scan', `Analisando ${folderName}...`, path);
+        } else {
+          // Fallback for old API format (direct result)
+          setMemoryScanResult(data);
+          setScanning(false);
+          if (!name && data.suggested_title) {
+            setName(data.suggested_title);
+          }
+          showSuccess('Codebase analyzed successfully!');
         }
-
-        showSuccess('Codebase analyzed successfully!');
       } else {
         const error = await response.json();
+        setScanning(false);
         showWarning(`Scan completed with warnings: ${error.detail || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Memory scan failed:', error);
-      showWarning('Could not analyze codebase. You can still proceed manually.');
-    } finally {
       setScanning(false);
+      showWarning('Could not analyze codebase. You can still proceed manually.');
     }
   };
 
@@ -170,17 +253,26 @@ export default function NewProjectPage() {
   };
 
   // PROMPT #89 - When interview is complete, generate context
+  // PROMPT #133 - Now uses background jobs
   const handleInterviewComplete = async () => {
     if (!interviewId) return;
 
     setGeneratingContext(true);
     try {
-      // Generate context from the interview
+      // Generate context from the interview (now async via background job)
       const contextRes = await interviewsApi.generateContext(interviewId);
 
       // Handle both response formats (with or without .data wrapper)
       const contextData = contextRes.data || contextRes;
-      if (contextData.success) {
+
+      // PROMPT #133 - API now returns job_id for background processing
+      if (contextData.job_id) {
+        setContextJobId(contextData.job_id);
+
+        // Add to notification bell
+        addJob(contextData.job_id, 'context_generation', `Gerando contexto para ${name || 'projeto'}...`);
+      } else if (contextData.success) {
+        // Fallback for old API format (direct result)
         setContextHuman(contextData.context_human);
         setContextSemantic(contextData.context_semantic);
         // PROMPT #92 - Store suggested epics
@@ -188,14 +280,15 @@ export default function NewProjectPage() {
           setSuggestedEpics(contextData.suggested_epics);
         }
         setStep('review');
+        setGeneratingContext(false);
       } else {
+        setGeneratingContext(false);
         showError('Failed to generate context. Please try again.');
       }
     } catch (error) {
       console.error('Failed to generate context:', error);
-      showError('Failed to generate context. Please try again.');
-    } finally {
       setGeneratingContext(false);
+      showError('Failed to generate context. Please try again.');
     }
   };
 

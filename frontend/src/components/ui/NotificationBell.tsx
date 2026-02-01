@@ -3,15 +3,19 @@
 /**
  * NotificationBell Component
  * PROMPT #128 - Background Job Notifications
+ * PROMPT #133 - Deep linking support for notifications
  *
  * Bell icon in navbar that shows active jobs and notification history.
  * Displays badge with count of active/unread notifications.
+ * Clicking a notification navigates to the relevant screen via deep_link.
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { useNotifications, JOB_TYPE_ICONS } from '@/contexts/NotificationContext';
+import { useRouter } from 'next/navigation';
+import { useNotifications, JOB_TYPE_ICONS, JobNotification } from '@/contexts/NotificationContext';
 
 export function NotificationBell() {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const {
@@ -23,6 +27,17 @@ export function NotificationBell() {
     clearNotification,
     clearAllNotifications,
   } = useNotifications();
+
+  // PROMPT #133 - Handle notification click with deep link navigation
+  const handleNotificationClick = (notif: JobNotification) => {
+    markAsRead(notif.id);
+    setIsOpen(false);  // Close dropdown
+
+    // Navigate to deep_link if available
+    if (notif.deep_link) {
+      router.push(notif.deep_link);
+    }
+  };
 
   // Total badge count = active jobs + unread completed
   const badgeCount = activeJobs.length + unreadCount;
@@ -227,7 +242,7 @@ export function NotificationBell() {
                     className={`px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 cursor-pointer ${
                       !notif.read ? 'bg-blue-50/50' : ''
                     }`}
-                    onClick={() => markAsRead(notif.id)}
+                    onClick={() => handleNotificationClick(notif)}
                   >
                     <div className="flex items-start gap-3">
                       {/* Icon */}

@@ -40,6 +40,13 @@ class JobType(str, enum.Enum):
     BATCH_EXECUTION = "batch_execution"            # Execute multiple tasks in batch
     COMMIT_GENERATION = "commit_generation"        # Generate commit message
 
+    # PROMPT #133: Background jobs for ALL AI operations
+    INTERVIEW_QUESTION = "interview_question"      # Geração de pergunta de entrevista
+    MEMORY_SCAN = "memory_scan"                    # Análise de codebase (scan memory)
+    PROJECT_TITLE = "project_title"                # Geração de título do projeto
+    CONTEXT_GENERATION = "context_generation"      # Geração de contexto do projeto
+    SUGGESTED_EPICS = "suggested_epics"            # Geração de épicos sugeridos
+
 
 class AsyncJob(Base):
     """
@@ -95,6 +102,11 @@ class AsyncJob(Base):
     # Related entities (optional)
     project_id = Column(UUID(as_uuid=True), nullable=True, index=True)
     interview_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    task_id = Column(UUID(as_uuid=True), nullable=True, index=True)  # PROMPT #133: For card operations
+
+    # PROMPT #133: Deep linking for notifications
+    deep_link = Column(String(500), nullable=True)  # URL to navigate when notification clicked
+    notification_title = Column(String(200), nullable=True)  # Title for notification display
 
     def __repr__(self):
         return f"<AsyncJob {self.id} {self.job_type} {self.status}>"
@@ -114,5 +126,8 @@ class AsyncJob(Base):
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "completed_at": self.completed_at.isoformat() if self.completed_at else None,
             "project_id": str(self.project_id) if self.project_id else None,
-            "interview_id": str(self.interview_id) if self.interview_id else None
+            "interview_id": str(self.interview_id) if self.interview_id else None,
+            "task_id": str(self.task_id) if self.task_id else None,  # PROMPT #133
+            "deep_link": self.deep_link,  # PROMPT #133
+            "notification_title": self.notification_title  # PROMPT #133
         }

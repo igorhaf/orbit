@@ -25,6 +25,12 @@ export interface JobNotification {
   read: boolean;
   title: string;
   description?: string;
+  // PROMPT #133 - Deep linking support
+  deep_link?: string | null;
+  notification_title?: string | null;
+  project_id?: string | null;
+  task_id?: string | null;
+  interview_id?: string | null;
 }
 
 interface NotificationContextType {
@@ -66,6 +72,11 @@ const JOB_TYPE_TITLES: Record<string, string> = {
   'batch_execution': 'Execução em Lote',
   'commit_generation': 'Gerando Commit',
   'context_generation': 'Gerando Contexto',
+  // PROMPT #133 - New job types
+  'interview_question': 'Gerando Pergunta',
+  'memory_scan': 'Analisando Código',
+  'project_title': 'Gerando Título',
+  'suggested_epics': 'Gerando Épicos',
 };
 
 // Job type to icon mapping (matching AIModelBadge style)
@@ -81,6 +92,11 @@ export const JOB_TYPE_ICONS: Record<string, string> = {
   'batch_execution': '🛠️🤖',
   'commit_generation': '🧩⚙️',
   'context_generation': '🧠🏗️',
+  // PROMPT #133 - New job types
+  'interview_question': '🎤',
+  'memory_scan': '🔍',
+  'project_title': '📝',
+  'suggested_epics': '🎯',
 };
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
@@ -174,13 +190,23 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         const response = await fetch(`${API_URL}/jobs/${job.job_id}`);
         if (response.ok) {
           const data = await response.json();
-          updateJob(job.job_id, {
+          // PROMPT #133 - Include deep_link and notification_title from API
+          const updates: Partial<JobNotification> = {
             status: data.status,
             progress_percent: data.progress_percent,
             progress_message: data.progress_message,
             result: data.result,
             error: data.error,
-          });
+            deep_link: data.deep_link,
+            project_id: data.project_id,
+            task_id: data.task_id,
+            interview_id: data.interview_id,
+          };
+          // Update title from notification_title if available (e.g., "✅ Pergunta gerada...")
+          if (data.notification_title) {
+            updates.title = data.notification_title;
+          }
+          updateJob(job.job_id, updates);
         }
       } catch (error) {
         console.error(`Error polling job ${job.job_id}:`, error);
@@ -240,7 +266,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               progress_message: job.progress_message,
               created_at: job.created_at,
               read: false,
-              title: JOB_TYPE_TITLES[job.job_type] || 'Processando...',
+              title: job.notification_title || JOB_TYPE_TITLES[job.job_type] || 'Processando...',
+              // PROMPT #133 - Include deep link fields
+              deep_link: job.deep_link,
+              project_id: job.project_id,
+              task_id: job.task_id,
+              interview_id: job.interview_id,
             }));
             setActiveJobs(mappedJobs);
             startPolling();

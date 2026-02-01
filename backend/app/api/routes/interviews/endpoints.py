@@ -865,39 +865,37 @@ async def _generate_task_direct_async(
         db.close()
 
 
-@router.post("/{interview_id}/generate-context", status_code=status.HTTP_200_OK)
+@router.post("/{interview_id}/generate-context", status_code=status.HTTP_202_ACCEPTED)
 async def generate_context_from_interview(
     interview_id: UUID,
     db: Session = Depends(get_db)
 ):
     """
-    Generate project context from Context Interview.
+    Generate project context from Context Interview (ASYNC).
 
     PROMPT #89 - Context Interview: Foundational Project Description
+    PROMPT #133 - Now runs as background job with notifications
 
-    This endpoint processes a completed Context Interview and generates:
-    - context_semantic: Structured semantic text for AI consumption
-    - context_human: Human-readable project description
-
-    The context is saved to the Project model and the description field
-    is automatically updated with context_human.
-
-    Note: Context is NOT locked by this endpoint. It will be locked
-    automatically when the first Epic is generated.
+    This endpoint creates a background job to process a completed Context Interview.
+    The user can navigate freely while context generation processes.
+    A notification will appear when the context is ready.
 
     Returns:
         {
-            "success": True,
-            "context_semantic": str,
-            "context_human": str,
-            "interview_insights": {...}
+            "job_id": "uuid-of-job",
+            "status": "pending",
+            "message": "Context generation started...",
+            "deep_link": "/projects/new?projectId=xxx&step=3"
         }
 
+    Poll GET /api/v1/jobs/{job_id} for status and result.
+
     Raises:
-        400: If interview is not context mode or has insufficient data
+        400: If interview is not context mode
         404: If interview not found
     """
-    from app.services.context_generator import ContextGeneratorService
+    from app.services.job_manager import JobManager
+    from app.models.async_job import JobType
 
     # Validate interview exists
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
@@ -915,28 +913,114 @@ async def generate_context_from_interview(
                    f"Only 'context' interviews support context generation."
         )
 
+    # Get project for notification
+    project = db.query(Project).filter(Project.id == interview.project_id).first()
+    project_name = project.name if project else "projeto"
+
+    # PROMPT #133 - Create background job
+    job_manager = JobManager(db)
+
+    deep_link = f"/projects/new?projectId={interview.project_id}&step=3"
+
+    job = job_manager.create_job(
+        job_type=JobType.CONTEXT_GENERATION,
+        input_data={
+            "interview_id": str(interview_id),
+            "project_id": str(interview.project_id)
+        },
+        project_id=interview.project_id,
+        interview_id=interview_id,
+        deep_link=deep_link,
+        notification_title=f"Gerando contexto para '{project_name}'..."
+    )
+
+    # Start background task
+    import asyncio
+    asyncio.create_task(_process_context_generation_async(job.id, interview_id, interview.project_id))
+
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Context generation started. You can navigate freely - a notification will appear when complete.",
+        "deep_link": deep_link,
+        "notification_title": job.notification_title
+    }
+
+
+async def _process_context_generation_async(
+    job_id: UUID,
+    interview_id: UUID,
+    project_id: UUID
+):
+    """
+    Background task to generate project context.
+
+    PROMPT #133 - Background jobs for context generation
+    """
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.services.context_generator import ContextGeneratorService
+    from app.models.async_job import AsyncJob
+
+    db = SessionLocal()
+
     try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Context generation background task started for job {job_id}")
+
+        # Get project name for notification
+        project = db.query(Project).filter(Project.id == project_id).first()
+        project_name = project.name if project else "projeto"
+
+        job_manager.update_progress(job_id, 20.0, "Analyzing interview responses...")
+
         context_service = ContextGeneratorService(db)
+
+        job_manager.update_progress(job_id, 50.0, "Generating semantic context...")
+
         result = await context_service.generate_context_from_interview(
             interview_id=interview_id,
-            project_id=interview.project_id
+            project_id=project_id
         )
 
-        return {
+        job_manager.update_progress(job_id, 80.0, "Generating suggested epics...")
+
+        # PROMPT #133 - Update notification_title for success
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            epic_count = len(result.get("suggested_epics", []))
+            job.notification_title = f"✅ Contexto gerado para '{project_name}' - {epic_count} épicos sugeridos"
+            db.commit()
+
+        job_manager.complete_job(job_id, {
             "success": True,
             "context_semantic": result["context_semantic"],
             "context_human": result["context_human"],
             "semantic_map": result.get("semantic_map", {}),
             "interview_insights": result.get("interview_insights", {}),
-            # PROMPT #92 - Return suggested epics
             "suggested_epics": result.get("suggested_epics", [])
-        }
+        })
 
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
+        logger.info(f"✅ Context generation job {job_id} completed")
+
+    except Exception as e:
+        logger.error(f"❌ Context generation job {job_id} failed: {str(e)}", exc_info=True)
+
+        # PROMPT #133 - Update notification_title for failure
+        try:
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                error_msg = str(e)[:80]
+                job.notification_title = f"❌ Erro ao gerar contexto: {error_msg}"
+                db.commit()
+        except Exception:
+            pass
+
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
 
 
 @router.post("/{interview_id}/generate-hierarchy-from-meta", status_code=status.HTTP_202_ACCEPTED)
@@ -1891,6 +1975,7 @@ async def send_message_async(
 
     PROMPT #65 - Async Job System
     PROMPT #99 - Fixed async message duplication bug
+    PROMPT #133 - Background jobs for ALL AI operations with deep links
 
     This endpoint prevents UI blocking by processing AI call in background.
 
@@ -1898,7 +1983,8 @@ async def send_message_async(
         {
             "job_id": "...",
             "status": "pending",
-            "message": "Job created, poll /jobs/{job_id} for result"
+            "message": "Job created, poll /jobs/{job_id} for result",
+            "deep_link": "/projects/{id}?task={taskId}&tab=interview"
         }
     """
     from app.services.job_manager import JobManager
@@ -1931,19 +2017,40 @@ async def send_message_async(
 
     logger.info(f"✅ User message added to interview {interview_id} (message_count: {len(interview.conversation_data)})")
 
-    # Create async job
+    # PROMPT #133 - Build deep link and notification title
+    task_id = interview.parent_task_id
+    parent_task = None
+    task_title = "entrevista"
+
+    if task_id:
+        parent_task = db.query(Task).filter(Task.id == task_id).first()
+        if parent_task:
+            task_title = parent_task.title[:50]
+
+    # Build deep link based on context
+    if task_id:
+        deep_link = f"/projects/{interview.project_id}?task={task_id}&tab=interview"
+    else:
+        deep_link = f"/projects/{interview.project_id}?interview={interview_id}"
+
+    notification_title = f"Gerando pergunta para '{task_title}'"
+
+    # Create async job with PROMPT #133 enhancements
     job_manager = JobManager(db)
     job = job_manager.create_job(
-        job_type=JobType.INTERVIEW_MESSAGE,
+        job_type=JobType.INTERVIEW_QUESTION,  # PROMPT #133 - New job type
         input_data={
             "interview_id": str(interview_id),
             "message_content": message.content
         },
         project_id=interview.project_id,
-        interview_id=interview_id
+        interview_id=interview_id,
+        task_id=task_id,  # PROMPT #133
+        deep_link=deep_link,  # PROMPT #133
+        notification_title=notification_title  # PROMPT #133
     )
 
-    logger.info(f"Created async job {job.id} for interview {interview_id}")
+    logger.info(f"Created async job {job.id} for interview {interview_id} (deep_link={deep_link})")
 
     # Execute in background
     import asyncio
@@ -1955,11 +2062,13 @@ async def send_message_async(
         )
     )
 
-    # Return job_id immediately
+    # Return job_id immediately with deep_link for frontend
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Job created successfully. Poll GET /api/v1/jobs/{job.id} for result."
+        "message": f"Job created successfully. Poll GET /api/v1/jobs/{job.id} for result.",
+        "deep_link": deep_link,
+        "notification_title": notification_title
     }
 
 
@@ -1972,10 +2081,12 @@ async def _process_interview_message_async(
     Background task to process AI response for interview message.
 
     PROMPT #65 - Async Job System
+    PROMPT #133 - Updates notification_title on success/failure for bell notifications
     """
     from app.database import SessionLocal
     from app.services.job_manager import JobManager
     from app.services.ai_orchestrator import AIOrchestrator
+    from app.models.async_job import AsyncJob
 
     # Create new DB session for background task
     db = SessionLocal()
@@ -1984,6 +2095,14 @@ async def _process_interview_message_async(
         job_manager = JobManager(db)
         job_manager.start_job(job_id)
         logger.info(f"🚀 Background task started for job {job_id}")
+
+        # PROMPT #133 - Get job and task for notification title
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        task_title = "entrevista"
+        if job and job.task_id:
+            related_task = db.query(Task).filter(Task.id == job.task_id).first()
+            if related_task:
+                task_title = related_task.title[:50]
 
         # Get interview
         interview = db.query(Interview).filter(Interview.id == interview_id).first()
@@ -2031,6 +2150,11 @@ async def _process_interview_message_async(
 
         job_manager.update_progress(job_id, 80.0, "Processing response...")
 
+        # PROMPT #133 - Update notification_title for success
+        if job:
+            job.notification_title = f"✅ Pergunta gerada para '{task_title}'"
+            db.commit()
+
         # Complete job with result
         job_manager.complete_job(job_id, {
             "success": result.get("success", True),
@@ -2042,6 +2166,15 @@ async def _process_interview_message_async(
 
     except Exception as e:
         logger.error(f"❌ Job {job_id} failed: {str(e)}", exc_info=True)
+        # PROMPT #133 - Update notification_title for failure
+        try:
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                error_msg = str(e)[:100]  # Truncate long errors
+                job.notification_title = f"❌ Erro ao gerar pergunta: {error_msg}"
+                db.commit()
+        except Exception:
+            pass  # Don't fail the error handling
         job_manager.fail_job(job_id, str(e))
 
     finally:
