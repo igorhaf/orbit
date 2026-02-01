@@ -95,6 +95,7 @@ export default function NewProjectPage() {
   }>>([]);
 
   // PROMPT #133 - Handle memory scan job completion
+  // PROMPT #139 - Always update title with AI suggestion (better than folder name)
   const handleMemoryScanComplete = (result: any) => {
     console.log('✅ Memory scan job completed:', result);
     setScanning(false);
@@ -103,12 +104,20 @@ export default function NewProjectPage() {
     if (result) {
       setMemoryScanResult(result as MemoryScanResult);
 
-      // Suggest title if user hasn't entered one
-      if (!name && result.suggested_title) {
+      // PROMPT #139 - Always use AI-suggested title (it's better than folder name)
+      if (result.suggested_title) {
         setName(result.suggested_title);
-      }
 
-      showSuccess('Codebase analyzed successfully!');
+        // Also update the project in the database with the better title
+        if (projectId) {
+          const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+          fetch(`${API_BASE}/api/v1/projects/${projectId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: result.suggested_title })
+          }).catch(err => console.error('Failed to update project title:', err));
+        }
+      }
     }
   };
 
