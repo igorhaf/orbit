@@ -863,6 +863,12 @@ export interface JobResponse {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  // PROMPT #133 - Deep linking support
+  deep_link?: string | null;
+  notification_title?: string | null;
+  project_id?: string | null;
+  task_id?: string | null;
+  interview_id?: string | null;
 }
 
 // Jobs API (PROMPT #65 - Async Job System)

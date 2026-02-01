@@ -25,7 +25,6 @@ import {
   Input,
 } from '@/components/ui';
 import { jobsApi, projectsApi, JobResponse } from '@/lib/api';
-import { useNotifications } from '@/contexts/NotificationContext';
 import {
   Activity,
   RefreshCw,
@@ -42,6 +41,8 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
+  Wifi,
+  WifiOff,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -109,12 +110,15 @@ export default function JobsPage() {
   const [loadingProjects, setLoadingProjects] = useState(true);
 
   // WebSocket for real-time updates
-  const { isConnected } = useNotifications();
+  const [isConnected, setIsConnected] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // View mode
   const [viewMode, setViewMode] = useState<'list' | 'stats'>('list');
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  const WS_URL = API_BASE.replace('http', 'ws');
 
   // Fetch jobs
   const fetchJobs = useCallback(async () => {
@@ -198,18 +202,193 @@ export default function JobsPage() {
     fetchStats();
   }, [fetchStats]);
 
-  // WebSocket real-time updates
+  // PROMPT #135 FIX - Real WebSocket connection for job events (no polling!)
   useEffect(() => {
-    if (!isConnected) return;
+    const connect = () => {
+      // Don't connect if already connected or connecting
+      if (wsRef.current?.readyState === WebSocket.OPEN ||
+          wsRef.current?.readyState === WebSocket.CONNECTING) {
+        return;
+      }
 
-    // Refresh data periodically when connected
-    const interval = setInterval(() => {
-      fetchJobs();
-      fetchStats();
-    }, 5000);
+      try {
+        const ws = new WebSocket(`${WS_URL}/api/v1/ws/notifications`);
 
-    return () => clearInterval(interval);
-  }, [isConnected, fetchJobs, fetchStats]);
+        ws.onopen = () => {
+          setIsConnected(true);
+          console.log('🔔 Job Queue WebSocket connected');
+        };
+
+        ws.onmessage = (event) => {
+          try {
+            const message = JSON.parse(event.data);
+            handleWebSocketEvent(message);
+          } catch (e) {
+            console.error('Failed to parse WebSocket message:', e);
+          }
+        };
+
+        ws.onclose = () => {
+          setIsConnected(false);
+          wsRef.current = null;
+
+          // Reconnect with exponential backoff
+          reconnectTimeoutRef.current = setTimeout(connect, 3000);
+        };
+
+        ws.onerror = (error) => {
+          console.error('Job Queue WebSocket error:', error);
+        };
+
+        wsRef.current = ws;
+      } catch (error) {
+        console.error('Failed to create WebSocket:', error);
+      }
+    };
+
+    // Handle incoming WebSocket events - update jobs in place
+    const handleWebSocketEvent = (message: any) => {
+      const { event, data } = message;
+
+      if (!data?.job_id) return;
+
+      // Update the jobs list in place (no re-fetch needed!)
+      setJobs((prevJobs) => {
+        const jobIndex = prevJobs.findIndex((j) => j.id === data.job_id);
+
+        if (event === 'job_started') {
+          if (jobIndex === -1) {
+            // New job - add to beginning of list
+            const newJob: JobResponse = {
+              id: data.job_id,
+              job_type: data.job_type,
+              status: 'running',
+              progress_percent: null,
+              progress_message: null,
+              result: null,
+              error: null,
+              created_at: new Date().toISOString(),
+              started_at: new Date().toISOString(),
+              completed_at: null,
+              notification_title: data.notification_title,
+            };
+            return [newJob, ...prevJobs];
+          }
+          // Existing job - update status
+          const updated = [...prevJobs];
+          updated[jobIndex] = {
+            ...updated[jobIndex],
+            status: 'running',
+            started_at: new Date().toISOString(),
+          };
+          return updated;
+        }
+
+        if (event === 'job_progress' && jobIndex !== -1) {
+          const updated = [...prevJobs];
+          updated[jobIndex] = {
+            ...updated[jobIndex],
+            progress_percent: data.progress_percent,
+            progress_message: data.progress_message,
+          };
+          return updated;
+        }
+
+        if (event === 'job_completed' && jobIndex !== -1) {
+          const updated = [...prevJobs];
+          updated[jobIndex] = {
+            ...updated[jobIndex],
+            status: 'completed',
+            progress_percent: 100,
+            result: data.result,
+            completed_at: new Date().toISOString(),
+            deep_link: data.deep_link,
+            notification_title: data.notification_title || updated[jobIndex].notification_title,
+          };
+          // Update stats when job completes
+          fetchStats();
+          return updated;
+        }
+
+        if (event === 'job_failed' && jobIndex !== -1) {
+          const updated = [...prevJobs];
+          updated[jobIndex] = {
+            ...updated[jobIndex],
+            status: 'failed',
+            error: data.error,
+            completed_at: new Date().toISOString(),
+            deep_link: data.deep_link,
+            notification_title: data.notification_title || updated[jobIndex].notification_title,
+          };
+          // Update stats when job fails
+          fetchStats();
+          return updated;
+        }
+
+        if (event === 'job_cancelled' && jobIndex !== -1) {
+          const updated = [...prevJobs];
+          updated[jobIndex] = {
+            ...updated[jobIndex],
+            status: 'cancelled',
+            completed_at: new Date().toISOString(),
+          };
+          // Update stats when job is cancelled
+          fetchStats();
+          return updated;
+        }
+
+        return prevJobs;
+      });
+
+      // Also update stats count immediately for status changes
+      if (['job_started', 'job_completed', 'job_failed', 'job_cancelled'].includes(event)) {
+        setStats((prevStats) => {
+          if (!prevStats) return prevStats;
+
+          const newStats = { ...prevStats };
+          const byStatus = { ...newStats.by_status };
+
+          if (event === 'job_started') {
+            byStatus.pending = Math.max(0, (byStatus.pending || 0) - 1);
+            byStatus.running = (byStatus.running || 0) + 1;
+          } else if (event === 'job_completed') {
+            byStatus.running = Math.max(0, (byStatus.running || 0) - 1);
+            byStatus.completed = (byStatus.completed || 0) + 1;
+          } else if (event === 'job_failed') {
+            byStatus.running = Math.max(0, (byStatus.running || 0) - 1);
+            byStatus.failed = (byStatus.failed || 0) + 1;
+          } else if (event === 'job_cancelled') {
+            byStatus.running = Math.max(0, (byStatus.running || 0) - 1);
+            byStatus.pending = Math.max(0, (byStatus.pending || 0) - 1);
+            byStatus.cancelled = (byStatus.cancelled || 0) + 1;
+          }
+
+          newStats.by_status = byStatus;
+          return newStats;
+        });
+      }
+    };
+
+    connect();
+
+    // Ping every 30s to keep connection alive
+    const pingInterval = setInterval(() => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ command: 'ping' }));
+      }
+    }, 30000);
+
+    // Cleanup on unmount
+    return () => {
+      clearInterval(pingInterval);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [WS_URL, fetchStats]);
 
   // Actions
   const handleCancelJob = async (jobId: string) => {
