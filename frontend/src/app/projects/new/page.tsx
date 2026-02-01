@@ -195,7 +195,8 @@ export default function NewProjectPage() {
           addJob(data.job_id, 'memory_scan', `Analisando ${folderName}...`, path);
         }
 
-        showSuccess('Project created! Analyzing codebase...');
+        // PROMPT #138 - Removed showSuccess() modal that was blocking navigation
+        // The "Analyzing codebase..." indicator already shows the status
       } else {
         const error = await response.json();
         setScanning(false);
