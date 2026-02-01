@@ -1902,6 +1902,8 @@ async def _handle_card_focused_ai_question(
     """
     Handle AI contextual questions for card-focused interview.
     Questions are tailored based on motivation type (bug, feature, design, etc).
+    PROMPT #131 - Enhanced to pass full card context for consultive suggestions.
+    PROMPT #132 - Enhanced to include full hierarchy context (Epic → Story → Task)
     """
     # Get motivation type from Q1 answer
     motivation_type = interview.motivation_type or get_motivation_type_from_answers_func(previous_answers) or "task"
@@ -1910,10 +1912,31 @@ async def _handle_card_focused_ai_question(
     card_title = previous_answers.get('q2', '')
     card_description = previous_answers.get('q3', '')
 
+    # PROMPT #131 - Fetch current card for rich context (acceptance_criteria, story_points, etc.)
+    # PROMPT #132 - Also fetch full hierarchy
+    current_card = None
+    hierarchy = []
+    if interview.parent_task_id:
+        from app.models.task import Task
+        from app.api.routes.interviews.card_focused_prompts import get_card_hierarchy
+
+        current_card = db.query(Task).filter(Task.id == interview.parent_task_id).first()
+        # Use card's actual title/description if available (overrides Q2/Q3 answers)
+        if current_card:
+            card_title = current_card.title or card_title
+            card_description = current_card.description or card_description
+            logger.info(f"📋 Loaded current card context: {current_card.title} (has {len(current_card.acceptance_criteria or [])} acceptance criteria)")
+
+            # PROMPT #132 - Load full hierarchy (Epic → Story → Task → current)
+            hierarchy = get_card_hierarchy(current_card, db)
+            if hierarchy:
+                hierarchy_path = " → ".join([f"{h.item_type}:{h.title[:20]}" for h in hierarchy])
+                logger.info(f"📊 Loaded hierarchy: {hierarchy_path}")
+
     # Build context for AI
     interview_context = prepare_context_func(interview, project, db)
 
-    # Build motivation-aware prompt
+    # Build motivation-aware prompt with full card context and hierarchy
     system_prompt = build_card_focused_prompt_func(
         project=project,
         motivation_type=motivation_type,
@@ -1921,7 +1944,9 @@ async def _handle_card_focused_ai_question(
         card_description=card_description,
         message_count=message_count,
         parent_card=parent_card,
-        stack_context=stack_context
+        stack_context=stack_context,
+        current_card=current_card,  # PROMPT #131 - Pass full card for rich context
+        hierarchy=hierarchy  # PROMPT #132 - Pass full hierarchy
     )
 
     logger.info(f"🤖 Calling AIOrchestrator for CARD_FOCUSED (motivation={motivation_type}, Q{(message_count // 2) + 1})")

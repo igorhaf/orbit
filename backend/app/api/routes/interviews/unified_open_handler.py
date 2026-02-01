@@ -47,13 +47,15 @@ def build_unified_open_prompt(
     interview: Interview,
     message_count: int,
     parent_task: Optional[Task] = None,
-    previous_answers: Optional[Dict] = None
+    previous_answers: Optional[Dict] = None,
+    db: Optional[Session] = None  # PROMPT #132 - For hierarchy loading
 ) -> str:
     """
     Build the system prompt for unified open-ended interviews.
 
     PROMPT #78 - Unified Open-Ended Interview System
     PROMPT #109 - Now uses PromptLoader to load from YAML (follows CLAUDE.md rule)
+    PROMPT #132 - Enhanced to include full hierarchy context
 
     Key principles:
     1. Questions are OPEN-ENDED (like GPT)
@@ -67,6 +69,7 @@ def build_unified_open_prompt(
         message_count: Current message count
         parent_task: Optional parent task for hierarchical interviews
         previous_answers: Dict of previous answers
+        db: Database session for hierarchy loading (PROMPT #132)
 
     Returns:
         System prompt string
@@ -92,10 +95,20 @@ def build_unified_open_prompt(
 - Mobile: {project.stack_mobile or 'Não definido'}
 """
 
-    # Add parent task context for hierarchical interviews
+    # PROMPT #132 - Add full hierarchy context for hierarchical interviews
     parent_context = ""
     if parent_task:
-        parent_context = f"""
+        from app.api.routes.interviews.card_focused_prompts import get_card_hierarchy, build_hierarchy_context
+
+        # Try to get full hierarchy
+        hierarchy = get_card_hierarchy(parent_task, db) if db else []
+
+        if hierarchy:
+            # Full hierarchy available - use rich context
+            parent_context = build_hierarchy_context(hierarchy)
+        else:
+            # Fallback to single parent
+            parent_context = f"""
 **CARD PAI:**
 - Tipo: {parent_task.item_type or 'Task'}
 - Título: {parent_task.title}
@@ -223,7 +236,8 @@ async def handle_unified_open_interview(
             interview=interview,
             message_count=message_count,
             parent_task=parent_task,
-            previous_answers=previous_answers
+            previous_answers=previous_answers,
+            db=db  # PROMPT #132 - Pass db for hierarchy loading
         )
 
     # PROMPT #82 - Retrieve previous questions from RAG for deduplication (IMPROVED)

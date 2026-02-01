@@ -328,6 +328,7 @@ class BacklogViewService:
         """
         return {
             "id": str(task.id),
+            "project_id": str(task.project_id) if task.project_id else None,  # PROMPT #131 - Required for card interviews
             "title": task.title,
             "description": task.description,
             "item_type": task.item_type.value if task.item_type else "task",

@@ -17,6 +17,7 @@
 import React, { useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
 import { Code, RefreshCw, FileCode, Clock } from 'lucide-react';
+import { useNotification } from '@/hooks';
 import { CodeIndexingStats, IndexCodeJob } from '@/lib/types';
 import { ragApi } from '@/lib/api';
 
@@ -29,6 +30,7 @@ interface Props {
 export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) {
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexJob, setIndexJob] = useState<IndexCodeJob | null>(null);
+  const { showError, showSuccess, NotificationComponent } = useNotification();
 
   const handleIndexCode = async (force: boolean = false) => {
     setIsIndexing(true);
@@ -50,14 +52,14 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
           ...Object.entries(result?.languages || {}).map(([lang, count]) => `  - ${lang}: ${count}`)
         ].join('\n');
 
-        alert(message);
+        showSuccess(message);
         onIndexComplete();
       } else if (job.status === 'failed') {
-        alert(`❌ Failed to index code: ${job.message}`);
+        showError(`Failed to index code: ${job.message}`);
       }
     } catch (error: any) {
       console.error('Failed to index code:', error);
-      alert('❌ Failed to index code: ' + (error.message || 'Unknown error'));
+      showError('Failed to index code: ' + (error.message || 'Unknown error'));
     } finally {
       setIsIndexing(false);
     }
@@ -65,6 +67,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
 
   return (
     <Card>
+      {NotificationComponent}
       <CardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

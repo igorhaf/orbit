@@ -22,6 +22,7 @@ import { DroppableColumn } from './DroppableColumn';
 import { TaskCard } from '@/components/backlog/TaskCard';
 import { TaskForm } from './TaskForm';
 import { Button, Dialog } from '@/components/ui';
+import { useNotification } from '@/hooks';
 import { ModificationApprovalModal } from './ModificationApprovalModal'; // PROMPT #95
 import { ItemDetailPanel } from '@/components/backlog'; // PROMPT #97
 
@@ -48,6 +49,7 @@ const COLUMNS = [
 ];
 
 export function KanbanBoard({ projectId }: Props) {
+  const { showError, showSuccess, NotificationComponent } = useNotification();
   const [board, setBoard] = useState<BoardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -218,7 +220,7 @@ export function KanbanBoard({ projectId }: Props) {
       });
     } catch (error) {
       console.error('Failed to move task:', error);
-      alert('Failed to move task');
+      showError('Failed to move task');
       await loadBoard(); // Reload to revert UI
     }
   };
@@ -257,7 +259,7 @@ export function KanbanBoard({ projectId }: Props) {
       await loadBoard(); // Reload to show new task
     } catch (error) {
       console.error('Failed to approve modification:', error);
-      alert('Failed to approve modification. Please try again.');
+      showError('Failed to approve modification. Please try again.');
     }
   };
 
@@ -271,7 +273,7 @@ export function KanbanBoard({ projectId }: Props) {
       await loadBoard(); // Reload to show unblocked task
     } catch (error) {
       console.error('Failed to reject modification:', error);
-      alert('Failed to reject modification. Please try again.');
+      showError('Failed to reject modification. Please try again.');
     }
   };
 
@@ -312,6 +314,7 @@ export function KanbanBoard({ projectId }: Props) {
 
   return (
     <div className="space-y-6">
+      {NotificationComponent}
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>

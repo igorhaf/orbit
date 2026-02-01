@@ -8,6 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui';
+import { useNotification } from '@/hooks';
 import { tasksApi } from '@/lib/api';
 import { BacklogItem } from '@/lib/types';
 
@@ -24,6 +25,7 @@ interface ValidTransition {
 }
 
 export default function WorkflowActions({ item, onTransition }: WorkflowActionsProps) {
+  const { showError, NotificationComponent } = useNotification();
   const [validTransitions, setValidTransitions] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showConfirm, setShowConfirm] = useState<string | null>(null);
@@ -113,7 +115,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
       }
     } catch (error: any) {
       console.error('Error transitioning status:', error);
-      alert(error.message || 'Failed to transition status');
+      showError(error.message || 'Failed to transition status');
     } finally {
       setLoading(false);
     }
@@ -129,6 +131,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
 
   return (
     <div className="space-y-3">
+      {NotificationComponent}
       {/* Current Status */}
       <div className="flex items-center gap-2 pb-2 border-b">
         <span className="text-xs font-semibold text-gray-500 uppercase">Current Status:</span>

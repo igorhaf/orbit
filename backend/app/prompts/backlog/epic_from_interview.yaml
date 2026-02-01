@@ -1,7 +1,3 @@
-# Prompt: Epic Generation from Interview
-# Source: backlog_generator.py:161-241
-# PROMPT #83 - Semantic References Methodology
-
 name: epic_from_interview
 version: 1
 category: backlog

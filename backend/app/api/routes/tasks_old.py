@@ -2081,3 +2081,180 @@ async def _execute_batch_async(
 
     finally:
         db.close()
+
+
+# PROMPT #131 - Card Inference from Interview
+class CardInferenceRequest(BaseModel):
+    """Request to run card inference from interview data."""
+    interview_id: str
+
+
+class CardInferenceResponse(BaseModel):
+    """Response from card inference."""
+    success: bool
+    message: str
+    updated_fields: Optional[Dict[str, Any]] = None
+
+
+@router.post("/{task_id}/card-inference", response_model=CardInferenceResponse)
+async def run_card_inference(
+    task_id: UUID,
+    request: CardInferenceRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #131 - Run card inference from interview data.
+
+    Uses the interview conversation to infer and update card fields:
+    - Description (enriched with interview insights)
+    - Acceptance criteria
+    - Story points estimate
+    - Labels
+
+    POST /api/v1/tasks/{task_id}/card-inference
+    Body: { "interview_id": "uuid" }
+    """
+    from app.models.interview import Interview
+    from app.services.ai_orchestrator import AIOrchestrator
+
+    # Fetch task
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found"
+        )
+
+    # Fetch interview
+    interview = db.query(Interview).filter(Interview.id == request.interview_id).first()
+    if not interview:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Interview {request.interview_id} not found"
+        )
+
+    # Build conversation text
+    conversation_text = ""
+    if interview.conversation_data:
+        for msg in interview.conversation_data:
+            role = msg.get("role", "unknown")
+            content = msg.get("content", "")
+            conversation_text += f"{role}: {content}\n\n"
+
+    if not conversation_text.strip():
+        return CardInferenceResponse(
+            success=False,
+            message="Interview has no conversation data",
+            updated_fields=None
+        )
+
+    try:
+        # Use AI to infer card updates
+        orchestrator = AIOrchestrator(db)
+
+        system_prompt = """Você é um Product Owner especialista em análise de requisitos.
+Analise a conversa de entrevista abaixo e extraia informações para enriquecer o card.
+
+Retorne um JSON com os seguintes campos (apenas os que puderem ser inferidos):
+{
+    "description_addendum": "Informações adicionais para a descrição baseadas na entrevista",
+    "acceptance_criteria": ["AC1: Critério 1", "AC2: Critério 2"],
+    "story_points": 3,
+    "suggested_labels": ["label1", "label2"]
+}
+
+Se não houver informação suficiente para um campo, omita-o do JSON."""
+
+        user_prompt = f"""Card atual:
+Título: {task.title}
+Tipo: {task.item_type.value if task.item_type else 'N/A'}
+Descrição atual: {task.description or 'Nenhuma'}
+
+Conversa da entrevista:
+{conversation_text}
+
+Extraia informações relevantes para enriquecer este card."""
+
+        response = await orchestrator.execute(
+            usage_type="general",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=1500
+        )
+
+        # Parse response
+        import json
+        import re
+
+        response_text = response.get("content", "")
+
+        # Try to extract JSON from response
+        json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
+        if json_match:
+            inferred_data = json.loads(json_match.group())
+        else:
+            logger.warning(f"Could not parse JSON from inference response: {response_text[:200]}")
+            return CardInferenceResponse(
+                success=False,
+                message="Could not parse AI response",
+                updated_fields=None
+            )
+
+        # Apply updates
+        updated_fields = {}
+
+        # Enrich description
+        if inferred_data.get("description_addendum"):
+            current_desc = task.description or ""
+            addendum = inferred_data["description_addendum"]
+            if addendum not in current_desc:
+                task.description = f"{current_desc}\n\n### Insights da Entrevista\n{addendum}".strip()
+                updated_fields["description"] = "enriched"
+
+        # Add acceptance criteria
+        if inferred_data.get("acceptance_criteria"):
+            current_ac = task.acceptance_criteria or []
+            new_ac = inferred_data["acceptance_criteria"]
+            for ac in new_ac:
+                if ac not in current_ac:
+                    current_ac.append(ac)
+            task.acceptance_criteria = current_ac
+            updated_fields["acceptance_criteria"] = len(new_ac)
+
+        # Update story points if not set
+        if inferred_data.get("story_points") and not task.story_points:
+            task.story_points = inferred_data["story_points"]
+            updated_fields["story_points"] = inferred_data["story_points"]
+
+        # Add labels
+        if inferred_data.get("suggested_labels"):
+            current_labels = task.labels or []
+            new_labels = inferred_data["suggested_labels"]
+            for label in new_labels:
+                if label not in current_labels:
+                    current_labels.append(label)
+            task.labels = current_labels
+            updated_fields["labels"] = new_labels
+
+        if updated_fields:
+            task.updated_at = datetime.utcnow()
+            db.commit()
+            logger.info(f"✅ Card inference completed for task {task_id}: {updated_fields}")
+            return CardInferenceResponse(
+                success=True,
+                message=f"Card updated with {len(updated_fields)} fields",
+                updated_fields=updated_fields
+            )
+        else:
+            return CardInferenceResponse(
+                success=True,
+                message="No new information to add",
+                updated_fields={}
+            )
+
+    except Exception as e:
+        logger.error(f"❌ Card inference failed for task {task_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Card inference failed: {str(e)}"
+        )

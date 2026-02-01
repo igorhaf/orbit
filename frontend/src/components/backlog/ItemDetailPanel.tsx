@@ -8,7 +8,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';  // PROMPT #131 - Navigation to interview page
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, Input, Dialog, DialogFooter } from '@/components/ui';
 import { AIModelBadge } from '@/components/ui/AIModelBadge';
@@ -38,7 +37,6 @@ interface ItemDetailPanelProps {
 }
 
 export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToItem, initialInterviewId }: ItemDetailPanelProps) {
-  const router = useRouter();  // PROMPT #131 - Navigation to interview page
   const { showError, showSuccess, NotificationComponent } = useNotification();
   const { addJob } = useNotifications(); // PROMPT #128 - Background notifications
   const [activeTab, setActiveTab] = useState<string>('overview');
@@ -82,6 +80,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [cardInterviews, setCardInterviews] = useState<Interview[]>([]);
   const [loadingInterview, setLoadingInterview] = useState(false);
   const [creatingCardInterview, setCreatingCardInterview] = useState(false);
+
+  // PROMPT #131 - Interview completion/cancellation state
+  const [completingInterview, setCompletingInterview] = useState(false);
+  const [cancellingInterview, setCancellingInterview] = useState(false);
 
   useEffect(() => {
     fetchItemDetails();
@@ -154,7 +156,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     }
   };
 
-  // PROMPT #131 - Create new interview for this card and navigate to it
+  // PROMPT #132 - Create new interview for this card and show in panel (not navigate)
   const handleCreateCardInterview = async () => {
     setCreatingCardInterview(true);
     try {
@@ -166,13 +168,61 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         use_card_focused: true,
       });
       const newInterview = response.data || response;
-      // Navigate to the new interview page
-      router.push(`/projects/${item.project_id}/interviews/${newInterview.id}`);
+      // Refresh interview list and select the new interview to show in panel
+      await fetchCardInterview();
+      setSelectedInterviewId(newInterview.id);
     } catch (error) {
       console.error('Failed to create card interview:', error);
       showError('Failed to create interview');
     } finally {
       setCreatingCardInterview(false);
+    }
+  };
+
+  // PROMPT #131 - Complete interview and run card inference
+  const handleCompleteInterview = async () => {
+    if (!selectedInterviewId) return;
+    setCompletingInterview(true);
+    try {
+      // Run card inference first
+      const currentInterview = cardInterviews.find(i => i.id === selectedInterviewId);
+      if (currentInterview?.interview_mode === 'card_inference') {
+        console.log('🔄 Running card inference for task:', item.id);
+        try {
+          await tasksApi.runCardInference(item.id, selectedInterviewId);
+          console.log('✅ Card inference completed');
+        } catch (inferenceError) {
+          console.error('⚠️ Card inference failed, continuing with completion:', inferenceError);
+        }
+      }
+      // Then complete the interview
+      await interviewsApi.updateStatus(selectedInterviewId, 'completed');
+      await fetchCardInterview();
+      onUpdate?.();
+      showSuccess('Interview completed successfully');
+    } catch (error) {
+      console.error('Failed to complete interview:', error);
+      showError('Failed to complete interview');
+    } finally {
+      setCompletingInterview(false);
+    }
+  };
+
+  // PROMPT #131 - Cancel interview
+  const handleCancelInterview = async () => {
+    if (!selectedInterviewId) return;
+    setCancellingInterview(true);
+    try {
+      await interviewsApi.updateStatus(selectedInterviewId, 'cancelled');
+      await fetchCardInterview();
+      setSelectedInterviewId(null);
+      onUpdate?.();
+      showSuccess('Interview cancelled');
+    } catch (error) {
+      console.error('Failed to cancel interview:', error);
+      showError('Failed to cancel interview');
+    } finally {
+      setCancellingInterview(false);
     }
   };
 
@@ -439,6 +489,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     }
   };
 
+  // PROMPT #131 - Removed AI Suggestions tab (now handled by card interviews)
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📋' },
     { id: 'hierarchy', label: 'Hierarchy', icon: '🌳' },
@@ -446,19 +497,21 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     { id: 'comments', label: 'Comments', icon: '💬', count: comments.length },
     { id: 'transitions', label: 'History', icon: '📊', count: transitions.length },
     { id: 'ai-config', label: 'AI Config', icon: '🤖' },
-    { id: 'ai-suggestions', label: 'AI Suggestions', icon: '🤖', count: item.subtask_suggestions?.length || 0 },
-    { id: 'interview', label: 'Interview', icon: '🎤' },
+    { id: 'interview', label: 'Interview', icon: '🎤', count: cardInterviews.length },
     { id: 'prompt', label: 'Prompt', icon: '📝', hasPrompt: !!item.generated_prompt },
     { id: 'acceptance', label: 'Criteria', icon: '✅', count: item.acceptance_criteria?.length || 0 },
   ];
 
+  // PROMPT #131 - Check if we're in interview chat mode (needs flex layout)
+  const isInInterviewChat = activeTab === 'interview' && selectedInterviewId;
+
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-black bg-opacity-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-2xl w-full max-w-[90%] max-h-[90vh] overflow-y-auto">
-        {/* Header - PROMPT #131 - Now scrollable, not fixed */}
-        <div className="flex items-start justify-between p-6 border-b sticky top-0 bg-white z-10">
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
+      <div className={`bg-white rounded-lg shadow-2xl w-full max-w-[90%] h-[90vh] flex flex-col ${isInInterviewChat ? '' : 'overflow-y-auto'}`}>
+        {/* Header - PROMPT #131 - Flex shrink to not grow */}
+        <div className="flex items-start justify-between px-6 py-3 border-b flex-shrink-0">
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-3 mb-1">
               <span className="text-2xl">{getItemTypeIcon(item.item_type)}</span>
               <span className="px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-700">
                 {item.item_type}
@@ -478,8 +531,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </span>
               )}
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">{item.title}</h2>
-            <p className="text-sm text-gray-500 mt-1">ID: {item.id}</p>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-bold text-gray-900">{item.title}</h2>
+              <span className="text-sm text-gray-400">{item.id}</span>
+            </div>
 
             {/* PROMPT #96 - Approve/Reject buttons for suggested items */}
             {isSuggestedItem && (
@@ -538,8 +593,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           </button>
         </div>
 
-        {/* Tabs - PROMPT #131 - Sticky for usability */}
-        <div className="flex gap-1 px-6 pt-4 border-b overflow-x-auto sticky top-[92px] bg-white z-10">
+        {/* Tabs - PROMPT #131 - Flex shrink to not grow */}
+        <div className="flex gap-1 px-6 pt-2 border-b overflow-x-auto flex-shrink-0">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -566,8 +621,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           ))}
         </div>
 
-        {/* Content - PROMPT #131 - No longer needs overflow, parent scrolls */}
-        <div className="p-6">
+        {/* Content - PROMPT #131 - Flex-1 when in interview chat mode, reduced padding for interview */}
+        <div className={`${isInInterviewChat ? 'p-4 pt-2 flex-1 flex flex-col overflow-hidden' : 'p-6'}`}>
           {loading && (
             <div className="flex items-center justify-center h-32">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -1148,28 +1203,87 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
 
               {/* Interview Tab - PROMPT #131 - List view or ChatInterface */}
               {activeTab === 'interview' && (
-                <div className="space-y-4">
+                <div className={selectedInterviewId ? 'flex flex-col flex-1 min-h-0' : 'space-y-4'}>
                   {/* PROMPT #131 - Show ChatInterface when interview is selected */}
                   {selectedInterviewId ? (
-                    <div className="space-y-3">
-                      {/* Back button */}
-                      <button
-                        onClick={() => setSelectedInterviewId(null)}
-                        className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                        </svg>
-                        Back to interview list
-                      </button>
+                    <div className="flex flex-col flex-1 min-h-0 gap-2">
+                      {/* Header with title, back link, and action buttons */}
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <span className="text-lg">💬</span>
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          {cardInterviews.find(i => i.id === selectedInterviewId)?.interview_mode === 'card_inference' ? 'Card Interview' : 'Interview'}
+                        </h3>
+                        <span className={`px-2 py-0.5 text-xs rounded-full ${
+                          cardInterviews.find(i => i.id === selectedInterviewId)?.status === 'completed'
+                            ? 'bg-green-100 text-green-700'
+                            : cardInterviews.find(i => i.id === selectedInterviewId)?.status === 'cancelled'
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {cardInterviews.find(i => i.id === selectedInterviewId)?.status?.toUpperCase()}
+                        </span>
 
-                      {/* ChatInterface */}
-                      <div className="border border-gray-200 rounded-lg overflow-hidden" style={{ height: 'calc(100vh - 400px)', minHeight: '400px' }}>
+                        {/* Spacer */}
+                        <div className="flex-1" />
+
+                        {/* Action buttons for active interviews */}
+                        {cardInterviews.find(i => i.id === selectedInterviewId)?.status === 'active' && (
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              onClick={handleCompleteInterview}
+                              disabled={completingInterview || cancellingInterview}
+                            >
+                              {completingInterview ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                  Completing...
+                                </>
+                              ) : (
+                                <>
+                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                  Complete
+                                </>
+                              )}
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              onClick={handleCancelInterview}
+                              disabled={completingInterview || cancellingInterview}
+                            >
+                              {cancellingInterview ? 'Cancelling...' : 'Cancel'}
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Back to list link */}
+                        <button
+                          onClick={() => setSelectedInterviewId(null)}
+                          className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                          </svg>
+                          Back to list
+                        </button>
+                      </div>
+
+                      {/* ChatInterface - fills remaining space, with header hidden */}
+                      <div className="border border-gray-200 rounded-lg overflow-hidden flex-1 min-h-0">
                         <ChatInterface
                           interviewId={selectedInterviewId}
                           interviewMode="card_inference"
-                          onStatusChange={() => fetchCardInterview()}
+                          onStatusChange={() => {
+                            fetchCardInterview();
+                            onUpdate?.();
+                          }}
                           embedded={true}
+                          parentTaskId={item.id}
+                          hideHeader={true}
                         />
                       </div>
                     </div>
@@ -1199,7 +1313,35 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
                         </div>
                       ) : cardInterviews.length === 0 ? (
-                        <p className="text-sm text-gray-500 italic">No interviews for this card yet</p>
+                        /* PROMPT #131 - Empty state with AI Suggestions call-to-action */
+                        <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg bg-gray-50">
+                          <span className="text-4xl mb-3 block">🤖</span>
+                          <p className="text-sm text-gray-700 font-medium mb-2">AI Suggestions</p>
+                          <p className="text-xs text-gray-500 mb-4 max-w-sm mx-auto">
+                            Start a card interview to get AI-powered suggestions for improving this card,
+                            decomposing it into subtasks, or refining acceptance criteria.
+                          </p>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={handleCreateCardInterview}
+                            disabled={creatingCardInterview}
+                          >
+                            {creatingCardInterview ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                Creating...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                </svg>
+                                Start AI Interview
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       ) : (
                         <ul className="space-y-2">
                           {cardInterviews.map((interview) => (
@@ -1396,167 +1538,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </div>
               )}
 
-              {/* AI Suggestions Tab - PROMPT #97 */}
-              {activeTab === 'ai-suggestions' && (
-                <div className="space-y-6">
-                  {!item.subtask_suggestions || item.subtask_suggestions.length === 0 ? (
-                    <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg bg-gray-50">
-                      <span className="text-4xl mb-3 block">🤖</span>
-                      <p className="text-sm text-gray-500 mb-2">No AI suggestions yet</p>
-                      <p className="text-xs text-gray-400 mb-4">
-                        AI can suggest subtasks to help decompose this item into smaller, actionable pieces.
-                      </p>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={handleCreateSubInterview}
-                        isLoading={creatingInterview}
-                      >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                        </svg>
-                        Generate Suggestions via Interview
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-semibold text-gray-900">
-                            🤖 AI-Suggested Subtasks ({item.subtask_suggestions.length})
-                          </h3>
-                          {/* PROMPT #128 - Show AI model icon for AI suggestions */}
-                          <AIModelBadge model="interview" usage_type="interview" />
-                        </div>
-                      </div>
-
-                      {/* Subtasks List */}
-                      <div className="space-y-3">
-                        {item.subtask_suggestions.map((suggestion, idx) => (
-                          <div
-                            key={idx}
-                            className="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-4 border border-purple-200 hover:shadow-md transition-shadow"
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-sm font-semibold text-purple-700">
-                                    {idx + 1}.
-                                  </span>
-                                  <h4 className="text-sm font-semibold text-gray-900 flex-1">
-                                    {suggestion.title}
-                                  </h4>
-                                  {suggestion.story_points && (
-                                    <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-100 text-purple-700 border border-purple-200">
-                                      {suggestion.story_points} pts
-                                    </span>
-                                  )}
-                                </div>
-                                {suggestion.description && (
-                                  <button
-                                    onClick={() => setShowSubtaskDetails(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                                    className="text-xs text-blue-600 hover:text-blue-700 flex items-center gap-1 mb-2"
-                                  >
-                                    {showSubtaskDetails[idx] ? (
-                                      <>
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                        </svg>
-                                        Hide details
-                                      </>
-                                    ) : (
-                                      <>
-                                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                        </svg>
-                                        Show details
-                                      </>
-                                    )}
-                                  </button>
-                                )}
-                                {showSubtaskDetails[idx] && suggestion.description && (
-                                  <p className="text-xs text-gray-700 pl-4 border-l-2 border-purple-300 bg-white bg-opacity-50 p-2 rounded">
-                                    {suggestion.description}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="flex gap-3 pt-4 border-t border-gray-200">
-                        <Button
-                          variant="primary"
-                          onClick={handleAcceptSubtasks}
-                          isLoading={acceptingSubtasks}
-                          className="flex-1 bg-green-600 hover:bg-green-700"
-                        >
-                          {acceptingSubtasks ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                              Accepting...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                              </svg>
-                              Accept All Subtasks
-                            </>
-                          )}
-                        </Button>
-
-                        <Button
-                          variant="outline"
-                          onClick={handleCreateSubInterview}
-                          isLoading={creatingInterview}
-                          className="flex-1"
-                        >
-                          {creatingInterview ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                              Creating...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                              </svg>
-                              Refine via Interview
-                            </>
-                          )}
-                        </Button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
+              {/* PROMPT #131 - Removed AI Suggestions Tab - now handled by card interviews */}
             </>
           )}
         </div>
 
-        {/* Footer - PROMPT #131 - Now part of scrollable content, not fixed */}
-        <div className="flex items-center justify-between p-6 border-t bg-gray-50 mt-6">
-          <Button variant="ghost" onClick={onClose}>
-            Close
-          </Button>
-          <div className="flex gap-2">
-            <Button variant="outline">
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-              </svg>
-              Edit
-            </Button>
-            <Button variant="danger" onClick={() => setShowDeleteModal(true)}>
-              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
-              Delete
-            </Button>
-          </div>
-        </div>
       </div>
 
       {/* PROMPT #87 - Delete Confirmation Modal */}

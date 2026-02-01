@@ -7,7 +7,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // PROMPT #131 - Removed useRouter, now using onInterviewClick callback
 import { Card, CardHeader, CardTitle, CardContent, AIModelBadge } from '@/components/ui';
 import { useNotification } from '@/hooks';
@@ -148,6 +148,25 @@ export default function BacklogListView({
 
   // PROMPT #131 - Interviews state (map of taskId -> interviews)
   const [interviewsMap, setInterviewsMap] = useState<Map<string, Interview[]>>(new Map());
+
+  // PROMPT #131 - Bulk actions state
+  const [bulkActionLoading, setBulkActionLoading] = useState<string | null>(null);
+  const [showBulkStatusMenu, setShowBulkStatusMenu] = useState(false);
+  const [showBulkPriorityMenu, setShowBulkPriorityMenu] = useState(false);
+  const bulkMenuRef = useRef<HTMLDivElement>(null);
+
+  // PROMPT #131 - Close dropdown menus when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bulkMenuRef.current && !bulkMenuRef.current.contains(event.target as Node)) {
+        setShowBulkStatusMenu(false);
+        setShowBulkPriorityMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // PROMPT #123 - Extract labels and assignees from backlog items
   const extractFilterOptions = (items: BacklogItem[]): FilterOptions => {
@@ -414,6 +433,91 @@ export default function BacklogListView({
     }
   };
 
+  // PROMPT #131 - Bulk Actions
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+
+    const count = selectedIds.size;
+    if (!confirm(`Tem certeza que deseja excluir ${count} item(s)? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+
+    setBulkActionLoading('delete');
+    try {
+      const deletePromises = Array.from(selectedIds).map(id => tasksApi.delete(id));
+      await Promise.all(deletePromises);
+      showSuccess(`${count} item(s) excluído(s) com sucesso`);
+      onSelectionChange?.(new Set());
+      fetchBacklog();
+    } catch (error: any) {
+      console.error('Failed to delete items:', error);
+      showError(`Erro ao excluir itens: ${error.message}`);
+    } finally {
+      setBulkActionLoading(null);
+    }
+  };
+
+  const handleBulkStatusChange = async (newStatus: string) => {
+    if (selectedIds.size === 0) return;
+
+    setBulkActionLoading('status');
+    setShowBulkStatusMenu(false);
+    try {
+      const updatePromises = Array.from(selectedIds).map(id =>
+        tasksApi.update(id, { workflow_state: newStatus })
+      );
+      await Promise.all(updatePromises);
+      showSuccess(`${selectedIds.size} item(s) atualizado(s) para "${newStatus}"`);
+      onSelectionChange?.(new Set());
+      fetchBacklog();
+    } catch (error: any) {
+      console.error('Failed to update status:', error);
+      showError(`Erro ao atualizar status: ${error.message}`);
+    } finally {
+      setBulkActionLoading(null);
+    }
+  };
+
+  const handleBulkPriorityChange = async (newPriority: PriorityLevel) => {
+    if (selectedIds.size === 0) return;
+
+    setBulkActionLoading('priority');
+    setShowBulkPriorityMenu(false);
+    try {
+      const updatePromises = Array.from(selectedIds).map(id =>
+        tasksApi.update(id, { priority: newPriority })
+      );
+      await Promise.all(updatePromises);
+      showSuccess(`${selectedIds.size} item(s) atualizado(s) para prioridade "${newPriority}"`);
+      onSelectionChange?.(new Set());
+      fetchBacklog();
+    } catch (error: any) {
+      console.error('Failed to update priority:', error);
+      showError(`Erro ao atualizar prioridade: ${error.message}`);
+    } finally {
+      setBulkActionLoading(null);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (!onSelectionChange) return;
+    const allIds = new Set<string>();
+    const collectIds = (items: BacklogItem[]) => {
+      items.forEach(item => {
+        allIds.add(item.id);
+        if (item.children) {
+          collectIds(item.children as BacklogItem[]);
+        }
+      });
+    };
+    collectIds(filteredBacklog);
+    onSelectionChange(allIds);
+  };
+
+  const handleClearSelection = () => {
+    onSelectionChange?.(new Set());
+  };
+
   // PROMPT #68 - Flatten hierarchy for Card View
   const flattenBacklog = (items: BacklogItem[]): BacklogItem[] => {
     const flattened: BacklogItem[] = [];
@@ -585,13 +689,13 @@ export default function BacklogListView({
           )}
         </div>
 
-        {/* PROMPT #131 - Render Interviews for this item */}
+        {/* PROMPT #131 - Render Interviews for this item (aligned with card title) */}
         {interviewsMap.get(item.id)?.map((interview) => (
           <div
             key={interview.id}
             onClick={() => onInterviewClick?.(item, interview.id)}
             className="flex items-center gap-2 py-1.5 px-4 hover:bg-blue-50 cursor-pointer transition-colors border-t border-gray-100"
-            style={{ paddingLeft: `${depth * 1.5 + 2.5}rem` }}
+            style={{ paddingLeft: `${depth * 1.5 + 10}rem` }}
           >
             <span className="text-sm">💬</span>
             <span className="text-sm font-medium text-blue-700">
@@ -765,6 +869,125 @@ export default function BacklogListView({
           </div>
         </div>
       </CardHeader>
+
+      {/* PROMPT #131 - Bulk Actions Toolbar */}
+      {selectedIds.size > 0 && (
+        <div className="px-4 py-3 bg-blue-50 border-b border-blue-200 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <span className="text-sm font-medium text-blue-800">
+              {selectedIds.size} item(s) selecionado(s)
+            </span>
+            <div className="flex items-center gap-2">
+              {/* Select All / Clear */}
+              <button
+                onClick={handleSelectAll}
+                className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded transition-colors"
+              >
+                Selecionar Todos
+              </button>
+              <button
+                onClick={handleClearSelection}
+                className="px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
+              >
+                Limpar Seleção
+              </button>
+            </div>
+          </div>
+
+          <div ref={bulkMenuRef} className="flex items-center gap-2">
+            {/* Change Status Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowBulkStatusMenu(!showBulkStatusMenu);
+                  setShowBulkPriorityMenu(false);
+                }}
+                disabled={bulkActionLoading !== null}
+                className="px-3 py-1.5 text-xs font-medium bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1"
+              >
+                {bulkActionLoading === 'status' ? (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                )}
+                Status
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showBulkStatusMenu && (
+                <div className="absolute right-0 mt-1 w-40 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                  {['draft', 'open', 'in_progress', 'review', 'done', 'closed'].map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => handleBulkStatusChange(status)}
+                      className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      {status.replace('_', ' ')}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Change Priority Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => {
+                  setShowBulkPriorityMenu(!showBulkPriorityMenu);
+                  setShowBulkStatusMenu(false);
+                }}
+                disabled={bulkActionLoading !== null}
+                className="px-3 py-1.5 text-xs font-medium bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50 flex items-center gap-1"
+              >
+                {bulkActionLoading === 'priority' ? (
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" />
+                  </svg>
+                )}
+                Prioridade
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {showBulkPriorityMenu && (
+                <div className="absolute right-0 mt-1 w-32 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                  {Object.values(PriorityLevel).map((priority) => (
+                    <button
+                      key={priority}
+                      onClick={() => handleBulkPriorityChange(priority)}
+                      className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      {priority}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Delete Button */}
+            <button
+              onClick={handleBulkDelete}
+              disabled={bulkActionLoading !== null}
+              className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50 flex items-center gap-1"
+            >
+              {bulkActionLoading === 'delete' ? (
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              )}
+              Excluir
+            </button>
+          </div>
+        </div>
+      )}
+
       <CardContent className={viewMode === 'card' ? 'p-6' : 'p-0'}>
         {/* Tree View (Original) */}
         {viewMode === 'tree' && (

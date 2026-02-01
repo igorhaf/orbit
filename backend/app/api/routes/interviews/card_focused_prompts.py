@@ -4,11 +4,99 @@ Tailored AI prompts for different card motivation types.
 
 Each prompt focuses on relevant areas for bug/feature/design/documentation/etc card types.
 Prompts are contextualized with motivation type, parent card (Epic/Story/Task), and previous answers.
+
+PROMPT #132 - Enhanced to include full hierarchy context (Epic → Story → Task → Subtask)
 """
 
-from typing import Optional
+from typing import Optional, List
+from sqlalchemy.orm import Session
 from app.models.project import Project
 from app.models.task import Task
+
+
+def get_card_hierarchy(task: Task, db: Session) -> List[Task]:
+    """
+    PROMPT #132 - Get full hierarchy chain from current card up to root (Epic).
+
+    Returns list ordered from root (Epic) to immediate parent.
+    Example: [Epic, Story, Task] for a Subtask
+
+    Args:
+        task: Current task to get hierarchy for
+        db: Database session
+
+    Returns:
+        List of parent tasks from root to immediate parent
+    """
+    hierarchy = []
+    current = task
+
+    # Walk up the tree until we hit root (no parent)
+    while current and current.parent_id:
+        parent = db.query(Task).filter(Task.id == current.parent_id).first()
+        if parent:
+            hierarchy.insert(0, parent)  # Insert at beginning to maintain order
+            current = parent
+        else:
+            break
+
+    return hierarchy
+
+
+def build_hierarchy_context(hierarchy: List[Task]) -> str:
+    """
+    PROMPT #132 - Build human-readable hierarchy context section.
+
+    Shows the full path from Epic down to the current card's parent.
+
+    Args:
+        hierarchy: List of parent tasks from root to immediate parent
+
+    Returns:
+        Formatted hierarchy context string
+    """
+    if not hierarchy:
+        return ""
+
+    # Type icons for visual clarity
+    type_icons = {
+        "epic": "🎯",
+        "story": "📖",
+        "task": "✓",
+        "subtask": "◦",
+        "bug": "🐛"
+    }
+
+    context = """
+═══════════════════════════════════════════════════════════════
+📊 HIERARQUIA DO CARD (CONTEXTO COMPLETO)
+═══════════════════════════════════════════════════════════════
+"""
+
+    for i, card in enumerate(hierarchy):
+        item_type = (card.item_type or "task").lower()
+        icon = type_icons.get(item_type, "•")
+        indent = "  " * i
+
+        context += f"""
+{indent}{icon} **{item_type.upper()}**: {card.title}
+{indent}   Descrição: {(card.description or 'Não especificado')[:200]}{'...' if card.description and len(card.description) > 200 else ''}
+"""
+
+        # Add acceptance criteria summary if exists (for context)
+        if card.acceptance_criteria and len(card.acceptance_criteria) > 0:
+            context += f"{indent}   Critérios de Aceitação: {len(card.acceptance_criteria)} definidos\n"
+
+    context += """
+═══════════════════════════════════════════════════════════════
+⚠️ IMPORTANTE: Suas perguntas devem ser CONTEXTUALIZADAS com a hierarquia acima!
+   - Considere os objetivos do Epic
+   - Mantenha consistência com a Story
+   - Complemente (não repita) informações já definidas nos níveis superiores
+═══════════════════════════════════════════════════════════════
+"""
+
+    return context
 
 
 def build_card_focused_prompt(
@@ -18,11 +106,15 @@ def build_card_focused_prompt(
     card_description: str,
     message_count: int,
     parent_card: Optional[Task] = None,
-    stack_context: str = ""
+    stack_context: str = "",
+    current_card: Optional[Task] = None,  # PROMPT #131 - Full card object for rich context
+    hierarchy: Optional[List[Task]] = None  # PROMPT #132 - Full hierarchy chain
 ) -> str:
     """
     Build AI prompt for card-focused interviews based on motivation type.
     PROMPT #98 - Card-Focused Interview System
+    PROMPT #131 - Enhanced to use full card content for contextual suggestions
+    PROMPT #132 - Enhanced to include full hierarchy context (Epic → Story → Task)
 
     Generates prompts tailored for:
     - bug: Reprodução, ambiente, comportamento esperado vs atual
@@ -44,6 +136,8 @@ def build_card_focused_prompt(
         message_count: Current message count (for question numbering)
         parent_card: Parent card (Epic, Story, or Task) for context
         stack_context: Optional stack context from project
+        current_card: Full Task object for rich context (acceptance_criteria, story_points, etc.)
+        hierarchy: Full hierarchy chain from Epic to immediate parent (PROMPT #132)
 
     Returns:
         System prompt string tailored for motivation type
@@ -58,18 +152,21 @@ INFORMAÇÕES DO PROJETO:
 {stack_context}
 """
 
-    # Parent card context
-    parent_context = ""
-    if parent_card:
+    # PROMPT #132 - Full hierarchy context (Epic → Story → Task → current)
+    hierarchy_context = ""
+    if hierarchy and len(hierarchy) > 0:
+        hierarchy_context = build_hierarchy_context(hierarchy)
+    elif parent_card:
+        # Fallback to single parent if hierarchy not provided
         parent_type = parent_card.item_type or "card"
-        parent_context = f"""
+        hierarchy_context = f"""
 CARD PAI (CONTEXTO):
 - Tipo: {parent_type}
 - Título: {parent_card.title}
 - Descrição: {parent_card.description or "Não especificado"}
 """
 
-    # Card info
+    # PROMPT #131 - Build rich card info from full Task object
     card_info = f"""
 CARD ATUAL:
 - Tipo: {motivation_type}
@@ -77,10 +174,44 @@ CARD ATUAL:
 - Descrição: {card_description}
 """
 
+    # PROMPT #131 - Add rich context if current_card is provided
+    if current_card:
+        # Acceptance criteria
+        if current_card.acceptance_criteria and len(current_card.acceptance_criteria) > 0:
+            criteria_list = "\n".join([f"  • {c}" for c in current_card.acceptance_criteria])
+            card_info += f"""
+CRITÉRIOS DE ACEITAÇÃO EXISTENTES:
+{criteria_list}
+"""
+
+        # Story points
+        if current_card.story_points:
+            card_info += f"- Story Points: {current_card.story_points}\n"
+
+        # Labels
+        if current_card.labels and len(current_card.labels) > 0:
+            card_info += f"- Labels: {', '.join(current_card.labels)}\n"
+
+        # Item type
+        if current_card.item_type:
+            card_info += f"- Tipo de Item: {current_card.item_type}\n"
+
+        # Priority
+        if current_card.priority:
+            priority_val = current_card.priority.value if hasattr(current_card.priority, 'value') else str(current_card.priority)
+            card_info += f"- Prioridade: {priority_val}\n"
+
+        # Generated prompt (if exists)
+        if current_card.generated_prompt:
+            card_info += f"""
+PROMPT GERADO ANTERIORMENTE:
+{current_card.generated_prompt[:500]}{'...' if len(current_card.generated_prompt) > 500 else ''}
+"""
+
     motivation_type = motivation_type.lower()
 
     if motivation_type == "bug":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: BUG FIX 🐛**
 
@@ -107,35 +238,46 @@ Continue com a próxima pergunta relevante para entender o BUG!
 """
 
     elif motivation_type == "feature":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: NEW FEATURE ✨**
 
-Você está coletando informações para criar uma nova funcionalidade.
+Você está refinando uma funcionalidade existente ou coletando informações para uma nova.
 
-**Foque nestas áreas (não pergunte tudo de uma vez):**
-1. **User Story**: Quem precisa? Para que? Qual benefício?
-2. **Funcionalidade**: O que a feature FAZ exatamente?
-3. **Critérios de Aceitação**: Como saber que está completa/funcionando?
-4. **Entrada/Saída**: Que dados recebe? Que dados retorna?
-5. **Integrações**: Depende de outras features? APIs externas?
-6. **Edge Cases**: Casos especiais? Validações? Erros possíveis?
-7. **UI/UX**: Como usuário interage? (se aplicável)
+**IMPORTANTE - MODO CONSULTIVO:**
+Se o card já possui conteúdo (descrição, critérios de aceitação, etc.), você deve:
+1. ANALISAR o conteúdo existente
+2. IDENTIFICAR gaps ou informações faltantes
+3. SUGERIR melhorias ou complementos específicos
+4. PROPOR subtasks ou divisões do trabalho
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em NEW FEATURE]
+**Áreas para explorar (baseado no que JÁ EXISTE no card):**
+1. **Validação**: Os critérios de aceitação estão completos? Falta algo?
+2. **Decomposição**: Essa feature pode ser dividida em subtasks menores?
+3. **Edge Cases**: Há casos especiais não cobertos?
+4. **Integrações**: Dependências não mencionadas?
+5. **UI/UX**: Detalhes de interface faltando?
+6. **Estimativa**: O story points está adequado?
+
+**Formato de Pergunta/Sugestão:**
+❓ Pergunta {question_num}: [Sua pergunta ou sugestão baseada no conteúdo existente]
+
+💡 Você pode fazer perguntas OU propor sugestões como:
+- "Notei que os critérios de aceitação não mencionam X. Sugiro adicionar..."
+- "Essa feature parece grande. Sugiro dividir em: 1) ..., 2) ..., 3) ..."
+- "Falta especificar o comportamento quando Y acontece. Como deve funcionar?"
 
 **Regras:**
-- Uma pergunta por vez, FOCADA em nova feature
-- Construa contexto com respostas anteriores
-- Após 6-10 perguntas, conclua com resumo da feature
-- Se resposta for genérica/vaga, peça especificidade
+- ANALISE o conteúdo existente antes de perguntar
+- Faça SUGESTÕES específicas quando apropriado
+- Após 4-6 interações, PROPONHA um resumo das melhorias sugeridas
+- Se o card estiver bem definido, CONFIRME e sugira próximos passos
 
-Continue com a próxima pergunta relevante para definir a FEATURE!
+Continue com a próxima pergunta ou sugestão relevante!
 """
 
     elif motivation_type == "bugfix":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: BUG FIX REFACTORING 🔧**
 
@@ -163,7 +305,7 @@ Continue com a próxima pergunta relevante!
 """
 
     elif motivation_type == "design":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: DESIGN/ARCHITECTURE 🎨**
 
@@ -191,7 +333,7 @@ Continue com a próxima pergunta relevante para definir o DESIGN!
 """
 
     elif motivation_type == "documentation":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: DOCUMENTATION 📚**
 
@@ -219,35 +361,45 @@ Continue com a próxima pergunta relevante para definir a DOCUMENTATION!
 """
 
     elif motivation_type == "enhancement":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: ENHANCEMENT ⚡**
 
-Você está coletando informações para melhorar uma funcionalidade existente.
+Você está refinando uma melhoria existente ou coletando informações para uma nova.
 
-**Foque nestas áreas (não pergunte tudo de uma vez):**
-1. **Funcionalidade Atual**: O que existe hoje? Como funciona?
-2. **Limitação/Problema**: O que precisa ser melhorado? Por quê?
-3. **Melhoria Desejada**: Como deve funcionar após melhoria?
-4. **Benefícios**: Que problema resolve? Que valor agrega?
-5. **Comportamento Preservado**: O que NÃO deve mudar?
-6. **Casos de Uso**: Novos cenários suportados?
-7. **Retrocompatibilidade**: Usuários/sistemas existentes afetados?
+**IMPORTANTE - MODO CONSULTIVO:**
+Se o card já possui conteúdo (descrição, critérios de aceitação, etc.), você deve:
+1. ANALISAR o conteúdo existente e identificar gaps
+2. SUGERIR melhorias específicas baseadas no que já está documentado
+3. PROPOR decomposição em subtasks menores se aplicável
+4. VALIDAR se os critérios de aceitação cobrem todos os cenários
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em ENHANCEMENT]
+**Áreas para explorar (baseado no conteúdo existente):**
+1. **Validação**: Os critérios cobrem comportamento preservado vs novo?
+2. **Decomposição**: Pode ser dividido em entregas menores?
+3. **Retrocompatibilidade**: Impactos não mencionados?
+4. **Testes**: Cenários de teste especificados?
+5. **Estimativa**: O story points está adequado para o escopo?
+
+**Formato de Pergunta/Sugestão:**
+❓ Pergunta {question_num}: [Sua pergunta ou sugestão baseada no conteúdo existente]
+
+💡 Faça sugestões específicas quando apropriado:
+- "Sugiro adicionar um critério de aceitação para retrocompatibilidade..."
+- "Essa melhoria pode ser dividida em: 1) ..., 2) ..."
+- "Falta especificar o que acontece com dados existentes..."
 
 **Regras:**
-- Uma pergunta por vez, FOCADA em enhancement
-- Construa contexto com respostas anteriores
-- Após 5-8 perguntas, conclua com resumo
-- Se resposta for genérica/vaga, peça especificidade
+- ANALISE o conteúdo existente antes de perguntar
+- Faça SUGESTÕES específicas quando apropriado
+- Após 4-6 interações, PROPONHA um resumo das melhorias
+- Se estiver bem definido, CONFIRME e sugira próximos passos
 
-Continue com a próxima pergunta relevante para definir o ENHANCEMENT!
+Continue com a próxima pergunta ou sugestão relevante!
 """
 
     elif motivation_type == "refactor":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: REFACTORING ♻️**
 
@@ -275,7 +427,7 @@ Continue com a próxima pergunta relevante para planejar o REFACTOR!
 """
 
     elif motivation_type == "testing":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: TESTING/QA ✅**
 
@@ -303,7 +455,7 @@ Continue com a próxima pergunta relevante para definir a ESTRATÉGIA DE TESTES!
 """
 
     elif motivation_type == "optimization":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: OPTIMIZATION ⚙️**
 
@@ -331,7 +483,7 @@ Continue com a próxima pergunta relevante para definir a OTIMIZAÇÃO!
 """
 
     elif motivation_type == "security":
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: SECURITY 🔒**
 
@@ -360,7 +512,7 @@ Continue com a próxima pergunta relevante para definir a SEGURANÇA!
 
     else:
         # Fallback: Generic card prompt
-        return f"""{project_context}{parent_context}{card_info}
+        return f"""{project_context}{hierarchy_context}{card_info}
 
 **TIPO DE TRABALHO: {motivation_type.upper()}**
 
