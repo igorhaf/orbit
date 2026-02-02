@@ -19,6 +19,7 @@ _db_session = None
 
 # PROMPT #109 - Common bullet symbols that AI might use instead of ○
 # We normalize all of these to ○ before parsing
+# PROMPT #146 - REMOVED "-" (hyphen) from this list since it's now our primary format
 BULLET_SYMBOLS = [
     '○',  # White circle (U+25CB) - our standard
     '●',  # Black circle (U+25CF)
@@ -29,7 +30,7 @@ BULLET_SYMBOLS = [
     '⚪',  # White circle emoji
     '⚫',  # Black circle emoji
     '·',  # Middle dot (U+00B7)
-    '-',  # Hyphen (common fallback)
+    # '-' REMOVED - hyphen is now our PRIMARY format (PROMPT #143/#146)
     '*',  # Asterisk (common fallback)
     '–',  # En dash (U+2013)
     '—',  # Em dash (U+2014)
@@ -87,6 +88,7 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
 
     PROMPT #109 - Extended to normalize bullets before parsing (Gemini compatibility)
     PROMPT #143 - Updated to use "-" (hyphen) as primary option marker (no emojis)
+    PROMPT #146 - Fixed: Check for hyphens BEFORE normalization (hyphen was being converted to ○)
 
     The AI generates questions with options in this format:
 
@@ -122,21 +124,25 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
                 }
             }
     """
+    # PROMPT #146 - Check for hyphens BEFORE normalization (they get converted to ○)
+    # Pattern: line starting with "- " followed by option text
+    hyphen_options_raw = re.findall(r'^[\s]*-\s+(.+?)$', content, re.MULTILINE)
+
     # PROMPT #143 - Remove variation selector for compatibility
     normalized_content = _normalize_bullets(content)
 
-    # PROMPT #143 - Detect options by hyphen at start of line (primary format)
-    # Pattern: line starting with "- " followed by option text
-    hyphen_options = re.findall(r'^[\s]*-\s+(.+?)$', normalized_content, re.MULTILINE)
+    # PROMPT #146 - hyphen_options_raw already extracted BEFORE normalization (see above)
+    # This fixes the bug where hyphens were converted to ○ before detection
 
     # Also check for legacy checkbox/radio symbols (backwards compatibility)
     checkbox_options = re.findall(r'☐\s*(.+?)(?=\n|$)', normalized_content, re.MULTILINE)
     radio_options = re.findall(r'○\s*(.+?)(?=\n|$)', normalized_content, re.MULTILINE)
 
     # PROMPT #143 - Prioritize hyphen format (new format without emojis)
-    if hyphen_options:
-        matches = hyphen_options
-        logger.info(f"Found {len(hyphen_options)} hyphen options (-)")
+    # PROMPT #146 - Use hyphen_options_raw which was extracted before normalization
+    if hyphen_options_raw:
+        matches = hyphen_options_raw
+        logger.info(f"Found {len(hyphen_options_raw)} hyphen options (-)")
     elif checkbox_options:
         matches = checkbox_options
         logger.info(f"Found {len(checkbox_options)} checkbox options (legacy)")
