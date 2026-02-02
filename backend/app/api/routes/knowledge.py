@@ -1,21 +1,35 @@
 """
-Knowledge Search API Endpoints
+Knowledge Base API Endpoints
 
 PROMPT #84 - RAG Phase 2: Interview Enhancement
+PROMPT #147 - Incremental RAG Feeding for Business Rules
 
-Semantic search across project knowledge base (interview answers, decisions, etc.)
+Semantic search and management of project knowledge base:
+- Business rules (manual, from code scan, from interviews)
+- Document uploads
+- Interview answers
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, status
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from typing import List, Optional
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from datetime import datetime
 import logging
+import json
 
 from app.database import get_db
 from app.models.project import Project
 from app.services.rag_service import RAGService
+from app.schemas.knowledge import (
+    BusinessRuleCreate,
+    BusinessRuleUpdate,
+    BusinessRuleResponse,
+    DocumentUploadResponse,
+    KnowledgeStats
+)
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +244,502 @@ async def get_project_knowledge_stats(
 
     except Exception as e:
         logger.error(f"Failed to get knowledge stats for project {project_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get knowledge stats: {str(e)}"
+        )
+
+
+# ============================================================================
+# PROMPT #147 - BUSINESS RULES ENDPOINTS
+# ============================================================================
+
+@router.get("/projects/{project_id}/knowledge/rules", response_model=List[BusinessRuleResponse])
+async def list_business_rules(
+    project_id: UUID,
+    category: Optional[str] = Query(None, description="Filter by category"),
+    source: Optional[str] = Query(None, description="Filter by source"),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db)
+):
+    """
+    List all business rules for a project.
+
+    PROMPT #147 - Incremental RAG Feeding
+
+    Returns all knowledge items tagged as business_rule for this project,
+    optionally filtered by category or source.
+    """
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    try:
+        # Query RAG documents directly for business rules
+        where_clauses = [
+            "project_id = :project_id",
+            "metadata->>'content_type' = 'business_rule'"
+        ]
+        params = {"project_id": str(project_id), "limit": limit}
+
+        if category:
+            where_clauses.append("metadata->>'category' = :category")
+            params["category"] = category
+
+        if source:
+            where_clauses.append("metadata->>'source' = :source")
+            params["source"] = source
+
+        query = text(f"""
+            SELECT id, content, metadata, created_at
+            FROM rag_documents
+            WHERE {" AND ".join(where_clauses)}
+            ORDER BY created_at DESC
+            LIMIT :limit
+        """)
+
+        result = db.execute(query, params).fetchall()
+
+        rules = []
+        for row in result:
+            metadata = row.metadata if isinstance(row.metadata, dict) else json.loads(row.metadata)
+            rules.append(BusinessRuleResponse(
+                id=str(row.id),
+                title=metadata.get("title", ""),
+                description=row.content,
+                category=metadata.get("category", "validation"),
+                source=metadata.get("source", "unknown"),
+                created_at=row.created_at.isoformat()
+            ))
+
+        logger.info(f"Listed {len(rules)} business rules for project {project_id}")
+        return rules
+
+    except Exception as e:
+        logger.error(f"Failed to list business rules: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list business rules: {str(e)}"
+        )
+
+
+@router.post("/projects/{project_id}/knowledge/rules", response_model=dict)
+async def add_business_rule(
+    project_id: UUID,
+    rule: BusinessRuleCreate,
+    db: Session = Depends(get_db)
+):
+    """
+    Add a business rule manually.
+
+    PROMPT #147 - Incremental RAG Feeding
+
+    Stores a new business rule in the RAG with proper metadata.
+    """
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    try:
+        rag_service = RAGService(db)
+
+        # Store with proper metadata
+        doc_id = rag_service.store(
+            content=f"{rule.title}: {rule.description}",
+            metadata={
+                "content_type": "business_rule",
+                "title": rule.title,
+                "category": rule.category,
+                "source": "manual",
+                "added_at": datetime.utcnow().isoformat()
+            },
+            project_id=project_id
+        )
+
+        logger.info(f"Added business rule '{rule.title}' to project {project_id}")
+
+        return {
+            "id": str(doc_id),
+            "status": "created",
+            "message": f"Business rule '{rule.title}' added successfully"
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to add business rule: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to add business rule: {str(e)}"
+        )
+
+
+@router.delete("/projects/{project_id}/knowledge/rules/{rule_id}")
+async def delete_business_rule(
+    project_id: UUID,
+    rule_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete a business rule.
+
+    PROMPT #147 - Incremental RAG Feeding
+    """
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    try:
+        rag_service = RAGService(db)
+        deleted = rag_service.delete(rule_id)
+
+        if deleted:
+            logger.info(f"Deleted business rule {rule_id} from project {project_id}")
+            return {"status": "deleted", "id": str(rule_id)}
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Business rule {rule_id} not found"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete business rule: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete business rule: {str(e)}"
+        )
+
+
+# ============================================================================
+# PROMPT #147 - DOCUMENT UPLOAD ENDPOINTS
+# ============================================================================
+
+def _chunk_document(text: str, chunk_size: int = 500, overlap: int = 50) -> List[str]:
+    """
+    Split document into overlapping chunks for better retrieval.
+
+    Args:
+        text: Full document text
+        chunk_size: Target size for each chunk (in characters)
+        overlap: Characters of overlap between chunks
+
+    Returns:
+        List of text chunks
+    """
+    if len(text) <= chunk_size:
+        return [text]
+
+    chunks = []
+    start = 0
+
+    while start < len(text):
+        end = start + chunk_size
+
+        # Try to break at sentence/paragraph boundary
+        if end < len(text):
+            # Look for paragraph break first
+            para_break = text.rfind('\n\n', start, end)
+            if para_break > start + chunk_size // 2:
+                end = para_break + 2
+            else:
+                # Look for sentence break
+                for sep in ['. ', '! ', '? ', '\n']:
+                    sentence_break = text.rfind(sep, start, end)
+                    if sentence_break > start + chunk_size // 2:
+                        end = sentence_break + len(sep)
+                        break
+
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+
+        start = end - overlap
+
+    return chunks
+
+
+@router.post("/projects/{project_id}/knowledge/upload", response_model=DocumentUploadResponse)
+async def upload_document(
+    project_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload and index a document.
+
+    PROMPT #147 - Incremental RAG Feeding
+
+    Accepts MD, TXT, and other text files. Splits into chunks and indexes
+    each chunk in the RAG for semantic search.
+    """
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    # Validate file type
+    allowed_extensions = ['.md', '.txt', '.rst', '.yaml', '.yml', '.json']
+    filename = file.filename or "unknown"
+    ext = '.' + filename.split('.')[-1].lower() if '.' in filename else ''
+
+    if ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type not allowed. Allowed: {', '.join(allowed_extensions)}"
+        )
+
+    try:
+        content = await file.read()
+        text = content.decode('utf-8')
+
+        # Chunk document
+        chunks = _chunk_document(text, chunk_size=500, overlap=50)
+
+        # Store each chunk
+        rag_service = RAGService(db)
+        for i, chunk in enumerate(chunks):
+            rag_service.store(
+                content=chunk,
+                metadata={
+                    "content_type": "document",
+                    "filename": filename,
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                    "source": "upload",
+                    "uploaded_at": datetime.utcnow().isoformat()
+                },
+                project_id=project_id
+            )
+
+        logger.info(f"Uploaded document '{filename}' with {len(chunks)} chunks to project {project_id}")
+
+        return DocumentUploadResponse(
+            filename=filename,
+            chunks_indexed=len(chunks),
+            total_chars=len(text)
+        )
+
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be UTF-8 encoded text"
+        )
+    except Exception as e:
+        logger.error(f"Failed to upload document: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload document: {str(e)}"
+        )
+
+
+@router.get("/projects/{project_id}/knowledge/documents")
+async def list_documents(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    List all uploaded documents for a project.
+
+    PROMPT #147 - Incremental RAG Feeding
+
+    Groups chunks by filename and returns document info.
+    """
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    try:
+        query = text("""
+            SELECT
+                metadata->>'filename' as filename,
+                COUNT(*) as chunks,
+                MIN(created_at) as uploaded_at
+            FROM rag_documents
+            WHERE project_id = :project_id
+                AND metadata->>'content_type' = 'document'
+            GROUP BY metadata->>'filename'
+            ORDER BY MIN(created_at) DESC
+        """)
+
+        result = db.execute(query, {"project_id": str(project_id)}).fetchall()
+
+        documents = [
+            {
+                "filename": row.filename,
+                "chunks": row.chunks,
+                "uploaded_at": row.uploaded_at.isoformat() if row.uploaded_at else None
+            }
+            for row in result
+        ]
+
+        return {"documents": documents, "total": len(documents)}
+
+    except Exception as e:
+        logger.error(f"Failed to list documents: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to list documents: {str(e)}"
+        )
+
+
+@router.delete("/projects/{project_id}/knowledge/documents/{filename}")
+async def delete_document(
+    project_id: UUID,
+    filename: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Delete all chunks of a document.
+
+    PROMPT #147 - Incremental RAG Feeding
+    """
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    try:
+        query = text("""
+            DELETE FROM rag_documents
+            WHERE project_id = :project_id
+                AND metadata->>'content_type' = 'document'
+                AND metadata->>'filename' = :filename
+        """)
+
+        result = db.execute(query, {
+            "project_id": str(project_id),
+            "filename": filename
+        })
+        db.commit()
+
+        deleted_count = result.rowcount
+
+        if deleted_count > 0:
+            logger.info(f"Deleted document '{filename}' ({deleted_count} chunks) from project {project_id}")
+            return {
+                "status": "deleted",
+                "filename": filename,
+                "chunks_deleted": deleted_count
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document '{filename}' not found"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to delete document: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete document: {str(e)}"
+        )
+
+
+# ============================================================================
+# PROMPT #147 - KNOWLEDGE STATISTICS
+# ============================================================================
+
+@router.get("/projects/{project_id}/knowledge/full-stats", response_model=KnowledgeStats)
+async def get_full_knowledge_stats(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Get detailed statistics about project knowledge.
+
+    PROMPT #147 - Incremental RAG Feeding
+
+    Returns counts by content_type, category, and source.
+    """
+    # Validate project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    try:
+        # Total documents
+        total_query = text("""
+            SELECT COUNT(*) as count
+            FROM rag_documents
+            WHERE project_id = :project_id
+        """)
+        total = db.execute(total_query, {"project_id": str(project_id)}).fetchone()[0]
+
+        # Count by content_type
+        type_query = text("""
+            SELECT
+                COALESCE(metadata->>'content_type', 'unknown') as content_type,
+                COUNT(*) as count
+            FROM rag_documents
+            WHERE project_id = :project_id
+            GROUP BY metadata->>'content_type'
+        """)
+        type_results = db.execute(type_query, {"project_id": str(project_id)}).fetchall()
+
+        type_counts = {row.content_type: row.count for row in type_results}
+
+        # Count by category (for business rules)
+        category_query = text("""
+            SELECT
+                metadata->>'category' as category,
+                COUNT(*) as count
+            FROM rag_documents
+            WHERE project_id = :project_id
+                AND metadata->>'content_type' = 'business_rule'
+            GROUP BY metadata->>'category'
+        """)
+        category_results = db.execute(category_query, {"project_id": str(project_id)}).fetchall()
+
+        # Count by source
+        source_query = text("""
+            SELECT
+                COALESCE(metadata->>'source', 'unknown') as source,
+                COUNT(*) as count
+            FROM rag_documents
+            WHERE project_id = :project_id
+            GROUP BY metadata->>'source'
+        """)
+        source_results = db.execute(source_query, {"project_id": str(project_id)}).fetchall()
+
+        return KnowledgeStats(
+            total_documents=total,
+            business_rules_count=type_counts.get('business_rule', 0),
+            interview_answers_count=type_counts.get('interview_answer', 0),
+            code_files_count=type_counts.get('code_file', 0),
+            documents_count=type_counts.get('document', 0),
+            by_category={row.category: row.count for row in category_results if row.category},
+            by_source={row.source: row.count for row in source_results if row.source}
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to get full knowledge stats: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get knowledge stats: {str(e)}"

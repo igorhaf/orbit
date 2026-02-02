@@ -1135,3 +1135,134 @@ export const backlogApi = {
       body: JSON.stringify(suggestions),
     }),
 };
+
+// PROMPT #147 - Knowledge Base API (Incremental RAG Feeding)
+export const knowledgeApi = {
+  // Business Rules
+  listRules: (projectId: string, params?: { category?: string; source?: string; limit?: number }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.category) queryParams.append('category', params.category);
+    if (params?.source) queryParams.append('source', params.source);
+    if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
+
+    const queryString = queryParams.toString();
+    return request<Array<{
+      id: string;
+      title: string;
+      description: string;
+      category: string;
+      source: string;
+      created_at: string;
+    }>>(`/api/v1/projects/${projectId}/knowledge/rules${queryString ? '?' + queryString : ''}`);
+  },
+
+  addRule: (projectId: string, data: {
+    title: string;
+    description: string;
+    category: 'validation' | 'workflow' | 'calculation' | 'permission' | 'integration';
+  }) =>
+    request<{ id: string; status: string; message: string }>(`/api/v1/projects/${projectId}/knowledge/rules`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  deleteRule: (projectId: string, ruleId: string) =>
+    request<{ status: string; id: string }>(`/api/v1/projects/${projectId}/knowledge/rules/${ruleId}`, {
+      method: 'DELETE',
+    }),
+
+  // Documents
+  listDocuments: (projectId: string) =>
+    request<{
+      documents: Array<{
+        filename: string;
+        chunks: number;
+        uploaded_at: string | null;
+      }>;
+      total: number;
+    }>(`/api/v1/projects/${projectId}/knowledge/documents`),
+
+  uploadDocument: async (projectId: string, file: File) => {
+    const url = `${API_URL}/api/v1/projects/${projectId}/knowledge/upload`;
+    console.log('📤 Uploading document to', url);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('📥 Upload Response:', {
+        status: response.status,
+        ok: response.ok,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: `Upload failed: ${response.status}` }));
+        throw new Error(error.detail || `Upload failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Document upload success');
+      return data as { filename: string; chunks_indexed: number; total_chars: number };
+    } catch (error: any) {
+      console.error('❌ Document upload failed:', error.message);
+      throw error;
+    }
+  },
+
+  deleteDocument: (projectId: string, filename: string) =>
+    request<{ status: string; filename: string; chunks_deleted: number }>(`/api/v1/projects/${projectId}/knowledge/documents/${encodeURIComponent(filename)}`, {
+      method: 'DELETE',
+    }),
+
+  // Search
+  search: (projectId: string, params: {
+    query: string;
+    include_global?: boolean;
+    top_k?: number;
+    similarity_threshold?: number;
+  }) => {
+    const queryParams = new URLSearchParams();
+    queryParams.append('query', params.query);
+    if (params.include_global !== undefined) queryParams.append('include_global', params.include_global.toString());
+    if (params.top_k !== undefined) queryParams.append('top_k', params.top_k.toString());
+    if (params.similarity_threshold !== undefined) queryParams.append('similarity_threshold', params.similarity_threshold.toString());
+
+    return request<{
+      query: string;
+      project_id: string;
+      results: Array<{
+        id: string;
+        content: string;
+        similarity: number;
+        metadata: Record<string, any>;
+      }>;
+      total_results: number;
+    }>(`/api/v1/projects/${projectId}/knowledge/search?${queryParams.toString()}`);
+  },
+
+  // Statistics
+  getStats: (projectId: string) =>
+    request<{
+      project_id: string;
+      total_documents: number;
+      interview_answers: number;
+      domain_templates: number;
+      project_specific: number;
+    }>(`/api/v1/projects/${projectId}/knowledge/stats`),
+
+  getFullStats: (projectId: string) =>
+    request<{
+      total_documents: number;
+      business_rules_count: number;
+      interview_answers_count: number;
+      code_files_count: number;
+      documents_count: number;
+      by_category: Record<string, number>;
+      by_source: Record<string, number>;
+    }>(`/api/v1/projects/${projectId}/knowledge/full-stats`),
+};
