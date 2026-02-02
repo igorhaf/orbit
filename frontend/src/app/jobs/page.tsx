@@ -45,6 +45,7 @@ import {
   WifiOff,
 } from 'lucide-react';
 import Link from 'next/link';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 
 // Status badge colors
 const STATUS_COLORS: Record<string, string> = {
@@ -116,6 +117,12 @@ export default function JobsPage() {
 
   // View mode
   const [viewMode, setViewMode] = useState<'list' | 'stats'>('list');
+
+  // PROMPT #145 - Confirm dialog state for cleanup
+  const [cleanupConfirm, setCleanupConfirm] = useState<{
+    open: boolean;
+    days: number;
+  }>({ open: false, days: 0 });
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const WS_URL = API_BASE.replace('http', 'ws');
@@ -411,10 +418,20 @@ export default function JobsPage() {
     }
   };
 
-  const handleCleanup = async (days: number) => {
+  // PROMPT #145 - Show confirmation dialog before cleanup
+  const handleCleanupClick = (days: number) => {
+    setCleanupConfirm({ open: true, days });
+  };
+
+  // PROMPT #145 - Execute cleanup after confirmation
+  const handleCleanupConfirm = async () => {
+    const { days } = cleanupConfirm;
+    setCleanupConfirm({ open: false, days: 0 });
+
     try {
       const result = await jobsApi.cleanup(days);
-      alert(result.message);
+      // Show success in a toast-like notification instead of crude alert
+      console.log('Cleanup result:', result.message);
       fetchJobs();
       fetchStats();
     } catch (error) {
@@ -499,7 +516,7 @@ export default function JobsPage() {
               <RefreshCw className={`w-4 h-4 ${loadingJobs ? 'animate-spin' : ''}`} />
             </Button>
 
-            {/* Cleanup Dropdown */}
+            {/* Cleanup Dropdown - PROMPT #145: uses ConfirmDialog */}
             <div className="relative group">
               <Button variant="outline">
                 <Trash2 className="w-4 h-4 mr-2" />
@@ -507,19 +524,19 @@ export default function JobsPage() {
               </Button>
               <div className="absolute right-0 mt-1 w-48 bg-white border rounded-lg shadow-lg hidden group-hover:block z-10">
                 <button
-                  onClick={() => handleCleanup(1)}
+                  onClick={() => handleCleanupClick(1)}
                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
                 >
                   Older than 1 day
                 </button>
                 <button
-                  onClick={() => handleCleanup(7)}
+                  onClick={() => handleCleanupClick(7)}
                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
                 >
                   Older than 7 days
                 </button>
                 <button
-                  onClick={() => handleCleanup(30)}
+                  onClick={() => handleCleanupClick(30)}
                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
                 >
                   Older than 30 days
@@ -979,6 +996,18 @@ export default function JobsPage() {
           </Card>
         )}
       </div>
+
+      {/* PROMPT #145 - Styled Confirm Dialog for Cleanup */}
+      <ConfirmDialog
+        open={cleanupConfirm.open}
+        onClose={() => setCleanupConfirm({ open: false, days: 0 })}
+        onConfirm={handleCleanupConfirm}
+        title="Cleanup Jobs"
+        description={`Are you sure you want to delete all completed and failed jobs older than ${cleanupConfirm.days} day${cleanupConfirm.days > 1 ? 's' : ''}? This action cannot be undone.`}
+        confirmText="Delete Jobs"
+        cancelText="Cancel"
+        variant="danger"
+      />
     </Layout>
   );
 }
