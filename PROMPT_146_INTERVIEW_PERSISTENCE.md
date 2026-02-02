@@ -243,6 +243,28 @@ The backend already had support for filtering interviews by `project_id` and `st
 
 ---
 
+---
+
+## Additional Fix: Option Parser Bug (Same Commit)
+
+### Problem
+After the PROMPT #143 changes to use hyphen format (`-`) for options instead of emoji symbols, the context interviews were showing questions **without options** - even though the AI was generating them correctly.
+
+### Root Cause
+In `option_parser.py`, the function `_normalize_bullets()` was converting **all** hyphens to circles (`○`) BEFORE `parse_ai_question_options()` tried to detect them. So the detection logic was looking for hyphens that had already been converted.
+
+### Solution
+1. Extract hyphen options **BEFORE** calling `_normalize_bullets()`
+2. Remove `-` (hyphen) from the `BULLET_SYMBOLS` list
+3. Use the pre-normalization `hyphen_options_raw` in detection logic
+
+### Files Modified
+- [backend/app/api/routes/interviews/option_parser.py](backend/app/api/routes/interviews/option_parser.py)
+  - Moved hyphen detection before normalization
+  - Removed hyphen from BULLET_SYMBOLS list
+
+---
+
 ## Status: COMPLETE
 
 Users can now safely navigate away from the Context Interview wizard and return to continue exactly where they left off.
@@ -253,10 +275,12 @@ Users can now safely navigate away from the Context Interview wizard and return 
 - Prevention of duplicate interview creation
 - API enhancement for interview filtering
 - Loading state during restoration
+- Fixed option parser hyphen detection bug
 
 **Impact:**
 - 100% interview state persistence across page navigations
 - Zero data loss when user leaves wizard
 - Improved user experience for context setup flow
+- Interview options now display correctly
 
 ---
