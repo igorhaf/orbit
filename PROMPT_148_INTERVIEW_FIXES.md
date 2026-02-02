@@ -11,13 +11,15 @@
 
 ## Objective
 
-Fix two issues reported by user:
+Fix three issues reported by user:
 1. Interview resets completely when leaving and returning
 2. Very few options in closed questions (was more complete before)
+3. Options being truncated/cut off in the UI
 
 **Key Requirements:**
 1. Ensure interview state persists when user navigates away and returns
 2. Increase the number of options in closed questions (from 3-5 to 5-8)
+3. Fix option parsing to capture full text and prevent truncation
 
 ---
 
@@ -51,6 +53,31 @@ Fix two issues reported by user:
 
 **Solution:** Updated all interview prompt YAML files to request 5-8 options instead of 3-5, and updated examples to demonstrate the expected output with more options.
 
+### 3. Options Truncation Fix
+
+**Problem:** Options were being truncated in the UI, showing partial text like "Gestão de Unidades Organizacionais (cria" instead of the full option.
+
+**Root Cause:**
+1. The regex in `option_parser.py` was using non-greedy matching `(.+?)$` which could cause issues
+2. The AI was generating options that wrapped to multiple lines
+3. Only the first line of multi-line options was being captured
+
+**Solution:**
+1. Changed regex from `(.+?)$` to `(.+)$` (greedy matching) for full line capture
+2. Added explicit instructions in all prompts:
+   - "CADA OPCAO DEVE ESTAR EM UMA UNICA LINHA" (each option must be on a single line)
+   - "Opcoes devem ser CURTAS e DIRETAS (maximo 80 caracteres)" (options must be short and direct)
+
+**File Modified:** `backend/app/api/routes/interviews/option_parser.py`
+
+```python
+# Before (non-greedy, could truncate)
+hyphen_options_raw = re.findall(r'^[\s]*-\s+(.+?)$', content, re.MULTILINE)
+
+# After (greedy, captures full line)
+hyphen_options_raw = re.findall(r'^[\s]*-\s+(.+)$', content, re.MULTILINE)
+```
+
 **Files Modified:**
 
 1. **`backend/app/prompts/interviews/context_interview_ai.yaml`**
@@ -76,20 +103,29 @@ Fix two issues reported by user:
 1. **`frontend/src/app/projects/new/page.tsx`**
    - Added `key={interviewId}` prop to ChatInterface component
 
+### Backend:
+1. **`backend/app/api/routes/interviews/option_parser.py`**
+   - Fixed regex to use greedy matching for full line capture
+   - Changed `(.+?)$` to `(.+)$`
+
 ### Backend Prompts:
 1. **`backend/app/prompts/interviews/context_interview_ai.yaml`**
    - Updated option count requirement (3-5 -> 5-8)
+   - Added single-line and character limit instructions
    - Updated example with 8 options
 
 2. **`backend/app/prompts/interviews/fixed_questions_context.yaml`**
    - Updated option count requirement (3-5 -> 5-8)
+   - Added single-line and character limit instructions
 
 3. **`backend/app/prompts/interviews/first_question.yaml`**
    - Updated option count requirement (3-5 -> 5-8)
+   - Added single-line and character limit instructions
    - Updated example with 8 options
 
 4. **`backend/app/prompts/interviews/unified_open.yaml`**
    - Updated option count requirement (3-5 -> 5-8)
+   - Added single-line and character limit instructions
    - Updated example with 8 options
 
 ---

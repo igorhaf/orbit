@@ -125,8 +125,9 @@ def parse_ai_question_options(content: str) -> Tuple[str, Optional[Dict]]:
             }
     """
     # PROMPT #146 - Check for hyphens BEFORE normalization (they get converted to ○)
-    # Pattern: line starting with "- " followed by option text
-    hyphen_options_raw = re.findall(r'^[\s]*-\s+(.+?)$', content, re.MULTILINE)
+    # PROMPT #148 - Fixed regex to use greedy matching (.+) for full text capture
+    # Pattern: line starting with "- " followed by option text until end of line
+    hyphen_options_raw = re.findall(r'^[\s]*-\s+(.+)$', content, re.MULTILINE)
 
     # PROMPT #143 - Remove variation selector for compatibility
     normalized_content = _normalize_bullets(content)

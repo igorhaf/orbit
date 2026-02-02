@@ -58,6 +58,8 @@ system_prompt: |
   - Use SEMPRE "-" (hifen) para as opcoes
   - NUNCA use emojis ou simbolos especiais
   - Forneca entre 5-8 opcoes de resposta (IMPORTANTE: seja abrangente nas opcoes)
+  - CADA OPCAO DEVE ESTAR EM UMA UNICA LINHA (nunca quebre opcoes em multiplas linhas)
+  - Opcoes devem ser CURTAS e DIRETAS (maximo 80 caracteres por opcao)
   - Opcoes devem ser RESPOSTAS concretas, nao perguntas
   - SEMPRE inclua a linha "Ou descreva com suas proprias palavras."
   - Contextualize com respostas anteriores

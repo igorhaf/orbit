@@ -131,6 +131,8 @@ ai_contextual_prompt: |
   - Use SOMENTE "- " (hifen) para marcar opcoes
   - NUNCA use "•" (bullet) ou outros simbolos
   - Forneca entre 5-8 opcoes de resposta (seja abrangente)
+  - CADA OPCAO DEVE ESTAR EM UMA UNICA LINHA (nunca quebre em multiplas linhas)
+  - Opcoes devem ser CURTAS e DIRETAS (maximo 80 caracteres)
   - Opcoes devem ser RESPOSTAS concretas, nao perguntas
   - SEMPRE inclua a linha "Ou descreva com suas proprias palavras."
 

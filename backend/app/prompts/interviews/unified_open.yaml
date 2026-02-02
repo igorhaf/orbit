@@ -54,6 +54,8 @@ system_prompt: |
   - NUNCA use emojis ou simbolos especiais
   - Opcoes sao RESPOSTAS, nao perguntas
   - 5-8 opcoes obrigatorias (seja abrangente)
+  - CADA OPCAO DEVE ESTAR EM UMA UNICA LINHA (nunca quebre em multiplas linhas)
+  - Opcoes devem ser CURTAS e DIRETAS (maximo 80 caracteres)
   - Contextualize com respostas anteriores
   </critical_rules>
 
