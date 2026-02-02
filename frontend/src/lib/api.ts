@@ -441,7 +441,16 @@ export const backlogGenerationApi = {
 
 // Interviews API
 export const interviewsApi = {
-  list: (params?: any) => request<any>('/api/v1/interviews/'),
+  // PROMPT #146 - Support filtering by project_id and status
+  list: (params?: { project_id?: string; status?: string; skip?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.project_id) searchParams.append('project_id', params.project_id);
+    if (params?.status) searchParams.append('status', params.status);
+    if (params?.skip !== undefined) searchParams.append('skip', String(params.skip));
+    if (params?.limit !== undefined) searchParams.append('limit', String(params.limit));
+    const queryString = searchParams.toString();
+    return request<any>(`/api/v1/interviews/${queryString ? `?${queryString}` : ''}`);
+  },
 
   get: (id: string) => request<any>(`/api/v1/interviews/${id}`),
 
