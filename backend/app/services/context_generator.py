@@ -41,6 +41,166 @@ def _strip_markdown_json(content: str) -> str:
     return content.strip()
 
 
+def _robust_json_parse(response_text: str, context: str = "unknown") -> Dict:
+    """
+    PROMPT #148 - Robust JSON parsing with multiple recovery strategies.
+
+    This function attempts multiple strategies to parse AI-generated JSON,
+    handling common issues like:
+    - Markdown code blocks
+    - Truncated responses
+    - Unescaped newlines in strings
+    - Trailing commas
+
+    Args:
+        response_text: Raw AI response text
+        context: Description of the context for logging
+
+    Returns:
+        Parsed JSON as a dictionary
+
+    Raises:
+        ValueError: If all parsing strategies fail
+    """
+    original_text = response_text
+    result = None
+
+    # Strategy 0: Direct parse
+    try:
+        result = json.loads(response_text)
+        logger.info(f"[{context}] JSON parsed directly")
+        return result
+    except json.JSONDecodeError as e:
+        logger.debug(f"[{context}] Direct parse failed: {e.msg} at pos {e.pos}")
+
+    # Strategy 1: Strip markdown code blocks
+    response_text = _strip_markdown_json(response_text)
+
+    try:
+        result = json.loads(response_text)
+        logger.info(f"[{context}] JSON parsed after stripping markdown")
+        return result
+    except json.JSONDecodeError:
+        pass
+
+    # Strategy 2: Fix truncated response (find last complete })
+    if response_text and not response_text.rstrip().endswith('}'):
+        last_brace = response_text.rfind('}')
+        if last_brace > 0:
+            truncated_text = response_text[:last_brace + 1]
+            try:
+                result = json.loads(truncated_text)
+                logger.info(f"[{context}] JSON parsed after truncation fix")
+                return result
+            except json.JSONDecodeError:
+                pass
+
+    # Strategy 3: Extract JSON object with regex
+    json_match = re.search(r'\{[\s\S]*\}', response_text)
+    if json_match:
+        try:
+            result = json.loads(json_match.group(0))
+            logger.info(f"[{context}] JSON extracted with regex")
+            return result
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 4: Find balanced braces
+    brace_start = response_text.find('{')
+    if brace_start != -1:
+        brace_count = 0
+        brace_end = brace_start
+        for i, char in enumerate(response_text[brace_start:], start=brace_start):
+            if char == '{':
+                brace_count += 1
+            elif char == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    brace_end = i + 1
+                    break
+        if brace_end > brace_start:
+            try:
+                result = json.loads(response_text[brace_start:brace_end])
+                logger.info(f"[{context}] JSON extracted with balanced braces")
+                return result
+            except json.JSONDecodeError:
+                pass
+
+    # Strategy 5: Fix trailing commas
+    fixed_text = re.sub(r',\s*([}\]])', r'\1', response_text)
+    json_match = re.search(r'\{[\s\S]*\}', fixed_text)
+    if json_match:
+        try:
+            result = json.loads(json_match.group(0))
+            logger.info(f"[{context}] JSON parsed after fixing trailing commas")
+            return result
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 6: Fix unescaped newlines in strings
+    json_match = re.search(r'\{[\s\S]*\}', response_text)
+    if json_match:
+        json_str = json_match.group(0)
+        fixed_chars = []
+        in_string = False
+        escape_next = False
+
+        for char in json_str:
+            if escape_next:
+                fixed_chars.append(char)
+                escape_next = False
+                continue
+            if char == '\\':
+                fixed_chars.append(char)
+                escape_next = True
+                continue
+            if char == '"' and not escape_next:
+                in_string = not in_string
+                fixed_chars.append(char)
+                continue
+            if in_string and char == '\n':
+                fixed_chars.append('\\n')
+                continue
+            if in_string and char == '\r':
+                continue
+            if in_string and char == '\t':
+                fixed_chars.append('\\t')
+                continue
+            fixed_chars.append(char)
+
+        json_str_fixed = ''.join(fixed_chars)
+        try:
+            result = json.loads(json_str_fixed)
+            logger.info(f"[{context}] JSON parsed after newline fix")
+            return result
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 7: Try to recover partial JSON with default values
+    try:
+        # Try to extract at least context_semantic
+        semantic_match = re.search(r'"context_semantic"\s*:\s*"([^"]*(?:\\"[^"]*)*)"', response_text)
+        if semantic_match:
+            context_semantic = semantic_match.group(1).replace('\\"', '"')
+            logger.warning(f"[{context}] Partial recovery: extracted context_semantic only")
+            return {
+                "context_semantic": context_semantic,
+                "semantic_map": {},
+                "interview_insights": {}
+            }
+    except Exception:
+        pass
+
+    # All strategies failed
+    logger.error(f"[{context}] All JSON parsing strategies failed")
+    logger.error(f"[{context}] Response preview: {original_text[:500]}...")
+
+    raise ValueError(
+        "AI response was not valid JSON. The response may have been truncated. "
+        "Please try again with a shorter conversation or retry."
+    )
+
+
 def _convert_semantic_to_human(semantic_text: str, semantic_map: Dict[str, str]) -> str:
     """
     PROMPT #89 - Convert semantic text to human-readable text.
@@ -420,29 +580,12 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             # Note: temperature is configured in the AI model settings in the database
         )
 
-        # Parse response
+        # Parse response - PROMPT #148: Use robust JSON parser
         response_text = response.get("content", "")
-        response_text = _strip_markdown_json(response_text)
+        logger.info(f"[generate_context] Raw response length: {len(response_text)} chars")
 
-        # PROMPT #144 - Check if response looks truncated (doesn't end with })
-        if response_text and not response_text.rstrip().endswith('}'):
-            logger.warning(f"Response appears truncated. Last 100 chars: {response_text[-100:]}")
-            # Try to fix by finding the last complete JSON object
-            last_brace = response_text.rfind('}')
-            if last_brace > 0:
-                response_text = response_text[:last_brace + 1]
-                logger.info("Attempted to fix truncated JSON by finding last }")
-
-        try:
-            result = json.loads(response_text)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse AI response as JSON: {e}")
-            logger.error(f"Response text: {response_text[:500]}...")
-            # PROMPT #144 - Better error message
-            raise ValueError(
-                "AI response was not valid JSON. The response may have been truncated. "
-                "Please try again with a shorter conversation or retry."
-            )
+        # Use robust JSON parser with multiple recovery strategies
+        result = _robust_json_parse(response_text, context="generate_context")
 
         # Validate required fields
         if "context_semantic" not in result:
