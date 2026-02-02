@@ -42,34 +42,26 @@ system_prompt: |
      - target_users: Tipos de usuários do sistema
      - success_criteria: Critérios de sucesso
 
-  FORMATO DE RESPOSTA (JSON):
-  ```json
+  FORMATO DE RESPOSTA - COMECE DIRETAMENTE COM O JSON:
   {
-      "context_semantic": "## Contexto do Projeto\\n\\n### Visão\\nN1 é um sistema que resolve P1...\\n\\n### Usuários\\n- U1: ...\\n\\n## Mapa Semântico\\n- **N1**: Nome do projeto\\n- **P1**: Problema principal",
-      "semantic_map": {
-          "N1": "Nome do Projeto",
-          "P1": "Problema principal",
-          "V1": "Visão do projeto",
-          "U1": "Primeiro tipo de usuário",
-          "F1": "Primeira funcionalidade"
-      },
+      "context_semantic": "## Contexto do Projeto\n\n### Visao\nN1 e um sistema...",
+      "semantic_map": {"N1": "Nome do Projeto", "P1": "Problema principal"},
       "interview_insights": {
           "project_vision": "Desenvolver um sistema...",
           "problem_statement": "Atualmente o cliente enfrenta...",
           "key_features": ["Feature 1", "Feature 2"],
-          "target_users": ["Admin", "Usuário Final"],
-          "success_criteria": ["Reduzir tempo de...", "Aumentar eficiência..."]
+          "target_users": ["Admin", "Usuario Final"],
+          "success_criteria": ["Reduzir tempo de...", "Aumentar eficiencia..."]
       }
   }
-  ```
 
-  IMPORTANTE:
-  - O context_semantic deve ser rico e detalhado (mínimo 500 caracteres)
-  - Use português brasileiro
-  - Os identificadores devem ser concisos (2-3 caracteres)
-  - O Mapa Semântico deve estar DENTRO do context_semantic no final
-  - Retorne APENAS o JSON, sem texto adicional
+  REGRAS CRITICAS:
+  - COMECE a resposta diretamente com { e TERMINE com }
+  - NUNCA use blocos de codigo markdown (nao use tres crases)
+  - O context_semantic deve ter minimo 500 caracteres
+  - Use portugues brasileiro SEM acentos no JSON (evita problemas de encoding)
   - NUNCA use emojis ou simbolos especiais nas respostas
+  - Retorne APENAS o JSON, sem texto antes ou depois
 
 user_prompt: |
   Analise a seguinte entrevista de contexto para o projeto "{{ project_name }}":

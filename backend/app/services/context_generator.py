@@ -381,7 +381,10 @@ IMPORTANTE:
 - Use português brasileiro
 - Os identificadores devem ser concisos (2-3 caracteres)
 - O Mapa Semântico deve estar DENTRO do context_semantic no final
-- Retorne APENAS o JSON, sem texto adicional"""
+- Retorne APENAS o JSON, sem texto adicional
+- NUNCA use blocos de código markdown (```json)
+- NUNCA use emojis ou simbolos especiais
+- Comece a resposta diretamente com { e termine com }"""
 
         # PROMPT #120 - Include business rules from memory scan in context
         business_rules_section = ""
@@ -407,11 +410,12 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
         # Call AI
         messages = [{"role": "user", "content": user_prompt}]
 
+        # PROMPT #144 - Increased max_tokens to avoid truncation
         response = await self.orchestrator.execute(
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=4000,
+            max_tokens=8000,  # Increased from 4000 to avoid truncation
             enable_rag=True  # PROMPT #124 - Enable RAG for context generation
             # Note: temperature is configured in the AI model settings in the database
         )
@@ -420,12 +424,25 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
         response_text = response.get("content", "")
         response_text = _strip_markdown_json(response_text)
 
+        # PROMPT #144 - Check if response looks truncated (doesn't end with })
+        if response_text and not response_text.rstrip().endswith('}'):
+            logger.warning(f"Response appears truncated. Last 100 chars: {response_text[-100:]}")
+            # Try to fix by finding the last complete JSON object
+            last_brace = response_text.rfind('}')
+            if last_brace > 0:
+                response_text = response_text[:last_brace + 1]
+                logger.info("Attempted to fix truncated JSON by finding last }")
+
         try:
             result = json.loads(response_text)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")
             logger.error(f"Response text: {response_text[:500]}...")
-            raise ValueError("AI response was not valid JSON. Please try again.")
+            # PROMPT #144 - Better error message
+            raise ValueError(
+                "AI response was not valid JSON. The response may have been truncated. "
+                "Please try again with a shorter conversation or retry."
+            )
 
         # Validate required fields
         if "context_semantic" not in result:

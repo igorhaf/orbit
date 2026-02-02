@@ -593,11 +593,15 @@ export default function NewProjectPage() {
                     that guides all future development.
                   </p>
                 </div>
-                {/* PROMPT #137 - Skip button */}
+                {/* PROMPT #144 - Skip button always visible, even during context generation */}
                 {projectId && (
                   <Button
                     variant="ghost"
-                    onClick={() => router.push(`/projects/${projectId}`)}
+                    onClick={() => {
+                      // PROMPT #144 - Stop watching jobs so user gets notification when done
+                      if (contextJobId) stopWatching(contextJobId);
+                      router.push(`/projects/${projectId}`);
+                    }}
                     className="text-gray-500 whitespace-nowrap"
                   >
                     Skip to Project →
@@ -611,6 +615,10 @@ export default function NewProjectPage() {
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
                   <p className="text-gray-600">Generating project context...</p>
                   <p className="text-sm text-gray-500 mt-1">This may take a moment</p>
+                  {/* PROMPT #144 - Navigation hint during generation */}
+                  <p className="text-xs text-blue-600 mt-4">
+                    You can click &quot;Skip to Project&quot; to continue. Context will be generated in background.
+                  </p>
                 </div>
               ) : (
                 <ChatInterface
