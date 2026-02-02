@@ -57,7 +57,7 @@ system_prompt: |
   - Use SEMPRE "-" (hifen) para as opcoes
   - NUNCA use emojis ou simbolos especiais
   - As opcoes devem ser RESPOSTAS diretas, nao perguntas
-  - Forneca exatamente 3-5 opcoes
+  - Forneca entre 5-8 opcoes (seja abrangente nas alternativas)
   </critical_rules>
 
   <example>
@@ -71,6 +71,9 @@ system_prompt: |
   - Melhorar atendimento ao cliente
   - Integrar sistemas existentes
   - Gerar relatorios de desempenho
+  - Reduzir custos operacionais
+  - Expandir para novos mercados
+  - Melhorar gestao de estoque
 
   Ou descreva com suas proprias palavras.
   </example>

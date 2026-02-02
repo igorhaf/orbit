@@ -128,9 +128,9 @@ ai_contextual_prompt: |
 
   ## REGRAS CRITICAS
   - GERE APENAS UMA PERGUNTA POR RESPOSTA (nunca duas ou mais)
-  - Use SOMENTE "- " (circulo vazio Unicode) para marcar opcoes
+  - Use SOMENTE "- " (hifen) para marcar opcoes
   - NUNCA use "•" (bullet) ou outros simbolos
-  - Forneca entre 3-5 opcoes de resposta
+  - Forneca entre 5-8 opcoes de resposta (seja abrangente)
   - Opcoes devem ser RESPOSTAS concretas, nao perguntas
   - SEMPRE inclua a linha "Ou descreva com suas proprias palavras."
 

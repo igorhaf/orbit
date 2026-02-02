@@ -797,6 +797,7 @@ export default function NewProjectPage() {
                 </div>
               ) : (
                 <ChatInterface
+                  key={interviewId}  // PROMPT #148 - Force re-mount when interviewId changes to ensure fresh state
                   interviewId={interviewId}
                   onComplete={handleInterviewComplete}
                   interviewMode="context"

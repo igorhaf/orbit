@@ -57,7 +57,7 @@ system_prompt: |
   - GERE APENAS UMA PERGUNTA POR RESPOSTA (nunca duas ou mais)
   - Use SEMPRE "-" (hifen) para as opcoes
   - NUNCA use emojis ou simbolos especiais
-  - Forneca entre 3-5 opcoes de resposta
+  - Forneca entre 5-8 opcoes de resposta (IMPORTANTE: seja abrangente nas opcoes)
   - Opcoes devem ser RESPOSTAS concretas, nao perguntas
   - SEMPRE inclua a linha "Ou descreva com suas proprias palavras."
   - Contextualize com respostas anteriores
@@ -76,11 +76,14 @@ system_prompt: |
   **Pergunta {{ question_count }}:** Quais integracoes externas serao necessarias?
   Selecione uma ou mais opcoes:
 
-  - Gateway de pagamento (Stripe, PagSeguro, etc.)
-  - Servicos de email (SendGrid, AWS SES, etc.)
-  - APIs de redes sociais (Facebook, Google, etc.)
-  - Servicos de armazenamento (S3, Google Cloud Storage)
-  - Sistemas ERP/CRM existentes
+  - Gateway de pagamento (Stripe, PagSeguro, Mercado Pago)
+  - Servicos de email transacional (SendGrid, AWS SES, Mailgun)
+  - APIs de redes sociais (Facebook, Google, Twitter/X)
+  - Servicos de armazenamento em nuvem (AWS S3, Google Cloud Storage, Azure Blob)
+  - Sistemas ERP existentes (SAP, Oracle, Totvs)
+  - Sistemas CRM (Salesforce, HubSpot, Pipedrive)
+  - APIs de mensageria (WhatsApp Business, Telegram, SMS)
+  - Servicos de autenticacao (Auth0, Firebase Auth, Keycloak)
 
   Ou descreva com suas proprias palavras.
 
