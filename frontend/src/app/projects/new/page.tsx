@@ -616,15 +616,41 @@ export default function NewProjectPage() {
               </div>
 
               {/* PROMPT #118 - Scanning overlay */}
+              {/* PROMPT #148 - Added skip/cancel options during scan */}
               {scanning && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-                  <div className="flex items-center gap-4">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    <div>
-                      <h4 className="font-medium text-blue-900">Analyzing codebase...</h4>
-                      <p className="text-sm text-blue-700 mt-1">
-                        Scanning files, detecting technologies, and extracting business rules.
-                      </p>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                      <div>
+                        <h4 className="font-medium text-blue-900">Analyzing codebase...</h4>
+                        <p className="text-sm text-blue-700 mt-1">
+                          Scanning files, detecting technologies, and extracting business rules.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          // Stop watching the job and clear scanning state
+                          if (memoryScanJobId) stopWatching(memoryScanJobId);
+                          setScanning(false);
+                          setMemoryScanJobId(null);
+                        }}
+                        className="text-blue-700 hover:text-blue-900"
+                      >
+                        Skip Scan
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => router.push('/projects')}
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        Cancel
+                      </Button>
                     </div>
                   </div>
                 </div>
