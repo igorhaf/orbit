@@ -744,3 +744,72 @@ async def get_full_knowledge_stats(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get knowledge stats: {str(e)}"
         )
+
+
+# ============================================================================
+# PROMPT #157 - PROMPT DOC & GIT COMMIT RAG SYNC
+# ============================================================================
+
+@router.post("/knowledge/sync-prompt-docs")
+async def sync_prompt_docs(db: Session = Depends(get_db)):
+    """
+    Scan the project root for PROMPT_*.md files and index any that are not
+    yet in RAG.  These become global (project_id=NULL) knowledge so the AI
+    can retrieve architectural decisions and bug-fix rationale.
+
+    PROMPT #157 - Prompt Doc + Git Commit RAG Sync
+    """
+    from app.services.prompt_doc_rag_sync import PromptDocRAGSync
+
+    try:
+        syncer = PromptDocRAGSync(db)
+        result = syncer.sync_all()
+        logger.info(f"PROMPT doc sync: {result}")
+        return {"status": "ok", **result}
+    except Exception as e:
+        logger.error(f"PROMPT doc sync failed: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"PROMPT doc sync failed: {str(e)}"
+        )
+
+
+@router.post("/projects/{project_id}/knowledge/sync-git-commits")
+async def sync_git_commits(
+    project_id: UUID,
+    max_commits: int = Query(100, ge=1, le=500, description="Max commits to read from git log"),
+    db: Session = Depends(get_db)
+):
+    """
+    Read the last N commits from the project's code_path git repo and index
+    any that are not yet in RAG.  Stored per-project so the AI has a
+    timeline of changes when reasoning about that codebase.
+
+    PROMPT #157 - Prompt Doc + Git Commit RAG Sync
+    """
+    from app.services.prompt_doc_rag_sync import GitCommitRAGSync
+
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found"
+        )
+
+    if not project.code_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Project has no code_path configured"
+        )
+
+    try:
+        syncer = GitCommitRAGSync(db, project_id, project.code_path)
+        result = syncer.sync(max_commits=max_commits)
+        logger.info(f"Git commit sync for project {project_id}: {result}")
+        return {"status": "ok", "project_id": str(project_id), **result}
+    except Exception as e:
+        logger.error(f"Git commit sync failed for project {project_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Git commit sync failed: {str(e)}"
+        )
