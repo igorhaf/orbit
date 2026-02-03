@@ -18,7 +18,7 @@
  *   }
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { jobsApi } from '@/lib/api';
 
@@ -92,15 +92,22 @@ export function useJobPolling(
   const [isPolling, setIsPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // PROMPT #160 - Track which job statuses have already triggered callbacks
+  // This prevents infinite re-render loops when callbacks cause parent to re-render
+  const callbacksFiredRef = useRef<{ jobId: string; status: string } | null>(null);
+
   // PROMPT #134 - Use NotificationContext to track job via WebSocket
   const { activeJobs, notifications, addJob } = useNotifications();
 
   // Find job in activeJobs or notifications
-  const trackedJob = jobId
-    ? activeJobs.find(j => j.job_id === jobId) || notifications.find(n => n.job_id === jobId)
-    : null;
+  // PROMPT #160 - Use useMemo to stabilize reference and prevent infinite re-render loop
+  const trackedJob = useMemo(() => {
+    if (!jobId) return null;
+    return activeJobs.find(j => j.job_id === jobId) || notifications.find(n => n.job_id === jobId) || null;
+  }, [jobId, activeJobs, notifications]);
 
   // Sync job state from NotificationContext
+  // PROMPT #160 - Removed callbacks from dependencies to prevent infinite loop
   useEffect(() => {
     if (!trackedJob) return;
 
@@ -131,16 +138,27 @@ export function useJobPolling(
       setIsPolling(true);
     }
 
-    // Trigger callbacks
-    if (trackedJob.status === 'completed' && onComplete) {
-      onComplete(trackedJob.result);
-    } else if (trackedJob.status === 'failed' && onError) {
-      setError(trackedJob.error || 'Job failed');
-      onError(trackedJob.error || 'Job failed');
-    } else if (trackedJob.status === 'cancelled' && onCancelled) {
-      onCancelled();
+    // Trigger callbacks only once per job+status combination
+    // This prevents infinite loops when callback causes parent re-render
+    const callbackKey = `${trackedJob.job_id}:${trackedJob.status}`;
+    const alreadyFired = callbacksFiredRef.current?.jobId === trackedJob.job_id
+                        && callbacksFiredRef.current?.status === trackedJob.status;
+
+    if (!alreadyFired) {
+      if (trackedJob.status === 'completed' && onComplete) {
+        callbacksFiredRef.current = { jobId: trackedJob.job_id, status: trackedJob.status };
+        onComplete(trackedJob.result);
+      } else if (trackedJob.status === 'failed' && onError) {
+        callbacksFiredRef.current = { jobId: trackedJob.job_id, status: trackedJob.status };
+        setError(trackedJob.error || 'Job failed');
+        onError(trackedJob.error || 'Job failed');
+      } else if (trackedJob.status === 'cancelled' && onCancelled) {
+        callbacksFiredRef.current = { jobId: trackedJob.job_id, status: trackedJob.status };
+        onCancelled();
+      }
     }
-  }, [trackedJob, onComplete, onError, onCancelled]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackedJob]); // Intentionally exclude callbacks - they're refs and we track firing manually
 
   // Initial fetch when jobId changes (in case job started before WebSocket connected)
   const fetchJobStatus = useCallback(async () => {
