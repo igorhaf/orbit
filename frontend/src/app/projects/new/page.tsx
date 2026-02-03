@@ -615,42 +615,19 @@ export default function NewProjectPage() {
                 </p>
               </div>
 
-              {/* PROMPT #118 - Scanning overlay */}
-              {/* PROMPT #148 - Added skip/cancel options during scan */}
+              {/* PROMPT #118 - Scanning indicator (non-blocking background) */}
+              {/* PROMPT #150 - Scan runs in background, user can navigate freely */}
               {scanning && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 opacity-90">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <div className="flex items-center gap-3">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <div>
-                        <h4 className="font-medium text-blue-900">Analyzing codebase...</h4>
-                        <p className="text-sm text-blue-700 mt-1">
-                          Scanning files, detecting technologies, and extracting business rules.
+                        <h4 className="font-medium text-blue-900 text-sm">Analyzing codebase in background...</h4>
+                        <p className="text-xs text-blue-700 mt-0.5">
+                          Results will appear below when ready. Feel free to continue setting up.
                         </p>
                       </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          // Stop watching the job and clear scanning state
-                          if (memoryScanJobId) stopWatching(memoryScanJobId);
-                          setScanning(false);
-                          setMemoryScanJobId(null);
-                        }}
-                        className="text-blue-700 hover:text-blue-900"
-                      >
-                        Skip Scan
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => router.push('/projects')}
-                        className="text-gray-500 hover:text-gray-700"
-                      >
-                        Cancel
-                      </Button>
                     </div>
                   </div>
                 </div>
@@ -811,24 +788,24 @@ export default function NewProjectPage() {
               </div>
             </CardHeader>
             <CardContent>
-              {generatingContext ? (
-                <div className="flex flex-col items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                  <p className="text-gray-600">Generating project context...</p>
-                  <p className="text-sm text-gray-500 mt-1">This may take a moment</p>
-                  {/* PROMPT #144 - Navigation hint during generation */}
-                  <p className="text-xs text-blue-600 mt-4">
-                    You can click &quot;Skip to Project&quot; to continue. Context will be generated in background.
-                  </p>
+              {/* PROMPT #150 - Show both generating indicator and ChatInterface for non-blocking UX */}
+              {generatingContext && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                    <div className="flex-1">
+                      <p className="font-medium text-blue-900 text-sm">Generating project context...</p>
+                      <p className="text-xs text-blue-700 mt-0.5">Results will appear in the Review step</p>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <ChatInterface
-                  key={interviewId}  // PROMPT #148 - Force re-mount when interviewId changes to ensure fresh state
-                  interviewId={interviewId}
-                  onComplete={handleInterviewComplete}
-                  interviewMode="context"
-                />
               )}
+              <ChatInterface
+                key={interviewId}  // PROMPT #148 - Force re-mount when interviewId changes to ensure fresh state
+                interviewId={interviewId}
+                onComplete={handleInterviewComplete}
+                interviewMode="context"
+              />
             </CardContent>
           </Card>
         )}
