@@ -27,7 +27,7 @@ def seed_memory_model():
     """
     Add Memory AI model to the database for codebase analysis.
 
-    Uses Claude Haiku for fast and efficient code analysis.
+    PROMPT #161 - Uses Gemini Pro for deep code analysis with rich, descriptive output.
     """
     logger.info("🧠 Starting Memory model seed...")
 
@@ -43,21 +43,24 @@ def seed_memory_model():
         ).first()
 
         if not memory_model:
+            # PROMPT #161 - Using Gemini Pro for better code analysis
             memory_model = AIModel(
-                name="Claude Haiku (Memory Scan)",
-                provider="anthropic",
+                name="Gemini Pro (Memory Scan)",
+                provider="google",
                 api_key="configure-via-web-interface",  # CLAUDE.md rule: keys are set in /ai-models
                 config={
-                    "model_id": "claude-3-5-haiku-20241022",
-                    "max_tokens": 2000,
-                    "temperature": 0.3  # Lower temperature for more consistent analysis
+                    "model_id": "gemini-1.5-pro",
+                    "max_tokens": 8000,  # Enough for 30 files context
+                    "temperature": 0.7   # Richer, more descriptive output
                 },
                 usage_type=AIModelUsageType.MEMORY,
-                is_active=True
+                is_active=True,
+                rate_limit_requests=8,
+                rate_limit_window_seconds=60
             )
             db.add(memory_model)
             db.commit()
-            logger.info("✅ Created Claude Haiku (Memory Scan) for memory usage_type")
+            logger.info("✅ Created Gemini Pro (Memory Scan) for memory usage_type")
             logger.info("⚠️  Remember to configure the API key in /ai-models")
         else:
             logger.info(f"⏭️  Memory model already exists: {memory_model.name}")
