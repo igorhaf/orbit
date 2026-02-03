@@ -85,41 +85,6 @@ export default function NewProjectPage() {
     };
   }, [memoryScanJobId, contextJobId, stopWatching]);
 
-  // PROMPT #155 - Listen for incremental epic batch creation events
-  useEffect(() => {
-    const handleEpicsBatch = (event: CustomEvent) => {
-      const { projectId: eventProjectId, epics, batchNumber, totalBatches } = event.detail;
-
-      // Only update if this event is for the current project
-      if (!projectId || eventProjectId !== projectId) return;
-
-      console.log(`📦 Received epic batch ${batchNumber}/${totalBatches}: ${epics?.length || 0} epics`);
-
-      // Add new epics to suggestedEpics state incrementally
-      if (epics && Array.isArray(epics)) {
-        setSuggestedEpics(prevEpics => {
-          // Filter out any duplicates by ID
-          const existingIds = new Set(prevEpics.map(e => e.id));
-          const newEpics = epics.filter((e: any) => !existingIds.has(e.id));
-
-          if (newEpics.length === 0) return prevEpics;
-
-          // Add new epics with proper structure
-          return [...prevEpics, ...newEpics.map((epic: any, idx: number) => ({
-            id: epic.id,
-            title: epic.title || 'Untitled Epic',
-            description: epic.description || '',
-            priority: epic.priority || 'medium',
-            order: prevEpics.length + idx + 1
-          }))];
-        });
-      }
-    };
-
-    window.addEventListener('epicsBatchCreated', handleEpicsBatch as EventListener);
-    return () => window.removeEventListener('epicsBatchCreated', handleEpicsBatch as EventListener);
-  }, [projectId]);
-
   // Form data
   const [name, setName] = useState('');
   // PROMPT #111 - code_path obrigatório (pasta do código existente)
@@ -145,6 +110,39 @@ export default function NewProjectPage() {
     priority: string;
     order: number;
   }>>([]);
+
+  // PROMPT #155 - Listen for incremental epic batch creation events
+  useEffect(() => {
+    const handleEpicsBatch = (event: CustomEvent) => {
+      const { projectId: eventProjectId, epics, batchNumber, totalBatches } = event.detail;
+
+      // Only update if this event is for the current project
+      if (!projectId || eventProjectId !== projectId) return;
+
+      console.log(`📦 Received epic batch ${batchNumber}/${totalBatches}: ${epics?.length || 0} epics`);
+
+      // Add new epics to suggestedEpics state incrementally
+      if (epics && Array.isArray(epics)) {
+        setSuggestedEpics(prevEpics => {
+          const existingIds = new Set(prevEpics.map(e => e.id));
+          const newEpics = epics.filter((e: any) => !existingIds.has(e.id));
+
+          if (newEpics.length === 0) return prevEpics;
+
+          return [...prevEpics, ...newEpics.map((epic: any, idx: number) => ({
+            id: epic.id,
+            title: epic.title || 'Untitled Epic',
+            description: epic.description || '',
+            priority: epic.priority || 'medium',
+            order: prevEpics.length + idx + 1
+          }))];
+        });
+      }
+    };
+
+    window.addEventListener('epicsBatchCreated', handleEpicsBatch as EventListener);
+    return () => window.removeEventListener('epicsBatchCreated', handleEpicsBatch as EventListener);
+  }, [projectId]);
 
   // PROMPT #146 - Restore wizard state from localStorage on mount
   // PROMPT #151 - Also handle ?resume={projectId} query param from notification deep links
