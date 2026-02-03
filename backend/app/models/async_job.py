@@ -47,6 +47,9 @@ class JobType(str, enum.Enum):
     CONTEXT_GENERATION = "context_generation"      # Geração de contexto do projeto
     SUGGESTED_EPICS = "suggested_epics"            # Geração de épicos sugeridos
 
+    # PROMPT #153: Background card generation from memory scan
+    CARDS_FROM_MEMORY = "cards_from_memory"        # Geração de cards (épicos + regras) a partir do memory scan
+
 
 class AsyncJob(Base):
     """

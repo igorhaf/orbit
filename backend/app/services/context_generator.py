@@ -3745,3 +3745,329 @@ Retorne APENAS o JSON, sem explicações."""
                 "semantic_map": {},
                 "ai_model_used": None  # PROMPT #127
             }
+
+    # =========================================================================
+    # PROMPT #153 - Background Card Generation from Memory Scan
+    # =========================================================================
+
+    async def generate_cards_from_memory(
+        self,
+        project_id: UUID
+    ) -> Dict:
+        """
+        PROMPT #153 - Generate suggested epics and business rule cards from memory scan.
+
+        This method generates cards using ONLY the memory scan data (initial_memory_context),
+        without requiring a Context Interview to be completed. This allows cards to be
+        generated in background immediately after the memory scan finishes.
+
+        Two types of cards are generated:
+        1. **Business Rule Cards (closed)**: Rules verified in existing code
+        2. **Suggested Epics (drafts)**: New functionality to be developed
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Dict with generation results:
+            {
+                "success": True/False,
+                "business_rule_cards": [...],
+                "suggested_epics": [...],
+                "context_auto_generated": True/False
+            }
+        """
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            logger.error(f"❌ Project {project_id} not found for card generation")
+            return {"success": False, "error": "Project not found"}
+
+        if not project.initial_memory_context:
+            logger.warning(f"⚠️ Project {project_id} has no memory context for card generation")
+            return {"success": False, "error": "No memory context available"}
+
+        logger.info(f"🎯 Starting card generation from memory for project: {project.name}")
+
+        result = {
+            "success": True,
+            "business_rule_cards": [],
+            "suggested_epics": [],
+            "context_auto_generated": False
+        }
+
+        # Check if cards already exist for this project
+        existing_cards = self.db.query(Task).filter(
+            Task.project_id == project_id
+        ).count()
+
+        if existing_cards > 0:
+            logger.info(f"ℹ️ Project {project_id} already has {existing_cards} cards, skipping generation")
+            return {
+                "success": True,
+                "skipped": True,
+                "reason": f"Project already has {existing_cards} cards",
+                "business_rule_cards": [],
+                "suggested_epics": []
+            }
+
+        # Step 1: Generate auto-context from memory scan (if no context exists)
+        if not project.context_semantic:
+            try:
+                auto_context = await self._generate_auto_context_from_memory(project)
+                result["context_auto_generated"] = True
+                logger.info(f"✅ Auto-generated context for project {project.name}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to auto-generate context: {e}")
+                # Continue anyway - we can still generate cards
+
+        # Step 2: Generate business rule cards (closed)
+        try:
+            business_rule_cards = await self.generate_business_rule_cards(project_id)
+            result["business_rule_cards"] = business_rule_cards
+            logger.info(f"✅ Generated {len(business_rule_cards)} business rule cards")
+        except Exception as e:
+            logger.error(f"❌ Failed to generate business rule cards: {e}")
+
+        # Step 3: Generate suggested epics from memory context
+        try:
+            suggested_epics = await self._generate_suggested_epics_from_memory(project)
+            result["suggested_epics"] = suggested_epics
+            logger.info(f"✅ Generated {len(suggested_epics)} suggested epics")
+        except Exception as e:
+            logger.error(f"❌ Failed to generate suggested epics: {e}")
+
+        logger.info(f"🎉 Card generation complete for project {project.name}")
+        logger.info(f"   - Business Rules: {len(result['business_rule_cards'])}")
+        logger.info(f"   - Suggested Epics: {len(result['suggested_epics'])}")
+
+        return result
+
+    async def _generate_auto_context_from_memory(self, project: Project) -> Dict:
+        """
+        PROMPT #153 - Auto-generate project context from memory scan data.
+
+        Creates a basic context (semantic and human) from the memory scan results
+        without requiring an interview. This context is used for card generation.
+
+        Args:
+            project: Project instance with initial_memory_context
+
+        Returns:
+            Dict with context_semantic and context_human
+        """
+        memory_ctx = project.initial_memory_context
+        if not memory_ctx:
+            raise ValueError("No memory context available")
+
+        # Build a summary from memory scan
+        stack_info = memory_ctx.get("stack_info", {})
+        key_features = memory_ctx.get("key_features", [])
+        business_rules = memory_ctx.get("business_rules", [])
+        interview_context = memory_ctx.get("interview_context", "")
+        suggested_title = memory_ctx.get("suggested_title", project.name)
+
+        # Generate semantic context
+        semantic_parts = [
+            f"# Contexto do Projeto: {suggested_title}",
+            "",
+            "## Stack Tecnológica",
+        ]
+
+        if stack_info.get("detected_stack"):
+            semantic_parts.append(f"- **Stack**: {stack_info['detected_stack']}")
+        if stack_info.get("languages"):
+            langs = ", ".join(stack_info.get("languages", []))
+            semantic_parts.append(f"- **Linguagens**: {langs}")
+
+        if key_features:
+            semantic_parts.extend(["", "## Funcionalidades Principais"])
+            for i, feature in enumerate(key_features, 1):
+                semantic_parts.append(f"- F{i}: {feature}")
+
+        if business_rules:
+            semantic_parts.extend(["", "## Regras de Negócio Identificadas"])
+            for i, rule in enumerate(business_rules, 1):
+                semantic_parts.append(f"- RN{i}: {rule}")
+
+        if interview_context:
+            semantic_parts.extend(["", "## Análise do Codebase", interview_context])
+
+        context_semantic = "\n".join(semantic_parts)
+
+        # Generate human-readable context
+        human_parts = [
+            f"# {suggested_title}",
+            "",
+        ]
+
+        if interview_context:
+            human_parts.append(interview_context)
+            human_parts.append("")
+
+        if key_features:
+            human_parts.extend(["## Funcionalidades Principais", ""])
+            for feature in key_features:
+                human_parts.append(f"- {feature}")
+
+        context_human = "\n".join(human_parts)
+
+        # Update project with auto-generated context
+        project.context_semantic = context_semantic
+        project.context_human = context_human
+        project.description = context_human
+        self.db.commit()
+
+        return {
+            "context_semantic": context_semantic,
+            "context_human": context_human
+        }
+
+    async def _generate_suggested_epics_from_memory(self, project: Project) -> List[Dict]:
+        """
+        PROMPT #153 - Generate suggested epics from memory scan data.
+
+        Uses AI to analyze the memory scan results and suggest new epics
+        for functionality that doesn't exist yet in the codebase.
+
+        Args:
+            project: Project instance with initial_memory_context
+
+        Returns:
+            List of suggested epic dictionaries
+        """
+        memory_ctx = project.initial_memory_context
+        if not memory_ctx:
+            return []
+
+        existing_features = memory_ctx.get("key_features", [])
+        existing_rules = memory_ctx.get("business_rules", [])
+        interview_context = memory_ctx.get("interview_context", "")
+        stack_info = memory_ctx.get("stack_info", {})
+
+        # Build the prompt
+        system_prompt = """Você é um arquiteto de software especialista em decomposição de sistemas.
+
+Sua tarefa é analisar o contexto de um projeto existente e sugerir épicos (módulos macro)
+para NOVAS funcionalidades que podem ser desenvolvidas para MELHORAR o sistema.
+
+REGRAS CRÍTICAS:
+1. As funcionalidades listadas JÁ EXISTEM no código - NÃO sugira épicos para elas
+2. Sugira APENAS épicos para funcionalidades NOVAS que agregariam valor
+3. Foque em: integrações, automações, melhorias de UX, relatórios avançados, APIs
+4. Sugira entre 5 e 15 épicos, priorizados por valor de negócio
+
+FORMATO DE RESPOSTA (JSON):
+```json
+{
+    "epics": [
+        {
+            "title": "Título do Épico",
+            "description": "Descrição breve do módulo (1-2 frases)",
+            "priority": "high|medium|low",
+            "order": 1
+        }
+    ]
+}
+```
+
+IMPORTANTE:
+- Retorne APENAS o JSON, sem texto adicional
+- Prioridades: high (essencial), medium (importante), low (nice-to-have)
+- Ordene por prioridade e dependência lógica"""
+
+        # Build user prompt with context
+        user_parts = [
+            "## Análise do Projeto",
+            f"**Nome:** {project.name}",
+            ""
+        ]
+
+        if stack_info.get("detected_stack"):
+            user_parts.append(f"**Stack:** {stack_info['detected_stack']}")
+
+        if interview_context:
+            user_parts.extend(["", "## Descrição do Sistema", interview_context])
+
+        if existing_features:
+            user_parts.extend(["", "## Funcionalidades JÁ EXISTENTES (NÃO sugerir épicos para estas):"])
+            for f in existing_features:
+                user_parts.append(f"- ❌ {f}")
+
+        if existing_rules:
+            user_parts.extend(["", "## Regras de Negócio JÁ IMPLEMENTADAS:"])
+            for rule in existing_rules[:10]:
+                user_parts.append(f"- {rule[:100]}...")
+
+        user_parts.extend([
+            "",
+            "## Sua Tarefa",
+            "Sugira épicos para NOVAS funcionalidades que MELHORARIAM este sistema.",
+            "Lembre-se: as features listadas acima JÁ EXISTEM - foque em funcionalidades NOVAS."
+        ])
+
+        user_prompt = "\n".join(user_parts)
+
+        try:
+            response = await self.orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=3000
+            )
+
+            content = response.get("content", "")
+            result = _robust_json_parse(content, "suggested_epics_from_memory")
+
+            epics = result.get("epics", []) if result else []
+
+            # Create epic records
+            saved_epics = []
+            for i, epic_data in enumerate(epics):
+                title = epic_data.get("title", f"Épico {i+1}")
+                description = epic_data.get("description", "")
+                priority_str = epic_data.get("priority", "medium").lower()
+                order = epic_data.get("order", i + 1)
+
+                # Map priority string to enum
+                priority_map = {
+                    "critical": PriorityLevel.CRITICAL,
+                    "high": PriorityLevel.HIGH,
+                    "medium": PriorityLevel.MEDIUM,
+                    "low": PriorityLevel.LOW
+                }
+                priority = priority_map.get(priority_str, PriorityLevel.MEDIUM)
+
+                # Create task record
+                epic = Task(
+                    id=uuid4(),
+                    project_id=project.id,
+                    title=title,
+                    description=description,
+                    item_type=ItemType.EPIC,
+                    status=TaskStatus.TODO,
+                    priority=priority,
+                    order=order + 100,  # After business rule cards
+                    labels=["suggested"],  # Mark as suggested
+                    workflow_state="draft",  # Draft state - not active
+                    reporter="system",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                self.db.add(epic)
+
+                saved_epics.append({
+                    "id": str(epic.id),
+                    "title": title,
+                    "description": description,
+                    "priority": priority_str,
+                    "order": order
+                })
+
+            self.db.commit()
+            logger.info(f"✅ Created {len(saved_epics)} suggested epics for project {project.name}")
+
+            return saved_epics
+
+        except Exception as e:
+            logger.error(f"❌ Error generating suggested epics from memory: {e}")
+            return []

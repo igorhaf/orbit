@@ -464,6 +464,25 @@ async def _process_quick_create_scan(
         job_manager.complete_job(job_id, result)
         logger.info(f"✅ Quick-create scan completed for project {project_id}")
 
+        # PROMPT #153 - Trigger background card generation after memory scan
+        # This generates business rule cards and suggested epics in background
+        try:
+            logger.info(f"🚀 Starting background card generation for project {project_id}")
+            cards_job = job_manager.create_job(
+                job_type=JobType.CARDS_FROM_MEMORY,
+                input_data={
+                    "project_id": str(project_id)
+                },
+                project_id=project_id,
+                deep_link=f"/projects/{project_id}/backlog",
+                notification_title=f"Gerando cards para '{project.name if project else 'projeto'}'..."
+            )
+            # Launch card generation in background
+            asyncio.create_task(_process_cards_from_memory_async(cards_job.id, project_id))
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to start card generation: {e}")
+            # Don't fail the main job if card generation fails to start
+
     except Exception as e:
         logger.error(f"❌ Quick-create scan failed for project {project_id}: {str(e)}", exc_info=True)
 
@@ -473,6 +492,79 @@ async def _process_quick_create_scan(
             if job:
                 error_msg = str(e)[:80]
                 job.notification_title = f"❌ Erro na análise: {error_msg}"
+                db.commit()
+        except Exception:
+            pass
+
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
+async def _process_cards_from_memory_async(
+    job_id: UUID,
+    project_id: UUID
+):
+    """
+    Background task to generate cards from memory scan.
+
+    PROMPT #153 - Background Card Generation
+
+    This task runs after the memory scan completes and generates:
+    1. Business rule cards (closed) - rules verified in existing code
+    2. Suggested epics (drafts) - new functionality to develop
+
+    These cards are generated regardless of whether the user completes
+    the Context Interview, allowing work to begin immediately.
+    """
+    from app.database import SessionLocal
+    from app.services.context_generator import ContextGeneratorService
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Card generation started for project {project_id}")
+
+        job_manager.update_progress(job_id, 10.0, "Preparando geração de cards...")
+
+        context_service = ContextGeneratorService(db)
+
+        job_manager.update_progress(job_id, 30.0, "Gerando cards de regras de negócio...")
+
+        result = await context_service.generate_cards_from_memory(project_id)
+
+        job_manager.update_progress(job_id, 90.0, "Finalizando...")
+
+        # Update notification title with results
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            business_count = len(result.get("business_rule_cards", []))
+            epic_count = len(result.get("suggested_epics", []))
+
+            if result.get("skipped"):
+                job.notification_title = f"ℹ️ Cards já existem para este projeto"
+            elif business_count > 0 or epic_count > 0:
+                job.notification_title = f"✅ {business_count} regras + {epic_count} épicos gerados"
+            else:
+                job.notification_title = f"ℹ️ Nenhum card gerado (sem regras/épicos detectados)"
+
+            db.commit()
+
+        job_manager.complete_job(job_id, result)
+        logger.info(f"✅ Card generation completed for project {project_id}")
+
+    except Exception as e:
+        logger.error(f"❌ Card generation failed for project {project_id}: {str(e)}", exc_info=True)
+
+        # Update notification title for failure
+        try:
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                error_msg = str(e)[:80]
+                job.notification_title = f"❌ Erro na geração de cards: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -1267,6 +1359,90 @@ async def toggle_spec_active(
         "id": str(spec.id),
         "title": spec.title,
         "is_active": spec.is_active
+    }
+
+
+# ============================================================================
+# CARD GENERATION ENDPOINTS - PROMPT #153
+# ============================================================================
+
+@router.post("/{project_id}/generate-cards")
+async def generate_cards_from_memory(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    Generate cards (epics and business rules) from memory scan.
+
+    PROMPT #153 - Manual trigger for card generation
+
+    This endpoint manually triggers the generation of:
+    1. Business rule cards (closed) - rules verified in existing code
+    2. Suggested epics (drafts) - new functionality to develop
+
+    This is useful when:
+    - User abandoned the wizard before cards were generated
+    - Cards need to be regenerated after a new memory scan
+    - Testing/debugging card generation
+
+    **POST** `/api/v1/projects/{project_id}/generate-cards`
+
+    **Response:**
+    ```json
+    {
+        "job_id": "uuid",
+        "status": "pending",
+        "message": "Card generation started in background"
+    }
+    ```
+
+    **After completion, job result contains:**
+    ```json
+    {
+        "success": true,
+        "business_rule_cards": [...],
+        "suggested_epics": [...]
+    }
+    ```
+
+    **Errors:**
+    - 400: If project has no memory context
+    - 404: If project not found
+    """
+    # Verify project exists
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Check if project has memory context
+    if not project.initial_memory_context:
+        raise HTTPException(
+            status_code=400,
+            detail="Project has no memory context. Run a memory scan first."
+        )
+
+    # Create background job
+    job_manager = JobManager(db)
+
+    job = job_manager.create_job(
+        job_type=JobType.CARDS_FROM_MEMORY,
+        input_data={
+            "project_id": str(project_id),
+            "manual_trigger": True
+        },
+        project_id=project_id,
+        deep_link=f"/projects/{project_id}/backlog",
+        notification_title=f"Gerando cards para '{project.name}'..."
+    )
+
+    # Launch card generation in background
+    asyncio.create_task(_process_cards_from_memory_async(job.id, project_id))
+
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Card generation started in background. A notification will appear when complete.",
+        "deep_link": f"/projects/{project_id}/backlog"
     }
 
 
