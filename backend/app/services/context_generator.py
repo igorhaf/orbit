@@ -176,7 +176,52 @@ def _robust_json_parse(response_text: str, context: str = "unknown") -> Dict:
         except json.JSONDecodeError:
             pass
 
-    # Strategy 7: Try to recover partial JSON with default values
+    # Strategy 7: PROMPT #153 - Recover truncated arrays (especially "epics": [...])
+    # When AI response has truncated array, try to salvage complete elements
+    try:
+        # Strip markdown first
+        clean_text = _strip_markdown_json(response_text)
+
+        # Look for "epics": [ pattern
+        epics_match = re.search(r'"epics"\s*:\s*\[', clean_text)
+        if epics_match:
+            # Extract array content starting from [
+            array_start = epics_match.end() - 1  # Position of [
+            remaining = clean_text[array_start:]
+
+            # Find complete JSON objects in the array
+            complete_epics = []
+            current_pos = 1  # Skip the opening [
+            brace_count = 0
+            obj_start = -1
+
+            for i, char in enumerate(remaining[1:], start=1):
+                if char == '{' and brace_count == 0:
+                    obj_start = i
+                    brace_count = 1
+                elif char == '{':
+                    brace_count += 1
+                elif char == '}':
+                    brace_count -= 1
+                    if brace_count == 0 and obj_start != -1:
+                        # Complete object found
+                        obj_str = remaining[obj_start:i+1]
+                        try:
+                            obj = json.loads(obj_str)
+                            complete_epics.append(obj)
+                            logger.debug(f"[{context}] Extracted complete epic: {obj.get('title', 'N/A')}")
+                        except json.JSONDecodeError:
+                            pass
+                        obj_start = -1
+
+            if complete_epics:
+                logger.info(f"[{context}] Recovered {len(complete_epics)} complete epics from truncated response")
+                return {"epics": complete_epics}
+
+    except Exception as e:
+        logger.debug(f"[{context}] Epic array recovery failed: {e}")
+
+    # Strategy 8: Try to recover partial JSON with default values
     try:
         # Try to extract at least context_semantic
         semantic_match = re.search(r'"context_semantic"\s*:\s*"([^"]*(?:\\"[^"]*)*)"', response_text)
