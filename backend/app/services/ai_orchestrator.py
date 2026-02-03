@@ -302,7 +302,7 @@ class AIOrchestrator:
         fallback_model = self.db.query(AIModel).filter(
             AIModel.usage_type == AIModelUsageType.GENERAL,
             AIModel.is_active == True
-        ).first()
+        ).order_by(AIModel.updated_at.desc()).first()
 
         if fallback_model and fallback_model.provider.lower() in self.clients:
             provider = fallback_model.provider.lower()
