@@ -528,15 +528,20 @@ async def _process_cards_from_memory_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Card generation started for project {project_id}")
 
-        job_manager.update_progress(job_id, 10.0, "Preparando geração de cards...")
+        job_manager.update_progress(job_id, 5.0, "Preparando geração de cards...")
 
         context_service = ContextGeneratorService(db)
 
-        job_manager.update_progress(job_id, 30.0, "Gerando cards de regras de negócio...")
+        job_manager.update_progress(job_id, 10.0, "Gerando cards de regras de negócio...")
 
-        result = await context_service.generate_cards_from_memory(project_id)
+        # PROMPT #155 - Pass job_manager and job_id for incremental epic generation
+        result = await context_service.generate_cards_from_memory(
+            project_id=project_id,
+            job_manager=job_manager,
+            job_id=job_id
+        )
 
-        job_manager.update_progress(job_id, 90.0, "Finalizando...")
+        job_manager.update_progress(job_id, 95.0, "Finalizando...")
 
         # Update notification title with results
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()

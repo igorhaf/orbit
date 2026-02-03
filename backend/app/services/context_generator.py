@@ -13,7 +13,7 @@ The context is the foundational, immutable description of the project
 that guides all subsequent interviews and card generation.
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.orm import Session
@@ -3797,10 +3797,13 @@ Retorne APENAS o JSON, sem explicações."""
 
     async def generate_cards_from_memory(
         self,
-        project_id: UUID
+        project_id: UUID,
+        job_manager=None,
+        job_id: Optional[UUID] = None
     ) -> Dict:
         """
         PROMPT #153 - Generate suggested epics and business rule cards from memory scan.
+        PROMPT #155 - Now supports incremental epic generation with progress updates.
 
         This method generates cards using ONLY the memory scan data (initial_memory_context),
         without requiring a Context Interview to be completed. This allows cards to be
@@ -3812,6 +3815,8 @@ Retorne APENAS o JSON, sem explicações."""
 
         Args:
             project_id: Project ID
+            job_manager: Optional JobManager for progress updates (PROMPT #155)
+            job_id: Optional job UUID for progress updates (PROMPT #155)
 
         Returns:
             Dict with generation results:
@@ -3874,10 +3879,25 @@ Retorne APENAS o JSON, sem explicações."""
             logger.error(f"❌ Failed to generate business rule cards: {e}")
 
         # Step 3: Generate suggested epics from memory context
+        # PROMPT #155 - Use incremental generation if job_manager is provided
         try:
-            suggested_epics = await self._generate_suggested_epics_from_memory(project)
-            result["suggested_epics"] = suggested_epics
-            logger.info(f"✅ Generated {len(suggested_epics)} suggested epics")
+            if job_manager and job_id:
+                # Incremental generation with WebSocket updates
+                epic_result = await self.generate_epics_incrementally(
+                    project=project,
+                    job_manager=job_manager,
+                    job_id=job_id,
+                    max_batches=4,
+                    epics_per_batch=5
+                )
+                result["suggested_epics"] = epic_result.get("epics", [])
+                result["batches_processed"] = epic_result.get("batches_processed", 0)
+                logger.info(f"✅ Generated {len(result['suggested_epics'])} suggested epics (incremental)")
+            else:
+                # Legacy single-call generation
+                suggested_epics = await self._generate_suggested_epics_from_memory(project)
+                result["suggested_epics"] = suggested_epics
+                logger.info(f"✅ Generated {len(suggested_epics)} suggested epics")
         except Exception as e:
             logger.error(f"❌ Failed to generate suggested epics: {e}")
 
@@ -4116,3 +4136,292 @@ IMPORTANTE:
         except Exception as e:
             logger.error(f"❌ Error generating suggested epics from memory: {e}")
             return []
+
+    # =========================================================================
+    # PROMPT #155 - INCREMENTAL EPIC GENERATION
+    # =========================================================================
+
+    async def generate_epics_incrementally(
+        self,
+        project: Project,
+        job_manager,
+        job_id: UUID,
+        max_batches: int = 4,
+        epics_per_batch: int = 5
+    ) -> Dict[str, Any]:
+        """
+        PROMPT #155 - Geração incremental de épicos.
+
+        Gera épicos em lotes menores, salvando cada lote no banco
+        e notificando o frontend via WebSocket após cada batch.
+
+        Args:
+            project: Project instance
+            job_manager: JobManager instance for progress updates
+            job_id: UUID of the current job
+            max_batches: Maximum number of batches to generate (default: 4)
+            epics_per_batch: Number of epics per batch (default: 5)
+
+        Returns:
+            Dict with success status, total_epics, batches_processed, and epics list
+        """
+        all_epics = []
+        existing_titles = set()  # Evita duplicatas entre batches
+        batches_processed = 0
+
+        # Get memory context for prompt building
+        memory_ctx = project.initial_memory_context or {}
+        existing_features = memory_ctx.get("key_features", [])
+        interview_context = memory_ctx.get("interview_context", "")
+        stack_info = memory_ctx.get("stack_info", {})
+
+        for batch_num in range(1, max_batches + 1):
+            batches_processed = batch_num
+
+            # Calculate and update progress
+            progress = (batch_num / max_batches) * 90  # Max 90%, save 10% for finalization
+            job_manager.update_progress(
+                job_id,
+                progress,
+                f"Gerando épicos (lote {batch_num}/{max_batches})..."
+            )
+
+            # Generate batch of epics
+            batch_epics = await self._generate_epic_batch(
+                project=project,
+                batch_number=batch_num,
+                epics_per_batch=epics_per_batch,
+                existing_titles=existing_titles,
+                existing_features=existing_features,
+                interview_context=interview_context,
+                stack_info=stack_info
+            )
+
+            if not batch_epics:
+                # AI indicated no more relevant epics
+                logger.info(f"📋 Batch {batch_num}: No more epics to generate")
+                break
+
+            # Save epics to database immediately
+            saved_epics = self._save_epic_batch(project, batch_epics)
+            all_epics.extend(saved_epics)
+
+            # Update set of existing titles to avoid duplicates
+            for epic in batch_epics:
+                existing_titles.add(epic.get("title", "").lower())
+
+            # Broadcast to frontend (epics created in this batch)
+            await self._broadcast_epic_batch(project.id, saved_epics, batch_num, max_batches)
+
+            logger.info(f"✅ Batch {batch_num}: Generated {len(saved_epics)} epics")
+
+        return {
+            "success": True,
+            "total_epics": len(all_epics),
+            "batches_processed": batches_processed,
+            "epics": all_epics
+        }
+
+    async def _generate_epic_batch(
+        self,
+        project: Project,
+        batch_number: int,
+        epics_per_batch: int,
+        existing_titles: set,
+        existing_features: List[str],
+        interview_context: str,
+        stack_info: Dict
+    ) -> List[Dict]:
+        """
+        PROMPT #155 - Generate a batch of epics, excluding already generated titles.
+
+        Args:
+            project: Project instance
+            batch_number: Current batch number (1-based)
+            epics_per_batch: Number of epics to generate
+            existing_titles: Set of lowercase titles already generated
+            existing_features: List of features that already exist in code
+            interview_context: AI analysis of the codebase
+            stack_info: Stack detection info
+
+        Returns:
+            List of epic dictionaries or empty list if no more epics
+        """
+        # Build exclusion list from already generated epics
+        exclude_list = "\n".join([f"- {t}" for t in existing_titles]) if existing_titles else "Nenhum ainda"
+
+        # Build exclusion list from existing features (from memory scan)
+        features_list = "\n".join([f"- ❌ {f}" for f in existing_features]) if existing_features else "Nenhuma"
+
+        system_prompt = f"""Você é um Product Owner especialista em decomposição de software.
+Gere EXATAMENTE {epics_per_batch} épicos de software para o projeto.
+
+## REGRAS CRÍTICAS:
+
+1. Gere APENAS {epics_per_batch} épicos nesta resposta (nem mais, nem menos)
+2. NÃO repita épicos já gerados em batches anteriores (lista abaixo)
+3. NÃO sugira épicos para funcionalidades que JÁ EXISTEM no código
+4. Se não houver mais {epics_per_batch} épicos RELEVANTES a sugerir, retorne lista vazia
+5. Responda APENAS com JSON válido, sem texto adicional
+
+## ÉPICOS JÁ GERADOS (NÃO REPETIR):
+{exclude_list}
+
+## FUNCIONALIDADES JÁ EXISTENTES NO CÓDIGO (NÃO CRIAR ÉPICOS PARA ESTAS):
+{features_list}
+
+## FORMATO DE RESPOSTA:
+```json
+{{
+    "epics": [
+        {{
+            "title": "Título claro e conciso",
+            "description": "Descrição breve do módulo (1-2 frases)",
+            "priority": "high|medium|low"
+        }}
+    ],
+    "has_more": true
+}}
+```
+
+Se não houver mais épicos relevantes, retorne:
+```json
+{{"epics": [], "has_more": false}}
+```
+
+IMPORTANTE:
+- Foque em: integrações, automações, melhorias de UX, relatórios, APIs, segurança
+- Prioridades: high (essencial), medium (importante), low (nice-to-have)
+- Seja específico e prático"""
+
+        # Build user prompt
+        user_parts = [f"## Projeto: {project.name}"]
+
+        if stack_info.get("detected_stack"):
+            user_parts.append(f"**Stack:** {stack_info['detected_stack']}")
+
+        if interview_context:
+            user_parts.extend(["", "## Descrição do Sistema:", interview_context[:2000]])  # Limit context size
+
+        user_parts.extend([
+            "",
+            f"## Tarefa",
+            f"Gere o lote {batch_number} de {epics_per_batch} épicos para NOVAS funcionalidades.",
+            "Lembre-se: não repita épicos já gerados e não sugira funcionalidades existentes."
+        ])
+
+        user_prompt = "\n".join(user_parts)
+
+        try:
+            response = await self.orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=2000  # Smaller since only 5 epics
+            )
+
+            content = response.get("content", "")
+            result = _robust_json_parse(content, f"epic_batch_{batch_number}")
+
+            epics = result.get("epics", []) if result else []
+
+            # Check if AI indicated no more epics
+            has_more = result.get("has_more", True) if result else True
+            if not has_more and not epics:
+                return []
+
+            return epics
+
+        except Exception as e:
+            logger.error(f"❌ Error generating epic batch {batch_number}: {e}")
+            return []
+
+    def _save_epic_batch(self, project: Project, epics: List[Dict]) -> List[Dict]:
+        """
+        PROMPT #155 - Save a batch of epics to the database as drafts.
+
+        Args:
+            project: Project instance
+            epics: List of epic dictionaries from AI
+
+        Returns:
+            List of saved epic dictionaries with IDs
+        """
+        saved = []
+        base_order = 100  # Start after business rule cards
+
+        for i, epic_data in enumerate(epics):
+            title = epic_data.get("title", f"Untitled Epic")
+            description = epic_data.get("description", "")
+            priority_str = epic_data.get("priority", "medium").lower()
+
+            # Map priority string to enum
+            priority_map = {
+                "critical": PriorityLevel.CRITICAL,
+                "high": PriorityLevel.HIGH,
+                "medium": PriorityLevel.MEDIUM,
+                "low": PriorityLevel.LOW
+            }
+            priority = priority_map.get(priority_str, PriorityLevel.MEDIUM)
+
+            task = Task(
+                id=uuid4(),
+                project_id=project.id,
+                title=title,
+                description=description,
+                item_type=ItemType.EPIC,
+                status=TaskStatus.TODO,
+                priority=priority,
+                order=base_order + i,
+                labels=["suggested"],
+                workflow_state="draft",
+                reporter="system",
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            self.db.add(task)
+
+            saved.append({
+                "id": str(task.id),
+                "title": task.title,
+                "description": task.description,
+                "priority": priority_str,
+                "item_type": "epic",
+                "workflow_state": "draft",
+                "labels": ["suggested"]
+            })
+
+        self.db.commit()
+        return saved
+
+    async def _broadcast_epic_batch(
+        self,
+        project_id: UUID,
+        epics: List[Dict],
+        batch_num: int,
+        total_batches: int
+    ):
+        """
+        PROMPT #155 - Broadcast newly created epics to frontend via WebSocket.
+
+        Args:
+            project_id: UUID of the project
+            epics: List of saved epic dictionaries
+            batch_num: Current batch number
+            total_batches: Total number of batches
+        """
+        try:
+            from app.api.websocket import broadcast_job_event
+
+            await broadcast_job_event("epics_batch_created", {
+                "project_id": str(project_id),
+                "batch_number": batch_num,
+                "total_batches": total_batches,
+                "epics_count": len(epics),
+                "epics": epics
+            })
+
+            logger.debug(f"📡 Broadcast epic batch {batch_num}: {len(epics)} epics")
+
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to broadcast epic batch: {e}")

@@ -110,6 +110,46 @@ export default function ProjectDetailsPage() {
     loadProjectData();
   }, [loadProjectData]);
 
+  // PROMPT #155 - Listen for incremental epic batch creation events
+  useEffect(() => {
+    const handleEpicsBatch = (event: CustomEvent) => {
+      const { projectId: eventProjectId, epics, batchNumber, totalBatches } = event.detail;
+
+      // Only update if this event is for the current project
+      if (eventProjectId !== projectId) return;
+
+      console.log(`📦 Received epic batch ${batchNumber}/${totalBatches}: ${epics?.length || 0} epics`);
+
+      // Add new epics to tasks state incrementally
+      if (epics && Array.isArray(epics)) {
+        setTasks(prevTasks => {
+          // Filter out any duplicates by ID
+          const existingIds = new Set(prevTasks.map(t => t.id));
+          const newEpics = epics.filter((e: any) => !existingIds.has(e.id));
+
+          if (newEpics.length === 0) return prevTasks;
+
+          // Add new epics with proper structure
+          const formattedEpics = newEpics.map((epic: any) => ({
+            ...epic,
+            item_type: epic.item_type || 'epic',
+            workflow_state: epic.workflow_state || 'draft',
+            labels: epic.labels || ['suggested'],
+            status: epic.status || 'todo'
+          }));
+
+          return [...prevTasks, ...formattedEpics];
+        });
+
+        // Also trigger backlog refresh for any UI that needs it
+        setBacklogRefreshKey(prev => prev + 1);
+      }
+    };
+
+    window.addEventListener('epicsBatchCreated', handleEpicsBatch as EventListener);
+    return () => window.removeEventListener('epicsBatchCreated', handleEpicsBatch as EventListener);
+  }, [projectId]);
+
   const handleTasksUpdate = () => {
     loadProjectData();
     // PROMPT #96 - Trigger backlog refresh to update selected item

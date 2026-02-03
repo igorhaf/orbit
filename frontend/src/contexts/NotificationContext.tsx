@@ -257,6 +257,22 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   const handleWebSocketEvent = useCallback((message: any) => {
     const { event, data } = message;
 
+    // PROMPT #155 - Handle incremental epic generation events
+    if (event === 'epics_batch_created') {
+      // Dispatch custom event for pages to listen (like Backlog page)
+      window.dispatchEvent(new CustomEvent('epicsBatchCreated', {
+        detail: {
+          projectId: data.project_id,
+          batchNumber: data.batch_number,
+          totalBatches: data.total_batches,
+          epicsCount: data.epics_count,
+          epics: data.epics
+        }
+      }));
+      console.log(`📦 Epic batch ${data.batch_number}/${data.total_batches}: ${data.epics_count} epics`);
+      return;
+    }
+
     if (!data?.job_id) {
       // Handle non-job events (pong, etc.)
       if (event === 'pong') return;
