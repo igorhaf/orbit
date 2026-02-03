@@ -191,6 +191,38 @@ export function useJobPolling(
     }
   }, [jobId, enabled, trackedJob, fetchJobStatus]);
 
+  // PROMPT #156 - Polling fallback: if WebSocket doesn't deliver
+  // job_completed within 5s, poll the API directly to avoid stuck states.
+  useEffect(() => {
+    if (!jobId || !enabled || !isPolling) return;
+
+    const interval = setInterval(async () => {
+      try {
+        const response = await jobsApi.get(jobId);
+        const data = response.data || response;
+
+        if (data.status === 'completed') {
+          setIsPolling(false);
+          setJob(data);
+          onComplete?.(data.result);
+        } else if (data.status === 'failed') {
+          setIsPolling(false);
+          setJob(data);
+          setError(data.error);
+          onError?.(data.error);
+        } else if (data.status === 'cancelled') {
+          setIsPolling(false);
+          setJob(data);
+          onCancelled?.();
+        }
+      } catch {
+        // Silent — WebSocket may still deliver
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [jobId, enabled, isPolling, onComplete, onError, onCancelled]);
+
   return {
     job,
     isPolling,

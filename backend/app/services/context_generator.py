@@ -3845,20 +3845,18 @@ Retorne APENAS o JSON, sem explicações."""
             "context_auto_generated": False
         }
 
-        # Check if cards already exist for this project
-        existing_cards = self.db.query(Task).filter(
-            Task.project_id == project_id
+        # PROMPT #156 - Check only for suggested epics, not all cards.
+        # Business rule cards are generated first and should not block epic generation.
+        existing_suggested_epics = self.db.query(Task).filter(
+            Task.project_id == project_id,
+            Task.labels.contains(["suggested"]),
+            Task.item_type == ItemType.EPIC
         ).count()
 
-        if existing_cards > 0:
-            logger.info(f"ℹ️ Project {project_id} already has {existing_cards} cards, skipping generation")
-            return {
-                "success": True,
-                "skipped": True,
-                "reason": f"Project already has {existing_cards} cards",
-                "business_rule_cards": [],
-                "suggested_epics": []
-            }
+        if existing_suggested_epics > 0:
+            logger.info(f"ℹ️ Project {project_id} already has {existing_suggested_epics} suggested epics, skipping epic generation")
+            # Still allow business rule cards to be regenerated if missing
+            result["skipped_epics"] = True
 
         # Step 1: Generate auto-context from memory scan (if no context exists)
         if not project.context_semantic:
@@ -3879,27 +3877,31 @@ Retorne APENAS o JSON, sem explicações."""
             logger.error(f"❌ Failed to generate business rule cards: {e}")
 
         # Step 3: Generate suggested epics from memory context
+        # PROMPT #156 - Skip only if suggested epics already exist
         # PROMPT #155 - Use incremental generation if job_manager is provided
-        try:
-            if job_manager and job_id:
-                # Incremental generation with WebSocket updates
-                epic_result = await self.generate_epics_incrementally(
-                    project=project,
-                    job_manager=job_manager,
-                    job_id=job_id,
-                    max_batches=4,
-                    epics_per_batch=5
-                )
-                result["suggested_epics"] = epic_result.get("epics", [])
-                result["batches_processed"] = epic_result.get("batches_processed", 0)
-                logger.info(f"✅ Generated {len(result['suggested_epics'])} suggested epics (incremental)")
-            else:
-                # Legacy single-call generation
-                suggested_epics = await self._generate_suggested_epics_from_memory(project)
-                result["suggested_epics"] = suggested_epics
-                logger.info(f"✅ Generated {len(suggested_epics)} suggested epics")
-        except Exception as e:
-            logger.error(f"❌ Failed to generate suggested epics: {e}")
+        if result.get("skipped_epics"):
+            logger.info("⏭️ Skipping epic generation - suggested epics already exist")
+        else:
+            try:
+                if job_manager and job_id:
+                    # Incremental generation with WebSocket updates
+                    epic_result = await self.generate_epics_incrementally(
+                        project=project,
+                        job_manager=job_manager,
+                        job_id=job_id,
+                        max_batches=4,
+                        epics_per_batch=5
+                    )
+                    result["suggested_epics"] = epic_result.get("epics", [])
+                    result["batches_processed"] = epic_result.get("batches_processed", 0)
+                    logger.info(f"✅ Generated {len(result['suggested_epics'])} suggested epics (incremental)")
+                else:
+                    # Legacy single-call generation
+                    suggested_epics = await self._generate_suggested_epics_from_memory(project)
+                    result["suggested_epics"] = suggested_epics
+                    logger.info(f"✅ Generated {len(suggested_epics)} suggested epics")
+            except Exception as e:
+                logger.error(f"❌ Failed to generate suggested epics: {e}")
 
         logger.info(f"🎉 Card generation complete for project {project.name}")
         logger.info(f"   - Business Rules: {len(result['business_rule_cards'])}")
