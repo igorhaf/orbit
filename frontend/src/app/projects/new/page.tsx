@@ -616,9 +616,9 @@ export default function NewProjectPage() {
               </div>
 
               {/* PROMPT #118 - Scanning indicator (non-blocking background) */}
-              {/* PROMPT #150 - Scan runs in background, user can navigate freely */}
+              {/* PROMPT #150 - Scan runs in background, user can navigate freely + skip/cancel buttons */}
               {scanning && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4 opacity-90">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -628,6 +628,28 @@ export default function NewProjectPage() {
                           Results will appear below when ready. Feel free to continue setting up.
                         </p>
                       </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (memoryScanJobId) stopWatching(memoryScanJobId);
+                          setScanning(false);
+                          setMemoryScanJobId(null);
+                        }}
+                        className="text-blue-700 hover:text-blue-900"
+                      >
+                        Skip Scan
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => router.push('/projects')}
+                        className="text-gray-500 hover:text-gray-700"
+                      >
+                        Cancel
+                      </Button>
                     </div>
                   </div>
                 </div>
