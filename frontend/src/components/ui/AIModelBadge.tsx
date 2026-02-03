@@ -1,6 +1,7 @@
 /**
  * AIModelBadge Component
  * PROMPT #127 - Displays AI model icon with tooltip showing details
+ * PROMPT #150 - Tooltip positioned above icon with smart positioning to avoid cutoff
  *
  * Shows an icon representing the AI type, and on hover displays
  * a tooltip with detailed information about the model.
@@ -8,7 +9,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 
 interface Props {
   model: string;
@@ -79,6 +80,8 @@ const ICON_DESCRIPTIONS: Record<string, string> = {
   '🔮': 'Predição / Visão de Futuro',
 };
 
+const TOOLTIP_WIDTH = 256; // 16rem = 256px
+
 export function AIModelBadge({
   model,
   provider,
@@ -90,6 +93,8 @@ export function AIModelBadge({
   className = '',
 }: Props) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0, arrowLeft: '50%' });
+  const iconRef = useRef<HTMLSpanElement>(null);
 
   // Get friendly model name
   const displayName = MODEL_NAMES[model] || model;
@@ -121,9 +126,46 @@ export function AIModelBadge({
     return `$${cost.toFixed(3)}`;
   };
 
+  // Calculate tooltip position when showing
+  useEffect(() => {
+    if (showTooltip && iconRef.current) {
+      const rect = iconRef.current.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const padding = 8; // Minimum padding from viewport edge
+
+      // Calculate ideal center position
+      let left = rect.left + rect.width / 2 - TOOLTIP_WIDTH / 2;
+      let arrowLeft = '50%';
+
+      // Adjust if tooltip would go off-screen to the right
+      if (left + TOOLTIP_WIDTH + padding > viewportWidth) {
+        const overflow = (left + TOOLTIP_WIDTH + padding) - viewportWidth;
+        left = left - overflow;
+        // Adjust arrow position to point to icon
+        const arrowOffset = TOOLTIP_WIDTH / 2 + overflow;
+        arrowLeft = `${arrowOffset}px`;
+      }
+
+      // Adjust if tooltip would go off-screen to the left
+      if (left < padding) {
+        const offset = padding - left;
+        left = padding;
+        // Adjust arrow position to point to icon
+        const arrowOffset = TOOLTIP_WIDTH / 2 - offset;
+        arrowLeft = `${arrowOffset}px`;
+      }
+
+      // Position above the icon with some margin
+      const top = rect.top - 8; // 8px gap above icon
+
+      setTooltipPosition({ top, left, arrowLeft });
+    }
+  }, [showTooltip]);
+
   return (
     <div className={`relative inline-block ${className}`}>
       <span
+        ref={iconRef}
         className="cursor-help text-base hover:scale-110 transition-transform inline-block"
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
@@ -133,11 +175,24 @@ export function AIModelBadge({
         {cached && <span className="ml-0.5 text-[8px] text-green-500 align-top">●</span>}
       </span>
 
-      {/* Tooltip */}
+      {/* Tooltip - PROMPT #150: positioned above icon with smart positioning to avoid cutoff */}
       {showTooltip && (
-        <div className="absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl">
-          {/* Arrow */}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900"></div>
+        <div
+          className="fixed z-[9999] w-64 p-3 bg-gray-900 text-white text-xs rounded-lg shadow-xl pointer-events-none"
+          style={{
+            top: tooltipPosition.top,
+            left: tooltipPosition.left,
+            transform: 'translateY(-100%)',
+          }}
+        >
+          {/* Arrow pointing down - position adjusted based on tooltip shift */}
+          <div
+            className="absolute top-full w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[6px] border-t-gray-900"
+            style={{
+              left: tooltipPosition.arrowLeft,
+              transform: 'translateX(-50%)',
+            }}
+          />
 
           <div className="space-y-1.5">
             {/* Icon Type */}
