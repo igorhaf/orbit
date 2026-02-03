@@ -647,6 +647,9 @@ class AIOrchestrator:
         start_time = time.time()
         execution_log = None
 
+        # PROMPT #159 - Store model_id for provider backoff extraction
+        self._current_model_id = model_config.get("db_model_id")
+
         try:
             if provider == "anthropic":
                 result = await self._execute_anthropic(
@@ -1004,6 +1007,16 @@ class AIOrchestrator:
         # Check for API error in response body (Gemini can return errors with 200 status)
         if "error" in data:
             error_msg = data.get("error", {}).get("message", str(data["error"]))
+            # PROMPT #159 - Extract retry time and set provider backoff
+            # Error format: "...Please retry in 29.438272654s."
+            if "retry in" in error_msg.lower():
+                import re
+                match = re.search(r"retry in (\d+\.?\d*)s", error_msg.lower())
+                if match:
+                    retry_seconds = float(match.group(1))
+                    # Store model_id in instance for backoff (set by execute())
+                    if hasattr(self, '_current_model_id') and self._current_model_id and self.rate_limiter:
+                        self.rate_limiter.set_provider_backoff(self._current_model_id, retry_seconds)
             raise Exception(f"Gemini API Error: {error_msg}")
 
         # Check HTTP status

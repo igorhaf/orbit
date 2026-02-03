@@ -73,6 +73,14 @@ class RateLimiterService:
             return (True, 0.0)
 
         try:
+            # PROMPT #159 - Check provider backoff first
+            # If provider returned "retry in Xs", respect that regardless of local count
+            backoff_remaining = self.get_provider_backoff(model_id)
+            if backoff_remaining > 0:
+                logger.info(
+                    f"⏸️ Provider backoff active for {model_id}: wait {backoff_remaining:.1f}s"
+                )
+                return (False, backoff_remaining)
             now = time.time()
             window_start = now - window_seconds
             key = self._get_key(model_id)
@@ -210,6 +218,53 @@ class RateLimiterService:
                 "configured": True,
                 "error": str(e)
             }
+
+    def set_provider_backoff(self, model_id: str, backoff_seconds: float) -> bool:
+        """
+        Set a provider-mandated backoff period.
+
+        When a provider returns "retry in Xs" (e.g., quota exceeded),
+        this method blocks the model for that duration regardless of
+        the local rate limit count.
+
+        Args:
+            model_id: UUID of the AI model (as string)
+            backoff_seconds: How long to block (from provider's retry-after)
+
+        Returns:
+            True if set successfully
+        """
+        try:
+            key = f"{self.key_prefix}:backoff:{model_id}"
+            backoff_until = time.time() + backoff_seconds
+            self.redis.set(key, str(backoff_until), ex=int(backoff_seconds) + 10)
+            logger.warning(
+                f"⏸️ Provider backoff set for {model_id}: {backoff_seconds:.1f}s "
+                f"(until {time.strftime('%H:%M:%S', time.localtime(backoff_until))})"
+            )
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to set backoff for {model_id}: {e}")
+            return False
+
+    def get_provider_backoff(self, model_id: str) -> float:
+        """
+        Check if there's an active provider backoff.
+
+        Returns:
+            Seconds remaining in backoff, or 0 if no backoff active
+        """
+        try:
+            key = f"{self.key_prefix}:backoff:{model_id}"
+            backoff_until = self.redis.get(key)
+            if backoff_until:
+                remaining = float(backoff_until) - time.time()
+                if remaining > 0:
+                    return remaining
+            return 0.0
+        except Exception as e:
+            logger.error(f"❌ Failed to get backoff for {model_id}: {e}")
+            return 0.0
 
     def clear_limit(self, model_id: str) -> bool:
         """
