@@ -311,7 +311,7 @@ Gere uma pergunta DIFERENTE das acima.
             usage_type="interview",
             messages=messages,  # PROMPT #82 - Full context (not summarized)
             system_prompt=system_prompt,
-            max_tokens=1500,  # PROMPT #109 - Increased from 1000 to prevent truncation
+            max_tokens=2000,  # PROMPT #149 - Increased to 2000 to ensure 5-8 options always fit
             project_id=interview.project_id,
             interview_id=interview.id,
             enable_rag=True  # PROMPT #124 - Enable RAG for interviews
@@ -521,7 +521,7 @@ Contextualize sua primeira pergunta com base no card pai.
             usage_type="interview",
             messages=initial_messages,
             system_prompt=first_question_prompt,
-            max_tokens=1000,  # PROMPT #109 - Increased from 500 to prevent truncation
+            max_tokens=1500,  # PROMPT #149 - Increased to 1500 to ensure 5-8 options always fit
             project_id=interview.project_id,
             interview_id=interview.id,
             enable_rag=True  # PROMPT #124 - Enable RAG for interviews

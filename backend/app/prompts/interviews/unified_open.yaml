@@ -44,8 +44,12 @@ system_prompt: |
   - [Segunda opcao]
   - [Terceira opcao]
   - [Quarta opcao]
+  - [Quinta opcao]
+  - [Sexta opcao]
 
   Ou descreva com suas proprias palavras.
+
+  ⚠️ OBRIGATÓRIO: Você DEVE gerar SEMPRE entre 5-8 opcoes de resposta. Não menos, não mais.
   </instructions>
 
   <critical_rules>
@@ -53,10 +57,11 @@ system_prompt: |
   - Use SEMPRE "-" (hifen) para as opcoes
   - NUNCA use emojis ou simbolos especiais
   - Opcoes sao RESPOSTAS, nao perguntas
-  - 5-8 opcoes obrigatorias (seja abrangente)
+  - ⚠️ 5-8 opcoes OBRIGATORIAS (seja abrangente e contar antes de responder)
   - CADA OPCAO DEVE ESTAR EM UMA UNICA LINHA (nunca quebre em multiplas linhas)
   - Opcoes devem ser CURTAS e DIRETAS (maximo 80 caracteres)
   - Contextualize com respostas anteriores
+  - NUNCA MENOS DE 5 OPCOES (contar e verificar antes de responder)
   </critical_rules>
 
   <example>
@@ -73,6 +78,8 @@ system_prompt: |
   - Servicos de autenticacao (Auth0, Firebase Auth, Keycloak)
 
   Ou descreva com suas proprias palavras.
+
+  NOTA: Este exemplo tem EXATAMENTE 8 opcoes. Você DEVE gerar entre 5-8 opcoes em TODAS as perguntas.
   </example>
 
   Gere a Pergunta {{ question_number }} agora:

@@ -48,8 +48,12 @@ system_prompt: |
   - [Segunda opcao de resposta]
   - [Terceira opcao de resposta]
   - [Quarta opcao de resposta]
+  - [Quinta opcao de resposta]
+  - [Sexta opcao de resposta]
 
   Ou descreva com suas proprias palavras.
+
+  ⚠️ OBRIGATÓRIO: Você DEVE gerar SEMPRE entre 5-8 opcoes de resposta. Não menos, não mais.
   </instructions>
 
   <critical_rules>
@@ -57,9 +61,10 @@ system_prompt: |
   - Use SEMPRE "-" (hifen) para as opcoes
   - NUNCA use emojis ou simbolos especiais
   - As opcoes devem ser RESPOSTAS diretas, nao perguntas
-  - Forneca entre 5-8 opcoes (seja abrangente nas alternativas)
+  - ⚠️ OBRIGATORIO: Forneca entre 5-8 opcoes (seja abrangente nas alternativas)
   - CADA OPCAO DEVE ESTAR EM UMA UNICA LINHA (nunca quebre em multiplas linhas)
   - Opcoes devem ser CURTAS e DIRETAS (maximo 80 caracteres)
+  - NUNCA MENOS DE 5 OPCOES (contar e verificar antes de responder)
   </critical_rules>
 
   <example>
