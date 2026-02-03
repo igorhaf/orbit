@@ -15,7 +15,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -55,6 +55,7 @@ const WIZARD_STORAGE_KEY = 'orbit_new_project_wizard';
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();  // PROMPT #151 - Get query params for resume feature
   const { showError, showWarning, showSuccess, NotificationComponent } = useNotification();
   // PROMPT #140 - stopWatching to mark jobs as "not watched" when leaving page
   const { addJob, stopWatching } = useNotifications();
@@ -111,59 +112,77 @@ export default function NewProjectPage() {
   }>>([]);
 
   // PROMPT #146 - Restore wizard state from localStorage on mount
+  // PROMPT #151 - Also handle ?resume={projectId} query param from notification deep links
   // This allows users to leave and come back to resume their interview
   useEffect(() => {
     const restoreWizardState = async () => {
       try {
+        // PROMPT #151 - Check for resume query param first (from notification deep link)
+        const resumeProjectId = searchParams.get('resume');
+
+        // Get saved state from localStorage
         const savedState = localStorage.getItem(WIZARD_STORAGE_KEY);
-        if (!savedState) {
+        const parsedState = savedState ? JSON.parse(savedState) : null;
+
+        // Determine which project ID to use (query param takes priority)
+        const targetProjectId = resumeProjectId || parsedState?.projectId;
+
+        if (!targetProjectId) {
           setInitializing(false);
           return;
         }
 
-        const { projectId: savedProjectId, interviewId: savedInterviewId, codePath: savedCodePath, name: savedName } = JSON.parse(savedState);
-        console.log('🔄 Restoring wizard state:', { savedProjectId, savedInterviewId, savedCodePath, savedName });
-
-        if (!savedProjectId) {
-          setInitializing(false);
-          return;
-        }
+        console.log('🔄 Restoring wizard state:', {
+          resumeProjectId,
+          savedProjectId: parsedState?.projectId,
+          targetProjectId
+        });
 
         // Verify project still exists
         try {
-          const projectRes = await projectsApi.get(savedProjectId);
+          const projectRes = await projectsApi.get(targetProjectId);
           const project = projectRes.data || projectRes;
 
           if (!project) {
-            console.log('📭 Saved project no longer exists, clearing state');
+            console.log('📭 Project no longer exists, clearing state');
             localStorage.removeItem(WIZARD_STORAGE_KEY);
             setInitializing(false);
             return;
           }
 
           // Restore project data
-          setProjectId(savedProjectId);
-          setCodePath(savedCodePath || project.code_path || '');
-          setName(savedName || project.name || '');
+          setProjectId(targetProjectId);
+          setCodePath(parsedState?.codePath || project.code_path || '');
+          setName(parsedState?.name || project.name || '');
 
           // Check if project already has context (wizard was completed)
           if (project.context_locked || project.context_human) {
             console.log('✅ Project already has context, redirecting to project page');
             localStorage.removeItem(WIZARD_STORAGE_KEY);
-            router.push(`/projects/${savedProjectId}`);
+            router.push(`/projects/${targetProjectId}`);
             return;
           }
 
-          // If we have a saved interview, verify it exists and is active
+          // If we have a saved interview ID, verify it exists and is active
+          const savedInterviewId = parsedState?.interviewId;
           if (savedInterviewId) {
             try {
               const interviewRes = await interviewsApi.get(savedInterviewId);
               const interview = interviewRes.data || interviewRes;
 
               if (interview && interview.status === 'active') {
-                console.log('✅ Restoring active interview:', savedInterviewId);
+                console.log('✅ Restoring active interview from localStorage:', savedInterviewId);
                 setInterviewId(savedInterviewId);
                 setStep('interview');
+                // Update localStorage if we came from resume param
+                if (resumeProjectId) {
+                  localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify({
+                    projectId: targetProjectId,
+                    interviewId: savedInterviewId,
+                    codePath: project.code_path,
+                    name: project.name
+                  }));
+                }
                 setInitializing(false);
                 return;
               }
@@ -173,8 +192,10 @@ export default function NewProjectPage() {
           }
 
           // Check if there's an existing active context interview for this project
+          // PROMPT #151 - This is the key fallback when localStorage doesn't have interview ID
+          // but the project has an active interview (e.g., user left during question generation)
           try {
-            const interviewsRes = await interviewsApi.list({ project_id: savedProjectId, status: 'active' });
+            const interviewsRes = await interviewsApi.list({ project_id: targetProjectId, status: 'active' });
             const interviews = interviewsRes.data || interviewsRes;
 
             // Find context interview (interview without parent_task_id for new project)
@@ -188,10 +209,10 @@ export default function NewProjectPage() {
               setStep('interview');
               // Update localStorage with the found interview
               localStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify({
-                projectId: savedProjectId,
+                projectId: targetProjectId,
                 interviewId: contextInterview.id,
-                codePath: savedCodePath || project.code_path,
-                name: savedName || project.name
+                codePath: project.code_path,
+                name: project.name
               }));
             } else {
               // Project exists but no interview yet - stay on basic step
@@ -203,7 +224,7 @@ export default function NewProjectPage() {
           }
 
         } catch (projectError) {
-          console.log('📭 Failed to fetch saved project, clearing state:', projectError);
+          console.log('📭 Failed to fetch project, clearing state:', projectError);
           localStorage.removeItem(WIZARD_STORAGE_KEY);
         }
       } catch (error) {
@@ -215,7 +236,7 @@ export default function NewProjectPage() {
     };
 
     restoreWizardState();
-  }, [router]);
+  }, [router, searchParams]);  // PROMPT #151 - Added searchParams dependency
 
   // PROMPT #133 - Handle memory scan job completion
   // PROMPT #139 - Always update title with AI suggestion (better than folder name)

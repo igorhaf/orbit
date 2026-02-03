@@ -6,7 +6,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams } from 'next/navigation';  // PROMPT #131 - Removed useRouter
+import { useParams, useRouter } from 'next/navigation';  // PROMPT #151 - Restored useRouter for redirect
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { Layout, Breadcrumbs } from '@/components/layout';
@@ -17,7 +17,7 @@ import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 // PROMPT #131 - Removed InterviewTree, interviews now shown below backlog items
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
 import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
-import { projectsApi, tasksApi, ragApi } from '@/lib/api';  // PROMPT #131 - Removed interviewsApi
+import { projectsApi, tasksApi, ragApi, interviewsApi } from '@/lib/api';  // PROMPT #151 - Restored interviewsApi for redirect check
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
 
@@ -25,7 +25,7 @@ type Tab = 'kanban' | 'overview' | 'backlog' | 'rag' | 'analytics' | 'commits'; 
 
 export default function ProjectDetailsPage() {
   const params = useParams();
-  // PROMPT #131 - Removed unused router
+  const router = useRouter();  // PROMPT #151 - Restored for redirect to wizard
   const projectId = params.id as string;
   const { showError, NotificationComponent } = useNotification();
 
@@ -75,6 +75,28 @@ export default function ProjectDetailsPage() {
       const projectData = projectRes.data || projectRes;
       const tasksData = tasksRes.data || tasksRes;
 
+      // PROMPT #151 - Check if project needs context interview completion
+      // If project has NO context AND has an active context interview, redirect to wizard
+      if (!projectData.context_locked && !projectData.context_human) {
+        try {
+          const interviewsRes = await interviewsApi.list({ project_id: projectId, status: 'active' });
+          const interviews = interviewsRes.data || interviewsRes;
+
+          // Find context interview (no parent_task_id)
+          const contextInterview = interviews?.find((i: any) =>
+            !i.parent_task_id && (i.interview_mode === 'context' || !i.interview_mode)
+          );
+
+          if (contextInterview) {
+            console.log('🔄 Project has incomplete context interview, redirecting to wizard');
+            router.replace(`/projects/new?resume=${projectId}`);
+            return; // Don't set state, we're navigating away
+          }
+        } catch (interviewError) {
+          console.error('Failed to check for context interviews:', interviewError);
+        }
+      }
+
       setProject(projectData);
       setTasks(Array.isArray(tasksData) ? tasksData : []);
     } catch (error) {
@@ -82,7 +104,7 @@ export default function ProjectDetailsPage() {
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, router]);
 
   useEffect(() => {
     loadProjectData();

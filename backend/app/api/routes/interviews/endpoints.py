@@ -885,7 +885,7 @@ async def generate_context_from_interview(
             "job_id": "uuid-of-job",
             "status": "pending",
             "message": "Context generation started...",
-            "deep_link": "/projects/new?projectId=xxx&step=3"
+            "deep_link": "/projects/new?resume=xxx"  # PROMPT #151
         }
 
     Poll GET /api/v1/jobs/{job_id} for status and result.
@@ -918,9 +918,10 @@ async def generate_context_from_interview(
     project_name = project.name if project else "projeto"
 
     # PROMPT #133 - Create background job
+    # PROMPT #151 - Use resume param for wizard state restoration
     job_manager = JobManager(db)
 
-    deep_link = f"/projects/new?projectId={interview.project_id}&step=3"
+    deep_link = f"/projects/new?resume={interview.project_id}"
 
     job = job_manager.create_job(
         job_type=JobType.CONTEXT_GENERATION,
@@ -2028,8 +2029,12 @@ async def send_message_async(
             task_title = parent_task.title[:50]
 
     # Build deep link based on context
+    # PROMPT #151 - Context interviews (no parent_task_id) should go to wizard, not project page
     if task_id:
         deep_link = f"/projects/{interview.project_id}?task={task_id}&tab=interview"
+    elif interview.interview_mode == 'context' or not interview.parent_task_id:
+        # Context interview - redirect to wizard to continue
+        deep_link = f"/projects/new?resume={interview.project_id}"
     else:
         deep_link = f"/projects/{interview.project_id}?interview={interview_id}"
 
