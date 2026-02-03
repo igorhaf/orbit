@@ -2019,6 +2019,7 @@ async def send_message_async(
     logger.info(f"✅ User message added to interview {interview_id} (message_count: {len(interview.conversation_data)})")
 
     # PROMPT #133 - Build deep link and notification title
+    # PROMPT #154 - For context interviews (no task_id), use project name instead
     task_id = interview.parent_task_id
     parent_task = None
     task_title = "entrevista"
@@ -2027,6 +2028,11 @@ async def send_message_async(
         parent_task = db.query(Task).filter(Task.id == task_id).first()
         if parent_task:
             task_title = parent_task.title[:50]
+    else:
+        # Context interview - use project name
+        project = db.query(Project).filter(Project.id == interview.project_id).first()
+        if project and project.name:
+            task_title = project.name[:50]
 
     # Build deep link based on context
     # PROMPT #151 - Context interviews (no parent_task_id) should go to wizard, not project page
@@ -2102,12 +2108,18 @@ async def _process_interview_message_async(
         logger.info(f"🚀 Background task started for job {job_id}")
 
         # PROMPT #133 - Get job and task for notification title
+        # PROMPT #154 - For context interviews (no task_id), use project name instead
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         task_title = "entrevista"
         if job and job.task_id:
             related_task = db.query(Task).filter(Task.id == job.task_id).first()
             if related_task:
                 task_title = related_task.title[:50]
+        elif job and job.project_id:
+            # Context interview - use project name
+            related_project = db.query(Project).filter(Project.id == job.project_id).first()
+            if related_project:
+                task_title = related_project.name[:50] if related_project.name else "projeto"
 
         # Get interview
         interview = db.query(Interview).filter(Interview.id == interview_id).first()
