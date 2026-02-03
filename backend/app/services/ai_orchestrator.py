@@ -533,6 +533,15 @@ class AIOrchestrator:
                 await asyncio.sleep(wait_time)
                 logger.info(f"✅ Rate limit wait complete, proceeding with API call")
 
+            # Record the request slot BEFORE the API call so that failed requests
+            # (e.g. provider quota exceeded) are still counted against the limit.
+            # Without this, a provider-side quota error would never be recorded
+            # and the rate limiter would never throttle.
+            self.rate_limiter.record_request(
+                model_config['db_model_id'],
+                model_config['rate_limit_window_seconds']
+            )
+
         # PROMPT #83 - RAG Enhancement (before cache check)
         # PROMPT #89 - RAG Metrics Tracking
         rag_context_injected = False
@@ -668,13 +677,6 @@ class AIOrchestrator:
             result["db_model_id"] = model_config["db_model_id"]
             result["db_model_name"] = model_config["db_model_name"]
             result["rag_enhanced"] = rag_context_injected  # PROMPT #83
-
-            # PROMPT #152 - Record successful request for rate limiting
-            if self.rate_limiter and model_config.get('rate_limit_window_seconds'):
-                self.rate_limiter.record_request(
-                    model_config['db_model_id'],
-                    model_config['rate_limit_window_seconds']
-                )
 
             # PROMPT #54 - Log successful execution to database
             # PROMPT #89 - Include RAG metrics
