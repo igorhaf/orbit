@@ -29,6 +29,15 @@ class AIModelBase(BaseModel):
         default_factory=dict,
         description="Additional configuration"
     )
+    # Rate Limiting (PROMPT #152)
+    rate_limit_requests: Optional[int] = Field(
+        None,
+        description="Maximum requests allowed per time window (None = no limit)"
+    )
+    rate_limit_window_seconds: Optional[int] = Field(
+        None,
+        description="Time window size in seconds (None = no limit)"
+    )
 
 
 class AIModelCreate(AIModelBase):
@@ -54,6 +63,9 @@ class AIModelUpdate(BaseModel):
     usage_type: Optional[AIModelUsageType] = None
     is_active: Optional[bool] = None
     config: Optional[Dict[str, Any]] = None
+    # Rate Limiting (PROMPT #152)
+    rate_limit_requests: Optional[int] = None
+    rate_limit_window_seconds: Optional[int] = None
 
 
 class AIModelResponse(AIModelBase):

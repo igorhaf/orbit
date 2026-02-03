@@ -111,6 +111,9 @@ export default function AIModelsPage() {
       usage_type: model.usage_type,
       is_active: model.is_active,
       config: model.config,
+      // PROMPT #152 - Rate limiting fields
+      rate_limit_requests: model.rate_limit_requests,
+      rate_limit_window_seconds: model.rate_limit_window_seconds,
     });
     setShowEditDialog(true);
   };
@@ -387,6 +390,15 @@ export default function AIModelsPage() {
                             </div>
                           </div>
                         )}
+                        {/* PROMPT #152 - Rate Limit Display */}
+                        {model.rate_limit_requests && model.rate_limit_window_seconds && (
+                          <div>
+                            <div className="text-gray-500 text-xs">Rate Limit</div>
+                            <div className="font-semibold text-gray-900">
+                              {model.rate_limit_requests}/{model.rate_limit_window_seconds}s
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -605,6 +617,42 @@ export default function AIModelsPage() {
                 }
               />
 
+              {/* Rate Limiting Section (PROMPT #152) */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Rate Limiting</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="Max Requests"
+                    type="number"
+                    min="1"
+                    placeholder="e.g., 3"
+                    value={createFormData.rate_limit_requests || ''}
+                    onChange={(e) =>
+                      setCreateFormData({
+                        ...createFormData,
+                        rate_limit_requests: e.target.value ? parseInt(e.target.value) : null,
+                      })
+                    }
+                  />
+                  <Input
+                    label="Time Window (seconds)"
+                    type="number"
+                    min="1"
+                    placeholder="e.g., 60"
+                    value={createFormData.rate_limit_window_seconds || ''}
+                    onChange={(e) =>
+                      setCreateFormData({
+                        ...createFormData,
+                        rate_limit_window_seconds: e.target.value ? parseInt(e.target.value) : null,
+                      })
+                    }
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Leave empty for no rate limiting. Example: 3 requests per 60 seconds.
+                </p>
+              </div>
+
               {/* Is Active */}
               <div className="flex items-center">
                 <input
@@ -766,6 +814,42 @@ export default function AIModelsPage() {
                   })
                 }
               />
+
+              {/* Rate Limiting Section (PROMPT #152) */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Rate Limiting</h4>
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label="Max Requests"
+                    type="number"
+                    min="1"
+                    placeholder="e.g., 3"
+                    value={editFormData.rate_limit_requests || ''}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        rate_limit_requests: e.target.value ? parseInt(e.target.value) : null,
+                      })
+                    }
+                  />
+                  <Input
+                    label="Time Window (seconds)"
+                    type="number"
+                    min="1"
+                    placeholder="e.g., 60"
+                    value={editFormData.rate_limit_window_seconds || ''}
+                    onChange={(e) =>
+                      setEditFormData({
+                        ...editFormData,
+                        rate_limit_window_seconds: e.target.value ? parseInt(e.target.value) : null,
+                      })
+                    }
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Leave empty for no rate limiting. Example: 3 requests per 60 seconds.
+                </p>
+              </div>
 
               {/* Is Active */}
               <div className="flex items-center">

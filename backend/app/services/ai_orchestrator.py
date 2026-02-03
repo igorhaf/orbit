@@ -9,6 +9,7 @@ import logging
 import time
 import json  # PROMPT #74 - For cache key generation
 import os  # PROMPT #74 - For Redis env vars
+import asyncio  # PROMPT #152 - For rate limit waiting
 from datetime import datetime
 from uuid import UUID
 
@@ -74,6 +75,9 @@ class AIOrchestrator:
         self.clients: Dict[str, any] = {}
         self._initialize_clients()
 
+        # PROMPT #152 - Initialize rate limiter
+        self.rate_limiter = self._initialize_rate_limiter()
+
     def _initialize_cache(self):
         """
         Initialize cache service with Redis connection
@@ -122,6 +126,40 @@ class AIOrchestrator:
 
         except Exception as e:
             logger.error(f"❌ Failed to initialize cache: {e}")
+            return None
+
+    def _initialize_rate_limiter(self):
+        """
+        Initialize rate limiter service with Redis connection
+        PROMPT #152 - Rate Limiting per AI Model
+
+        Returns:
+            RateLimiterService instance or None if initialization fails
+        """
+        try:
+            from app.services.rate_limiter import RateLimiterService
+
+            redis_host = os.getenv("REDIS_HOST")
+            if redis_host:
+                import redis
+                redis_client = redis.Redis(
+                    host=redis_host,
+                    port=int(os.getenv("REDIS_PORT", 6379)),
+                    db=0,
+                    decode_responses=True,
+                    socket_connect_timeout=5,
+                    socket_timeout=5,
+                )
+                # Test connection
+                redis_client.ping()
+                logger.info(f"✅ Rate limiter connected to Redis: {redis_host}")
+                return RateLimiterService(redis_client)
+            else:
+                logger.warning("⚠️ REDIS_HOST not set, rate limiting disabled")
+                return None
+
+        except Exception as e:
+            logger.warning(f"⚠️ Rate limiter initialization failed: {e}")
             return None
 
     def _initialize_clients(self):
@@ -247,7 +285,10 @@ class AIOrchestrator:
                     "max_tokens": max_tokens,
                     "temperature": temperature,
                     "db_model_id": str(db_model.id),
-                    "db_model_name": db_model.name
+                    "db_model_name": db_model.name,
+                    # PROMPT #152 - Rate limiting config
+                    "rate_limit_requests": db_model.rate_limit_requests,
+                    "rate_limit_window_seconds": db_model.rate_limit_window_seconds
                 }
             else:
                 logger.warning(
@@ -279,7 +320,10 @@ class AIOrchestrator:
                 "max_tokens": max_tokens,
                 "temperature": temperature,
                 "db_model_id": str(fallback_model.id),
-                "db_model_name": fallback_model.name
+                "db_model_name": fallback_model.name,
+                # PROMPT #152 - Rate limiting config
+                "rate_limit_requests": fallback_model.rate_limit_requests,
+                "rate_limit_window_seconds": fallback_model.rate_limit_window_seconds
             }
 
         # 3. Nenhum modelo disponível
@@ -349,7 +393,10 @@ class AIOrchestrator:
                         "max_tokens": db_model.config.get("max_tokens", 4096),
                         "temperature": db_model.config.get("temperature", 0.7),
                         "db_model_id": str(db_model.id),
-                        "db_model_name": db_model.name
+                        "db_model_name": db_model.name,
+                        # PROMPT #152 - Rate limiting config
+                        "rate_limit_requests": db_model.rate_limit_requests,
+                        "rate_limit_window_seconds": db_model.rate_limit_window_seconds
                     }
                 else:
                     logger.warning(f"⚠️  Explicit model {db_model.name} not initialized, falling back to scoring")
@@ -469,6 +516,22 @@ class AIOrchestrator:
         temperature = model_config["temperature"]
 
         logger.info(f"📤 Executing with config: max_tokens={tokens_limit}, temperature={temperature}")
+
+        # PROMPT #152 - Rate Limiting Check
+        # Wait if rate limit is exceeded before making API call
+        if self.rate_limiter and model_config.get('rate_limit_requests'):
+            can_proceed, wait_time = self.rate_limiter.check_rate_limit(
+                model_config['db_model_id'],
+                model_config['rate_limit_requests'],
+                model_config['rate_limit_window_seconds']
+            )
+            if not can_proceed:
+                logger.info(
+                    f"⏳ Rate limit reached for {model_config['db_model_name']}, "
+                    f"waiting {wait_time:.1f}s before proceeding..."
+                )
+                await asyncio.sleep(wait_time)
+                logger.info(f"✅ Rate limit wait complete, proceeding with API call")
 
         # PROMPT #83 - RAG Enhancement (before cache check)
         # PROMPT #89 - RAG Metrics Tracking
@@ -605,6 +668,13 @@ class AIOrchestrator:
             result["db_model_id"] = model_config["db_model_id"]
             result["db_model_name"] = model_config["db_model_name"]
             result["rag_enhanced"] = rag_context_injected  # PROMPT #83
+
+            # PROMPT #152 - Record successful request for rate limiting
+            if self.rate_limiter and model_config.get('rate_limit_window_seconds'):
+                self.rate_limiter.record_request(
+                    model_config['db_model_id'],
+                    model_config['rate_limit_window_seconds']
+                )
 
             # PROMPT #54 - Log successful execution to database
             # PROMPT #89 - Include RAG metrics

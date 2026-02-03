@@ -586,9 +586,13 @@ export interface AIModel {
   id: string;
   name: string;
   provider: string;
+  api_key: string;
   usage_type: AIModelUsageType;
   is_active: boolean;
   config: Record<string, any>;
+  // Rate Limiting (PROMPT #152)
+  rate_limit_requests?: number | null;
+  rate_limit_window_seconds?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -600,6 +604,9 @@ export interface AIModelCreate {
   usage_type?: AIModelUsageType;
   is_active?: boolean;
   config?: Record<string, any>;
+  // Rate Limiting (PROMPT #152)
+  rate_limit_requests?: number | null;
+  rate_limit_window_seconds?: number | null;
 }
 
 export interface AIModelUpdate {
@@ -609,6 +616,9 @@ export interface AIModelUpdate {
   usage_type?: AIModelUsageType;
   is_active?: boolean;
   config?: Record<string, any>;
+  // Rate Limiting (PROMPT #152)
+  rate_limit_requests?: number | null;
+  rate_limit_window_seconds?: number | null;
 }
 
 export interface AIModelDetail extends AIModel {

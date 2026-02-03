@@ -5,7 +5,7 @@ Represents an AI model configuration
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, Boolean, DateTime, JSON, Enum as SQLEnum
+from sqlalchemy import Column, String, Boolean, DateTime, JSON, Enum as SQLEnum, Integer
 from sqlalchemy.dialects.postgresql import UUID
 import enum
 
@@ -56,6 +56,12 @@ class AIModel(Base):
     )
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     config = Column(JSON, nullable=True, default=dict)
+
+    # Rate Limiting (PROMPT #152)
+    # Controls how many requests can be made to this model within a time window
+    # NULL = no rate limiting (unlimited)
+    rate_limit_requests = Column(Integer, nullable=True)  # Max requests per window (e.g., 3)
+    rate_limit_window_seconds = Column(Integer, nullable=True)  # Window size in seconds (e.g., 60)
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
