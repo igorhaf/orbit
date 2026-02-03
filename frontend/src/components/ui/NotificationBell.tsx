@@ -43,8 +43,10 @@ export function NotificationBell() {
     }
   };
 
-  // Total badge count = active jobs + unread completed
-  const badgeCount = activeJobs.length + unreadCount;
+  // PROMPT #150 - Badge count = ONLY unread completed notifications
+  // Active jobs appear in dropdown but don't increment the badge counter
+  // This prevents notification overload from in-progress jobs
+  const badgeCount = unreadCount;
 
   // Close dropdown when clicking outside
   useEffect(() => {
