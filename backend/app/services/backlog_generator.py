@@ -15,7 +15,13 @@ from app.models.interview import Interview
 from app.models.spec import Spec, SpecScope
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
-from app.prompter.facade import PrompterFacade
+# PROMPT #164 - PrompterFacade is deprecated, graceful fallback to AIOrchestrator
+try:
+    from app.prompter.facade import PrompterFacade
+    PROMPTER_AVAILABLE = True
+except ImportError:
+    PROMPTER_AVAILABLE = False
+    PrompterFacade = None
 from app.prompts import PromptService, get_prompt_service
 
 logger = logging.getLogger(__name__)
@@ -107,9 +113,13 @@ class BacklogGeneratorService:
 
     def __init__(self, db: Session):
         self.db = db
-        # PROMPT #54.3 - Use PrompterFacade for cache support
-        self.prompter = PrompterFacade(db)
-        # Keep orchestrator as fallback
+        # PROMPT #54.3 - Use PrompterFacade for cache support (if available)
+        # PROMPT #164 - PrompterFacade deprecated, graceful fallback
+        if PROMPTER_AVAILABLE and PrompterFacade:
+            self.prompter = PrompterFacade(db)
+        else:
+            self.prompter = None
+        # Keep orchestrator as fallback (always used when prompter unavailable)
         self.orchestrator = AIOrchestrator(db)
         # PROMPT #103 - Use PromptService for external prompts
         self.prompt_service = get_prompt_service(db)

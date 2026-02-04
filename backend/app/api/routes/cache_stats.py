@@ -10,7 +10,13 @@ from sqlalchemy.orm import Session
 from typing import Dict, Any
 
 from app.database import get_db
-from app.prompter.facade import PrompterFacade
+# PROMPT #164 - PrompterFacade is deprecated, graceful fallback to AIOrchestrator
+try:
+    from app.prompter.facade import PrompterFacade
+    PROMPTER_AVAILABLE = True
+except ImportError:
+    PROMPTER_AVAILABLE = False
+    PrompterFacade = None
 import logging
 
 logger = logging.getLogger(__name__)
@@ -105,14 +111,17 @@ async def clear_cache(db: Session = Depends(get_db)) -> Dict[str, str]:
         Status message
     """
     try:
-        facade = PrompterFacade(db=db)
+        # PROMPT #164 - Use AIOrchestrator directly for cache clearing
+        from app.services.ai_orchestrator import AIOrchestrator
 
-        if not facade.cache:
+        orchestrator = AIOrchestrator(db=db, enable_cache=True)
+
+        if not orchestrator.cache_service:
             raise HTTPException(status_code=400, detail="Cache is not enabled")
 
-        # Clear cache (implementation depends on cache service)
-        if hasattr(facade.cache, 'clear'):
-            facade.cache.clear()
+        # Clear cache via AIOrchestrator's cache service
+        if hasattr(orchestrator.cache_service, 'clear'):
+            orchestrator.cache_service.clear()
             logger.info("✅ Cache cleared successfully")
             return {"status": "success", "message": "Cache cleared successfully"}
         else:

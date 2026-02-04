@@ -88,7 +88,8 @@ class AIOrchestrator:
         """
         try:
             import os
-            from app.prompter.optimization.cache_service import CacheService
+            # PROMPT #164 - CacheService moved from prompter to services
+            from app.services.cache_service import CacheService
 
             # Try to connect to Redis
             redis_client = None

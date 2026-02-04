@@ -1,0 +1,125 @@
+# Business Contract: Card Hierarchy
+# PROMPT #164 - Contracts Architecture
+#
+# Documents the business rules for card hierarchy in ORBIT.
+# Based on PROMPTs: #102 (Hierarchical Draft Generation), #83 (Semantic References)
+
+name: card_hierarchy
+version: 1
+domain: business
+category: business
+description: Business rules for Epic -> Story -> Task -> Subtask hierarchy
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-04"
+  change_log:
+    - version: 1
+      date: "2026-02-04"
+      author: "Claude"
+      changes: "Initial version documenting card hierarchy rules"
+
+semantic_map:
+  # Entities (Card Types)
+  N1: "Epic - Top-level feature or initiative"
+  N2: "Story - User-focused deliverable within an Epic"
+  N3: "Task - Technical work item within a Story"
+  N4: "Subtask - Atomic unit of work within a Task"
+
+  # Processes
+  P1: "Activation - Transform suggested/draft card to active"
+  P2: "Draft Generation - AI creates child drafts on parent activation"
+  P3: "Content Generation - AI generates full content for card"
+
+  # Data
+  D1: "CardData - title, description, generated_prompt, semantic_map"
+  D2: "HierarchyLevel - epic (0), story (1), task (2), subtask (3)"
+  D3: "WorkflowState - suggested, draft, open, in_progress, done"
+
+  # Constraints
+  C1: "Epic generates 15-20 Story drafts on activation"
+  C2: "Story generates 5-8 Task drafts on activation"
+  C3: "Task generates 3-5 Subtask drafts on activation"
+  C4: "Subtask is leaf node - generates content only"
+
+  # Acceptance Criteria
+  AC1: "Each card level inherits semantic identifiers from parent"
+  AC2: "Draft cards appear with visual indication (opacity, dashed border)"
+  AC3: "Activating a card triggers draft generation for children"
+  AC4: "Generated content uses Semantic References Methodology"
+
+rules:
+  validations:
+    - id: V1
+      description: "Epic must have project_id"
+      expression: "N1.project_id != null"
+      severity: error
+
+    - id: V2
+      description: "Story must have parent Epic"
+      expression: "N2.parent_id != null AND parent.item_type == 'epic'"
+      severity: error
+
+    - id: V3
+      description: "Task must have parent Story"
+      expression: "N3.parent_id != null AND parent.item_type == 'story'"
+      severity: error
+
+    - id: V4
+      description: "Subtask must have parent Task"
+      expression: "N4.parent_id != null AND parent.item_type == 'task'"
+      severity: error
+
+  constraints:
+    - id: C1
+      description: "Hierarchy is strictly 4 levels deep"
+      applies_to: [N1, N2, N3, N4]
+      condition: "max_depth == 4 (epic -> story -> task -> subtask)"
+
+    - id: C2
+      description: "Suggested cards cannot have children"
+      applies_to: [N1, N2, N3, N4]
+      condition: "IF workflow_state == 'suggested' THEN cannot generate children"
+
+    - id: C3
+      description: "Children counts on activation"
+      applies_to: [N1, N2, N3]
+      condition: "Epic -> 15-20 Stories, Story -> 5-8 Tasks, Task -> 3-5 Subtasks"
+
+    - id: C4
+      description: "Semantic identifiers must be inherited"
+      applies_to: [N1, N2, N3, N4]
+      condition: "Child.semantic_map includes Parent.semantic_map identifiers"
+
+  access_control:
+    - id: AC1
+      description: "User can activate suggested cards"
+      roles: [user, admin]
+      action: execute
+
+    - id: AC2
+      description: "User can reject suggested cards"
+      roles: [user, admin]
+      action: delete
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false
+
+tags:
+  - business-rule
+  - hierarchy
+  - epic
+  - story
+  - task
+  - subtask
+  - activation

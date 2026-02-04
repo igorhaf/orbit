@@ -16,7 +16,7 @@ PROMPT #163 Features:
 - Configurable scan depth: quick, normal, deep
 - Multi-phase analysis for better results with local models
 - Each phase saves a prompt to the prompts table for visibility
-- Prompts externalized to YAML files
+- Contracts externalized to YAML files (PROMPT #164 - ContractLoader)
 
 Business Rule: All code analyzed must have its business rules stored,
 including this very feature of project creation.
@@ -630,9 +630,9 @@ class CodebaseMemoryService:
         logger.info(f"🔄 Starting phase: {phase_name} ({len(samples)} files)")
 
         try:
-            # Load prompt from YAML
-            from app.prompts.loader import PromptLoader
-            loader = PromptLoader()
+            # Load contract from YAML (PROMPT #164 - Use ContractLoader)
+            from app.contracts.loader import ContractLoader
+            loader = ContractLoader()
 
             code_content = self._format_samples_for_prompt(samples)
             previous_analysis = json.dumps(previous_context, ensure_ascii=False) if previous_context else None
@@ -692,8 +692,9 @@ class CodebaseMemoryService:
         logger.info("🔄 Starting consolidation phase...")
 
         try:
-            from app.prompts.loader import PromptLoader
-            loader = PromptLoader()
+            # PROMPT #164 - Use ContractLoader
+            from app.contracts.loader import ContractLoader
+            loader = ContractLoader()
 
             # Format all phases for the consolidation prompt
             all_phases_text = json.dumps(all_phases, ensure_ascii=False, indent=2)

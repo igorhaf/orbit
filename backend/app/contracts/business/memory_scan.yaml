@@ -1,0 +1,126 @@
+# Business Contract: Memory Scan
+# PROMPT #164 - Contracts Architecture
+#
+# Documents the business rules for Memory Scan feature.
+# Based on PROMPTs: #118 (Initial Implementation), #163 (Multi-phase Analysis)
+
+name: memory_scan
+version: 1
+domain: business
+category: business
+description: Business rules for codebase memory scan during project creation
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-04"
+  change_log:
+    - version: 1
+      date: "2026-02-04"
+      author: "Claude"
+      changes: "Initial version documenting memory scan rules"
+
+semantic_map:
+  # Entities
+  N1: "Codebase - The source code folder being analyzed"
+  N2: "CodeSample - Individual file content for analysis"
+  N3: "StackInfo - Detected technology stack"
+  N4: "BusinessRule - Extracted rule from code"
+  N5: "SuggestedTitle - AI-generated project title"
+
+  # Processes
+  P1: "Stack Detection - Identify frameworks and languages"
+  P2: "File Extraction - Select representative files"
+  P3: "Multi-phase Analysis - Analyze code in focused phases"
+  P4: "Consolidation - Merge phase results into final output"
+  P5: "RAG Indexing - Store files for retrieval"
+
+  # Data
+  D1: "ScanDepthConfig - quick/normal/deep settings"
+  D2: "PhaseResult - partial_title, rules, features, entities"
+  D3: "ConsolidatedResult - final title, rules, features, context"
+
+  # Constraints
+  C1: "Quick mode: 30 files, 2 phases"
+  C2: "Normal mode: 100 files, 4 phases"
+  C3: "Deep mode: ALL files, N phases (15 files each)"
+  C4: "Each phase saves prompt to database for visibility"
+
+  # Acceptance Criteria
+  AC1: "User can select scan depth before scanning"
+  AC2: "AI suggests project title based on domain, not technology"
+  AC3: "Business rules are extracted and stored in RAG"
+  AC4: "All prompts appear in /prompts page"
+
+rules:
+  validations:
+    - id: V1
+      description: "code_path must exist and be a directory"
+      expression: "N1.path.exists() AND N1.path.is_dir()"
+      severity: error
+
+    - id: V2
+      description: "Scan depth must be valid"
+      expression: "scan_depth IN ['quick', 'normal', 'deep']"
+      severity: error
+
+    - id: V3
+      description: "At least one code sample must be extracted"
+      expression: "code_samples.length > 0"
+      severity: warning
+
+  constraints:
+    - id: C1
+      description: "Scan depth configurations"
+      applies_to: [D1]
+      condition: |
+        quick: {max_files: 30, max_content: 5KB, phases: 2}
+        normal: {max_files: 100, max_content: 10KB, phases: 4}
+        deep: {max_files: unlimited, max_content: 20KB, phases: dynamic}
+
+    - id: C2
+      description: "Phase order for normal mode"
+      applies_to: [P3]
+      condition: "documentation -> domain -> logic -> consolidation"
+
+    - id: C3
+      description: "File prioritization"
+      applies_to: [P2]
+      condition: |
+        1. README and docs
+        2. Configuration files (package.json, etc.)
+        3. Migrations (highest priority for business rules)
+        4. Models/Entities
+        5. Services/UseCases
+        6. Controllers/Handlers
+        7. Validators/Requests
+
+    - id: C4
+      description: "project_id must be passed to save prompts"
+      applies_to: [P3, P4]
+      condition: "orchestrator.execute() must receive project_id"
+
+  access_control:
+    - id: AC1
+      description: "User can trigger memory scan"
+      roles: [user, admin]
+      action: execute
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false
+
+tags:
+  - business-rule
+  - memory-scan
+  - codebase-analysis
+  - multi-phase
+  - scan-depth

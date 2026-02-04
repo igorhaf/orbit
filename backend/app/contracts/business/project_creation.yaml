@@ -1,0 +1,116 @@
+# Business Contract: Project Creation Flow
+# PROMPT #164 - Contracts Architecture
+#
+# Documents the business rules for project creation in ORBIT.
+# Based on PROMPTs: #89 (Context Interview), #98 (Cancellation), #111 (Mandatory Folder)
+
+name: project_creation
+version: 1
+domain: business
+category: business
+description: Business rules governing project creation flow in ORBIT
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-04"
+  change_log:
+    - version: 1
+      date: "2026-02-04"
+      author: "Claude"
+      changes: "Initial version documenting project creation rules"
+
+semantic_map:
+  # Entities
+  N1: "Project - The main entity being created"
+  N2: "User - Person creating the project"
+  N3: "CodePath - Path to existing codebase folder"
+  N4: "Context - Project context from interview"
+  N5: "SuggestedEpics - AI-generated initial epics"
+
+  # Processes
+  P1: "Wizard Flow - 4-step project creation wizard"
+  P2: "Memory Scan - AI analysis of codebase"
+  P3: "Context Interview - AI-driven context gathering"
+  P4: "Epic Generation - Auto-generation of suggested epics"
+
+  # Data
+  D1: "ProjectData - name, code_path, context_human, context_semantic"
+  D2: "ScanResult - suggested_title, stack_info, business_rules, features"
+  D3: "InterviewData - questions, answers, context output"
+
+  # Constraints
+  C1: "code_path is MANDATORY and IMMUTABLE"
+  C2: "Context is LOCKED after first Epic activation"
+  C3: "Abandoned wizards trigger automatic cleanup"
+  C4: "Project exists only after wizard completion"
+
+  # Acceptance Criteria
+  AC1: "User can select existing code folder"
+  AC2: "AI suggests project title from codebase analysis"
+  AC3: "Context interview generates dual output (human + semantic)"
+  AC4: "Suggested epics appear as drafts after context interview"
+
+rules:
+  validations:
+    - id: V1
+      description: "code_path must point to existing directory"
+      expression: "N3.exists() AND N3.is_directory()"
+      severity: error
+
+    - id: V2
+      description: "Project name must not be empty"
+      expression: "N1.name.length > 0"
+      severity: error
+
+    - id: V3
+      description: "Context must be set before creating Epics"
+      expression: "N4.context_human != null OR N1.context_locked == false"
+      severity: warning
+
+  constraints:
+    - id: C1
+      description: "code_path cannot be changed after project creation"
+      applies_to: [N1, N3]
+      condition: "N3 is immutable after N1.created_at"
+
+    - id: C2
+      description: "Context is locked after first Epic is activated"
+      applies_to: [N1, N4]
+      condition: "N1.context_locked == true implies N4 cannot be modified"
+
+    - id: C3
+      description: "Incomplete wizard triggers cleanup"
+      applies_to: [N1, N2]
+      condition: "If P1 not completed, delete N1 on page unload"
+
+  access_control:
+    - id: AC1
+      description: "Any user can create projects"
+      roles: [user, admin]
+      action: write
+
+    - id: AC2
+      description: "Only creator or admin can delete project"
+      roles: [creator, admin]
+      action: delete
+
+variables:
+  required: []
+  optional: []
+
+# No prompts for business contracts - this is documentation only
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false
+
+tags:
+  - business-rule
+  - project
+  - creation
+  - wizard
+  - context-interview

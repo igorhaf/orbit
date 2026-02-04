@@ -1,0 +1,299 @@
+# Contract Schema v1.0
+# PROMPT #164 - Contracts Architecture: Unification and Governance
+#
+# This is the master schema definition for ORBIT contracts.
+# All contracts should follow this structure.
+
+name: contract_schema
+version: 1
+domain: component
+category: schema
+description: Master schema definition for ORBIT contracts
+
+# =============================================================================
+# CONTRACT SCHEMA SPECIFICATION
+# =============================================================================
+
+schema_version: "1.0"
+
+# -----------------------------------------------------------------------------
+# METADATA SECTION (Required)
+# -----------------------------------------------------------------------------
+# name: string (required)
+#   - Unique identifier for the contract
+#   - Use snake_case
+#   - Example: "epic_from_interview", "project_creation"
+#
+# version: integer (required)
+#   - Contract version number, starts at 1
+#   - Increment when making breaking changes
+#
+# domain: string (required)
+#   - One of: business, interview, generation, memory, component
+#   - business: Core business rules and processes
+#   - interview: Interview flow definitions
+#   - generation: Content generation contracts
+#   - memory: Codebase analysis contracts
+#   - component: Reusable components
+#
+# category: string (required)
+#   - Folder name where contract resides
+#   - Examples: business, generation, interviews, memory, commits, components
+#
+# description: string (optional)
+#   - Human-readable description of the contract's purpose
+#
+# usage_type: string (optional)
+#   - AI usage type for orchestrator routing
+#   - Examples: task_execution, interview, prompt_generation, memory, general
+
+# -----------------------------------------------------------------------------
+# GOVERNANCE SECTION (Optional)
+# -----------------------------------------------------------------------------
+# governance:
+#   status: draft | active | deprecated
+#     - draft: Contract is being developed
+#     - active: Contract is in production use
+#     - deprecated: Contract is scheduled for removal
+#
+#   owner: string
+#     - Team or individual responsible for the contract
+#
+#   effective_date: string (ISO date)
+#     - When the contract became effective
+#
+#   expires_at: string (ISO date) | null
+#     - Optional expiration date
+#
+#   change_log: array
+#     - version: integer
+#       date: string (ISO date)
+#       author: string
+#       changes: string
+
+# -----------------------------------------------------------------------------
+# SEMANTIC MAP SECTION (Optional, for PROMPT #83 methodology)
+# -----------------------------------------------------------------------------
+# semantic_map:
+#   N1: "Primary entity description"
+#   N2: "Secondary entity description"
+#   P1: "Main process description"
+#   E1: "API endpoint description"
+#   D1: "Data structure description"
+#   S1: "Service description"
+#   C1: "Constraint description"
+#   AC1: "Acceptance criterion description"
+#
+# Identifier Categories:
+#   N = Nouns (entities, objects)
+#   P = Processes (actions, flows)
+#   E = Endpoints (APIs)
+#   D = Data (schemas, structures)
+#   S = Services (integrations)
+#   C = Constraints (business rules)
+#   AC = Acceptance Criteria (verification conditions)
+#   R = Requirements (functional requirements)
+
+# -----------------------------------------------------------------------------
+# RULES SECTION (Optional)
+# -----------------------------------------------------------------------------
+# rules:
+#   validations:
+#     - id: string (e.g., "V1")
+#       description: string
+#       expression: string (validation logic)
+#       severity: error | warning | info
+#
+#   constraints:
+#     - id: string (e.g., "C1")
+#       description: string
+#       applies_to: array of identifiers
+#       condition: string
+#
+#   access_control:
+#     - id: string (e.g., "AC1")
+#       description: string
+#       roles: array of role names
+#       action: read | write | delete | execute
+
+# -----------------------------------------------------------------------------
+# VARIABLES SECTION (Required if prompts use variables)
+# -----------------------------------------------------------------------------
+# variables:
+#   required:
+#     - name: string
+#       type: string | number | boolean | object | array
+#       description: string
+#
+#   optional:
+#     - name: string
+#       type: string
+#       default: any
+#       description: string
+
+# -----------------------------------------------------------------------------
+# COMPONENTS SECTION (Optional)
+# -----------------------------------------------------------------------------
+# components:
+#   - component_name
+#   - another_component
+#
+# Components are loaded from contracts/components/ folder
+# Reference in prompts using {{ components.component_name }}
+
+# -----------------------------------------------------------------------------
+# PROMPTS SECTION (Required for generation contracts)
+# -----------------------------------------------------------------------------
+# system_prompt: |
+#   Multi-line Jinja2 template for system message.
+#   Can reference:
+#   - {{ variable_name }} - Variables from variables section
+#   - {{ components.component_name }} - Loaded component content
+#   - {{ semantic_map.N1 }} - Semantic map values
+#
+# user_prompt: |
+#   Multi-line Jinja2 template for user message.
+#   Same variable references as system_prompt.
+
+# -----------------------------------------------------------------------------
+# VALIDATORS SECTION (Optional)
+# -----------------------------------------------------------------------------
+# validators:
+#   - type: json_schema
+#     schema:
+#       type: object
+#       required: [field1, field2]
+#       properties:
+#         field1: { type: string }
+#
+#   - type: regex
+#     field: field_name
+#     pattern: "^[A-Z].*"
+#     message: "Field must start with uppercase"
+#
+#   - type: semantic_check
+#     rule: "All semantic identifiers must be defined in semantic_map"
+#
+#   - type: length
+#     field: field_name
+#     min_length: 10
+#     max_length: 1000
+#
+#   - type: required_fields
+#     required: [field1, field2]
+
+# -----------------------------------------------------------------------------
+# EXECUTION SECTION (Optional)
+# -----------------------------------------------------------------------------
+# execution:
+#   estimated_tokens: integer
+#     - Expected token usage for this contract
+#
+#   max_tokens: integer
+#     - Maximum tokens allowed (default: 4000)
+#
+#   recommended_model: string
+#     - Suggested model (e.g., "claude-sonnet-4")
+#
+#   temperature: float
+#     - Model temperature (default: 0.7)
+#
+#   cache_enabled: boolean
+#     - Whether to cache responses (default: true)
+#
+#   cache_ttl: integer
+#     - Cache TTL in seconds (default: 86400 = 24h)
+
+# -----------------------------------------------------------------------------
+# TAGS SECTION (Optional)
+# -----------------------------------------------------------------------------
+# tags:
+#   - tag1
+#   - tag2
+#
+# Used for filtering and categorization
+
+# =============================================================================
+# EXAMPLE CONTRACT
+# =============================================================================
+
+example:
+  name: example_contract
+  version: 1
+  domain: generation
+  category: examples
+  description: Example contract showing all available fields
+  usage_type: prompt_generation
+
+  governance:
+    status: active
+    owner: "ORBIT Team"
+    effective_date: "2026-02-04"
+    change_log:
+      - version: 1
+        date: "2026-02-04"
+        author: "Claude"
+        changes: "Initial version"
+
+  semantic_map:
+    N1: "User"
+    N2: "Project"
+    P1: "Creation process"
+    D1: "User data"
+    C1: "Email must be unique"
+    AC1: "User can create projects"
+
+  rules:
+    validations:
+      - id: V1
+        description: "Email must be valid format"
+        expression: "N1.email matches email regex"
+        severity: error
+    constraints:
+      - id: C1
+        description: "User must be authenticated"
+        applies_to: [N1]
+        condition: "N1.is_authenticated == true"
+
+  variables:
+    required:
+      - name: user_name
+        type: string
+        description: "Name of the user"
+    optional:
+      - name: project_count
+        type: number
+        default: 0
+        description: "Number of existing projects"
+
+  components:
+    - json_output_rules
+
+  system_prompt: |
+    You are an assistant helping with {{ semantic_map.N2 }}.
+
+    {{ components.json_output_rules }}
+
+  user_prompt: |
+    User: {{ user_name }}
+    Projects: {{ project_count | default(0) }}
+
+  validators:
+    - type: json_schema
+      schema:
+        type: object
+        required: [result]
+        properties:
+          result: { type: string }
+
+  execution:
+    estimated_tokens: 500
+    max_tokens: 2000
+    recommended_model: "claude-sonnet-4"
+    temperature: 0.7
+    cache_enabled: true
+    cache_ttl: 86400
+
+  tags:
+    - example
+    - documentation
