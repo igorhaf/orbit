@@ -93,6 +93,9 @@ export default function NewProjectPage() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [interviewId, setInterviewId] = useState<string | null>(null);
 
+  // PROMPT #163 - Scan depth for memory scan (quick/normal/deep)
+  const [scanDepth, setScanDepth] = useState<'quick' | 'normal' | 'deep'>('normal');
+
   // PROMPT #98 (v2) - Track if wizard was completed to prevent cleanup
   // PROMPT #101 FIX: Use useRef instead of useState because setState is async
   // and the cleanup effect would still see the old value when navigating away
@@ -364,8 +367,9 @@ export default function NewProjectPage() {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
       // PROMPT #137 - Call quick-create to create project immediately
+      // PROMPT #163 - Include scan_depth parameter for memory scan
       const response = await fetch(
-        `${API_BASE}/api/v1/projects/quick-create?code_path=${encodeURIComponent(path)}`,
+        `${API_BASE}/api/v1/projects/quick-create?code_path=${encodeURIComponent(path)}&scan_depth=${scanDepth}`,
         { method: 'POST' }
       );
 
@@ -638,6 +642,64 @@ export default function NewProjectPage() {
                   onSelect={handleFolderSelect}
                   title="Select Code Folder"
                 />
+              </div>
+
+              {/* PROMPT #163 - Scan Depth Selector */}
+              <div>
+                <Label>Analysis Depth</Label>
+                <p className="text-xs text-gray-500 mb-3">
+                  Choose how deeply the AI should analyze your codebase. Deeper analysis provides better results but takes longer.
+                </p>
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setScanDepth('quick')}
+                    disabled={scanning}
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${
+                      scanDepth === 'quick'
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    } ${scanning ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <div className="text-lg">🚀</div>
+                    <div className="font-medium text-sm">Quick</div>
+                    <div className="text-xs text-gray-500 mt-1">30 files, ~2 min</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setScanDepth('normal')}
+                    disabled={scanning}
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${
+                      scanDepth === 'normal'
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    } ${scanning ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <div className="text-lg">⚖️</div>
+                    <div className="font-medium text-sm">Normal</div>
+                    <div className="text-xs text-gray-500 mt-1">100 files, ~5-10 min</div>
+                    <div className="text-xs text-blue-600 font-medium mt-1">Recommended</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setScanDepth('deep')}
+                    disabled={scanning}
+                    className={`p-3 rounded-lg border-2 text-left transition-all ${
+                      scanDepth === 'deep'
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    } ${scanning ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    <div className="text-lg">🔬</div>
+                    <div className="font-medium text-sm">Deep</div>
+                    <div className="text-xs text-gray-500 mt-1">ALL files, ~15-30+ min</div>
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  Deep mode reads all files in your project. Ideal for complex projects or when you need maximum quality analysis.
+                </p>
               </div>
 
               {/* PROMPT #139 - Project name disabled during scan, filled by AI */}

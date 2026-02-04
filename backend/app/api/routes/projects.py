@@ -153,6 +153,7 @@ def _sanitize_project_name(name: str) -> str:
 async def scan_codebase_memory(
     code_path: str = Query(..., description="Absolute path to the codebase folder"),
     project_id: Optional[UUID] = Query(None, description="Optional project ID for RAG storage"),
+    scan_depth: str = Query("normal", description="Scan depth: quick, normal, or deep"),
     db: Session = Depends(get_db)
 ):
     """
@@ -160,16 +161,21 @@ async def scan_codebase_memory(
 
     PROMPT #118 - Initial codebase memory scan during project creation
     PROMPT #133 - Now runs as background job with notifications
+    PROMPT #163 - Configurable scan depth for better quality with local models
 
     This endpoint creates a background job to scan the codebase.
     The user can navigate freely while the scan processes.
     A notification will appear when the scan completes.
 
-    **POST** `/api/v1/projects/scan-memory?code_path=/projects/my-app`
+    **POST** `/api/v1/projects/scan-memory?code_path=/projects/my-app&scan_depth=normal`
 
     **Query Parameters:**
     - `code_path` (required): Absolute path to the codebase folder
     - `project_id` (optional): Project UUID for storing results in RAG
+    - `scan_depth` (optional): Depth of analysis - "quick", "normal" (default), or "deep"
+      - quick: 30 files, 2 phases (~1-2 min)
+      - normal: 100 files, 4 phases (~5-10 min)
+      - deep: ALL files, N phases (~15-30+ min)
 
     **Response:**
     ```json
@@ -177,7 +183,8 @@ async def scan_codebase_memory(
         "job_id": "uuid-of-job",
         "status": "pending",
         "message": "Memory scan started...",
-        "deep_link": "/projects/new?projectId=xxx&step=1"
+        "deep_link": "/projects/new?projectId=xxx&step=1",
+        "scan_depth": "normal"
     }
     ```
 
@@ -186,6 +193,13 @@ async def scan_codebase_memory(
     **Errors:**
     - 400: If code_path doesn't exist or is not a directory
     """
+    # PROMPT #163 - Validate scan_depth
+    valid_depths = {"quick", "normal", "deep"}
+    if scan_depth not in valid_depths:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid scan_depth '{scan_depth}'. Must be one of: {', '.join(valid_depths)}"
+        )
     # Validate code_path
     path = Path(code_path)
     if not path.exists():
@@ -211,38 +225,43 @@ async def scan_codebase_memory(
     # Get folder name for notification title
     folder_name = path.name
 
+    # PROMPT #163 - Include scan_depth in job input
     job = job_manager.create_job(
         job_type=JobType.MEMORY_SCAN,
         input_data={
             "code_path": code_path,
-            "project_id": str(project_id) if project_id else None
+            "project_id": str(project_id) if project_id else None,
+            "scan_depth": scan_depth
         },
         project_id=project_id,
         deep_link=deep_link,
-        notification_title=f"Analisando código em '{folder_name}'..."
+        notification_title=f"Analisando código em '{folder_name}' ({scan_depth})..."
     )
 
-    # Start background task
-    asyncio.create_task(_process_memory_scan_async(job.id, code_path, project_id))
+    # Start background task with scan_depth
+    asyncio.create_task(_process_memory_scan_async(job.id, code_path, project_id, scan_depth))
 
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": "Memory scan started. You can navigate freely - a notification will appear when complete.",
+        "message": f"Memory scan started ({scan_depth} mode). You can navigate freely - a notification will appear when complete.",
         "deep_link": deep_link,
-        "notification_title": job.notification_title
+        "notification_title": job.notification_title,
+        "scan_depth": scan_depth
     }
 
 
 async def _process_memory_scan_async(
     job_id: UUID,
     code_path: str,
-    project_id: Optional[UUID]
+    project_id: Optional[UUID],
+    scan_depth: str = "normal"
 ):
     """
     Background task to process codebase memory scan.
 
     PROMPT #133 - Background jobs for memory scan
+    PROMPT #163 - Now accepts scan_depth parameter for multi-phase analysis
     """
     from app.database import SessionLocal
 
@@ -251,20 +270,22 @@ async def _process_memory_scan_async(
     try:
         job_manager = JobManager(db)
         job_manager.start_job(job_id)
-        logger.info(f"🚀 Memory scan background task started for job {job_id}")
+        logger.info(f"🚀 Memory scan background task started for job {job_id} (depth={scan_depth})")
 
         # Get folder name for notification
         folder_name = Path(code_path).name
 
-        job_manager.update_progress(job_id, 10.0, "Scanning codebase structure...")
+        job_manager.update_progress(job_id, 10.0, f"Scanning codebase structure ({scan_depth} mode)...")
 
         memory_service = CodebaseMemoryService(db)
 
         job_manager.update_progress(job_id, 30.0, "Analyzing code and extracting patterns...")
 
+        # PROMPT #163 - Pass scan_depth to memory service
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
-            project_id=project_id
+            project_id=project_id,
+            scan_depth=scan_depth
         )
 
         job_manager.update_progress(job_id, 90.0, "Finalizing results...")
@@ -301,6 +322,7 @@ async def _process_memory_scan_async(
 @router.post("/quick-create")
 async def quick_create_project(
     code_path: str = Query(..., description="Absolute path to existing code folder"),
+    scan_depth: str = Query("normal", description="Scan depth: quick, normal, or deep"),
     db: Session = Depends(get_db)
 ):
     """
@@ -372,20 +394,26 @@ async def quick_create_project(
 
     deep_link = f"/projects/{db_project.id}"
 
+    # PROMPT #163 - Validate scan_depth
+    if scan_depth not in ["quick", "normal", "deep"]:
+        scan_depth = "normal"
+
     job = job_manager.create_job(
         job_type=JobType.MEMORY_SCAN,
         input_data={
             "code_path": code_path,
             "project_id": str(db_project.id),
-            "update_project_name": True  # Flag to auto-update project name
+            "update_project_name": True,  # Flag to auto-update project name
+            "scan_depth": scan_depth  # PROMPT #163
         },
         project_id=db_project.id,
         deep_link=deep_link,
-        notification_title=f"Analisando '{folder_name}'..."
+        notification_title=f"Analisando '{folder_name}' ({scan_depth})..."
     )
 
     # Launch background task that will update project with results
-    asyncio.create_task(_process_quick_create_scan(job.id, db_project.id, code_path))
+    # PROMPT #163 - Pass scan_depth to background task
+    asyncio.create_task(_process_quick_create_scan(job.id, db_project.id, code_path, scan_depth))
 
     return {
         "project": {
@@ -405,12 +433,14 @@ async def quick_create_project(
 async def _process_quick_create_scan(
     job_id: UUID,
     project_id: UUID,
-    code_path: str
+    code_path: str,
+    scan_depth: str = "normal"  # PROMPT #163
 ):
     """
     Background task for quick-create memory scan.
 
     PROMPT #137 - Updates project name with AI-suggested title.
+    PROMPT #163 - Supports configurable scan_depth (quick/normal/deep).
     """
     from app.database import SessionLocal
 
@@ -429,9 +459,11 @@ async def _process_quick_create_scan(
 
         job_manager.update_progress(job_id, 30.0, "Analyzing code and extracting patterns...")
 
+        # PROMPT #163 - Pass scan_depth for configurable analysis depth
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
-            project_id=project_id
+            project_id=project_id,
+            scan_depth=scan_depth
         )
 
         job_manager.update_progress(job_id, 80.0, "Updating project with findings...")

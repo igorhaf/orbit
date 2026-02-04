@@ -2,14 +2,21 @@
 Codebase Memory Service
 
 PROMPT #118 - Initial codebase scan and memory extraction
+PROMPT #163 - Multi-phase analysis with configurable depth
 
 This service performs the first scan of a project's codebase when the code folder
 is selected during project creation. It:
 1. Detects the technology stack
 2. Scans and indexes files for RAG
-3. Uses AI to extract business rules and patterns
+3. Uses AI to extract business rules and patterns (multi-phase for better quality)
 4. Suggests a project title based on the analysis
 5. Prepares relevant data for the context interview
+
+PROMPT #163 Features:
+- Configurable scan depth: quick, normal, deep
+- Multi-phase analysis for better results with local models
+- Each phase saves a prompt to the prompts table for visibility
+- Prompts externalized to YAML files
 
 Business Rule: All code analyzed must have its business rules stored,
 including this very feature of project creation.
@@ -18,7 +25,15 @@ Usage:
     from app.services.codebase_memory import CodebaseMemoryService
 
     memory = CodebaseMemoryService(db)
-    result = await memory.scan_and_memorize(code_path)
+
+    # Quick scan (30 files, 2 phases)
+    result = await memory.scan_and_memorize(code_path, scan_depth="quick")
+
+    # Normal scan (100 files, 4 phases) - default
+    result = await memory.scan_and_memorize(code_path, scan_depth="normal")
+
+    # Deep scan (ALL files, N phases)
+    result = await memory.scan_and_memorize(code_path, scan_depth="deep")
 
     # Returns:
     # {
@@ -26,14 +41,17 @@ Usage:
     #     "stack_info": {...},
     #     "business_rules": [...],
     #     "key_features": [...],
-    #     "interview_context": "..."
+    #     "interview_context": "...",
+    #     "phases_completed": 4,
+    #     "scan_depth": "normal"
     # }
 """
 
 import os
+import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -44,6 +62,9 @@ from app.services.rag_service import RAGService
 from app.services.ai_orchestrator import AIOrchestrator
 
 logger = logging.getLogger(__name__)
+
+# PROMPT #163 - Type for scan depth
+ScanDepth = Literal["quick", "normal", "deep"]
 
 
 class CodebaseMemoryService:
@@ -74,11 +95,34 @@ class CodebaseMemoryService:
         ".env.example", "docker-compose.yml"
     }
 
-    # PROMPT #118 FIX - Maximum files to send to AI for analysis (increased)
-    MAX_FILES_FOR_AI = 30
+    # PROMPT #163 - Configurable scan depth settings
+    SCAN_DEPTH_CONFIG = {
+        "quick": {
+            "max_files": 30,
+            "max_content_per_file": 5000,
+            "phases": ["documentation", "quick_scan"],
+            "files_per_phase": 15,
+            "description": "Quick scan: 30 files, 2 phases (~1-2 min)"
+        },
+        "normal": {
+            "max_files": 100,
+            "max_content_per_file": 10000,
+            "phases": ["documentation", "domain", "logic", "consolidation"],
+            "files_per_phase": 25,
+            "description": "Normal scan: 100 files, 4 phases (~5-10 min)"
+        },
+        "deep": {
+            "max_files": None,  # No limit - read ALL files
+            "max_content_per_file": 20000,
+            "phases": "dynamic",  # Create phases as needed
+            "files_per_phase": 15,
+            "description": "Deep scan: ALL files, N phases (~15-30+ min)"
+        }
+    }
 
-    # PROMPT #118 FIX - Maximum content size per file (chars) - increased for better analysis
-    MAX_CONTENT_PER_FILE = 5000
+    # Legacy constants (used as defaults, overridden by scan_depth)
+    MAX_FILES_FOR_AI = 100  # PROMPT #163 - Increased from 30
+    MAX_CONTENT_PER_FILE = 10000  # PROMPT #163 - Increased from 5000
 
     # PROMPT #118 FIX - Directories that contain business logic
     BUSINESS_LOGIC_DIRS = {
@@ -129,11 +173,15 @@ class CodebaseMemoryService:
         self.rag = RAGService(db)
         # PROMPT #118 FIX - Disable cache for memory scan to avoid stale/corrupted responses
         self.orchestrator = AIOrchestrator(db, enable_cache=False)
+        # PROMPT #163 - Track current folder name for prompts
+        self.current_folder_name = ""
+        self.current_scan_depth = "normal"
 
     async def scan_and_memorize(
         self,
         code_path: str,
-        project_id: Optional[UUID] = None
+        project_id: Optional[UUID] = None,
+        scan_depth: ScanDepth = "normal"
     ) -> Dict[str, Any]:
         """
         Perform initial codebase scan and memorization.
@@ -141,9 +189,15 @@ class CodebaseMemoryService:
         This is the main entry point called when a user selects a code folder
         during project creation.
 
+        PROMPT #163 - Now supports configurable scan depth:
+        - "quick": 30 files, 2 phases (~1-2 min)
+        - "normal": 100 files, 4 phases (~5-10 min)
+        - "deep": ALL files, N phases (~15-30+ min)
+
         Args:
             code_path: Absolute path to the codebase folder
             project_id: Optional project ID (if project already created)
+            scan_depth: Depth of analysis - "quick", "normal", or "deep"
 
         Returns:
             Dict containing:
@@ -154,6 +208,8 @@ class CodebaseMemoryService:
             - interview_context: Prepared context for AI interview
             - files_indexed: Number of files indexed in RAG
             - scan_summary: Overview of what was scanned
+            - phases_completed: Number of AI analysis phases completed
+            - scan_depth: The scan depth used
 
         Raises:
             ValueError: If code_path doesn't exist or is not a directory
@@ -166,7 +222,13 @@ class CodebaseMemoryService:
         if not path.is_dir():
             raise ValueError(f"Code path is not a directory: {code_path}")
 
+        # PROMPT #163 - Store scan settings
+        self.current_folder_name = path.name
+        self.current_scan_depth = scan_depth
+        config = self.SCAN_DEPTH_CONFIG.get(scan_depth, self.SCAN_DEPTH_CONFIG["normal"])
+
         logger.info(f"🧠 Starting codebase memory scan for: {code_path}")
+        logger.info(f"📊 Scan depth: {scan_depth} - {config['description']}")
 
         result = {
             "code_path": code_path,
@@ -176,7 +238,9 @@ class CodebaseMemoryService:
             "key_features": [],
             "interview_context": "",
             "files_indexed": 0,
-            "scan_summary": {}
+            "scan_summary": {},
+            "phases_completed": 0,  # PROMPT #163
+            "scan_depth": scan_depth  # PROMPT #163
         }
 
         # Step 1: Detect technology stack
@@ -212,23 +276,28 @@ class CodebaseMemoryService:
             logger.info("   Skipping RAG indexing (no project_id yet)")
 
         # Step 4: Extract representative code samples for AI analysis
+        # PROMPT #163 - Use scan_depth config for limits
         logger.info("🔍 Step 4: Extracting code samples for analysis...")
-        code_samples = self._extract_code_samples(path, scan_data)
+        code_samples = self._extract_code_samples(path, scan_data, config)
         logger.info(f"   Extracted {len(code_samples)} code samples")
 
         # Step 5: Use AI to analyze and extract insights
-        logger.info("🤖 Step 5: AI analysis for business rules and insights...")
-        ai_analysis = await self._ai_analyze_codebase(
+        # PROMPT #163 - Use multi-phase analysis for better results
+        logger.info(f"🤖 Step 5: AI analysis ({scan_depth} mode)...")
+        ai_analysis = await self._ai_analyze_codebase_phased(
             code_samples=code_samples,
             stack_info=stack_info,
             scan_summary=result["scan_summary"],
-            root_path=path  # PROMPT #118 FIX - Pass root path for folder name
+            root_path=path,
+            project_id=project_id,
+            scan_depth=scan_depth
         )
 
         result["suggested_title"] = ai_analysis.get("suggested_title", "")
         result["business_rules"] = ai_analysis.get("business_rules", [])
         result["key_features"] = ai_analysis.get("key_features", [])
         result["interview_context"] = ai_analysis.get("interview_context", "")
+        result["phases_completed"] = ai_analysis.get("phases_completed", 1)
 
         # Step 6: Store business rules in RAG for future reference
         if project_id and result["business_rules"]:
@@ -367,10 +436,13 @@ class CodebaseMemoryService:
     def _extract_code_samples(
         self,
         root_path: Path,
-        scan_data: Dict
+        scan_data: Dict,
+        config: Optional[Dict] = None
     ) -> List[Dict[str, str]]:
         """
         Extract representative code samples for AI analysis.
+
+        PROMPT #163 - Now uses configurable limits from scan_depth config.
 
         Prioritizes:
         1. README and documentation
@@ -381,15 +453,24 @@ class CodebaseMemoryService:
         Args:
             root_path: Root path of codebase
             scan_data: Scan statistics from _scan_codebase
+            config: Optional scan depth config (from SCAN_DEPTH_CONFIG)
 
         Returns:
             List of {filename, content, type} dicts
         """
+        # PROMPT #163 - Use config limits or defaults
+        max_files = config.get("max_files", self.MAX_FILES_FOR_AI) if config else self.MAX_FILES_FOR_AI
+        max_content = config.get("max_content_per_file", self.MAX_CONTENT_PER_FILE) if config else self.MAX_CONTENT_PER_FILE
+
+        # For "deep" mode, max_files is None (no limit)
+        if max_files is None:
+            max_files = float('inf')
+
         samples = []
 
         # Priority 1: README and docs
         for config_file in scan_data.get("config_files", []):
-            if len(samples) >= self.MAX_FILES_FOR_AI:
+            if len(samples) >= max_files:
                 break
 
             if "readme" in config_file.lower():
@@ -399,7 +480,7 @@ class CodebaseMemoryService:
                         content = full_path.read_text(encoding="utf-8", errors="ignore")
                         samples.append({
                             "filename": config_file,
-                            "content": content[:self.MAX_CONTENT_PER_FILE],
+                            "content": content[:max_content],
                             "type": "documentation"
                         })
                     except Exception as e:
@@ -407,7 +488,7 @@ class CodebaseMemoryService:
 
         # Priority 2: Package/config files
         for config_file in scan_data.get("config_files", []):
-            if len(samples) >= self.MAX_FILES_FOR_AI:
+            if len(samples) >= max_files:
                 break
 
             if config_file.endswith((".json", ".toml", ".yml", ".yaml")):
@@ -417,17 +498,16 @@ class CodebaseMemoryService:
                         content = full_path.read_text(encoding="utf-8", errors="ignore")
                         samples.append({
                             "filename": config_file,
-                            "content": content[:self.MAX_CONTENT_PER_FILE],
+                            "content": content[:max_content],
                             "type": "configuration"
                         })
                     except Exception as e:
                         logger.warning(f"Failed to read {config_file}: {e}")
 
         # Priority 3: Key files (models, controllers, services)
-        # PROMPT #118 FIX - Increased limit and prioritize business logic files
         key_files = scan_data.get("key_files", [])
 
-        # PROMPT #118 FIX - Sort key files to prioritize migrations, models, then controllers
+        # Sort key files to prioritize migrations, models, then controllers
         def sort_priority(f):
             f_lower = f.lower()
             if "migration" in f_lower:
@@ -444,8 +524,11 @@ class CodebaseMemoryService:
 
         key_files_sorted = sorted(key_files, key=sort_priority)
 
-        for key_file in key_files_sorted[:20]:  # PROMPT #118 FIX - Increased from 10 to 20
-            if len(samples) >= self.MAX_FILES_FOR_AI:
+        # PROMPT #163 - For deep mode, get all key files; otherwise limit
+        files_to_process = key_files_sorted if max_files == float('inf') else key_files_sorted[:int(max_files)]
+
+        for key_file in files_to_process:
+            if len(samples) >= max_files:
                 break
 
             full_path = root_path / key_file
@@ -454,13 +537,363 @@ class CodebaseMemoryService:
                     content = full_path.read_text(encoding="utf-8", errors="ignore")
                     samples.append({
                         "filename": key_file,
-                        "content": content[:self.MAX_CONTENT_PER_FILE],
+                        "content": content[:max_content],
                         "type": "code"
                     })
                 except Exception as e:
                     logger.warning(f"Failed to read {key_file}: {e}")
 
+        logger.info(f"📂 Extracted {len(samples)} code samples (max_files={max_files}, max_content={max_content})")
         return samples
+
+    # =========================================================================
+    # PROMPT #163 - Multi-phase Analysis Methods
+    # =========================================================================
+
+    def _is_domain_file(self, filename: str) -> bool:
+        """Check if file is domain/model related."""
+        lower = filename.lower()
+        return any(p in lower for p in ["model", "entity", "migration", "schema", "domain"])
+
+    def _is_logic_file(self, filename: str) -> bool:
+        """Check if file is logic/service related."""
+        lower = filename.lower()
+        return any(p in lower for p in ["controller", "service", "handler", "usecase", "validator", "request", "policy"])
+
+    def _format_samples_for_prompt(self, samples: List[Dict]) -> str:
+        """Format code samples as a string for the prompt."""
+        parts = []
+        for sample in samples:
+            parts.append(f"\n### File: {sample['filename']} ({sample['type']})")
+            parts.append("```")
+            parts.append(sample["content"])
+            parts.append("```\n")
+        return "\n".join(parts)
+
+    def _parse_phase_response(self, content: str) -> Dict:
+        """Parse JSON response from a phase analysis."""
+        try:
+            # Try to extract JSON from response (might have markdown)
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+
+            # Fix invalid escape sequences
+            content = self._fix_invalid_escapes(content.strip())
+            return json.loads(content)
+        except Exception as e:
+            logger.warning(f"Failed to parse phase response: {e}")
+            return {
+                "partial_title": "",
+                "business_rules_found": [],
+                "features_found": [],
+                "entities_found": [],
+                "insights": ""
+            }
+
+    def _fix_invalid_escapes(self, s: str) -> str:
+        """Fix invalid escape sequences in JSON string."""
+        invalid_escapes = ['\\a', '\\c', '\\d', '\\e', '\\g', '\\h', '\\i', '\\j',
+                           '\\k', '\\l', '\\m', '\\o', '\\p', '\\q', '\\s', '\\v',
+                           '\\w', '\\x', '\\y', '\\z', '\\A', '\\B', '\\C', '\\D',
+                           '\\E', '\\F', '\\G', '\\H', '\\I', '\\J', '\\K', '\\L',
+                           '\\M', '\\N', '\\O', '\\P', '\\Q', '\\R', '\\S', '\\T',
+                           '\\U', '\\V', '\\W', '\\X', '\\Y', '\\Z']
+        for esc in invalid_escapes:
+            s = s.replace(esc, '\\\\' + esc[1])
+        return s
+
+    async def _analyze_phase(
+        self,
+        phase_name: str,
+        samples: List[Dict],
+        stack_info: Dict,
+        project_id: Optional[UUID],
+        previous_context: Optional[Dict] = None
+    ) -> Dict:
+        """
+        Execute one phase of analysis using externalized YAML prompt.
+
+        PROMPT #163 - Each phase saves a prompt to the prompts table.
+        """
+        if not samples:
+            logger.info(f"⏭️ Skipping phase '{phase_name}' - no samples")
+            return {
+                "partial_title": "",
+                "business_rules_found": [],
+                "features_found": [],
+                "entities_found": [],
+                "insights": f"No files found for {phase_name} phase"
+            }
+
+        logger.info(f"🔄 Starting phase: {phase_name} ({len(samples)} files)")
+
+        try:
+            # Load prompt from YAML
+            from app.prompts.loader import PromptLoader
+            loader = PromptLoader()
+
+            code_content = self._format_samples_for_prompt(samples)
+            previous_analysis = json.dumps(previous_context, ensure_ascii=False) if previous_context else None
+
+            system_prompt, user_prompt = loader.render(
+                "memory/codebase_analysis",
+                {
+                    "folder_name": self.current_folder_name,
+                    "phase_name": phase_name,
+                    "code_content": code_content,
+                    "previous_analysis": previous_analysis,
+                    "stack_detected": stack_info.get("detected_stack", "")
+                }
+            )
+
+            # Execute with project_id to save prompt to database
+            response = await self.orchestrator.execute(
+                usage_type="memory",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                project_id=project_id,
+                metadata={
+                    "phase": phase_name,
+                    "files_count": len(samples),
+                    "scan_type": "memory_scan_phase",
+                    "scan_depth": self.current_scan_depth
+                }
+            )
+
+            result = self._parse_phase_response(response.get("content", "{}"))
+            logger.info(f"✅ Completed phase: {phase_name} - found {len(result.get('business_rules_found', []))} rules")
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Phase '{phase_name}' failed: {e}")
+            # Fallback to legacy analysis for this phase
+            return {
+                "partial_title": "",
+                "business_rules_found": [],
+                "features_found": [],
+                "entities_found": [],
+                "insights": f"Phase {phase_name} failed: {str(e)}"
+            }
+
+    async def _consolidate_phases(
+        self,
+        all_phases: Dict,
+        stack_info: Dict,
+        project_id: Optional[UUID],
+        total_files: int
+    ) -> Dict:
+        """
+        Consolidate all phase results into final analysis.
+
+        PROMPT #163 - Uses externalized YAML prompt for consolidation.
+        """
+        logger.info("🔄 Starting consolidation phase...")
+
+        try:
+            from app.prompts.loader import PromptLoader
+            loader = PromptLoader()
+
+            # Format all phases for the consolidation prompt
+            all_phases_text = json.dumps(all_phases, ensure_ascii=False, indent=2)
+
+            system_prompt, user_prompt = loader.render(
+                "memory/consolidation",
+                {
+                    "all_phases": all_phases_text,
+                    "folder_name": self.current_folder_name,
+                    "stack_info": json.dumps(stack_info),
+                    "total_files_analyzed": total_files
+                }
+            )
+
+            response = await self.orchestrator.execute(
+                usage_type="memory",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                project_id=project_id,
+                metadata={
+                    "phase": "consolidation",
+                    "scan_type": "memory_scan_consolidation",
+                    "scan_depth": self.current_scan_depth,
+                    "total_phases": len(all_phases)
+                }
+            )
+
+            content = response.get("content", "{}")
+
+            # Parse JSON
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+
+            content = self._fix_invalid_escapes(content.strip())
+            result = json.loads(content)
+
+            logger.info(f"✅ Consolidation complete - Title: {result.get('suggested_title', 'N/A')}")
+            return result
+
+        except Exception as e:
+            logger.error(f"❌ Consolidation failed: {e}")
+            # Return merged results from phases
+            return self._merge_phase_results(all_phases, stack_info)
+
+    def _merge_phase_results(self, all_phases: Dict, stack_info: Dict) -> Dict:
+        """Merge results from all phases without AI consolidation (fallback)."""
+        all_rules = []
+        all_features = []
+        all_entities = []
+        best_title = ""
+
+        for phase_name, phase_data in all_phases.items():
+            if isinstance(phase_data, dict):
+                all_rules.extend(phase_data.get("business_rules_found", []))
+                all_features.extend(phase_data.get("features_found", []))
+                all_entities.extend(phase_data.get("entities_found", []))
+                if phase_data.get("partial_title") and not best_title:
+                    best_title = phase_data.get("partial_title")
+
+        # Deduplicate
+        all_rules = list(dict.fromkeys(all_rules))
+        all_features = list(dict.fromkeys(all_features))
+        all_entities = list(dict.fromkeys(all_entities))
+
+        return {
+            "suggested_title": best_title or self._generate_fallback_title(stack_info, self.current_folder_name),
+            "business_rules": all_rules[:15],
+            "key_features": all_features[:10],
+            "entities": all_entities[:10],
+            "interview_context": f"Este projeto foi analisado em múltiplas fases. Foram encontradas {len(all_rules)} regras de negócio e {len(all_features)} funcionalidades."
+        }
+
+    async def _ai_analyze_codebase_phased(
+        self,
+        code_samples: List[Dict[str, str]],
+        stack_info: Dict,
+        scan_summary: Dict,
+        root_path: Path,
+        project_id: Optional[UUID] = None,
+        scan_depth: ScanDepth = "normal"
+    ) -> Dict[str, Any]:
+        """
+        Perform multi-phase AI analysis of codebase.
+
+        PROMPT #163 - Main method for phased analysis.
+        Each phase focuses on a different aspect of the codebase.
+
+        Args:
+            code_samples: List of code sample dicts
+            stack_info: Stack detection results
+            scan_summary: Scan statistics
+            root_path: Root path of the codebase
+            project_id: Optional project ID (for saving prompts)
+            scan_depth: Depth of analysis
+
+        Returns:
+            Dict with consolidated AI analysis results
+        """
+        config = self.SCAN_DEPTH_CONFIG.get(scan_depth, self.SCAN_DEPTH_CONFIG["normal"])
+        phases_completed = 0
+        all_phases = {}
+
+        if scan_depth == "quick":
+            # Quick mode: 2 phases only
+            # Phase 1: Documentation
+            doc_samples = [s for s in code_samples if s["type"] in ["documentation", "configuration"]]
+            all_phases["documentation"] = await self._analyze_phase(
+                "documentation", doc_samples, stack_info, project_id
+            )
+            phases_completed += 1
+
+            # Phase 2: Quick scan of code
+            code_only = [s for s in code_samples if s["type"] == "code"][:15]
+            all_phases["quick_scan"] = await self._analyze_phase(
+                "quick_scan", code_only, stack_info, project_id,
+                previous_context=all_phases.get("documentation")
+            )
+            phases_completed += 1
+
+        elif scan_depth == "normal":
+            # Normal mode: 4 phases
+            # Phase 1: Documentation
+            doc_samples = [s for s in code_samples if s["type"] in ["documentation", "configuration"]]
+            all_phases["documentation"] = await self._analyze_phase(
+                "documentation", doc_samples, stack_info, project_id
+            )
+            phases_completed += 1
+
+            # Phase 2: Domain (models, migrations)
+            domain_samples = [s for s in code_samples if self._is_domain_file(s["filename"])][:25]
+            all_phases["domain"] = await self._analyze_phase(
+                "domain", domain_samples, stack_info, project_id,
+                previous_context=all_phases.get("documentation")
+            )
+            phases_completed += 1
+
+            # Phase 3: Logic (controllers, services)
+            logic_samples = [s for s in code_samples if self._is_logic_file(s["filename"])][:25]
+            all_phases["logic"] = await self._analyze_phase(
+                "logic", logic_samples, stack_info, project_id,
+                previous_context=all_phases.get("domain")
+            )
+            phases_completed += 1
+
+        else:  # deep mode
+            # Deep mode: Dynamic phases based on file count
+            # Phase 1: Documentation (always)
+            doc_samples = [s for s in code_samples if s["type"] in ["documentation", "configuration"]]
+            all_phases["documentation"] = await self._analyze_phase(
+                "documentation", doc_samples, stack_info, project_id
+            )
+            phases_completed += 1
+
+            # Get all code files
+            code_only = [s for s in code_samples if s["type"] == "code"]
+            files_per_phase = config.get("files_per_phase", 15)
+
+            # Create dynamic phases for all code files
+            previous_ctx = all_phases.get("documentation")
+            phase_num = 2
+
+            for i in range(0, len(code_only), files_per_phase):
+                batch = code_only[i:i + files_per_phase]
+
+                # Determine batch type
+                domain_count = sum(1 for s in batch if self._is_domain_file(s["filename"]))
+                logic_count = sum(1 for s in batch if self._is_logic_file(s["filename"]))
+
+                if domain_count > logic_count:
+                    batch_type = "domain"
+                elif logic_count > 0:
+                    batch_type = "logic"
+                else:
+                    batch_type = "code"
+
+                phase_name = f"batch_{phase_num}_{batch_type}"
+                all_phases[phase_name] = await self._analyze_phase(
+                    batch_type, batch, stack_info, project_id,
+                    previous_context=previous_ctx
+                )
+                previous_ctx = all_phases[phase_name]
+                phases_completed += 1
+                phase_num += 1
+
+        # Final phase: Consolidation
+        consolidated = await self._consolidate_phases(
+            all_phases, stack_info, project_id, len(code_samples)
+        )
+        phases_completed += 1
+
+        # Add phases_completed to result
+        consolidated["phases_completed"] = phases_completed
+
+        return consolidated
+
+    # =========================================================================
+    # Legacy method (kept for backwards compatibility)
+    # =========================================================================
 
     async def _ai_analyze_codebase(
         self,

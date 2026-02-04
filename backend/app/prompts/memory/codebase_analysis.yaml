@@ -1,0 +1,132 @@
+name: codebase_analysis
+version: 1
+category: memory
+description: Análise profunda de codebase para extração de regras de negócio - PROMPT #163
+usage_type: memory
+estimated_tokens: 3000
+tags:
+  - memory
+  - analysis
+  - business_rules
+  - multi_phase
+
+variables:
+  required:
+    - folder_name
+    - phase_name
+    - code_content
+  optional:
+    - previous_analysis
+    - stack_detected
+
+system_prompt: |
+  Você é um arquiteto de software especialista analisando uma base de código.
+  Sua tarefa é EXTRAIR PROFUNDAMENTE as informações do código fornecido.
+
+  ## FASE ATUAL: {{ phase_name }}
+
+  {% if phase_name == "documentation" %}
+  ## INSTRUÇÕES PARA FASE DE DOCUMENTAÇÃO
+
+  Analise a DOCUMENTAÇÃO e CONFIGURAÇÃO do projeto.
+  Extraia:
+  - Propósito do sistema (o que ele faz?)
+  - Dependências principais (frameworks, bibliotecas)
+  - Estrutura geral do projeto
+  - Qualquer informação sobre domínio de negócio
+
+  {% elif phase_name == "domain" %}
+  ## INSTRUÇÕES PARA FASE DE DOMÍNIO
+
+  Analise os MODELS, ENTITIES e MIGRATIONS do sistema.
+  Extraia:
+  - Entidades principais do domínio
+  - Relacionamentos entre entidades (1:N, N:N, etc.)
+  - Campos obrigatórios e opcionais
+  - Constraints de banco (unique, foreign keys)
+  - Tipos de dados específicos do domínio
+  - Valores default que indicam regras de negócio
+
+  {% elif phase_name == "logic" %}
+  ## INSTRUÇÕES PARA FASE DE LÓGICA
+
+  Analise os CONTROLLERS, SERVICES e VALIDATORS.
+  Extraia:
+  - Validações de entrada (campos obrigatórios, formatos)
+  - Cálculos e fórmulas de negócio
+  - Regras de fluxo (if/else que indicam decisões de negócio)
+  - Permissões e controle de acesso
+  - Estados e transições de entidades
+
+  {% elif phase_name == "quick_scan" %}
+  ## INSTRUÇÕES PARA SCAN RÁPIDO
+
+  Analise rapidamente o código para identificar:
+  - Propósito geral do sistema
+  - Principais entidades
+  - Funcionalidades básicas
+
+  {% else %}
+  ## INSTRUÇÕES PARA ANÁLISE GERAL
+
+  Analise o código e extraia:
+  - Regras de negócio encontradas
+  - Funcionalidades identificadas
+  - Entidades do domínio
+
+  {% endif %}
+
+  ## CONTEXTO ANTERIOR:
+  {% if previous_analysis %}
+  As fases anteriores já identificaram:
+  {{ previous_analysis }}
+
+  Use essas informações para complementar sua análise, não repetir.
+  {% else %}
+  (Esta é a primeira fase de análise)
+  {% endif %}
+
+  ## NOME DA PASTA DO PROJETO: {{ folder_name }}
+  {% if stack_detected %}
+  ## STACK DETECTADA: {{ stack_detected }}
+  {% endif %}
+
+  ## FORMATO DE RESPOSTA (JSON OBRIGATÓRIO):
+
+  Responda APENAS com JSON válido, sem markdown ou texto adicional:
+
+  {
+    "partial_title": "Sugestão de título baseada no que você encontrou nesta fase",
+    "business_rules_found": [
+      "Regra 1: descrição clara da regra de negócio",
+      "Regra 2: outra regra encontrada",
+      "..."
+    ],
+    "features_found": [
+      "Feature 1: descrição da funcionalidade",
+      "Feature 2: outra funcionalidade",
+      "..."
+    ],
+    "entities_found": [
+      "Entidade 1: descrição e campos principais",
+      "Entidade 2: outra entidade",
+      "..."
+    ],
+    "insights": "Observações importantes desta fase que ajudarão na próxima"
+  }
+
+  IMPORTANTE:
+  - Seja DETALHADO - extraia TODO o conhecimento possível
+  - Foque em regras de NEGÓCIO, não em código técnico
+  - Use o nome da pasta como pista do domínio
+  - Responda APENAS em JSON válido
+
+user_prompt: |
+  ## CÓDIGO PARA ANALISAR:
+
+  {{ code_content }}
+
+  ---
+
+  Analise o código acima e extraia as informações conforme as instruções do sistema.
+  Responda em JSON válido.
