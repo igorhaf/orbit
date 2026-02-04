@@ -420,3 +420,341 @@ class RAGService:
             "avg_content_length": round(result.avg_content_length or 0, 2),
             "metadata_types": result.metadata_types or []
         }
+
+    # ========================================================================
+    # PROMPT #162 - Card RAG Integration
+    # ========================================================================
+
+    def store_card(
+        self,
+        card_id: UUID,
+        title: str,
+        description: Optional[str],
+        generated_prompt: Optional[str],
+        item_type: str,
+        parent_id: Optional[UUID],
+        labels: Optional[List[str]],
+        workflow_state: str,
+        project_id: UUID
+    ) -> UUID:
+        """
+        Store a card (Epic/Story/Task/Subtask) in RAG for semantic search.
+
+        PROMPT #162 - RAG as Central Memory: Index cards at creation/activation.
+
+        Args:
+            card_id: Card UUID
+            title: Card title
+            description: Card description (human-readable)
+            generated_prompt: Semantic prompt for AI consumption
+            item_type: epic, story, task, subtask
+            parent_id: Parent card UUID (None for root cards)
+            labels: Card labels
+            workflow_state: draft, open, in_progress, done
+            project_id: Project UUID
+
+        Returns:
+            UUID of RAG document
+
+        Usage:
+            rag.store_card(
+                card_id=card.id,
+                title=card.title,
+                description=card.description,
+                generated_prompt=card.generated_prompt,
+                item_type=card.item_type.value,
+                parent_id=card.parent_id,
+                labels=card.labels,
+                workflow_state=card.workflow_state,
+                project_id=card.project_id
+            )
+        """
+        # Build searchable content (combine title + description + prompt)
+        content_parts = [title]
+        if description:
+            content_parts.append(description)
+        if generated_prompt:
+            content_parts.append(generated_prompt)
+
+        content = "\n\n".join(content_parts)
+
+        metadata = {
+            "type": "card",
+            "item_type": item_type,
+            "card_id": str(card_id),
+            "parent_id": str(parent_id) if parent_id else None,
+            "labels": labels or [],
+            "workflow_state": workflow_state
+        }
+
+        doc_id = self.store(
+            content=content,
+            metadata=metadata,
+            project_id=project_id
+        )
+
+        logger.info(
+            f"📇 Stored card in RAG: {title} "
+            f"(type={item_type}, workflow={workflow_state}, doc_id={doc_id})"
+        )
+
+        return doc_id
+
+    def find_similar_cards(
+        self,
+        title: str,
+        description: Optional[str],
+        project_id: UUID,
+        item_type: Optional[str] = None,
+        similarity_threshold: float = 0.85,
+        top_k: int = 3
+    ) -> List[Dict]:
+        """
+        Find similar cards in RAG to detect potential duplicates.
+
+        PROMPT #162 - Auto-skip silencioso: Check before creating new cards.
+
+        Args:
+            title: New card title to check
+            description: New card description (optional)
+            project_id: Project UUID
+            item_type: Filter by item_type (optional)
+            similarity_threshold: Minimum similarity (0.85 = 85%)
+            top_k: Max results to return
+
+        Returns:
+            List of similar cards (empty if no duplicates found)
+
+        Usage:
+            duplicates = rag.find_similar_cards(
+                title="User Authentication Module",
+                description="Implement login with OAuth",
+                project_id=project.id,
+                item_type="story",
+                similarity_threshold=0.85
+            )
+
+            if duplicates:
+                # Skip creation - card similar already exists
+                logger.info(f"Skipping: similar to '{duplicates[0]['title']}'")
+        """
+        # Build query from title + description
+        query_parts = [title]
+        if description:
+            query_parts.append(description)
+        query = " ".join(query_parts)
+
+        # Build filter
+        filter_dict = {
+            "project_id": str(project_id),
+            "type": "card"
+        }
+        if item_type:
+            filter_dict["item_type"] = item_type
+
+        results = self.retrieve(
+            query=query,
+            filter=filter_dict,
+            top_k=top_k,
+            similarity_threshold=similarity_threshold
+        )
+
+        # Extract card info from results
+        similar_cards = []
+        for r in results:
+            metadata = r.get("metadata", {})
+            similar_cards.append({
+                "card_id": metadata.get("card_id"),
+                "title": r["content"].split("\n")[0],  # First line is title
+                "item_type": metadata.get("item_type"),
+                "workflow_state": metadata.get("workflow_state"),
+                "similarity": r["similarity"]
+            })
+
+        if similar_cards:
+            logger.info(
+                f"🔍 Found {len(similar_cards)} similar cards for '{title[:50]}...' "
+                f"(threshold={similarity_threshold})"
+            )
+
+        return similar_cards
+
+    def update_card(
+        self,
+        card_id: UUID,
+        title: str,
+        description: Optional[str],
+        generated_prompt: Optional[str],
+        workflow_state: str,
+        project_id: UUID
+    ) -> Optional[UUID]:
+        """
+        Update a card's RAG entry (delete old + create new).
+
+        Args:
+            card_id: Card UUID
+            title: Updated title
+            description: Updated description
+            generated_prompt: Updated prompt
+            workflow_state: Updated state
+            project_id: Project UUID
+
+        Returns:
+            New RAG document UUID, or None if card not found in RAG
+        """
+        # Delete old entry
+        deleted = self.delete_by_filter({
+            "project_id": str(project_id),
+            "type": "card",
+            "card_id": str(card_id)
+        })
+
+        if deleted == 0:
+            logger.warning(f"Card {card_id} not found in RAG for update")
+
+        # Re-index with updated content
+        # Note: We don't have all metadata here, so we store minimal
+        content_parts = [title]
+        if description:
+            content_parts.append(description)
+        if generated_prompt:
+            content_parts.append(generated_prompt)
+
+        content = "\n\n".join(content_parts)
+
+        doc_id = self.store(
+            content=content,
+            metadata={
+                "type": "card",
+                "card_id": str(card_id),
+                "workflow_state": workflow_state
+            },
+            project_id=project_id
+        )
+
+        logger.info(f"📇 Updated card in RAG: {title} (doc_id={doc_id})")
+
+        return doc_id
+
+    def delete_card(self, card_id: UUID, project_id: UUID) -> int:
+        """
+        Delete a card from RAG.
+
+        Args:
+            card_id: Card UUID
+            project_id: Project UUID
+
+        Returns:
+            Number of documents deleted (0 or 1)
+        """
+        return self.delete_by_filter({
+            "project_id": str(project_id),
+            "type": "card",
+            "card_id": str(card_id)
+        })
+
+    # ========================================================================
+    # PROMPT #162 - Context RAG Integration
+    # ========================================================================
+
+    def store_project_context(
+        self,
+        project_id: UUID,
+        context_semantic: str,
+        context_human: str
+    ) -> tuple:
+        """
+        Store project context in RAG for cross-project learning.
+
+        PROMPT #162 - Context indexed when locked.
+
+        Args:
+            project_id: Project UUID
+            context_semantic: Semantic context (AI-optimized)
+            context_human: Human-readable context
+
+        Returns:
+            Tuple of (semantic_doc_id, human_doc_id)
+        """
+        # Delete existing context entries first
+        self.delete_by_filter({
+            "project_id": str(project_id),
+            "type": "project_context"
+        })
+
+        # Store semantic context
+        semantic_doc_id = self.store(
+            content=context_semantic,
+            metadata={
+                "type": "project_context",
+                "context_type": "semantic"
+            },
+            project_id=project_id
+        )
+
+        # Store human context
+        human_doc_id = self.store(
+            content=context_human,
+            metadata={
+                "type": "project_context",
+                "context_type": "human"
+            },
+            project_id=project_id
+        )
+
+        logger.info(
+            f"🔒 Stored project context in RAG (project={project_id}, "
+            f"semantic={len(context_semantic)} chars, human={len(context_human)} chars)"
+        )
+
+        return (semantic_doc_id, human_doc_id)
+
+    def get_relevant_interview_answers(
+        self,
+        query: str,
+        project_id: UUID,
+        top_k: int = 5,
+        similarity_threshold: float = 0.6
+    ) -> List[Dict]:
+        """
+        Retrieve relevant interview answers for context.
+
+        PROMPT #162 - Use orphaned interview answers for card generation.
+
+        Args:
+            query: Context query (e.g., card title being generated)
+            project_id: Project UUID
+            top_k: Max results
+            similarity_threshold: Minimum similarity
+
+        Returns:
+            List of relevant answers with content and similarity
+
+        Usage:
+            # When generating a card about authentication
+            answers = rag.get_relevant_interview_answers(
+                query="User Authentication and Login",
+                project_id=project.id
+            )
+
+            if answers:
+                context = "User mentioned:\n"
+                for a in answers:
+                    context += f"- {a['content']}\n"
+        """
+        results = self.retrieve(
+            query=query,
+            filter={
+                "project_id": str(project_id),
+                "type": "interview_answer"
+            },
+            top_k=top_k,
+            similarity_threshold=similarity_threshold
+        )
+
+        if results:
+            logger.info(
+                f"📝 Found {len(results)} relevant interview answers for '{query[:50]}...'"
+            )
+
+        return results

@@ -25,6 +25,7 @@ from app.models.project import Project
 from app.models.interview import Interview, InterviewStatus
 from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
 from app.services.ai_orchestrator import AIOrchestrator
+from app.services.rag_service import RAGService
 from app.prompter.facade import PrompterFacade
 from app.prompts import PromptService, get_prompt_service
 
@@ -1007,6 +1008,18 @@ um comportamento já implementado no sistema.""",
 
         logger.info(f"🔒 Context locked for project {project.name}")
 
+        # PROMPT #162 - Index project context in RAG for cross-project learning
+        try:
+            rag_service = RAGService(self.db)
+            rag_service.store_project_context(
+                project_id=project.id,
+                context_semantic=project.context_semantic,
+                context_human=project.context_human or ""
+            )
+            logger.info(f"📚 Project context indexed in RAG: {project.name}")
+        except Exception as e:
+            logger.error(f"❌ Error indexing context in RAG: {str(e)}")
+
         return True
 
     def is_context_ready(self, project_id: UUID) -> bool:
@@ -1146,6 +1159,18 @@ um comportamento já implementado no sistema.""",
             project.context_locked_at = datetime.utcnow()
             logger.info(f"🔒 Context locked for project {project.name} (first item activated)")
 
+            # PROMPT #162 - Index project context in RAG for cross-project learning
+            try:
+                rag_service = RAGService(self.db)
+                rag_service.store_project_context(
+                    project_id=project.id,
+                    context_semantic=project.context_semantic,
+                    context_human=project.context_human or ""
+                )
+                logger.info(f"📚 Project context indexed in RAG: {project.name}")
+            except Exception as e:
+                logger.error(f"❌ Error indexing context in RAG: {str(e)}")
+
         # PROMPT #126 - Update project status to "active" when first epic is approved
         if epic.item_type == ItemType.EPIC and hasattr(project, 'status'):
             from app.models.project import ProjectStatus
@@ -1181,6 +1206,25 @@ um comportamento já implementado no sistema.""",
             except Exception as e:
                 logger.error(f"❌ Error generating draft stories: {str(e)}")
                 # Don't fail the activation if story generation fails
+
+        # PROMPT #162 - Index activated card in RAG for semantic search
+        try:
+            rag_service = RAGService(self.db)
+            rag_service.store_card(
+                card_id=epic.id,
+                title=epic.title,
+                description=epic.description,
+                generated_prompt=epic.generated_prompt,
+                item_type=epic.item_type.value if epic.item_type else "epic",
+                parent_id=epic.parent_id,
+                labels=epic.labels,
+                workflow_state=epic.workflow_state,
+                project_id=epic.project_id
+            )
+            logger.info(f"📇 Epic indexed in RAG: {epic.title}")
+        except Exception as e:
+            logger.error(f"❌ Error indexing epic in RAG: {str(e)}")
+            # Don't fail activation if RAG indexing fails
 
         return {
             "id": str(epic.id),
@@ -1399,6 +1443,26 @@ Retorne APENAS JSON válido (sem markdown code blocks):
 - TUDO EM PORTUGUÊS
 """
 
+        # PROMPT #162 - Fetch relevant interview answers from RAG
+        interview_context = ""
+        try:
+            rag_service = RAGService(self.db)
+            relevant_answers = rag_service.get_relevant_interview_answers(
+                query=f"{epic_title} {epic_description or ''}",
+                project_id=project.id,
+                top_k=5,
+                similarity_threshold=0.5
+            )
+            if relevant_answers:
+                interview_context = "\n\n## RESPOSTAS RELEVANTES DA ENTREVISTA\n"
+                interview_context += "*(O usuário mencionou isto durante a entrevista de contexto)*\n\n"
+                for i, answer in enumerate(relevant_answers, 1):
+                    content = answer.get("content", "")[:500]
+                    interview_context += f"- {content}\n"
+                logger.info(f"📝 Added {len(relevant_answers)} relevant interview answers to epic context")
+        except Exception as e:
+            logger.warning(f"Could not fetch interview answers: {e}")
+
         user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para este Epic/Módulo.
 
 ## CONTEXTO DO PROJETO
@@ -1406,7 +1470,7 @@ Retorne APENAS JSON válido (sem markdown code blocks):
 **Descrição:** {project.description or 'Não especificada'}
 
 **Contexto Semântico do Projeto (REUTILIZE estes identificadores):**
-{project.context_semantic or 'Não disponível'}
+{project.context_semantic or 'Não disponível'}{interview_context}
 
 **Contexto Legível do Projeto:**
 {project.context_human or 'Não disponível'}
@@ -2210,17 +2274,37 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
             # ============================================================
             # STEP 2: Create SIMPLE drafts (title only) - PROMPT #107
             # Full content is generated ONLY when user approves the item
+            # PROMPT #162: Check for duplicates before creating
             # ============================================================
             created_stories = []
+            skipped_count = 0
+            rag_service = RAGService(self.db)
+
             for i, title in enumerate(story_titles):
                 try:
+                    story_title = title if isinstance(title, str) else f"Story {i+1}"
+
+                    # PROMPT #162 - Check for similar cards (auto-skip silencioso)
+                    similar_cards = rag_service.find_similar_cards(
+                        title=story_title,
+                        description=None,
+                        project_id=epic.project_id,
+                        item_type="story",
+                        similarity_threshold=0.85,
+                        top_k=1
+                    )
+                    if similar_cards:
+                        logger.info(f"⏭️ Skipping similar story: '{story_title[:50]}...' (similar to '{similar_cards[0].get('title', 'unknown')[:50]}...' - {similar_cards[0].get('similarity', 0):.0%})")
+                        skipped_count += 1
+                        continue
+
                     # Create simple draft story with just title and placeholder description
                     # Full content will be generated when user activates/approves this story
                     story = Task(
                         project_id=epic.project_id,
                         parent_id=epic.id,
                         item_type=ItemType.STORY,
-                        title=title if isinstance(title, str) else f"Story {i+1}",
+                        title=story_title,
                         description="Conteúdo será gerado ao aprovar.",  # Simple placeholder
                         generated_prompt="",  # Empty until approved
                         acceptance_criteria=[],
@@ -2237,10 +2321,13 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
                     )
                     self.db.add(story)
                     created_stories.append(story)
-                    logger.info(f"📝 Created draft story {i+1}/{len(story_titles)}: {title[:50] if isinstance(title, str) else 'Story'}...")
+                    logger.info(f"📝 Created draft story {i+1}/{len(story_titles)}: {story_title[:50]}...")
 
                 except Exception as story_error:
                     logger.error(f"❌ Error creating draft story '{title}': {str(story_error)}")
+
+            if skipped_count > 0:
+                logger.info(f"⏭️ Skipped {skipped_count} duplicate stories")
 
             self.db.commit()
             logger.info(f"✅ Created {len(created_stories)} story DRAFTS (lightweight, content on approval)")
@@ -2428,17 +2515,37 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
             # ============================================================
             # STEP 2: Create SIMPLE drafts (title only) - PROMPT #107
             # Full content is generated ONLY when user approves the item
+            # PROMPT #162: Check for duplicates before creating
             # ============================================================
             created_tasks = []
+            skipped_count = 0
+            rag_service = RAGService(self.db)
+
             for i, title in enumerate(task_titles):
                 try:
+                    task_title = title if isinstance(title, str) else f"Task {i+1}"
+
+                    # PROMPT #162 - Check for similar cards (auto-skip silencioso)
+                    similar_cards = rag_service.find_similar_cards(
+                        title=task_title,
+                        description=None,
+                        project_id=story.project_id,
+                        item_type="task",
+                        similarity_threshold=0.85,
+                        top_k=1
+                    )
+                    if similar_cards:
+                        logger.info(f"⏭️ Skipping similar task: '{task_title[:50]}...' (similar to '{similar_cards[0].get('title', 'unknown')[:50]}...' - {similar_cards[0].get('similarity', 0):.0%})")
+                        skipped_count += 1
+                        continue
+
                     # Create simple draft task with just title and placeholder description
                     # Full content will be generated when user activates/approves this task
                     task = Task(
                         project_id=story.project_id,
                         parent_id=story.id,
                         item_type=ItemType.TASK,
-                        title=title if isinstance(title, str) else f"Task {i+1}",
+                        title=task_title,
                         description="Conteúdo será gerado ao aprovar.",  # Simple placeholder
                         generated_prompt="",  # Empty until approved
                         acceptance_criteria=[],
@@ -2455,10 +2562,13 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
                     )
                     self.db.add(task)
                     created_tasks.append(task)
-                    logger.info(f"📝 Created draft task {i+1}/{len(task_titles)}: {title[:50] if isinstance(title, str) else 'Task'}...")
+                    logger.info(f"📝 Created draft task {i+1}/{len(task_titles)}: {task_title[:50]}...")
 
                 except Exception as task_error:
                     logger.error(f"❌ Error creating draft task '{title}': {str(task_error)}")
+
+            if skipped_count > 0:
+                logger.info(f"⏭️ Skipped {skipped_count} duplicate tasks")
 
             self.db.commit()
             logger.info(f"✅ Created {len(created_tasks)} task DRAFTS (lightweight, content on approval)")
@@ -2583,17 +2693,37 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
             # ============================================================
             # STEP 2: Create SIMPLE drafts (title only) - PROMPT #107
             # Full content is generated ONLY when user approves the item
+            # PROMPT #162: Check for duplicates before creating
             # ============================================================
             created_subtasks = []
+            skipped_count = 0
+            rag_service = RAGService(self.db)
+
             for i, title in enumerate(subtask_titles):
                 try:
+                    subtask_title = title if isinstance(title, str) else f"Subtask {i+1}"
+
+                    # PROMPT #162 - Check for similar cards (auto-skip silencioso)
+                    similar_cards = rag_service.find_similar_cards(
+                        title=subtask_title,
+                        description=None,
+                        project_id=task.project_id,
+                        item_type="subtask",
+                        similarity_threshold=0.85,
+                        top_k=1
+                    )
+                    if similar_cards:
+                        logger.info(f"⏭️ Skipping similar subtask: '{subtask_title[:50]}...' (similar to '{similar_cards[0].get('title', 'unknown')[:50]}...' - {similar_cards[0].get('similarity', 0):.0%})")
+                        skipped_count += 1
+                        continue
+
                     # Create simple draft subtask with just title and placeholder description
                     # Full content will be generated when user activates/approves this subtask
                     subtask = Task(
                         project_id=task.project_id,
                         parent_id=task.id,
                         item_type=ItemType.SUBTASK,
-                        title=title if isinstance(title, str) else f"Subtask {i+1}",
+                        title=subtask_title,
                         description="Conteúdo será gerado ao aprovar.",  # Simple placeholder
                         generated_prompt="",  # Empty until approved
                         acceptance_criteria=[],
@@ -2610,10 +2740,13 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
                     )
                     self.db.add(subtask)
                     created_subtasks.append(subtask)
-                    logger.info(f"📝 Created draft subtask {i+1}/{len(subtask_titles)}: {title[:50] if isinstance(title, str) else 'Subtask'}...")
+                    logger.info(f"📝 Created draft subtask {i+1}/{len(subtask_titles)}: {subtask_title[:50]}...")
 
                 except Exception as subtask_error:
                     logger.error(f"❌ Error creating draft subtask '{title}': {str(subtask_error)}")
+
+            if skipped_count > 0:
+                logger.info(f"⏭️ Skipped {skipped_count} duplicate subtasks")
 
             self.db.commit()
             logger.info(f"✅ Created {len(created_subtasks)} subtask DRAFTS (lightweight, content on approval)")
@@ -2696,6 +2829,24 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
 
         # Generate draft tasks
         draft_tasks = await self._generate_draft_tasks(story, project)
+
+        # PROMPT #162 - Index activated card in RAG for semantic search
+        try:
+            rag_service = RAGService(self.db)
+            rag_service.store_card(
+                card_id=story.id,
+                title=story.title,
+                description=story.description,
+                generated_prompt=story.generated_prompt,
+                item_type="story",
+                parent_id=story.parent_id,
+                labels=story.labels,
+                workflow_state=story.workflow_state,
+                project_id=story.project_id
+            )
+            logger.info(f"📇 Story indexed in RAG: {story.title}")
+        except Exception as e:
+            logger.error(f"❌ Error indexing story in RAG: {str(e)}")
 
         return {
             "id": str(story.id),
@@ -2919,6 +3070,25 @@ Retorne APENAS JSON válido (sem markdown code blocks):
                 semantic_map_text = "\n\n## MAPA SEMÂNTICO DO EPIC (VOCÊ DEVE REUTILIZAR E ESTENDER):\n"
                 semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
 
+        # PROMPT #162 - Fetch relevant interview answers from RAG
+        interview_context = ""
+        try:
+            rag_service = RAGService(self.db)
+            relevant_answers = rag_service.get_relevant_interview_answers(
+                query=story.title,
+                project_id=story.project_id,
+                top_k=3,
+                similarity_threshold=0.5
+            )
+            if relevant_answers:
+                interview_context = "\n\n## RESPOSTAS RELEVANTES DA ENTREVISTA\n"
+                for answer in relevant_answers:
+                    content = answer.get("content", "")[:300]
+                    interview_context += f"- {content}\n"
+                logger.info(f"📝 Added {len(relevant_answers)} interview answers to story context")
+        except Exception as e:
+            logger.warning(f"Could not fetch interview answers for story: {e}")
+
         user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para a User Story abaixo.
 
 A Story deve ter o MESMO NÍVEL DE DETALHAMENTO do Epic pai.
@@ -2931,6 +3101,7 @@ Os critérios de aceitação devem ser ESPECÍFICOS para esta Story, não genér
 
 {epic_full_spec}
 {semantic_map_text}
+{interview_context}
 
 ## STORY A ESPECIFICAR
 **Título da Story:** {story.title}
@@ -3075,6 +3246,24 @@ Retorne APENAS o JSON, sem explicações."""
 
         # Generate draft subtasks
         draft_subtasks = await self._generate_draft_subtasks(task, project)
+
+        # PROMPT #162 - Index activated card in RAG for semantic search
+        try:
+            rag_service = RAGService(self.db)
+            rag_service.store_card(
+                card_id=task.id,
+                title=task.title,
+                description=task.description,
+                generated_prompt=task.generated_prompt,
+                item_type="task",
+                parent_id=task.parent_id,
+                labels=task.labels,
+                workflow_state=task.workflow_state,
+                project_id=task.project_id
+            )
+            logger.info(f"📇 Task indexed in RAG: {task.title}")
+        except Exception as e:
+            logger.error(f"❌ Error indexing task in RAG: {str(e)}")
 
         return {
             "id": str(task.id),
@@ -3479,6 +3668,24 @@ Retorne APENAS o JSON, sem explicações."""
         self.db.refresh(subtask)
 
         logger.info(f"✅ Subtask activated: {subtask.title}")
+
+        # PROMPT #162 - Index activated card in RAG for semantic search
+        try:
+            rag_service = RAGService(self.db)
+            rag_service.store_card(
+                card_id=subtask.id,
+                title=subtask.title,
+                description=subtask.description,
+                generated_prompt=subtask.generated_prompt,
+                item_type="subtask",
+                parent_id=subtask.parent_id,
+                labels=subtask.labels,
+                workflow_state=subtask.workflow_state,
+                project_id=subtask.project_id
+            )
+            logger.info(f"📇 Subtask indexed in RAG: {subtask.title}")
+        except Exception as e:
+            logger.error(f"❌ Error indexing subtask in RAG: {str(e)}")
 
         return {
             "id": str(subtask.id),
