@@ -1149,6 +1149,22 @@ class CodebaseMemoryService:
             )
             phases_completed += 1
 
+        elif scan_depth == "local":
+            # PROMPT #167 - Chain Prompting for local models (Ollama/Qwen)
+            # Instead of one big prompt, use multiple small prompts sequentially
+            logger.info("🔗 Using Chain Prompting strategy for local model")
+
+            all_phases = await self._chain_prompting_analysis(
+                code_samples, stack_info, project_id
+            )
+            phases_completed = len(all_phases)
+
+            # Skip consolidation - chain prompting already produces final result
+            if "final" in all_phases:
+                consolidated = all_phases["final"]
+                consolidated["phases_completed"] = phases_completed
+                return consolidated
+
         else:  # deep mode
             # Deep mode: Dynamic phases based on file count
             # Phase 1: Documentation (always)
@@ -1199,6 +1215,198 @@ class CodebaseMemoryService:
         consolidated["phases_completed"] = phases_completed
 
         return consolidated
+
+    # =========================================================================
+    # PROMPT #167 - Chain Prompting for Local Models
+    # =========================================================================
+
+    async def _chain_prompting_analysis(
+        self,
+        code_samples: List[Dict[str, str]],
+        stack_info: Dict,
+        project_id: Optional[UUID] = None
+    ) -> Dict[str, Any]:
+        """
+        PROMPT #167 - Chain Prompting strategy for local models (Ollama/Qwen).
+
+        Instead of sending one massive prompt with all code, we:
+        1. Ask about each file individually (small prompts)
+        2. Collect insights from each file
+        3. Consolidate with a final small prompt
+
+        This works much better with 7B models that have context limits.
+        """
+        all_phases = {}
+        file_insights = []
+
+        logger.info(f"🔗 Chain Prompting: Analyzing {len(code_samples)} files individually")
+
+        # Step 1: Analyze each file with a VERY simple prompt
+        for i, sample in enumerate(code_samples[:15]):  # Max 15 files
+            filename = sample.get("filename", f"file_{i}")
+            content = sample.get("content", "")[:2000]  # Max 2K per file
+
+            logger.info(f"   📄 Analyzing file {i+1}/15: {filename}")
+
+            try:
+                insight = await self._chain_analyze_single_file(
+                    filename, content, project_id, i+1
+                )
+                if insight:
+                    file_insights.append(insight)
+                    all_phases[f"file_{i+1}"] = insight
+            except Exception as e:
+                logger.warning(f"   ⚠️ Failed to analyze {filename}: {e}")
+                continue
+
+        # Step 2: If we got insights, consolidate them
+        if file_insights:
+            logger.info(f"🔗 Chain Prompting: Consolidating {len(file_insights)} file insights")
+            final_result = await self._chain_consolidate_insights(
+                file_insights, stack_info, project_id
+            )
+            all_phases["final"] = final_result
+        else:
+            # Fallback if no insights were collected
+            logger.warning("⚠️ Chain Prompting: No insights collected, using fallback")
+            all_phases["final"] = {
+                "suggested_title": self._generate_fallback_title(stack_info, self.current_folder_name),
+                "business_rules": [],
+                "key_features": [],
+                "entities": [],
+                "interview_context": f"Este projeto usa {stack_info.get('detected_stack', 'tecnologia desconhecida')}."
+            }
+
+        return all_phases
+
+    async def _chain_analyze_single_file(
+        self,
+        filename: str,
+        content: str,
+        project_id: Optional[UUID],
+        file_num: int
+    ) -> Optional[Dict]:
+        """
+        PROMPT #167 - Analyze a single file with a tiny prompt.
+
+        The prompt is intentionally very small and simple to work with local models.
+        """
+        # Super simple prompt - just ask what this file does
+        system_prompt = "Você é um analista de código. Responda de forma MUITO CURTA e DIRETA."
+
+        user_prompt = f"""Arquivo: {filename}
+
+```
+{content}
+```
+
+Em NO MÁXIMO 3 linhas, responda:
+1. O que este arquivo FAZ? (1 frase)
+2. Qual a principal REGRA DE NEGÓCIO? (1 frase, ou "Nenhuma" se não houver)
+3. Qual a principal ENTIDADE/DADO? (1 palavra, ou "Nenhum")"""
+
+        try:
+            response = await self.orchestrator.execute(
+                usage_type="memory",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=200,  # Muito pequeno - forçar resposta curta
+                project_id=project_id,
+                metadata={
+                    "phase": f"chain_file_{file_num}",
+                    "scan_type": "chain_prompting",
+                    "filename": filename
+                }
+            )
+
+            text = response.get("content", "").strip()
+            if text:
+                return {
+                    "filename": filename,
+                    "analysis": text
+                }
+            return None
+
+        except Exception as e:
+            logger.warning(f"Chain analyze failed for {filename}: {e}")
+            return None
+
+    async def _chain_consolidate_insights(
+        self,
+        file_insights: List[Dict],
+        stack_info: Dict,
+        project_id: Optional[UUID]
+    ) -> Dict:
+        """
+        PROMPT #167 - Consolidate file insights into final result.
+
+        Uses a small prompt that just asks for a summary based on the file analyses.
+        """
+        # Format insights as a simple list
+        insights_text = ""
+        for insight in file_insights[:10]:  # Max 10 insights
+            insights_text += f"- {insight['filename']}: {insight['analysis']}\n"
+
+        stack_name = stack_info.get("detected_stack", "desconhecida")
+
+        system_prompt = "Você é um arquiteto de software. Responda APENAS em JSON válido, sem markdown."
+
+        user_prompt = f"""Pasta do projeto: {self.current_folder_name}
+Stack: {stack_name}
+
+Resumo dos arquivos analisados:
+{insights_text}
+
+Baseado APENAS nessas análises, responda em JSON:
+{{
+  "suggested_title": "Nome descritivo do sistema (4-6 palavras, SEM mencionar tecnologia)",
+  "business_rules": ["Regra 1", "Regra 2", "Regra 3"],
+  "key_features": ["Feature 1", "Feature 2", "Feature 3"],
+  "entities": ["Entidade 1", "Entidade 2"],
+  "interview_context": "Uma frase descrevendo o propósito do sistema"
+}}"""
+
+        try:
+            response = await self.orchestrator.execute(
+                usage_type="memory",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=500,
+                project_id=project_id,
+                metadata={
+                    "phase": "chain_consolidation",
+                    "scan_type": "chain_prompting",
+                    "files_analyzed": len(file_insights)
+                }
+            )
+
+            content = response.get("content", "{}")
+
+            # Parse JSON
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0]
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0]
+
+            content = self._fix_invalid_escapes(content.strip())
+            result = json.loads(content)
+
+            # Validate title
+            title = result.get("suggested_title", "")
+            result["suggested_title"] = self._validate_title(title, self.current_folder_name, stack_info)
+
+            logger.info(f"✅ Chain Prompting complete - Title: {result.get('suggested_title')}")
+            return result
+
+        except Exception as e:
+            logger.error(f"Chain consolidation failed: {e}")
+            return {
+                "suggested_title": self._generate_fallback_title(stack_info, self.current_folder_name),
+                "business_rules": [insight.get("analysis", "")[:100] for insight in file_insights[:5]],
+                "key_features": [],
+                "entities": [],
+                "interview_context": f"Sistema {stack_name} com {len(file_insights)} arquivos analisados."
+            }
 
     # =========================================================================
     # Legacy method (kept for backwards compatibility)
