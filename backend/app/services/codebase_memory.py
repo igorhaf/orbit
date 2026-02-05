@@ -501,7 +501,7 @@ class CodebaseMemoryService:
         asyncio.create_task(console.log_memory_scan(
             phase="start",
             message=f"Starting {scan_depth} scan for {path.name}",
-            project_id=project_id.int if project_id else None
+            project_id=str(project_id) if project_id else None
         ))
 
         result = {
@@ -528,7 +528,7 @@ class CodebaseMemoryService:
             asyncio.create_task(console.log_memory_scan(
                 phase=f"{int(percent)}%",
                 message=message,
-                project_id=project_id.int if project_id else None
+                project_id=str(project_id) if project_id else None
             ))
 
         # Step 1: Detect technology stack
@@ -1297,7 +1297,7 @@ class CodebaseMemoryService:
                 phase=f"file_{i+1}/{total_files}",
                 message=f"Analyzing: {filename} (CPU mode - please wait ~2-4 min)",
                 files_processed=i+1,
-                project_id=project_id.int if project_id else None
+                project_id=str(project_id) if project_id else None
             ))
 
             try:

@@ -53,8 +53,8 @@ class ConsoleLogEntry:
     title: str
     message: str
     details: Optional[Dict[str, Any]] = None
-    project_id: Optional[int] = None
-    job_id: Optional[int] = None
+    project_id: Optional[str] = None  # UUID as string
+    job_id: Optional[str] = None  # UUID as string
     duration_ms: Optional[int] = None
     tokens_used: Optional[int] = None
 
@@ -101,8 +101,8 @@ class ConsoleLogger:
         title: str,
         message: str,
         details: Optional[Dict[str, Any]] = None,
-        project_id: Optional[int] = None,
-        job_id: Optional[int] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
         duration_ms: Optional[int] = None,
         tokens_used: Optional[int] = None
     ) -> ConsoleLogEntry:
@@ -185,7 +185,7 @@ class ConsoleLogger:
         limit: int = 100,
         category: Optional[LogCategory] = None,
         level: Optional[LogLevel] = None,
-        project_id: Optional[int] = None
+        project_id: Optional[str] = None
     ) -> List[ConsoleLogEntry]:
         """Get recent logs with optional filtering"""
         async with self._buffer_lock:
@@ -216,8 +216,8 @@ class ConsoleLogger:
         usage_type: str,
         prompt_preview: str,
         full_prompt: Optional[str] = None,
-        project_id: Optional[int] = None,
-        job_id: Optional[int] = None
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None
     ):
         """Log an AI prompt being sent"""
         await self.log(
@@ -242,8 +242,8 @@ class ConsoleLogger:
         full_response: Optional[str] = None,
         tokens_used: Optional[int] = None,
         duration_ms: Optional[int] = None,
-        project_id: Optional[int] = None,
-        job_id: Optional[int] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
         cache_hit: bool = False
     ):
         """Log an AI response received"""
@@ -273,7 +273,7 @@ class ConsoleLogger:
         spec_name: str,
         spec_type: str,
         tokens_saved: Optional[int] = None,
-        project_id: Optional[int] = None
+        project_id: Optional[str] = None
     ):
         """Log a spec being loaded"""
         await self.log(
@@ -294,7 +294,7 @@ class ConsoleLogger:
         operation: str,
         query: Optional[str] = None,
         results_count: Optional[int] = None,
-        project_id: Optional[int] = None
+        project_id: Optional[str] = None
     ):
         """Log a RAG operation"""
         message = operation
@@ -318,12 +318,12 @@ class ConsoleLogger:
 
     async def log_job_event(
         self,
-        job_id: int,
+        job_id: str,
         job_type: str,
         status: str,
         message: str,
         progress: Optional[int] = None,
-        project_id: Optional[int] = None
+        project_id: Optional[str] = None
     ):
         """Log a job event"""
         level = LogLevel.SUCCESS if status == "completed" else (
@@ -349,8 +349,8 @@ class ConsoleLogger:
         phase: str,
         message: str,
         files_processed: Optional[int] = None,
-        project_id: Optional[int] = None,
-        job_id: Optional[int] = None
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None
     ):
         """Log memory scan progress"""
         await self.log(
@@ -371,8 +371,8 @@ class ConsoleLogger:
         error_type: str,
         message: str,
         stack_trace: Optional[str] = None,
-        project_id: Optional[int] = None,
-        job_id: Optional[int] = None
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None
     ):
         """Log an error"""
         await self.log(
@@ -393,7 +393,7 @@ class ConsoleLogger:
         event_type: str,
         cache_key: Optional[str] = None,
         hit: bool = False,
-        project_id: Optional[int] = None
+        project_id: Optional[str] = None
     ):
         """Log cache operations"""
         level = LogLevel.SUCCESS if hit else LogLevel.DEBUG

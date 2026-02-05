@@ -24,8 +24,8 @@ interface LogEntry {
   title: string;
   message: string;
   details?: Record<string, unknown>;
-  project_id?: number;
-  job_id?: number;
+  project_id?: string;
+  job_id?: string;
   duration_ms?: number;
   tokens_used?: number;
 }
@@ -59,11 +59,15 @@ const formatLogLine = (log: LogEntry): string => {
   }
 
   if (log.project_id) {
-    line += ` project=${log.project_id}`;
+    // Show short UUID (first 8 chars)
+    const shortId = log.project_id.toString().substring(0, 8);
+    line += ` project=${shortId}`;
   }
 
   if (log.job_id) {
-    line += ` job=${log.job_id}`;
+    // Show short UUID (first 8 chars)
+    const shortId = log.job_id.toString().substring(0, 8);
+    line += ` job=${shortId}`;
   }
 
   return line;
