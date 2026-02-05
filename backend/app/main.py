@@ -30,11 +30,11 @@ from app.api.routes import (
     orchestrators,
     project_analyses,
     specs,
-    prompter,  # Prompter Architecture - Phase 1
+    # PROMPT #164 - prompter removed, replaced by contracts architecture
     jobs,  # PROMPT #65 - Async Job System
     knowledge,  # PROMPT #84 - RAG Phase 2: Knowledge Search
     discovery_queue,  # PROMPT #77 - Project-Specific Specs Discovery Queue
-    contracts,  # PROMPT #104 - Contracts (YAML Prompts Management)
+    contracts,  # PROMPT #164 - Contracts Architecture (replaced prompter)
     git_commits  # PROMPT #113 - Git Integration: Commits from project code_path
 )
 from app.api import websocket
@@ -313,10 +313,8 @@ app.include_router(
     tags=["Contracts"]
 )
 
-# Prompter (Prompt Template & Orchestration System - Prompter Architecture Phase 1)
-app.include_router(
-    prompter.router
-)
+# PROMPT #164 - Prompter removed, replaced by Contracts Architecture
+# All prompter functionality now available via /api/v1/contracts endpoints
 
 # Jobs (Async Job Tracking - PROMPT #65)
 app.include_router(
