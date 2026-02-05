@@ -97,6 +97,55 @@ class JobCleanupService:
 
         return count
 
+    def cleanup_all_finished_jobs(
+        self,
+        statuses: list[JobStatus] | None = None
+    ) -> int:
+        """
+        Delete ALL finished jobs regardless of age.
+
+        Args:
+            statuses: Only delete jobs with these statuses.
+                     If None, deletes COMPLETED, FAILED, and CANCELLED jobs.
+                     PENDING and RUNNING jobs are never deleted.
+
+        Returns:
+            Number of jobs deleted
+        """
+        # Default: clean up COMPLETED, FAILED, and CANCELLED jobs
+        if statuses is None:
+            statuses = [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]
+
+        # Never delete PENDING or RUNNING jobs
+        statuses = [s for s in statuses if s not in [JobStatus.PENDING, JobStatus.RUNNING]]
+
+        if not statuses:
+            logger.warning("No valid statuses to clean up")
+            return 0
+
+        # Build query - no date filter, just status
+        query = self.db.query(AsyncJob).filter(
+            AsyncJob.status.in_(statuses)
+        )
+
+        # Count before deleting
+        count = query.count()
+
+        if count == 0:
+            logger.info("No finished jobs to cleanup")
+            return 0
+
+        # Delete
+        query.delete(synchronize_session=False)
+        self.db.commit()
+
+        logger.info(
+            f"Cleaned up {count} finished jobs "
+            f"(statuses: {[s.value for s in statuses]})"
+        )
+
+        return count
+
     def get_cleanup_stats(self) -> dict:
         """
         Get statistics about jobs that can be cleaned up.

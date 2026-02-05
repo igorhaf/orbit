@@ -524,6 +524,13 @@ export default function JobsPage() {
               </Button>
               <div className="absolute right-0 mt-1 w-48 bg-white border rounded-lg shadow-lg hidden group-hover:block z-10">
                 <button
+                  onClick={() => handleCleanupClick(0)}
+                  className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm font-medium text-red-600"
+                >
+                  Delete all finished
+                </button>
+                <div className="border-t my-1"></div>
+                <button
                   onClick={() => handleCleanupClick(1)}
                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
                 >
@@ -1003,7 +1010,11 @@ export default function JobsPage() {
         onClose={() => setCleanupConfirm({ open: false, days: 0 })}
         onConfirm={handleCleanupConfirm}
         title="Cleanup Jobs"
-        message={`Are you sure you want to delete all completed and failed jobs older than ${cleanupConfirm.days} day${cleanupConfirm.days > 1 ? 's' : ''}? This action cannot be undone.`}
+        message={
+          cleanupConfirm.days === 0
+            ? 'Are you sure you want to delete ALL completed, failed and cancelled jobs? This action cannot be undone.'
+            : `Are you sure you want to delete all completed and failed jobs older than ${cleanupConfirm.days} day${cleanupConfirm.days > 1 ? 's' : ''}? This action cannot be undone.`
+        }
         confirmLabel="Delete Jobs"
         cancelLabel="Cancel"
         type="danger"

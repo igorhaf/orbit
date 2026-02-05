@@ -463,6 +463,7 @@ async def cleanup_old_jobs(
 
     Args:
         days: Delete jobs older than this many days (default: 7)
+               Use days=0 to delete ALL finished jobs regardless of age.
 
     Returns:
         {
@@ -479,17 +480,27 @@ async def cleanup_old_jobs(
         # Delete jobs older than 30 days
         POST /api/v1/jobs/cleanup?days=30
         → {deleted_count: 45}
+
+        # Delete ALL finished jobs (regardless of age)
+        POST /api/v1/jobs/cleanup?days=0
+        → {deleted_count: 100}
     """
     cleanup_service = JobCleanupService(db)
 
-    deleted_count = cleanup_service.cleanup_old_jobs(days=days)
+    if days == 0:
+        # Delete ALL finished jobs regardless of age
+        deleted_count = cleanup_service.cleanup_all_finished_jobs()
+        message = f"Successfully deleted {deleted_count} finished jobs"
+    else:
+        deleted_count = cleanup_service.cleanup_old_jobs(days=days)
+        message = f"Successfully deleted {deleted_count} old jobs (older than {days} days)"
 
-    logger.info(f"Cleaned up {deleted_count} jobs older than {days} days")
+    logger.info(message)
 
     return {
         "deleted_count": deleted_count,
         "cutoff_days": days,
-        "message": f"Successfully deleted {deleted_count} old jobs (older than {days} days)"
+        "message": message
     }
 
 
