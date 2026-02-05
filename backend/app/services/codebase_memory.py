@@ -96,6 +96,7 @@ class CodebaseMemoryService:
     }
 
     # PROMPT #163 - Configurable scan depth settings
+    # PROMPT #165 - Added "local" profile for Ollama/local models
     SCAN_DEPTH_CONFIG = {
         "quick": {
             "max_files": 30,
@@ -117,6 +118,15 @@ class CodebaseMemoryService:
             "phases": "dynamic",  # Create phases as needed
             "files_per_phase": 15,
             "description": "Deep scan: ALL files, N phases (~15-30+ min)"
+        },
+        # PROMPT #165 - Profile optimized for local models (Ollama/Qwen)
+        # Smaller prompts to avoid timeout/memory issues with 7B models
+        "local": {
+            "max_files": 15,
+            "max_content_per_file": 2000,  # Much smaller to fit in 32K context
+            "phases": ["quick_scan"],  # Single phase for simplicity
+            "files_per_phase": 10,
+            "description": "Local model scan: 15 files, 1 phase (~2-5 min)"
         }
     }
 
@@ -224,6 +234,18 @@ class CodebaseMemoryService:
 
         # PROMPT #163 - Store scan settings
         self.current_folder_name = path.name
+
+        # PROMPT #165 - Auto-detect local model (Ollama) and use optimized profile
+        try:
+            from app.models.ai_model import AIModelUsageType
+            model_config = self.orchestrator.choose_model(AIModelUsageType.MEMORY)
+            if model_config.get("provider") == "ollama":
+                scan_depth = "local"
+                logger.info(f"🦙 Detected Ollama provider, switching to 'local' scan profile for better performance")
+        except Exception as e:
+            logger.debug(f"Could not detect model provider: {e}")
+            # Continue with original scan_depth
+
         self.current_scan_depth = scan_depth
         config = self.SCAN_DEPTH_CONFIG.get(scan_depth, self.SCAN_DEPTH_CONFIG["normal"])
 
@@ -663,6 +685,44 @@ class CodebaseMemoryService:
             )
 
             result = self._parse_phase_response(response.get("content", "{}"))
+
+            # PROMPT #165 - Check if result is valid (not empty)
+            if result.get("partial_title") or result.get("business_rules_found") or result.get("features_found"):
+                logger.info(f"✅ Completed phase: {phase_name} - found {len(result.get('business_rules_found', []))} rules")
+                return result
+
+            # PROMPT #165 - Result is empty, retry with fewer files
+            logger.warning(f"⚠️ Phase '{phase_name}' returned empty result, retrying with fewer files...")
+            if len(samples) > 5:
+                smaller_samples = samples[:5]
+                code_content = self._format_samples_for_prompt(smaller_samples)
+                system_prompt, user_prompt = loader.render(
+                    "memory/codebase_analysis",
+                    {
+                        "folder_name": self.current_folder_name,
+                        "phase_name": phase_name,
+                        "code_content": code_content,
+                        "previous_analysis": previous_analysis,
+                        "stack_detected": stack_info.get("detected_stack", "")
+                    }
+                )
+                response = await self.orchestrator.execute(
+                    usage_type="memory",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=system_prompt,
+                    project_id=project_id,
+                    metadata={
+                        "phase": f"{phase_name}_retry",
+                        "files_count": len(smaller_samples),
+                        "scan_type": "memory_scan_phase_retry",
+                        "scan_depth": self.current_scan_depth
+                    }
+                )
+                result = self._parse_phase_response(response.get("content", "{}"))
+                if result.get("partial_title") or result.get("business_rules_found"):
+                    logger.info(f"✅ Retry succeeded for phase: {phase_name}")
+                    return result
+
             logger.info(f"✅ Completed phase: {phase_name} - found {len(result.get('business_rules_found', []))} rules")
             return result
 
@@ -761,8 +821,11 @@ class CodebaseMemoryService:
         all_features = list(dict.fromkeys(all_features))
         all_entities = list(dict.fromkeys(all_entities))
 
+        # PROMPT #165 - Validate and improve title
+        final_title = self._validate_title(best_title, self.current_folder_name, stack_info) if best_title else self._generate_fallback_title(stack_info, self.current_folder_name)
+
         return {
-            "suggested_title": best_title or self._generate_fallback_title(stack_info, self.current_folder_name),
+            "suggested_title": final_title,
             "business_rules": all_rules[:15],
             "key_features": all_features[:10],
             "entities": all_entities[:10],
@@ -1089,17 +1152,73 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
                 "interview_context": f"Este projeto parece ser um sistema {stack_info.get('detected_stack', 'de software')}. A análise automática não conseguiu extrair detalhes específicos do código. Recomenda-se explorar manualmente as funcionalidades durante a entrevista de contexto."
             }
 
+    def _validate_title(self, title: str, folder_name: str, stack_info: Dict) -> str:
+        """
+        PROMPT #165 - Validate title to avoid generic fallbacks.
+
+        Ensures title is:
+        - At least 3 words long
+        - Not just folder name or technology name
+        - Descriptive of the system's purpose
+        """
+        if not title:
+            return self._generate_fallback_title(stack_info, folder_name)
+
+        # Clean the title
+        title = title.strip()
+
+        # Check if too short (less than 3 words)
+        words = title.split()
+        if len(words) < 3:
+            logger.warning(f"⚠️ Title too short ({len(words)} words): '{title}'")
+            # Try to expand it
+            if len(words) == 2:
+                return f"Sistema de {title}"
+            return self._generate_fallback_title(stack_info, folder_name)
+
+        # Check if it's just the folder name
+        clean_folder = folder_name.replace("-", " ").replace("_", " ").lower()
+        if title.lower() == f"sistema {clean_folder}":
+            logger.warning(f"⚠️ Title is just folder name: '{title}'")
+            # This is generic, but better than nothing
+            # Try to add context from stack
+            stack = stack_info.get("detected_stack", "")
+            if stack:
+                return f"{title} - Aplicação {stack.title()}"
+            return title
+
+        # Check for generic patterns
+        generic_patterns = [
+            "sistema sistema", "projeto projeto",
+            "laravel project", "php application",
+            "react app", "node project"
+        ]
+        if title.lower() in generic_patterns:
+            return self._generate_fallback_title(stack_info, folder_name)
+
+        return title
+
     def _generate_fallback_title(self, stack_info: Dict, folder_name: str = "") -> str:
         """
         Generate fallback title based on folder name and stack detection.
 
         PROMPT #118 FIX - Prioritize folder name over stack name.
+        PROMPT #165 - Improved to generate more descriptive titles.
         """
         # PROMPT #118 FIX - Use folder name as primary source
         if folder_name and folder_name not in {"src", "app", "project", "code", "backend", "frontend"}:
             # Clean up folder name: my-project -> My Project
             clean_name = folder_name.replace("-", " ").replace("_", " ").title()
-            return f"Sistema {clean_name}"
+
+            # PROMPT #165 - Try to make title more descriptive based on stack
+            stack = stack_info.get("detected_stack", "")
+            if stack:
+                stack_clean = stack.replace("_", " ").title()
+                # Avoid redundancy like "Sistema Contas - Aplicação Contas"
+                if stack_clean.lower() not in clean_name.lower():
+                    return f"Sistema {clean_name} - Aplicação {stack_clean}"
+
+            return f"Sistema de Gestão {clean_name}"
 
         stack = stack_info.get("detected_stack", "")
         if stack:

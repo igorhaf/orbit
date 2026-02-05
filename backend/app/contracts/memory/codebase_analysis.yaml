@@ -57,12 +57,23 @@ system_prompt: |
   - Estados e transições de entidades
 
   {% elif phase_name == "quick_scan" %}
-  ## INSTRUÇÕES PARA SCAN RÁPIDO
+  ## INSTRUÇÕES PARA SCAN RÁPIDO (MODELO LOCAL)
 
-  Analise rapidamente o código para identificar:
-  - Propósito geral do sistema
-  - Principais entidades
-  - Funcionalidades básicas
+  PROMPT #165 - Otimizado para modelos locais (Qwen, Llama, etc.)
+
+  Analise o código e RESPONDA DE FORMA CONCISA:
+
+  1. **TÍTULO**: Crie um nome descritivo com 4-6 palavras que descreva O QUE o sistema faz.
+     - BOM: "Sistema de Gestão de Contas a Pagar e Receber"
+     - BOM: "Plataforma de Controle Financeiro Empresarial"
+     - RUIM: "Sistema Contas" (muito curto)
+     - RUIM: "Laravel Project" (tecnologia, não função)
+
+  2. **ENTIDADES**: Liste as 5 principais entidades/tabelas do banco
+  3. **FUNCIONALIDADES**: Liste as 5 principais funcionalidades
+  4. **REGRAS**: Liste as 3 principais regras de negócio encontradas
+
+  SEJA DIRETO E CONCISO. JSON curto e objetivo.
 
   {% else %}
   ## INSTRUÇÕES PARA ANÁLISE GERAL
