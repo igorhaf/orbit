@@ -3,11 +3,12 @@ Codebase Memory Service
 
 PROMPT #118 - Initial codebase scan and memory extraction
 PROMPT #163 - Multi-phase analysis with configurable depth
+PROMPT #166 - Ignore irrelevant files (.gitignore, vendor, node_modules, etc.)
 
 This service performs the first scan of a project's codebase when the code folder
 is selected during project creation. It:
 1. Detects the technology stack
-2. Scans and indexes files for RAG
+2. Scans and indexes files for RAG (ignoring irrelevant files)
 3. Uses AI to extract business rules and patterns (multi-phase for better quality)
 4. Suggests a project title based on the analysis
 5. Prepares relevant data for the context interview
@@ -17,6 +18,12 @@ PROMPT #163 Features:
 - Multi-phase analysis for better results with local models
 - Each phase saves a prompt to the prompts table for visibility
 - Contracts externalized to YAML files (PROMPT #164 - ContractLoader)
+
+PROMPT #166 Features:
+- Respects .gitignore patterns from the project
+- Ignores common irrelevant directories: node_modules, vendor, .venv, dist, etc.
+- Ignores non-code files: images, fonts, binaries, lock files
+- Focuses only on business logic files for AI analysis
 
 Business Rule: All code analyzed must have its business rules stored,
 including this very feature of project creation.
@@ -50,8 +57,9 @@ Usage:
 import os
 import json
 import logging
+import fnmatch
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Literal
+from typing import Dict, List, Optional, Any, Literal, Set
 from uuid import UUID, uuid4
 
 from sqlalchemy.orm import Session
@@ -93,6 +101,115 @@ class CodebaseMemoryService:
         "package.json", "composer.json", "Cargo.toml",
         "pyproject.toml", "setup.py", "pom.xml",
         ".env.example", "docker-compose.yml"
+    }
+
+    # PROMPT #166 - Expanded list of directories to ALWAYS ignore
+    # These directories contain dependencies, caches, or generated files - NOT business logic
+    IGNORE_DIRECTORIES = {
+        # Package managers / Dependencies
+        "node_modules",      # JavaScript/Node.js
+        "vendor",            # PHP Composer, Go modules
+        "vendors",           # Alternative vendor folder
+        "bower_components",  # Bower (legacy)
+        "jspm_packages",     # JSPM
+        "packages",          # NuGet, some monorepos
+        ".pnpm",             # pnpm
+
+        # Python
+        ".venv", "venv", "env", ".env",
+        "__pycache__", ".pytest_cache", ".mypy_cache",
+        ".tox", ".nox", "eggs", "*.egg-info",
+        "site-packages", ".Python",
+
+        # Ruby
+        ".bundle", "bundle",
+
+        # Java/Kotlin
+        ".gradle", "gradle",
+        ".m2", "target",
+
+        # .NET
+        "bin", "obj", "packages",
+
+        # Build outputs
+        "dist", "build", "out", "output",
+        ".next", ".nuxt", ".output",
+        ".svelte-kit", ".vercel", ".netlify",
+        "public/build", "public/dist",
+
+        # Version control
+        ".git", ".svn", ".hg", ".bzr",
+
+        # IDE / Editor
+        ".idea", ".vscode", ".vs",
+        ".eclipse", ".settings",
+        "*.xcworkspace", "*.xcodeproj",
+
+        # Test coverage / Reports
+        "coverage", ".nyc_output",
+        "htmlcov", ".coverage",
+
+        # Logs and temp
+        "logs", "log", "tmp", "temp",
+        ".temp", ".tmp", ".cache",
+
+        # Documentation build
+        "_site", "site", "docs/_build",
+        ".docusaurus", ".vuepress",
+
+        # Assets / Static files (usually not business logic)
+        "public/assets", "static/assets",
+        "uploads", "storage/app",
+
+        # Laravel specific
+        "storage/framework",
+        "storage/logs",
+        "bootstrap/cache",
+
+        # Docker
+        ".docker",
+
+        # Misc
+        ".terraform", ".serverless",
+        ".aws-sam", ".amplify",
+    }
+
+    # PROMPT #166 - File patterns to ALWAYS ignore (not business logic)
+    IGNORE_FILE_PATTERNS = {
+        # Lock files
+        "*.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+        "composer.lock", "Gemfile.lock", "Cargo.lock", "poetry.lock",
+
+        # Compiled / Generated
+        "*.min.js", "*.min.css", "*.map",
+        "*.pyc", "*.pyo", "*.pyd",
+        "*.class", "*.jar", "*.war",
+        "*.dll", "*.exe", "*.so", "*.dylib",
+        "*.o", "*.a", "*.lib",
+
+        # Images / Media (not code)
+        "*.png", "*.jpg", "*.jpeg", "*.gif", "*.ico", "*.svg",
+        "*.webp", "*.bmp", "*.tiff",
+        "*.mp3", "*.mp4", "*.wav", "*.avi", "*.mov",
+        "*.pdf", "*.doc", "*.docx", "*.xls", "*.xlsx",
+
+        # Fonts
+        "*.woff", "*.woff2", "*.ttf", "*.eot", "*.otf",
+
+        # Archives
+        "*.zip", "*.tar", "*.gz", "*.rar", "*.7z",
+
+        # Database files
+        "*.sqlite", "*.sqlite3", "*.db",
+
+        # Environment / Secrets (should not be read)
+        ".env", ".env.local", ".env.production",
+        "*.pem", "*.key", "*.crt", "*.cer",
+
+        # IDE / Config
+        ".DS_Store", "Thumbs.db", "*.swp", "*.swo",
+        ".editorconfig", ".prettierrc*", ".eslintrc*",
+        "tsconfig.tsbuildinfo",
     }
 
     # PROMPT #163 - Configurable scan depth settings
@@ -186,6 +303,125 @@ class CodebaseMemoryService:
         # PROMPT #163 - Track current folder name for prompts
         self.current_folder_name = ""
         self.current_scan_depth = "normal"
+        # PROMPT #166 - Dynamic ignore patterns from .gitignore
+        self._gitignore_patterns: Set[str] = set()
+
+    def _load_gitignore_patterns(self, root_path: Path) -> Set[str]:
+        """
+        PROMPT #166 - Load and parse .gitignore patterns from project.
+
+        Reads .gitignore from the project root and converts patterns
+        to a set of directory/file patterns to ignore.
+
+        Args:
+            root_path: Root path of the codebase
+
+        Returns:
+            Set of patterns to ignore
+        """
+        patterns = set()
+        gitignore_path = root_path / ".gitignore"
+
+        if not gitignore_path.exists():
+            logger.debug(f"No .gitignore found at {root_path}")
+            return patterns
+
+        try:
+            content = gitignore_path.read_text(encoding="utf-8", errors="ignore")
+            for line in content.splitlines():
+                # Skip empty lines and comments
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+
+                # Remove trailing slashes for directory matching
+                if line.endswith("/"):
+                    line = line[:-1]
+
+                # Handle negation (!) - we skip these for simplicity
+                if line.startswith("!"):
+                    continue
+
+                patterns.add(line)
+
+            logger.info(f"📄 Loaded {len(patterns)} patterns from .gitignore")
+        except Exception as e:
+            logger.warning(f"Failed to parse .gitignore: {e}")
+
+        return patterns
+
+    def _should_ignore_path(self, path: Path, root_path: Path) -> bool:
+        """
+        PROMPT #166 - Check if a path should be ignored.
+
+        Checks against:
+        1. Built-in IGNORE_DIRECTORIES
+        2. Built-in IGNORE_FILE_PATTERNS
+        3. Project's .gitignore patterns
+
+        Args:
+            path: Path to check
+            root_path: Root path of the codebase
+
+        Returns:
+            True if path should be ignored
+        """
+        # Get relative path for pattern matching
+        try:
+            rel_path = path.relative_to(root_path)
+        except ValueError:
+            rel_path = path
+
+        rel_str = str(rel_path)
+        name = path.name
+
+        # Check if any part of the path is in IGNORE_DIRECTORIES
+        for part in rel_path.parts:
+            if part in self.IGNORE_DIRECTORIES:
+                return True
+
+        # Check file patterns
+        for pattern in self.IGNORE_FILE_PATTERNS:
+            if fnmatch.fnmatch(name, pattern):
+                return True
+
+        # Check .gitignore patterns
+        for pattern in self._gitignore_patterns:
+            # Check if pattern matches the name or relative path
+            if fnmatch.fnmatch(name, pattern):
+                return True
+            if fnmatch.fnmatch(rel_str, pattern):
+                return True
+            # Check if pattern matches any part of the path
+            if fnmatch.fnmatch(rel_str, f"*/{pattern}"):
+                return True
+            if fnmatch.fnmatch(rel_str, f"*/{pattern}/*"):
+                return True
+
+        return False
+
+    def _should_ignore_dir(self, dirname: str) -> bool:
+        """
+        PROMPT #166 - Quick check if directory name should be ignored.
+
+        Used during os.walk to prune directories early.
+
+        Args:
+            dirname: Directory name (not full path)
+
+        Returns:
+            True if directory should be skipped
+        """
+        # Check built-in ignore list
+        if dirname in self.IGNORE_DIRECTORIES:
+            return True
+
+        # Check .gitignore patterns (directory names only)
+        for pattern in self._gitignore_patterns:
+            if fnmatch.fnmatch(dirname, pattern):
+                return True
+
+        return False
 
     async def scan_and_memorize(
         self,
@@ -234,6 +470,10 @@ class CodebaseMemoryService:
 
         # PROMPT #163 - Store scan settings
         self.current_folder_name = path.name
+
+        # PROMPT #166 - Load .gitignore patterns for this project
+        self._gitignore_patterns = self._load_gitignore_patterns(path)
+        logger.info(f"🚫 Ignoring {len(self.IGNORE_DIRECTORIES)} built-in dirs + {len(self._gitignore_patterns)} .gitignore patterns")
 
         # PROMPT #165 - Auto-detect local model (Ollama) and use optimized profile
         try:
@@ -334,6 +574,8 @@ class CodebaseMemoryService:
         """
         Scan codebase to collect file statistics and structure.
 
+        PROMPT #166 - Now respects .gitignore and expanded ignore patterns.
+
         Args:
             root_path: Root path of the codebase
 
@@ -343,21 +585,16 @@ class CodebaseMemoryService:
         stats = {
             "total_files": 0,
             "code_files": 0,
+            "ignored_files": 0,  # PROMPT #166 - Track ignored files
             "languages": {},
             "config_files": [],
             "directory_structure": [],
             "key_files": []
         }
 
-        ignore_dirs = {
-            "node_modules", ".git", ".venv", "venv", "vendor",
-            "__pycache__", ".next", "dist", "build", ".idea",
-            ".vscode", "coverage", ".pytest_cache"
-        }
-
         for root, dirs, files in os.walk(root_path):
-            # Skip ignored directories
-            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+            # PROMPT #166 - Skip ignored directories using new method
+            dirs[:] = [d for d in dirs if not self._should_ignore_dir(d)]
 
             rel_root = Path(root).relative_to(root_path)
 
@@ -366,8 +603,14 @@ class CodebaseMemoryService:
                 stats["directory_structure"].append(str(rel_root))
 
             for filename in files:
-                stats["total_files"] += 1
                 file_path = Path(root) / filename
+
+                # PROMPT #166 - Check if file should be ignored
+                if self._should_ignore_path(file_path, root_path):
+                    stats["ignored_files"] += 1
+                    continue
+
+                stats["total_files"] += 1
 
                 # Check if it's a config file
                 if filename in self.CONFIG_FILES:
@@ -387,6 +630,7 @@ class CodebaseMemoryService:
                         rel_path = str(file_path.relative_to(root_path))
                         stats["key_files"].append(rel_path)
 
+        logger.info(f"📊 Scan complete: {stats['total_files']} files analyzed, {stats['ignored_files']} ignored")
         return stats
 
     def _extension_to_language(self, ext: str) -> str:
@@ -465,6 +709,7 @@ class CodebaseMemoryService:
         Extract representative code samples for AI analysis.
 
         PROMPT #163 - Now uses configurable limits from scan_depth config.
+        PROMPT #166 - Respects ignore patterns (files already filtered in scan_data)
 
         Prioritizes:
         1. README and documentation
