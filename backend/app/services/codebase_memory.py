@@ -1274,15 +1274,15 @@ class CodebaseMemoryService:
         all_phases = {}
         file_insights = []
 
-        logger.info(f"🔗 Chain Prompting: Analyzing {len(code_samples)} files individually")
+        # PROMPT #168 - Reduced to 5 files for better performance with local models
+        # Each file can take 2-4 minutes without GPU, so 5 files = ~10-20 min total
+        max_files = 5  # Reduced from 15 for better UX with local models
+
+        logger.info(f"🔗 Chain Prompting: Analyzing up to {max_files} files individually")
 
         # PROMPT #168 - Console logging for chain prompting
         console = get_console_logger()
         total_files = min(len(code_samples), max_files)
-
-        # PROMPT #168 - Reduced to 5 files for better performance with local models
-        # Each file can take 2-4 minutes without GPU, so 5 files = ~10-20 min total
-        max_files = 5  # Reduced from 15 for better UX with local models
 
         # Step 1: Analyze each file with a VERY simple prompt
         for i, sample in enumerate(code_samples[:max_files]):
