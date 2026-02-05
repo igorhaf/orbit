@@ -35,7 +35,8 @@ from app.api.routes import (
     knowledge,  # PROMPT #84 - RAG Phase 2: Knowledge Search
     discovery_queue,  # PROMPT #77 - Project-Specific Specs Discovery Queue
     contracts,  # PROMPT #164 - Contracts Architecture (replaced prompter)
-    git_commits  # PROMPT #113 - Git Integration: Commits from project code_path
+    git_commits,  # PROMPT #113 - Git Integration: Commits from project code_path
+    console  # PROMPT #168 - Real-time Console Logs
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -349,6 +350,13 @@ app.include_router(
     websocket.router,
     prefix=f"{API_V1_PREFIX}",
     tags=["WebSocket"]
+)
+
+# Console (Real-time Logs - PROMPT #168)
+app.include_router(
+    console.router,
+    prefix=f"{API_V1_PREFIX}/console",
+    tags=["Console"]
 )
 
 

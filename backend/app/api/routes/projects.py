@@ -275,20 +275,24 @@ async def _process_memory_scan_async(
         # Get folder name for notification
         folder_name = Path(code_path).name
 
-        job_manager.update_progress(job_id, 10.0, f"Scanning codebase structure ({scan_depth} mode)...")
+        job_manager.update_progress(job_id, 10.0, f"Starting {scan_depth} scan...")
 
         memory_service = CodebaseMemoryService(db)
 
-        job_manager.update_progress(job_id, 30.0, "Analyzing code and extracting patterns...")
+        # PROMPT #168 - Progress callback for granular updates
+        def progress_callback(percent: float, message: str):
+            job_manager.update_progress(job_id, percent, message)
 
         # PROMPT #163 - Pass scan_depth to memory service
+        # PROMPT #168 - Pass progress callback for granular updates
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
             project_id=project_id,
-            scan_depth=scan_depth
+            scan_depth=scan_depth,
+            progress_callback=progress_callback
         )
 
-        job_manager.update_progress(job_id, 90.0, "Finalizing results...")
+        job_manager.update_progress(job_id, 98.0, "Finalizing results...")
 
         # PROMPT #133 - Update notification_title for success
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()

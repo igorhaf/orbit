@@ -17,7 +17,8 @@ from . import (
     backlog_generation,  # JIRA Transformation - AI-powered backlog generation
     jobs,  # PROMPT #65 - Async Job System
     knowledge,  # PROMPT #84 - RAG Phase 2: Knowledge Search
-    discovery_queue  # Project-Specific Specs: Discovery queue management
+    discovery_queue,  # Project-Specific Specs: Discovery queue management
+    console  # PROMPT #168 - Real-time Console Logs
 )
 
 __all__ = [
@@ -34,5 +35,6 @@ __all__ = [
     "backlog_generation",  # JIRA Transformation - AI-powered backlog generation
     "jobs",  # PROMPT #65 - Async Job System
     "knowledge",  # PROMPT #84 - RAG Phase 2: Knowledge Search
-    "discovery_queue"  # Project-Specific Specs: Discovery queue management
+    "discovery_queue",  # Project-Specific Specs: Discovery queue management
+    "console"  # PROMPT #168 - Real-time Console Logs
 ]

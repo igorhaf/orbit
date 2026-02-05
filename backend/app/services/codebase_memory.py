@@ -58,6 +58,7 @@ import os
 import json
 import logging
 import fnmatch
+import asyncio
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Literal, Set
 from uuid import UUID, uuid4
@@ -68,6 +69,7 @@ from app.services.stack_detector import StackDetector
 from app.services.codebase_indexer import CodebaseIndexer
 from app.services.rag_service import RAGService
 from app.services.ai_orchestrator import AIOrchestrator
+from app.services.console_logger import get_console_logger  # PROMPT #168 - Real-time Console Logs
 
 logger = logging.getLogger(__name__)
 
@@ -427,7 +429,8 @@ class CodebaseMemoryService:
         self,
         code_path: str,
         project_id: Optional[UUID] = None,
-        scan_depth: ScanDepth = "normal"
+        scan_depth: ScanDepth = "normal",
+        progress_callback: Optional[callable] = None  # PROMPT #168 - Progress callback
     ) -> Dict[str, Any]:
         """
         Perform initial codebase scan and memorization.
@@ -492,6 +495,15 @@ class CodebaseMemoryService:
         logger.info(f"🧠 Starting codebase memory scan for: {code_path}")
         logger.info(f"📊 Scan depth: {scan_depth} - {config['description']}")
 
+        # PROMPT #168 - Console logging for real-time visibility
+        console = get_console_logger()
+        import asyncio
+        asyncio.create_task(console.log_memory_scan(
+            phase="start",
+            message=f"Starting {scan_depth} scan for {path.name}",
+            project_id=project_id.int if project_id else None
+        ))
+
         result = {
             "code_path": code_path,
             "suggested_title": "",
@@ -505,14 +517,30 @@ class CodebaseMemoryService:
             "scan_depth": scan_depth  # PROMPT #163
         }
 
+        # PROMPT #168 - Helper function for progress callbacks
+        async def report_progress(percent: float, message: str):
+            if progress_callback:
+                try:
+                    progress_callback(percent, message)
+                except Exception as e:
+                    logger.warning(f"Progress callback failed: {e}")
+            # Also log to console
+            asyncio.create_task(console.log_memory_scan(
+                phase=f"{int(percent)}%",
+                message=message,
+                project_id=project_id.int if project_id else None
+            ))
+
         # Step 1: Detect technology stack
         logger.info("📊 Step 1: Detecting technology stack...")
+        await report_progress(15.0, "Detecting technology stack...")
         stack_info = self.stack_detector.detect(path)
         result["stack_info"] = stack_info
         logger.info(f"   Detected stack: {stack_info.get('detected_stack', 'unknown')}")
 
         # Step 2: Scan and collect file information
         logger.info("📂 Step 2: Scanning codebase structure...")
+        await report_progress(20.0, "Scanning codebase structure...")
         scan_data = await self._scan_codebase(path)
         result["scan_summary"] = {
             "total_files": scan_data["total_files"],
@@ -525,6 +553,7 @@ class CodebaseMemoryService:
         # Step 3: Index files in RAG (if project_id provided)
         if project_id:
             logger.info("💾 Step 3: Indexing files in RAG...")
+            await report_progress(30.0, "Indexing files in RAG...")
             try:
                 indexer = CodebaseIndexer(self.db)
                 # Create a temporary project reference for indexing
@@ -540,12 +569,14 @@ class CodebaseMemoryService:
         # Step 4: Extract representative code samples for AI analysis
         # PROMPT #163 - Use scan_depth config for limits
         logger.info("🔍 Step 4: Extracting code samples for analysis...")
+        await report_progress(40.0, "Extracting code samples...")
         code_samples = self._extract_code_samples(path, scan_data, config)
         logger.info(f"   Extracted {len(code_samples)} code samples")
 
         # Step 5: Use AI to analyze and extract insights
         # PROMPT #163 - Use multi-phase analysis for better results
         logger.info(f"🤖 Step 5: AI analysis ({scan_depth} mode)...")
+        await report_progress(50.0, f"AI analysis started ({scan_depth} mode)...")
         ai_analysis = await self._ai_analyze_codebase_phased(
             code_samples=code_samples,
             stack_info=stack_info,
@@ -561,12 +592,16 @@ class CodebaseMemoryService:
         result["interview_context"] = ai_analysis.get("interview_context", "")
         result["phases_completed"] = ai_analysis.get("phases_completed", 1)
 
+        await report_progress(85.0, "Processing AI analysis results...")
+
         # Step 6: Store business rules in RAG for future reference
         if project_id and result["business_rules"]:
             logger.info("💾 Step 6: Storing business rules in RAG...")
+            await report_progress(90.0, f"Storing {len(result['business_rules'])} business rules...")
             await self._store_business_rules(project_id, result["business_rules"])
             logger.info(f"   Stored {len(result['business_rules'])} business rules")
 
+        await report_progress(95.0, "Finalizing results...")
         logger.info("✅ Codebase memory scan complete!")
         return result
 
@@ -1241,12 +1276,29 @@ class CodebaseMemoryService:
 
         logger.info(f"🔗 Chain Prompting: Analyzing {len(code_samples)} files individually")
 
+        # PROMPT #168 - Console logging for chain prompting
+        console = get_console_logger()
+        total_files = min(len(code_samples), max_files)
+
+        # PROMPT #168 - Reduced to 5 files for better performance with local models
+        # Each file can take 2-4 minutes without GPU, so 5 files = ~10-20 min total
+        max_files = 5  # Reduced from 15 for better UX with local models
+
         # Step 1: Analyze each file with a VERY simple prompt
-        for i, sample in enumerate(code_samples[:15]):  # Max 15 files
+        for i, sample in enumerate(code_samples[:max_files]):
             filename = sample.get("filename", f"file_{i}")
             content = sample.get("content", "")[:2000]  # Max 2K per file
 
-            logger.info(f"   📄 Analyzing file {i+1}/15: {filename}")
+            # Progress: 50-80% for file analysis (30% spread across files)
+            progress = 50 + (i / total_files) * 30
+            logger.info(f"   📄 Analyzing file {i+1}/{total_files}: {filename} (this may take 2-4 min without GPU)")
+
+            asyncio.create_task(console.log_memory_scan(
+                phase=f"file_{i+1}/{total_files}",
+                message=f"Analyzing: {filename} (CPU mode - please wait ~2-4 min)",
+                files_processed=i+1,
+                project_id=project_id.int if project_id else None
+            ))
 
             try:
                 insight = await self._chain_analyze_single_file(
@@ -1306,17 +1358,22 @@ Em NO MÁXIMO 3 linhas, responda:
 3. Qual a principal ENTIDADE/DADO? (1 palavra, ou "Nenhum")"""
 
         try:
-            response = await self.orchestrator.execute(
-                usage_type="memory",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=200,  # Muito pequeno - forçar resposta curta
-                project_id=project_id,
-                metadata={
-                    "phase": f"chain_file_{file_num}",
-                    "scan_type": "chain_prompting",
-                    "filename": filename
-                }
+            # PROMPT #168 - Add timeout for individual file analysis (5 min max)
+            # This prevents a single slow file from blocking the entire scan
+            response = await asyncio.wait_for(
+                self.orchestrator.execute(
+                    usage_type="memory",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=system_prompt,
+                    max_tokens=200,  # Muito pequeno - forçar resposta curta
+                    project_id=project_id,
+                    metadata={
+                        "phase": f"chain_file_{file_num}",
+                        "scan_type": "chain_prompting",
+                        "filename": filename
+                    }
+                ),
+                timeout=300.0  # 5 min timeout per file
             )
 
             text = response.get("content", "").strip()
@@ -1327,6 +1384,9 @@ Em NO MÁXIMO 3 linhas, responda:
                 }
             return None
 
+        except asyncio.TimeoutError:
+            logger.warning(f"⏱️ Timeout analyzing {filename} (>5min), skipping...")
+            return None
         except Exception as e:
             logger.warning(f"Chain analyze failed for {filename}: {e}")
             return None

@@ -17,6 +17,7 @@ from app.models.ai_model import AIModel, AIModelUsageType
 from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
 from app.models.prompt import Prompt  # PROMPT #58 - Prompt Audit Logging
 from app.models.task import Task, ItemType, PriorityLevel  # JIRA Transformation - Multi-dimensional model selection
+from app.services.console_logger import get_console_logger  # PROMPT #168 - Real-time Console Logs
 
 logger = logging.getLogger(__name__)
 
@@ -627,6 +628,19 @@ class AIOrchestrator:
             cached_result = self.cache_service.get(cache_input)
             if cached_result:
                 logger.info(f"✅ Cache HIT ({cached_result.get('cache_type')}) - Saved API call!")
+
+                # PROMPT #168 - Console logging for cache hit
+                console = get_console_logger()
+                asyncio.create_task(console.log_ai_response(
+                    model=f"{provider}/{model_name}",
+                    response_preview=cached_result.get("response", "")[:300],
+                    full_response=cached_result.get("response", "")[:10000],
+                    tokens_used=0,
+                    duration_ms=0,
+                    project_id=project_id.int if project_id else None,
+                    cache_hit=True
+                ))
+
                 # Return cached result in same format as execute() response
                 return {
                     "provider": provider,
@@ -650,6 +664,24 @@ class AIOrchestrator:
 
         # PROMPT #159 - Store model_id for provider backoff extraction
         self._current_model_id = model_config.get("db_model_id")
+
+        # PROMPT #168 - Console logging for real-time visibility
+        console = get_console_logger()
+        # Extract prompt preview for logging
+        prompt_preview = ""
+        for msg in messages:
+            if msg.get("role") == "user":
+                prompt_preview = msg.get("content", "")[:500]
+                break
+
+        # Log AI prompt being sent
+        asyncio.create_task(console.log_ai_prompt(
+            model=f"{provider}/{model_name}",
+            usage_type=usage_type,
+            prompt_preview=prompt_preview,
+            full_prompt=json.dumps(messages, ensure_ascii=False)[:5000],
+            project_id=project_id.int if project_id else None
+        ))
 
         try:
             if provider == "anthropic":
@@ -681,6 +713,19 @@ class AIOrchestrator:
             result["db_model_id"] = model_config["db_model_id"]
             result["db_model_name"] = model_config["db_model_name"]
             result["rag_enhanced"] = rag_context_injected  # PROMPT #83
+
+            # PROMPT #168 - Console logging for AI response
+            response_content = result.get("content", "")
+            execution_time_ms_console = int((time.time() - start_time) * 1000)
+            asyncio.create_task(console.log_ai_response(
+                model=f"{provider}/{model_name}",
+                response_preview=response_content[:300] if response_content else "No response",
+                full_response=response_content[:10000] if response_content else None,
+                tokens_used=result.get("usage", {}).get("total_tokens"),
+                duration_ms=execution_time_ms_console,
+                project_id=project_id.int if project_id else None,
+                cache_hit=False
+            ))
 
             # PROMPT #54 - Log successful execution to database
             # PROMPT #89 - Include RAG metrics
