@@ -2,7 +2,7 @@
 
 /**
  * Console Page - PROMPT #168
- * Real-time system logs viewer
+ * Real-time system logs viewer - Linux terminal style
  *
  * Displays live logs from the ORBIT system including:
  * - AI prompts and responses
@@ -14,10 +14,6 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { Layout } from '@/components/layout/Layout';
-import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 
 // Log entry type matching backend ConsoleLogEntry
 interface LogEntry {
@@ -34,35 +30,51 @@ interface LogEntry {
   tokens_used?: number;
 }
 
-// Category colors
-const CATEGORY_COLORS: Record<string, string> = {
-  ai_prompt: 'bg-blue-500',
-  ai_response: 'bg-green-500',
-  spec_loaded: 'bg-purple-500',
-  rag_operation: 'bg-yellow-500',
-  job_event: 'bg-cyan-500',
-  memory_scan: 'bg-indigo-500',
-  cache_event: 'bg-pink-500',
-  system: 'bg-gray-500',
-  error: 'bg-red-500',
-};
-
-// Level colors
+// Level colors for terminal output
 const LEVEL_COLORS: Record<string, string> = {
-  debug: 'text-gray-400',
-  info: 'text-blue-400',
+  debug: 'text-gray-500',
+  info: 'text-cyan-400',
   warning: 'text-yellow-400',
   error: 'text-red-400',
   success: 'text-green-400',
 };
 
-// Level icons
-const LEVEL_ICONS: Record<string, string> = {
-  debug: '🔍',
-  info: 'ℹ️',
-  warning: '⚠️',
-  error: '❌',
-  success: '✅',
+// Format log entry as raw terminal text
+const formatLogLine = (log: LogEntry): string => {
+  const date = new Date(log.timestamp);
+  const ts = date.toISOString().replace('T', ' ').substring(0, 23);
+
+  let line = `[${ts}] [${log.level.toUpperCase().padEnd(7)}] [${log.category}] ${log.title}`;
+
+  if (log.message) {
+    line += ` - ${log.message}`;
+  }
+
+  if (log.duration_ms) {
+    line += ` (${log.duration_ms}ms)`;
+  }
+
+  if (log.tokens_used) {
+    line += ` [${log.tokens_used} tokens]`;
+  }
+
+  if (log.project_id) {
+    line += ` project=${log.project_id}`;
+  }
+
+  if (log.job_id) {
+    line += ` job=${log.job_id}`;
+  }
+
+  return line;
+};
+
+// Format details as indented JSON
+const formatDetails = (details: Record<string, unknown>): string => {
+  return JSON.stringify(details, null, 2)
+    .split('\n')
+    .map(line => '    ' + line)
+    .join('\n');
 };
 
 export default function ConsolePage() {
@@ -72,10 +84,11 @@ export default function ConsolePage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [autoScroll, setAutoScroll] = useState(true);
+  const [showDetails, setShowDetails] = useState(true);
 
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const consoleRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -91,7 +104,6 @@ export default function ConsolePage() {
 
     eventSource.onopen = () => {
       setIsConnected(true);
-      console.log('🔌 Console stream connected');
     };
 
     eventSource.onmessage = (event) => {
@@ -112,21 +124,20 @@ export default function ConsolePage() {
             return prev;
           }
 
-          // Keep max 500 logs for performance
+          // Keep max 1000 logs for performance
           const newLogs = [...prev, data];
-          if (newLogs.length > 500) {
-            return newLogs.slice(-500);
+          if (newLogs.length > 1000) {
+            return newLogs.slice(-1000);
           }
           return newLogs;
         });
-      } catch (e) {
+      } catch {
         // Ignore parse errors (keepalive messages)
       }
     };
 
     eventSource.onerror = () => {
       setIsConnected(false);
-      console.log('🔌 Console stream disconnected, reconnecting...');
 
       // Reconnect after delay
       if (reconnectTimeoutRef.current) {
@@ -169,7 +180,8 @@ export default function ConsolePage() {
       const searchLower = searchTerm.toLowerCase();
       return (
         log.title.toLowerCase().includes(searchLower) ||
-        log.message.toLowerCase().includes(searchLower)
+        log.message.toLowerCase().includes(searchLower) ||
+        log.category.toLowerCase().includes(searchLower)
       );
     }
     return true;
@@ -181,25 +193,24 @@ export default function ConsolePage() {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       await fetch(`${apiUrl}/api/v1/console/logs`, { method: 'DELETE' });
-    } catch (e) {
-      console.error('Failed to clear server logs:', e);
+    } catch {
+      // Ignore errors
     }
   };
 
-  // Format timestamp
-  const formatTimestamp = (timestamp: string) => {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('pt-BR', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      fractionalSecondDigits: 3,
-    });
-  };
+  // Copy all visible logs to clipboard
+  const copyLogs = async () => {
+    const text = filteredLogs
+      .map((log) => {
+        let output = formatLogLine(log);
+        if (showDetails && log.details) {
+          output += '\n' + formatDetails(log.details);
+        }
+        return output;
+      })
+      .join('\n');
 
-  // Toggle log expansion
-  const toggleExpand = (logId: string) => {
-    setExpandedLogId(expandedLogId === logId ? null : logId);
+    await navigator.clipboard.writeText(text);
   };
 
   // Unique categories from logs
@@ -207,184 +218,156 @@ export default function ConsolePage() {
   const levels = ['all', 'debug', 'info', 'warning', 'error', 'success'];
 
   return (
-    <Layout>
-      <div className="min-h-screen bg-gray-900 text-gray-100 p-4">
-        <Breadcrumbs
-          items={[{ label: 'Console', href: '/console' }]}
-        />
+    <div className="fixed inset-0 bg-black text-gray-100 flex flex-col font-mono text-sm">
+      {/* Header bar */}
+      <div className="flex-shrink-0 bg-gray-900 border-b border-gray-800 px-4 py-2 flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <span className="text-green-400 font-bold">ORBIT Console</span>
+          <span
+            className={`text-xs ${
+              isConnected ? 'text-green-400' : 'text-red-400'
+            }`}
+          >
+            {isConnected ? '● connected' : '○ disconnected'}
+          </span>
+          <span className="text-gray-500 text-xs">
+            {filteredLogs.length}/{logs.length} logs
+          </span>
+        </div>
 
-        <div className="space-y-4 mt-4">
-          {/* Header */}
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-semibold text-white">System Console</h1>
-              <span
-                className={`px-2 py-0.5 text-xs rounded-full ${
-                  isConnected
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-red-500/20 text-red-400'
-                }`}
-              >
-                {isConnected ? 'Connected' : 'Disconnected'}
-              </span>
-            </div>
+        <div className="flex items-center gap-2">
+          {/* Search */}
+          <input
+            type="text"
+            placeholder="grep..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-40 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-white placeholder-gray-500 focus:outline-none focus:border-gray-600"
+          />
 
-            <div className="flex items-center gap-2">
-              <Button
-                variant={isPaused ? 'primary' : 'secondary'}
-                onClick={() => setIsPaused(!isPaused)}
-                className="text-sm"
-              >
-                {isPaused ? '▶ Resume' : '⏸ Pause'}
-              </Button>
-              <Button
-                variant={autoScroll ? 'primary' : 'secondary'}
-                onClick={() => setAutoScroll(!autoScroll)}
-                className="text-sm"
-              >
-                {autoScroll ? '⬇ Auto-scroll ON' : '⬇ Auto-scroll OFF'}
-              </Button>
-              <Button variant="danger" onClick={clearLogs} className="text-sm">
-                🗑 Clear
-              </Button>
-            </div>
-          </div>
+          {/* Category filter */}
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-white focus:outline-none"
+          >
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat === 'all' ? 'all categories' : cat}
+              </option>
+            ))}
+          </select>
 
-          {/* Filters */}
-          <Card className="bg-gray-800 border-gray-700 p-3">
-            <div className="flex flex-wrap items-center gap-4">
-              {/* Search */}
-              <div className="flex-1 min-w-[200px]">
-                <input
-                  type="text"
-                  placeholder="Search logs..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
+          {/* Level filter */}
+          <select
+            value={selectedLevel}
+            onChange={(e) => setSelectedLevel(e.target.value)}
+            className="px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs text-white focus:outline-none"
+          >
+            {levels.map((level) => (
+              <option key={level} value={level}>
+                {level === 'all' ? 'all levels' : level}
+              </option>
+            ))}
+          </select>
 
-              {/* Category filter */}
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value)}
-                className="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                {categories.map((cat) => (
-                  <option key={cat} value={cat}>
-                    {cat === 'all' ? 'All Categories' : cat.replace('_', ' ')}
-                  </option>
-                ))}
-              </select>
+          {/* Toggle buttons */}
+          <button
+            onClick={() => setShowDetails(!showDetails)}
+            className={`px-2 py-1 text-xs rounded ${
+              showDetails
+                ? 'bg-gray-700 text-white'
+                : 'bg-gray-800 text-gray-500'
+            }`}
+            title="Toggle details"
+          >
+            details
+          </button>
 
-              {/* Level filter */}
-              <select
-                value={selectedLevel}
-                onChange={(e) => setSelectedLevel(e.target.value)}
-                className="px-3 py-1.5 bg-gray-700 border border-gray-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                {levels.map((level) => (
-                  <option key={level} value={level}>
-                    {level === 'all' ? 'All Levels' : level.toUpperCase()}
-                  </option>
-                ))}
-              </select>
+          <button
+            onClick={() => setAutoScroll(!autoScroll)}
+            className={`px-2 py-1 text-xs rounded ${
+              autoScroll
+                ? 'bg-gray-700 text-white'
+                : 'bg-gray-800 text-gray-500'
+            }`}
+            title="Toggle auto-scroll"
+          >
+            scroll
+          </button>
 
-              {/* Log count */}
-              <span className="text-sm text-gray-400">
-                {filteredLogs.length} / {logs.length} logs
-              </span>
-            </div>
-          </Card>
+          <button
+            onClick={() => setIsPaused(!isPaused)}
+            className={`px-2 py-1 text-xs rounded ${
+              isPaused
+                ? 'bg-yellow-600 text-white'
+                : 'bg-gray-800 text-gray-500'
+            }`}
+            title="Pause/Resume"
+          >
+            {isPaused ? 'paused' : 'live'}
+          </button>
 
-          {/* Logs container */}
-          <Card className="bg-gray-950 border-gray-700 p-0 overflow-hidden">
-            <div
-              className="h-[calc(100vh-280px)] overflow-y-auto font-mono text-sm"
-              style={{ scrollbarGutter: 'stable' }}
-            >
-              {filteredLogs.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  <div className="text-center">
-                    <p className="text-lg mb-2">No logs yet</p>
-                    <p className="text-sm">
-                      Waiting for system activity...
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-800">
-                  {filteredLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className={`hover:bg-gray-900 cursor-pointer transition-colors ${
-                        expandedLogId === log.id ? 'bg-gray-900' : ''
-                      }`}
-                      onClick={() => toggleExpand(log.id)}
-                    >
-                      {/* Log line */}
-                      <div className="flex items-start gap-2 px-3 py-2">
-                        {/* Timestamp */}
-                        <span className="text-gray-500 whitespace-nowrap">
-                          {formatTimestamp(log.timestamp)}
-                        </span>
+          <button
+            onClick={copyLogs}
+            className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-white"
+            title="Copy to clipboard"
+          >
+            copy
+          </button>
 
-                        {/* Level icon */}
-                        <span>{LEVEL_ICONS[log.level] || '•'}</span>
-
-                        {/* Category badge */}
-                        <span
-                          className={`px-1.5 py-0.5 text-xs rounded whitespace-nowrap ${
-                            CATEGORY_COLORS[log.category] || 'bg-gray-600'
-                          } text-white`}
-                        >
-                          {log.category.replace('_', ' ')}
-                        </span>
-
-                        {/* Title */}
-                        <span className={`font-medium ${LEVEL_COLORS[log.level]}`}>
-                          {log.title}
-                        </span>
-
-                        {/* Message preview */}
-                        <span className="text-gray-300 truncate flex-1">
-                          {log.message}
-                        </span>
-
-                        {/* Duration / Tokens */}
-                        {(log.duration_ms || log.tokens_used) && (
-                          <span className="text-gray-500 whitespace-nowrap text-xs">
-                            {log.duration_ms && `${log.duration_ms}ms`}
-                            {log.duration_ms && log.tokens_used && ' | '}
-                            {log.tokens_used && `${log.tokens_used} tokens`}
-                          </span>
-                        )}
-
-                        {/* Expand indicator */}
-                        {log.details && (
-                          <span className="text-gray-500">
-                            {expandedLogId === log.id ? '▼' : '▶'}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Expanded details */}
-                      {expandedLogId === log.id && log.details && (
-                        <div className="px-3 py-2 bg-gray-950 border-t border-gray-800">
-                          <pre className="text-xs text-gray-400 overflow-x-auto whitespace-pre-wrap">
-                            {JSON.stringify(log.details, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  <div ref={logsEndRef} />
-                </div>
-              )}
-            </div>
-          </Card>
+          <button
+            onClick={clearLogs}
+            className="px-2 py-1 text-xs rounded bg-gray-800 text-red-400 hover:text-red-300"
+            title="Clear logs"
+          >
+            clear
+          </button>
         </div>
       </div>
-    </Layout>
+
+      {/* Console output */}
+      <div
+        ref={consoleRef}
+        className="flex-1 overflow-auto p-2 select-text cursor-text"
+        style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 #111827' }}
+      >
+        {filteredLogs.length === 0 ? (
+          <div className="text-gray-600">
+            <p>$ waiting for logs...</p>
+            <p className="animate-pulse">_</p>
+          </div>
+        ) : (
+          <pre className="whitespace-pre-wrap break-all">
+            {filteredLogs.map((log) => (
+              <div key={log.id} className="hover:bg-gray-900/50">
+                <span className={LEVEL_COLORS[log.level]}>
+                  {formatLogLine(log)}
+                </span>
+                {showDetails && log.details && (
+                  <span className="text-gray-600">
+                    {'\n' + formatDetails(log.details)}
+                  </span>
+                )}
+                {'\n'}
+              </div>
+            ))}
+            <div ref={logsEndRef} />
+          </pre>
+        )}
+      </div>
+
+      {/* Status bar */}
+      <div className="flex-shrink-0 bg-gray-900 border-t border-gray-800 px-4 py-1 flex items-center justify-between text-xs text-gray-500">
+        <span>
+          {isPaused && <span className="text-yellow-400 mr-2">PAUSED</span>}
+          Press Ctrl+C to copy selected text
+        </span>
+        <span>
+          {autoScroll ? 'auto-scroll enabled' : 'auto-scroll disabled'} |
+          buffer: {logs.length}/1000
+        </span>
+      </div>
+    </div>
   );
 }
