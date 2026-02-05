@@ -745,12 +745,12 @@ class CodebaseMemoryService:
 
         PROMPT #163 - Now uses configurable limits from scan_depth config.
         PROMPT #166 - Respects ignore patterns (files already filtered in scan_data)
+        PROMPT #169 - Inverted priority: business logic first, config last
 
         Prioritizes:
-        1. README and documentation
-        2. Configuration files
-        3. Key files (models, controllers)
-        4. Entry points
+        1. Key files (controllers, services, models) - BUSINESS LOGIC FIRST
+        2. README and documentation
+        3. Configuration files (only if space left)
 
         Args:
             root_path: Root path of codebase
@@ -770,63 +770,29 @@ class CodebaseMemoryService:
 
         samples = []
 
-        # Priority 1: README and docs
-        for config_file in scan_data.get("config_files", []):
-            if len(samples) >= max_files:
-                break
-
-            if "readme" in config_file.lower():
-                full_path = root_path / config_file
-                if full_path.exists():
-                    try:
-                        content = full_path.read_text(encoding="utf-8", errors="ignore")
-                        samples.append({
-                            "filename": config_file,
-                            "content": content[:max_content],
-                            "type": "documentation"
-                        })
-                    except Exception as e:
-                        logger.warning(f"Failed to read {config_file}: {e}")
-
-        # Priority 2: Package/config files
-        for config_file in scan_data.get("config_files", []):
-            if len(samples) >= max_files:
-                break
-
-            if config_file.endswith((".json", ".toml", ".yml", ".yaml")):
-                full_path = root_path / config_file
-                if full_path.exists():
-                    try:
-                        content = full_path.read_text(encoding="utf-8", errors="ignore")
-                        samples.append({
-                            "filename": config_file,
-                            "content": content[:max_content],
-                            "type": "configuration"
-                        })
-                    except Exception as e:
-                        logger.warning(f"Failed to read {config_file}: {e}")
-
-        # Priority 3: Key files (models, controllers, services)
+        # PROMPT #169 - Priority 1: Key files (models, controllers, services) - BUSINESS LOGIC FIRST
+        # This ensures we analyze actual code before filling slots with config files
         key_files = scan_data.get("key_files", [])
 
-        # Sort key files to prioritize migrations, models, then controllers
+        # Sort key files to prioritize controllers/services (most business logic) over migrations
         def sort_priority(f):
             f_lower = f.lower()
-            if "migration" in f_lower:
-                return 0  # Highest priority - database schema = business rules
-            if "model" in f_lower or "entity" in f_lower:
-                return 1  # Models define domain
-            if "service" in f_lower or "usecase" in f_lower:
-                return 2  # Services contain logic
+            # Controllers and services first - they have the most business logic
             if "controller" in f_lower or "handler" in f_lower:
-                return 3  # Controllers have validation
+                return 0  # Highest priority - business logic entry points
+            if "service" in f_lower or "usecase" in f_lower:
+                return 1  # Services contain core business logic
+            if "model" in f_lower or "entity" in f_lower:
+                return 2  # Models define domain
             if "request" in f_lower or "validator" in f_lower:
-                return 4  # Validation rules
+                return 3  # Validation rules
+            if "migration" in f_lower:
+                return 4  # Database schema - lower priority than actual logic
             return 5
 
         key_files_sorted = sorted(key_files, key=sort_priority)
 
-        # PROMPT #163 - For deep mode, get all key files; otherwise limit
+        # Get key files first (business logic)
         files_to_process = key_files_sorted if max_files == float('inf') else key_files_sorted[:int(max_files)]
 
         for key_file in files_to_process:
@@ -844,6 +810,42 @@ class CodebaseMemoryService:
                     })
                 except Exception as e:
                     logger.warning(f"Failed to read {key_file}: {e}")
+
+        # Priority 2: README (only if we have space left)
+        for config_file in scan_data.get("config_files", []):
+            if len(samples) >= max_files:
+                break
+
+            if "readme" in config_file.lower():
+                full_path = root_path / config_file
+                if full_path.exists():
+                    try:
+                        content = full_path.read_text(encoding="utf-8", errors="ignore")
+                        samples.append({
+                            "filename": config_file,
+                            "content": content[:max_content],
+                            "type": "documentation"
+                        })
+                    except Exception as e:
+                        logger.warning(f"Failed to read {config_file}: {e}")
+
+        # Priority 3: Package/config files (only if we have space left)
+        for config_file in scan_data.get("config_files", []):
+            if len(samples) >= max_files:
+                break
+
+            if config_file.endswith((".json", ".toml", ".yml", ".yaml")):
+                full_path = root_path / config_file
+                if full_path.exists():
+                    try:
+                        content = full_path.read_text(encoding="utf-8", errors="ignore")
+                        samples.append({
+                            "filename": config_file,
+                            "content": content[:max_content],
+                            "type": "configuration"
+                        })
+                    except Exception as e:
+                        logger.warning(f"Failed to read {config_file}: {e}")
 
         logger.info(f"📂 Extracted {len(samples)} code samples (max_files={max_files}, max_content={max_content})")
         return samples
