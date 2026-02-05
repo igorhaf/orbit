@@ -713,7 +713,7 @@ export default function NewProjectPage() {
                   disabled={scanning}
                   className={`mt-1 ${scanning ? 'bg-gray-100 cursor-wait' : ''}`}
                 />
-                <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
                   {scanning ? (
                     <span className="text-blue-600">A IA está analisando o código para sugerir um nome...</span>
                   ) : (
@@ -728,7 +728,7 @@ export default function NewProjectPage() {
                       )}
                     </>
                   )}
-                </p>
+                </div>
               </div>
 
               {/* PROMPT #118 - Scanning indicator (non-blocking background) */}

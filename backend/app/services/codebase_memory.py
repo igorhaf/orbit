@@ -1419,7 +1419,7 @@ Resumo dos arquivos analisados:
 
 Baseado APENAS nessas análises, responda em JSON:
 {{
-  "suggested_title": "Nome descritivo do sistema (4-6 palavras, SEM mencionar tecnologia)",
+  "suggested_title": "Título que descreva o PROPÓSITO do sistema (5-8 palavras). NÃO use 'Sistema de X'. Use formato como: 'Gestão de Contas a Receber e Pagar', 'Portal de Atendimento ao Cliente', 'Plataforma de E-commerce Multi-tenant'",
   "business_rules": ["Regra 1", "Regra 2", "Regra 3"],
   "key_features": ["Feature 1", "Feature 2", "Feature 3"],
   "entities": ["Entidade 1", "Entidade 2"],
@@ -1668,10 +1668,12 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
     def _validate_title(self, title: str, folder_name: str, stack_info: Dict) -> str:
         """
         PROMPT #165 - Validate title to avoid generic fallbacks.
+        PROMPT #169 - Improved validation to reject "Sistema de X" patterns.
 
         Ensures title is:
-        - At least 3 words long
+        - At least 4 words long (more descriptive)
         - Not just folder name or technology name
+        - Not generic "Sistema de X" pattern
         - Descriptive of the system's purpose
         """
         if not title:
@@ -1680,21 +1682,30 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
         # Clean the title
         title = title.strip()
 
-        # Check if too short (less than 3 words)
+        # Check if too short (less than 4 words for better descriptions)
         words = title.split()
-        if len(words) < 3:
+        if len(words) < 4:
             logger.warning(f"⚠️ Title too short ({len(words)} words): '{title}'")
-            # Try to expand it
-            if len(words) == 2:
-                return f"Sistema de {title}"
+            # Try to expand with stack info
+            stack = stack_info.get("detected_stack", "")
+            if stack and len(words) >= 2:
+                return f"{title} - Aplicação {stack.title()}"
             return self._generate_fallback_title(stack_info, folder_name)
 
         # Check if it's just the folder name
         clean_folder = folder_name.replace("-", " ").replace("_", " ").lower()
-        if title.lower() == f"sistema {clean_folder}":
+        if title.lower() == f"sistema {clean_folder}" or title.lower() == f"sistema de {clean_folder}":
             logger.warning(f"⚠️ Title is just folder name: '{title}'")
-            # This is generic, but better than nothing
-            # Try to add context from stack
+            # This is too generic - try to add context from stack
+            stack = stack_info.get("detected_stack", "")
+            if stack:
+                return f"{title} - Aplicação {stack.title()}"
+            return title
+
+        # Check for generic "Sistema de X" patterns (only 3 words)
+        title_lower = title.lower()
+        if title_lower.startswith("sistema de ") and len(words) <= 3:
+            logger.warning(f"⚠️ Title is generic 'Sistema de X': '{title}'")
             stack = stack_info.get("detected_stack", "")
             if stack:
                 return f"{title} - Aplicação {stack.title()}"
@@ -1706,7 +1717,7 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
             "laravel project", "php application",
             "react app", "node project"
         ]
-        if title.lower() in generic_patterns:
+        if title_lower in generic_patterns:
             return self._generate_fallback_title(stack_info, folder_name)
 
         return title
