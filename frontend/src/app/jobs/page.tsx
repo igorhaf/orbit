@@ -1003,10 +1003,10 @@ export default function JobsPage() {
         onClose={() => setCleanupConfirm({ open: false, days: 0 })}
         onConfirm={handleCleanupConfirm}
         title="Cleanup Jobs"
-        description={`Are you sure you want to delete all completed and failed jobs older than ${cleanupConfirm.days} day${cleanupConfirm.days > 1 ? 's' : ''}? This action cannot be undone.`}
-        confirmText="Delete Jobs"
-        cancelText="Cancel"
-        variant="danger"
+        message={`Are you sure you want to delete all completed and failed jobs older than ${cleanupConfirm.days} day${cleanupConfirm.days > 1 ? 's' : ''}? This action cannot be undone.`}
+        confirmLabel="Delete Jobs"
+        cancelLabel="Cancel"
+        type="danger"
       />
     </Layout>
   );
