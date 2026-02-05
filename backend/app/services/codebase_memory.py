@@ -743,14 +743,15 @@ class CodebaseMemoryService:
         """
         Extract representative code samples for AI analysis.
 
-        PROMPT #163 - Now uses configurable limits from scan_depth config.
-        PROMPT #166 - Respects ignore patterns (files already filtered in scan_data)
-        PROMPT #169 - Inverted priority: business logic first, config last
+        PROMPT #169 - Framework-agnostic approach using conceptual heuristics:
 
-        Prioritizes:
-        1. Key files (controllers, services, models) - BUSINESS LOGIC FIRST
-        2. README and documentation
-        3. Configuration files (only if space left)
+        Prioritization is based on CONTENT CHARACTERISTICS, not naming conventions:
+        1. Larger files (more code = more logic)
+        2. Files with more imports/dependencies (more interconnected = more central)
+        3. Files deeper in directory structure (more specific to the domain)
+        4. Avoid files that look like config/boilerplate by content pattern
+
+        This works for ANY language/framework without hardcoded naming patterns.
 
         Args:
             root_path: Root path of codebase
@@ -769,86 +770,145 @@ class CodebaseMemoryService:
             max_files = float('inf')
 
         samples = []
+        scored_files = []
 
-        # PROMPT #169 - Priority 1: Key files (models, controllers, services) - BUSINESS LOGIC FIRST
-        # This ensures we analyze actual code before filling slots with config files
+        # Collect all code files with their scores
         key_files = scan_data.get("key_files", [])
 
-        # Sort key files to prioritize controllers/services (most business logic) over migrations
-        def sort_priority(f):
-            f_lower = f.lower()
-            # Controllers and services first - they have the most business logic
-            if "controller" in f_lower or "handler" in f_lower:
-                return 0  # Highest priority - business logic entry points
-            if "service" in f_lower or "usecase" in f_lower:
-                return 1  # Services contain core business logic
-            if "model" in f_lower or "entity" in f_lower:
-                return 2  # Models define domain
-            if "request" in f_lower or "validator" in f_lower:
-                return 3  # Validation rules
-            if "migration" in f_lower:
-                return 4  # Database schema - lower priority than actual logic
-            return 5
+        for file_path in key_files:
+            full_path = root_path / file_path
+            if not full_path.exists():
+                continue
 
-        key_files_sorted = sorted(key_files, key=sort_priority)
+            try:
+                content = full_path.read_text(encoding="utf-8", errors="ignore")
+                score = self._calculate_file_relevance_score(file_path, content)
 
-        # Get key files first (business logic)
-        files_to_process = key_files_sorted if max_files == float('inf') else key_files_sorted[:int(max_files)]
+                scored_files.append({
+                    "filename": file_path,
+                    "content": content,
+                    "score": score,
+                    "type": "code"
+                })
+            except Exception as e:
+                logger.warning(f"Failed to read {file_path}: {e}")
 
-        for key_file in files_to_process:
+        # Sort by relevance score (higher = more relevant)
+        scored_files.sort(key=lambda x: x["score"], reverse=True)
+
+        # Take top N files based on score
+        for file_data in scored_files:
             if len(samples) >= max_files:
                 break
 
-            full_path = root_path / key_file
-            if full_path.exists():
-                try:
-                    content = full_path.read_text(encoding="utf-8", errors="ignore")
-                    samples.append({
-                        "filename": key_file,
-                        "content": content[:max_content],
-                        "type": "code"
-                    })
-                except Exception as e:
-                    logger.warning(f"Failed to read {key_file}: {e}")
+            samples.append({
+                "filename": file_data["filename"],
+                "content": file_data["content"][:max_content],
+                "type": file_data["type"]
+            })
 
-        # Priority 2: README (only if we have space left)
-        for config_file in scan_data.get("config_files", []):
-            if len(samples) >= max_files:
-                break
+        # Add README only if we have space and found one
+        if len(samples) < max_files:
+            for config_file in scan_data.get("config_files", []):
+                if "readme" in config_file.lower():
+                    full_path = root_path / config_file
+                    if full_path.exists():
+                        try:
+                            content = full_path.read_text(encoding="utf-8", errors="ignore")
+                            samples.append({
+                                "filename": config_file,
+                                "content": content[:max_content],
+                                "type": "documentation"
+                            })
+                            break
+                        except Exception as e:
+                            logger.warning(f"Failed to read {config_file}: {e}")
 
-            if "readme" in config_file.lower():
-                full_path = root_path / config_file
-                if full_path.exists():
-                    try:
-                        content = full_path.read_text(encoding="utf-8", errors="ignore")
-                        samples.append({
-                            "filename": config_file,
-                            "content": content[:max_content],
-                            "type": "documentation"
-                        })
-                    except Exception as e:
-                        logger.warning(f"Failed to read {config_file}: {e}")
-
-        # Priority 3: Package/config files (only if we have space left)
-        for config_file in scan_data.get("config_files", []):
-            if len(samples) >= max_files:
-                break
-
-            if config_file.endswith((".json", ".toml", ".yml", ".yaml")):
-                full_path = root_path / config_file
-                if full_path.exists():
-                    try:
-                        content = full_path.read_text(encoding="utf-8", errors="ignore")
-                        samples.append({
-                            "filename": config_file,
-                            "content": content[:max_content],
-                            "type": "configuration"
-                        })
-                    except Exception as e:
-                        logger.warning(f"Failed to read {config_file}: {e}")
-
-        logger.info(f"📂 Extracted {len(samples)} code samples (max_files={max_files}, max_content={max_content})")
+        logger.info(f"📂 Extracted {len(samples)} code samples (max_files={max_files}, scored from {len(scored_files)} candidates)")
         return samples
+
+    def _calculate_file_relevance_score(self, file_path: str, content: str) -> float:
+        """
+        Calculate a relevance score for a file based on conceptual heuristics.
+
+        PROMPT #169 - Framework-agnostic scoring:
+        - Larger files tend to have more business logic
+        - Files with more imports are more interconnected (central to the system)
+        - Deeper paths are more domain-specific
+        - Penalize files that look like boilerplate/config
+
+        Returns a score where higher = more relevant for understanding business logic.
+        """
+        score = 0.0
+        lines = content.split('\n')
+        line_count = len(lines)
+
+        # 1. File size score (larger files tend to have more logic)
+        # Cap at 1000 lines to avoid over-weighting massive files
+        size_score = min(line_count, 1000) / 100.0  # 0-10 points
+        score += size_score
+
+        # 2. Import/dependency density (more imports = more interconnected)
+        import_patterns = [
+            'import ', 'from ', 'require(', 'use ', 'include ',
+            '#include', 'using ', '@import', 'load '
+        ]
+        import_count = sum(1 for line in lines[:100] if any(p in line for p in import_patterns))
+        import_score = min(import_count, 20) / 2.0  # 0-10 points
+        score += import_score
+
+        # 3. Path depth score (deeper = more specific)
+        path_depth = file_path.count('/') + file_path.count('\\')
+        depth_score = min(path_depth, 5) * 1.5  # 0-7.5 points
+        score += depth_score
+
+        # 4. Function/method density (more functions = more logic)
+        function_patterns = [
+            'def ', 'function ', 'func ', 'fn ', '=> {',
+            'public function', 'private function', 'protected function',
+            'public static', 'private static',
+            'async ', 'pub fn', 'func ('
+        ]
+        function_count = sum(1 for line in lines if any(p in line for p in function_patterns))
+        function_score = min(function_count, 30) / 3.0  # 0-10 points
+        score += function_score
+
+        # 5. Class/struct definitions (indicates domain objects)
+        class_patterns = ['class ', 'struct ', 'interface ', 'trait ', 'enum ', 'type ']
+        class_count = sum(1 for line in lines if any(p in line for p in class_patterns))
+        class_score = min(class_count, 10) * 0.5  # 0-5 points
+        score += class_score
+
+        # 6. PENALTIES for likely non-business files
+
+        # Penalty for config-like content
+        config_indicators = [
+            '"version":', "'version':", 'version =',
+            '"name":', "'name':", '"dependencies":',
+            'module.exports', 'export default {',
+            '<?xml', '<!DOCTYPE', '<configuration>'
+        ]
+        if any(indicator in content[:500] for indicator in config_indicators):
+            score -= 5.0
+
+        # Penalty for test files
+        if any(p in file_path.lower() for p in ['test', 'spec', '_test.', '.test.', 'tests/']):
+            score -= 3.0
+
+        # Penalty for migration/schema files (they define structure, not logic)
+        if any(p in file_path.lower() for p in ['migration', 'schema', 'seed', 'fixture']):
+            score -= 2.0
+
+        # Penalty for very small files (likely stubs or simple configs)
+        if line_count < 20:
+            score -= 3.0
+
+        # Penalty for files with mostly comments/empty lines
+        non_empty_lines = [l for l in lines if l.strip() and not l.strip().startswith(('#', '//', '/*', '*', '--', ';'))]
+        if len(non_empty_lines) < line_count * 0.3:
+            score -= 2.0
+
+        return max(score, 0.0)  # Don't go negative
 
     # =========================================================================
     # PROMPT #163 - Multi-phase Analysis Methods
