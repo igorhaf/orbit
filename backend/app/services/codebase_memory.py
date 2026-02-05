@@ -93,7 +93,10 @@ class CodebaseMemoryService:
     ANALYSIS_EXTENSIONS = {
         ".py", ".php", ".js", ".ts", ".tsx", ".jsx",
         ".java", ".rb", ".go", ".cs", ".swift", ".kt",
-        ".vue", ".svelte"
+        ".vue", ".svelte",
+        # PROMPT #169 - Include view/template files for branding/context
+        ".blade.php", ".html", ".twig", ".ejs", ".erb",
+        ".hbs", ".pug", ".mustache"
     }
 
     # Config/docs files to extract from
@@ -701,6 +704,11 @@ class CodebaseMemoryService:
         - Middleware (business rules enforcement)
         - Requests/Forms/DTOs (validation rules)
         - Events, Listeners, Jobs
+
+        PROMPT #169 - Also include context/branding files:
+        - Route files (contain domain names, URL structure)
+        - Layout/template files (contain titles, branding)
+        - Config files with domain info
         """
         lower_name = filename.lower()
         path_parts = [p.lower() for p in file_path.parts]
@@ -715,7 +723,7 @@ class CodebaseMemoryService:
             if pattern in lower_name:
                 return True
 
-        # Check for route files (often contain business rules)
+        # Check for route files (often contain business rules AND domain context)
         if "route" in lower_name or "routes" in path_parts:
             return True
 
@@ -730,6 +738,20 @@ class CodebaseMemoryService:
             "appserviceprovider.php", "authserviceprovider.php"
         }
         if lower_name in laravel_patterns:
+            return True
+
+        # PROMPT #169 - Include layout/template files (contain branding, titles)
+        if "layout" in lower_name or "master" in lower_name or "base" in lower_name:
+            return True
+
+        # PROMPT #169 - Include views directory files (contain titles, branding context)
+        if "views" in path_parts or "templates" in path_parts or "resources/views" in str(file_path).lower():
+            # Include main layout files
+            if any(p in lower_name for p in ["layout", "master", "app", "base", "main", "header", "welcome"]):
+                return True
+
+        # PROMPT #169 - Include config files that may have domain/branding info
+        if "config" in path_parts and any(p in lower_name for p in ["app", "site", "domain", "branding"]):
             return True
 
         return False
@@ -879,7 +901,27 @@ class CodebaseMemoryService:
         class_score = min(class_count, 10) * 0.5  # 0-5 points
         score += class_score
 
-        # 6. PENALTIES for likely non-business files
+        # 6. BONUSES for context/branding files (PROMPT #169)
+        # These files often contain system names, domains, and business context
+
+        # Bonus for domain names (government, company, etc.)
+        domain_patterns = [
+            '.gov.br', '.gov', '.gob.', '.edu.br', '.org.br',
+            'Route::domain', '@domain', 'domain =', 'host =',
+            'APP_URL', 'BASE_URL', 'SITE_URL'
+        ]
+        if any(p in content for p in domain_patterns):
+            score += 10.0  # High bonus - domain info is very valuable for context
+
+        # Bonus for HTML titles (branding context)
+        if '<title>' in content and '</title>' in content:
+            score += 8.0  # Titles contain system names!
+
+        # Bonus for route files (URL structure = system structure)
+        if 'Route::' in content or '@route' in content or 'router.' in content:
+            score += 5.0
+
+        # 7. PENALTIES for likely non-business files
 
         # Penalty for config-like content
         config_indicators = [
@@ -1414,10 +1456,11 @@ class CodebaseMemoryService:
 {content}
 ```
 
-Em NO MÁXIMO 3 linhas, responda:
+Em NO MÁXIMO 4 linhas, responda:
 1. O que este arquivo FAZ? (1 frase)
 2. Qual a principal REGRA DE NEGÓCIO? (1 frase, ou "Nenhuma" se não houver)
-3. Qual a principal ENTIDADE/DADO? (1 palavra, ou "Nenhum")"""
+3. Qual a principal ENTIDADE/DADO? (1 palavra, ou "Nenhum")
+4. Se encontrar <title>XXX</title> ou domínio .gov.br/.com.br, escreva: "SISTEMA: XXX" ou "DOMÍNIO: xxx.gov.br\""""
 
         try:
             # PROMPT #168 - Add timeout for individual file analysis (5 min max)
@@ -1479,9 +1522,17 @@ Stack: {stack_name}
 Resumo dos arquivos analisados:
 {insights_text}
 
+INSTRUÇÕES CRÍTICAS PARA O TÍTULO:
+1. Se vir <title>XXX</title> em algum arquivo, use "XXX" como base do título
+2. Se vir ".gov.br" ou ".pe.gov.br", o sistema é do Governo de Pernambuco
+3. Se vir "SEI" = Sistema Eletrônico de Informações (governo)
+4. Se vir "LDAP", é um sistema de gestão de usuários/autenticação
+5. Combine: nome do sistema + propósito + organização
+6. Use 5-8 palavras, NUNCA apenas "Sistema de X" com 3 palavras
+
 Baseado APENAS nessas análises, responda em JSON:
 {{
-  "suggested_title": "Título que descreva o PROPÓSITO do sistema (5-8 palavras). NÃO use 'Sistema de X'. Use formato como: 'Gestão de Contas a Receber e Pagar', 'Portal de Atendimento ao Cliente', 'Plataforma de E-commerce Multi-tenant'",
+  "suggested_title": "Título COMPLETO. Ex: 'SEI Contas - Gestão LDAP do Governo de Pernambuco'",
   "business_rules": ["Regra 1", "Regra 2", "Regra 3"],
   "key_features": ["Feature 1", "Feature 2", "Feature 3"],
   "entities": ["Entidade 1", "Entidade 2"],

@@ -24,11 +24,22 @@ system_prompt: |
 
   Consolide TODAS as informações das fases de análise (fornecidas no prompt do usuário) em um resultado final.
 
-  ### 1. TÍTULO DO PROJETO
+  ### 1. TÍTULO DO PROJETO (MUITO IMPORTANTE!)
+  - PROCURE por tags <title>...</title> nos arquivos HTML/blade - elas contêm o NOME OFICIAL do sistema!
+  - PROCURE por domínios como ".gov.br", ".com.br" - indicam o contexto organizacional
+  - Se encontrar domínio governamental (sei.pe.gov.br, etc.), mencione a organização (ex: "Governo de Pernambuco")
   - Baseie-se no DOMÍNIO e PROPÓSITO do sistema
+  - Use 5-8 palavras descritivas
   - NÃO use nomes de tecnologia (Laravel, React, etc.)
-  - Exemplos BONS: "Sistema de Gestão Financeira", "Controle de Contas a Pagar", "Plataforma de Vendas"
-  - Exemplos RUINS: "Laravel Project", "PHP Application", "Sistema Web"
+  - NÃO use apenas "Sistema de X" com 3 palavras
+  - Exemplos BONS:
+    * "SEI Contas - Gestão de Usuários LDAP para Governo PE"
+    * "Portal de Atendimento ao Cidadão do Governo Federal"
+    * "Sistema de Gestão Financeira Municipal de São Paulo"
+  - Exemplos RUINS:
+    * "Laravel Project"
+    * "Sistema Contas" (muito curto)
+    * "PHP Application"
 
   ### 2. REGRAS DE NEGÓCIO
   - Combine todas as regras encontradas nas fases
