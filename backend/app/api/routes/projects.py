@@ -698,9 +698,9 @@ async def _process_project_pipeline(
         job_manager.update_progress(job_id, 40.0, "Gerando contexto rico do projeto...")
 
         # === Step B: Rich Context Generation (40-85%) ===
-        from app.services.context_generator import ContextGenerator
+        from app.services.context_generator import ContextGeneratorService
 
-        context_gen = ContextGenerator(db)
+        context_gen = ContextGeneratorService(db)
 
         async def progress_cb(percent, message):
             job_manager.update_progress(job_id, percent, message)
