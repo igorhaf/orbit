@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
@@ -20,8 +20,15 @@ import {
   DialogFooter,
   AIModelBadge,
 } from '@/components/ui';
-import { projectsApi } from '@/lib/api';
+import { projectsApi, jobsApi } from '@/lib/api';
 import { Project, ProjectCreate } from '@/lib/types';
+
+// PROMPT #121 - Track pipeline job progress per processing project
+interface ProcessingJobInfo {
+  jobId: string;
+  progress: number;
+  message: string;
+}
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -39,24 +46,78 @@ export default function ProjectsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  useEffect(() => {
-    fetchProjects();
-  }, []);
+  // PROMPT #121 - Processing job progress map: projectId -> job info
+  const [processingJobs, setProcessingJobs] = useState<Record<string, ProcessingJobInfo>>({});
 
-  const fetchProjects = async () => {
-    setLoading(true);
+  const fetchProjects = useCallback(async () => {
     try {
       const response = await projectsApi.list();
-      // Ensure we always set an array, even if API returns unexpected structure
       const data = response.data || response;
-      setProjects(Array.isArray(data) ? data : []);
+      const projectsList = Array.isArray(data) ? data : [];
+      setProjects(projectsList);
+      return projectsList;
     } catch (error) {
       console.error('Error fetching projects:', error);
-      setProjects([]); // Reset to empty array on error
-    } finally {
-      setLoading(false);
+      setProjects([]);
+      return [];
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+      await fetchProjects();
+      setLoading(false);
+    };
+    init();
+  }, [fetchProjects]);
+
+  // PROMPT #121 - Poll job progress for processing projects
+  useEffect(() => {
+    const processingProjects = projects.filter(p => p.status === 'processing');
+    if (processingProjects.length === 0) return;
+
+    // Fetch active pipeline jobs for each processing project
+    const fetchJobProgress = async () => {
+      const newJobs: Record<string, ProcessingJobInfo> = {};
+
+      for (const project of processingProjects) {
+        try {
+          const jobsRes = await jobsApi.list({
+            project_id: project.id,
+            job_type: 'project_pipeline',
+            limit: 1,
+            sort_by: 'created_at',
+            sort_order: 'desc',
+          });
+          const jobs = jobsRes.data || jobsRes;
+          const jobList = Array.isArray(jobs) ? jobs : jobs?.items || [];
+
+          if (jobList.length > 0) {
+            const job = jobList[0];
+            newJobs[project.id] = {
+              jobId: job.id,
+              progress: job.progress_percent || 0,
+              message: job.progress_message || 'Processing...',
+            };
+
+            // If job completed/failed, refresh projects to get updated status
+            if (job.status === 'completed' || job.status === 'failed') {
+              fetchProjects();
+            }
+          }
+        } catch (e) {
+          // Silently ignore job fetch errors
+        }
+      }
+
+      setProcessingJobs(newJobs);
+    };
+
+    fetchJobProgress();
+    const interval = setInterval(fetchJobProgress, 3000);
+    return () => clearInterval(interval);
+  }, [projects, fetchProjects]);
 
   const handleOpenEdit = (project: Project) => {
     setProjectToEdit(project);
@@ -175,11 +236,16 @@ export default function ProjectsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {projects.map((project) => {
               const isProcessing = project.status === 'processing';
+              const jobInfo = processingJobs[project.id];
+              const folderName = project.code_path?.split('/').pop() || project.name;
+
               return (
-              <Card key={project.id} variant="bordered" className={isProcessing ? 'opacity-60 pointer-events-none' : ''}>
+              <Card key={project.id} variant="bordered">
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle>{project.name}</CardTitle>
+                    <CardTitle className={isProcessing ? 'text-gray-500' : ''}>
+                      {isProcessing ? folderName : project.name}
+                    </CardTitle>
                     {/* PROMPT #121 - Project lifecycle status badge with processing state */}
                     {isProcessing ? (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
@@ -202,9 +268,37 @@ export default function ProjectsPage() {
                 </CardHeader>
                 <CardContent>
                   {isProcessing ? (
-                    <div className="flex flex-col items-center py-4">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3" />
-                      <p className="text-sm text-gray-500">Analyzing codebase...</p>
+                    /* PROMPT #121 - Processing card with live progress bar */
+                    <div className="space-y-3">
+                      {/* Folder path */}
+                      {project.code_path && (
+                        <div className="text-xs text-gray-500 font-mono truncate" title={project.code_path}>
+                          {project.code_path}
+                        </div>
+                      )}
+
+                      {/* Progress bar */}
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs text-gray-500">
+                            {jobInfo?.message || 'Initializing...'}
+                          </span>
+                          <span className="text-xs font-medium text-blue-600">
+                            {Math.round(jobInfo?.progress || 0)}%
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all duration-700"
+                            style={{ width: `${jobInfo?.progress || 0}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Timestamp */}
+                      <div className="text-xs text-gray-400">
+                        Created: {new Date(project.created_at).toLocaleDateString()}
+                      </div>
                     </div>
                   ) : (
                   <>
