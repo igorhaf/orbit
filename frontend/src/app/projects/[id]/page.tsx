@@ -17,7 +17,7 @@ import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 // PROMPT #131 - Removed InterviewTree, interviews now shown below backlog items
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
 import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
-import { projectsApi, tasksApi, ragApi, interviewsApi } from '@/lib/api';  // PROMPT #151 - Restored interviewsApi for redirect check
+import { projectsApi, tasksApi, ragApi, interviewsApi, knowledgeApi } from '@/lib/api';  // PROMPT #151 - Restored interviewsApi for redirect check
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
 
@@ -54,6 +54,17 @@ export default function ProjectDetailsPage() {
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
   const [codeStats, setCodeStats] = useState<CodeIndexingStats | null>(null);
   const [loadingRag, setLoadingRag] = useState(false);
+
+  // PROMPT #172 - Knowledge/Document Storage stats for project
+  const [knowledgeStats, setKnowledgeStats] = useState<{
+    total_documents: number;
+    business_rules_count: number;
+    interview_answers_count: number;
+    code_files_count: number;
+    documents_count: number;
+    by_category: Record<string, number>;
+    by_source: Record<string, number>;
+  } | null>(null);
 
   // Analytics states (PROMPT #97)
   const [analyticsData, setAnalyticsData] = useState<BlockingAnalytics | null>(null);
@@ -157,17 +168,20 @@ export default function ProjectDetailsPage() {
   };
 
   // Load RAG stats (PROMPT #90)
+  // PROMPT #172 - Also load knowledge/document storage stats
   const loadRagStats = useCallback(async () => {
     if (activeTab !== 'rag') return;
 
     setLoadingRag(true);
     try {
-      const [rag, code] = await Promise.all([
+      const [rag, code, knowledge] = await Promise.all([
         ragApi.stats(),
-        ragApi.codeStats(projectId)
+        ragApi.codeStats(projectId),
+        knowledgeApi.getFullStats(projectId)
       ]);
       setRagStats(rag);
       setCodeStats(code);
+      setKnowledgeStats(knowledge);
     } catch (error) {
       console.error('Failed to load RAG stats:', error);
     } finally {
@@ -645,6 +659,68 @@ export default function ProjectDetailsPage() {
                     <CardContent className="py-12 text-center text-gray-500">
                       <p>No RAG data available yet</p>
                       <p className="text-sm mt-2">Index your code below to enable RAG-enhanced AI operations</p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* PROMPT #172 - Document Storage Stats */}
+                {knowledgeStats && knowledgeStats.total_documents > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                        Document Storage
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="bg-purple-50 rounded-lg p-4 text-center">
+                          <div className="text-2xl font-bold text-purple-700">{knowledgeStats.total_documents}</div>
+                          <div className="text-xs text-purple-600">Total Documents</div>
+                        </div>
+                        <div className="bg-blue-50 rounded-lg p-4 text-center">
+                          <div className="text-2xl font-bold text-blue-700">{knowledgeStats.code_files_count}</div>
+                          <div className="text-xs text-blue-600">Code Files</div>
+                        </div>
+                        <div className="bg-yellow-50 rounded-lg p-4 text-center">
+                          <div className="text-2xl font-bold text-yellow-700">{knowledgeStats.interview_answers_count}</div>
+                          <div className="text-xs text-yellow-600">Interview Answers</div>
+                        </div>
+                        <div className="bg-orange-50 rounded-lg p-4 text-center">
+                          <div className="text-2xl font-bold text-orange-700">{knowledgeStats.business_rules_count}</div>
+                          <div className="text-xs text-orange-600">Business Rules</div>
+                        </div>
+                      </div>
+
+                      {/* By Source breakdown */}
+                      {Object.keys(knowledgeStats.by_source).length > 0 && (
+                        <div className="mt-4 pt-4 border-t">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">By Source</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(knowledgeStats.by_source).map(([source, count]) => (
+                              <span key={source} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
+                                {source.replace(/_/g, ' ')}: <strong>{count}</strong>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* By Category breakdown (for business rules) */}
+                      {Object.keys(knowledgeStats.by_category).length > 0 && (
+                        <div className="mt-4 pt-4 border-t">
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Business Rules by Category</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(knowledgeStats.by_category).map(([category, count]) => (
+                              <span key={category} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
+                                {category}: <strong>{count}</strong>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )}

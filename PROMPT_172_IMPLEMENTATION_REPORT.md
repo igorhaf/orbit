@@ -1,23 +1,25 @@
-# PROMPT #172 - Integrar RAG Global Stats no Frontend
-## Adicionar seção Global Document Storage na página RAG Analytics
+# PROMPT #172 - Integrar RAG Stats no Frontend
+## Adicionar seções de Document Storage (Global e Por Projeto)
 
 **Date:** February 5, 2026
 **Status:** COMPLETED
 **Priority:** MEDIUM
 **Type:** Feature Implementation
-**Impact:** Usuários podem visualizar estatísticas agregadas de documentos RAG de todos os projetos
+**Impact:** Usuários podem visualizar estatísticas de documentos RAG tanto globalmente quanto por projeto
 
 ---
 
 ## Objective
 
-Integrar o endpoint `GET /api/v1/knowledge/global-stats` (criado no PROMPT #171) no frontend, exibindo estatísticas globais de documentos RAG na página `/rag`.
+Integrar estatísticas de documentos RAG no frontend em dois escopos:
+1. **Global** - Página `/rag` mostra total de todos os projetos
+2. **Por Projeto** - Aba RAG de cada projeto mostra documentos daquele projeto
 
 **Key Requirements:**
 1. Adicionar tipo TypeScript `GlobalRagStats`
 2. Adicionar função de API `getGlobalStats()`
-3. Criar seção visual "Global Document Storage" na página RAG
-4. Mostrar breakdown por tipo de documento e por tipo de card
+3. Criar seção "Global Document Storage" na página `/rag`
+4. Criar seção "Document Storage" na aba RAG de cada projeto
 
 ---
 
@@ -25,18 +27,18 @@ Integrar o endpoint `GET /api/v1/knowledge/global-stats` (criado no PROMPT #171)
 
 A arquitetura de RAG do ORBIT tem **dois escopos**:
 
-| Escopo | Onde | O que mostra |
-|--------|------|--------------|
-| **Por Projeto** | Aba RAG dentro de cada projeto | Stats do RAG daquele projeto específico |
-| **Global** | Página `/rag` | Stats **agregados** de TODOS os projetos |
-
-A decisão foi adicionar a seção global **no topo** da página `/rag` existente, acima do seletor de projeto.
+| Escopo | Localização | Endpoint | O que mostra |
+|--------|-------------|----------|--------------|
+| **Global** | Página `/rag` | `/api/v1/knowledge/global-stats` | Stats de TODOS os projetos |
+| **Por Projeto** | Aba RAG em `/projects/[id]` | `/api/v1/projects/{id}/knowledge/full-stats` | Stats daquele projeto |
 
 ---
 
 ## What Was Implemented
 
-### 1. Tipo TypeScript `GlobalRagStats`
+### PARTE 1: Página Global `/rag`
+
+#### 1.1. Tipo TypeScript `GlobalRagStats`
 
 **Arquivo:** `frontend/src/lib/types.ts`
 
@@ -56,12 +58,11 @@ export interface GlobalRagStats {
 }
 ```
 
-### 2. Função de API `getGlobalStats()`
+#### 1.2. Função de API `getGlobalStats()`
 
 **Arquivo:** `frontend/src/lib/api.ts`
 
 ```typescript
-// PROMPT #172 - Global RAG Stats (all projects)
 getGlobalStats: () =>
   request<{
     success: boolean;
@@ -69,22 +70,52 @@ getGlobalStats: () =>
   }>('/api/v1/knowledge/global-stats'),
 ```
 
-### 3. Seção "Global Document Storage"
+#### 1.3. Seção "Global Document Storage"
 
 **Arquivo:** `frontend/src/app/rag/page.tsx`
 
-Nova seção adicionada com:
-- Grid de 6 cards mostrando:
-  - Total Documents (roxo)
-  - Code Files (azul)
-  - Cards (verde)
-  - Interview Answers (amarelo)
-  - Project Context (indigo)
-  - Business Rules (laranja)
-- Cards Breakdown com badges coloridas (Epic, Story, Task, Subtask)
-- Seção "Other Document Types" para tipos adicionais não cobertos
-- Loading state com spinner
-- Empty state quando não há dados
+Nova seção no topo da página com:
+- Grid de 6 cards (Total, Code Files, Cards, Interview Answers, Project Context, Business Rules)
+- Cards Breakdown (Epic, Story, Task, Subtask)
+- Seção "Other Document Types" para tipos adicionais
+
+---
+
+### PARTE 2: Aba RAG do Projeto `/projects/[id]`
+
+#### 2.1. Novo Estado `knowledgeStats`
+
+**Arquivo:** `frontend/src/app/projects/[id]/page.tsx`
+
+```typescript
+const [knowledgeStats, setKnowledgeStats] = useState<{
+  total_documents: number;
+  business_rules_count: number;
+  interview_answers_count: number;
+  code_files_count: number;
+  documents_count: number;
+  by_category: Record<string, number>;
+  by_source: Record<string, number>;
+} | null>(null);
+```
+
+#### 2.2. Busca de Stats na `loadRagStats()`
+
+```typescript
+const [rag, code, knowledge] = await Promise.all([
+  ragApi.stats(),
+  ragApi.codeStats(projectId),
+  knowledgeApi.getFullStats(projectId)  // NEW
+]);
+setKnowledgeStats(knowledge);
+```
+
+#### 2.3. Seção "Document Storage" na Aba RAG
+
+Nova Card com:
+- Grid de 4 métricas (Total, Code Files, Interview Answers, Business Rules)
+- Breakdown "By Source" (code_scan, interview, manual, etc.)
+- Breakdown "By Category" para business rules (validation, workflow, etc.)
 
 ---
 
@@ -100,16 +131,23 @@ Nova seção adicionada com:
    - Lines added: ~15
 
 3. **[frontend/src/app/rag/page.tsx](frontend/src/app/rag/page.tsx)**
-   - Added imports: `GlobalRagStats`, `knowledgeApi`, new icons
    - Added state: `globalStats`, `loadingGlobalStats`
    - Added `fetchGlobalStats()` callback and useEffect
-   - Added "Global Document Storage" Card section (~100 lines)
-   - Added refresh button in header
+   - Added "Global Document Storage" Card section
    - Lines added: ~120
+
+4. **[frontend/src/app/projects/[id]/page.tsx](frontend/src/app/projects/[id]/page.tsx)**
+   - Added import: `knowledgeApi`
+   - Added state: `knowledgeStats`
+   - Modified `loadRagStats()` to also fetch `getFullStats()`
+   - Added "Document Storage" Card section in RAG tab
+   - Lines added: ~60
 
 ---
 
 ## Visual Layout
+
+### Página Global `/rag`:
 
 ```
 +----------------------------------------------------------+
@@ -126,13 +164,34 @@ Nova seção adicionada com:
 |                                                          |
 | +-- PROJECT SPECIFIC ------------------------------------+|
 | |  [Select Project v]  [Sync to RAG]  [Refresh]          |
-| |  ...existing project stats...                          |
+| +--------------------------------------------------------+|
++----------------------------------------------------------+
+```
+
+### Aba RAG do Projeto `/projects/[id]`:
+
+```
++----------------------------------------------------------+
+| RAG Analytics (Project Tab)                              |
++----------------------------------------------------------+
+|                                                          |
+| +-- RAG STATS ------------------------------------------+|
+| |  Hit Rate | Similarity | Latency | Results            |
 | +--------------------------------------------------------+|
 |                                                          |
-| +-- RAG PERFORMANCE ------------------------------------+|
-| |  ...existing charts and tables...                      |
+| +-- CHARTS & TABLE -------------------------------------+|
+| |  [Pie Chart]         |    [Usage Type Table]          |
 | +--------------------------------------------------------+|
 |                                                          |
+| +-- DOCUMENT STORAGE (NEW) -----------------------------+|
+| |  [Total: 45]  [Code: 30]  [Answers: 10]  [Rules: 5]   |
+| |                                                        |
+| |  By Source: [code_scan: 30] [interview: 10] [manual: 5]|
+| +--------------------------------------------------------+|
+|                                                          |
+| +-- CODE INDEXING PANEL --------------------------------+|
+| |  [Index Code]  [Force Re-index]                       |
+| +--------------------------------------------------------+|
 +----------------------------------------------------------+
 ```
 
@@ -142,52 +201,56 @@ Nova seção adicionada com:
 
 ### Verification Steps:
 
+**Página Global:**
 1. Acessar `/rag` no frontend
-2. Verificar que "Global Document Storage" aparece no topo
-3. Clicar no botão de refresh e ver o spinner
-4. Verificar que os números batem com o backend:
-   ```bash
-   curl http://localhost:8000/api/v1/knowledge/global-stats
-   ```
+2. Verificar "Global Document Storage" no topo
+3. Verificar números batem com: `curl http://localhost:8000/api/v1/knowledge/global-stats`
+
+**Aba do Projeto:**
+1. Acessar `/projects/[id]` e clicar na aba "RAG Analytics"
+2. Verificar seção "Document Storage" aparece
+3. Verificar números batem com: `curl http://localhost:8000/api/v1/projects/{id}/knowledge/full-stats`
 
 ---
 
 ## Success Metrics
 
-- Frontend exibe estatísticas globais de RAG
-- Breakdown por tipo de documento visível
-- Breakdown por tipo de card (Epic/Story/Task/Subtask) visível
-- Loading state funcional
-- Refresh button funcional
+- Página `/rag` exibe stats globais de todos os projetos
+- Aba RAG do projeto exibe stats específicos daquele projeto
+- Ambas seções têm loading states funcionais
+- Cores consistentes entre as duas views
+- Breakdowns detalhados (by source, by category)
 
 ---
 
 ## Key Insights
 
-### 1. Consistência Visual
-A seção usa o mesmo padrão de cores do resto da aplicação:
-- Roxo para elementos globais/totais
-- Cores específicas para cada tipo de documento
+### 1. Dois Escopos, Mesma UX
+As duas seções seguem o mesmo padrão visual, mas com dados de escopos diferentes:
+- Global: agregado de todos os projetos
+- Projeto: filtrado por project_id
 
-### 2. Extensibilidade
-A seção "Other Document Types" mostra automaticamente qualquer tipo de documento adicional que possa ser adicionado no futuro, sem necessidade de mudanças no frontend.
+### 2. Endpoint Existente Reutilizado
+O endpoint `/projects/{id}/knowledge/full-stats` já existia (PROMPT #147), apenas não estava integrado na aba RAG.
 
-### 3. UX
-O usuário pode ver o panorama global de documentos RAG antes de escolher um projeto específico, o que ajuda a entender o estado geral do sistema.
+### 3. Cores Consistentes
+- Roxo: Total/Global
+- Azul: Code Files
+- Amarelo: Interview Answers
+- Laranja: Business Rules
 
 ---
 
 ## Status: COMPLETE
 
 **Key Achievements:**
-- Tipo TypeScript adicionado
-- Função de API implementada
-- Seção visual "Global Document Storage" criada
-- Integração com endpoint do PROMPT #171 completa
+- Seção "Global Document Storage" na página `/rag`
+- Seção "Document Storage" na aba RAG de cada projeto
+- Integração com endpoints existentes do PROMPT #171 e #147
 
 **Impact:**
-- Visibilidade global do estado do RAG
-- Monitoramento facilitado de documentos indexados
-- UX melhorada na página RAG Analytics
+- Visibilidade completa do RAG em todos os níveis
+- Usuário entende quantos documentos estão indexados por projeto
+- Monitoramento facilitado da saúde do RAG
 
 ---
