@@ -9,7 +9,8 @@
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { IconBrain, IconSearch, IconWrench, IconCpu, IconPuzzle, IconCog, IconChart, IconBlocks, IconSparkle, IconBolt, IconBeaker, IconGlobe, IconDot } from '@/components/icons';
 
 interface Props {
   model: string;
@@ -39,45 +40,65 @@ const MODEL_NAMES: Record<string, string> = {
   'system/fallback': 'Sistema (Fallback)',
 };
 
-// Icon mapping by usage_type
-const USAGE_TYPE_ICONS: Record<string, string> = {
-  'interview': '🧠🔍',        // IA investigativa / RAG
-  'task_execution': '🛠️🤖',   // IA construtora / geradora
-  'prompt_generation': '🧠🧩', // raciocínio complexo, arquitetura
-  'commit_generation': '🧩⚙️', // engine inteligente
-  'memory': '🧠🔍',           // IA investigativa / RAG
-  'rag': '🧠📊',              // IA analítica / dados
-  'general': '🧠',            // inteligência, cognição
-  'context': '🧠🏗️',         // inteligência arquitetada
-  'backlog': '🧠🧩',          // raciocínio complexo
-  'discovery': '🔮',          // predição / visão de futuro
+// Icon mapping by usage_type - returns React components
+const USAGE_TYPE_ICON_KEYS: Record<string, string> = {
+  'interview': 'brain-search',
+  'task_execution': 'wrench-cpu',
+  'prompt_generation': 'brain-puzzle',
+  'commit_generation': 'puzzle-cog',
+  'memory': 'brain-search',
+  'rag': 'brain-chart',
+  'general': 'brain',
+  'context': 'brain-blocks',
+  'backlog': 'brain-puzzle',
+  'discovery': 'sparkle',
 };
 
 // Icon mapping by provider (fallback)
-const PROVIDER_ICONS: Record<string, string> = {
-  'anthropic': '🧠',     // inteligência, cognição
-  'openai': '⚡🤖',      // poder computacional
-  'google': '🌐🧠',      // inteligência distribuída
-  'cohere': '🧬🧠',      // inteligência emergente
-  'ollama': '🏗️🤖',     // arquitetura + IA
-  'system': '⚙️',        // processamento, engine, lógica
+const PROVIDER_ICON_KEYS: Record<string, string> = {
+  'anthropic': 'brain',
+  'openai': 'bolt-cpu',
+  'google': 'globe-brain',
+  'cohere': 'beaker-brain',
+  'ollama': 'blocks-cpu',
+  'system': 'cog',
+};
+
+// Render icon component by key
+const renderIconByKey = (key: string, className: string = 'w-4 h-4'): React.ReactNode => {
+  switch (key) {
+    case 'brain': return <IconBrain className={className} />;
+    case 'brain-search': return <span className="inline-flex gap-0.5"><IconBrain className={className} /><IconSearch className={className} /></span>;
+    case 'wrench-cpu': return <span className="inline-flex gap-0.5"><IconWrench className={className} /><IconCpu className={className} /></span>;
+    case 'brain-puzzle': return <span className="inline-flex gap-0.5"><IconBrain className={className} /><IconPuzzle className={className} /></span>;
+    case 'puzzle-cog': return <span className="inline-flex gap-0.5"><IconPuzzle className={className} /><IconCog className={className} /></span>;
+    case 'brain-chart': return <span className="inline-flex gap-0.5"><IconBrain className={className} /><IconChart className={className} /></span>;
+    case 'brain-blocks': return <span className="inline-flex gap-0.5"><IconBrain className={className} /><IconBlocks className={className} /></span>;
+    case 'sparkle': return <IconSparkle className={className} />;
+    case 'bolt-cpu': return <span className="inline-flex gap-0.5"><IconBolt className={className} /><IconCpu className={className} /></span>;
+    case 'globe-brain': return <span className="inline-flex gap-0.5"><IconGlobe className={className} /><IconBrain className={className} /></span>;
+    case 'beaker-brain': return <span className="inline-flex gap-0.5"><IconBeaker className={className} /><IconBrain className={className} /></span>;
+    case 'blocks-cpu': return <span className="inline-flex gap-0.5"><IconBlocks className={className} /><IconCpu className={className} /></span>;
+    case 'cog': return <IconCog className={className} />;
+    default: return <IconBrain className={className} />;
+  }
 };
 
 // Icon descriptions for tooltip
-const ICON_DESCRIPTIONS: Record<string, string> = {
-  '🧠': 'Inteligência / Cognição',
-  '🧠🔍': 'IA Investigativa / RAG',
-  '🛠️🤖': 'IA Construtora / Geradora',
-  '🧠🧩': 'Raciocínio Complexo',
-  '🧩⚙️': 'Engine Inteligente',
-  '🧠📊': 'IA Analítica',
-  '🧠🏗️': 'Inteligência Arquitetada',
-  '⚡🤖': 'Poder Computacional',
-  '🌐🧠': 'Inteligência Distribuída',
-  '🧬🧠': 'Inteligência Emergente',
-  '🏗️🤖': 'Arquitetura + IA',
-  '⚙️': 'Processamento / Engine',
-  '🔮': 'Predição / Visão de Futuro',
+const ICON_KEY_DESCRIPTIONS: Record<string, string> = {
+  'brain': 'Inteligência / Cognição',
+  'brain-search': 'IA Investigativa / RAG',
+  'wrench-cpu': 'IA Construtora / Geradora',
+  'brain-puzzle': 'Raciocínio Complexo',
+  'puzzle-cog': 'Engine Inteligente',
+  'brain-chart': 'IA Analítica',
+  'brain-blocks': 'Inteligência Arquitetada',
+  'bolt-cpu': 'Poder Computacional',
+  'globe-brain': 'Inteligência Distribuída',
+  'beaker-brain': 'Inteligência Emergente',
+  'blocks-cpu': 'Arquitetura + IA',
+  'cog': 'Processamento / Engine',
+  'sparkle': 'Predição / Visão de Futuro',
 };
 
 const TOOLTIP_WIDTH = 256; // 16rem = 256px
@@ -106,19 +127,19 @@ export function AIModelBadge({
      model.includes('gemini') ? 'google' :
      model.includes('system') ? 'system' : 'unknown');
 
-  // Get icon based on usage_type first, then provider
-  const getIcon = () => {
-    if (usage_type && USAGE_TYPE_ICONS[usage_type]) {
-      return USAGE_TYPE_ICONS[usage_type];
+  // Get icon key based on usage_type first, then provider
+  const getIconKey = () => {
+    if (usage_type && USAGE_TYPE_ICON_KEYS[usage_type]) {
+      return USAGE_TYPE_ICON_KEYS[usage_type];
     }
-    if (detectedProvider && PROVIDER_ICONS[detectedProvider]) {
-      return PROVIDER_ICONS[detectedProvider];
+    if (detectedProvider && PROVIDER_ICON_KEYS[detectedProvider]) {
+      return PROVIDER_ICON_KEYS[detectedProvider];
     }
-    return '🧠'; // Default: intelligence
+    return 'brain'; // Default: intelligence
   };
 
-  const icon = getIcon();
-  const iconDescription = ICON_DESCRIPTIONS[icon] || 'IA';
+  const iconKey = getIconKey();
+  const iconDescription = ICON_KEY_DESCRIPTIONS[iconKey] || 'IA';
 
   // Format cost
   const formatCost = (cost: number) => {
@@ -166,13 +187,13 @@ export function AIModelBadge({
     <div className={`relative inline-block ${className}`}>
       <span
         ref={iconRef}
-        className="cursor-help text-base hover:scale-110 transition-transform inline-block"
+        className="cursor-help hover:scale-110 transition-transform inline-flex items-center text-gray-600"
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
         title={displayName}
       >
-        {icon}
-        {cached && <span className="ml-0.5 text-[8px] text-green-500 align-top">●</span>}
+        {renderIconByKey(iconKey, 'w-4 h-4')}
+        {cached && <span className="ml-0.5"><IconDot className="w-2 h-2 text-green-500" /></span>}
       </span>
 
       {/* Tooltip - PROMPT #150: positioned above icon with smart positioning to avoid cutoff */}
@@ -198,8 +219,8 @@ export function AIModelBadge({
             {/* Icon Type */}
             <div className="flex justify-between items-center">
               <span className="text-gray-400">Tipo:</span>
-              <span className="text-white">
-                <span className="mr-1">{icon}</span>
+              <span className="text-white inline-flex items-center gap-1">
+                {renderIconByKey(iconKey, 'w-3 h-3')}
                 <span className="text-gray-300 text-[10px]">{iconDescription}</span>
               </span>
             </div>

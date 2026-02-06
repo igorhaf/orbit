@@ -23,6 +23,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import { tasksApi } from '@/lib/api';
 import { Task, SubtaskSuggestion, ItemType, PriorityLevel } from '@/lib/types';
 import { SimilarityBadge } from '@/components/kanban/SimilarityBadge'; // PROMPT #95
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconAlert, IconCheckCircle, IconCpu } from '@/components/icons';
 
 interface TaskCardProps {
   task: Task;
@@ -59,7 +60,7 @@ const getStatusBadge = (status: string | undefined) => {
 
   // PROMPT #95 - Blocked status
   if (statusLower === 'blocked') {
-    return <Badge className="bg-red-100 text-red-800 border-red-300 font-semibold">🚨 BLOCKED</Badge>;
+    return <Badge className="bg-red-100 text-red-800 border-red-300 font-semibold"><span className="inline-flex items-center gap-1"><IconAlert className="w-3 h-3" /> BLOCKED</span></Badge>;
   }
   if (statusLower === 'done' || statusLower === 'completed') {
     return <Badge className="bg-green-100 text-green-800 border-green-200">Done</Badge>;
@@ -78,20 +79,20 @@ const getStatusBadge = (status: string | undefined) => {
 };
 
 // Helper function to get item type icon
-const getItemTypeIcon = (type: ItemType) => {
+const getItemTypeIcon = (type: ItemType): React.ReactNode => {
   switch (type) {
     case ItemType.EPIC:
-      return '🎯';
+      return <IconTarget className="w-5 h-5" />;
     case ItemType.STORY:
-      return '📖';
+      return <IconBook className="w-5 h-5" />;
     case ItemType.TASK:
-      return '✓';
+      return <IconCheck className="w-5 h-5" />;
     case ItemType.SUBTASK:
-      return '◦';
+      return <IconCircle className="w-5 h-5" />;
     case ItemType.BUG:
-      return '🐛';
+      return <IconBug className="w-5 h-5" />;
     default:
-      return '•';
+      return <IconCircle className="w-5 h-5" />;
   }
 };
 
@@ -247,7 +248,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-start gap-3 flex-1">
             {/* Item Type Icon */}
-            <span className={`text-2xl ${isSuggested ? 'grayscale' : ''}`}>
+            <span className={`flex items-center text-gray-600 ${isSuggested ? 'grayscale' : ''}`}>
               {getItemTypeIcon(itemType)}
             </span>
 
@@ -295,7 +296,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         {task.acceptance_criteria && task.acceptance_criteria.length > 0 && (
           <div className="mb-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-2">
-              ✅ Acceptance Criteria:
+              <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-4 h-4" /> Acceptance Criteria:</span>
             </h4>
             <ul className="list-disc list-inside space-y-1">
               {task.acceptance_criteria.map((criterion, idx) => (
@@ -338,7 +339,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 )}
-                <span>🤖 AI-Suggested Subtasks ({task.subtask_suggestions!.length})</span>
+                <span className="inline-flex items-center gap-1"><IconCpu className="w-4 h-4" /> AI-Suggested Subtasks ({task.subtask_suggestions!.length})</span>
               </button>
             </div>
 

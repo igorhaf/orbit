@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react';
 import { Task } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle, Button, Badge } from '@/components/ui';
+import { IconClock, IconClipboard, IconCog, IconEye, IconCheckCircle } from '@/components/icons';
 import { ProgressBar } from './ProgressBar';
 import { LiveLogs } from './LiveLogs';
 import { CostMetrics } from './CostMetrics';
@@ -61,7 +62,7 @@ export function ExecutionPanel({
   };
 
   const handleTaskStarted = (data: any) => {
-    addLog(`⚙️  Executing: ${data.task_title} (${data.model})`);
+    addLog(`[EXEC] Executing: ${data.task_title} (${data.model})`);
 
     setTasks((prev) =>
       prev.map((task) =>
@@ -74,7 +75,7 @@ export function ExecutionPanel({
 
   const handleTaskCompleted = (data: any) => {
     addLog(
-      `✅ Completed: ${data.task_title} ($${data.cost?.toFixed(4) || '0.0000'}, ${data.execution_time?.toFixed(1) || '0.0'}s)`
+      `[OK] Completed: ${data.task_title} ($${data.cost?.toFixed(4) || '0.0000'}, ${data.execution_time?.toFixed(1) || '0.0'}s)`
     );
 
     setTasks((prev) =>
@@ -95,7 +96,7 @@ export function ExecutionPanel({
   };
 
   const handleTaskFailed = (data: any) => {
-    addLog(`❌ Failed: ${data.task_title}`);
+    addLog(`[FAIL] Failed: ${data.task_title}`);
 
     setTasks((prev) =>
       prev.map((task) =>
@@ -106,14 +107,14 @@ export function ExecutionPanel({
 
   const handleBatchCompleted = (data: any) => {
     addLog(
-      `✅ Batch completed! ${data.completed}/${data.total_tasks} tasks succeeded (Total: $${data.total_cost?.toFixed(4) || '0.0000'})`
+      `[OK] Batch completed! ${data.completed}/${data.total_tasks} tasks succeeded (Total: $${data.total_cost?.toFixed(4) || '0.0000'})`
     );
     setIsExecuting(false);
   };
 
   const handleExecuteClick = () => {
     setIsExecuting(true);
-    addLog('🚀 Starting task execution...');
+    addLog('[START] Starting task execution...');
     onExecute();
   };
 
@@ -244,12 +245,12 @@ function StatusBadge({ status }: { status: string }) {
     done: 'bg-green-500 text-white',
   };
 
-  const icons = {
-    backlog: '⏳',
-    todo: '📋',
-    in_progress: '⚙️',
-    review: '👀',
-    done: '✅',
+  const icons: Record<string, React.ReactNode> = {
+    backlog: <IconClock className="w-3 h-3 inline" />,
+    todo: <IconClipboard className="w-3 h-3 inline" />,
+    in_progress: <IconCog className="w-3 h-3 inline" />,
+    review: <IconEye className="w-3 h-3 inline" />,
+    done: <IconCheckCircle className="w-3 h-3 inline" />,
   };
 
   return (
@@ -257,7 +258,7 @@ function StatusBadge({ status }: { status: string }) {
       variant={status === 'done' ? 'success' : status === 'in_progress' ? 'info' : 'default'}
       className="min-w-[100px] justify-center"
     >
-      {icons[status as keyof typeof icons]} {status.replace('_', ' ').toUpperCase()}
+      <span className="inline-flex items-center gap-1">{icons[status as keyof typeof icons]} {status.replace('_', ' ').toUpperCase()}</span>
     </Badge>
   );
 }

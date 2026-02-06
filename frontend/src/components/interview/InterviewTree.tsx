@@ -15,6 +15,7 @@ import { Interview, BacklogItem, Project, ItemType } from '@/lib/types';
 import { Card, CardContent, Badge, Button, Dialog, DialogFooter } from '@/components/ui';
 import { ChatInterface } from './ChatInterface';
 import { useNotification } from '@/hooks';
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconDocument, IconGlobe, IconLightbulb, IconChat } from '@/components/icons';
 
 interface InterviewTreeProps {
   projectId: string;
@@ -23,25 +24,25 @@ interface InterviewTreeProps {
 }
 
 // Helper: Get item type icon
-const getItemTypeIcon = (type?: ItemType | string) => {
+const getItemTypeIcon = (type?: ItemType | string): React.ReactNode => {
   switch (type) {
     case ItemType.EPIC:
     case 'epic':
-      return '🎯';
+      return <IconTarget className="w-5 h-5" />;
     case ItemType.STORY:
     case 'story':
-      return '📖';
+      return <IconBook className="w-5 h-5" />;
     case ItemType.TASK:
     case 'task':
-      return '✓';
+      return <IconCheck className="w-5 h-5" />;
     case ItemType.SUBTASK:
     case 'subtask':
-      return '◦';
+      return <IconCircle className="w-5 h-5" />;
     case ItemType.BUG:
     case 'bug':
-      return '🐛';
+      return <IconBug className="w-5 h-5" />;
     default:
-      return '📄';
+      return <IconDocument className="w-5 h-5" />;
   }
 };
 
@@ -64,18 +65,18 @@ const getInterviewModeLabel = (mode?: string) => {
 };
 
 // Helper: Get interview mode icon
-const getInterviewModeIcon = (mode?: string) => {
+const getInterviewModeIcon = (mode?: string): React.ReactNode => {
   switch (mode) {
     case 'context':
-      return '🌐';
+      return <IconGlobe className="w-5 h-5" />;
     case 'meta_prompt':
-      return '🎯';
+      return <IconTarget className="w-5 h-5" />;
     case 'card_inference':
-      return '💡';
+      return <IconLightbulb className="w-5 h-5" />;
     case 'task_focused':
-      return '✓';
+      return <IconCheck className="w-5 h-5" />;
     default:
-      return '💬';
+      return <IconChat className="w-5 h-5" />;
   }
 };
 
@@ -85,7 +86,7 @@ interface TreeNode {
   type: 'interview' | 'task';
   title: string;
   subtitle?: string;
-  icon: string;
+  icon: React.ReactNode;
   status?: string;
   itemType?: ItemType;
   interview?: Interview;
@@ -223,7 +224,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
         type: 'interview',
         title: 'Context Interview',
         subtitle: project?.context_locked ? 'Locked' : 'Draft',
-        icon: '🌐',
+        icon: <IconGlobe className="w-5 h-5" />,
         status: contextInterview.status,
         interview: contextInterview,
         children: [],
@@ -416,7 +417,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
           )}
 
           {/* Icon */}
-          <span className="text-lg">{node.icon}</span>
+          <span className="flex items-center text-gray-600">{node.icon}</span>
 
           {/* Title and subtitle */}
           <div className="flex-1 min-w-0">
@@ -527,19 +528,19 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 text-sm text-gray-500">
           <span className="flex items-center gap-1">
-            <span>🌐</span> Context
+            <IconGlobe className="w-4 h-4" /> Context
           </span>
           <span className="flex items-center gap-1">
-            <span>💬</span> Interview
+            <IconChat className="w-4 h-4" /> Interview
           </span>
           <span className="flex items-center gap-1">
-            <span>🎯</span> Epic
+            <IconTarget className="w-4 h-4" /> Epic
           </span>
           <span className="flex items-center gap-1">
-            <span>📖</span> Story
+            <IconBook className="w-4 h-4" /> Story
           </span>
           <span className="flex items-center gap-1">
-            <span>✓</span> Task
+            <IconCheck className="w-4 h-4" /> Task
           </span>
         </div>
 
@@ -610,7 +611,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <div className="flex items-center gap-3">
-                <span className="text-2xl">🌐</span>
+                <IconGlobe className="w-6 h-6 text-blue-600" />
                 <h2 className="text-xl font-semibold text-gray-900">Context Interview</h2>
               </div>
               <button

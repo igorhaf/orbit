@@ -16,6 +16,7 @@ import { tasksApi, interviewsApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import WorkflowActions from './WorkflowActions';
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconClipboard, IconTree, IconLink, IconChat, IconChart, IconCpu, IconMicrophone, IconPencil, IconCheckCircle } from '@/components/icons';
 import {
   BacklogItem,
   ItemType,
@@ -467,14 +468,14 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     }
   };
 
-  const getItemTypeIcon = (type: ItemType) => {
+  const getItemTypeIcon = (type: ItemType): React.ReactNode => {
     switch (type) {
-      case ItemType.EPIC: return '🎯';
-      case ItemType.STORY: return '📖';
-      case ItemType.TASK: return '✓';
-      case ItemType.SUBTASK: return '◦';
-      case ItemType.BUG: return '🐛';
-      default: return '•';
+      case ItemType.EPIC: return <IconTarget className="w-5 h-5" />;
+      case ItemType.STORY: return <IconBook className="w-5 h-5" />;
+      case ItemType.TASK: return <IconCheck className="w-5 h-5" />;
+      case ItemType.SUBTASK: return <IconCircle className="w-5 h-5" />;
+      case ItemType.BUG: return <IconBug className="w-5 h-5" />;
+      default: return <IconCircle className="w-5 h-5" />;
     }
   };
 
@@ -490,16 +491,16 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   };
 
   // PROMPT #131 - Removed AI Suggestions tab (now handled by card interviews)
-  const tabs = [
-    { id: 'overview', label: 'Overview', icon: '📋' },
-    { id: 'hierarchy', label: 'Hierarchy', icon: '🌳' },
-    { id: 'relationships', label: 'Links', icon: '🔗' },
-    { id: 'comments', label: 'Comments', icon: '💬', count: comments.length },
-    { id: 'transitions', label: 'History', icon: '📊', count: transitions.length },
-    { id: 'ai-config', label: 'AI Config', icon: '🤖' },
-    { id: 'interview', label: 'Interview', icon: '🎤', count: cardInterviews.length },
-    { id: 'prompt', label: 'Prompt', icon: '📝', hasPrompt: !!item.generated_prompt },
-    { id: 'acceptance', label: 'Criteria', icon: '✅', count: item.acceptance_criteria?.length || 0 },
+  const tabs: Array<{ id: string; label: string; icon: React.ReactNode; count?: number; hasPrompt?: boolean }> = [
+    { id: 'overview', label: 'Overview', icon: <IconClipboard className="w-4 h-4" /> },
+    { id: 'hierarchy', label: 'Hierarchy', icon: <IconTree className="w-4 h-4" /> },
+    { id: 'relationships', label: 'Links', icon: <IconLink className="w-4 h-4" /> },
+    { id: 'comments', label: 'Comments', icon: <IconChat className="w-4 h-4" />, count: comments.length },
+    { id: 'transitions', label: 'History', icon: <IconChart className="w-4 h-4" />, count: transitions.length },
+    { id: 'ai-config', label: 'AI Config', icon: <IconCpu className="w-4 h-4" /> },
+    { id: 'interview', label: 'Interview', icon: <IconMicrophone className="w-4 h-4" />, count: cardInterviews.length },
+    { id: 'prompt', label: 'Prompt', icon: <IconPencil className="w-4 h-4" />, hasPrompt: !!item.generated_prompt },
+    { id: 'acceptance', label: 'Criteria', icon: <IconCheckCircle className="w-4 h-4" />, count: item.acceptance_criteria?.length || 0 },
   ];
 
   // PROMPT #131 - Check if we're in interview chat mode (needs flex layout)
@@ -512,7 +513,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         <div className="flex items-start justify-between px-6 py-3 border-b flex-shrink-0">
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-1">
-              <span className="text-2xl">{getItemTypeIcon(item.item_type)}</span>
+              <span className="flex items-center text-gray-600">{getItemTypeIcon(item.item_type)}</span>
               <span className="px-2 py-1 text-xs font-medium rounded bg-gray-100 text-gray-700">
                 {item.item_type}
               </span>
@@ -527,7 +528,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
               {/* PROMPT #96 - Show draft/suggested badge */}
               {isSuggestedItem && (
                 <span className="px-2 py-1 text-xs font-medium rounded bg-amber-100 text-amber-800 border border-amber-200">
-                  📝 Rascunho
+                  <IconPencil className="w-3 h-3 inline" /> Rascunho
                 </span>
               )}
             </div>
@@ -607,7 +608,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 }
               `}
             >
-              <span className="mr-1">{tab.icon}</span>
+              <span className="mr-1 inline-flex items-center">{tab.icon}</span>
               {tab.label}
               {tab.count !== undefined && tab.count > 0 && (
                 <span className="ml-2 px-1.5 py-0.5 text-xs rounded-full bg-gray-200 text-gray-700">
@@ -947,7 +948,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                         onClick={() => onNavigateToItem?.(parent)}
                       >
                         <div className="flex items-center gap-2">
-                          <span className="text-lg">{getItemTypeIcon(parent.item_type)}</span>
+                          <span className="flex items-center text-gray-600">{getItemTypeIcon(parent.item_type)}</span>
                           <span className="text-sm font-medium text-gray-900">{parent.title}</span>
                         </div>
                       </div>
@@ -971,7 +972,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <span className="text-lg">{getItemTypeIcon(child.item_type)}</span>
+                                <span className="flex items-center text-gray-600">{getItemTypeIcon(child.item_type)}</span>
                                 <span className="text-sm font-medium text-gray-900">{child.title}</span>
                               </div>
                               <span className={`px-2 py-0.5 text-xs font-medium rounded border ${getPriorityColor(child.priority)}`}>
@@ -1209,7 +1210,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                     <div className="flex flex-col flex-1 min-h-0 gap-2">
                       {/* Header with title, back link, and action buttons */}
                       <div className="flex items-center gap-3 flex-shrink-0">
-                        <span className="text-lg">💬</span>
+                        <IconChat className="w-5 h-5 text-blue-600" />
                         <h3 className="text-sm font-semibold text-gray-900">
                           {cardInterviews.find(i => i.id === selectedInterviewId)?.interview_mode === 'card_inference' ? 'Card Interview' : 'Interview'}
                         </h3>
@@ -1315,7 +1316,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       ) : cardInterviews.length === 0 ? (
                         /* PROMPT #131 - Empty state with AI Suggestions call-to-action */
                         <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg bg-gray-50">
-                          <span className="text-4xl mb-3 block">🤖</span>
+                          <span className="mb-3 block"><IconCpu className="w-10 h-10 mx-auto text-gray-400" /></span>
                           <p className="text-sm text-gray-700 font-medium mb-2">AI Suggestions</p>
                           <p className="text-xs text-gray-500 mb-4 max-w-sm mx-auto">
                             Start a card interview to get AI-powered suggestions for improving this card,
@@ -1351,7 +1352,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-colors"
                             >
                               {/* Interview icon */}
-                              <span className="text-lg">💬</span>
+                              <IconChat className="w-5 h-5 text-blue-600" />
 
                               {/* Interview info */}
                               <div className="flex-1 min-w-0">
@@ -1441,7 +1442,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               onClick={() => navigator.clipboard.writeText(item.generated_prompt || '')}
                               className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
                             >
-                              📋 Copy
+                              <span className="inline-flex items-center gap-1"><IconClipboard className="w-3 h-3" /> Copy</span>
                             </button>
                           </div>
                         </div>
@@ -1451,7 +1452,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       </div>
                     ) : (
                       <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg bg-gray-50">
-                        <span className="text-4xl mb-3 block">📝</span>
+                        <span className="mb-3 block"><IconPencil className="w-10 h-10 mx-auto text-gray-400" /></span>
                         <p className="text-sm text-gray-500 mb-2">No prompt generated yet</p>
                         <p className="text-xs text-gray-400">
                           Prompt will be generated from meta prompt interview or can be created manually

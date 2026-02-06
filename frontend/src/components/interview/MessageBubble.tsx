@@ -7,6 +7,7 @@
 
 import { useState, useMemo } from 'react';
 import { Badge, Button, AIModelBadge } from '@/components/ui';
+import { IconCheck, IconPin, IconCheckCircle } from '@/components/icons';
 import { ConversationMessage } from '@/lib/types';
 import { parseMessage } from './MessageParser';
 
@@ -138,12 +139,12 @@ export function MessageBubble({
             }`}>
               {submitted && !readOnly && (
                 <div className={`${compact ? 'mb-2 p-1.5' : 'mb-3 p-2'} bg-green-100 border border-green-300 rounded text-xs text-green-800 font-medium`}>
-                  ✓ Response submitted
+                  <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Response submitted</span>
                 </div>
               )}
               {!readOnly && (
                 <div className={`text-xs font-semibold text-gray-700 ${compact ? 'mb-2' : 'mb-3'}`}>
-                  {isSingleChoice ? '📍 Select one option:' : '✅ Select one or more options:'}
+                  {isSingleChoice ? <span className="inline-flex items-center gap-1"><IconPin className="w-3 h-3" /> Select one option:</span> : <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-3 h-3" /> Select one or more options:</span>}
                 </div>
               )}
               {effectiveOptions!.choices.map((option) => {
@@ -195,12 +196,12 @@ export function MessageBubble({
                     className={`w-full ${compact ? 'mt-2' : 'mt-4'}`}
                   >
                     {submitted ? (
-                      '✓ Submitted'
+                      <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Submitted</span>
                     ) : isSingleChoice ? (
-                      selectedOptions.length > 0 ? '✓ Submit Answer' : 'Select an option'
+                      selectedOptions.length > 0 ? <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Submit Answer</span> : 'Select an option'
                     ) : (
                       selectedOptions.length > 0
-                        ? `✓ Submit Selected (${selectedOptions.length})`
+                        ? <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Submit Selected ({selectedOptions.length})</span>
                         : 'Select at least one option'
                     )}
                   </Button>
