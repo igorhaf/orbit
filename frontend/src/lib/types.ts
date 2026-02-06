@@ -877,3 +877,21 @@ export interface IndexCodeJob {
     total_lines: number;
   };
 }
+
+// ============================================================================
+// PROMPT #172 - GLOBAL RAG STATS
+// ============================================================================
+
+export interface GlobalRagStats {
+  total_documents: number;
+  by_type: {
+    [key: string]: number;  // card, interview_answer, project_context, code_file, etc.
+  };
+  cards_breakdown: {
+    epic?: number;
+    story?: number;
+    task?: number;
+    subtask?: number;
+  };
+  project_id: string | null;
+}

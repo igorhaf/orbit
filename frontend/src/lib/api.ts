@@ -1265,4 +1265,21 @@ export const knowledgeApi = {
       by_category: Record<string, number>;
       by_source: Record<string, number>;
     }>(`/api/v1/projects/${projectId}/knowledge/full-stats`),
+
+  // PROMPT #172 - Global RAG Stats (all projects)
+  getGlobalStats: () =>
+    request<{
+      success: boolean;
+      stats: {
+        total_documents: number;
+        by_type: Record<string, number>;
+        cards_breakdown: {
+          epic?: number;
+          story?: number;
+          task?: number;
+          subtask?: number;
+        };
+        project_id: string | null;
+      };
+    }>('/api/v1/knowledge/global-stats'),
 };

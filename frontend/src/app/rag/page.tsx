@@ -25,9 +25,9 @@ import {
 import { RagStatsCard, StatCard } from '@/components/rag/RagStatsCard';
 import { RagUsageTypeTable } from '@/components/rag/RagUsageTypeTable';
 import { RagHitRatePieChart } from '@/components/rag/RagCharts';
-import { RagStats, Project } from '@/lib/types';
-import { projectsApi } from '@/lib/api';
-import { Database, RefreshCw, FileText, FolderOpen, Search, Filter, AlertCircle } from 'lucide-react';
+import { RagStats, Project, GlobalRagStats } from '@/lib/types';
+import { projectsApi, knowledgeApi } from '@/lib/api';
+import { Database, RefreshCw, FileText, FolderOpen, Search, Filter, AlertCircle, Package, MessageSquare, Layers, BookOpen, Code, Tags } from 'lucide-react';
 
 interface RagStatus {
   project_id: string | null;
@@ -39,6 +39,8 @@ interface RagStatus {
 export default function RagPage() {
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
   const [ragStatus, setRagStatus] = useState<RagStatus | null>(null);
+  const [globalStats, setGlobalStats] = useState<GlobalRagStats | null>(null);
+  const [loadingGlobalStats, setLoadingGlobalStats] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [loadingProjects, setLoadingProjects] = useState(true);
@@ -46,6 +48,25 @@ export default function RagPage() {
   const [syncing, setSyncing] = useState(false);
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  // PROMPT #172 - Load global RAG stats on mount
+  const fetchGlobalStats = useCallback(async () => {
+    setLoadingGlobalStats(true);
+    try {
+      const response = await knowledgeApi.getGlobalStats();
+      if (response.success) {
+        setGlobalStats(response.stats);
+      }
+    } catch (error) {
+      console.error('Error fetching global RAG stats:', error);
+    } finally {
+      setLoadingGlobalStats(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchGlobalStats();
+  }, [fetchGlobalStats]);
 
   // Load projects on mount
   useEffect(() => {
@@ -164,7 +185,128 @@ export default function RagPage() {
               </p>
             </div>
           </div>
+          {/* Refresh Global Stats Button */}
+          <Button
+            variant="outline"
+            onClick={fetchGlobalStats}
+            disabled={loadingGlobalStats}
+          >
+            <RefreshCw className={`w-4 h-4 ${loadingGlobalStats ? 'animate-spin' : ''}`} />
+          </Button>
         </div>
+
+        {/* PROMPT #172 - Global Document Storage Section */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Package className="w-5 h-5 text-purple-600" />
+              Global Document Storage
+              <span className="text-sm font-normal text-gray-500 ml-2">(All Projects)</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingGlobalStats ? (
+              <div className="flex items-center justify-center h-24">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+              </div>
+            ) : globalStats ? (
+              <div className="space-y-4">
+                {/* Main Stats Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+                  <div className="bg-purple-50 rounded-lg p-4 text-center">
+                    <Package className="w-6 h-6 text-purple-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold text-purple-700">{globalStats.total_documents}</div>
+                    <div className="text-xs text-purple-600">Total Documents</div>
+                  </div>
+                  <div className="bg-blue-50 rounded-lg p-4 text-center">
+                    <Code className="w-6 h-6 text-blue-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold text-blue-700">{globalStats.by_type?.code_file || 0}</div>
+                    <div className="text-xs text-blue-600">Code Files</div>
+                  </div>
+                  <div className="bg-green-50 rounded-lg p-4 text-center">
+                    <Tags className="w-6 h-6 text-green-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold text-green-700">{globalStats.by_type?.card || 0}</div>
+                    <div className="text-xs text-green-600">Cards</div>
+                  </div>
+                  <div className="bg-yellow-50 rounded-lg p-4 text-center">
+                    <MessageSquare className="w-6 h-6 text-yellow-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold text-yellow-700">{globalStats.by_type?.interview_answer || 0}</div>
+                    <div className="text-xs text-yellow-600">Interview Answers</div>
+                  </div>
+                  <div className="bg-indigo-50 rounded-lg p-4 text-center">
+                    <Layers className="w-6 h-6 text-indigo-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold text-indigo-700">{globalStats.by_type?.project_context || 0}</div>
+                    <div className="text-xs text-indigo-600">Project Context</div>
+                  </div>
+                  <div className="bg-orange-50 rounded-lg p-4 text-center">
+                    <BookOpen className="w-6 h-6 text-orange-600 mx-auto mb-2" />
+                    <div className="text-2xl font-bold text-orange-700">{globalStats.by_type?.business_rule || 0}</div>
+                    <div className="text-xs text-orange-600">Business Rules</div>
+                  </div>
+                </div>
+
+                {/* Cards Breakdown */}
+                {globalStats.cards_breakdown && Object.keys(globalStats.cards_breakdown).length > 0 && (
+                  <div className="border-t pt-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                      <Tags className="w-4 h-4" />
+                      Cards Breakdown
+                    </h4>
+                    <div className="flex flex-wrap gap-4">
+                      {globalStats.cards_breakdown.epic !== undefined && (
+                        <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1">
+                          <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                          <span className="text-sm text-gray-700">Epic: <strong>{globalStats.cards_breakdown.epic}</strong></span>
+                        </div>
+                      )}
+                      {globalStats.cards_breakdown.story !== undefined && (
+                        <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1">
+                          <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                          <span className="text-sm text-gray-700">Story: <strong>{globalStats.cards_breakdown.story}</strong></span>
+                        </div>
+                      )}
+                      {globalStats.cards_breakdown.task !== undefined && (
+                        <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1">
+                          <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                          <span className="text-sm text-gray-700">Task: <strong>{globalStats.cards_breakdown.task}</strong></span>
+                        </div>
+                      )}
+                      {globalStats.cards_breakdown.subtask !== undefined && (
+                        <div className="flex items-center gap-2 bg-gray-100 rounded-full px-3 py-1">
+                          <span className="w-2 h-2 rounded-full bg-yellow-500"></span>
+                          <span className="text-sm text-gray-700">Subtask: <strong>{globalStats.cards_breakdown.subtask}</strong></span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Additional Document Types (if any) */}
+                {globalStats.by_type && Object.keys(globalStats.by_type).filter(key =>
+                  !['code_file', 'card', 'interview_answer', 'project_context', 'business_rule'].includes(key)
+                ).length > 0 && (
+                  <div className="border-t pt-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-3">Other Document Types</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(globalStats.by_type)
+                        .filter(([key]) => !['code_file', 'card', 'interview_answer', 'project_context', 'business_rule'].includes(key))
+                        .map(([key, value]) => (
+                          <span key={key} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
+                            {key.replace(/_/g, ' ')}: <strong>{value}</strong>
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center text-gray-500 py-8">
+                <Database className="w-12 h-12 mx-auto text-gray-300 mb-3" />
+                <p>No RAG data available</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {projects.length === 0 ? (
           <Card>
