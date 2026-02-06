@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #118 (Codebase Memory Scan)
-**Próximo prompt:** PROMPT #119
+**Último prompt:** PROMPT #121 (Project Creation Redesign)
+**Próximo prompt:** PROMPT #122
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

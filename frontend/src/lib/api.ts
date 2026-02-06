@@ -131,6 +131,18 @@ export const projectsApi = {
   lockContext: (id: string) =>
     request<any>(`/api/v1/projects/${id}/lock-context`, { method: 'POST' }),
 
+  // PROMPT #121 - Create project and run full pipeline
+  createAndProcess: (codePath: string, scanDepth: string = 'normal') =>
+    request<any>(`/api/v1/projects/create-and-process?code_path=${encodeURIComponent(codePath)}&scan_depth=${scanDepth}`, {
+      method: 'POST',
+    }),
+
+  // PROMPT #121 - Generate epics from memory
+  generateCards: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/generate-cards`, {
+      method: 'POST',
+    }),
+
   // PROMPT #111 - Browse folders for project creation
   browseFolders: (path: string = '') =>
     request<{

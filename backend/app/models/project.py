@@ -18,11 +18,14 @@ class ProjectStatus(str, enum.Enum):
     Project status enum.
 
     PROMPT #126 - Project Lifecycle Status
+    PROMPT #121 - Added processing status
 
-    - draft: Context created, suggested epics exist, but none approved yet
-    - active: At least one epic has been approved/created
+    - draft: Project created but pipeline failed or not started
+    - processing: Background pipeline running (scan + context + title)
+    - active: Pipeline complete, project ready to use
     """
     draft = "draft"
+    processing = "processing"
     active = "active"
 
 

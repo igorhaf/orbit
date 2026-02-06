@@ -122,10 +122,14 @@ export interface Project {
   context_locked?: boolean;
   context_locked_at?: string | null;
 
-  // PROMPT #126 - Project lifecycle status
-  // draft: Context created, but no epics approved yet
-  // active: At least one epic has been approved
-  status?: 'draft' | 'active';
+  // PROMPT #121 - Project lifecycle status
+  // draft: Initial state
+  // processing: Pipeline running (scan + context)
+  // active: Ready to use
+  status?: 'draft' | 'processing' | 'active';
+
+  // PROMPT #121 - Memory scan data
+  initial_memory_context?: Record<string, any> | null;
 
   created_at: string;
   updated_at: string;

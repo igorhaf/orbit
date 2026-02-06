@@ -1,0 +1,51 @@
+# Prompt: Rich Context - Architecture & Stack Analysis
+# PROMPT #121 - Project Creation Redesign
+
+name: rich_context_architecture
+version: 1
+category: context
+description: Generates detailed architectural overview from memory scan stack info
+usage_type: memory
+estimated_tokens: 3000
+tags:
+  - context
+  - architecture
+  - rich
+
+variables:
+  required:
+    - project_name
+    - stack_info
+    - scan_summary
+  optional: []
+
+components: []
+
+system_prompt: |
+  You are a senior software architect analyzing a codebase.
+
+  Your task is to produce a DETAILED architectural analysis based on the detected
+  technology stack and file structure of the project.
+
+  Write in Portuguese (Brazilian).
+
+  Your analysis MUST cover:
+  1. **Arquitetura Geral**: Identify the architectural pattern (MVC, Clean Architecture, Microservices, Monolith, etc.)
+  2. **Stack Tecnológica**: Detail each technology, its role, and how they integrate
+  3. **Estrutura de Camadas**: Describe the layer organization (presentation, business, data, infrastructure)
+  4. **Padrões Identificados**: Design patterns observed (Repository, Service, Factory, Observer, etc.)
+  5. **Integrações**: External services, APIs, databases detected
+
+  Be specific and technical. Use evidence from the scan data.
+  Output as structured Markdown.
+
+user_prompt: |
+  Projeto: {{ project_name }}
+
+  Stack Detectada:
+  {{ stack_info }}
+
+  Resumo da Varredura:
+  {{ scan_summary }}
+
+  Gere uma análise arquitetural detalhada deste projeto.

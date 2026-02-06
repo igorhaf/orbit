@@ -544,6 +544,226 @@ async def _process_quick_create_scan(
         db.close()
 
 
+@router.post("/create-and-process")
+async def create_and_process_project(
+    code_path: str = Query(..., description="Absolute path to existing code folder"),
+    scan_depth: str = Query("normal", description="Scan depth: quick, normal, or deep"),
+    db: Session = Depends(get_db)
+):
+    """
+    Create project and run full pipeline: scan + rich context + title.
+
+    PROMPT #121 - Project Creation Redesign
+
+    Pipeline steps:
+    1. Validate code_path, create project with status=processing
+    2. Background job runs:
+       - 0-40%: CodebaseMemoryService.scan_and_memorize()
+       - 40-85%: ContextGenerator.generate_rich_context_from_memory()
+       - 85-95%: Title refinement from memory
+       - 95-100%: Finalize → status=active
+
+    **POST** `/api/v1/projects/create-and-process?code_path=/projects/my-app&scan_depth=normal`
+    """
+    # Validate scan_depth
+    valid_depths = {"quick", "normal", "deep"}
+    if scan_depth not in valid_depths:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid scan_depth '{scan_depth}'. Must be one of: {', '.join(valid_depths)}"
+        )
+
+    # Validate code_path
+    path = Path(code_path)
+    if not path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Code path does not exist: {code_path}"
+        )
+    if not path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Code path is not a directory: {code_path}"
+        )
+
+    # Use folder name as temporary title
+    folder_name = path.name
+    temp_name = folder_name.replace("-", " ").replace("_", " ").title()
+
+    # Create project with processing status
+    from app.models.project import ProjectStatus
+
+    db_project = Project(
+        name=temp_name,
+        code_path=code_path,
+        context_locked=False,
+        status=ProjectStatus.processing,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+
+    db.add(db_project)
+    db.commit()
+    db.refresh(db_project)
+
+    logger.info(f"Created project '{temp_name}' (ID: {db_project.id}) status=processing")
+
+    # Create single pipeline job
+    job_manager = JobManager(db)
+
+    job = job_manager.create_job(
+        job_type=JobType.PROJECT_PIPELINE,
+        input_data={
+            "code_path": code_path,
+            "project_id": str(db_project.id),
+            "scan_depth": scan_depth
+        },
+        project_id=db_project.id,
+        deep_link=f"/projects/{db_project.id}",
+        notification_title=f"Processando '{folder_name}'..."
+    )
+
+    # Launch pipeline in background
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _process_project_pipeline, job.id, db_project.id, code_path, scan_depth)
+
+    return {
+        "project": {
+            "id": str(db_project.id),
+            "name": db_project.name,
+            "code_path": db_project.code_path,
+            "status": "processing",
+            "created_at": db_project.created_at.isoformat() if db_project.created_at else None,
+        },
+        "job_id": str(job.id),
+        "status": "processing",
+        "message": "Project created. Pipeline running in background."
+    }
+
+
+async def _process_project_pipeline(
+    job_id: UUID,
+    project_id: UUID,
+    code_path: str,
+    scan_depth: str = "normal"
+):
+    """
+    Background pipeline: scan codebase → generate rich context → set title → activate.
+
+    PROMPT #121 - Full project processing pipeline.
+    """
+    from app.database import SessionLocal
+    from app.models.project import ProjectStatus
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"Pipeline started for project {project_id}")
+
+        folder_name = Path(code_path).name
+
+        # === Step A: Memory Scan (0-40%) ===
+        job_manager.update_progress(job_id, 5.0, "Iniciando varredura do codebase...")
+
+        memory_service = CodebaseMemoryService(db)
+
+        job_manager.update_progress(job_id, 15.0, "Analisando estrutura do codigo...")
+
+        result = await memory_service.scan_and_memorize(
+            code_path=code_path,
+            project_id=project_id,
+            scan_depth=scan_depth
+        )
+
+        job_manager.update_progress(job_id, 35.0, "Varredura concluida. Salvando resultados...")
+
+        # Update project with scan results
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        suggested_title = result.get("suggested_title")
+        folder_based_name = folder_name.replace("-", " ").replace("_", " ").title()
+        if suggested_title and project.name == folder_based_name:
+            project.name = suggested_title
+            logger.info(f"Updated project name to: {suggested_title}")
+
+        project.initial_memory_context = result
+        project.updated_at = datetime.utcnow()
+        db.commit()
+
+        job_manager.update_progress(job_id, 40.0, "Gerando contexto rico do projeto...")
+
+        # === Step B: Rich Context Generation (40-85%) ===
+        from app.services.context_generator import ContextGenerator
+
+        context_gen = ContextGenerator(db)
+
+        async def progress_cb(percent, message):
+            job_manager.update_progress(job_id, percent, message)
+
+        context_result = await context_gen.generate_rich_context_from_memory(
+            project_id=project_id,
+            progress_callback=progress_cb
+        )
+
+        job_manager.update_progress(job_id, 90.0, "Finalizando projeto...")
+
+        # === Step C: Finalize ===
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if project:
+            project.status = ProjectStatus.active
+            project.updated_at = datetime.utcnow()
+            db.commit()
+
+        # Update notification title
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            final_title = project.name if project else folder_name
+            job.notification_title = f"Projeto pronto: '{final_title}'"
+            db.commit()
+
+        job_manager.complete_job(job_id, {
+            "success": True,
+            "project_id": str(project_id),
+            "project_name": project.name if project else folder_name,
+            "context_generated": True,
+            "scan_depth": scan_depth
+        })
+
+        logger.info(f"Pipeline completed for project {project_id}")
+
+    except Exception as e:
+        logger.error(f"Pipeline failed for project {project_id}: {str(e)}", exc_info=True)
+
+        # Set project back to draft on failure
+        try:
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if project:
+                project.status = ProjectStatus.draft
+                db.commit()
+        except Exception:
+            pass
+
+        # Update notification title for failure
+        try:
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                error_msg = str(e)[:80]
+                job.notification_title = f"Erro no pipeline: {error_msg}"
+                db.commit()
+        except Exception:
+            pass
+
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
 async def _process_cards_from_memory_async(
     job_id: UUID,
     project_id: UUID

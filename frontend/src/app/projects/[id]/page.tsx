@@ -17,7 +17,7 @@ import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 // PROMPT #131 - Removed InterviewTree, interviews now shown below backlog items
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
 import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
-import { projectsApi, tasksApi, ragApi, interviewsApi, knowledgeApi } from '@/lib/api';  // PROMPT #151 - Restored interviewsApi for redirect check
+import { projectsApi, tasksApi, ragApi, knowledgeApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
 
@@ -85,28 +85,6 @@ export default function ProjectDetailsPage() {
       // Handle both response formats (direct data or wrapped in .data)
       const projectData = projectRes.data || projectRes;
       const tasksData = tasksRes.data || tasksRes;
-
-      // PROMPT #151 - Check if project needs context interview completion
-      // If project has NO context AND has an active context interview, redirect to wizard
-      if (!projectData.context_locked && !projectData.context_human) {
-        try {
-          const interviewsRes = await interviewsApi.list({ project_id: projectId, status: 'active' });
-          const interviews = interviewsRes.data || interviewsRes;
-
-          // Find context interview (no parent_task_id)
-          const contextInterview = interviews?.find((i: any) =>
-            !i.parent_task_id && (i.interview_mode === 'context' || !i.interview_mode)
-          );
-
-          if (contextInterview) {
-            console.log('🔄 Project has incomplete context interview, redirecting to wizard');
-            router.replace(`/projects/new?resume=${projectId}`);
-            return; // Don't set state, we're navigating away
-          }
-        } catch (interviewError) {
-          console.error('Failed to check for context interviews:', interviewError);
-        }
-      }
 
       setProject(projectData);
       setTasks(Array.isArray(tasksData) ? tasksData : []);
@@ -414,6 +392,48 @@ export default function ProjectDetailsPage() {
 
           {/* Action Buttons */}
           <div className="flex items-stretch gap-2 ml-6">
+            {/* PROMPT #121 - Generate Epics button */}
+            {project && project.initial_memory_context && (
+              <Button
+                variant="primary"
+                className="h-10"
+                onClick={async () => {
+                  try {
+                    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                    const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/generate-cards`, { method: 'POST' });
+                    if (res.ok) {
+                      const data = await res.json();
+                      if (data.job_id) {
+                        alert('Epic generation started in background. Check Jobs page for progress.');
+                      }
+                    } else {
+                      const err = await res.json();
+                      showError(err.detail || 'Failed to generate epics');
+                    }
+                  } catch (e) {
+                    showError('Failed to start epic generation');
+                  }
+                }}
+              >
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                Generate Epics
+              </Button>
+            )}
+
+            {/* PROMPT #121 - Interview button (only when context not locked) */}
+            {project && !project.context_locked && (
+              <Link href={`/projects/${projectId}/setup-context`}>
+                <Button variant="outline" className="h-10">
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                  </svg>
+                  Interview
+                </Button>
+              </Link>
+            )}
+
             <Link href={`/projects/${projectId}/analyze`}>
               <Button variant="outline" className="h-10">
                 <svg
@@ -476,13 +496,11 @@ export default function ProjectDetailsPage() {
                 Execute All
               </Button>
             </Link>
-
-            {/* PROMPT #130 - Removed duplicate New Interview button - now handled by InterviewTree component */}
           </div>
         </div>
 
-        {/* PROMPT #137 - Context Setup Banner for draft projects */}
-        {project && !project.context_locked && !project.context_human && (
+        {/* PROMPT #121 - Info banner for projects without context */}
+        {project && !project.context_locked && !project.context_human && project.status !== 'processing' && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -490,17 +508,27 @@ export default function ProjectDetailsPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <div>
-                  <h4 className="font-medium text-amber-900">Complete Project Setup</h4>
+                  <h4 className="font-medium text-amber-900">No Context Generated</h4>
                   <p className="text-sm text-amber-700">
-                    Run the Context Interview to establish project foundation and enable Epics.
+                    Use the Interview button to establish project context, or generate epics from the memory scan.
                   </p>
                 </div>
               </div>
-              <Link href={`/projects/${projectId}/setup-context`}>
-                <Button variant="primary">
-                  Configure Context
-                </Button>
-              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* PROMPT #121 - Processing banner */}
+        {project && project.status === 'processing' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+              <div>
+                <h4 className="font-medium text-blue-900">Project is being processed</h4>
+                <p className="text-sm text-blue-700">
+                  The codebase is being analyzed. This may take a few minutes.
+                </p>
+              </div>
             </div>
           </div>
         )}

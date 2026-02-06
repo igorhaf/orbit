@@ -4672,3 +4672,215 @@ IMPORTANTE:
 
         except Exception as e:
             logger.warning(f"⚠️ Failed to broadcast epic batch: {e}")
+
+    async def generate_rich_context_from_memory(
+        self,
+        project_id: UUID,
+        progress_callback=None
+    ) -> Dict:
+        """
+        PROMPT #121 - Generate rich project context from memory scan data using AI.
+
+        Makes 3 focused AI calls (architecture, business domain, features) then
+        consolidates into context_semantic + context_human via a 4th AI call.
+
+        Args:
+            project_id: Project UUID
+            progress_callback: Optional async function(percent, message) for progress updates
+
+        Returns:
+            Dict with context_semantic, context_human, description
+        """
+        from app.prompts.loader import PromptLoader
+
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        memory_ctx = project.initial_memory_context
+        if not memory_ctx:
+            raise ValueError(f"No memory context for project {project_id}")
+
+        loader = PromptLoader()
+
+        stack_info = memory_ctx.get("stack_info", {})
+        key_features = memory_ctx.get("key_features", [])
+        business_rules = memory_ctx.get("business_rules", [])
+        interview_context = memory_ctx.get("interview_context", "")
+        scan_summary = memory_ctx.get("scan_summary", interview_context)
+
+        # Format stack_info as text
+        stack_text_parts = []
+        if stack_info.get("detected_stack"):
+            stack_text_parts.append(f"Stack: {stack_info['detected_stack']}")
+        if stack_info.get("languages"):
+            stack_text_parts.append(f"Linguagens: {', '.join(stack_info['languages'])}")
+        if stack_info.get("frameworks"):
+            stack_text_parts.append(f"Frameworks: {', '.join(stack_info['frameworks'])}")
+        if stack_info.get("databases"):
+            stack_text_parts.append(f"Bancos de Dados: {', '.join(stack_info['databases'])}")
+        stack_text = "\n".join(stack_text_parts) if stack_text_parts else "Nao detectada"
+
+        async def report_progress(percent, message):
+            if progress_callback:
+                await progress_callback(percent, message)
+
+        # --- Step 1: Architecture Analysis (40-55%) ---
+        await report_progress(40, "Analisando arquitetura...")
+        architecture_analysis = ""
+        try:
+            sys_prompt, usr_prompt = loader.render(
+                "context/rich_context_architecture",
+                {
+                    "project_name": project.name,
+                    "stack_info": stack_text,
+                    "scan_summary": scan_summary or "Resumo nao disponivel"
+                }
+            )
+            response = await self.orchestrator.execute(
+                usage_type="memory",
+                messages=[{"role": "user", "content": usr_prompt}],
+                system_prompt=sys_prompt,
+                max_tokens=4000,
+                enable_rag=True
+            )
+            architecture_analysis = response.get("content", "")
+            logger.info(f"Architecture analysis complete for {project.name}")
+        except Exception as e:
+            logger.error(f"Architecture analysis failed: {e}")
+            architecture_analysis = f"Analise arquitetural indisponivel: {str(e)}"
+
+        # --- Step 2: Business Domain Analysis (55-70%) ---
+        await report_progress(55, "Analisando dominio de negocio...")
+        business_domain_analysis = ""
+        if business_rules:
+            try:
+                sys_prompt, usr_prompt = loader.render(
+                    "context/rich_context_business_domain",
+                    {
+                        "project_name": project.name,
+                        "business_rules": business_rules,
+                        "key_features": key_features
+                    }
+                )
+                response = await self.orchestrator.execute(
+                    usage_type="memory",
+                    messages=[{"role": "user", "content": usr_prompt}],
+                    system_prompt=sys_prompt,
+                    max_tokens=4000,
+                    enable_rag=True
+                )
+                business_domain_analysis = response.get("content", "")
+                logger.info(f"Business domain analysis complete for {project.name}")
+            except Exception as e:
+                logger.error(f"Business domain analysis failed: {e}")
+                business_domain_analysis = f"Analise de dominio indisponivel: {str(e)}"
+        else:
+            business_domain_analysis = "Nenhuma regra de negocio detectada no codebase."
+
+        # --- Step 3: Feature Landscape (70-85%) ---
+        await report_progress(70, "Mapeando funcionalidades...")
+        feature_landscape = ""
+        if key_features:
+            try:
+                sys_prompt, usr_prompt = loader.render(
+                    "context/rich_context_features",
+                    {
+                        "project_name": project.name,
+                        "key_features": key_features,
+                        "business_rules": business_rules,
+                        "interview_context": interview_context
+                    }
+                )
+                response = await self.orchestrator.execute(
+                    usage_type="memory",
+                    messages=[{"role": "user", "content": usr_prompt}],
+                    system_prompt=sys_prompt,
+                    max_tokens=4000,
+                    enable_rag=True
+                )
+                feature_landscape = response.get("content", "")
+                logger.info(f"Feature landscape complete for {project.name}")
+            except Exception as e:
+                logger.error(f"Feature landscape failed: {e}")
+                feature_landscape = f"Mapa de funcionalidades indisponivel: {str(e)}"
+        else:
+            feature_landscape = "Nenhuma funcionalidade detectada no codebase."
+
+        # --- Step 4: Consolidation (85-95%) ---
+        await report_progress(85, "Consolidando contexto...")
+        try:
+            sys_prompt, usr_prompt = loader.render(
+                "context/rich_context_consolidation",
+                {
+                    "project_name": project.name,
+                    "architecture_analysis": architecture_analysis,
+                    "business_domain_analysis": business_domain_analysis,
+                    "feature_landscape": feature_landscape
+                }
+            )
+            response = await self.orchestrator.execute(
+                usage_type="memory",
+                messages=[{"role": "user", "content": usr_prompt}],
+                system_prompt=sys_prompt,
+                max_tokens=8000,
+                enable_rag=True
+            )
+
+            content = response.get("content", "")
+
+            # Parse JSON response
+            import json
+            context_semantic = ""
+            context_human = ""
+            try:
+                # Try to extract JSON from the response
+                json_start = content.find("{")
+                json_end = content.rfind("}") + 1
+                if json_start >= 0 and json_end > json_start:
+                    parsed = json.loads(content[json_start:json_end])
+                    context_semantic = parsed.get("context_semantic", "")
+                    context_human = parsed.get("context_human", "")
+            except json.JSONDecodeError:
+                logger.warning("Could not parse consolidation JSON, using raw content")
+                context_semantic = content
+                context_human = content
+
+            if not context_semantic:
+                context_semantic = content
+            if not context_human:
+                context_human = content
+
+        except Exception as e:
+            logger.error(f"Consolidation failed: {e}")
+            # Fallback: combine the 3 analyses directly
+            context_semantic = f"# {project.name}\n\n{architecture_analysis}\n\n{business_domain_analysis}\n\n{feature_landscape}"
+            context_human = context_semantic
+
+        # --- Save to project ---
+        project.context_semantic = context_semantic
+        project.context_human = context_human
+        project.description = context_human
+        self.db.commit()
+
+        # --- Store in RAG ---
+        try:
+            rag_service = RAGService(self.db)
+            rag_service.store_project_context(
+                project_id=project.id,
+                context_semantic=context_semantic,
+                context_human=context_human
+            )
+            logger.info(f"Rich context stored in RAG for {project.name}")
+        except Exception as e:
+            logger.error(f"Failed to store rich context in RAG: {e}")
+
+        await report_progress(95, "Contexto gerado com sucesso")
+
+        logger.info(f"Rich context generation complete for {project.name}")
+
+        return {
+            "context_semantic": context_semantic,
+            "context_human": context_human,
+            "description": context_human
+        }

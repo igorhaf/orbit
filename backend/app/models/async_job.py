@@ -59,6 +59,9 @@ class JobType(str, enum.Enum):
     # PROMPT #153: Background card generation from memory scan
     CARDS_FROM_MEMORY = "cards_from_memory"        # Geração de cards (épicos + regras) a partir do memory scan
 
+    # PROMPT #121: Full project creation pipeline (scan + context + title)
+    PROJECT_PIPELINE = "project_pipeline"
+
 
 # Default priority per job type
 JOB_TYPE_DEFAULT_PRIORITY: dict[JobType, int] = {
@@ -83,6 +86,8 @@ JOB_TYPE_DEFAULT_PRIORITY: dict[JobType, int] = {
     JobType.TASK_GENERATION: JobPriority.LOW,
     JobType.BATCH_EXECUTION: JobPriority.LOW,
     JobType.PROJECT_PROVISIONING: JobPriority.LOW,
+    # HIGH - user waiting for project creation
+    JobType.PROJECT_PIPELINE: JobPriority.HIGH,
 }
 
 

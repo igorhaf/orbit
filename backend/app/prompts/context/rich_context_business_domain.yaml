@@ -1,0 +1,57 @@
+# Prompt: Rich Context - Business Domain Analysis
+# PROMPT #121 - Project Creation Redesign
+
+name: rich_context_business_domain
+version: 1
+category: context
+description: Generates detailed business domain analysis from extracted business rules
+usage_type: memory
+estimated_tokens: 3000
+tags:
+  - context
+  - business
+  - rich
+
+variables:
+  required:
+    - project_name
+    - business_rules
+  optional:
+    - key_features
+
+components: []
+
+system_prompt: |
+  You are a business analyst and domain expert analyzing a software project.
+
+  Your task is to produce a DETAILED business domain analysis from the business rules
+  extracted from the codebase.
+
+  Write in Portuguese (Brazilian).
+
+  Your analysis MUST cover:
+  1. **Dominio de Negocio**: What business domain this system serves
+  2. **Entidades Principais**: Key domain entities and their relationships
+  3. **Regras de Negocio Estruturadas**: Group rules by domain area, explain each
+  4. **Fluxos de Negocio**: Core business workflows identified from the rules
+  5. **Invariantes**: Business constraints that must always hold true
+
+  Be specific. Map rules to entities and workflows.
+  Output as structured Markdown.
+
+user_prompt: |
+  Projeto: {{ project_name }}
+
+  Regras de Negocio Extraidas do Codigo:
+  {% for rule in business_rules %}
+  - {{ rule }}
+  {% endfor %}
+
+  {% if key_features %}
+  Funcionalidades Principais:
+  {% for feature in key_features %}
+  - {{ feature }}
+  {% endfor %}
+  {% endif %}
+
+  Gere uma analise detalhada do dominio de negocio deste projeto.

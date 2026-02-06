@@ -173,13 +173,20 @@ export default function ProjectsPage() {
           </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {projects.map((project) => (
-              <Card key={project.id} variant="bordered">
+            {projects.map((project) => {
+              const isProcessing = project.status === 'processing';
+              return (
+              <Card key={project.id} variant="bordered" className={isProcessing ? 'opacity-60 pointer-events-none' : ''}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle>{project.name}</CardTitle>
-                    {/* PROMPT #126 - Project lifecycle status badge */}
-                    {project.status === 'active' ? (
+                    {/* PROMPT #121 - Project lifecycle status badge with processing state */}
+                    {isProcessing ? (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1" />
+                        Processing
+                      </span>
+                    ) : project.status === 'active' ? (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -194,6 +201,13 @@ export default function ProjectsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {isProcessing ? (
+                    <div className="flex flex-col items-center py-4">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-3" />
+                      <p className="text-sm text-gray-500">Analyzing codebase...</p>
+                    </div>
+                  ) : (
+                  <>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <p className="text-sm text-gray-600 line-clamp-3">
                       {project.description || 'No description'}
@@ -206,7 +220,7 @@ export default function ProjectsPage() {
                   {/* PROMPT #111 - Show code_path */}
                   {project.code_path && (
                     <div className="text-xs text-gray-500 mb-2 font-mono truncate" title={project.code_path}>
-                      📁 {project.code_path}
+                      {project.code_path}
                     </div>
                   )}
                   {/* Show stack info if provisioned */}
@@ -268,9 +282,12 @@ export default function ProjectsPage() {
                       </svg>
                     </Button>
                   </div>
+                  </>
+                  )}
                 </CardContent>
               </Card>
-            ))}
+              );
+            })}
           </div>
         )}
 

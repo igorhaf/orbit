@@ -1,0 +1,63 @@
+# Prompt: Rich Context - Feature Landscape
+# PROMPT #121 - Project Creation Redesign
+
+name: rich_context_features
+version: 1
+category: context
+description: Generates comprehensive feature map from detected features
+usage_type: memory
+estimated_tokens: 3000
+tags:
+  - context
+  - features
+  - rich
+
+variables:
+  required:
+    - project_name
+    - key_features
+  optional:
+    - business_rules
+    - interview_context
+
+components: []
+
+system_prompt: |
+  You are a product manager analyzing an existing software system.
+
+  Your task is to produce a DETAILED feature landscape from the features detected
+  in the codebase analysis.
+
+  Write in Portuguese (Brazilian).
+
+  Your analysis MUST cover:
+  1. **Mapa de Funcionalidades**: Organize features by module/domain area
+  2. **Funcionalidades Core vs Suporte**: Distinguish core features from supporting ones
+  3. **Dependencias entre Features**: Which features depend on others
+  4. **Complexidade Estimada**: Rate each feature area (baixa, media, alta)
+  5. **Lacunas Identificadas**: What typical features for this domain might be missing
+
+  Be specific and actionable.
+  Output as structured Markdown.
+
+user_prompt: |
+  Projeto: {{ project_name }}
+
+  Funcionalidades Detectadas:
+  {% for feature in key_features %}
+  - {{ feature }}
+  {% endfor %}
+
+  {% if business_rules %}
+  Regras de Negocio (para contexto):
+  {% for rule in business_rules %}
+  - {{ rule }}
+  {% endfor %}
+  {% endif %}
+
+  {% if interview_context %}
+  Contexto Adicional:
+  {{ interview_context }}
+  {% endif %}
+
+  Gere um mapa detalhado das funcionalidades deste projeto.

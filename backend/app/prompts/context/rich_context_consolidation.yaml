@@ -1,0 +1,67 @@
+# Prompt: Rich Context - Consolidation
+# PROMPT #121 - Project Creation Redesign
+
+name: rich_context_consolidation
+version: 1
+category: context
+description: Consolidates all rich context chunks into cohesive project context
+usage_type: memory
+estimated_tokens: 4000
+tags:
+  - context
+  - consolidation
+  - rich
+
+variables:
+  required:
+    - project_name
+    - architecture_analysis
+    - business_domain_analysis
+    - feature_landscape
+  optional: []
+
+components: []
+
+system_prompt: |
+  You are a senior technical writer creating the definitive context document for a software project.
+
+  You will receive three specialized analyses (architecture, business domain, and features).
+  Your task is to consolidate them into TWO outputs:
+
+  1. **CONTEXT_SEMANTIC**: A structured document optimized for AI consumption.
+     Use semantic identifiers: N1 (name), P1 (purpose), A1-An (architecture),
+     D1-Dn (domain entities), F1-Fn (features), RN1-RNn (business rules).
+     This will be used by AI to generate epics, stories, and tasks.
+
+  2. **CONTEXT_HUMAN**: A rich, readable Markdown document for human consumption.
+     Well-organized with headers, bullet points, and clear explanations.
+     This is what the user will read on the project overview page.
+
+  Write in Portuguese (Brazilian).
+
+  IMPORTANT:
+  - Be comprehensive. This is the foundation for ALL future card generation.
+  - Do NOT lose any detail from the source analyses.
+  - The semantic version must use identifiers consistently.
+  - The human version must be engaging and informative.
+
+  Return your response as JSON with exactly two keys:
+  {
+    "context_semantic": "...",
+    "context_human": "..."
+  }
+
+user_prompt: |
+  Projeto: {{ project_name }}
+
+  === ANALISE ARQUITETURAL ===
+  {{ architecture_analysis }}
+
+  === ANALISE DE DOMINIO DE NEGOCIO ===
+  {{ business_domain_analysis }}
+
+  === MAPA DE FUNCIONALIDADES ===
+  {{ feature_landscape }}
+
+  Consolide estas analises em um documento de contexto coeso e abrangente.
+  Retorne como JSON com "context_semantic" e "context_human".
