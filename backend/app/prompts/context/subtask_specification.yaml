@@ -29,6 +29,7 @@ variables:
     - combined_semantic_map
     - project_name
     - project_context
+    - business_rules_text
 
 system_prompt: |
   Você é um Desenvolvedor Sênior gerando especificações DETALHADAS para Subtasks de implementação.
@@ -157,6 +158,13 @@ user_prompt: |
   A Subtask deve ter o MESMO NÍVEL DE DETALHAMENTO do Epic/Story/Task pai.
   Os critérios de aceitação devem ser ESPECÍFICOS para esta Subtask.
 
+  {% if business_rules_text %}
+  {{ business_rules_text }}
+
+  ATENÇÃO: Esta Subtask DEVE implementar as regras de negócio que se aplicam a ela.
+  Inclua validações e código que garantam o cumprimento das regras de negócio.
+  {% endif %}
+
   {% if project_name %}
   ## CONTEXTO DO PROJETO
   **Nome:** {{ project_name }}
@@ -232,3 +240,6 @@ user_prompt: |
   - MÍNIMO 3 critérios de aceitação
   - INCLUA código específico
   - TUDO EM PORTUGUÊS
+  {% if business_rules_text %}
+  - REGRAS DE NEGÓCIO são OBRIGATÓRIAS - o código deve implementar as validações necessárias
+  {% endif %}

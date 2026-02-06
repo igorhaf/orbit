@@ -25,6 +25,7 @@ variables:
     - semantic_map_text
     - epic_interview_insights
     - rag_context
+    - business_rules_text
 
 components:
   - semantic_methodology
@@ -91,6 +92,13 @@ system_prompt: |
 user_prompt: |
   Decomponha este Epic em Stories usando a Metodologia de Referências Semânticas.
 
+  {% if business_rules_text %}
+  {{ business_rules_text }}
+
+  ATENÇÃO: TODAS as Stories geradas DEVEM respeitar as regras de negócio listadas acima.
+  Incorpore as regras relevantes nos critérios de aceitação de cada Story.
+  {% endif %}
+
   DETALHES DO EPIC:
   Título: {{ epic_title }}
   Descrição: {{ epic_description }}
@@ -113,6 +121,10 @@ user_prompt: |
   3. Cada Story deve ter seu próprio campo "semantic_map" (reutilizando + estendendo)
   4. Gere o campo "description_markdown" com Markdown completo formatado
   5. Use identificadores semânticos em TODA a narrativa
+  {% if business_rules_text %}
+  6. IMPORTANTE: Cada Story DEVE incorporar regras de negócio relevantes nos critérios de aceitação
+  7. Se uma regra de interface menciona o nome do sistema, use-o nas Stories
+  {% endif %}
 
   Retorne 3-7 Stories como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.
 
@@ -120,6 +132,9 @@ user_prompt: |
   - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
   - REUTILIZE identificadores do Epic (mantenha consistência)
   - NUNCA substitua identificadores por seus significados
+  {% if business_rules_text %}
+  - REGRAS DE NEGÓCIO são OBRIGATÓRIAS - verifique se cada Story as respeita
+  {% endif %}
   {% if rag_context %}
   {{ rag_context }}
   {% endif %}

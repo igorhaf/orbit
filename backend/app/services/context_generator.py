@@ -603,15 +603,43 @@ IMPORTANTE:
 - Comece a resposta diretamente com { e termine com }"""
 
         # PROMPT #120 - Include business rules from memory scan in context
+        # PROMPT #170 - Also retrieve business rules from RAG (may be more complete)
         business_rules_section = ""
+        business_rules = []
+
+        # First, try to get from initial_memory_context
         if project.initial_memory_context:
             memory_ctx = project.initial_memory_context
             business_rules = memory_ctx.get("business_rules", [])
-            if business_rules:
-                business_rules_section = "\n\n## REGRAS DE NEGÓCIO VERIFICADAS NO CÓDIGO\n"
-                business_rules_section += "(Estas regras foram extraídas automaticamente do código-fonte existente)\n\n"
-                for i, rule in enumerate(business_rules, 1):
-                    business_rules_section += f"{i}. {rule}\n"
+
+        # Then, retrieve from RAG (may have additional rules from later analysis)
+        try:
+            from app.services.rag_service import RAGService
+            rag_service = RAGService(self.db)
+
+            rag_rules = rag_service.get_business_rules(
+                project_id=project.id,
+                top_k=20
+            )
+
+            if rag_rules:
+                # Add RAG rules that aren't duplicates
+                existing_rules_lower = set(r.lower() for r in business_rules)
+                for rag_rule in rag_rules:
+                    content = rag_rule.get("content", "")
+                    if content.lower() not in existing_rules_lower:
+                        business_rules.append(content)
+                        existing_rules_lower.add(content.lower())
+
+                logger.info(f"📋 Context: Retrieved {len(rag_rules)} business rules from RAG")
+        except Exception as e:
+            logger.warning(f"⚠️  Failed to retrieve business rules from RAG: {e}")
+
+        if business_rules:
+            business_rules_section = "\n\n## REGRAS DE NEGÓCIO VERIFICADAS NO CÓDIGO\n"
+            business_rules_section += "(Estas regras foram extraídas automaticamente do código-fonte existente)\n\n"
+            for i, rule in enumerate(business_rules, 1):
+                business_rules_section += f"{i}. {rule}\n"
 
         user_prompt = f"""Analise a seguinte entrevista de contexto para o projeto "{project.name}":
 

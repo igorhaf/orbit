@@ -21,6 +21,7 @@ variables:
   optional:
     - task_specification
     - semantic_map_text
+    - business_rules_text
 
 components: []
 
@@ -51,6 +52,12 @@ system_prompt: |
 user_prompt: |
   Decomponha esta Task em 3-5 Subtasks atômicas.
 
+  {% if business_rules_text %}
+  {{ business_rules_text }}
+
+  ATENÇÃO: As Subtasks devem implementar as regras de negócio que se aplicam a esta Task.
+  {% endif %}
+
   ## TASK
   **Título:** {{ task_title }}
   **Descrição:** {{ task_description | default('Não especificada') }}
@@ -62,3 +69,6 @@ user_prompt: |
   {% endif %}
 
   Retorne APENAS o array JSON com 3-5 títulos de Subtasks.
+  {% if business_rules_text %}
+  Certifique-se de incluir subtasks que validem/implementem as regras de negócio aplicáveis.
+  {% endif %}

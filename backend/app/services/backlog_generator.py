@@ -23,8 +23,48 @@ except ImportError:
     PROMPTER_AVAILABLE = False
     PrompterFacade = None
 from app.prompts import PromptService, get_prompt_service
+from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
+
+
+def _get_business_rules_context(db: "Session", project_id: UUID, max_rules: int = 15) -> str:
+    """
+    PROMPT #170 - Retrieve and format business rules for prompt injection.
+
+    Business rules extracted from codebase memory scan (interfaces, validations,
+    models, migrations) are HIGH PRIORITY context that MUST influence all card generation.
+
+    Args:
+        db: Database session
+        project_id: Project UUID
+        max_rules: Maximum number of rules to include
+
+    Returns:
+        Formatted business rules text for prompt injection, or empty string if none found
+    """
+    try:
+        rag_service = RAGService(db)
+
+        # Get all business rules for project
+        rules = rag_service.get_business_rules(
+            project_id=project_id,
+            top_k=max_rules
+        )
+
+        if not rules:
+            logger.info(f"📋 No business rules found for project {project_id}")
+            return ""
+
+        # Format rules for prompt injection
+        formatted = rag_service.format_business_rules_for_prompt(rules)
+
+        logger.info(f"📋 Retrieved {len(rules)} business rules for prompt injection")
+        return formatted
+
+    except Exception as e:
+        logger.warning(f"⚠️  Failed to retrieve business rules: {e}")
+        return ""
 
 
 def _strip_markdown_json(content: str) -> str:
@@ -256,8 +296,20 @@ Retorne APENAS JSON válido (sem markdown code blocks, sem explicação):
         # Convert conversation to readable format
         conversation_text = self._format_conversation(conversation)
 
-        user_prompt = f"""Analise esta conversa de entrevista e extraia o Epic principal usando a Metodologia de Referências Semânticas.
+        # PROMPT #170 - Inject business rules as high-priority context
+        business_rules_text = _get_business_rules_context(self.db, project_id)
+        business_rules_section = ""
+        if business_rules_text:
+            business_rules_section = f"""
+{business_rules_text}
 
+ATENÇÃO: O Epic gerado DEVE respeitar TODAS as regras de negócio listadas acima.
+Incorpore as regras relevantes nos critérios de aceitação e insights.
+
+"""
+
+        user_prompt = f"""Analise esta conversa de entrevista e extraia o Epic principal usando a Metodologia de Referências Semânticas.
+{business_rules_section}
 CONVERSA:
 {conversation_text}
 
@@ -266,6 +318,7 @@ INSTRUÇÕES:
 2. Escreva a narrativa do Epic usando APENAS esses identificadores
 3. Gere o campo "description_markdown" com o Markdown completo formatado (incluindo Mapa Semântico)
 4. Gere o campo "semantic_map" com o dicionário de identificadores
+{f"5. IMPORTANTE: Incorpore as regras de negócio nos critérios de aceitação (AC1, AC2...)" if business_rules_text else ""}
 
 Retorne o Epic como JSON seguindo EXATAMENTE o schema fornecido no system prompt.
 
@@ -273,7 +326,8 @@ LEMBRE-SE:
 - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
 - Use identificadores semânticos em TODA a narrativa
 - NUNCA substitua identificadores por seus significados
-- O Mapa Semântico deve aparecer tanto no Markdown quanto no JSON"""
+- O Mapa Semântico deve aparecer tanto no Markdown quanto no JSON
+{f"- REGRAS DE NEGÓCIO são OBRIGATÓRIAS e devem influenciar o conteúdo gerado" if business_rules_text else ""}"""
 
         # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Generating Epic from Interview {interview_id}...")
@@ -488,8 +542,20 @@ Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
             semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
             semantic_map_text += "\n\nVocê DEVE reutilizar estes identificadores nas Stories sempre que aplicável."
 
-        user_prompt = f"""Decomponha este Epic em Stories usando a Metodologia de Referências Semânticas.
+        # PROMPT #170 - Inject business rules as high-priority context
+        business_rules_text = _get_business_rules_context(self.db, project_id)
+        business_rules_section = ""
+        if business_rules_text:
+            business_rules_section = f"""
+{business_rules_text}
 
+ATENÇÃO: TODAS as Stories geradas DEVEM respeitar as regras de negócio listadas acima.
+Incorpore as regras relevantes nos critérios de aceitação de cada Story.
+
+"""
+
+        user_prompt = f"""Decomponha este Epic em Stories usando a Metodologia de Referências Semânticas.
+{business_rules_section}
 DETALHES DO EPIC:
 Título: {epic.title}
 Descrição: {epic.description}
@@ -509,13 +575,15 @@ INSTRUÇÕES:
 3. Cada Story deve ter seu próprio campo "semantic_map" (reutilizando + estendendo)
 4. Gere o campo "description_markdown" com Markdown completo formatado
 5. Use identificadores semânticos em TODA a narrativa
+{f"6. IMPORTANTE: Cada Story DEVE incorporar regras de negócio relevantes nos critérios de aceitação" if business_rules_text else ""}
 
 Retorne 3-7 Stories como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.
 
 LEMBRE-SE:
 - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
 - REUTILIZE identificadores do Epic (mantenha consistência)
-- NUNCA substitua identificadores por seus significados"""
+- NUNCA substitua identificadores por seus significados
+{f"- REGRAS DE NEGÓCIO são OBRIGATÓRIAS - verifique se cada Story as respeita" if business_rules_text else ""}"""
 
         # PROMPT #85 - RAG Phase 3: Retrieve similar completed stories for learning
         rag_context = ""
@@ -783,8 +851,20 @@ Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
             semantic_map_text += json.dumps(story_semantic_map, indent=2, ensure_ascii=False)
             semantic_map_text += "\n\nVocê DEVE reutilizar estes identificadores nas Tasks sempre que aplicável."
 
-        user_prompt = f"""Decomponha esta Story em Tasks usando a Metodologia de Referências Semânticas.
+        # PROMPT #170 - Inject business rules as high-priority context
+        business_rules_text = _get_business_rules_context(self.db, project_id)
+        business_rules_section = ""
+        if business_rules_text:
+            business_rules_section = f"""
+{business_rules_text}
 
+ATENÇÃO: TODAS as Tasks geradas DEVEM respeitar as regras de negócio listadas acima.
+Cada Task deve implementar corretamente as regras que se aplicam a ela.
+
+"""
+
+        user_prompt = f"""Decomponha esta Story em Tasks usando a Metodologia de Referências Semânticas.
+{business_rules_section}
 DETALHES DA STORY:
 Título: {story.title}
 Descrição: {story.description}
@@ -801,6 +881,7 @@ INSTRUÇÕES:
 3. Cada Task deve ter seu próprio campo "semantic_map" (reutilizando + estendendo)
 4. Gere o campo "description_markdown" com Markdown completo formatado
 5. Use identificadores semânticos em TODA a narrativa
+{f"6. IMPORTANTE: Os critérios de aceitação de cada Task DEVEM validar as regras de negócio aplicáveis" if business_rules_text else ""}
 
 Retorne 3-10 Tasks como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.
 
@@ -808,7 +889,8 @@ LEMBRE-SE:
 - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
 - REUTILIZE identificadores da Story (mantenha consistência)
 - NUNCA substitua identificadores por seus significados
-- Evite mencionar frameworks específicos (use identificadores genéricos)"""
+- Evite mencionar frameworks específicos (use identificadores genéricos)
+{f"- REGRAS DE NEGÓCIO são OBRIGATÓRIAS - cada Task deve implementar as regras que se aplicam" if business_rules_text else ""}"""
 
         # PROMPT #85 - RAG Phase 3: Retrieve similar completed tasks for learning
         rag_context = ""

@@ -15,6 +15,7 @@ variables:
     - conversation_text
   optional:
     - semantic_map_text
+    - business_rules_text
 
 components:
   - semantic_methodology
@@ -79,6 +80,13 @@ system_prompt: |
 user_prompt: |
   Analise esta conversa de entrevista e extraia o Epic principal usando a Metodologia de Referências Semânticas.
 
+  {% if business_rules_text %}
+  {{ business_rules_text }}
+
+  ATENÇÃO: O Epic gerado DEVE respeitar TODAS as regras de negócio listadas acima.
+  Incorpore as regras relevantes nos critérios de aceitação e insights.
+  {% endif %}
+
   CONVERSA:
   {{ conversation_text }}
 
@@ -87,6 +95,10 @@ user_prompt: |
   2. Escreva a narrativa do Epic usando APENAS esses identificadores
   3. Gere o campo "description_markdown" com o Markdown completo formatado (incluindo Mapa Semântico)
   4. Gere o campo "semantic_map" com o dicionário de identificadores
+  {% if business_rules_text %}
+  5. IMPORTANTE: Incorpore as regras de negócio nos critérios de aceitação (AC1, AC2...)
+  6. Mencione regras de domínio/interface nos insights (ex: "O sistema é SEI Contas do Governo PE")
+  {% endif %}
 
   Retorne o Epic como JSON seguindo EXATAMENTE o schema fornecido no system prompt.
 
@@ -95,3 +107,6 @@ user_prompt: |
   - Use identificadores semânticos em TODA a narrativa
   - NUNCA substitua identificadores por seus significados
   - O Mapa Semântico deve aparecer tanto no Markdown quanto no JSON
+  {% if business_rules_text %}
+  - REGRAS DE NEGÓCIO são OBRIGATÓRIAS e devem influenciar o conteúdo gerado
+  {% endif %}

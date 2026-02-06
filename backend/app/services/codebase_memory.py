@@ -1914,21 +1914,37 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
         """
         Store extracted business rules in RAG for future reference.
 
+        PROMPT #170 - Enhanced storage with source classification.
+
         Args:
             project_id: Project UUID
             business_rules: List of business rule strings
         """
         for i, rule in enumerate(business_rules):
+            # PROMPT #170 - Classify rule source based on content
+            source = "code"  # Default source
+
+            # Check for interface/template markers
+            if any(marker in rule.upper() for marker in ["SISTEMA:", "DOMÍNIO:", "<TITLE>", ".GOV.BR", ".COM.BR"]):
+                source = "interface"
+            elif any(marker in rule.lower() for marker in ["validação", "validator", "required", "minimo", "máximo", "obrigatório"]):
+                source = "validation"
+            elif any(marker in rule.lower() for marker in ["modelo", "entidade", "tabela", "coluna", "campo"]):
+                source = "model"
+
             self.rag.store(
                 content=rule,
                 metadata={
                     "type": "business_rule",
                     "project_id": str(project_id),
                     "rule_index": i,
-                    "source": "codebase_memory_scan"
+                    "source": source,
+                    "priority": "high" if source == "interface" else "normal"
                 },
                 project_id=project_id
             )
+
+        logger.info(f"📋 Stored {len(business_rules)} business rules in RAG for project {project_id}")
 
     async def get_interview_suggestions(
         self,

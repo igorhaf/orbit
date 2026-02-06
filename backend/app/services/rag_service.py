@@ -758,3 +758,336 @@ class RAGService:
             )
 
         return results
+
+    # ========================================================================
+    # PROMPT #170 - Business Rules High-Priority Retrieval
+    # ========================================================================
+
+    def get_business_rules(
+        self,
+        project_id: UUID,
+        query: Optional[str] = None,
+        top_k: int = 20,
+        similarity_threshold: float = 0.5
+    ) -> List[Dict]:
+        """
+        Retrieve business rules from codebase memory scan.
+
+        PROMPT #170 - High-priority context for card generation.
+
+        Business rules extracted from code (interfaces, validations, migrations)
+        should influence ALL card generation: Context, Epics, Stories, Tasks, Subtasks.
+
+        Args:
+            project_id: Project UUID
+            query: Optional query to filter relevant rules (None = all rules)
+            top_k: Max number of rules to return
+            similarity_threshold: Minimum similarity (lower = more inclusive)
+
+        Returns:
+            List of business rules sorted by priority:
+            1. Interface-derived rules (HTML, templates) - highest priority
+            2. Code-derived rules (validations, models)
+            3. Generic rules
+
+        Usage:
+            # Get all business rules for a project
+            rules = rag.get_business_rules(project_id=project.id)
+
+            # Get rules relevant to a specific topic
+            rules = rag.get_business_rules(
+                project_id=project.id,
+                query="authentication login"
+            )
+
+            # Format for prompt injection
+            rules_text = rag.format_business_rules_for_prompt(rules)
+        """
+        if query:
+            # Semantic search for relevant rules
+            results = self.retrieve(
+                query=query,
+                filter={
+                    "project_id": str(project_id),
+                    "type": "business_rule"
+                },
+                top_k=top_k,
+                similarity_threshold=similarity_threshold
+            )
+        else:
+            # Get ALL business rules for project (no semantic filter)
+            sql = """
+                SELECT id, project_id, content, metadata, created_at
+                FROM rag_documents
+                WHERE project_id = :project_id
+                AND metadata->>'type' = 'business_rule'
+                ORDER BY
+                    CASE
+                        WHEN metadata->>'source' = 'interface' THEN 1
+                        WHEN metadata->>'source' = 'template' THEN 2
+                        WHEN metadata->>'source' = 'validation' THEN 3
+                        WHEN metadata->>'source' = 'model' THEN 4
+                        WHEN metadata->>'source' = 'migration' THEN 5
+                        ELSE 6
+                    END,
+                    created_at DESC
+                LIMIT :limit
+            """
+
+            raw_results = self.db.execute(
+                text(sql),
+                {"project_id": str(project_id), "limit": top_k}
+            ).fetchall()
+
+            results = [
+                {
+                    "id": str(r.id),
+                    "project_id": str(r.project_id),
+                    "content": r.content,
+                    "metadata": json.loads(r.metadata) if isinstance(r.metadata, str) else r.metadata,
+                    "created_at": r.created_at.isoformat(),
+                    "similarity": 1.0  # All rules equally matched when no query
+                }
+                for r in raw_results
+            ]
+
+        if results:
+            logger.info(
+                f"📋 Retrieved {len(results)} business rules for project {project_id}"
+            )
+
+        return results
+
+    def get_interface_rules(
+        self,
+        project_id: UUID,
+        top_k: int = 10
+    ) -> List[Dict]:
+        """
+        Get business rules specifically from interface analysis (highest priority).
+
+        PROMPT #170 - Interface-derived rules are the most valuable because they
+        represent explicit user-facing behavior defined in templates/views.
+
+        Args:
+            project_id: Project UUID
+            top_k: Max rules to return
+
+        Returns:
+            List of interface-derived rules (titles, domains, form validations)
+        """
+        sql = """
+            SELECT id, project_id, content, metadata, created_at
+            FROM rag_documents
+            WHERE project_id = :project_id
+            AND metadata->>'type' = 'business_rule'
+            AND (
+                metadata->>'source' IN ('interface', 'template', 'view')
+                OR metadata->>'source_file' LIKE '%%.blade.php'
+                OR metadata->>'source_file' LIKE '%%.html'
+                OR metadata->>'source_file' LIKE '%%.vue'
+                OR metadata->>'source_file' LIKE '%%.tsx'
+                OR metadata->>'source_file' LIKE '%%.jsx'
+            )
+            ORDER BY created_at DESC
+            LIMIT :limit
+        """
+
+        raw_results = self.db.execute(
+            text(sql),
+            {"project_id": str(project_id), "limit": top_k}
+        ).fetchall()
+
+        results = [
+            {
+                "id": str(r.id),
+                "project_id": str(r.project_id),
+                "content": r.content,
+                "metadata": json.loads(r.metadata) if isinstance(r.metadata, str) else r.metadata,
+                "created_at": r.created_at.isoformat(),
+                "priority": "high"
+            }
+            for r in raw_results
+        ]
+
+        if results:
+            logger.info(
+                f"🖥️ Retrieved {len(results)} interface rules for project {project_id}"
+            )
+
+        return results
+
+    def format_business_rules_for_prompt(
+        self,
+        rules: List[Dict],
+        max_chars: int = 4000
+    ) -> str:
+        """
+        Format business rules for injection into AI prompts.
+
+        PROMPT #170 - Formatted output for prompt injection.
+
+        Args:
+            rules: List of business rules from get_business_rules()
+            max_chars: Maximum characters (to respect token limits)
+
+        Returns:
+            Formatted string ready for prompt injection
+
+        Example output:
+            ## REGRAS DE NEGÓCIO DO PROJETO (ALTA PRIORIDADE)
+
+            As seguintes regras de negócio foram extraídas do código existente.
+            TODAS as entregas devem respeitar estas regras:
+
+            ### Regras de Interface (Prioridade Máxima)
+            1. Sistema: SEI Contas - título oficial encontrado em templates
+            2. Domínio: sei.pe.gov.br - sistema do Governo de Pernambuco
+            3. Autenticação via LDAP é obrigatória
+
+            ### Regras de Validação
+            4. Senha deve ter mínimo 8 caracteres
+            5. Email deve ser único por usuário
+            ...
+        """
+        if not rules:
+            return ""
+
+        # Group rules by priority/source
+        interface_rules = []
+        validation_rules = []
+        model_rules = []
+        other_rules = []
+
+        for rule in rules:
+            metadata = rule.get("metadata", {})
+            source = metadata.get("source", "")
+            content = rule.get("content", "")
+
+            if source in ("interface", "template", "view") or \
+               "SISTEMA:" in content.upper() or \
+               "DOMÍNIO:" in content.upper() or \
+               "<title>" in content.lower():
+                interface_rules.append(content)
+            elif source in ("validation", "validator", "request"):
+                validation_rules.append(content)
+            elif source in ("model", "entity", "migration"):
+                model_rules.append(content)
+            else:
+                other_rules.append(content)
+
+        # Build formatted output
+        lines = [
+            "## REGRAS DE NEGÓCIO DO PROJETO (ALTA PRIORIDADE)",
+            "",
+            "As seguintes regras de negócio foram extraídas do código existente.",
+            "TODAS as entregas (épicos, stories, tasks) DEVEM respeitar estas regras:",
+            ""
+        ]
+
+        rule_number = 1
+
+        if interface_rules:
+            lines.append("### Regras de Interface (Prioridade Máxima)")
+            for rule in interface_rules:
+                lines.append(f"{rule_number}. {rule}")
+                rule_number += 1
+            lines.append("")
+
+        if validation_rules:
+            lines.append("### Regras de Validação")
+            for rule in validation_rules:
+                lines.append(f"{rule_number}. {rule}")
+                rule_number += 1
+            lines.append("")
+
+        if model_rules:
+            lines.append("### Regras de Modelo/Entidade")
+            for rule in model_rules:
+                lines.append(f"{rule_number}. {rule}")
+                rule_number += 1
+            lines.append("")
+
+        if other_rules:
+            lines.append("### Outras Regras")
+            for rule in other_rules:
+                lines.append(f"{rule_number}. {rule}")
+                rule_number += 1
+            lines.append("")
+
+        result = "\n".join(lines)
+
+        # Truncate if too long
+        if len(result) > max_chars:
+            result = result[:max_chars-50] + "\n\n... (regras truncadas por limite de tokens)"
+
+        return result
+
+    def store_business_rule(
+        self,
+        content: str,
+        project_id: UUID,
+        source: str = "code",
+        source_file: Optional[str] = None,
+        rule_type: Optional[str] = None,
+        priority: str = "normal"
+    ) -> UUID:
+        """
+        Store a single business rule in RAG with rich metadata.
+
+        PROMPT #170 - Enhanced business rule storage.
+
+        Args:
+            content: The business rule text
+            project_id: Project UUID
+            source: Where rule came from (interface, template, validation, model, migration, code)
+            source_file: File path where rule was found
+            rule_type: Type of rule (domain, validation, constraint, workflow)
+            priority: Rule priority (high, normal, low)
+
+        Returns:
+            UUID of stored document
+
+        Example:
+            # Store interface rule (high priority)
+            rag.store_business_rule(
+                content="Sistema: SEI Contas - Gestão LDAP Governo PE",
+                project_id=project.id,
+                source="interface",
+                source_file="resources/views/layouts/app.blade.php",
+                rule_type="domain",
+                priority="high"
+            )
+
+            # Store validation rule
+            rag.store_business_rule(
+                content="Senha deve ter mínimo 8 caracteres",
+                project_id=project.id,
+                source="validation",
+                source_file="app/Http/Requests/ResetPasswordRequest.php",
+                rule_type="validation",
+                priority="normal"
+            )
+        """
+        metadata = {
+            "type": "business_rule",
+            "source": source,
+            "rule_type": rule_type or "general",
+            "priority": priority
+        }
+
+        if source_file:
+            metadata["source_file"] = source_file
+
+        doc_id = self.store(
+            content=content,
+            metadata=metadata,
+            project_id=project_id
+        )
+
+        logger.info(
+            f"📋 Stored business rule: '{content[:50]}...' "
+            f"(source={source}, priority={priority})"
+        )
+
+        return doc_id

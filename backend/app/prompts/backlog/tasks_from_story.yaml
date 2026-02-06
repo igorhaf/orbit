@@ -24,6 +24,7 @@ variables:
   optional:
     - semantic_map_text
     - rag_context
+    - business_rules_text
 
 components:
   - semantic_methodology
@@ -92,6 +93,13 @@ system_prompt: |
 user_prompt: |
   Decomponha esta Story em Tasks usando a Metodologia de Referências Semânticas.
 
+  {% if business_rules_text %}
+  {{ business_rules_text }}
+
+  ATENÇÃO: TODAS as Tasks geradas DEVEM respeitar as regras de negócio listadas acima.
+  Cada Task deve implementar corretamente as regras que se aplicam a ela.
+  {% endif %}
+
   DETALHES DA STORY:
   Título: {{ story_title }}
   Descrição: {{ story_description }}
@@ -110,6 +118,10 @@ user_prompt: |
   3. Cada Task deve ter seu próprio campo "semantic_map" (reutilizando + estendendo)
   4. Gere o campo "description_markdown" com Markdown completo formatado
   5. Use identificadores semânticos em TODA a narrativa
+  {% if business_rules_text %}
+  6. IMPORTANTE: Os critérios de aceitação de cada Task DEVEM validar as regras de negócio aplicáveis
+  7. Se uma regra diz "senha mínimo 8 caracteres", crie AC: "AC1: Validar que D1 (senha) tenha mínimo 8 caracteres"
+  {% endif %}
 
   Retorne 3-10 Tasks como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.
 
@@ -118,6 +130,9 @@ user_prompt: |
   - REUTILIZE identificadores da Story (mantenha consistência)
   - NUNCA substitua identificadores por seus significados
   - Evite mencionar frameworks específicos (use identificadores genéricos)
+  {% if business_rules_text %}
+  - REGRAS DE NEGÓCIO são OBRIGATÓRIAS - cada Task deve implementar as regras que se aplicam
+  {% endif %}
   {% if rag_context %}
   {{ rag_context }}
   {% endif %}
