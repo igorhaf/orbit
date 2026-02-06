@@ -27,7 +27,7 @@ export default function ProjectDetailsPage() {
   const params = useParams();
   const router = useRouter();  // PROMPT #151 - Restored for redirect to wizard
   const projectId = params.id as string;
-  const { showError, NotificationComponent } = useNotification();
+  const { showError, showSuccess, NotificationComponent } = useNotification();
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -404,7 +404,7 @@ export default function ProjectDetailsPage() {
                     if (res.ok) {
                       const data = await res.json();
                       if (data.job_id) {
-                        alert('Epic generation started in background. Check Jobs page for progress.');
+                        showSuccess('Epic generation started in background. Check Jobs page for progress.', 'Epics');
                       }
                     } else {
                       const err = await res.json();
