@@ -1694,6 +1694,44 @@ async def send_message_to_interview(
     logger.info(f"  - New conversation_data length: {len(interview.conversation_data)}")
     logger.info(f"  - Message at index {len(interview.conversation_data)-1}: role={user_message['role']}, content={user_message['content'][:50]}")
 
+    # PROMPT #171 - Index user answer in RAG for semantic search
+    try:
+        from app.services.rag_service import RAGService
+
+        rag_service = RAGService(db)
+
+        # Find the previous assistant message (the question)
+        question_content = None
+        if len(interview.conversation_data) >= 2:
+            # Look backwards for last assistant message
+            for msg in reversed(interview.conversation_data[:-1]):
+                if msg.get("role") == "assistant":
+                    question_content = msg.get("content", "")
+                    break
+
+        # Calculate question number
+        message_count = len(interview.conversation_data)
+        question_number = (message_count - 1) // 2  # Approximate question number
+
+        rag_service.store(
+            content=message.content,
+            metadata={
+                "type": "interview_answer",
+                "interview_id": str(interview.id),
+                "question_number": question_number,
+                "question": question_content or "",
+                "interview_mode": interview.interview_mode,
+                "timestamp": datetime.utcnow().isoformat()
+            },
+            project_id=interview.project_id
+        )
+
+        logger.info(f"✅ RAG: Indexed interview answer (Q{question_number}) for interview {interview.id}")
+
+    except Exception as e:
+        # Don't fail the request if RAG indexing fails
+        logger.warning(f"⚠️  RAG indexing failed for interview answer: {e}")
+
     # Buscar projeto para pegar título e descrição
     project = db.query(Project).filter(
         Project.id == interview.project_id
@@ -2017,6 +2055,44 @@ async def send_message_async(
     db.refresh(interview)  # PROMPT #99: Refresh to ensure data is synced
 
     logger.info(f"✅ User message added to interview {interview_id} (message_count: {len(interview.conversation_data)})")
+
+    # PROMPT #171 - Index user answer in RAG for semantic search
+    try:
+        from app.services.rag_service import RAGService
+
+        rag_service = RAGService(db)
+
+        # Find the previous assistant message (the question)
+        question_content = None
+        if len(interview.conversation_data) >= 2:
+            # Look backwards for last assistant message
+            for msg in reversed(interview.conversation_data[:-1]):
+                if msg.get("role") == "assistant":
+                    question_content = msg.get("content", "")
+                    break
+
+        # Calculate question number
+        message_count = len(interview.conversation_data)
+        question_number = (message_count - 1) // 2  # Approximate question number
+
+        rag_service.store(
+            content=message.content,
+            metadata={
+                "type": "interview_answer",
+                "interview_id": str(interview.id),
+                "question_number": question_number,
+                "question": question_content or "",
+                "interview_mode": interview.interview_mode,
+                "timestamp": datetime.utcnow().isoformat()
+            },
+            project_id=interview.project_id
+        )
+
+        logger.info(f"✅ RAG: Indexed interview answer (Q{question_number}) for interview {interview.id}")
+
+    except Exception as e:
+        # Don't fail the request if RAG indexing fails
+        logger.warning(f"⚠️  RAG indexing failed for interview answer: {e}")
 
     # PROMPT #133 - Build deep link and notification title
     # PROMPT #154 - For context interviews (no task_id), use project name instead

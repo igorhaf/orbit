@@ -178,6 +178,45 @@ async def search_project_knowledge(
         )
 
 
+# ============================================================================
+# PROMPT #171 - GLOBAL RAG STATS ENDPOINT
+# ============================================================================
+
+@router.get("/knowledge/global-stats")
+async def get_global_rag_stats(
+    db: Session = Depends(get_db)
+):
+    """
+    Get global RAG statistics for ALL projects.
+
+    PROMPT #171 - Complete RAG storage verification.
+
+    Returns detailed breakdown of document types stored in RAG:
+    - Total document count
+    - Counts by type (card, interview_answer, project_context, business_rule, etc.)
+    - Cards breakdown by item_type (epic, story, task, subtask)
+
+    This helps verify that all document types are being indexed correctly.
+    """
+    try:
+        rag_service = RAGService(db)
+        detailed_stats = rag_service.get_detailed_stats()
+
+        logger.info(f"Global RAG stats: {detailed_stats['total_documents']} total documents")
+
+        return {
+            "success": True,
+            "stats": detailed_stats
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get global RAG stats: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get global RAG stats: {str(e)}"
+        )
+
+
 @router.get("/projects/{project_id}/knowledge/stats", response_model=KnowledgeStatsResponse)
 async def get_project_knowledge_stats(
     project_id: UUID,

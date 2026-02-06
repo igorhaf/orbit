@@ -421,6 +421,66 @@ class RAGService:
             "metadata_types": result.metadata_types or []
         }
 
+    def get_detailed_stats(self, project_id: Optional[UUID] = None) -> Dict:
+        """
+        Get detailed RAG statistics by document type.
+
+        PROMPT #171 - Complete RAG storage verification.
+
+        Args:
+            project_id: Optional project filter (None = all projects)
+
+        Returns:
+            Dict with counts by document type (cards, interview_answers, project_context, etc.)
+        """
+        if project_id:
+            where_clause = "WHERE project_id = :project_id"
+            params = {"project_id": str(project_id)}
+        else:
+            where_clause = ""
+            params = {}
+
+        # Get counts by type
+        query = text(f"""
+            SELECT
+                COALESCE(metadata->>'type', 'unknown') as doc_type,
+                COUNT(*) as count
+            FROM rag_documents
+            {where_clause}
+            GROUP BY COALESCE(metadata->>'type', 'unknown')
+            ORDER BY count DESC
+        """)
+
+        result = self.db.execute(query, params).fetchall()
+
+        # Build type counts dict
+        type_counts = {}
+        total = 0
+        for row in result:
+            type_counts[row.doc_type] = row.count
+            total += row.count
+
+        # Get card counts by item_type
+        card_query = text(f"""
+            SELECT
+                COALESCE(metadata->>'item_type', 'unknown') as item_type,
+                COUNT(*) as count
+            FROM rag_documents
+            WHERE metadata->>'type' = 'card'
+            {' AND project_id = :project_id' if project_id else ''}
+            GROUP BY COALESCE(metadata->>'item_type', 'unknown')
+        """)
+
+        card_result = self.db.execute(card_query, params if project_id else {}).fetchall()
+        card_breakdown = {row.item_type: row.count for row in card_result}
+
+        return {
+            "total_documents": total,
+            "by_type": type_counts,
+            "cards_breakdown": card_breakdown,
+            "project_id": str(project_id) if project_id else None
+        }
+
     # ========================================================================
     # PROMPT #162 - Card RAG Integration
     # ========================================================================
