@@ -217,6 +217,128 @@ async def get_global_rag_stats(
         )
 
 
+# ============================================================================
+# PROMPT #172 - PER-PROJECT RAG STATS FOR COMPARISON TABLE
+# ============================================================================
+
+@router.get("/knowledge/projects-stats")
+async def get_all_projects_rag_stats(
+    db: Session = Depends(get_db)
+):
+    """
+    Get RAG statistics for ALL projects in a single call.
+
+    PROMPT #172 - RAG Analytics Dashboard with project comparison.
+
+    Returns a list of all projects with their individual RAG stats,
+    plus aggregated totals. This enables the comparison table view.
+
+    Returns:
+        - projects: List of projects with their RAG stats
+        - totals: Aggregated totals across all projects
+        - global_only: Stats for global documents (project_id=NULL)
+    """
+    try:
+        # Get all projects
+        projects = db.query(Project).order_by(Project.name).all()
+
+        # Get stats for each project using raw SQL for efficiency
+        stats_query = text("""
+            SELECT
+                project_id,
+                COUNT(*) as total_documents,
+                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'code_file' OR metadata->>'type' = 'code_file') as code_files,
+                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'card' OR metadata->>'type' = 'card') as cards,
+                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'business_rule') as business_rules,
+                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'interview_answer' OR metadata->>'type' = 'interview_answer') as interview_answers,
+                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'project_context') as project_context,
+                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'document') as documents
+            FROM rag_documents
+            WHERE project_id IS NOT NULL
+            GROUP BY project_id
+        """)
+
+        stats_results = db.execute(stats_query).fetchall()
+        stats_by_project = {str(row.project_id): row for row in stats_results}
+
+        # Get global-only stats (project_id IS NULL)
+        global_query = text("""
+            SELECT
+                COUNT(*) as total_documents,
+                COUNT(*) FILTER (WHERE metadata->>'type' LIKE 'spec_%') as framework_specs,
+                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'prompt_doc') as prompt_docs
+            FROM rag_documents
+            WHERE project_id IS NULL
+        """)
+        global_result = db.execute(global_query).fetchone()
+
+        # Build response
+        project_stats = []
+        totals = {
+            "total_documents": 0,
+            "code_files": 0,
+            "cards": 0,
+            "business_rules": 0,
+            "interview_answers": 0,
+            "project_context": 0,
+            "documents": 0
+        }
+
+        for project in projects:
+            project_id_str = str(project.id)
+            row = stats_by_project.get(project_id_str)
+
+            if row:
+                stats = {
+                    "project_id": project_id_str,
+                    "project_name": project.name,
+                    "total_documents": row.total_documents,
+                    "code_files": row.code_files,
+                    "cards": row.cards,
+                    "business_rules": row.business_rules,
+                    "interview_answers": row.interview_answers,
+                    "project_context": row.project_context,
+                    "documents": row.documents
+                }
+                # Accumulate totals
+                for key in totals:
+                    totals[key] += stats.get(key, 0)
+            else:
+                stats = {
+                    "project_id": project_id_str,
+                    "project_name": project.name,
+                    "total_documents": 0,
+                    "code_files": 0,
+                    "cards": 0,
+                    "business_rules": 0,
+                    "interview_answers": 0,
+                    "project_context": 0,
+                    "documents": 0
+                }
+
+            project_stats.append(stats)
+
+        logger.info(f"Projects RAG stats: {len(project_stats)} projects, {totals['total_documents']} total documents")
+
+        return {
+            "success": True,
+            "projects": project_stats,
+            "totals": totals,
+            "global_only": {
+                "total_documents": global_result.total_documents if global_result else 0,
+                "framework_specs": global_result.framework_specs if global_result else 0,
+                "prompt_docs": global_result.prompt_docs if global_result else 0
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to get projects RAG stats: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get projects RAG stats: {str(e)}"
+        )
+
+
 @router.get("/projects/{project_id}/knowledge/stats", response_model=KnowledgeStatsResponse)
 async def get_project_knowledge_stats(
     project_id: UUID,

@@ -1282,4 +1282,35 @@ export const knowledgeApi = {
         project_id: string | null;
       };
     }>('/api/v1/knowledge/global-stats'),
+
+  // PROMPT #172 - Per-project RAG Stats for comparison table
+  getProjectsStats: () =>
+    request<{
+      success: boolean;
+      projects: Array<{
+        project_id: string;
+        project_name: string;
+        total_documents: number;
+        code_files: number;
+        cards: number;
+        business_rules: number;
+        interview_answers: number;
+        project_context: number;
+        documents: number;
+      }>;
+      totals: {
+        total_documents: number;
+        code_files: number;
+        cards: number;
+        business_rules: number;
+        interview_answers: number;
+        project_context: number;
+        documents: number;
+      };
+      global_only: {
+        total_documents: number;
+        framework_specs: number;
+        prompt_docs: number;
+      };
+    }>('/api/v1/knowledge/projects-stats'),
 };

@@ -1,199 +1,179 @@
 # PROMPT #172 - Integrar RAG Stats no Frontend
-## Adicionar seções de Document Storage (Global e Por Projeto)
+## Tabela Comparativa de Projetos + Global Knowledge
 
 **Date:** February 5, 2026
-**Status:** COMPLETED
+**Status:** COMPLETED (Updated)
 **Priority:** MEDIUM
 **Type:** Feature Implementation
-**Impact:** Usuários podem visualizar estatísticas de documentos RAG tanto globalmente quanto por projeto
+**Impact:** Dashboard unificado mostrando RAG de todos os projetos com visão comparativa
 
 ---
 
 ## Objective
 
-Integrar estatísticas de documentos RAG no frontend em dois escopos:
-1. **Global** - Página `/rag` mostra total de todos os projetos
-2. **Por Projeto** - Aba RAG de cada projeto mostra documentos daquele projeto
+Integrar estatísticas de documentos RAG no frontend com uma abordagem que reflete a arquitetura real do ORBIT:
+- **ORBIT não tem RAG próprio** - ele orquestra RAGs por projeto
+- Página `/rag` mostra **tabela comparativa** de todos os projetos
+- Cada projeto tem seu próprio RAG isolado
 
 **Key Requirements:**
-1. Adicionar tipo TypeScript `GlobalRagStats`
-2. Adicionar função de API `getGlobalStats()`
-3. Criar seção "Global Document Storage" na página `/rag`
-4. Criar seção "Document Storage" na aba RAG de cada projeto
+1. Tabela comparativa mostrando stats de cada projeto lado a lado
+2. Seção de "Global Knowledge" (framework specs, PROMPT docs)
+3. Links para navegar ao RAG de cada projeto
+4. Totais agregados na última linha
 
 ---
 
-## Architecture Decision
+## Architecture Decision (Updated)
 
-A arquitetura de RAG do ORBIT tem **dois escopos**:
+O ORBIT é um **orquestrador de memória por projeto**, não tem RAG próprio.
 
-| Escopo | Localização | Endpoint | O que mostra |
-|--------|-------------|----------|--------------|
-| **Global** | Página `/rag` | `/api/v1/knowledge/global-stats` | Stats de TODOS os projetos |
-| **Por Projeto** | Aba RAG em `/projects/[id]` | `/api/v1/projects/{id}/knowledge/full-stats` | Stats daquele projeto |
+| Escopo | Localização | O que mostra |
+|--------|-------------|--------------|
+| **Per-Project RAG** | Aba RAG em `/projects/[id]` | RAG isolado daquele projeto |
+| **Global Knowledge** | Compartilhado | Framework specs + PROMPT docs (project_id=NULL) |
+| **Dashboard** | Página `/rag` | Tabela comparativa de TODOS os projetos |
 
 ---
 
 ## What Was Implemented
 
-### PARTE 1: Página Global `/rag`
+### PARTE 1: Backend - Novo Endpoint
 
-#### 1.1. Tipo TypeScript `GlobalRagStats`
+**Arquivo:** `backend/app/api/routes/knowledge.py`
 
-**Arquivo:** `frontend/src/lib/types.ts`
+```python
+@router.get("/knowledge/projects-stats")
+async def get_all_projects_rag_stats(db: Session = Depends(get_db)):
+    """
+    Get RAG statistics for ALL projects in a single call.
+    Returns list of projects with stats + totals + global-only stats.
+    """
+```
 
-```typescript
-export interface GlobalRagStats {
-  total_documents: number;
-  by_type: {
-    [key: string]: number;  // card, interview_answer, project_context, code_file, etc.
-  };
-  cards_breakdown: {
-    epic?: number;
-    story?: number;
-    task?: number;
-    subtask?: number;
-  };
-  project_id: string | null;
+**Response:**
+```json
+{
+  "success": true,
+  "projects": [
+    {
+      "project_id": "uuid",
+      "project_name": "Project A",
+      "total_documents": 150,
+      "code_files": 120,
+      "cards": 20,
+      "business_rules": 5,
+      "interview_answers": 3,
+      "project_context": 1,
+      "documents": 1
+    }
+  ],
+  "totals": {
+    "total_documents": 230,
+    "code_files": 180,
+    ...
+  },
+  "global_only": {
+    "total_documents": 50,
+    "framework_specs": 47,
+    "prompt_docs": 3
+  }
 }
 ```
 
-#### 1.2. Função de API `getGlobalStats()`
+### PARTE 2: Frontend - API Function
 
 **Arquivo:** `frontend/src/lib/api.ts`
 
 ```typescript
-getGlobalStats: () =>
+getProjectsStats: () =>
   request<{
     success: boolean;
-    stats: GlobalRagStats;
-  }>('/api/v1/knowledge/global-stats'),
+    projects: Array<{
+      project_id: string;
+      project_name: string;
+      total_documents: number;
+      code_files: number;
+      cards: number;
+      business_rules: number;
+      interview_answers: number;
+      project_context: number;
+      documents: number;
+    }>;
+    totals: { ... };
+    global_only: {
+      total_documents: number;
+      framework_specs: number;
+      prompt_docs: number;
+    };
+  }>('/api/v1/knowledge/projects-stats'),
 ```
 
-#### 1.3. Seção "Global Document Storage"
+### PARTE 3: Frontend - Projects Comparison Table
 
 **Arquivo:** `frontend/src/app/rag/page.tsx`
 
-Nova seção no topo da página com:
-- Grid de 6 cards (Total, Code Files, Cards, Interview Answers, Project Context, Business Rules)
-- Cards Breakdown (Epic, Story, Task, Subtask)
-- Seção "Other Document Types" para tipos adicionais
+Página completamente reescrita com:
+1. **Global Knowledge Card** - Framework specs + PROMPT docs
+2. **Projects Comparison Table** - Todas as colunas de stats
+3. **Totals Row** - Soma de todos os projetos
+4. **Action Buttons** - Links para RAG Analytics e Knowledge Base de cada projeto
+5. **Info Card** - Explicação sobre RAG no ORBIT
 
 ---
 
-### PARTE 2: Aba RAG do Projeto `/projects/[id]`
+## Visual Layout (New)
 
-#### 2.1. Novo Estado `knowledgeStats`
-
-**Arquivo:** `frontend/src/app/projects/[id]/page.tsx`
-
-```typescript
-const [knowledgeStats, setKnowledgeStats] = useState<{
-  total_documents: number;
-  business_rules_count: number;
-  interview_answers_count: number;
-  code_files_count: number;
-  documents_count: number;
-  by_category: Record<string, number>;
-  by_source: Record<string, number>;
-} | null>(null);
 ```
-
-#### 2.2. Busca de Stats na `loadRagStats()`
-
-```typescript
-const [rag, code, knowledge] = await Promise.all([
-  ragApi.stats(),
-  ragApi.codeStats(projectId),
-  knowledgeApi.getFullStats(projectId)  // NEW
-]);
-setKnowledgeStats(knowledge);
++------------------------------------------------------------------+
+| RAG Analytics                                           [Refresh] |
++------------------------------------------------------------------+
+|                                                                    |
+| +-- GLOBAL KNOWLEDGE (Shared across all projects) ---------------+|
+| |  [Total Global: 50]  [Framework Specs: 47]  [PROMPT Docs: 3]   ||
+| +----------------------------------------------------------------+|
+|                                                                    |
+| +-- PROJECTS RAG COMPARISON (3 projects) ------------------------+|
+| |                                                                 ||
+| | Project      | Total | Code | Cards | Rules | Answers | Docs   ||
+| |--------------|-------|------|-------|-------|---------|--------|
+| | Project A    |  150  | 120  |  20   |   5   |    3    |   2    ||
+| | Project B    |   80  |  60  |  15   |   3   |    1    |   1    ||
+| | Project C    |    0  |   0  |   0   |   0   |    0    |   0    ||
+| |--------------|-------|------|-------|-------|---------|--------|
+| | TOTAL        |  230  | 180  |  35   |   8   |    4    |   3    ||
+| +----------------------------------------------------------------+|
+|                                                                    |
+| +-- ABOUT RAG IN ORBIT ------------------------------------------+|
+| | Each project has its own isolated RAG. ORBIT orchestrates...   ||
+| +----------------------------------------------------------------+|
++------------------------------------------------------------------+
 ```
-
-#### 2.3. Seção "Document Storage" na Aba RAG
-
-Nova Card com:
-- Grid de 4 métricas (Total, Code Files, Interview Answers, Business Rules)
-- Breakdown "By Source" (code_scan, interview, manual, etc.)
-- Breakdown "By Category" para business rules (validation, workflow, etc.)
 
 ---
 
 ## Files Modified
 
-### Modified:
-1. **[frontend/src/lib/types.ts](frontend/src/lib/types.ts)**
-   - Added `GlobalRagStats` interface
-   - Lines added: ~15
+### Backend:
+1. **[backend/app/api/routes/knowledge.py](backend/app/api/routes/knowledge.py)**
+   - Added endpoint `GET /knowledge/projects-stats`
+   - Returns per-project stats, totals, and global-only stats
+   - Lines added: ~80
 
-2. **[frontend/src/lib/api.ts](frontend/src/lib/api.ts)**
-   - Added `getGlobalStats()` method to `knowledgeApi`
-   - Lines added: ~15
+### Frontend:
+1. **[frontend/src/lib/api.ts](frontend/src/lib/api.ts)**
+   - Added `getProjectsStats()` method to `knowledgeApi`
+   - Lines added: ~30
 
-3. **[frontend/src/app/rag/page.tsx](frontend/src/app/rag/page.tsx)**
-   - Added state: `globalStats`, `loadingGlobalStats`
-   - Added `fetchGlobalStats()` callback and useEffect
-   - Added "Global Document Storage" Card section
-   - Lines added: ~120
+2. **[frontend/src/app/rag/page.tsx](frontend/src/app/rag/page.tsx)**
+   - Complete rewrite with projects comparison table
+   - Removed old global stats section
+   - Added navigation to project RAG/Knowledge pages
+   - Lines: ~390 (rewritten)
 
-4. **[frontend/src/app/projects/[id]/page.tsx](frontend/src/app/projects/[id]/page.tsx)**
-   - Added import: `knowledgeApi`
-   - Added state: `knowledgeStats`
-   - Modified `loadRagStats()` to also fetch `getFullStats()`
-   - Added "Document Storage" Card section in RAG tab
-   - Lines added: ~60
-
----
-
-## Visual Layout
-
-### Página Global `/rag`:
-
-```
-+----------------------------------------------------------+
-| RAG Analytics                                    [Refresh]|
-+----------------------------------------------------------+
-|                                                          |
-| +-- GLOBAL DOCUMENT STORAGE (All Projects) -------------+|
-| |  [Total]  [Code]  [Cards]  [Answers]  [Context] [Rules]|
-| |   300      236      20        15         5        10   |
-| |                                                        |
-| |  Cards Breakdown:                                      |
-| |  [Epic: 5] [Story: 8] [Task: 5] [Subtask: 2]          |
-| +--------------------------------------------------------+|
-|                                                          |
-| +-- PROJECT SPECIFIC ------------------------------------+|
-| |  [Select Project v]  [Sync to RAG]  [Refresh]          |
-| +--------------------------------------------------------+|
-+----------------------------------------------------------+
-```
-
-### Aba RAG do Projeto `/projects/[id]`:
-
-```
-+----------------------------------------------------------+
-| RAG Analytics (Project Tab)                              |
-+----------------------------------------------------------+
-|                                                          |
-| +-- RAG STATS ------------------------------------------+|
-| |  Hit Rate | Similarity | Latency | Results            |
-| +--------------------------------------------------------+|
-|                                                          |
-| +-- CHARTS & TABLE -------------------------------------+|
-| |  [Pie Chart]         |    [Usage Type Table]          |
-| +--------------------------------------------------------+|
-|                                                          |
-| +-- DOCUMENT STORAGE (NEW) -----------------------------+|
-| |  [Total: 45]  [Code: 30]  [Answers: 10]  [Rules: 5]   |
-| |                                                        |
-| |  By Source: [code_scan: 30] [interview: 10] [manual: 5]|
-| +--------------------------------------------------------+|
-|                                                          |
-| +-- CODE INDEXING PANEL --------------------------------+|
-| |  [Index Code]  [Force Re-index]                       |
-| +--------------------------------------------------------+|
-+----------------------------------------------------------+
-```
+### Previously Modified (Part 1):
+- `frontend/src/lib/types.ts` - GlobalRagStats interface
+- `frontend/src/app/projects/[id]/page.tsx` - Document Storage section in RAG tab
 
 ---
 
@@ -201,56 +181,59 @@ Nova Card com:
 
 ### Verification Steps:
 
-**Página Global:**
-1. Acessar `/rag` no frontend
-2. Verificar "Global Document Storage" no topo
-3. Verificar números batem com: `curl http://localhost:8000/api/v1/knowledge/global-stats`
+**Backend:**
+```bash
+curl http://localhost:8000/api/v1/knowledge/projects-stats
+```
 
-**Aba do Projeto:**
-1. Acessar `/projects/[id]` e clicar na aba "RAG Analytics"
-2. Verificar seção "Document Storage" aparece
-3. Verificar números batem com: `curl http://localhost:8000/api/v1/projects/{id}/knowledge/full-stats`
+**Frontend:**
+1. Acessar `/rag`
+2. Verificar Global Knowledge card no topo
+3. Verificar tabela comparativa com todos os projetos
+4. Verificar linha de totais no final
+5. Clicar nos botões de ação para navegar ao projeto
 
 ---
 
 ## Success Metrics
 
-- Página `/rag` exibe stats globais de todos os projetos
-- Aba RAG do projeto exibe stats específicos daquele projeto
-- Ambas seções têm loading states funcionais
-- Cores consistentes entre as duas views
-- Breakdowns detalhados (by source, by category)
+- Tabela mostra todos os projetos com suas stats
+- Linha de totais soma corretamente
+- Global Knowledge mostra framework specs e PROMPT docs
+- Navegação para projeto funciona
+- Info card explica a arquitetura
 
 ---
 
 ## Key Insights
 
-### 1. Dois Escopos, Mesma UX
-As duas seções seguem o mesmo padrão visual, mas com dados de escopos diferentes:
-- Global: agregado de todos os projetos
-- Projeto: filtrado por project_id
+### 1. ORBIT como Orquestrador
+O ORBIT não tem RAG próprio - ele gerencia RAGs por projeto. A página `/rag` é um **dashboard de monitoramento**, não um RAG global.
 
-### 2. Endpoint Existente Reutilizado
-O endpoint `/projects/{id}/knowledge/full-stats` já existia (PROMPT #147), apenas não estava integrado na aba RAG.
+### 2. Global Knowledge vs Per-Project
+- **Global (project_id=NULL):** Framework specs, PROMPT docs - compartilhados
+- **Per-Project:** Cards, rules, answers, code files - isolados
 
-### 3. Cores Consistentes
-- Roxo: Total/Global
-- Azul: Code Files
-- Amarelo: Interview Answers
-- Laranja: Business Rules
+### 3. Comparação Facilita Gestão
+A tabela comparativa permite ao admin/PM ver rapidamente:
+- Quais projetos têm mais conhecimento indexado
+- Quais projetos precisam de mais contexto
+- Distribuição por tipo de documento
 
 ---
 
 ## Status: COMPLETE
 
 **Key Achievements:**
-- Seção "Global Document Storage" na página `/rag`
-- Seção "Document Storage" na aba RAG de cada projeto
-- Integração com endpoints existentes do PROMPT #171 e #147
+- Novo endpoint `GET /knowledge/projects-stats`
+- Tabela comparativa de projetos na página `/rag`
+- Seção "Global Knowledge" separada
+- Navegação para RAG/Knowledge de cada projeto
+- Info card explicando arquitetura
 
 **Impact:**
-- Visibilidade completa do RAG em todos os níveis
-- Usuário entende quantos documentos estão indexados por projeto
-- Monitoramento facilitado da saúde do RAG
+- Visão unificada de todos os RAGs do sistema
+- Fácil comparação entre projetos
+- Entendimento claro: ORBIT orquestra, não armazena
 
 ---
