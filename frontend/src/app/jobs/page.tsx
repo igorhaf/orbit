@@ -825,6 +825,9 @@ export default function JobsPage() {
                             Status
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
+                            Priority
+                          </th>
+                          <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
                             Type
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
@@ -867,6 +870,18 @@ export default function JobsPage() {
                                   {STATUS_ICONS[job.status]}
                                   {job.status}
                                 </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                {(() => {
+                                  const p = (job as any).priority ?? 5;
+                                  const label = p >= 10 ? 'Critical' : p >= 7 ? 'High' : p >= 5 ? 'Normal' : 'Low';
+                                  const colors = p >= 10 ? 'bg-red-100 text-red-700 border-red-200' : p >= 7 ? 'bg-orange-100 text-orange-700 border-orange-200' : p >= 5 ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200';
+                                  return (
+                                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${colors}`}>
+                                      {label}
+                                    </span>
+                                  );
+                                })()}
                               </td>
                               <td className="px-4 py-3">
                                 <span className="text-sm text-gray-600">

@@ -975,16 +975,10 @@ async def generate_prompts_async(
 
     logger.info(f"Created async job {job.id} for backlog generation from interview {interview_id}")
 
-    # IMPORTANT: Use asyncio.create_task() instead of BackgroundTasks for long-running operations
-    # BackgroundTasks blocks the worker until completion, which defeats the purpose of async
-    import asyncio
-    asyncio.create_task(
-        _generate_backlog_async(
-            job_id=job.id,
-            interview_id=interview_id,
-            project_id=interview.project_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_backlog_async, job.id, interview_id, interview.project_id)
 
     # Return job_id immediately
     return {
@@ -1266,15 +1260,10 @@ async def generate_task_direct(
 
     logger.info(f"Created async job {job.id} for direct task generation from interview {interview_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _generate_task_direct_async(
-            job_id=job.id,
-            interview_id=interview_id,
-            project_id=interview.project_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_task_direct_async, job.id, interview_id, interview.project_id)
 
     # Return job_id immediately
     return {
@@ -1694,14 +1683,10 @@ async def save_interview_stack_async(
 
     logger.info(f"Created provisioning job {job.id} for project {project.name}")
 
-    # IMPORTANT: Use asyncio.create_task() instead of BackgroundTasks for long-running operations
-    import asyncio
-    asyncio.create_task(
-        _provision_project_async(
-            job_id=job.id,
-            project_id=project.id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _provision_project_async, job.id, project.id)
 
     return {
         "job_id": str(job.id),
@@ -2263,15 +2248,10 @@ async def send_message_async(
 
     logger.info(f"Created async job {job.id} for interview {interview_id}")
 
-    # IMPORTANT: Use asyncio.create_task() instead of BackgroundTasks for long-running operations
-    import asyncio
-    asyncio.create_task(
-        _process_interview_message_async(
-            job_id=job.id,
-            interview_id=interview_id,
-            message_content=message.content
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _process_interview_message_async, job.id, interview_id, message.content)
 
     # Return job_id immediately (client will poll for result)
     return {

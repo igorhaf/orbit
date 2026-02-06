@@ -878,6 +878,8 @@ export interface JobResponse {
   project_id?: string | null;
   task_id?: string | null;
   interview_id?: string | null;
+  // PROMPT #120 - Job priority system
+  priority?: number | null;
 }
 
 // Jobs API (PROMPT #65 - Async Job System)

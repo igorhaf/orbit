@@ -548,16 +548,10 @@ async def execute_task(
 
     logger.info(f"Created task execution job {job.id} for task {task_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _execute_task_async(
-            job_id=job.id,
-            task_id=task_id,
-            project_id=task.project_id,
-            max_attempts=request.max_attempts
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _execute_task_async, job.id, task_id, task.project_id, request.max_attempts)
 
     # Return job_id immediately
     return ExecuteJobResponse(
@@ -622,15 +616,10 @@ async def execute_all_tasks(
 
     logger.info(f"Created batch execution job {job.id} for project {project_id} with {len(task_ids)} tasks")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _execute_batch_async(
-            job_id=job.id,
-            task_ids=task_ids,
-            project_id=project_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _execute_batch_async, job.id, task_ids, project_id)
 
     # Return job_id immediately
     return ExecuteJobResponse(
@@ -1819,15 +1808,10 @@ async def activate_suggested_item(
 
     logger.info(f"Created activation job {job.id} for {task.item_type.value} {task_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _activate_item_async(
-            job_id=job.id,
-            task_id=task_id,
-            item_type=task.item_type
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _activate_item_async, job.id, task_id, task.item_type)
 
     # Return job_id immediately
     return ActivateJobResponse(

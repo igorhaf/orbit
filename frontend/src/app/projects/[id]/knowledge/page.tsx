@@ -14,7 +14,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui';
 import { projectsApi, knowledgeApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 
@@ -245,16 +245,10 @@ export default function KnowledgePage() {
 
   return (
     <Layout>
-      <NotificationComponent />
+      {NotificationComponent}
 
       {/* Breadcrumbs */}
-      <Breadcrumbs
-        items={[
-          { label: 'Projects', href: '/projects' },
-          { label: project?.name || 'Project', href: `/projects/${projectId}` },
-          { label: 'Knowledge Base' },
-        ]}
-      />
+      <Breadcrumbs />
 
       <div className="space-y-6">
         {/* Header */}

@@ -80,15 +80,10 @@ async def generate_epic_from_interview(
 
     logger.info(f"Created backlog job {job.id} for Epic generation from interview {interview_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _generate_epic_async(
-            job_id=job.id,
-            interview_id=interview_id,
-            project_id=project_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_epic_async, job.id, interview_id, project_id)
 
     # Return job_id immediately
     return BacklogJobResponse(
@@ -140,15 +135,10 @@ async def generate_stories_from_epic(
 
     logger.info(f"Created backlog job {job.id} for Story generation from Epic {epic_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _generate_stories_async(
-            job_id=job.id,
-            epic_id=epic_id,
-            project_id=project_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_stories_async, job.id, epic_id, project_id)
 
     # Return job_id immediately
     return BacklogJobResponse(
@@ -200,15 +190,10 @@ async def generate_tasks_from_story(
 
     logger.info(f"Created backlog job {job.id} for Task generation from Story {story_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _generate_tasks_async(
-            job_id=job.id,
-            story_id=story_id,
-            project_id=project_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_tasks_async, job.id, story_id, project_id)
 
     # Return job_id immediately
     return BacklogJobResponse(

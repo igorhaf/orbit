@@ -490,15 +490,10 @@ async def generate_prompts_async(
 
     logger.info(f"Created async job {job.id} for backlog generation from interview {interview_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _generate_backlog_async(
-            job_id=job.id,
-            interview_id=interview_id,
-            project_id=interview.project_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_backlog_async, job.id, interview_id, interview.project_id)
 
     # Return job_id immediately
     return {
@@ -757,15 +752,10 @@ async def generate_task_direct(
 
     logger.info(f"Created async job {job.id} for direct task generation from interview {interview_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _generate_task_direct_async(
-            job_id=job.id,
-            interview_id=interview_id,
-            project_id=interview.project_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_task_direct_async, job.id, interview_id, interview.project_id)
 
     # Return job_id immediately
     return {
@@ -935,9 +925,10 @@ async def generate_context_from_interview(
         notification_title=f"Gerando contexto para '{project_name}'..."
     )
 
-    # Start background task
-    import asyncio
-    asyncio.create_task(_process_context_generation_async(job.id, interview_id, interview.project_id))
+    # Start background task via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _process_context_generation_async, job.id, interview_id, interview.project_id)
 
     return {
         "job_id": str(job.id),
@@ -1110,15 +1101,10 @@ async def generate_hierarchy_from_meta_prompt(
 
     logger.info(f"Created async job {job.id} for {interview.interview_mode} hierarchy generation from interview {interview_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _generate_hierarchy_from_meta_async(
-            job_id=job.id,
-            interview_id=interview_id,
-            project_id=interview.project_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_hierarchy_from_meta_async, job.id, interview_id, interview.project_id)
 
     # Return job_id immediately
     return {
@@ -1519,14 +1505,10 @@ async def save_interview_stack_async(
 
     logger.info(f"Created provisioning job {job.id} for project {project.name}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _provision_project_async(
-            job_id=job.id,
-            project_id=project.id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _provision_project_async, job.id, project.id)
 
     return {
         "job_id": str(job.id),
@@ -2139,15 +2121,10 @@ async def send_message_async(
 
     logger.info(f"Created async job {job.id} for interview {interview_id} (deep_link={deep_link})")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _process_interview_message_async(
-            job_id=job.id,
-            interview_id=interview_id,
-            message_content=message.content
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _process_interview_message_async, job.id, interview_id, message.content)
 
     # Return job_id immediately with deep_link for frontend
     return {

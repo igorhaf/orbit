@@ -5,7 +5,7 @@ PROMPT #65 - Async Job System
 Tracks status of asynchronous operations like AI calls, provisioning, backlog generation.
 """
 
-from sqlalchemy import Column, String, Text, Enum as SQLEnum, DateTime, JSON, Float
+from sqlalchemy import Column, String, Text, Enum as SQLEnum, DateTime, JSON, Float, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 from uuid import uuid4
@@ -21,6 +21,15 @@ class JobStatus(str, enum.Enum):
     COMPLETED = "completed"  # Job finished successfully
     FAILED = "failed"        # Job failed with error
     CANCELLED = "cancelled"  # Job was cancelled by user
+
+
+class JobPriority(int, enum.Enum):
+    """Priority level for job execution ordering.
+    Higher value = higher priority = runs first."""
+    CRITICAL = 10   # User actively waiting (interview chat)
+    HIGH = 7        # User in wizard, waiting for result
+    NORMAL = 5      # User triggered, can wait
+    LOW = 3         # Background generation
 
 
 class JobType(str, enum.Enum):
@@ -49,6 +58,32 @@ class JobType(str, enum.Enum):
 
     # PROMPT #153: Background card generation from memory scan
     CARDS_FROM_MEMORY = "cards_from_memory"        # Geração de cards (épicos + regras) a partir do memory scan
+
+
+# Default priority per job type
+JOB_TYPE_DEFAULT_PRIORITY: dict[JobType, int] = {
+    # CRITICAL - user actively waiting in chat
+    JobType.INTERVIEW_QUESTION: JobPriority.CRITICAL,
+    JobType.INTERVIEW_MESSAGE: JobPriority.CRITICAL,
+    # HIGH - user in wizard, waiting for result
+    JobType.CONTEXT_GENERATION: JobPriority.HIGH,
+    JobType.PROJECT_TITLE: JobPriority.HIGH,
+    # NORMAL - user triggered, can wait
+    JobType.MEMORY_SCAN: JobPriority.NORMAL,
+    JobType.COMMIT_GENERATION: JobPriority.NORMAL,
+    JobType.TASK_EXECUTION: JobPriority.NORMAL,
+    JobType.SUGGESTED_EPICS: JobPriority.NORMAL,
+    JobType.CARDS_FROM_MEMORY: JobPriority.NORMAL,
+    # LOW - background generation
+    JobType.EPIC_ACTIVATION: JobPriority.LOW,
+    JobType.STORY_ACTIVATION: JobPriority.LOW,
+    JobType.TASK_ACTIVATION: JobPriority.LOW,
+    JobType.SUBTASK_ACTIVATION: JobPriority.LOW,
+    JobType.BACKLOG_GENERATION: JobPriority.LOW,
+    JobType.TASK_GENERATION: JobPriority.LOW,
+    JobType.BATCH_EXECUTION: JobPriority.LOW,
+    JobType.PROJECT_PROVISIONING: JobPriority.LOW,
+}
 
 
 class AsyncJob(Base):
@@ -87,6 +122,7 @@ class AsyncJob(Base):
     # Job metadata
     job_type = Column(SQLEnum(JobType, values_callable=lambda x: [e.value for e in x], name='jobtype'), nullable=False, index=True)
     status = Column(SQLEnum(JobStatus, values_callable=lambda x: [e.value for e in x], name='jobstatus'), nullable=False, default=JobStatus.PENDING, index=True)
+    priority = Column(Integer, nullable=False, default=JobPriority.NORMAL, index=True)  # PROMPT #120: Job priority
 
     # Input/Output
     input_data = Column(JSON, nullable=False, default=dict)  # Parameters for the job
@@ -132,5 +168,6 @@ class AsyncJob(Base):
             "interview_id": str(self.interview_id) if self.interview_id else None,
             "task_id": str(self.task_id) if self.task_id else None,  # PROMPT #133
             "deep_link": self.deep_link,  # PROMPT #133
-            "notification_title": self.notification_title  # PROMPT #133
+            "notification_title": self.notification_title,  # PROMPT #133
+            "priority": self.priority  # PROMPT #120
         }

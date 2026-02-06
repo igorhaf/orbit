@@ -238,8 +238,10 @@ async def scan_codebase_memory(
         notification_title=f"Analisando código em '{folder_name}' ({scan_depth})..."
     )
 
-    # Start background task with scan_depth
-    asyncio.create_task(_process_memory_scan_async(job.id, code_path, project_id, scan_depth))
+    # Start background task via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _process_memory_scan_async, job.id, code_path, project_id, scan_depth)
 
     return {
         "job_id": str(job.id),
@@ -417,7 +419,9 @@ async def quick_create_project(
 
     # Launch background task that will update project with results
     # PROMPT #163 - Pass scan_depth to background task
-    asyncio.create_task(_process_quick_create_scan(job.id, db_project.id, code_path, scan_depth))
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _process_quick_create_scan, job.id, db_project.id, code_path, scan_depth)
 
     return {
         "project": {
@@ -513,8 +517,10 @@ async def _process_quick_create_scan(
                 deep_link=f"/projects/{project_id}/backlog",
                 notification_title=f"Gerando cards para '{project.name if project else 'projeto'}'..."
             )
-            # Launch card generation in background
-            asyncio.create_task(_process_cards_from_memory_async(cards_job.id, project_id))
+            # Launch card generation in background via priority queue
+            from app.services.job_executor import PriorityJobExecutor
+            cards_executor = PriorityJobExecutor.get_instance()
+            await cards_executor.submit(cards_job.priority, _process_cards_from_memory_async, cards_job.id, project_id)
         except Exception as e:
             logger.warning(f"⚠️ Failed to start card generation: {e}")
             # Don't fail the main job if card generation fails to start
@@ -1476,8 +1482,10 @@ async def generate_cards_from_memory(
         notification_title=f"Gerando cards para '{project.name}'..."
     )
 
-    # Launch card generation in background
-    asyncio.create_task(_process_cards_from_memory_async(job.id, project_id))
+    # Launch card generation in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _process_cards_from_memory_async, job.id, project_id)
 
     return {
         "job_id": str(job.id),

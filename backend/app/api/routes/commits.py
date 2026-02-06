@@ -242,15 +242,10 @@ async def auto_generate_commit(
 
     logger.info(f"Created commit generation job {job.id} for chat session {chat_session_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _generate_commit_auto_async(
-            job_id=job.id,
-            task_id=session.task_id,
-            chat_session_id=chat_session_id
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_commit_auto_async, job.id, session.task_id, chat_session_id)
 
     # Return job_id immediately
     return CommitJobResponse(
@@ -308,15 +303,10 @@ async def generate_manual_commit(
 
     logger.info(f"Created manual commit generation job {job.id} for task {task_id}")
 
-    # Execute in background
-    import asyncio
-    asyncio.create_task(
-        _generate_commit_manual_async(
-            job_id=job.id,
-            task_id=task_id,
-            description=commit_request.description
-        )
-    )
+    # Execute in background via priority queue
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_commit_manual_async, job.id, task_id, commit_request.description)
 
     # Return job_id immediately
     return CommitJobResponse(

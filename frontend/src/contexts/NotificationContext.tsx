@@ -42,6 +42,8 @@ export interface JobNotification {
   // PROMPT #140 - Track if user is watching this job on the page
   // If watching=true when job completes, it's auto-marked as read (no notification badge)
   watching?: boolean;
+  // PROMPT #120 - Job priority system
+  priority?: number | null;
 }
 
 interface NotificationContextType {

@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional
 import logging
 import asyncio
 
-from app.models.async_job import AsyncJob, JobStatus, JobType
+from app.models.async_job import AsyncJob, JobStatus, JobType, JOB_TYPE_DEFAULT_PRIORITY, JobPriority
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +79,8 @@ class JobManager:
         interview_id: Optional[UUID] = None,
         task_id: Optional[UUID] = None,  # PROMPT #133
         deep_link: Optional[str] = None,  # PROMPT #133
-        notification_title: Optional[str] = None  # PROMPT #133
+        notification_title: Optional[str] = None,  # PROMPT #133
+        priority: Optional[int] = None  # PROMPT #120: Job priority
     ) -> AsyncJob:
         """
         Create a new pending job.
@@ -92,10 +93,15 @@ class JobManager:
             task_id: Optional task ID for card operations (PROMPT #133)
             deep_link: URL to navigate when notification clicked (PROMPT #133)
             notification_title: Title for notification display (PROMPT #133)
+            priority: Job priority (PROMPT #120). Defaults based on job_type.
 
         Returns:
             AsyncJob instance with status=PENDING
         """
+        # PROMPT #120: Resolve priority from job type defaults
+        if priority is None:
+            priority = JOB_TYPE_DEFAULT_PRIORITY.get(job_type, JobPriority.NORMAL)
+
         job = AsyncJob(
             id=uuid4(),
             job_type=job_type,
@@ -106,6 +112,7 @@ class JobManager:
             task_id=task_id,  # PROMPT #133
             deep_link=deep_link,  # PROMPT #133
             notification_title=notification_title,  # PROMPT #133
+            priority=priority,  # PROMPT #120
             created_at=datetime.utcnow()
         )
 
@@ -113,7 +120,7 @@ class JobManager:
         self.db.commit()
         self.db.refresh(job)
 
-        logger.info(f"Created job {job.id} ({job_type.value})")
+        logger.info(f"Created job {job.id} ({job_type.value}) priority={priority}")
         return job
 
     def start_job(self, job_id: UUID) -> None:
