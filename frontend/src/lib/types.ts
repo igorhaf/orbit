@@ -655,6 +655,93 @@ export interface AIFlowChainModel {
   rate_limit_window_seconds?: number | null;
 }
 
+// PROMPT #124 - AI Flow Metrics, Animation, Analytics & Smart Reorder
+
+export interface AIFlowModelMetrics {
+  model_id: string;
+  model_name: string;
+  provider: string;
+  total_executions: number;
+  successful_executions: number;
+  failed_executions: number;
+  success_rate: number;
+  health: 'green' | 'yellow' | 'red';
+  avg_latency_ms: number;
+  avg_cost_per_call: number;
+  last_execution_at: string | null;
+  fallback_count: number;
+}
+
+export interface AIFlowModelMetricsResponse {
+  metrics: AIFlowModelMetrics[];
+  lookback_days: number;
+}
+
+export interface AIFlowChainModelStats {
+  model_id: string;
+  model_name: string;
+  provider: string;
+  total_attempts: number;
+  failures: number;
+  failure_rate: number;
+  avg_cost: number;
+  avg_latency_ms: number;
+  times_as_primary: number;
+  times_as_fallback: number;
+}
+
+export interface AIFlowChainAnalyticsItem {
+  usage_type: string;
+  total_executions: number;
+  total_cost: number;
+  fallback_rate: number;
+  avg_chain_depth: number;
+  primary_success_rate: number;
+  models: AIFlowChainModelStats[];
+  cost_savings: number;
+}
+
+export interface AIFlowChainAnalyticsResponse {
+  analytics: AIFlowChainAnalyticsItem[];
+  most_failing_model: AIFlowChainModelStats | null;
+  total_cost_all_chains: number;
+  total_fallback_savings: number;
+  lookback_days: number;
+}
+
+export interface AIFlowOptimizeModelScore {
+  model_id: string;
+  model_name: string;
+  provider: string;
+  score: number;
+  reasoning: string;
+}
+
+export interface AIFlowOptimizeChainResponse {
+  current_order: string[];
+  recommended_order: string[];
+  strategy: string;
+  models: AIFlowOptimizeModelScore[];
+  estimated_improvement: Record<string, string>;
+}
+
+export interface AIFlowChainTemplate {
+  id: string;
+  name: string;
+  description: string;
+  chain: string[];
+  models: Array<Record<string, any>>;
+}
+
+export interface AIFlowChainTemplatesResponse {
+  templates: AIFlowChainTemplate[];
+}
+
+export interface AIFlowWebSocketEvent {
+  type: 'chain_attempt_start' | 'chain_attempt_success' | 'chain_attempt_failed' | 'chain_exhausted';
+  data: Record<string, any>;
+}
+
 // ============================================================================
 // CHAT SESSION
 // ============================================================================

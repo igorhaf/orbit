@@ -12,6 +12,7 @@ import os  # PROMPT #74 - For Redis env vars
 import asyncio  # PROMPT #152 - For rate limit waiting
 from datetime import datetime
 from uuid import UUID
+from app.api.websocket import broadcast_chain_event  # PROMPT #124 - Chain animation
 
 from app.models.ai_model import AIModel, AIModelUsageType
 from app.models.ai_flow_chain import AIFlowChain  # PROMPT #122 - AI Flow Fallback Chains
@@ -562,6 +563,9 @@ class AIOrchestrator:
         Raises:
             Exception: Se a execução falhar em todos os providers
         """
+        # PROMPT #124 - Chain tracking context (used by AIExecution logging below)
+        _chain_ctx = {"usage_type": None, "position": None, "total": None, "fallback": False, "source": None}
+
         # PROMPT #123 - Chain-based fallback: try each model in the chain before failing
         # Try chains in order: specific usage_type chain → general chain → choose_model()
         chains_to_try = []
@@ -581,11 +585,28 @@ class AIOrchestrator:
             last_error = None
             for chain_source, chain_usage, chain_model_list in chains_to_try:
                 for chain_idx, chain_model_config in enumerate(chain_model_list):
+                    _chain_ctx = {
+                        "usage_type": chain_usage,
+                        "position": chain_idx + 1,
+                        "total": len(chain_model_list),
+                        "fallback": chain_idx > 0 or chain_source == "general",
+                        "source": chain_source,
+                    }
                     try:
                         logger.info(
                             f"🔗 Chain attempt [{chain_source}] {chain_idx+1}/{len(chain_model_list)}: "
                             f"{chain_model_config['db_model_name']} ({chain_model_config['provider']}/{chain_model_config['model']})"
                         )
+                        # PROMPT #124 - Broadcast chain attempt start
+                        asyncio.create_task(broadcast_chain_event("chain_attempt_start", {
+                            "usage_type": usage_type,
+                            "chain_source": chain_source,
+                            "model_id": chain_model_config.get("db_model_id", ""),
+                            "model_name": chain_model_config["db_model_name"],
+                            "provider": chain_model_config["provider"],
+                            "chain_position": chain_idx + 1,
+                            "chain_total": len(chain_model_list),
+                        }))
                         result = await self._execute_with_config(
                             model_config=chain_model_config,
                             messages=messages,
@@ -596,6 +617,44 @@ class AIOrchestrator:
                         result["chain_total"] = len(chain_model_list)
                         result["chain_fallback"] = chain_idx > 0 or chain_source == "general"
                         result["chain_source"] = chain_source
+                        # PROMPT #124 - Broadcast chain attempt success
+                        asyncio.create_task(broadcast_chain_event("chain_attempt_success", {
+                            "usage_type": usage_type,
+                            "model_id": chain_model_config.get("db_model_id", ""),
+                            "model_name": chain_model_config["db_model_name"],
+                            "provider": chain_model_config["provider"],
+                            "chain_position": chain_idx + 1,
+                            "execution_time_ms": result.get("usage", {}).get("execution_time_ms"),
+                            "total_tokens": result.get("usage", {}).get("total_tokens"),
+                        }))
+                        # PROMPT #124 - Log successful chain execution
+                        try:
+                            chain_exec_log = AIExecution(
+                                ai_model_id=UUID(chain_model_config["db_model_id"]) if chain_model_config.get("db_model_id") else None,
+                                usage_type=usage_type,
+                                input_messages=messages,
+                                system_prompt=system_prompt,
+                                response_content=result.get("content", ""),
+                                input_tokens=result.get("usage", {}).get("input_tokens"),
+                                output_tokens=result.get("usage", {}).get("output_tokens"),
+                                total_tokens=result.get("usage", {}).get("total_tokens"),
+                                provider=chain_model_config["provider"],
+                                model_name=chain_model_config["model"],
+                                temperature=str(chain_model_config.get("temperature", "")),
+                                max_tokens=max_tokens if max_tokens else chain_model_config.get("max_tokens"),
+                                execution_time_ms=result.get("usage", {}).get("execution_time_ms"),
+                                created_at=datetime.utcnow(),
+                                chain_usage_type=chain_usage,
+                                chain_position=chain_idx + 1,
+                                chain_total=len(chain_model_list),
+                                chain_fallback=chain_idx > 0 or chain_source == "general",
+                                chain_source=chain_source,
+                            )
+                            self.db.add(chain_exec_log)
+                            self.db.commit()
+                        except Exception as log_err:
+                            logger.error(f"Failed to log chain execution: {log_err}")
+                            self.db.rollback()
                         return result
                     except Exception as e:
                         last_error = e
@@ -603,6 +662,43 @@ class AIOrchestrator:
                             f"🔗 Chain fallback [{chain_source}]: {chain_model_config['db_model_name']} failed: {e}. "
                             f"{'Trying next model...' if chain_idx < len(chain_model_list)-1 else 'No more models in this chain.'}"
                         )
+                        # PROMPT #124 - Broadcast chain attempt failed
+                        next_model = chain_model_list[chain_idx + 1]["db_model_name"] if chain_idx < len(chain_model_list) - 1 else None
+                        asyncio.create_task(broadcast_chain_event("chain_attempt_failed", {
+                            "usage_type": usage_type,
+                            "model_id": chain_model_config.get("db_model_id", ""),
+                            "model_name": chain_model_config["db_model_name"],
+                            "provider": chain_model_config["provider"],
+                            "chain_position": chain_idx + 1,
+                            "chain_total": len(chain_model_list),
+                            "error": str(e)[:200],
+                            "next_model": next_model,
+                        }))
+                        # PROMPT #124 - Log failed chain attempt
+                        try:
+                            chain_fail_log = AIExecution(
+                                ai_model_id=UUID(chain_model_config["db_model_id"]) if chain_model_config.get("db_model_id") else None,
+                                usage_type=usage_type,
+                                input_messages=messages,
+                                system_prompt=system_prompt,
+                                response_content=None,
+                                provider=chain_model_config["provider"],
+                                model_name=chain_model_config["model"],
+                                temperature=str(chain_model_config.get("temperature", "")),
+                                max_tokens=max_tokens if max_tokens else chain_model_config.get("max_tokens"),
+                                error_message=str(e),
+                                created_at=datetime.utcnow(),
+                                chain_usage_type=chain_usage,
+                                chain_position=chain_idx + 1,
+                                chain_total=len(chain_model_list),
+                                chain_fallback=chain_idx > 0 or chain_source == "general",
+                                chain_source=chain_source,
+                            )
+                            self.db.add(chain_fail_log)
+                            self.db.commit()
+                        except Exception as log_err:
+                            logger.error(f"Failed to log chain failure: {log_err}")
+                            self.db.rollback()
                         continue
                 logger.warning(f"🔗 All models in {chain_source} chain for '{chain_usage}' failed, trying next chain...")
 

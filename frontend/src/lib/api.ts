@@ -650,6 +650,30 @@ export const aiFlowApi = {
 
   deleteChain: (usageType: string) =>
     request<any>(`/api/v1/ai-flow/chains/${usageType}`, { method: 'DELETE' }),
+
+  // PROMPT #124 - Metrics, Analytics, Optimize, Templates
+  modelMetrics: (modelIds: string[], days: number = 7) => {
+    const queryParams = new URLSearchParams();
+    queryParams.append('model_ids', modelIds.join(','));
+    queryParams.append('days', days.toString());
+    return request<any>(`/api/v1/ai-flow/model-metrics?${queryParams.toString()}`);
+  },
+
+  chainAnalytics: (usageType?: string, days: number = 30) => {
+    const queryParams = new URLSearchParams();
+    if (usageType) queryParams.append('usage_type', usageType);
+    queryParams.append('days', days.toString());
+    return request<any>(`/api/v1/ai-flow/chain-analytics?${queryParams.toString()}`);
+  },
+
+  optimizeChain: (usageType: string, strategy: string = 'balanced', days: number = 30) =>
+    request<any>(`/api/v1/ai-flow/optimize-chain/${usageType}`, {
+      method: 'POST',
+      body: JSON.stringify({ strategy, days }),
+    }),
+
+  chainTemplates: (usageType: string) =>
+    request<any>(`/api/v1/ai-flow/chain-templates/${usageType}`),
 };
 
 // AI Executions API (PROMPT #54 - AI Execution Logging)

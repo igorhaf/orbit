@@ -296,3 +296,87 @@ async def broadcast_job_event(event_type: str, job_data: dict):
     }
 
     await NotificationManager.broadcast(message)
+
+
+# ============================================================================
+# PROMPT #124 - WebSocket para AI Flow Chain Execution (Global)
+# ============================================================================
+
+ai_flow_connections: Set[WebSocket] = set()
+
+
+class AIFlowManager:
+    """
+    Manages WebSocket connections for AI Flow execution visualization.
+
+    PROMPT #124 - Real-time chain execution animation
+    """
+
+    @staticmethod
+    async def connect(websocket: WebSocket):
+        await websocket.accept()
+        ai_flow_connections.add(websocket)
+        logger.info(f"🔗 AI Flow WebSocket connected (total: {len(ai_flow_connections)})")
+
+    @staticmethod
+    async def disconnect(websocket: WebSocket):
+        ai_flow_connections.discard(websocket)
+        logger.info(f"🔗 AI Flow WebSocket disconnected (total: {len(ai_flow_connections)})")
+
+    @staticmethod
+    async def broadcast(message: dict):
+        if not ai_flow_connections:
+            return
+        message_json = json.dumps(message)
+        disconnected = set()
+        for conn in ai_flow_connections.copy():
+            try:
+                await conn.send_text(message_json)
+            except Exception:
+                disconnected.add(conn)
+        for conn in disconnected:
+            ai_flow_connections.discard(conn)
+
+
+@router.websocket("/ws/ai-flow")
+async def ai_flow_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for AI Flow chain execution visualization.
+
+    PROMPT #124 - Real-time execution animation
+
+    Events:
+    - chain_attempt_start: Model execution starting
+    - chain_attempt_success: Model execution succeeded
+    - chain_attempt_failed: Model execution failed, trying next
+    - chain_exhausted: All models in chain failed
+    """
+    await AIFlowManager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                message = json.loads(data)
+                if message.get("command") == "ping":
+                    await websocket.send_text(json.dumps({"event": "pong"}))
+            except json.JSONDecodeError:
+                pass
+    except WebSocketDisconnect:
+        await AIFlowManager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"AI Flow WebSocket error: {e}")
+        await AIFlowManager.disconnect(websocket)
+
+
+async def broadcast_chain_event(event_type: str, data: dict):
+    """
+    Broadcast chain execution event to AI Flow page.
+
+    PROMPT #124 - Used in AIOrchestrator chain loop.
+    """
+    message = {
+        "event": event_type,
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": data,
+    }
+    await AIFlowManager.broadcast(message)

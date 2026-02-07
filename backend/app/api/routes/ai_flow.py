@@ -1,28 +1,51 @@
 """
 AI Flow Chain API Router
 PROMPT #122 - AI Flow: Visual Fallback Chain Configuration
+PROMPT #124 - Metrics, Animation, Analytics & Smart Reorder
 
-CRUD operations for managing per-usage_type AI model fallback chains.
+CRUD operations for managing per-usage_type AI model fallback chains,
+plus analytics, metrics, and smart optimization endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from typing import List
-from datetime import datetime
-from uuid import uuid4
+from sqlalchemy import func, case, and_
+from typing import List, Optional
+from datetime import datetime, timedelta
+from uuid import uuid4, UUID
 
 from app.database import get_db
 from app.models.ai_model import AIModel, AIModelUsageType
 from app.models.ai_flow_chain import AIFlowChain
+from app.models.ai_execution import AIExecution
+from app.utils.pricing import calculate_cost, get_model_pricing
 from app.schemas.ai_flow_chain import (
     AIFlowChainBase,
     AIFlowChainCreate,
     AIFlowChainResponse,
     AIFlowChainWithModels,
+    ModelMetrics,
+    ModelMetricsResponse,
+    ChainModelStats,
+    ChainAnalyticsItem,
+    ChainAnalyticsResponse,
+    OptimizeChainRequest,
+    OptimizeChainResponse,
+    OptimizeModelScore,
+    ChainTemplate,
+    ChainTemplatesResponse,
 )
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+
+# ============================================================================
+# PROMPT #122 - Chain CRUD
+# ============================================================================
 
 def _resolve_chain_models(db: Session, chain_ids: List[str]) -> List[dict]:
     """Resolve list of model UUIDs to full model objects for frontend display."""
@@ -144,3 +167,394 @@ async def delete_chain(usage_type: AIModelUsageType, db: Session = Depends(get_d
     db.delete(chain)
     db.commit()
     return None
+
+
+# ============================================================================
+# PROMPT #124 - Feature 1: Model Metrics
+# ============================================================================
+
+@router.get("/model-metrics", response_model=ModelMetricsResponse)
+async def get_model_metrics(
+    model_ids: str = Query(..., description="Comma-separated model UUIDs"),
+    days: int = Query(7, description="Lookback window in days"),
+    db: Session = Depends(get_db),
+):
+    """Get execution metrics for specific models (health, success rate, latency, cost)."""
+    uuid_list = [uid.strip() for uid in model_ids.split(",") if uid.strip()]
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    results = db.query(
+        AIExecution.ai_model_id,
+        AIExecution.model_name,
+        AIExecution.provider,
+        func.count(AIExecution.id).label("total"),
+        func.count(case((AIExecution.error_message.is_(None), 1))).label("successes"),
+        func.count(case((AIExecution.error_message.isnot(None), 1))).label("failures"),
+        func.avg(AIExecution.execution_time_ms).label("avg_latency"),
+        func.sum(AIExecution.input_tokens).label("sum_input"),
+        func.sum(AIExecution.output_tokens).label("sum_output"),
+        func.max(AIExecution.created_at).label("last_exec"),
+        func.count(case((AIExecution.chain_position > 1, 1))).label("fallback_count"),
+    ).filter(
+        AIExecution.ai_model_id.in_([UUID(uid) for uid in uuid_list]),
+        AIExecution.created_at >= cutoff,
+    ).group_by(
+        AIExecution.ai_model_id,
+        AIExecution.model_name,
+        AIExecution.provider,
+    ).all()
+
+    metrics_list = []
+    for row in results:
+        total = row.total or 0
+        successes = row.successes or 0
+        success_rate = (successes / total * 100) if total > 0 else 100.0
+
+        if success_rate >= 95:
+            health = "green"
+        elif success_rate >= 80:
+            health = "yellow"
+        else:
+            health = "red"
+
+        sum_input = row.sum_input or 0
+        sum_output = row.sum_output or 0
+        model_name = row.model_name or ""
+        cost_info = calculate_cost(sum_input, sum_output, model_name)
+        avg_cost = cost_info["total_cost"] / total if total > 0 else 0.0
+
+        metrics_list.append(ModelMetrics(
+            model_id=str(row.ai_model_id),
+            model_name=model_name,
+            provider=row.provider or "",
+            total_executions=total,
+            successful_executions=successes,
+            failed_executions=row.failures or 0,
+            success_rate=round(success_rate, 1),
+            health=health,
+            avg_latency_ms=round(row.avg_latency or 0, 1),
+            avg_cost_per_call=round(avg_cost, 6),
+            last_execution_at=row.last_exec,
+            fallback_count=row.fallback_count or 0,
+        ))
+
+    # Add empty metrics for models with no executions
+    found_ids = {m.model_id for m in metrics_list}
+    for uid in uuid_list:
+        if uid not in found_ids:
+            model = db.query(AIModel).filter(AIModel.id == UUID(uid)).first()
+            metrics_list.append(ModelMetrics(
+                model_id=uid,
+                model_name=model.name if model else "Unknown",
+                provider=model.provider if model else "unknown",
+            ))
+
+    return ModelMetricsResponse(metrics=metrics_list, lookback_days=days)
+
+
+# ============================================================================
+# PROMPT #124 - Feature 3: Chain Analytics
+# ============================================================================
+
+@router.get("/chain-analytics", response_model=ChainAnalyticsResponse)
+async def get_chain_analytics(
+    usage_type: Optional[str] = Query(None, description="Filter by usage_type"),
+    days: int = Query(30, description="Lookback window in days"),
+    db: Session = Depends(get_db),
+):
+    """Get chain execution analytics: fallback rates, costs, failing models."""
+    cutoff = datetime.utcnow() - timedelta(days=days)
+
+    base_filter = [
+        AIExecution.chain_usage_type.isnot(None),
+        AIExecution.created_at >= cutoff,
+    ]
+    if usage_type:
+        base_filter.append(AIExecution.usage_type == usage_type)
+
+    # Per usage_type aggregation
+    usage_stats = db.query(
+        AIExecution.usage_type,
+        func.count(AIExecution.id).label("total"),
+        func.count(case((and_(AIExecution.chain_fallback == True, AIExecution.error_message.is_(None)), 1))).label("fallback_successes"),
+        func.avg(AIExecution.chain_position).label("avg_depth"),
+        func.sum(AIExecution.input_tokens).label("sum_input"),
+        func.sum(AIExecution.output_tokens).label("sum_output"),
+    ).filter(*base_filter).group_by(AIExecution.usage_type).all()
+
+    # Per model aggregation
+    model_stats = db.query(
+        AIExecution.usage_type,
+        AIExecution.ai_model_id,
+        AIExecution.model_name,
+        AIExecution.provider,
+        func.count(AIExecution.id).label("total"),
+        func.count(case((AIExecution.error_message.isnot(None), 1))).label("failures"),
+        func.avg(AIExecution.execution_time_ms).label("avg_latency"),
+        func.sum(AIExecution.input_tokens).label("sum_input"),
+        func.sum(AIExecution.output_tokens).label("sum_output"),
+        func.count(case((AIExecution.chain_position == 1, 1))).label("as_primary"),
+        func.count(case((AIExecution.chain_position > 1, 1))).label("as_fallback"),
+    ).filter(*base_filter).group_by(
+        AIExecution.usage_type,
+        AIExecution.ai_model_id,
+        AIExecution.model_name,
+        AIExecution.provider,
+    ).all()
+
+    # Build model stats lookup
+    model_stats_by_usage = {}
+    worst_model = None
+    worst_failure_rate = 0
+
+    for ms in model_stats:
+        ut = ms.usage_type
+        total = ms.total or 0
+        failures = ms.failures or 0
+        failure_rate = (failures / total * 100) if total > 0 else 0.0
+        sum_in = ms.sum_input or 0
+        sum_out = ms.sum_output or 0
+        cost_info = calculate_cost(sum_in, sum_out, ms.model_name or "")
+        avg_cost = cost_info["total_cost"] / total if total > 0 else 0.0
+
+        stats = ChainModelStats(
+            model_id=str(ms.ai_model_id) if ms.ai_model_id else "",
+            model_name=ms.model_name or "",
+            provider=ms.provider or "",
+            total_attempts=total,
+            failures=failures,
+            failure_rate=round(failure_rate, 1),
+            avg_cost=round(avg_cost, 6),
+            avg_latency_ms=round(ms.avg_latency or 0, 1),
+            times_as_primary=ms.as_primary or 0,
+            times_as_fallback=ms.as_fallback or 0,
+        )
+
+        model_stats_by_usage.setdefault(ut, []).append(stats)
+
+        if failure_rate > worst_failure_rate and total >= 3:
+            worst_failure_rate = failure_rate
+            worst_model = stats
+
+    # Build analytics items
+    analytics = []
+    total_cost_all = 0.0
+    total_savings = 0.0
+
+    for us in usage_stats:
+        total = us.total or 0
+        fallback_successes = us.fallback_successes or 0
+        fallback_rate = (fallback_successes / total * 100) if total > 0 else 0.0
+        sum_in = us.sum_input or 0
+        sum_out = us.sum_output or 0
+
+        # Use first model in list for cost estimation
+        models_for_ut = model_stats_by_usage.get(us.usage_type, [])
+        total_cost = 0.0
+        for m in models_for_ut:
+            total_cost += m.avg_cost * m.total_attempts
+
+        total_cost_all += total_cost
+
+        # Primary success rate
+        primary_total = sum(m.times_as_primary for m in models_for_ut)
+        primary_failures = sum(m.failures for m in models_for_ut if m.times_as_primary > 0)
+        primary_success = ((primary_total - primary_failures) / primary_total * 100) if primary_total > 0 else 100.0
+
+        analytics.append(ChainAnalyticsItem(
+            usage_type=us.usage_type,
+            total_executions=total,
+            total_cost=round(total_cost, 4),
+            fallback_rate=round(fallback_rate, 1),
+            avg_chain_depth=round(us.avg_depth or 1, 2),
+            primary_success_rate=round(primary_success, 1),
+            models=models_for_ut,
+            cost_savings=0.0,
+        ))
+
+    return ChainAnalyticsResponse(
+        analytics=analytics,
+        most_failing_model=worst_model,
+        total_cost_all_chains=round(total_cost_all, 4),
+        total_fallback_savings=round(total_savings, 4),
+        lookback_days=days,
+    )
+
+
+# ============================================================================
+# PROMPT #124 - Feature 4: Smart Reorder + Templates
+# ============================================================================
+
+# Model quality tiers (higher = better)
+MODEL_QUALITY_TIERS = {
+    "opus": 100, "claude-opus": 100, "claude-4-opus": 100,
+    "sonnet": 80, "claude-sonnet": 80, "claude-4-sonnet": 80, "gpt-4o": 80, "gpt-4": 80,
+    "gemini-1.5-pro": 75, "gemini-pro": 75, "command-r-plus": 75,
+    "haiku": 50, "claude-haiku": 50, "gemini-1.5-flash": 50, "gemini-flash": 50,
+    "gpt-3.5": 40, "command-r": 40, "command-light": 30,
+}
+
+
+def _get_quality_tier(model_name: str) -> float:
+    """Get quality tier score for a model name (0-100)."""
+    name_lower = model_name.lower()
+    for key, score in MODEL_QUALITY_TIERS.items():
+        if key in name_lower:
+            return score
+    return 60  # default
+
+
+@router.post("/optimize-chain/{usage_type}", response_model=OptimizeChainResponse)
+async def optimize_chain(
+    usage_type: AIModelUsageType,
+    data: OptimizeChainRequest = OptimizeChainRequest(),
+    db: Session = Depends(get_db),
+):
+    """Analyze execution history and recommend optimal chain order."""
+    chain = db.query(AIFlowChain).filter(AIFlowChain.usage_type == usage_type).first()
+    if not chain or not chain.chain:
+        raise HTTPException(status_code=404, detail="No chain configured for this usage_type")
+
+    cutoff = datetime.utcnow() - timedelta(days=data.days)
+    model_uuids = [UUID(mid) for mid in chain.chain]
+
+    # Get per-model stats
+    stats = db.query(
+        AIExecution.ai_model_id,
+        AIExecution.model_name,
+        AIExecution.provider,
+        func.count(AIExecution.id).label("total"),
+        func.count(case((AIExecution.error_message.is_(None), 1))).label("successes"),
+        func.avg(AIExecution.execution_time_ms).label("avg_latency"),
+        func.sum(AIExecution.input_tokens).label("sum_input"),
+        func.sum(AIExecution.output_tokens).label("sum_output"),
+    ).filter(
+        AIExecution.ai_model_id.in_(model_uuids),
+        AIExecution.created_at >= cutoff,
+    ).group_by(
+        AIExecution.ai_model_id, AIExecution.model_name, AIExecution.provider,
+    ).all()
+
+    stats_map = {}
+    for s in stats:
+        stats_map[str(s.ai_model_id)] = s
+
+    # Strategy weights
+    weights = {
+        "reliability": (0.6, 0.1, 0.2, 0.1),
+        "cost": (0.2, 0.5, 0.1, 0.2),
+        "quality": (0.2, 0.1, 0.5, 0.2),
+        "balanced": (0.3, 0.25, 0.25, 0.2),
+    }
+    w_rel, w_cost, w_qual, w_lat = weights.get(data.strategy, weights["balanced"])
+
+    # Calculate scores
+    model_scores = []
+    for mid in chain.chain:
+        model = db.query(AIModel).filter(AIModel.id == UUID(mid)).first()
+        if not model:
+            continue
+
+        s = stats_map.get(mid)
+        if s and s.total and s.total > 0:
+            success_rate = (s.successes / s.total) * 100
+            avg_latency = s.avg_latency or 0
+            sum_in = s.sum_input or 0
+            sum_out = s.sum_output or 0
+            cost_info = calculate_cost(sum_in, sum_out, s.model_name or "")
+            avg_cost = cost_info["total_cost"] / s.total
+        else:
+            # No history — use defaults
+            success_rate = 95.0
+            avg_latency = 2000
+            _, out_price = get_model_pricing(model.config.get("model_id", ""))
+            avg_cost = out_price / 1_000_000 * 500  # estimate 500 output tokens
+
+        quality = _get_quality_tier(model.config.get("model_id", model.name))
+
+        # Normalize scores (0-100)
+        rel_score = success_rate
+        cost_score = max(0, 100 - (avg_cost * 100000))  # lower cost = higher score
+        qual_score = quality
+        lat_score = max(0, 100 - (avg_latency / 50))  # lower latency = higher score
+
+        total_score = rel_score * w_rel + cost_score * w_cost + qual_score * w_qual + lat_score * w_lat
+
+        reasoning = f"{success_rate:.1f}% success, ${avg_cost:.4f}/call, {avg_latency:.0f}ms avg"
+
+        model_scores.append(OptimizeModelScore(
+            model_id=mid,
+            model_name=model.name,
+            provider=model.provider,
+            score=round(total_score, 2),
+            reasoning=reasoning,
+        ))
+
+    # Sort by score descending
+    model_scores.sort(key=lambda m: m.score, reverse=True)
+    recommended = [m.model_id for m in model_scores]
+
+    return OptimizeChainResponse(
+        current_order=chain.chain,
+        recommended_order=recommended,
+        strategy=data.strategy,
+        models=model_scores,
+        estimated_improvement={},
+    )
+
+
+@router.get("/chain-templates/{usage_type}", response_model=ChainTemplatesResponse)
+async def get_chain_templates(
+    usage_type: AIModelUsageType,
+    db: Session = Depends(get_db),
+):
+    """Get pre-built chain templates for a usage_type."""
+    # Get all active models for this usage_type + general
+    models = db.query(AIModel).filter(
+        AIModel.is_active == True,
+        AIModel.usage_type.in_([usage_type, AIModelUsageType.GENERAL]),
+    ).all()
+
+    if not models:
+        return ChainTemplatesResponse(templates=[])
+
+    def model_info(m):
+        return {"id": str(m.id), "name": m.name, "provider": m.provider, "model_id": m.config.get("model_id", "")}
+
+    # Template 1: High Reliability — sort by quality tier (most capable first)
+    reliability_sorted = sorted(models, key=lambda m: _get_quality_tier(m.config.get("model_id", m.name)), reverse=True)
+
+    # Template 2: Cost Optimized — cheapest first
+    def model_cost(m):
+        _, out_price = get_model_pricing(m.config.get("model_id", ""))
+        return out_price
+    cost_sorted = sorted(models, key=model_cost)
+
+    # Template 3: High Quality — top tier only, then rest
+    quality_sorted = sorted(models, key=lambda m: _get_quality_tier(m.config.get("model_id", m.name)), reverse=True)
+
+    templates = [
+        ChainTemplate(
+            id="high_reliability",
+            name="Alta Confiabilidade",
+            description="Modelos mais capazes primeiro, fallback para mais rápidos",
+            chain=[str(m.id) for m in reliability_sorted],
+            models=[model_info(m) for m in reliability_sorted],
+        ),
+        ChainTemplate(
+            id="cost_optimized",
+            name="Custo Mínimo",
+            description="Modelos mais baratos primeiro, escalando para caros se necessário",
+            chain=[str(m.id) for m in cost_sorted],
+            models=[model_info(m) for m in cost_sorted],
+        ),
+        ChainTemplate(
+            id="high_quality",
+            name="Alta Qualidade",
+            description="Melhores modelos no topo da chain",
+            chain=[str(m.id) for m in quality_sorted],
+            models=[model_info(m) for m in quality_sorted],
+        ),
+    ]
+
+    return ChainTemplatesResponse(templates=templates)

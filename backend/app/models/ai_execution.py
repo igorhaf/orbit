@@ -77,6 +77,13 @@ class AIExecution(Base):
     error_message = Column(Text, nullable=True)
     execution_time_ms = Column(Integer, nullable=True)
 
+    # PROMPT #124 - Chain Tracking Fields
+    chain_usage_type = Column(String(50), nullable=True, index=True)  # usage_type of the chain used
+    chain_position = Column(Integer, nullable=True)  # 1-indexed position in chain
+    chain_total = Column(Integer, nullable=True)  # Total models in chain
+    chain_fallback = Column(Boolean, nullable=True, default=False)  # Was this a fallback attempt?
+    chain_source = Column(String(20), nullable=True)  # "specific" or "general"
+
     # PROMPT #89 - RAG Metrics
     rag_enabled = Column(Boolean, nullable=True, default=False)  # Was RAG enabled for this execution?
     rag_hit = Column(Boolean, nullable=True, default=False)  # Did RAG find relevant results?
