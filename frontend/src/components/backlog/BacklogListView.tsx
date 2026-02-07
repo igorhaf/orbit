@@ -399,7 +399,7 @@ export default function BacklogListView({
           `Ativando ${item.item_type}: ${item.title.substring(0, 30)}...`,
           item.title
         );
-        setActivatingId(null);
+        // Keep activatingId set - button stays in loading state until job completes and backlog refreshes
         showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
       } else {
         // Legacy flow - immediate response
@@ -658,13 +658,18 @@ export default function BacklogListView({
                 title="Aprovar sugestão"
               >
                 {activatingId === item.id ? (
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
+                  <>
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
+                    <span>Ativando...</span>
+                  </>
                 ) : (
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
+                  <>
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span>Aprovar</span>
+                  </>
                 )}
-                <span>Aprovar</span>
               </button>
 
               <button

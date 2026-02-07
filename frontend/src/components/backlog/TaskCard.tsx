@@ -188,8 +188,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           `Ativando ${task.item_type}: ${task.title.substring(0, 30)}...`,
           task.title
         );
-        // Reset state - notification will show when complete
-        setActivatingEpic(false);
+        // Keep activatingEpic=true - button stays in loading state until job completes and card refreshes
         showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
       } else {
         // Legacy flow (synchronous response)
@@ -464,13 +463,18 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
               title="Aprovar sugestão"
             >
               {activatingEpic ? (
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
+                <>
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
+                  <span>Ativando...</span>
+                </>
               ) : (
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+                <>
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Aprovar</span>
+                </>
               )}
-              <span>Aprovar</span>
             </button>
 
             <button

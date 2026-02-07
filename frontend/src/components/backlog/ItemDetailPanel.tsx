@@ -289,8 +289,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           `Ativando ${item.item_type}: ${item.title.substring(0, 30)}...`,
           item.title
         );
-        // Reset state - notification will show when complete
-        setIsApproving(false);
+        // Keep isApproving=true - button stays in loading state until job completes and panel refreshes
         showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
       } else {
         // Legacy flow (synchronous response)
