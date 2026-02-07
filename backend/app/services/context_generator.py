@@ -253,6 +253,117 @@ def _robust_json_parse(response_text: str, context: str = "unknown") -> Dict:
     )
 
 
+def _extract_content_from_raw_response(raw_content: str, item_title: str, item_type: str = "Story") -> Dict:
+    """
+    PROMPT #179 - Extract usable content from raw AI response when JSON parsing fails.
+
+    Instead of dumping raw JSON as the description, this function:
+    1. Tries regex extraction of description_markdown + semantic_map from truncated JSON
+    2. If found, converts semantic identifiers to human-readable text
+    3. Also extracts acceptance_criteria and story_points if available
+    4. Falls back to stripping JSON blocks and using any surrounding text
+
+    Returns dict with 'description', 'generated_prompt', 'acceptance_criteria', 'semantic_map', 'story_points'
+    or None if no usable content could be extracted.
+    """
+    if not raw_content or len(raw_content) < 50:
+        return None
+
+    extracted = {}
+
+    # Try to extract semantic_map from the raw response
+    semantic_map = {}
+    sm_match = re.search(r'"semantic_map"\s*:\s*\{([^}]*(?:\{[^}]*\}[^}]*)*)\}', raw_content, re.DOTALL)
+    if sm_match:
+        sm_text = sm_match.group(1)
+        # Extract individual key-value pairs from the semantic_map
+        pairs = re.findall(r'"(\w+)"\s*:\s*"([^"]*(?:\\"[^"]*)*)"', sm_text)
+        for key, value in pairs:
+            semantic_map[key] = value.replace('\\"', '"')
+
+    # Try to extract description_markdown
+    desc_match = re.search(
+        r'"description_markdown"\s*:\s*"((?:[^"\\]|\\.)*)"',
+        raw_content, re.DOTALL
+    )
+    description_markdown = ""
+    if desc_match:
+        description_markdown = desc_match.group(1)
+        # Unescape JSON string escapes
+        description_markdown = description_markdown.replace('\\n', '\n').replace('\\t', '\t').replace('\\"', '"').replace('\\\\', '\\')
+
+    # Try to extract acceptance_criteria
+    ac_list = []
+    ac_match = re.search(r'"acceptance_criteria"\s*:\s*\[(.*?)\]', raw_content, re.DOTALL)
+    if ac_match:
+        ac_items = re.findall(r'"((?:[^"\\]|\\.)*)"', ac_match.group(1))
+        ac_list = [item.replace('\\n', '\n').replace('\\"', '"') for item in ac_items if len(item) > 5]
+
+    # Try to extract story_points
+    sp_match = re.search(r'"story_points"\s*:\s*(\d+)', raw_content)
+    story_points = int(sp_match.group(1)) if sp_match else None
+
+    # Build clean content
+    if description_markdown and len(description_markdown) > 100:
+        # We have description_markdown - convert semantic identifiers to human text
+        if semantic_map:
+            human_desc = _convert_semantic_to_human(description_markdown, semantic_map)
+        else:
+            human_desc = description_markdown
+
+        extracted['description'] = human_desc
+        extracted['generated_prompt'] = description_markdown
+        extracted['semantic_map'] = semantic_map
+        if ac_list:
+            extracted['acceptance_criteria'] = ac_list
+        if story_points:
+            extracted['story_points'] = story_points
+        logger.info(f"[{item_type}:{item_title[:30]}] Extracted content from raw response: desc={len(human_desc)} chars, map={len(semantic_map)} keys")
+        return extracted
+
+    # description_markdown not found or too short - try stripping JSON blocks
+    # Remove ```json ... ``` blocks entirely
+    stripped = re.sub(r'```(?:json)?\s*\n?[\s\S]*?\n?```', '', raw_content)
+    # Remove lone ``` markers
+    stripped = re.sub(r'```\w*', '', stripped)
+    stripped = stripped.strip()
+
+    if stripped and len(stripped) > 100 and not stripped.lstrip().startswith('{'):
+        # There's useful text outside the JSON blocks (and it's not raw JSON)
+        if semantic_map:
+            stripped = _convert_semantic_to_human(stripped, semantic_map)
+        extracted['description'] = stripped
+        extracted['generated_prompt'] = stripped
+        extracted['semantic_map'] = semantic_map
+        if ac_list:
+            extracted['acceptance_criteria'] = ac_list
+        if story_points:
+            extracted['story_points'] = story_points
+        logger.info(f"[{item_type}:{item_title[:30]}] Used stripped non-JSON text: {len(stripped)} chars")
+        return extracted
+
+    # Last resort: if we have semantic_map, build a description from it
+    if semantic_map and len(semantic_map) >= 5:
+        built_desc = f"# {item_type}: {item_title}\n\n## Mapa Semântico\n\n"
+        for key, value in list(semantic_map.items())[:20]:
+            built_desc += f"- **{key}**: {value}\n"
+        if ac_list:
+            built_desc += "\n## Critérios de Aceitação\n\n"
+            for ac in ac_list:
+                built_desc += f"- {ac}\n"
+        extracted['description'] = built_desc
+        extracted['generated_prompt'] = built_desc
+        extracted['semantic_map'] = semantic_map
+        if ac_list:
+            extracted['acceptance_criteria'] = ac_list
+        if story_points:
+            extracted['story_points'] = story_points
+        logger.info(f"[{item_type}:{item_title[:30]}] Built description from semantic_map: {len(semantic_map)} keys")
+        return extracted
+
+    return None
+
+
 def _convert_semantic_to_human(semantic_text: str, semantic_map: Dict[str, str]) -> str:
     """
     PROMPT #89 - Convert semantic text to human-readable text.
@@ -3443,7 +3554,7 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=4000,
+                max_tokens=6000,  # PROMPT #179 - Increased from 4000 to reduce truncation
                 enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
                 project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
@@ -3467,26 +3578,40 @@ Retorne APENAS o JSON, sem explicações."""
                 result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
-            # PROMPT #178 - Improved fallback: use raw AI response as content if available
-            logger.warning(f"⚠️ Story JSON parsing failed, using raw AI response as fallback")
+            # PROMPT #179 - Extract clean content from raw response (never dump raw JSON)
+            logger.warning(f"⚠️ Story JSON parsing failed, extracting clean content from raw response")
             raw_content = content.strip() if content else ""
-            if len(raw_content) > 200:
-                fallback_desc = f"# Story: {story.title}\n\n{raw_content}"
-            else:
-                # Build from parent context
-                epic_desc = (parent_epic.description or parent_epic.generated_prompt or "") if parent_epic else ""
-                project_ctx = (project.context_human or project.context_semantic or "")[:2000]
-                fallback_desc = (
-                    f"# Story: {story.title}\n\n"
-                    f"## Visão Geral\n\n"
-                    f"{story.description or story.title}\n\n"
-                    f"## Contexto do Epic\n\n"
-                    f"**{parent_epic.title if parent_epic else 'N/A'}**\n\n"
-                    f"{epic_desc[:2000]}\n\n"
-                    f"## Contexto do Projeto\n\n"
-                    f"{project_ctx}\n\n"
-                    f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
-                )
+            extracted = _extract_content_from_raw_response(raw_content, story.title, "Story")
+
+            if extracted:
+                # Successfully extracted clean content from raw response
+                extracted.setdefault("acceptance_criteria", [
+                    f"AC1: {story.title} completamente implementada",
+                    "AC2: Testes unitários cobrindo os fluxos principais",
+                    "AC3: Integração com módulos dependentes verificada",
+                    "AC4: Interface de usuário funcional e responsiva",
+                    "AC5: Documentação técnica atualizada"
+                ])
+                extracted.setdefault("semantic_map", epic_semantic_map)
+                extracted.setdefault("story_points", story.story_points or 5)
+                extracted.setdefault("interview_insights", {"derived_from_epic": str(parent_epic.id) if parent_epic else None})
+                extracted["ai_model_used"] = ai_model_used
+                return extracted
+
+            # No usable content extracted - build from parent context
+            epic_desc = (parent_epic.description or parent_epic.generated_prompt or "") if parent_epic else ""
+            project_ctx = (project.context_human or project.context_semantic or "")[:2000]
+            fallback_desc = (
+                f"# Story: {story.title}\n\n"
+                f"## Visão Geral\n\n"
+                f"{story.description or story.title}\n\n"
+                f"## Contexto do Epic\n\n"
+                f"**{parent_epic.title if parent_epic else 'N/A'}**\n\n"
+                f"{epic_desc[:2000]}\n\n"
+                f"## Contexto do Projeto\n\n"
+                f"{project_ctx}\n\n"
+                f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
+            )
             return {
                 "description": fallback_desc,
                 "generated_prompt": fallback_desc,
@@ -3915,7 +4040,7 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=4000,
+                max_tokens=6000,  # PROMPT #179 - Increased from 4000 to reduce truncation
                 enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
                 project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
@@ -3939,23 +4064,35 @@ Retorne APENAS o JSON, sem explicações."""
                 result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
-            # PROMPT #178 - Improved fallback: use raw AI response or parent context
-            logger.warning(f"⚠️ Task JSON parsing failed, using fallback content")
+            # PROMPT #179 - Extract clean content from raw response (never dump raw JSON)
+            logger.warning(f"⚠️ Task JSON parsing failed, extracting clean content from raw response")
             raw_content = content.strip() if content else ""
-            if len(raw_content) > 200:
-                fallback_desc = f"# Task: {task.title}\n\n{raw_content}"
-            else:
-                story_desc = (parent_story.description or parent_story.generated_prompt or "") if parent_story else ""
-                epic_desc = (grandparent_epic.description or grandparent_epic.generated_prompt or "") if grandparent_epic else ""
-                fallback_desc = (
-                    f"# Task: {task.title}\n\n"
-                    f"## Visão Geral\n\n{task.description or task.title}\n\n"
-                    f"## Contexto da Story\n\n**{parent_story.title if parent_story else 'N/A'}**\n\n"
-                    f"{story_desc[:1500]}\n\n"
-                    f"## Contexto do Epic\n\n**{grandparent_epic.title if grandparent_epic else 'N/A'}**\n\n"
-                    f"{epic_desc[:1000]}\n\n"
-                    f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
-                )
+            extracted = _extract_content_from_raw_response(raw_content, task.title, "Task")
+
+            if extracted:
+                extracted.setdefault("acceptance_criteria", [
+                    f"AC1: {task.title} implementada",
+                    "AC2: Testes unitários adicionados",
+                    "AC3: Code review aprovado",
+                    "AC4: Sem bugs ou regressões"
+                ])
+                extracted.setdefault("semantic_map", combined_semantic_map)
+                extracted.setdefault("story_points", task.story_points or 3)
+                extracted["ai_model_used"] = ai_model_used
+                return extracted
+
+            # No usable content extracted - build from parent context
+            story_desc = (parent_story.description or parent_story.generated_prompt or "") if parent_story else ""
+            epic_desc = (grandparent_epic.description or grandparent_epic.generated_prompt or "") if grandparent_epic else ""
+            fallback_desc = (
+                f"# Task: {task.title}\n\n"
+                f"## Visão Geral\n\n{task.description or task.title}\n\n"
+                f"## Contexto da Story\n\n**{parent_story.title if parent_story else 'N/A'}**\n\n"
+                f"{story_desc[:1500]}\n\n"
+                f"## Contexto do Epic\n\n**{grandparent_epic.title if grandparent_epic else 'N/A'}**\n\n"
+                f"{epic_desc[:1000]}\n\n"
+                f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
+            )
             return {
                 "description": fallback_desc,
                 "generated_prompt": fallback_desc,
@@ -4366,7 +4503,7 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=4000,
+                max_tokens=6000,  # PROMPT #179 - Increased from 4000 to reduce truncation
                 enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
                 project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
@@ -4389,23 +4526,33 @@ Retorne APENAS o JSON, sem explicações."""
                 result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
-            # PROMPT #178 - Improved fallback: use raw AI response or parent context
-            logger.warning(f"⚠️ Subtask JSON parsing failed, using fallback content")
+            # PROMPT #179 - Extract clean content from raw response (never dump raw JSON)
+            logger.warning(f"⚠️ Subtask JSON parsing failed, extracting clean content from raw response")
             raw_content = content.strip() if content else ""
-            if len(raw_content) > 200:
-                fallback_desc = f"# Subtask: {subtask.title}\n\n{raw_content}"
-            else:
-                task_desc = (parent_task.description or parent_task.generated_prompt or "") if parent_task else ""
-                story_desc = (grandparent_story.description or grandparent_story.generated_prompt or "") if grandparent_story else ""
-                fallback_desc = (
-                    f"# Subtask: {subtask.title}\n\n"
-                    f"## Visão Geral\n\n{subtask.description or subtask.title}\n\n"
-                    f"## Contexto da Task\n\n**{parent_task.title if parent_task else 'N/A'}**\n\n"
-                    f"{task_desc[:1500]}\n\n"
-                    f"## Contexto da Story\n\n**{grandparent_story.title if grandparent_story else 'N/A'}**\n\n"
-                    f"{story_desc[:1000]}\n\n"
-                    f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
-                )
+            extracted = _extract_content_from_raw_response(raw_content, subtask.title, "Subtask")
+
+            if extracted:
+                extracted.setdefault("acceptance_criteria", [
+                    f"AC1: {subtask.title} implementada",
+                    "AC2: Testes passam",
+                    "AC3: Code review aprovado"
+                ])
+                extracted.setdefault("semantic_map", combined_semantic_map)
+                extracted["ai_model_used"] = ai_model_used
+                return extracted
+
+            # No usable content extracted - build from parent context
+            task_desc = (parent_task.description or parent_task.generated_prompt or "") if parent_task else ""
+            story_desc = (grandparent_story.description or grandparent_story.generated_prompt or "") if grandparent_story else ""
+            fallback_desc = (
+                f"# Subtask: {subtask.title}\n\n"
+                f"## Visão Geral\n\n{subtask.description or subtask.title}\n\n"
+                f"## Contexto da Task\n\n**{parent_task.title if parent_task else 'N/A'}**\n\n"
+                f"{task_desc[:1500]}\n\n"
+                f"## Contexto da Story\n\n**{grandparent_story.title if grandparent_story else 'N/A'}**\n\n"
+                f"{story_desc[:1000]}\n\n"
+                f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
+            )
             return {
                 "description": fallback_desc,
                 "generated_prompt": fallback_desc,
