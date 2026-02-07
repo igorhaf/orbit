@@ -277,6 +277,7 @@ class AIOrchestrator:
                     "temperature": db_model.config.get("temperature", 0.7),
                     "db_model_id": str(db_model.id),
                     "db_model_name": db_model.name,
+                    "api_key": db_model.api_key,  # PROMPT #127 - Pass API key for chain execution
                     "rate_limit_requests": db_model.rate_limit_requests,
                     "rate_limit_window_seconds": db_model.rate_limit_window_seconds,
                 })
@@ -1249,17 +1250,20 @@ class AIOrchestrator:
                 model_config["rate_limit_window_seconds"],
             )
 
+        # PROMPT #127 - Pass API key from chain model config to override default client key
+        api_key_override = model_config.get("api_key")
+
         # Dispatch to provider-specific executor
         if provider == "anthropic":
-            result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature)
+            result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override)
         elif provider == "openai":
-            result = await self._execute_openai(model_name, messages, system_prompt, tokens_limit, temperature)
+            result = await self._execute_openai(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override)
         elif provider == "google":
-            result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature)
+            result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override)
         elif provider == "ollama":
             result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature)
         elif provider == "cohere":
-            result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature)
+            result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -1273,7 +1277,8 @@ class AIOrchestrator:
         messages: List[Dict],
         system_prompt: Optional[str],
         max_tokens: int,
-        temperature: float
+        temperature: float,
+        api_key_override: Optional[str] = None
     ) -> Dict:
         """
         Executa com Anthropic Claude usando configurações do banco
@@ -1281,6 +1286,11 @@ class AIOrchestrator:
         PROMPT #75 - Async execution with await (non-blocking)
         """
         client = self.clients["anthropic"]  # AsyncAnthropic instance
+
+        # PROMPT #127 - Use override key if provided (chain execution)
+        if api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
+            from anthropic import AsyncAnthropic
+            client = AsyncAnthropic(api_key=api_key_override)
 
         # PROMPT #75 - Await async call to yield to event loop during API request
         response = await client.messages.create(
@@ -1308,7 +1318,8 @@ class AIOrchestrator:
         messages: List[Dict],
         system_prompt: Optional[str],
         max_tokens: int,
-        temperature: float
+        temperature: float,
+        api_key_override: Optional[str] = None
     ) -> Dict:
         """
         Executa com OpenAI GPT usando configurações do banco
@@ -1316,6 +1327,11 @@ class AIOrchestrator:
         PROMPT #75 - Async execution with await (non-blocking)
         """
         client = self.clients["openai"]  # AsyncOpenAI instance
+
+        # PROMPT #127 - Use override key if provided (chain execution)
+        if api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=api_key_override)
 
         # Adicionar system message se fornecido
         openai_messages = []
@@ -1351,7 +1367,8 @@ class AIOrchestrator:
         messages: List[Dict],
         system_prompt: Optional[str],
         max_tokens: int,
-        temperature: float
+        temperature: float,
+        api_key_override: Optional[str] = None
     ) -> Dict:
         """
         Executa com Google Gemini usando configurações do banco
@@ -1359,7 +1376,7 @@ class AIOrchestrator:
         PROMPT #75 - Async execution with httpx AsyncClient (non-blocking)
         """
         google_config = self.clients["google"]  # Dict with api_key and http_client
-        api_key = google_config["api_key"]
+        api_key = api_key_override or google_config["api_key"]
         http_client = google_config["http_client"]
 
         # Converter mensagens para formato Gemini
@@ -1524,7 +1541,8 @@ class AIOrchestrator:
         messages: List[Dict],
         system_prompt: Optional[str],
         max_tokens: int,
-        temperature: float
+        temperature: float,
+        api_key_override: Optional[str] = None
     ) -> Dict:
         """
         Executa com Cohere AI usando configurações do banco
@@ -1538,7 +1556,7 @@ class AIOrchestrator:
         - command-light: Modelo leve e rápido
         """
         cohere_config = self.clients["cohere"]
-        api_key = cohere_config["api_key"]
+        api_key = api_key_override or cohere_config["api_key"]
         http_client = cohere_config["http_client"]
 
         # Converter mensagens para formato Cohere Chat
