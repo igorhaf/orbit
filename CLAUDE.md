@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #184 (Extract Business Rules from Git Commit History)
-**Próximo prompt:** PROMPT #185
+**Último prompt:** PROMPT #185 (Fix Emojis and Truncated context_human)
+**Próximo prompt:** PROMPT #186
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

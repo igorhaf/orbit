@@ -48,6 +48,32 @@ def _strip_markdown_json(content: str) -> str:
     return content.strip()
 
 
+def _strip_emojis(text: str) -> str:
+    """
+    PROMPT #185 - Remove emojis and special symbols from text.
+    AI sometimes adds emojis despite explicit instructions not to.
+    """
+    # Remove emoji unicode ranges
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map symbols
+        "\U0001F1E0-\U0001F1FF"  # flags
+        "\U00002702-\U000027B0"  # dingbats
+        "\U000024C2-\U0001F251"  # enclosed characters
+        "\U0001F900-\U0001F9FF"  # supplemental symbols
+        "\U0001FA00-\U0001FA6F"  # chess symbols
+        "\U0001FA70-\U0001FAFF"  # symbols extended-A
+        "\U00002600-\U000026FF"  # misc symbols
+        "\U0000FE00-\U0000FE0F"  # variation selectors
+        "\U0000200D"             # zero width joiner
+        "]+",
+        flags=re.UNICODE
+    )
+    return emoji_pattern.sub("", text).strip()
+
+
 def _robust_json_parse(response_text: str, context: str = "unknown") -> Dict:
     """
     PROMPT #148 - Robust JSON parsing with multiple recovery strategies.
@@ -799,10 +825,10 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             raise ValueError("AI response missing 'context_semantic' field")
 
         semantic_map = result.get("semantic_map", {})
-        context_semantic = result["context_semantic"]
+        context_semantic = _strip_emojis(result["context_semantic"])
 
         # Convert semantic to human-readable
-        context_human = _convert_semantic_to_human(context_semantic, semantic_map)
+        context_human = _strip_emojis(_convert_semantic_to_human(context_semantic, semantic_map))
 
         # Remove the Mapa Semântico section from human text
         context_human = re.sub(
@@ -859,33 +885,34 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             existing_business_rules = memory_ctx.get("business_rules", [])
 
         # Build section about existing features
+        # PROMPT #185 - Removed emojis from prompts
         existing_section = ""
         if existing_features or existing_business_rules:
             existing_section = """
 
-⚠️ ATENÇÃO - FUNCIONALIDADES JÁ EXISTENTES NO CÓDIGO:
-As seguintes funcionalidades JÁ FORAM IMPLEMENTADAS e verificadas no código-fonte.
-NÃO gere épicos para estas features - elas já existem e estão documentadas como cards fechados.
+ATENCAO - FUNCIONALIDADES JA EXISTENTES NO CODIGO:
+As seguintes funcionalidades JA FORAM IMPLEMENTADAS e verificadas no codigo-fonte.
+NAO gere epicos para estas features - elas ja existem e estao documentadas como cards fechados.
 Sugira apenas funcionalidades NOVAS que ainda precisam ser desenvolvidas."""
 
             if existing_features:
-                existing_section += "\n\nFEATURES JÁ IMPLEMENTADAS (não sugerir épicos para estas):"
+                existing_section += "\n\nFEATURES JA IMPLEMENTADAS (nao sugerir epicos para estas):"
                 for f in existing_features:
-                    existing_section += f"\n- ❌ {f}"
+                    existing_section += f"\n- [JA EXISTE] {f}"
 
             if existing_business_rules:
-                existing_section += "\n\nREGRAS DE NEGÓCIO JÁ IMPLEMENTADAS (não sugerir épicos para estas):"
+                existing_section += "\n\nREGRAS DE NEGOCIO JA IMPLEMENTADAS (nao sugerir epicos para estas):"
                 for rule in existing_business_rules[:5]:  # Limit to first 5 for brevity
-                    existing_section += f"\n- ❌ {rule[:100]}..."
+                    existing_section += f"\n- [JA EXISTE] {rule[:100]}..."
 
         system_prompt = """Você é um arquiteto de software especialista em decomposição de sistemas.
 
 Sua tarefa é analisar o contexto de um projeto e gerar uma lista de Épicos (módulos macro) para NOVAS funcionalidades a serem desenvolvidas.
 
 REGRAS CRÍTICAS:
-1. NÃO sugira épicos para funcionalidades que JÁ EXISTEM no código (marcadas com ❌)
+1. NÃO sugira épicos para funcionalidades que JÁ EXISTEM no código (marcadas com [JA EXISTE])
 2. Sugira APENAS épicos para funcionalidades NOVAS que ainda precisam ser desenvolvidas
-3. Se uma feature já existe (❌), NÃO inclua épico similar ou relacionado
+3. Se uma feature já existe ([JA EXISTE]), NÃO inclua épico similar ou relacionado
 4. Foque em melhorias, extensões e novas capacidades que o sistema AINDA NÃO TEM
 
 REGRAS GERAIS:
@@ -914,7 +941,8 @@ IMPORTANTE:
 - Se o sistema já tem muitas features implementadas, é normal ter POUCOS épicos sugeridos
 - Pode retornar lista vazia se todas as features principais já existem
 - NÃO repita funcionalidades existentes com nomes diferentes
-- Retorne APENAS o JSON, sem texto adicional"""
+- Retorne APENAS o JSON, sem texto adicional
+- NUNCA use emojis ou simbolos especiais nos títulos ou descrições"""
 
         # Build user prompt with context
         key_features = interview_insights.get("key_features", [])
@@ -4852,7 +4880,7 @@ Retorne APENAS o JSON, sem explicações."""
         key_features = memory_ctx.get("key_features", [])
         business_rules = memory_ctx.get("business_rules", [])
         interview_context = memory_ctx.get("interview_context", "")
-        suggested_title = memory_ctx.get("suggested_title", project.name)
+        suggested_title = _strip_emojis(memory_ctx.get("suggested_title", project.name))
 
         # Generate semantic context
         semantic_parts = [
@@ -4880,24 +4908,39 @@ Retorne APENAS o JSON, sem explicações."""
         if interview_context:
             semantic_parts.extend(["", "## Análise do Codebase", interview_context])
 
-        context_semantic = "\n".join(semantic_parts)
+        context_semantic = _strip_emojis("\n".join(semantic_parts))
 
-        # Generate human-readable context
+        # PROMPT #185 - Generate human-readable context with ALL sections (not just title)
         human_parts = [
             f"# {suggested_title}",
             "",
         ]
 
         if interview_context:
-            human_parts.append(interview_context)
+            human_parts.append(_strip_emojis(interview_context))
+            human_parts.append("")
+
+        if stack_info.get("detected_stack"):
+            human_parts.extend(["## Stack Tecnológica", ""])
+            human_parts.append(f"- Stack: {stack_info['detected_stack']}")
+            if stack_info.get("languages"):
+                langs = ", ".join(stack_info.get("languages", []))
+                human_parts.append(f"- Linguagens: {langs}")
             human_parts.append("")
 
         if key_features:
             human_parts.extend(["## Funcionalidades Principais", ""])
             for feature in key_features:
                 human_parts.append(f"- {feature}")
+            human_parts.append("")
 
-        context_human = "\n".join(human_parts)
+        if business_rules:
+            human_parts.extend(["## Regras de Negocio", ""])
+            for i, rule in enumerate(business_rules, 1):
+                human_parts.append(f"{i}. {rule}")
+            human_parts.append("")
+
+        context_human = _strip_emojis("\n".join(human_parts))
 
         # Update project with auto-generated context
         project.context_semantic = context_semantic
