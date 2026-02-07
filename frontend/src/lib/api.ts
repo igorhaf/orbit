@@ -340,6 +340,18 @@ export const tasksApi = {
       method: 'DELETE',
     }),
 
+  // PROMPT #127 - Generate children on-demand
+  generateChildren: (taskId: string, count: number) =>
+    request<{
+      job_id: string;
+      status: string;
+      message: string;
+    }>(`/api/v1/tasks/${taskId}/generate-children`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ count }),
+    }),
+
   // PROMPT #108 - Execute single task (returns job_id)
   execute: (taskId: string, maxAttempts: number = 3) =>
     request<{

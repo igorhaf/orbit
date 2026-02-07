@@ -77,6 +77,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   // Check if item is a suggested/draft item
   const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
 
+  // PROMPT #127 - Generate children dialog state
+  const [showGenerateChildrenDialog, setShowGenerateChildrenDialog] = useState(false);
+  const [childrenCount, setChildrenCount] = useState(10);
+
   // PROMPT #131 - Card interviews state (list instead of single)
   const [cardInterviews, setCardInterviews] = useState<Interview[]>([]);
   const [loadingInterview, setLoadingInterview] = useState(false);
@@ -322,6 +326,29 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       showError(`Failed to reject item: ${error.message || 'Unknown error'}`);
     } finally {
       setIsRejecting(false);
+    }
+  };
+
+  // PROMPT #127 - Generate children handler
+  const handleGenerateChildren = async (count: number) => {
+    setShowGenerateChildrenDialog(false);
+    try {
+      const result = await tasksApi.generateChildren(item.id, count);
+      if (result.job_id) {
+        const childType = item.item_type === 'epic' ? 'stories' :
+                          item.item_type === 'story' ? 'tasks' : 'subtasks';
+        addJob(
+          result.job_id,
+          'children_generation',
+          `Gerando ${count} ${childType} para: ${item.title.substring(0, 30)}...`,
+          item.title
+        );
+        showSuccess(`Geração de ${count} ${childType} iniciada! Acompanhe no sininho.`);
+      }
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      console.error('❌ Failed to generate children:', error);
+      showError(`Failed to generate children: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -957,9 +984,30 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
 
                   {/* Children */}
                   <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                      Children ({children.length})
-                    </h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-sm font-semibold text-gray-900">
+                        Children ({children.length})
+                      </h3>
+                      {/* PROMPT #127 - Generate children button for approved non-subtask items */}
+                      {!isSuggestedItem && item.item_type !== 'subtask' && (
+                        <Button
+                          size="sm"
+                          variant="primary"
+                          onClick={() => {
+                            const defaults: Record<string, number> = { epic: 10, story: 8, task: 5 };
+                            setChildrenCount(defaults[item.item_type] || 10);
+                            setShowGenerateChildrenDialog(true);
+                          }}
+                        >
+                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                          </svg>
+                          {item.item_type === 'epic' ? 'Gerar Stories' :
+                           item.item_type === 'story' ? 'Gerar Tasks' :
+                           item.item_type === 'task' ? 'Gerar Subtasks' : 'Gerar'}
+                        </Button>
+                      )}
+                    </div>
                     {children.length === 0 ? (
                       <p className="text-sm text-gray-500 italic">No child items</p>
                     ) : (
@@ -1584,6 +1632,48 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
             disabled={isDeleting}
           >
             {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* PROMPT #127 - Generate Children Count Dialog */}
+      <Dialog
+        open={showGenerateChildrenDialog}
+        onClose={() => setShowGenerateChildrenDialog(false)}
+        title={
+          item.item_type === 'epic' ? 'Gerar Stories' :
+          item.item_type === 'story' ? 'Gerar Tasks' :
+          item.item_type === 'task' ? 'Gerar Subtasks' : 'Gerar'
+        }
+        description={`Defina quantos itens deseja gerar para "${item.title}".`}
+        size="sm"
+      >
+        <div className="py-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Quantidade
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={30}
+            value={childrenCount}
+            onChange={(e) => {
+              const val = parseInt(e.target.value) || 1;
+              setChildrenCount(Math.max(1, Math.min(30, val)));
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          />
+          <p className="mt-1 text-xs text-gray-500">Min: 1, Max: 30</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowGenerateChildrenDialog(false)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => handleGenerateChildren(childrenCount)}
+          >
+            Gerar
           </Button>
         </DialogFooter>
       </Dialog>

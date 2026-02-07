@@ -59,6 +59,9 @@ class JobType(str, enum.Enum):
     # PROMPT #153: Background card generation from memory scan
     CARDS_FROM_MEMORY = "cards_from_memory"        # Geração de cards (épicos + regras) a partir do memory scan
 
+    # PROMPT #127: On-demand children generation
+    CHILDREN_GENERATION = "children_generation"      # Generate draft children (stories/tasks/subtasks)
+
     # PROMPT #121: Full project creation pipeline (scan + context + title)
     PROJECT_PIPELINE = "project_pipeline"
 
@@ -78,6 +81,7 @@ JOB_TYPE_DEFAULT_PRIORITY: dict[JobType, int] = {
     JobType.SUGGESTED_EPICS: JobPriority.NORMAL,
     JobType.CARDS_FROM_MEMORY: JobPriority.NORMAL,
     # LOW - background generation
+    JobType.CHILDREN_GENERATION: JobPriority.LOW,
     JobType.EPIC_ACTIVATION: JobPriority.LOW,
     JobType.STORY_ACTIVATION: JobPriority.LOW,
     JobType.TASK_ACTIVATION: JobPriority.LOW,

@@ -1821,6 +1821,79 @@ async def activate_suggested_item(
     )
 
 
+@router.post("/{task_id}/generate-children", response_model=ActivateJobResponse)
+async def generate_children(
+    task_id: UUID,
+    body: Optional[dict] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #127 - Generate draft children for an approved item on-demand.
+
+    Epic -> generates Stories
+    Story -> generates Tasks
+    Task -> generates Subtasks
+
+    POST /api/v1/tasks/{task_id}/generate-children
+    Body (optional): { "count": 10 }
+    """
+    from app.models.async_job import JobType
+    from app.services.job_manager import JobManager
+
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Item {task_id} not found"
+        )
+
+    if task.item_type == ItemType.SUBTASK:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Subtasks are leaf nodes and cannot have children"
+        )
+
+    default_counts = {
+        ItemType.EPIC: 10,
+        ItemType.STORY: 8,
+        ItemType.TASK: 5,
+    }
+    count = default_counts.get(task.item_type, 10)
+    if body and isinstance(body, dict) and "count" in body:
+        count = max(1, min(30, int(body["count"])))
+
+    child_type = {
+        ItemType.EPIC: "stories",
+        ItemType.STORY: "tasks",
+        ItemType.TASK: "subtasks",
+    }.get(task.item_type, "items")
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.CHILDREN_GENERATION,
+        input_data={
+            "task_id": str(task_id),
+            "item_type": task.item_type.value,
+            "title": task.title,
+            "count": count,
+            "child_type": child_type,
+        },
+        project_id=task.project_id
+    )
+
+    logger.info(f"Created children generation job {job.id}: {count} {child_type} for {task.item_type.value} {task_id}")
+
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _generate_children_async, job.id, task_id, count)
+
+    return ActivateJobResponse(
+        job_id=str(job.id),
+        status="pending",
+        message=f"Generating {count} {child_type}. Poll GET /api/v1/jobs/{job.id} for progress."
+    )
+
+
 @router.delete("/{task_id}/reject", status_code=status.HTTP_204_NO_CONTENT)
 async def reject_suggested_epic(
     task_id: UUID,
@@ -1943,6 +2016,52 @@ async def _activate_item_async(
 
     except Exception as e:
         logger.error(f"❌ Activation job {job_id} failed: {e}")
+        job_manager = JobManager(db)
+        job_manager.fail_job(job_id, str(e))
+
+    finally:
+        db.close()
+
+
+async def _generate_children_async(
+    job_id: UUID,
+    parent_id: UUID,
+    count: int
+):
+    """
+    PROMPT #127 - Background task to generate draft children for a parent item.
+    """
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.services.context_generator import ContextGeneratorService
+
+    db = SessionLocal()
+
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+
+        # Get child type from job data
+        from app.models.async_job import AsyncJob
+        job_obj = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        child_type = "items"
+        if job_obj and job_obj.input_data:
+            child_type = job_obj.input_data.get("child_type", "items")
+
+        job_manager.update_progress(job_id, 10.0, f"Generating {count} {child_type}...")
+
+        context_service = ContextGeneratorService(db)
+        result = await context_service.generate_children(parent_id=parent_id, count=count)
+
+        job_manager.update_progress(job_id, 90.0, "Generation complete!")
+
+        children_count = result.get("children_generated", 0)
+        logger.info(f"✅ Children generation job {job_id} completed: {children_count} {child_type}")
+
+        job_manager.complete_job(job_id, result)
+
+    except Exception as e:
+        logger.error(f"❌ Children generation job {job_id} failed: {e}")
         job_manager = JobManager(db)
         job_manager.fail_job(job_id, str(e))
 

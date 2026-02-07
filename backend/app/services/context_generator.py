@@ -1237,15 +1237,8 @@ um comportamento já implementado no sistema.""",
             logger.info(f"   - Business Goals: {len(epic.interview_insights.get('business_goals', []))} items")
             logger.info(f"   - Technical Constraints: {len(epic.interview_insights.get('technical_constraints', []))} items")
 
-        # PROMPT #102 - Auto-generate draft stories after epic activation
-        draft_stories = []
-        if epic.item_type == ItemType.EPIC:
-            try:
-                draft_stories = await self._generate_draft_stories(epic, project)
-                logger.info(f"📝 Generated {len(draft_stories)} draft stories for epic: {epic.title}")
-            except Exception as e:
-                logger.error(f"❌ Error generating draft stories: {str(e)}")
-                # Don't fail the activation if story generation fails
+        # PROMPT #127 - Removed auto-generation of draft stories.
+        # Children are now generated on-demand via "Generate Stories" button.
 
         # PROMPT #162 - Index activated card in RAG for semantic search
         try:
@@ -1276,7 +1269,58 @@ um comportamento já implementado no sistema.""",
             "story_points": epic.story_points,
             "priority": epic.priority.value if epic.priority else "medium",
             "activated": True,
-            "children_generated": len(draft_stories)  # PROMPT #102 - Report how many children were generated
+            "children_generated": 0
+        }
+
+    async def generate_children(self, parent_id: UUID, count: int = 10) -> Dict:
+        """
+        PROMPT #127 - Generate draft children for an approved item on-demand.
+
+        Called via "Generate Stories/Tasks/Subtasks" button in the UI.
+        The parent must be an approved (non-draft) item.
+
+        Epic -> generates Stories
+        Story -> generates Tasks
+        Task -> generates Subtasks
+        Subtask -> no children (leaf node)
+
+        Args:
+            parent_id: The parent item ID
+            count: Number of children to generate
+
+        Returns:
+            Dict with children_generated count
+        """
+        parent = self.db.query(Task).filter(Task.id == parent_id).first()
+        if not parent:
+            raise ValueError(f"Item {parent_id} not found")
+
+        project = self.db.query(Project).filter(Project.id == parent.project_id).first()
+        if not project:
+            raise ValueError(f"Project {parent.project_id} not found")
+
+        if parent.item_type == ItemType.EPIC:
+            children = await self._generate_draft_stories(parent, project, count=count)
+        elif parent.item_type == ItemType.STORY:
+            children = await self._generate_draft_tasks(parent, project, count=count)
+        elif parent.item_type == ItemType.TASK:
+            children = await self._generate_draft_subtasks(parent, project, count=count)
+        else:
+            raise ValueError(f"Cannot generate children for item_type={parent.item_type.value}")
+
+        child_type = {
+            ItemType.EPIC: "stories",
+            ItemType.STORY: "tasks",
+            ItemType.TASK: "subtasks",
+        }.get(parent.item_type, "items")
+
+        logger.info(f"📝 Generated {len(children)} {child_type} for {parent.item_type.value}: {parent.title}")
+
+        return {
+            "parent_id": str(parent.id),
+            "parent_title": parent.title,
+            "children_generated": len(children),
+            "child_type": child_type,
         }
 
     async def _generate_full_epic_content(
@@ -2226,20 +2270,20 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
     async def _generate_draft_stories(
         self,
         epic: Task,
-        project: Project
+        project: Project,
+        count: int = 15
     ) -> List[Task]:
         """
-        PROMPT #102 - Generate 15-20 stories with FULL EPIC-LEVEL content.
+        PROMPT #102 - Generate draft stories for an epic.
+        PROMPT #127 - Now accepts count parameter for user-defined quantity.
 
-        NEW APPROACH: Generate each story INDIVIDUALLY with full detail.
-        1. First: Generate list of 15-20 story TITLES
-        2. Then: For EACH title, generate FULL content (same as Epic)
-
-        This ensures each story has the SAME level of detail as an Epic.
+        1. First: Generate list of story TITLES
+        2. Then: Create lightweight drafts (title only, content on approval)
 
         Args:
             epic: The activated epic
             project: The project with context
+            count: Number of stories to generate (default 15)
 
         Returns:
             List of created Story tasks with FULL content
@@ -2254,9 +2298,9 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         # ============================================================
         # STEP 1: Generate only TITLES (15-20 story titles)
         # ============================================================
-        titles_system_prompt = """Você é um Product Owner especialista em decomposição de Epics.
+        titles_system_prompt = f"""Você é um Product Owner especialista em decomposição de Epics.
 
-TAREFA: Decomponha o Epic em 15-20 User Stories. Retorne APENAS os TÍTULOS.
+TAREFA: Decomponha o Epic em {count} User Stories. Retorne APENAS os TÍTULOS.
 
 FORMATO OBRIGATÓRIO de cada título:
 "Como [tipo de usuário], eu quero [funcionalidade específica], para [benefício]"
@@ -2277,7 +2321,7 @@ NÃO inclua nenhuma explicação, apenas o array JSON."""
             semantic_map_text = "\n\nMAPA SEMÂNTICO DO EPIC:\n"
             semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
 
-        titles_user_prompt = f"""Decomponha este Epic em 15-20 User Stories.
+        titles_user_prompt = f"""Decomponha este Epic em {count} User Stories.
 
 ## EPIC
 **Título:** {epic.title}
@@ -2289,7 +2333,7 @@ NÃO inclua nenhuma explicação, apenas o array JSON."""
 **Nome:** {project.name}
 **Contexto:** {(project.context_human or project.context_semantic or 'Não disponível')[:2000]}
 
-Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story."""
+Retorne APENAS o array JSON com {count} títulos de Stories no formato User Story."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
@@ -2311,7 +2355,7 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
                 logger.warning("AI did not return valid titles array, using fallback titles")
                 story_titles = self._generate_fallback_story_titles(epic)
 
-            story_titles = story_titles[:20]
+            story_titles = story_titles[:count]
             logger.info(f"📋 Generated {len(story_titles)} story titles for epic: {epic.title}")
 
             # ============================================================
@@ -2452,21 +2496,17 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
     async def _generate_draft_tasks(
         self,
         story: Task,
-        project: Project
+        project: Project,
+        count: int = 8
     ) -> List[Task]:
         """
-        PROMPT #102 - Generate 5-8 DETAILED draft tasks for an activated story.
-
-        Tasks are created with FULL CONTENT (same level of detail as Epics/Stories):
-        - labels=["suggested"]
-        - workflow_state="draft"
-        - parent_id=story.id
-        - item_type=TASK
-        - FULL semantic_map, description_markdown, acceptance_criteria, generated_prompt
+        PROMPT #102 - Generate draft tasks for an activated story.
+        PROMPT #127 - Now accepts count parameter for user-defined quantity.
 
         Args:
             story: The activated story
             project: The project with context
+            count: Number of tasks to generate (default 8)
 
         Returns:
             List of created draft Task items
@@ -2489,9 +2529,9 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
         # ============================================================
         # STEP 1: Generate only TITLES (5-8 task titles)
         # ============================================================
-        titles_system_prompt = """Você é um Tech Lead especialista em decomposição de User Stories.
+        titles_system_prompt = f"""Você é um Tech Lead especialista em decomposição de User Stories.
 
-TAREFA: Decomponha a User Story em 5-8 Tasks técnicas. Retorne APENAS os TÍTULOS.
+TAREFA: Decomponha a User Story em {count} Tasks técnicas. Retorne APENAS os TÍTULOS.
 
 FORMATO: Cada título deve descrever uma tarefa técnica específica e implementável.
 
@@ -2519,7 +2559,7 @@ NÃO inclua nenhuma explicação, apenas o array JSON."""
         if parent_epic:
             epic_context = f"\n## EPIC PAI\n**Título:** {parent_epic.title}\n**Descrição:** {(parent_epic.description or 'N/A')[:500]}\n"
 
-        titles_user_prompt = f"""Decomponha esta User Story em 5-8 Tasks técnicas.
+        titles_user_prompt = f"""Decomponha esta User Story em {count} Tasks técnicas.
 
 ## STORY
 **Título:** {story.title}
@@ -2531,7 +2571,7 @@ NÃO inclua nenhuma explicação, apenas o array JSON."""
 ## CONTEXTO DO PROJETO
 {(project.context_human or project.context_semantic or 'Não disponível')[:1500]}
 
-Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
+Retorne APENAS o array JSON com {count} títulos de Tasks técnicas."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
@@ -2553,7 +2593,7 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
                 logger.warning("AI did not return valid task titles array, using fallback titles")
                 task_titles = self._generate_fallback_task_titles(story)
 
-            task_titles = task_titles[:8]
+            task_titles = task_titles[:count]
             logger.info(f"📋 Generated {len(task_titles)} task titles for story: {story.title}")
 
             # ============================================================
@@ -2640,21 +2680,17 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
     async def _generate_draft_subtasks(
         self,
         task: Task,
-        project: Project
+        project: Project,
+        count: int = 5
     ) -> List[Task]:
         """
-        PROMPT #102 - Generate 3-5 DETAILED draft subtasks for an activated task.
-
-        Subtasks are created with FULL CONTENT (same level of detail as other items):
-        - labels=["suggested"]
-        - workflow_state="draft"
-        - parent_id=task.id
-        - item_type=SUBTASK
-        - FULL semantic_map, description_markdown, acceptance_criteria, generated_prompt
+        PROMPT #102 - Generate draft subtasks for an activated task.
+        PROMPT #127 - Now accepts count parameter for user-defined quantity.
 
         Args:
             task: The activated task
             project: The project with context
+            count: Number of subtasks to generate (default 5)
 
         Returns:
             List of created draft Subtask items
@@ -2677,9 +2713,9 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
         # ============================================================
         # STEP 1: Generate only TITLES (3-5 subtask titles)
         # ============================================================
-        titles_system_prompt = """Você é um Desenvolvedor Sênior especialista em decomposição de Tasks.
+        titles_system_prompt = f"""Você é um Desenvolvedor Sênior especialista em decomposição de Tasks.
 
-TAREFA: Decomponha a Task em 3-5 Subtasks atômicas. Retorne APENAS os TÍTULOS.
+TAREFA: Decomponha a Task em {count} Subtasks atômicas. Retorne APENAS os TÍTULOS.
 
 FORMATO: Cada título deve descrever uma ação específica e implementável.
 
@@ -2702,7 +2738,7 @@ NÃO inclua nenhuma explicação, apenas o array JSON."""
             semantic_map_text = "\n\nMAPA SEMÂNTICO DA TASK:\n"
             semantic_map_text += json.dumps(task_semantic_map, indent=2, ensure_ascii=False)
 
-        titles_user_prompt = f"""Decomponha esta Task em 3-5 Subtasks atômicas.
+        titles_user_prompt = f"""Decomponha esta Task em {count} Subtasks atômicas.
 
 ## TASK
 **Título:** {task.title}
@@ -2710,7 +2746,7 @@ NÃO inclua nenhuma explicação, apenas o array JSON."""
 **Especificação:** {(task.generated_prompt or '')[:1000]}
 {semantic_map_text}
 
-Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
+Retorne APENAS o array JSON com {count} títulos de Subtasks."""
 
         try:
             orchestrator = AIOrchestrator(self.db)
@@ -2732,7 +2768,7 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
                 logger.warning("AI did not return valid subtask titles array, using fallback titles")
                 subtask_titles = self._generate_fallback_subtask_titles(task)
 
-            subtask_titles = subtask_titles[:5]
+            subtask_titles = subtask_titles[:count]
             logger.info(f"📋 Generated {len(subtask_titles)} subtask titles for task: {task.title}")
 
             # ============================================================
@@ -2872,8 +2908,8 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
 
         logger.info(f"✅ Story activated: {story.title}")
 
-        # Generate draft tasks
-        draft_tasks = await self._generate_draft_tasks(story, project)
+        # PROMPT #127 - Removed auto-generation of draft tasks.
+        # Children are now generated on-demand via "Generate Tasks" button.
 
         # PROMPT #162 - Index activated card in RAG for semantic search
         try:
@@ -2902,7 +2938,7 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
             "story_points": story.story_points,
             "priority": story.priority.value if story.priority else "medium",
             "activated": True,
-            "children_generated": len(draft_tasks)
+            "children_generated": 0
         }
 
     async def _generate_full_story_content(self, story: Task, project: Project, parent_epic: Task = None) -> Dict:
@@ -3290,8 +3326,8 @@ Retorne APENAS o JSON, sem explicações."""
 
         logger.info(f"✅ Task activated: {task.title}")
 
-        # Generate draft subtasks
-        draft_subtasks = await self._generate_draft_subtasks(task, project)
+        # PROMPT #127 - Removed auto-generation of draft subtasks.
+        # Children are now generated on-demand via "Generate Subtasks" button.
 
         # PROMPT #162 - Index activated card in RAG for semantic search
         try:
@@ -3320,7 +3356,7 @@ Retorne APENAS o JSON, sem explicações."""
             "story_points": task.story_points,
             "priority": task.priority.value if task.priority else "medium",
             "activated": True,
-            "children_generated": len(draft_subtasks)
+            "children_generated": 0
         }
 
     async def _generate_full_task_content(self, task: Task, project: Project, parent_story: Task = None, grandparent_epic: Task = None) -> Dict:
