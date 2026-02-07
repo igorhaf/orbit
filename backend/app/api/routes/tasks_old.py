@@ -1881,7 +1881,10 @@ async def generate_children(
             "count": count,
             "child_type": child_type,
         },
-        project_id=task.project_id
+        project_id=task.project_id,
+        task_id=task_id,  # PROMPT #181 - Required for persistent loading state via WebSocket
+        deep_link=f"/projects/{task.project_id}?task={task_id}",
+        notification_title=f"Geração concluída: {count} {child_type} para {task.title[:50]}"
     )
 
     logger.info(f"Created children generation job {job.id}: {count} {child_type} for {task.item_type.value} {task_id}")

@@ -204,7 +204,18 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       if (jobIndex === -1) return prev;
 
       const updatedJobs = [...prev];
-      const updatedJob = { ...updatedJobs[jobIndex], ...updates };
+      // PROMPT #181 - Never overwrite task_id/project_id/interview_id with null from WebSocket
+      const safeUpdates = { ...updates };
+      if (safeUpdates.task_id == null && updatedJobs[jobIndex].task_id) {
+        delete safeUpdates.task_id;
+      }
+      if (safeUpdates.project_id == null && updatedJobs[jobIndex].project_id) {
+        delete safeUpdates.project_id;
+      }
+      if (safeUpdates.interview_id == null && updatedJobs[jobIndex].interview_id) {
+        delete safeUpdates.interview_id;
+      }
+      const updatedJob = { ...updatedJobs[jobIndex], ...safeUpdates };
 
       // If job completed/failed/cancelled, move to notifications
       if (['completed', 'failed', 'cancelled'].includes(updatedJob.status)) {
