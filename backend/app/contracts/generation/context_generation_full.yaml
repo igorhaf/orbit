@@ -60,12 +60,13 @@ system_prompt: |
   ```
 
   IMPORTANTE:
-  - O context_semantic deve ser rico e detalhado (mínimo 500 caracteres)
-  - Use português brasileiro
+  - O context_semantic DEVE SER UMA STRING de texto markdown, NAO um objeto/dicionario JSON
+  - O context_semantic deve ser rico e detalhado (minimo 500 caracteres)
+  - Use portugues brasileiro
   - Os identificadores devem ser concisos (2-3 caracteres)
-  - O Mapa Semântico deve estar DENTRO do context_semantic no final
+  - O Mapa Semantico deve estar DENTRO do context_semantic no final
   - Retorne APENAS o JSON, sem texto adicional
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use emojis, icones ou simbolos especiais Unicode (nenhum emoji como casa, estrela, foguete, etc)
 
 user_prompt: |
   Analise a seguinte entrevista de contexto para o projeto "{{ project_name }}":

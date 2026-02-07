@@ -48,11 +48,21 @@ def _strip_markdown_json(content: str) -> str:
     return content.strip()
 
 
-def _strip_emojis(text: str) -> str:
+def _strip_emojis(text) -> str:
     """
-    PROMPT #185 - Remove emojis and special symbols from text.
+    PROMPT #185/186 - Remove emojis and special symbols from text.
     AI sometimes adds emojis despite explicit instructions not to.
+    Handles non-string input (dict, list) by converting to string first.
     """
+    if text is None:
+        return ""
+    if isinstance(text, dict):
+        text = json.dumps(text, ensure_ascii=False, indent=2)
+    elif isinstance(text, list):
+        text = "\n".join(str(item) for item in text)
+    elif not isinstance(text, str):
+        text = str(text)
+
     # Remove emoji unicode ranges
     emoji_pattern = re.compile(
         "["
@@ -68,10 +78,83 @@ def _strip_emojis(text: str) -> str:
         "\U00002600-\U000026FF"  # misc symbols
         "\U0000FE00-\U0000FE0F"  # variation selectors
         "\U0000200D"             # zero width joiner
+        "\U00002702-\U000027B0"  # dingbats extended
+        "\U0000231A-\U0000231B"  # watch/hourglass
+        "\U000023E9-\U000023F3"  # media control
+        "\U000023F8-\U000023FA"  # media control extended
+        "\U000025AA-\U000025AB"  # small squares
+        "\U000025B6"             # play button
+        "\U000025C0"             # reverse button
+        "\U000025FB-\U000025FE"  # medium squares
+        "\U00002614-\U00002615"  # umbrella/hot beverage
+        "\U00002648-\U00002653"  # zodiac
+        "\U0000267F"             # wheelchair
+        "\U00002693"             # anchor
+        "\U000026A1"             # high voltage
+        "\U000026AA-\U000026AB"  # circles
+        "\U000026BD-\U000026BE"  # sports
+        "\U000026C4-\U000026C5"  # weather
+        "\U000026D4"             # no entry
+        "\U000026EA"             # church
+        "\U000026F2-\U000026F3"  # fountain/golf
+        "\U000026F5"             # sailboat
+        "\U000026FA"             # tent
+        "\U000026FD"             # fuel pump
+        "\U00002934-\U00002935"  # arrows
+        "\U00002B05-\U00002B07"  # arrows
+        "\U00002B1B-\U00002B1C"  # squares
+        "\U00002B50"             # star
+        "\U00002B55"             # circle
+        "\U00003030"             # wavy dash
+        "\U0000303D"             # part alternation mark
+        "\U00003297"             # circled ideograph
+        "\U00003299"             # circled ideograph secret
+        "\U0000200D"             # zero width joiner
+        "\U00002328"             # keyboard
+        "\U000023CF"             # eject
         "]+",
         flags=re.UNICODE
     )
-    return emoji_pattern.sub("", text).strip()
+    result = emoji_pattern.sub("", text)
+    # Clean up double spaces left by emoji removal
+    result = re.sub(r'  +', ' ', result)
+    return result.strip()
+
+
+def _dict_to_markdown_context(data: Dict, project_name: str = "") -> str:
+    """
+    PROMPT #186 - Convert a dict context_semantic to markdown string.
+
+    When the AI returns context_semantic as a JSON dict instead of a markdown
+    string, this function converts it to a proper markdown format.
+    """
+    parts = []
+
+    if project_name:
+        parts.append(f"# Contexto do Projeto: {project_name}")
+        parts.append("")
+
+    for key, value in data.items():
+        if isinstance(value, str):
+            parts.append(f"## {key}")
+            parts.append(value)
+            parts.append("")
+        elif isinstance(value, list):
+            parts.append(f"## {key}")
+            for item in value:
+                parts.append(f"- {item}")
+            parts.append("")
+        elif isinstance(value, dict):
+            parts.append(f"## {key}")
+            for sub_key, sub_value in value.items():
+                parts.append(f"- **{sub_key}**: {sub_value}")
+            parts.append("")
+        else:
+            parts.append(f"## {key}")
+            parts.append(str(value))
+            parts.append("")
+
+    return "\n".join(parts)
 
 
 def _robust_json_parse(response_text: str, context: str = "unknown") -> Dict:
@@ -560,10 +643,10 @@ class ContextGeneratorService:
         # 4.5. PROMPT #175 - Validate context content before saving
         context_result = self._validate_context_content(context_result, project.name)
 
-        # 5. Save to project
-        project.context_semantic = context_result["context_semantic"]
-        project.context_human = context_result["context_human"]
-        project.description = context_result["context_human"]  # Also update description
+        # 5. Save to project - PROMPT #186: Final emoji strip before DB save
+        project.context_semantic = _strip_emojis(context_result["context_semantic"])
+        project.context_human = _strip_emojis(context_result["context_human"])
+        project.description = _strip_emojis(context_result["context_human"])
 
         # 6. Mark interview as completed
         interview.status = InterviewStatus.COMPLETED
@@ -741,13 +824,14 @@ FORMATO DE RESPOSTA (JSON):
 ```
 
 IMPORTANTE:
-- O context_semantic deve ser rico e detalhado (mínimo 500 caracteres)
-- Use português brasileiro
+- O context_semantic DEVE SER UMA STRING de texto markdown, NAO um objeto/dicionario JSON
+- O context_semantic deve ser rico e detalhado (minimo 500 caracteres)
+- Use portugues brasileiro
 - Os identificadores devem ser concisos (2-3 caracteres)
-- O Mapa Semântico deve estar DENTRO do context_semantic no final
+- O Mapa Semantico deve estar DENTRO do context_semantic no final
 - Retorne APENAS o JSON, sem texto adicional
-- NUNCA use blocos de código markdown (```json)
-- NUNCA use emojis ou simbolos especiais
+- NUNCA use blocos de codigo markdown (```json)
+- NUNCA use emojis, icones ou simbolos especiais Unicode (nenhum emoji como casa, estrela, foguete, etc)
 - Comece a resposta diretamente com { e termine com }"""
 
         # PROMPT #120 - Include business rules from memory scan in context
@@ -825,7 +909,18 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             raise ValueError("AI response missing 'context_semantic' field")
 
         semantic_map = result.get("semantic_map", {})
-        context_semantic = _strip_emojis(result["context_semantic"])
+
+        # PROMPT #186 - Handle context_semantic returned as dict instead of string
+        raw_semantic = result["context_semantic"]
+        if isinstance(raw_semantic, dict):
+            logger.warning("[generate_context] context_semantic is a dict, converting to markdown string")
+            context_semantic = _dict_to_markdown_context(raw_semantic, project.name)
+        elif isinstance(raw_semantic, str):
+            context_semantic = raw_semantic
+        else:
+            context_semantic = str(raw_semantic)
+
+        context_semantic = _strip_emojis(context_semantic)
 
         # Convert semantic to human-readable
         context_human = _strip_emojis(_convert_semantic_to_human(context_semantic, semantic_map))
@@ -1130,7 +1225,7 @@ funcionando no sistema atual.""",
 
 ---
 
-**Status:** ✅ Verificada no código-fonte
+**Status:** [VERIFICADA] no codigo-fonte
 **Identificador:** RN{i}
 **Origem:** Análise automática do codebase
 
@@ -1643,15 +1738,32 @@ um comportamento já implementado no sistema.""",
         project_name: str
     ) -> Dict:
         """
-        PROMPT #175 - Validate context generation output.
+        PROMPT #175/186 - Validate context generation output.
 
         Ensures context_semantic and context_human meet minimum quality
-        before saving to the project.
+        before saving to the project. Also ensures both are strings (not dicts).
         """
         MIN_CONTEXT_LEN = 100
 
         context_semantic = context_result.get("context_semantic", "") or ""
         context_human = context_result.get("context_human", "") or ""
+
+        # PROMPT #186 - Ensure both are strings, convert dicts to markdown
+        if isinstance(context_semantic, dict):
+            logger.warning("  _validate_context_content: context_semantic is dict, converting to markdown")
+            context_semantic = _dict_to_markdown_context(context_semantic, project_name)
+        elif not isinstance(context_semantic, str):
+            context_semantic = str(context_semantic)
+
+        if isinstance(context_human, dict):
+            logger.warning("  _validate_context_content: context_human is dict, converting to markdown")
+            context_human = _dict_to_markdown_context(context_human, project_name)
+        elif not isinstance(context_human, str):
+            context_human = str(context_human)
+
+        # PROMPT #186 - Always strip emojis as final safety net
+        context_semantic = _strip_emojis(context_semantic)
+        context_human = _strip_emojis(context_human)
 
         issues = []
 
@@ -1664,7 +1776,7 @@ um comportamento já implementado no sistema.""",
                 context_semantic = (
                     f"# Projeto: {project_name}\n\n"
                     f"Contexto gerado automaticamente. "
-                    f"Informações insuficientes da entrevista para gerar contexto detalhado.\n\n"
+                    f"Informacoes insuficientes da entrevista para gerar contexto detalhado.\n\n"
                     f"*Edite para adicionar detalhes.*"
                 )
                 logger.info("  Restructured: context_semantic built from fallback")
@@ -1677,11 +1789,11 @@ um comportamento já implementado no sistema.""",
 
         if issues:
             logger.warning(
-                f"⚠️ Context validation found {len(issues)} issues for '{project_name[:50]}': "
+                f"Context validation found {len(issues)} issues for '{project_name[:50]}': "
                 f"{', '.join(issues)}"
             )
         else:
-            logger.info(f"✅ Context validation passed for '{project_name[:50]}'")
+            logger.info(f"Context validation passed for '{project_name[:50]}'")
 
         return {
             **context_result,
@@ -2541,7 +2653,7 @@ Para completar a especificação deste módulo, é necessário definir:
 - Telas e componentes de interface
 - Endpoints da API
 
-⚠️ **Nota**: Esta é uma especificação preliminar. A geração automática de conteúdo detalhado falhou.
+NOTA: Esta e uma especificacao preliminar. A geracao automatica de conteudo detalhado falhou.
 Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
 """
 
@@ -3616,10 +3728,10 @@ Os critérios de aceitação devem ser ESPECÍFICOS para esta Story, não genér
 - "AC4: Após cadastro bem-sucedido, usuário recebe email de confirmação"
 - "AC5: Usuário não confirmado não consegue fazer login"
 
-## EXEMPLO DE CRITÉRIOS GENÉRICOS (NÃO USE):
-- "Funcionalidade implementada" ❌
-- "Testes passam" ❌
-- "Código revisado" ❌
+## EXEMPLO DE CRITERIOS GENERICOS (NAO USE):
+- "Funcionalidade implementada" [RUIM]
+- "Testes passam" [RUIM]
+- "Codigo revisado" [RUIM]
 
 Retorne APENAS o JSON, sem explicações."""
 
@@ -5022,7 +5134,7 @@ IMPORTANTE:
         if existing_features:
             user_parts.extend(["", "## Funcionalidades JÁ EXISTENTES (NÃO sugerir épicos para estas):"])
             for f in existing_features:
-                user_parts.append(f"- ❌ {f}")
+                user_parts.append(f"- [JA EXISTE] {f}")
 
         if existing_rules:
             user_parts.extend(["", "## Regras de Negócio JÁ IMPLEMENTADAS:"])
@@ -5218,7 +5330,7 @@ IMPORTANTE:
         exclude_list = "\n".join([f"- {t}" for t in existing_titles]) if existing_titles else "Nenhum ainda"
 
         # Build exclusion list from existing features (from memory scan)
-        features_list = "\n".join([f"- ❌ {f}" for f in existing_features]) if existing_features else "Nenhuma"
+        features_list = "\n".join([f"- [JA EXISTE] {f}" for f in existing_features]) if existing_features else "Nenhuma"
 
         system_prompt = f"""Você é um Product Owner especialista em decomposição de software.
 Gere EXATAMENTE {epics_per_batch} épicos de software para o projeto.
