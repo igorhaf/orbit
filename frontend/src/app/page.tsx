@@ -88,6 +88,14 @@ export default function Home() {
     fetchCacheStats();
   }, [selectedProvider, selectedUsageType, dateRange]);
 
+  // PROMPT #183 - Auto-refresh cache stats every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchCacheStats();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
   const fetchAnalytics = async () => {
     try {
       setLoading(true);

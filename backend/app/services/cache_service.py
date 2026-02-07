@@ -98,6 +98,8 @@ class CacheService:
             "semantic_hits": "cache:stats:semantic_hits",
             "template_hits": "cache:stats:template_hits",
             "total_requests": "cache:stats:total_requests",
+            "tokens_saved": "cache:stats:tokens_saved",
+            "cost_saved": "cache:stats:cost_saved",
         }
 
         # Initialize stats (from Redis or in-memory)
@@ -118,6 +120,8 @@ class CacheService:
             "semantic_hits": 0,
             "template_hits": 0,
             "total_requests": 0,
+            "tokens_saved": 0,
+            "cost_saved": 0.0,
         }
 
         # TTL configurations (seconds)
@@ -173,6 +177,41 @@ class CacheService:
             # In-memory stats
             self.stats[stat_name] = self.stats.get(stat_name, 0) + amount
 
+    def _increment_stat_float(self, stat_name: str, amount: float):
+        """
+        Increment a float statistic counter (uses INCRBYFLOAT for Redis)
+
+        PROMPT #183 - Track cost savings from cache hits
+
+        Args:
+            stat_name: Name of stat to increment
+            amount: Float amount to increment by
+        """
+        if self.redis_client and stat_name in self.stats_keys:
+            try:
+                self.redis_client.incrbyfloat(self.stats_keys[stat_name], amount)
+            except Exception as e:
+                logger.warning(f"Failed to increment Redis float stat {stat_name}: {e}")
+                self.stats[stat_name] = self.stats.get(stat_name, 0.0) + amount
+        else:
+            self.stats[stat_name] = self.stats.get(stat_name, 0.0) + amount
+
+    def _track_savings(self, cache_result: Dict[str, Any]):
+        """
+        Track tokens and cost saved from a cache hit.
+
+        PROMPT #183 - Accumulate real savings in Redis counters.
+
+        Args:
+            cache_result: The cache hit result containing cost and token info
+        """
+        tokens = cache_result.get("input_tokens", 0) + cache_result.get("output_tokens", 0)
+        cost = cache_result.get("cost", 0.0)
+        if tokens > 0:
+            self._increment_stat("tokens_saved", tokens)
+        if cost > 0:
+            self._increment_stat_float("cost_saved", cost)
+
     def get(self, cache_input: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         Get cached response (tries all cache levels)
@@ -196,6 +235,7 @@ class CacheService:
         if exact_result:
             self._increment_stat("hits")
             self._increment_stat("exact_hits")
+            self._track_savings(exact_result)
             logger.info(f"✓ Cache HIT (exact) - saved ~${exact_result['cost']:.4f}")
             return exact_result
 
@@ -205,6 +245,7 @@ class CacheService:
             if semantic_result:
                 self._increment_stat("hits")
                 self._increment_stat("semantic_hits")
+                self._track_savings(semantic_result)
                 logger.info(f"✓ Cache HIT (semantic) - saved ~${semantic_result['cost']:.4f}")
                 return semantic_result
 
@@ -214,6 +255,7 @@ class CacheService:
             if template_result:
                 self._increment_stat("hits")
                 self._increment_stat("template_hits")
+                self._track_savings(template_result)
                 logger.info(f"✓ Cache HIT (template) - saved ~${template_result['cost']:.4f}")
                 return template_result
 
@@ -253,6 +295,8 @@ class CacheService:
                         "cache_type": "exact",
                         "model": entry["model"],
                         "cost": entry["cost"],
+                        "input_tokens": entry.get("input_tokens", 0),
+                        "output_tokens": entry.get("output_tokens", 0),
                     }
             except Exception as e:
                 logger.error(f"Redis get error: {e}")
@@ -270,6 +314,8 @@ class CacheService:
                         "cache_type": "exact",
                         "model": entry.model,
                         "cost": entry.cost,
+                        "input_tokens": entry.input_tokens,
+                        "output_tokens": entry.output_tokens,
                     }
                 else:
                     # Expired
@@ -341,6 +387,8 @@ class CacheService:
                             "cache_type": "semantic",
                             "model": best_match["model"],
                             "cost": best_match["cost"],
+                            "input_tokens": best_match.get("input_tokens", 0),
+                            "output_tokens": best_match.get("output_tokens", 0),
                             "similarity": best_similarity,
                         }
                 except Exception as e:
@@ -473,6 +521,8 @@ class CacheService:
                         "cache_type": "template",
                         "model": entry["model"],
                         "cost": entry["cost"],
+                        "input_tokens": entry.get("input_tokens", 0),
+                        "output_tokens": entry.get("output_tokens", 0),
                     }
             except Exception as e:
                 logger.error(f"Redis get error: {e}")
@@ -490,6 +540,8 @@ class CacheService:
                         "cache_type": "template",
                         "model": entry.model,
                         "cost": entry.cost,
+                        "input_tokens": entry.input_tokens,
+                        "output_tokens": entry.output_tokens,
                     }
                 else:
                     # Expired
@@ -672,6 +724,8 @@ class CacheService:
             "semantic_hits": 0,
             "template_hits": 0,
             "total_requests": 0,
+            "tokens_saved": 0,
+            "cost_saved": 0.0,
         }
 
     def get_stats(self) -> Dict[str, Any]:
@@ -684,12 +738,17 @@ class CacheService:
             Dict with hit rates and performance metrics
         """
         # PROMPT #74 - Read stats from Redis if available
+        # PROMPT #183 - Added tokens_saved (int) and cost_saved (float)
+        float_stats = {"cost_saved"}
         if self.redis_client:
             try:
                 stats = {}
                 for stat_name, redis_key in self.stats_keys.items():
                     value = self.redis_client.get(redis_key)
-                    stats[stat_name] = int(value) if value else 0
+                    if value:
+                        stats[stat_name] = float(value) if stat_name in float_stats else int(float(value))
+                    else:
+                        stats[stat_name] = 0.0 if stat_name in float_stats else 0
             except Exception as e:
                 logger.warning(f"Failed to read stats from Redis: {e}, using in-memory")
                 stats = self.stats
@@ -710,5 +769,7 @@ class CacheService:
             "exact_hits": stats["exact_hits"],
             "semantic_hits": stats["semantic_hits"],
             "template_hits": stats["template_hits"],
+            "tokens_saved": stats.get("tokens_saved", 0),
+            "cost_saved": stats.get("cost_saved", 0.0),
             "hit_rate_percent": f"{hit_rate * 100:.1f}%",
         }

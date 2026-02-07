@@ -87,8 +87,8 @@ async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
                     "misses": stats.get("cache_misses", 0),
                     "requests": stats.get("total_requests", 0),
                     "hit_rate": stats.get("hit_rate", 0.0),
-                    "tokens_saved": 0,  # TODO: Track in AIExecution logs
-                    "estimated_cost_saved": 0.0,  # TODO: Calculate from AIExecution logs
+                    "tokens_saved": stats.get("tokens_saved", 0),
+                    "estimated_cost_saved": stats.get("cost_saved", 0.0),
                 }
             }
         }
