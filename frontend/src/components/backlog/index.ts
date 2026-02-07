@@ -11,3 +11,4 @@ export { default as ItemDetailPanel } from './ItemDetailPanel';
 export { default as GenerationWizard } from './GenerationWizard';
 export { default as WorkflowActions } from './WorkflowActions';
 export { TaskCard } from './TaskCard'; // PROMPT #68
+export { default as InlineCardCreator } from './InlineCardCreator'; // PROMPT #187

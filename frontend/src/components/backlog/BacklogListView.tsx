@@ -15,6 +15,7 @@ import { useNotifications } from '@/contexts/NotificationContext';
 import { tasksApi, interviewsApi } from '@/lib/api';  // PROMPT #131 - Added interviewsApi
 import { BacklogItem, ItemType, PriorityLevel, TaskStatus, Interview } from '@/lib/types';  // PROMPT #131 - Added Interview
 import { TaskCard } from './TaskCard'; // PROMPT #68
+import InlineCardCreator from './InlineCardCreator'; // PROMPT #187
 
 // PROMPT #94 - Helper to check if item is suggested
 const isSuggestedItem = (item: BacklogItem): boolean => {
@@ -139,6 +140,7 @@ export default function BacklogListView({
   const [loading, setLoading] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree'); // PROMPT #68
+  const [isAddingEpic, setIsAddingEpic] = useState(false); // PROMPT #187 - Manual epic creation
   const { showError, showSuccess, NotificationComponent } = useNotification();
   const { addJob, notifications, activeJobs } = useNotifications(); // PROMPT #128 - Background notifications
 
@@ -790,6 +792,31 @@ export default function BacklogListView({
           <p className="mt-1 text-sm text-gray-500">
             Get started by creating Epics, Stories, or Tasks.
           </p>
+          {/* PROMPT #187 - Add Epic in empty state */}
+          {isAddingEpic ? (
+            <div className="mt-4 max-w-md mx-auto">
+              <InlineCardCreator
+                itemType={ItemType.EPIC}
+                projectId={projectId}
+                onCreated={() => {
+                  setIsAddingEpic(false);
+                  fetchBacklog();
+                }}
+                onCancel={() => setIsAddingEpic(false)}
+                variant="hierarchy-card"
+              />
+            </div>
+          ) : (
+            <button
+              onClick={() => setIsAddingEpic(true)}
+              className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Epic
+            </button>
+          )}
         </CardContent>
       </Card>
     );
@@ -828,6 +855,17 @@ export default function BacklogListView({
         <div className="flex items-center justify-between">
           <CardTitle>Backlog</CardTitle>
           <div className="flex items-center gap-4">
+            {/* PROMPT #187 - Add Epic button */}
+            <button
+              onClick={() => setIsAddingEpic(true)}
+              disabled={isAddingEpic}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 rounded-md transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Epic
+            </button>
             <div className="text-sm text-gray-500">
               {/* PROMPT #123 - Show filtered count vs total */}
               {filters?.search ? (
@@ -1017,6 +1055,20 @@ export default function BacklogListView({
       )}
 
       <CardContent className={viewMode === 'card' ? 'p-6' : 'p-0'}>
+        {/* PROMPT #187 - Inline Epic Creator */}
+        {isAddingEpic && (
+          <InlineCardCreator
+            itemType={ItemType.EPIC}
+            projectId={projectId}
+            onCreated={() => {
+              setIsAddingEpic(false);
+              fetchBacklog();
+            }}
+            onCancel={() => setIsAddingEpic(false)}
+            variant={viewMode === 'tree' ? 'backlog-row' : 'hierarchy-card'}
+          />
+        )}
+
         {/* Tree View (Original) */}
         {viewMode === 'tree' && (
           <div className="divide-y divide-gray-100">

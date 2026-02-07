@@ -16,6 +16,7 @@ import { tasksApi, interviewsApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import WorkflowActions from './WorkflowActions';
+import InlineCardCreator from './InlineCardCreator'; // PROMPT #187
 import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconClipboard, IconTree, IconLink, IconChat, IconChart, IconCpu, IconMicrophone, IconPencil, IconCheckCircle } from '@/components/icons';
 import {
   BacklogItem,
@@ -89,6 +90,21 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [showGenerateChildrenDialog, setShowGenerateChildrenDialog] = useState(false);
   const [childrenCount, setChildrenCount] = useState(10);
 
+  // PROMPT #187 - Manual child card creation
+  const [isAddingChild, setIsAddingChild] = useState(false);
+  const childTypeMap: Record<string, ItemType> = {
+    epic: ItemType.STORY,
+    story: ItemType.TASK,
+    task: ItemType.SUBTASK,
+  };
+  const childType = childTypeMap[item.item_type];
+  const childTypeLabelMap: Record<string, string> = {
+    epic: 'Story',
+    story: 'Task',
+    task: 'Subtask',
+  };
+  const childTypeLabel = childTypeLabelMap[item.item_type];
+
   // PROMPT #131 - Card interviews state (list instead of single)
   const [cardInterviews, setCardInterviews] = useState<Interview[]>([]);
   const [loadingInterview, setLoadingInterview] = useState(false);
@@ -100,6 +116,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
 
   useEffect(() => {
     fetchItemDetails();
+    setIsAddingChild(false); // PROMPT #187 - Reset when item changes
   }, [item.id]);
 
   // PROMPT #177 - Refresh item data when activation or generation job completes
@@ -1015,38 +1032,55 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       <h3 className="text-sm font-semibold text-gray-900">
                         Children ({children.length})
                       </h3>
-                      {/* PROMPT #127 - Generate children button for approved non-subtask items */}
-                      {/* PROMPT #176 - Persistent loading state during generation */}
+                      {/* PROMPT #187 - Add child + Generate children buttons */}
                       {!isSuggestedItem && item.item_type !== 'subtask' && (
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          disabled={isGeneratingChildren}
-                          onClick={() => {
-                            const defaults: Record<string, number> = { epic: 10, story: 8, task: 5 };
-                            setChildrenCount(defaults[item.item_type] || 10);
-                            setShowGenerateChildrenDialog(true);
-                          }}
-                        >
-                          {isGeneratingChildren ? (
-                            <>
-                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
-                              Gerando...
-                            </>
-                          ) : (
-                            <>
+                        <div className="flex items-center gap-2">
+                          {/* PROMPT #187 - Manual add child button */}
+                          {childType && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={isAddingChild}
+                              onClick={() => setIsAddingChild(true)}
+                            >
                               <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                               </svg>
-                              {item.item_type === 'epic' ? 'Gerar Stories' :
-                               item.item_type === 'story' ? 'Gerar Tasks' :
-                               item.item_type === 'task' ? 'Gerar Subtasks' : 'Gerar'}
-                            </>
+                              Add {childTypeLabel}
+                            </Button>
                           )}
-                        </Button>
+                          {/* PROMPT #127 - Generate children button */}
+                          {/* PROMPT #176 - Persistent loading state during generation */}
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={isGeneratingChildren}
+                            onClick={() => {
+                              const defaults: Record<string, number> = { epic: 10, story: 8, task: 5 };
+                              setChildrenCount(defaults[item.item_type] || 10);
+                              setShowGenerateChildrenDialog(true);
+                            }}
+                          >
+                            {isGeneratingChildren ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                                Gerando...
+                              </>
+                            ) : (
+                              <>
+                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                </svg>
+                                {item.item_type === 'epic' ? 'Gerar Stories' :
+                                 item.item_type === 'story' ? 'Gerar Tasks' :
+                                 item.item_type === 'task' ? 'Gerar Subtasks' : 'Gerar'}
+                              </>
+                            )}
+                          </Button>
+                        </div>
                       )}
                     </div>
-                    {children.length === 0 ? (
+                    {children.length === 0 && !isAddingChild ? (
                       <p className="text-sm text-gray-500 italic">No child items</p>
                     ) : (
                       <div className="space-y-2">
@@ -1067,6 +1101,23 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                             </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+                    {/* PROMPT #187 - Inline child card creator */}
+                    {isAddingChild && childType && (
+                      <div className="mt-2">
+                        <InlineCardCreator
+                          itemType={childType}
+                          projectId={item.project_id}
+                          parentId={item.id}
+                          onCreated={() => {
+                            setIsAddingChild(false);
+                            fetchItemDetails();
+                            if (onUpdate) onUpdate();
+                          }}
+                          onCancel={() => setIsAddingChild(false)}
+                          variant="hierarchy-card"
+                        />
                       </div>
                     )}
                   </div>
