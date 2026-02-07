@@ -69,6 +69,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const isApproving = activeJobs.some(
     j => activationTypes.includes(j.job_type) && j.task_id === item.id && (j.status === 'pending' || j.status === 'running')
   );
+  // PROMPT #176 - isGeneratingChildren derived from activeJobs for persistence across navigation
+  const isGeneratingChildren = activeJobs.some(
+    j => j.job_type === 'children_generation' && j.task_id === item.id && (j.status === 'pending' || j.status === 'running')
+  );
   const [isRejecting, setIsRejecting] = useState(false);
 
   // PROMPT #97 - Inline description editing state
@@ -344,7 +348,9 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           result.job_id,
           'children_generation',
           `Gerando ${count} ${childType} para: ${item.title.substring(0, 30)}...`,
-          item.title
+          item.title,
+          false,
+          item.id // PROMPT #176 - Track which task is generating children for persistent loading
         );
         showSuccess(`Geração de ${count} ${childType} iniciada! Acompanhe no sininho.`);
       }
@@ -992,22 +998,33 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                         Children ({children.length})
                       </h3>
                       {/* PROMPT #127 - Generate children button for approved non-subtask items */}
+                      {/* PROMPT #176 - Persistent loading state during generation */}
                       {!isSuggestedItem && item.item_type !== 'subtask' && (
                         <Button
                           size="sm"
                           variant="primary"
+                          disabled={isGeneratingChildren}
                           onClick={() => {
                             const defaults: Record<string, number> = { epic: 10, story: 8, task: 5 };
                             setChildrenCount(defaults[item.item_type] || 10);
                             setShowGenerateChildrenDialog(true);
                           }}
                         >
-                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          {item.item_type === 'epic' ? 'Gerar Stories' :
-                           item.item_type === 'story' ? 'Gerar Tasks' :
-                           item.item_type === 'task' ? 'Gerar Subtasks' : 'Gerar'}
+                          {isGeneratingChildren ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                              Gerando...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                              </svg>
+                              {item.item_type === 'epic' ? 'Gerar Stories' :
+                               item.item_type === 'story' ? 'Gerar Tasks' :
+                               item.item_type === 'task' ? 'Gerar Subtasks' : 'Gerar'}
+                            </>
+                          )}
                         </Button>
                       )}
                     </div>
