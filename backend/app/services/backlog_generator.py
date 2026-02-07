@@ -332,18 +332,25 @@ LEMBRE-SE:
         # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Generating Epic from Interview {interview_id}...")
 
-        try:
-            result = await self.prompter.execute_prompt(
-                prompt=user_prompt,
-                usage_type="prompt_generation",
-                system_prompt=system_prompt,
-                project_id=str(project_id),
-                interview_id=str(interview_id),
-                metadata={"operation": "generate_epic_from_interview"}
-            )
-        except RuntimeError:
-            # Fallback to direct orchestrator if PrompterFacade not initialized
-            logger.warning("PrompterFacade not available, using direct AIOrchestrator")
+        if self.prompter:
+            try:
+                result = await self.prompter.execute_prompt(
+                    prompt=user_prompt,
+                    usage_type="prompt_generation",
+                    system_prompt=system_prompt,
+                    project_id=str(project_id),
+                    interview_id=str(interview_id),
+                    metadata={"operation": "generate_epic_from_interview"}
+                )
+            except (RuntimeError, AttributeError):
+                # Fallback to direct orchestrator if PrompterFacade fails
+                logger.warning("PrompterFacade failed, using direct AIOrchestrator")
+                self.prompter = None  # Disable for future calls
+                result = None
+        else:
+            result = None
+
+        if result is None:
             result = await self.orchestrator.execute(
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
@@ -351,7 +358,7 @@ LEMBRE-SE:
                 project_id=project_id,
                 interview_id=interview_id,
                 metadata={"operation": "generate_epic_from_interview"},
-                enable_rag=True  # PROMPT #124 - Enable RAG for backlog generation
+                enable_rag=True
             )
             # Normalize result format
             result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
@@ -630,20 +637,26 @@ LEMBRE-SE:
         # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Decomposing Epic {epic_id} into Stories... (RAG: {rag_story_count} similar stories)")
 
-        try:
-            result = await self.prompter.execute_prompt(
-                prompt=user_prompt,
-                usage_type="prompt_generation",
-                system_prompt=system_prompt,
-                project_id=str(project_id),
-                metadata={
-                    "operation": "decompose_epic_to_stories",
-                    "epic_id": str(epic_id)
-                }
-            )
-        except RuntimeError:
-            # Fallback to direct orchestrator if PrompterFacade not initialized
-            logger.warning("PrompterFacade not available, using direct AIOrchestrator")
+        if self.prompter:
+            try:
+                result = await self.prompter.execute_prompt(
+                    prompt=user_prompt,
+                    usage_type="prompt_generation",
+                    system_prompt=system_prompt,
+                    project_id=str(project_id),
+                    metadata={
+                        "operation": "decompose_epic_to_stories",
+                        "epic_id": str(epic_id)
+                    }
+                )
+            except (RuntimeError, AttributeError):
+                logger.warning("PrompterFacade failed, using direct AIOrchestrator")
+                self.prompter = None
+                result = None
+        else:
+            result = None
+
+        if result is None:
             result = await self.orchestrator.execute(
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
@@ -653,7 +666,7 @@ LEMBRE-SE:
                     "operation": "decompose_epic_to_stories",
                     "epic_id": str(epic_id)
                 },
-                enable_rag=True  # PROMPT #124 - Enable RAG for backlog generation
+                enable_rag=True
             )
             # Normalize result format
             result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
@@ -937,20 +950,26 @@ LEMBRE-SE:
         # 4. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Decomposing Story {story_id} into Tasks... (RAG: {rag_task_count} similar tasks)")
 
-        try:
-            result = await self.prompter.execute_prompt(
-                prompt=user_prompt,
-                usage_type="prompt_generation",
-                system_prompt=system_prompt,
-                project_id=str(project_id),
-                metadata={
-                    "operation": "decompose_story_to_tasks",
-                    "story_id": str(story_id)
-                }
-            )
-        except RuntimeError:
-            # Fallback to direct orchestrator if PrompterFacade not initialized
-            logger.warning("PrompterFacade not available, using direct AIOrchestrator")
+        if self.prompter:
+            try:
+                result = await self.prompter.execute_prompt(
+                    prompt=user_prompt,
+                    usage_type="prompt_generation",
+                    system_prompt=system_prompt,
+                    project_id=str(project_id),
+                    metadata={
+                        "operation": "decompose_story_to_tasks",
+                        "story_id": str(story_id)
+                    }
+                )
+            except (RuntimeError, AttributeError):
+                logger.warning("PrompterFacade failed, using direct AIOrchestrator")
+                self.prompter = None
+                result = None
+        else:
+            result = None
+
+        if result is None:
             result = await self.orchestrator.execute(
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
@@ -960,7 +979,7 @@ LEMBRE-SE:
                     "operation": "decompose_story_to_tasks",
                     "story_id": str(story_id)
                 },
-                enable_rag=True  # PROMPT #124 - Enable RAG for backlog generation
+                enable_rag=True
             )
             # Normalize result format
             result = {"response": result["content"], "input_tokens": result.get("usage", {}).get("input_tokens", 0), "output_tokens": result.get("usage", {}).get("output_tokens", 0), "model": result.get("db_model_name", "unknown")}
