@@ -26,7 +26,8 @@ class ConventionExtractor:
     async def extract(
         self,
         extraction_path: Path,
-        detected_stack: Optional[str] = None
+        detected_stack: Optional[str] = None,
+        project_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Extract conventions from project
@@ -83,6 +84,7 @@ class ConventionExtractor:
                     "content": prompt
                 }],
                 max_tokens=2000,
+                project_id=project_id,
             )
 
             # Parse response

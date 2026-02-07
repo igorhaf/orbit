@@ -109,7 +109,8 @@ async def process_analysis_background(
         logger.info("  Extracting conventions with AI...")
         conventions = await convention_extractor.extract(
             extraction_path,
-            stack_result["detected_stack"]
+            stack_result["detected_stack"],
+            project_id=str(analysis.project_id) if analysis.project_id else None
         )
 
         analysis.conventions = conventions
@@ -119,7 +120,8 @@ async def process_analysis_background(
         logger.info("  Recognizing patterns with AI...")
         patterns = await pattern_recognizer.recognize(
             extraction_path,
-            stack_result["detected_stack"]
+            stack_result["detected_stack"],
+            project_id=str(analysis.project_id) if analysis.project_id else None
         )
 
         analysis.patterns = patterns

@@ -21,7 +21,8 @@ class SpecGenerator:
     async def generate(
         self,
         stack_key: str,
-        interview_data: Dict
+        interview_data: Dict,
+        project_id: str = None
     ) -> Dict:
         """
         Gera spec técnica completa
@@ -44,7 +45,8 @@ class SpecGenerator:
                 "role": "user",
                 "content": prompt
             }],
-            max_tokens=3000
+            max_tokens=3000,
+            project_id=project_id,
         )
 
         logger.info(f"Received response from {response['provider']} ({response['model']})")

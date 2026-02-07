@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #124 (AI Flow: Metrics, Animation, Analytics & Smart Reorder)
-**Próximo prompt:** PROMPT #125
+**Último prompt:** PROMPT #125 (Fix Missing project_id in AI Orchestrator Calls)
+**Próximo prompt:** PROMPT #126
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -793,6 +793,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #122**: AI Flow: Visual Fallback Chain Configuration - Implementou editor visual de fallback chains estilo n8n para modelos de IA. Página `/ai-flow` com @xyflow/react mostra diagrama Start → Model1 → Model2 → Error com nós coloridos por provider. Backend: modelo AIFlowChain (unique por usage_type), 4 endpoints CRUD, schemas Pydantic. Orchestrator modificado: `execute_with_chain()` tenta modelos em sequência, fallback automático em caso de falha. Frontend: dropdown por operação, modo edição com sidebar de modelos, reordenação de chain, overview grid de todas as chains configuradas.
 - **PROMPT #123**: Integrate Chain Fallback in All AI Calls - Integrou chain fallback diretamente no `execute()` do AIOrchestrator, tornando-o transparente para todos os 41 call sites sem alterá-los. Fluxo: execute() verifica chain → tenta cada modelo em sequência → fallback automático. Migrou 3 serviços com chamadas diretas à API Anthropic (PatternRecognizer, ConventionExtractor, TaskExecutor) para usar AIOrchestrator. Removeu chain check do `choose_model()` (movido para `execute()`). Resultado: 100% das chamadas de IA passam pelo orchestrator com chain fallback automático.
 - **PROMPT #124**: AI Flow: Metrics, Animation, Analytics & Smart Reorder - 4 features no diagrama AI Flow: (1) Métricas em tempo real nos nós (health dot, success rate, latência, custo, total calls) com polling 30s. (2) Animação WebSocket de execução em tempo real (pulse azul ao executar, verde no sucesso, shake vermelho na falha). (3) Chain Analytics Dashboard com painel colapsável (fallback rate, custo total, modelo que mais falha, economia, tabela por operação). (4) Smart Reorder + Templates (botão "Optimize Order" com 4 estratégias weighted scoring + 3 templates preset: Alta Confiabilidade, Custo Mínimo, Alta Qualidade). Backend: 5 colunas chain tracking em ai_executions, 4 endpoints novos, AIFlowManager WebSocket, broadcast_chain_event no orchestrator. Frontend: ModelNode com métricas, useAIFlowWebSocket hook, AnalyticsPanel, OptimizeDialog, Quick Actions sidebar.
+- **PROMPT #125**: Fix Missing project_id in AI Orchestrator Calls - Corrigiu bug onde prompts executados não apareciam na página `/prompts`. Root cause: `AIOrchestrator.execute()` só cria registro na tabela `prompts` quando `project_id` é passado, mas vários serviços não passavam. Corrigidos 4 serviços: context_generator.py (17 chamadas), pattern_recognizer.py (1 chamada), convention_extractor.py (1 chamada), spec_generator.py (1 chamada). Atualizado call site em project_analyses.py para passar `project_id` do objeto `analysis`. Total: 20 chamadas corrigidas.
 
 ---
 

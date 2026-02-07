@@ -26,7 +26,8 @@ class PatternRecognizer:
     async def recognize(
         self,
         extraction_path: Path,
-        detected_stack: Optional[str] = None
+        detected_stack: Optional[str] = None,
+        project_id: Optional[str] = None
     ) -> Dict[str, str]:
         """
         Extract code patterns from project
@@ -72,7 +73,8 @@ class PatternRecognizer:
             template = await self._extract_pattern_template(
                 pattern_type,
                 sampled,
-                detected_stack
+                detected_stack,
+                project_id=project_id
             )
 
             if template:
@@ -165,7 +167,8 @@ class PatternRecognizer:
         self,
         pattern_type: str,
         sampled_files: List[Dict[str, str]],
-        detected_stack: Optional[str]
+        detected_stack: Optional[str],
+        project_id: Optional[str] = None
     ) -> Optional[str]:
         """
         Extract a template pattern using AI
@@ -185,6 +188,7 @@ class PatternRecognizer:
                     "content": prompt
                 }],
                 max_tokens=3000,
+                project_id=project_id,
             )
 
             template = result["response"].strip()

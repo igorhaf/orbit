@@ -660,7 +660,8 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=8000,  # Increased from 4000 to avoid truncation
-            enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+            enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+            project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             # Note: temperature is configured in the AI model settings in the database
         )
 
@@ -823,7 +824,8 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=4000,
-            enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+            enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+            project_id=str(project.id)  # PROMPT #125 - Log to prompts table
         )
 
         # Parse response
@@ -1593,7 +1595,8 @@ Retorne como JSON seguindo o schema do system prompt."""
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=4000,  # Increased to allow for detailed specifications
-            enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+            enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+            project_id=str(project.id)  # PROMPT #125 - Log to prompts table
         )
 
         # PROMPT #127 - Capture AI model used for tracking
@@ -2005,7 +2008,8 @@ GERE A ESPECIFICAÇÃO COMPLETA AGORA, preenchendo TODOS os campos com dados REA
                     messages=simple_messages,
                     system_prompt=simple_system_prompt,
                     max_tokens=4000,  # Increased to allow more detailed response
-                    enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+                    enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+                    project_id=str(project.id)  # PROMPT #125 - Log to prompts table
                 )
 
                 raw_content = simple_response.get("content", "")
@@ -2296,7 +2300,8 @@ Retorne APENAS o array JSON com 15-20 títulos de Stories no formato User Story.
                 messages=[{"role": "user", "content": titles_user_prompt}],
                 system_prompt=titles_system_prompt,
                 max_tokens=2000,
-                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
             titles_content = titles_response.get("content", "")
@@ -2537,7 +2542,8 @@ Retorne APENAS o array JSON com 5-8 títulos de Tasks técnicas."""
                 messages=[{"role": "user", "content": titles_user_prompt}],
                 system_prompt=titles_system_prompt,
                 max_tokens=1500,
-                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
             titles_content = titles_response.get("content", "")
@@ -2715,7 +2721,8 @@ Retorne APENAS o array JSON com 3-5 títulos de Subtasks."""
                 messages=[{"role": "user", "content": titles_user_prompt}],
                 system_prompt=titles_system_prompt,
                 max_tokens=1000,
-                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
             titles_content = titles_response.get("content", "")
@@ -3177,7 +3184,8 @@ Retorne APENAS o JSON, sem explicações."""
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
                 max_tokens=4000,
-                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
             # PROMPT #127 - Capture AI model used for tracking
@@ -3597,7 +3605,8 @@ Retorne APENAS o JSON, sem explicações."""
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
                 max_tokens=4000,
-                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
             # PROMPT #127 - Capture AI model used for tracking
@@ -4001,7 +4010,8 @@ Retorne APENAS o JSON, sem explicações."""
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
                 max_tokens=4000,
-                enable_rag=True  # PROMPT #124 - Enable RAG for context generation
+                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
             # PROMPT #127 - Capture AI model used for tracking
@@ -4324,7 +4334,8 @@ IMPORTANTE:
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=3000
+                max_tokens=3000,
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
             content = response.get("content", "")
@@ -4564,7 +4575,8 @@ IMPORTANTE:
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=2000  # Smaller since only 5 epics
+                max_tokens=2000,  # Smaller since only 5 epics
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
             content = response.get("content", "")
@@ -4742,7 +4754,8 @@ IMPORTANTE:
                 messages=[{"role": "user", "content": usr_prompt}],
                 system_prompt=sys_prompt,
                 max_tokens=4000,
-                enable_rag=True
+                enable_rag=True,
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
             architecture_analysis = response.get("content", "")
             logger.info(f"Architecture analysis complete for {project.name}")
@@ -4768,7 +4781,8 @@ IMPORTANTE:
                     messages=[{"role": "user", "content": usr_prompt}],
                     system_prompt=sys_prompt,
                     max_tokens=4000,
-                    enable_rag=True
+                    enable_rag=True,
+                    project_id=str(project.id)  # PROMPT #125 - Log to prompts table
                 )
                 business_domain_analysis = response.get("content", "")
                 logger.info(f"Business domain analysis complete for {project.name}")
@@ -4797,7 +4811,8 @@ IMPORTANTE:
                     messages=[{"role": "user", "content": usr_prompt}],
                     system_prompt=sys_prompt,
                     max_tokens=4000,
-                    enable_rag=True
+                    enable_rag=True,
+                    project_id=str(project.id)  # PROMPT #125 - Log to prompts table
                 )
                 feature_landscape = response.get("content", "")
                 logger.info(f"Feature landscape complete for {project.name}")
@@ -4824,7 +4839,8 @@ IMPORTANTE:
                 messages=[{"role": "user", "content": usr_prompt}],
                 system_prompt=sys_prompt,
                 max_tokens=8000,
-                enable_rag=True
+                enable_rag=True,
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
             content = response.get("content", "")
