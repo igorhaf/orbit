@@ -312,7 +312,11 @@ def _extract_content_from_raw_response(raw_content: str, item_title: str, item_t
             human_desc = description_markdown
 
         extracted['description'] = human_desc
-        extracted['generated_prompt'] = description_markdown
+        # PROMPT #180 - Include acceptance criteria in generated_prompt
+        prompt_text = description_markdown
+        if ac_list:
+            prompt_text += "\n\n## Critérios de Aceitação\n\n" + "".join(f"- {ac}\n" for ac in ac_list)
+        extracted['generated_prompt'] = prompt_text
         extracted['semantic_map'] = semantic_map
         if ac_list:
             extracted['acceptance_criteria'] = ac_list
@@ -333,7 +337,11 @@ def _extract_content_from_raw_response(raw_content: str, item_title: str, item_t
         if semantic_map:
             stripped = _convert_semantic_to_human(stripped, semantic_map)
         extracted['description'] = stripped
-        extracted['generated_prompt'] = stripped
+        # PROMPT #180 - Include criteria in generated_prompt
+        prompt_text = stripped
+        if ac_list:
+            prompt_text += "\n\n## Critérios de Aceitação\n\n" + "".join(f"- {ac}\n" for ac in ac_list)
+        extracted['generated_prompt'] = prompt_text
         extracted['semantic_map'] = semantic_map
         if ac_list:
             extracted['acceptance_criteria'] = ac_list
@@ -2525,6 +2533,13 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         # generated_prompt = semantic markdown (for AI/child cards)
         generated_prompt = description_markdown
 
+        # PROMPT #180 - Include acceptance criteria in generated_prompt
+        acceptance_criteria = result.get("acceptance_criteria", [])
+        if acceptance_criteria:
+            generated_prompt += "\n\n## Critérios de Aceitação\n\n"
+            for ac in acceptance_criteria:
+                generated_prompt += f"- {ac}\n"
+
         # description = human-readable (converted from semantic)
         description = _convert_semantic_to_human(description_markdown, semantic_map)
 
@@ -2544,7 +2559,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
             "description": description,
             "generated_prompt": generated_prompt,
             "semantic_map": semantic_map,
-            "acceptance_criteria": result.get("acceptance_criteria", []),
+            "acceptance_criteria": acceptance_criteria,
             "story_points": result.get("story_points"),
             "interview_insights": result.get("interview_insights", {}),
             "ai_model_used": ai_model_used  # PROMPT #127
@@ -3574,7 +3589,14 @@ Retorne APENAS o JSON, sem explicações."""
                 semantic_map = result.get("semantic_map", {})
                 description_markdown = result.get("description_markdown", "")
                 result["description"] = _convert_semantic_to_human(description_markdown, semantic_map)
-                result["generated_prompt"] = description_markdown
+                # PROMPT #180 - Include acceptance criteria in generated_prompt
+                acceptance_criteria = result.get("acceptance_criteria", [])
+                prompt_with_criteria = description_markdown
+                if acceptance_criteria:
+                    prompt_with_criteria += "\n\n## Critérios de Aceitação\n\n"
+                    for ac in acceptance_criteria:
+                        prompt_with_criteria += f"- {ac}\n"
+                result["generated_prompt"] = prompt_with_criteria
                 result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
@@ -3592,6 +3614,10 @@ Retorne APENAS o JSON, sem explicações."""
                     "AC4: Interface de usuário funcional e responsiva",
                     "AC5: Documentação técnica atualizada"
                 ])
+                # PROMPT #180 - Append criteria to generated_prompt
+                ac_list = extracted.get("acceptance_criteria", [])
+                if ac_list and "## Critérios de Aceitação" not in extracted.get("generated_prompt", ""):
+                    extracted["generated_prompt"] = extracted.get("generated_prompt", "") + "\n\n## Critérios de Aceitação\n\n" + "".join(f"- {ac}\n" for ac in ac_list)
                 extracted.setdefault("semantic_map", epic_semantic_map)
                 extracted.setdefault("story_points", story.story_points or 5)
                 extracted.setdefault("interview_insights", {"derived_from_epic": str(parent_epic.id) if parent_epic else None})
@@ -3601,6 +3627,13 @@ Retorne APENAS o JSON, sem explicações."""
             # No usable content extracted - build from parent context
             epic_desc = (parent_epic.description or parent_epic.generated_prompt or "") if parent_epic else ""
             project_ctx = (project.context_human or project.context_semantic or "")[:2000]
+            story_ac = [
+                f"AC1: {story.title} completamente implementada",
+                "AC2: Testes unitários cobrindo os fluxos principais",
+                "AC3: Integração com módulos dependentes verificada",
+                "AC4: Interface de usuário funcional e responsiva",
+                "AC5: Documentação técnica atualizada"
+            ]
             fallback_desc = (
                 f"# Story: {story.title}\n\n"
                 f"## Visão Geral\n\n"
@@ -3610,18 +3643,13 @@ Retorne APENAS o JSON, sem explicações."""
                 f"{epic_desc[:2000]}\n\n"
                 f"## Contexto do Projeto\n\n"
                 f"{project_ctx}\n\n"
-                f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
             )
+            # PROMPT #180 - Include criteria in generated_prompt
+            fallback_prompt = fallback_desc + "## Critérios de Aceitação\n\n" + "".join(f"- {ac}\n" for ac in story_ac)
             return {
-                "description": fallback_desc,
-                "generated_prompt": fallback_desc,
-                "acceptance_criteria": [
-                    f"AC1: {story.title} completamente implementada",
-                    "AC2: Testes unitários cobrindo os fluxos principais",
-                    "AC3: Integração com módulos dependentes verificada",
-                    "AC4: Interface de usuário funcional e responsiva",
-                    "AC5: Documentação técnica atualizada"
-                ],
+                "description": fallback_desc.rstrip() + "\n\n*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*",
+                "generated_prompt": fallback_prompt,
+                "acceptance_criteria": story_ac,
                 "semantic_map": epic_semantic_map,
                 "story_points": story.story_points or 5,
                 "interview_insights": {"derived_from_epic": str(parent_epic.id) if parent_epic else None},
@@ -4060,7 +4088,14 @@ Retorne APENAS o JSON, sem explicações."""
                 semantic_map = result.get("semantic_map", {})
                 description_markdown = result.get("description_markdown", "")
                 result["description"] = _convert_semantic_to_human(description_markdown, semantic_map)
-                result["generated_prompt"] = description_markdown
+                # PROMPT #180 - Include acceptance criteria in generated_prompt
+                acceptance_criteria = result.get("acceptance_criteria", [])
+                prompt_with_criteria = description_markdown
+                if acceptance_criteria:
+                    prompt_with_criteria += "\n\n## Critérios de Aceitação\n\n"
+                    for ac in acceptance_criteria:
+                        prompt_with_criteria += f"- {ac}\n"
+                result["generated_prompt"] = prompt_with_criteria
                 result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
@@ -4076,6 +4111,10 @@ Retorne APENAS o JSON, sem explicações."""
                     "AC3: Code review aprovado",
                     "AC4: Sem bugs ou regressões"
                 ])
+                # PROMPT #180 - Append criteria to generated_prompt
+                ac_list = extracted.get("acceptance_criteria", [])
+                if ac_list and "## Critérios de Aceitação" not in extracted.get("generated_prompt", ""):
+                    extracted["generated_prompt"] = extracted.get("generated_prompt", "") + "\n\n## Critérios de Aceitação\n\n" + "".join(f"- {ac}\n" for ac in ac_list)
                 extracted.setdefault("semantic_map", combined_semantic_map)
                 extracted.setdefault("story_points", task.story_points or 3)
                 extracted["ai_model_used"] = ai_model_used
@@ -4084,6 +4123,12 @@ Retorne APENAS o JSON, sem explicações."""
             # No usable content extracted - build from parent context
             story_desc = (parent_story.description or parent_story.generated_prompt or "") if parent_story else ""
             epic_desc = (grandparent_epic.description or grandparent_epic.generated_prompt or "") if grandparent_epic else ""
+            task_ac = [
+                f"AC1: {task.title} implementada",
+                "AC2: Testes unitários adicionados",
+                "AC3: Code review aprovado",
+                "AC4: Sem bugs ou regressões"
+            ]
             fallback_desc = (
                 f"# Task: {task.title}\n\n"
                 f"## Visão Geral\n\n{task.description or task.title}\n\n"
@@ -4091,17 +4136,13 @@ Retorne APENAS o JSON, sem explicações."""
                 f"{story_desc[:1500]}\n\n"
                 f"## Contexto do Epic\n\n**{grandparent_epic.title if grandparent_epic else 'N/A'}**\n\n"
                 f"{epic_desc[:1000]}\n\n"
-                f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
             )
+            # PROMPT #180 - Include criteria in generated_prompt
+            fallback_prompt = fallback_desc + "## Critérios de Aceitação\n\n" + "".join(f"- {ac}\n" for ac in task_ac)
             return {
-                "description": fallback_desc,
-                "generated_prompt": fallback_desc,
-                "acceptance_criteria": [
-                    f"AC1: {task.title} implementada",
-                    "AC2: Testes unitários adicionados",
-                    "AC3: Code review aprovado",
-                    "AC4: Sem bugs ou regressões"
-                ],
+                "description": fallback_desc.rstrip() + "\n\n*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*",
+                "generated_prompt": fallback_prompt,
+                "acceptance_criteria": task_ac,
                 "semantic_map": combined_semantic_map,
                 "story_points": task.story_points or 3,
                 "ai_model_used": ai_model_used  # PROMPT #127
@@ -4522,7 +4563,14 @@ Retorne APENAS o JSON, sem explicações."""
                 semantic_map = result.get("semantic_map", {})
                 description_markdown = result.get("description_markdown", "")
                 result["description"] = _convert_semantic_to_human(description_markdown, semantic_map)
-                result["generated_prompt"] = description_markdown
+                # PROMPT #180 - Include acceptance criteria in generated_prompt
+                acceptance_criteria = result.get("acceptance_criteria", [])
+                prompt_with_criteria = description_markdown
+                if acceptance_criteria:
+                    prompt_with_criteria += "\n\n## Critérios de Aceitação\n\n"
+                    for ac in acceptance_criteria:
+                        prompt_with_criteria += f"- {ac}\n"
+                result["generated_prompt"] = prompt_with_criteria
                 result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
@@ -4537,6 +4585,10 @@ Retorne APENAS o JSON, sem explicações."""
                     "AC2: Testes passam",
                     "AC3: Code review aprovado"
                 ])
+                # PROMPT #180 - Append criteria to generated_prompt
+                ac_list = extracted.get("acceptance_criteria", [])
+                if ac_list and "## Critérios de Aceitação" not in extracted.get("generated_prompt", ""):
+                    extracted["generated_prompt"] = extracted.get("generated_prompt", "") + "\n\n## Critérios de Aceitação\n\n" + "".join(f"- {ac}\n" for ac in ac_list)
                 extracted.setdefault("semantic_map", combined_semantic_map)
                 extracted["ai_model_used"] = ai_model_used
                 return extracted
@@ -4544,6 +4596,11 @@ Retorne APENAS o JSON, sem explicações."""
             # No usable content extracted - build from parent context
             task_desc = (parent_task.description or parent_task.generated_prompt or "") if parent_task else ""
             story_desc = (grandparent_story.description or grandparent_story.generated_prompt or "") if grandparent_story else ""
+            subtask_ac = [
+                f"AC1: {subtask.title} implementada",
+                "AC2: Testes passam",
+                "AC3: Code review aprovado"
+            ]
             fallback_desc = (
                 f"# Subtask: {subtask.title}\n\n"
                 f"## Visão Geral\n\n{subtask.description or subtask.title}\n\n"
@@ -4551,16 +4608,13 @@ Retorne APENAS o JSON, sem explicações."""
                 f"{task_desc[:1500]}\n\n"
                 f"## Contexto da Story\n\n**{grandparent_story.title if grandparent_story else 'N/A'}**\n\n"
                 f"{story_desc[:1000]}\n\n"
-                f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
             )
+            # PROMPT #180 - Include criteria in generated_prompt
+            fallback_prompt = fallback_desc + "## Critérios de Aceitação\n\n" + "".join(f"- {ac}\n" for ac in subtask_ac)
             return {
-                "description": fallback_desc,
-                "generated_prompt": fallback_desc,
-                "acceptance_criteria": [
-                    f"AC1: {subtask.title} implementada",
-                    "AC2: Testes passam",
-                    "AC3: Code review aprovado"
-                ],
+                "description": fallback_desc.rstrip() + "\n\n*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*",
+                "generated_prompt": fallback_prompt,
+                "acceptance_criteria": subtask_ac,
                 "semantic_map": combined_semantic_map,
                 "ai_model_used": ai_model_used  # PROMPT #127
             }
