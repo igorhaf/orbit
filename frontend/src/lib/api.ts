@@ -642,7 +642,7 @@ export const aiFlowApi = {
 
   getChain: (usageType: string) => request<any>(`/api/v1/ai-flow/chains/${usageType}`),
 
-  upsertChain: (usageType: string, data: { chain: string[]; is_active?: boolean }) =>
+  upsertChain: (usageType: string, data: { chain: string[]; node_positions?: Record<string, { x: number; y: number }> | null; is_active?: boolean }) =>
     request<any>(`/api/v1/ai-flow/chains/${usageType}`, {
       method: 'PUT',
       body: JSON.stringify(data),

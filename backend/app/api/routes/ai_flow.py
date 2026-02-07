@@ -59,6 +59,7 @@ def _chain_to_dict(chain: AIFlowChain, models: List[dict]) -> dict:
         "id": chain.id,
         "usage_type": chain.usage_type.value if hasattr(chain.usage_type, "value") else chain.usage_type,
         "chain": chain.chain,
+        "node_positions": chain.node_positions,
         "is_active": chain.is_active,
         "created_at": chain.created_at,
         "updated_at": chain.updated_at,
@@ -109,6 +110,7 @@ async def upsert_chain(
 
     if existing:
         existing.chain = data.chain
+        existing.node_positions = data.node_positions
         existing.is_active = data.is_active
         existing.updated_at = datetime.utcnow()
         db.commit()
@@ -119,6 +121,7 @@ async def upsert_chain(
             id=uuid4(),
             usage_type=usage_type,
             chain=data.chain,
+            node_positions=data.node_positions,
             is_active=data.is_active,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),

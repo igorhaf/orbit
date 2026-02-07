@@ -36,6 +36,7 @@ class AIFlowChain(Base):
         index=True,
     )
     chain = Column(JSON, nullable=False, default=list)
+    node_positions = Column(JSON, nullable=True, default=None)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(

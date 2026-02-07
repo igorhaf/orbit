@@ -637,6 +637,7 @@ export interface AIFlowChain {
   id: string;
   usage_type: string;
   chain: string[];
+  node_positions?: Record<string, { x: number; y: number }> | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;

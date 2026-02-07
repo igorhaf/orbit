@@ -29,7 +29,6 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { aiModelsApi, aiFlowApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
@@ -66,7 +65,7 @@ const PROVIDER_BG: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Provider Icon (reused from ai-models page pattern)
+// Provider Icon
 // ---------------------------------------------------------------------------
 
 function ProviderIcon({ provider, size = 'w-5 h-5' }: { provider: string; size?: string }) {
@@ -181,6 +180,7 @@ const nodeTypes = { modelNode: ModelNode };
 function buildFlowFromChain(
   chainModels: AIFlowChainModel[],
   editMode: boolean,
+  savedPositions?: Record<string, { x: number; y: number }> | null,
   onRemove?: (modelId: string) => void
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
@@ -191,11 +191,12 @@ function buildFlowFromChain(
   const Y = 150;
 
   // Start node
+  const startPos = savedPositions?.['start'] || { x: START_X, y: Y };
   nodes.push({
     id: 'start',
     type: 'input',
     data: { label: 'Request' },
-    position: { x: START_X, y: Y },
+    position: startPos,
     style: {
       background: '#3b82f6',
       color: 'white',
@@ -214,6 +215,8 @@ function buildFlowFromChain(
   // Model nodes
   chainModels.forEach((model, index) => {
     const nodeId = `model-${model.id}`;
+    const defaultPos = { x: START_X + SPACING_X * (index + 1), y: Y - 20 };
+    const pos = savedPositions?.[nodeId] || defaultPos;
     nodes.push({
       id: nodeId,
       type: 'modelNode',
@@ -223,7 +226,7 @@ function buildFlowFromChain(
         editMode,
         onRemove: onRemove ? () => onRemove(model.id) : undefined,
       },
-      position: { x: START_X + SPACING_X * (index + 1), y: Y - 20 },
+      position: pos,
     });
 
     const sourceId = index === 0 ? 'start' : `model-${chainModels[index - 1].id}`;
@@ -242,11 +245,13 @@ function buildFlowFromChain(
 
   // Error/End node
   const lastSourceId = chainModels.length > 0 ? `model-${chainModels[chainModels.length - 1].id}` : 'start';
+  const errorDefaultPos = { x: START_X + SPACING_X * (chainModels.length + 1), y: Y };
+  const errorPos = savedPositions?.['error'] || errorDefaultPos;
   nodes.push({
     id: 'error',
     type: 'output',
     data: { label: 'Error' },
-    position: { x: START_X + SPACING_X * (chainModels.length + 1), y: Y },
+    position: errorPos,
     style: {
       background: '#ef4444',
       color: 'white',
@@ -366,14 +371,16 @@ export default function AIFlowPage() {
 
   useEffect(() => {
     const models = editMode ? editChainModels : chainModels;
+    const savedPositions = editMode ? null : currentChain?.node_positions;
     const { nodes: n, edges: e } = buildFlowFromChain(
       models,
       editMode,
+      savedPositions,
       editMode ? handleRemoveFromChain : undefined
     );
     setNodes(n);
     setEdges(e);
-  }, [chainModels, editChainModels, editMode, handleRemoveFromChain, setNodes, setEdges]);
+  }, [chainModels, editChainModels, editMode, handleRemoveFromChain, setNodes, setEdges, currentChain?.node_positions]);
 
   // Edge reconnection handlers
   const onReconnectStart = useCallback(() => {
@@ -412,6 +419,15 @@ export default function AIFlowPage() {
     [setEdges]
   );
 
+  // Collect current node positions from ReactFlow state
+  const getNodePositions = useCallback((): Record<string, { x: number; y: number }> => {
+    const positions: Record<string, { x: number; y: number }> = {};
+    nodes.forEach((node) => {
+      positions[node.id] = { x: node.position.x, y: node.position.y };
+    });
+    return positions;
+  }, [nodes]);
+
   // Actions
   const handleEditStart = () => {
     setEditChain(currentChain?.chain || []);
@@ -448,8 +464,10 @@ export default function AIFlowPage() {
   const handleSave = async () => {
     setSaving(true);
     try {
+      const nodePositions = getNodePositions();
       await aiFlowApi.upsertChain(selectedUsageType, {
         chain: editChain,
+        node_positions: nodePositions,
         is_active: true,
       });
       showSuccess('Flow chain saved successfully');
@@ -461,6 +479,23 @@ export default function AIFlowPage() {
       showError('Failed to save flow chain');
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Save positions only (without entering edit mode)
+  const handleSavePositions = async () => {
+    if (!currentChain) return;
+    try {
+      const nodePositions = getNodePositions();
+      await aiFlowApi.upsertChain(selectedUsageType, {
+        chain: currentChain.chain,
+        node_positions: nodePositions,
+        is_active: currentChain.is_active,
+      });
+      showSuccess('Layout saved');
+      await loadData();
+    } catch (error) {
+      console.error('Failed to save positions:', error);
     }
   };
 
@@ -486,99 +521,106 @@ export default function AIFlowPage() {
     );
   }
 
+  const hasChainData = editMode ? editChain.length > 0 : chainModels.length > 0;
+
   return (
     <Layout>
       <Breadcrumbs />
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+      <div className="flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
+        {/* Header row - compact */}
+        <div className="flex items-center justify-between mb-3">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">AI Flow</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Configure fallback chains for each AI operation. Models are tried in order — if one fails, the next is used.
+            <h1 className="text-2xl font-bold text-gray-900">AI Flow</h1>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Configure fallback chains per operation. Models are tried in order.
             </p>
           </div>
         </div>
 
-        {/* Controls bar */}
-        <Card>
-          <CardContent className="py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <label className="text-sm font-medium text-gray-700">Operation:</label>
-                <select
-                  value={selectedUsageType}
-                  onChange={(e) => {
-                    setSelectedUsageType(e.target.value);
-                    setEditMode(false);
-                    setEditChain([]);
-                  }}
-                  className="px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  disabled={editMode}
+        {/* Controls bar - compact inline */}
+        <div className="flex items-center justify-between px-3 py-2 bg-white border rounded-lg mb-3 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <label className="text-sm font-medium text-gray-700">Operation:</label>
+            <select
+              value={selectedUsageType}
+              onChange={(e) => {
+                setSelectedUsageType(e.target.value);
+                setEditMode(false);
+                setEditChain([]);
+              }}
+              className="px-2 py-1.5 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              disabled={editMode}
+            >
+              {USAGE_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+
+            {currentChain && !editMode && (
+              <span className="text-xs text-gray-500">
+                {currentChain.chain.length} model{currentChain.chain.length !== 1 ? 's' : ''} in chain
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!editMode ? (
+              <>
+                {currentChain && (
+                  <Button variant="outline" size="sm" onClick={handleSavePositions}>
+                    <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Save Layout
+                  </Button>
+                )}
+                <Button variant="primary" size="sm" onClick={handleEditStart}>
+                  <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  {currentChain ? 'Edit' : 'Configure'}
+                </Button>
+                {currentChain && (
+                  <Button variant="outline" size="sm" onClick={handleDelete}>
+                    <svg className="w-3.5 h-3.5 mr-1 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Delete
+                  </Button>
+                )}
+              </>
+            ) : (
+              <>
+                <Button variant="outline" size="sm" onClick={handleEditCancel}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSave}
+                  disabled={saving || editChain.length === 0}
                 >
-                  {USAGE_TYPE_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  {saving ? (
+                    <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white mr-1" />
+                  ) : (
+                    <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                  Save Flow
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
 
-                {currentChain && !editMode && (
-                  <span className="text-xs text-gray-500">
-                    {currentChain.chain.length} model{currentChain.chain.length !== 1 ? 's' : ''} in chain
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {!editMode ? (
-                  <>
-                    <Button variant="primary" onClick={handleEditStart}>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      {currentChain ? 'Edit Flow' : 'Configure Flow'}
-                    </Button>
-                    {currentChain && (
-                      <Button variant="outline" onClick={handleDelete}>
-                        <svg className="w-4 h-4 mr-1 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                        Delete
-                      </Button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Button variant="outline" onClick={handleEditCancel}>
-                      Cancel
-                    </Button>
-                    <Button
-                      variant="primary"
-                      onClick={handleSave}
-                      disabled={saving || editChain.length === 0}
-                    >
-                      {saving ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-                      ) : (
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                      Save Flow
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Main content */}
-        <div className="flex gap-4" style={{ height: '550px' }}>
+        {/* Main content - fills remaining height */}
+        <div className="flex gap-3 flex-1 min-h-0">
           {/* ReactFlow Canvas */}
           <div className={`border rounded-lg overflow-hidden bg-gray-50 ${editMode ? 'flex-1' : 'w-full'}`}>
-            {(editMode ? editChain.length > 0 : chainModels.length > 0) ? (
+            {hasChainData ? (
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -606,7 +648,7 @@ export default function AIFlowPage() {
                   nodeStrokeWidth={3}
                   zoomable
                   pannable
-                  style={{ height: 100, width: 150 }}
+                  style={{ height: 90, width: 140 }}
                 />
               </ReactFlow>
             ) : (
@@ -620,7 +662,7 @@ export default function AIFlowPage() {
                 <p className="text-sm mt-1">
                   {editMode
                     ? 'Click "+ Add" on available models to build your fallback chain'
-                    : `Click "Configure Flow" to set up a fallback chain for ${USAGE_TYPE_OPTIONS.find(o => o.value === selectedUsageType)?.label || selectedUsageType}`
+                    : `Click "Configure" to set up a fallback chain for ${USAGE_TYPE_OPTIONS.find(o => o.value === selectedUsageType)?.label || selectedUsageType}`
                   }
                 </p>
               </div>
@@ -629,7 +671,7 @@ export default function AIFlowPage() {
 
           {/* Right sidebar: available models (edit mode) */}
           {editMode && (
-            <div className="w-80 border rounded-lg bg-white overflow-hidden flex flex-col">
+            <div className="w-72 border rounded-lg bg-white overflow-hidden flex flex-col flex-shrink-0">
               {/* Chain order */}
               <div className="border-b p-3">
                 <h3 className="text-sm font-semibold text-gray-900 mb-2">Chain Order</h3>
@@ -714,72 +756,16 @@ export default function AIFlowPage() {
           )}
         </div>
 
-        {/* Info card */}
-        <Card>
-          <CardContent className="py-4">
-            <div className="flex items-start gap-3">
-              <svg className="w-5 h-5 text-blue-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <div>
-                <p className="text-sm text-gray-700">
-                  <strong>How it works:</strong> When an AI operation runs, ORBIT tries the first model in the chain. If it fails (API error, timeout, rate limit), it automatically tries the next model.
-                  If no chain is configured, the default behavior is used (model from AI Models page matching the operation type, or the General fallback).
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  Configure your models in the <a href="/ai-models" className="text-blue-600 hover:underline">AI Models</a> page. Only active models can be added to chains.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Overview of all chains */}
-        {!editMode && chains.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>All Configured Chains</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {chains.map((chain) => {
-                  const label = USAGE_TYPE_OPTIONS.find((o) => o.value === chain.usage_type)?.label || chain.usage_type;
-                  const isSelected = chain.usage_type === selectedUsageType;
-                  return (
-                    <button
-                      key={chain.id}
-                      onClick={() => setSelectedUsageType(chain.usage_type)}
-                      className={`text-left p-3 rounded-lg border-2 transition-all ${
-                        isSelected
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300 bg-white'
-                      }`}
-                    >
-                      <div className="font-medium text-sm text-gray-900">{label}</div>
-                      <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-                        {(chain.models || []).map((m, i) => (
-                          <React.Fragment key={m.id}>
-                            {i > 0 && (
-                              <svg className="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                            )}
-                            <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${
-                              PROVIDER_BG[m.provider?.toLowerCase()] || 'bg-gray-50 border-gray-200'
-                            }`}>
-                              <ProviderIcon provider={m.provider} size="w-3 h-3" />
-                              {m.name}
-                            </span>
-                          </React.Fragment>
-                        ))}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        {/* Bottom info - compact */}
+        <div className="flex items-center gap-2 mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 flex-shrink-0">
+          <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>
+            Models are tried in order. If one fails, the next is used automatically.
+            {' '}<a href="/ai-models" className="underline font-medium">Manage models</a>
+          </span>
+        </div>
       </div>
       {NotificationComponent}
     </Layout>

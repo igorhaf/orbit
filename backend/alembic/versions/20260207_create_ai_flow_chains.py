@@ -31,6 +31,7 @@ def upgrade() -> None:
         sa.Column('id', UUID(as_uuid=True), primary_key=True),
         sa.Column('usage_type', ai_model_usage_type, nullable=False, unique=True),
         sa.Column('chain', sa.JSON(), nullable=False, server_default='[]'),
+        sa.Column('node_positions', sa.JSON(), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='true'),
         sa.Column('created_at', sa.DateTime(), nullable=False),
         sa.Column('updated_at', sa.DateTime(), nullable=False),

@@ -4,7 +4,7 @@ PROMPT #122 - AI Flow: Visual Fallback Chain Configuration
 """
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -16,6 +16,10 @@ class AIFlowChainBase(BaseModel):
         default_factory=list,
         description="Ordered list of AI Model UUIDs representing the fallback sequence",
     )
+    node_positions: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Saved node positions for the flow diagram {nodeId: {x, y}}",
+    )
     is_active: bool = Field(default=True)
 
 
@@ -25,6 +29,7 @@ class AIFlowChainCreate(AIFlowChainBase):
 
 class AIFlowChainUpdate(BaseModel):
     chain: Optional[List[str]] = None
+    node_positions: Optional[Dict[str, Any]] = None
     is_active: Optional[bool] = None
 
 
