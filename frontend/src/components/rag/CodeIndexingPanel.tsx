@@ -41,7 +41,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
       if (job.status === 'completed') {
         const result = job.result;
         const message = [
-          '✅ Code indexed successfully!',
+          'Code indexed successfully!',
           '',
           `Files scanned: ${result?.files_scanned || 0}`,
           `Files indexed: ${result?.files_indexed || 0}`,
@@ -154,10 +154,10 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
                   Last Indexing Results:
                 </p>
                 <div className="mt-2 text-sm text-green-700 space-y-1">
-                  <p>📁 Files scanned: {indexJob.result.files_scanned}</p>
-                  <p>✅ Files indexed: {indexJob.result.files_indexed}</p>
-                  <p>⏭️  Files skipped: {indexJob.result.files_skipped}</p>
-                  <p>📊 Total lines: {indexJob.result.total_lines?.toLocaleString()}</p>
+                  <p>Files scanned: {indexJob.result.files_scanned}</p>
+                  <p>Files indexed: {indexJob.result.files_indexed}</p>
+                  <p>Files skipped: {indexJob.result.files_skipped}</p>
+                  <p>Total lines: {indexJob.result.total_lines?.toLocaleString()}</p>
                   <div>
                     <p className="font-medium mt-2">Languages:</p>
                     <div className="flex flex-wrap gap-2 mt-1">

@@ -15,6 +15,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useNotifications, JOB_TYPE_ICONS, JobNotification } from '@/contexts/NotificationContext';
+import { IconBrain } from '@/components/icons'; // PROMPT #188
 
 export function NotificationBell() {
   const router = useRouter();
@@ -271,8 +272,8 @@ export function NotificationBell() {
                   >
                     <div className="flex items-start gap-3">
                       {/* Icon */}
-                      <span className="text-lg flex-shrink-0">
-                        {JOB_TYPE_ICONS[job.job_type] || '🧠'}
+                      <span className="flex-shrink-0 inline-flex items-center text-gray-600">
+                        {JOB_TYPE_ICONS[job.job_type] || <IconBrain className="w-4 h-4" />}
                       </span>
 
                       {/* Content */}
@@ -332,8 +333,8 @@ export function NotificationBell() {
                   >
                     <div className="flex items-start gap-3">
                       {/* Icon */}
-                      <span className="text-lg flex-shrink-0">
-                        {JOB_TYPE_ICONS[notif.job_type] || '🧠'}
+                      <span className="flex-shrink-0 inline-flex items-center text-gray-600">
+                        {JOB_TYPE_ICONS[notif.job_type] || <IconBrain className="w-4 h-4" />}
                       </span>
 
                       {/* Content */}

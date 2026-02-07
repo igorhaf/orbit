@@ -5,24 +5,25 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { commitsApi } from '@/lib/api';
 import { Commit } from '@/lib/types';
 import { Card } from '@/components/ui';
+import { IconSparkles, IconBug, IconPencil, IconCheck, IconCog, IconBolt, IconDocument } from '@/components/icons'; // PROMPT #188
 
 interface Props {
   projectId: string;
 }
 
-const COMMIT_ICONS: Record<string, string> = {
-  feat: '✨',
-  fix: '🐛',
-  docs: '📝',
-  style: '💄',
-  refactor: '♻️',
-  test: '✅',
-  chore: '🔧',
-  perf: '⚡'
+const COMMIT_ICONS: Record<string, React.ReactNode> = {
+  feat: <IconSparkles className="w-5 h-5" />,
+  fix: <IconBug className="w-5 h-5" />,
+  docs: <IconPencil className="w-5 h-5" />,
+  style: <IconDocument className="w-5 h-5" />,
+  refactor: <IconCog className="w-5 h-5" />,
+  test: <IconCheck className="w-5 h-5" />,
+  chore: <IconCog className="w-5 h-5" />,
+  perf: <IconBolt className="w-5 h-5" />,
 };
 
 const COMMIT_COLORS: Record<string, string> = {
@@ -118,8 +119,8 @@ export function CommitHistory({ projectId }: Props) {
             }`}
           >
             <div className="flex items-start gap-3">
-              <span className="text-2xl flex-shrink-0">
-                {COMMIT_ICONS[commit.type] || '📦'}
+              <span className="flex-shrink-0 text-gray-600">
+                {COMMIT_ICONS[commit.type] || <IconDocument className="w-5 h-5" />}
               </span>
 
               <div className="flex-1 min-w-0">

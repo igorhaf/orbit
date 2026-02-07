@@ -10,6 +10,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent, Button } from '@/components/ui';
 import { ItemType, PriorityLevel, TaskStatus, BacklogFilters as IBacklogFilters } from '@/lib/types';
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconEye, IconBan, IconPlay, IconDot, IconClock } from '@/components/icons'; // PROMPT #188
 
 interface BacklogFiltersProps {
   filters: IBacklogFilters;
@@ -115,33 +116,33 @@ export default function BacklogFilters({
   const getItemTypeIcon = (type: ItemType) => {
     switch (type) {
       case ItemType.EPIC:
-        return '🎯';
+        return <IconTarget className="w-4 h-4" />;
       case ItemType.STORY:
-        return '📖';
+        return <IconBook className="w-4 h-4" />;
       case ItemType.TASK:
-        return '✓';
+        return <IconCheck className="w-4 h-4" />;
       case ItemType.SUBTASK:
-        return '◦';
+        return <IconCircle className="w-4 h-4" />;
       case ItemType.BUG:
-        return '🐛';
+        return <IconBug className="w-4 h-4" />;
     }
   };
 
   // PROMPT #123 - Get status color and icon
-  const getStatusStyle = (status: TaskStatus) => {
+  const getStatusIcon = (status: TaskStatus) => {
     switch (status) {
       case TaskStatus.DONE:
-        return { color: 'text-green-700 bg-green-50', icon: '✓' };
+        return { color: 'text-green-700 bg-green-50', icon: <IconCheck className="w-3.5 h-3.5" /> };
       case TaskStatus.IN_PROGRESS:
-        return { color: 'text-blue-700 bg-blue-50', icon: '▶' };
+        return { color: 'text-blue-700 bg-blue-50', icon: <IconPlay className="w-3.5 h-3.5" /> };
       case TaskStatus.REVIEW:
-        return { color: 'text-purple-700 bg-purple-50', icon: '👁' };
+        return { color: 'text-purple-700 bg-purple-50', icon: <IconEye className="w-3.5 h-3.5" /> };
       case TaskStatus.BLOCKED:
-        return { color: 'text-red-700 bg-red-50', icon: '🚫' };
+        return { color: 'text-red-700 bg-red-50', icon: <IconBan className="w-3.5 h-3.5" /> };
       case TaskStatus.TODO:
-        return { color: 'text-yellow-700 bg-yellow-50', icon: '○' };
+        return { color: 'text-yellow-700 bg-yellow-50', icon: <IconClock className="w-3.5 h-3.5" /> };
       default:
-        return { color: 'text-gray-700 bg-gray-50', icon: '•' };
+        return { color: 'text-gray-700 bg-gray-50', icon: <IconDot className="w-2 h-2" /> };
     }
   };
 
@@ -369,7 +370,7 @@ export default function BacklogFilters({
                       onChange={() => toggleItemType(type)}
                       className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                     />
-                    <span className="text-lg">{getItemTypeIcon(type)}</span>
+                    <span className="text-gray-600">{getItemTypeIcon(type)}</span>
                     <span className="text-sm text-gray-700 capitalize">{type}</span>
                   </label>
                 );
@@ -419,7 +420,7 @@ export default function BacklogFilters({
             <div className="space-y-1">
               {Object.values(TaskStatus).map((status) => {
                 const isSelected = filters.status?.includes(status) || false;
-                const { color, icon } = getStatusStyle(status);
+                const { color, icon } = getStatusIcon(status);
                 return (
                   <label
                     key={status}

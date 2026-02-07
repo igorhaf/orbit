@@ -100,7 +100,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
     switch (event) {
       case 'batch_started':
         setIsExecuting(true);
-        addLog(`[${time}] 🚀 Batch execution started: ${data.total_tasks} tasks`);
+        addLog(`[${time}] [START] Batch execution started: ${data.total_tasks} tasks`);
         setMetrics(prev => ({
           ...prev,
           totalTasks: data.total_tasks,
@@ -113,7 +113,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
         break;
 
       case 'task_started':
-        addLog(`[${time}] ▶️  Task started: ${data.task_title} (${data.model})`);
+        addLog(`[${time}] [RUN] Task started: ${data.task_title} (${data.model})`);
         setTaskStates(prev => {
           const newMap = new Map(prev);
           const task = newMap.get(data.task_id);
@@ -130,7 +130,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
 
       case 'task_completed':
         addLog(
-          `[${time}] ✅ Task completed: ${data.task_title} ` +
+          `[${time}] [OK] Task completed: ${data.task_title} ` +
           `($${data.cost.toFixed(4)}, ${data.execution_time.toFixed(2)}s)`
         );
         setTaskStates(prev => {
@@ -151,7 +151,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
 
       case 'task_failed':
         addLog(
-          `[${time}] ❌ Task failed: ${data.task_title} ` +
+          `[${time}] [FAIL] Task failed: ${data.task_title} ` +
           `(${data.attempts} attempts, $${data.cost.toFixed(4)})`
         );
         if (data.issues?.length > 0) {
@@ -176,7 +176,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
 
       case 'validation_failed':
         addLog(
-          `[${time}] ⚠️  Validation failed for task (attempt ${data.attempt}/${data.max_attempts})`
+          `[${time}] [WARN] Validation failed for task (attempt ${data.attempt}/${data.max_attempts})`
         );
         if (data.issues?.length > 0) {
           data.issues.forEach((issue: string) => {
@@ -204,7 +204,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
           totalCost: data.total_cost,
         }));
         addLog(
-          `[${time}] 📊 Progress: ${data.completed}/${data.total} ` +
+          `[${time}] [PROGRESS] ${data.completed}/${data.total} ` +
           `(${data.percentage.toFixed(1)}%) - Total cost: $${data.total_cost.toFixed(4)}`
         );
         break;
@@ -212,7 +212,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
       case 'batch_completed':
         setIsExecuting(false);
         addLog(
-          `[${time}] 🎉 Batch execution completed!\n` +
+          `[${time}] [DONE] Batch execution completed!\n` +
           `   ├─ Total: ${data.total_tasks} tasks\n` +
           `   ├─ Completed: ${data.completed}\n` +
           `   ├─ Failed: ${data.failed}\n` +
@@ -277,7 +277,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
             variant="primary"
             size="sm"
           >
-            {isExecuting ? '⏳ Executing...' : '▶️ Execute All'}
+            {isExecuting ? 'Executing...' : 'Execute All'}
           </Button>
           <Button
             onClick={onStop}
@@ -285,7 +285,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
             variant="danger"
             size="sm"
           >
-            ⏹️ Stop
+            Stop
           </Button>
         </div>
       </div>

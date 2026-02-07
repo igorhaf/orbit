@@ -489,8 +489,8 @@ export default function ProjectDetailsPage() {
               { id: 'backlog', label: 'Backlog' },
               { id: 'kanban', label: 'Kanban Board' },
               { id: 'commits', label: 'Commits' },  // PROMPT #113 - Git Integration
-              { id: 'rag', label: '📊 RAG Analytics' },
-              { id: 'analytics', label: '🚨 Blocking Analytics' },
+              { id: 'rag', label: 'RAG Analytics' },
+              { id: 'analytics', label: 'Blocking Analytics' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -842,7 +842,7 @@ export default function ProjectDetailsPage() {
                       <div className="space-y-4">
                         <div>
                           <div className="flex justify-between text-sm mb-1">
-                            <span className="font-medium text-green-700">✅ Approved</span>
+                            <span className="font-medium text-green-700">Approved</span>
                             <span className="text-gray-500">{analyticsData.total_approved} ({(analyticsData.approval_rate * 100).toFixed(1)}%)</span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-6">
@@ -857,7 +857,7 @@ export default function ProjectDetailsPage() {
 
                         <div>
                           <div className="flex justify-between text-sm mb-1">
-                            <span className="font-medium text-orange-700">❌ Rejected</span>
+                            <span className="font-medium text-orange-700">Rejected</span>
                             <span className="text-gray-500">{analyticsData.total_rejected} ({(analyticsData.rejection_rate * 100).toFixed(1)}%)</span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-6">

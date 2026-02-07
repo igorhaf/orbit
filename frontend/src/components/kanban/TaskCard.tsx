@@ -6,8 +6,10 @@
 
 'use client';
 
+import React from 'react';
 import { Task, ItemType } from '@/lib/types';
 import { Badge, AIModelBadge } from '@/components/ui';
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconDot, IconArrowLeft, IconArrowRight } from '@/components/icons'; // PROMPT #188
 
 interface Props {
   task: Task;
@@ -19,21 +21,21 @@ interface Props {
   onMoveRight?: () => void;
 }
 
-// Helper function to get item type icon and label
+// Helper function to get item type icon and label - PROMPT #188
 const getItemTypeDisplay = (type: ItemType | undefined) => {
   switch (type) {
     case ItemType.EPIC:
-      return { icon: '🎯', label: 'Epic', color: 'bg-purple-100 text-purple-800 border-purple-200' };
+      return { icon: <IconTarget className="w-5 h-5" />, label: 'Epic', color: 'bg-purple-100 text-purple-800 border-purple-200' };
     case ItemType.STORY:
-      return { icon: '📖', label: 'Story', color: 'bg-blue-100 text-blue-800 border-blue-200' };
+      return { icon: <IconBook className="w-5 h-5" />, label: 'Story', color: 'bg-blue-100 text-blue-800 border-blue-200' };
     case ItemType.TASK:
-      return { icon: '✓', label: 'Task', color: 'bg-gray-100 text-gray-800 border-gray-200' };
+      return { icon: <IconCheck className="w-5 h-5" />, label: 'Task', color: 'bg-gray-100 text-gray-800 border-gray-200' };
     case ItemType.SUBTASK:
-      return { icon: '◦', label: 'Subtask', color: 'bg-gray-50 text-gray-700 border-gray-200' };
+      return { icon: <IconCircle className="w-5 h-5" />, label: 'Subtask', color: 'bg-gray-50 text-gray-700 border-gray-200' };
     case ItemType.BUG:
-      return { icon: '🐛', label: 'Bug', color: 'bg-red-100 text-red-800 border-red-200' };
+      return { icon: <IconBug className="w-5 h-5" />, label: 'Bug', color: 'bg-red-100 text-red-800 border-red-200' };
     default:
-      return { icon: '•', label: 'Task', color: 'bg-gray-100 text-gray-800 border-gray-200' };
+      return { icon: <IconDot className="w-3 h-3" />, label: 'Task', color: 'bg-gray-100 text-gray-800 border-gray-200' };
   }
 };
 
@@ -51,7 +53,7 @@ export function TaskCard({
       {/* Header with Item Type Badge */}
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex items-center gap-2">
-          <span className="text-xl">{itemTypeDisplay.icon}</span>
+          <span className="text-gray-600">{itemTypeDisplay.icon}</span>
           <Badge className={`${itemTypeDisplay.color} text-xs font-semibold border`}>
             {itemTypeDisplay.label}
           </Badge>
@@ -68,7 +70,7 @@ export function TaskCard({
               className="text-gray-400 hover:text-gray-600 p-1"
               title="Move left"
             >
-              ←
+              <IconArrowLeft className="w-4 h-4" />
             </button>
           )}
           {canMoveRight && onMoveRight && (
@@ -80,7 +82,7 @@ export function TaskCard({
               className="text-gray-400 hover:text-gray-600 p-1"
               title="Move right"
             >
-              →
+              <IconArrowRight className="w-4 h-4" />
             </button>
           )}
         </div>

@@ -40,7 +40,7 @@ interface BoardData {
 }
 
 const COLUMNS = [
-  { id: 'blocked' as TaskStatus, title: '🚨 Bloqueados', color: 'bg-red-100' }, // PROMPT #95 - First column
+  { id: 'blocked' as TaskStatus, title: 'Bloqueados', color: 'bg-red-100' }, // PROMPT #95 - First column
   { id: 'backlog' as TaskStatus, title: 'Backlog', color: 'bg-gray-100' },
   { id: 'todo' as TaskStatus, title: 'To Do', color: 'bg-blue-100' },
   { id: 'in_progress' as TaskStatus, title: 'In Progress', color: 'bg-yellow-100' },

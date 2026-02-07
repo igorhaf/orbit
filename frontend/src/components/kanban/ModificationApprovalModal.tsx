@@ -115,7 +115,7 @@ export function ModificationApprovalModal({
         {task.blocked_reason && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
             <div className="flex items-start">
-              <span className="text-yellow-600 mr-2">ℹ️</span>
+              <svg className="w-5 h-5 text-yellow-600 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               <div>
                 <p className="text-sm font-medium text-yellow-800">Blocked Reason:</p>
                 <p className="text-sm text-yellow-700 mt-1">{task.blocked_reason}</p>
@@ -144,7 +144,7 @@ export function ModificationApprovalModal({
                 <Badge className="bg-red-100 text-red-800 border-red-200">
                   Original: {task.story_points || 'None'}
                 </Badge>
-                <span className="text-gray-400">→</span>
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" /></svg>
                 <Badge className="bg-green-100 text-green-800 border-green-200">
                   Proposed: {modification.story_points}
                 </Badge>
@@ -227,14 +227,14 @@ export function ModificationApprovalModal({
                 onClick={() => setShowRejectionInput(true)}
                 disabled={loading}
               >
-                ❌ Reject
+                Reject
               </Button>
               <Button
                 variant="primary"
                 onClick={handleApprove}
                 disabled={loading}
               >
-                {loading ? 'Approving...' : '✅ Approve Modification'}
+                {loading ? 'Approving...' : 'Approve Modification'}
               </Button>
             </>
           ) : (

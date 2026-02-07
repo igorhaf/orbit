@@ -17,6 +17,7 @@
  */
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
+import { IconBrain, IconSearch, IconPuzzle, IconWrench, IconCpu, IconCog, IconTarget, IconMicrophone, IconDocument } from '@/components/icons'; // PROMPT #188
 
 // Notification types
 export interface JobNotification {
@@ -97,24 +98,24 @@ const JOB_TYPE_TITLES: Record<string, string> = {
   'suggested_epics': 'Gerando Épicos',
 };
 
-// Job type to icon mapping (matching AIModelBadge style)
-export const JOB_TYPE_ICONS: Record<string, string> = {
-  'interview_message': '🧠🔍',
-  'backlog_generation': '🧠🧩',
-  'task_generation': '🧠🧩',
-  'epic_activation': '🧠🏗️',
-  'story_activation': '🧠🏗️',
-  'task_activation': '🧠🏗️',
-  'subtask_activation': '🧠🏗️',
-  'task_execution': '🛠️🤖',
-  'batch_execution': '🛠️🤖',
-  'commit_generation': '🧩⚙️',
-  'context_generation': '🧠🏗️',
+// Job type to icon mapping (matching AIModelBadge style) - PROMPT #188: SVG icons
+export const JOB_TYPE_ICONS: Record<string, React.ReactNode> = {
+  'interview_message': <span className="inline-flex gap-0.5"><IconBrain className="w-4 h-4" /><IconSearch className="w-4 h-4" /></span>,
+  'backlog_generation': <span className="inline-flex gap-0.5"><IconBrain className="w-4 h-4" /><IconPuzzle className="w-4 h-4" /></span>,
+  'task_generation': <span className="inline-flex gap-0.5"><IconBrain className="w-4 h-4" /><IconPuzzle className="w-4 h-4" /></span>,
+  'epic_activation': <span className="inline-flex gap-0.5"><IconBrain className="w-4 h-4" /><IconCpu className="w-4 h-4" /></span>,
+  'story_activation': <span className="inline-flex gap-0.5"><IconBrain className="w-4 h-4" /><IconCpu className="w-4 h-4" /></span>,
+  'task_activation': <span className="inline-flex gap-0.5"><IconBrain className="w-4 h-4" /><IconCpu className="w-4 h-4" /></span>,
+  'subtask_activation': <span className="inline-flex gap-0.5"><IconBrain className="w-4 h-4" /><IconCpu className="w-4 h-4" /></span>,
+  'task_execution': <span className="inline-flex gap-0.5"><IconWrench className="w-4 h-4" /><IconCpu className="w-4 h-4" /></span>,
+  'batch_execution': <span className="inline-flex gap-0.5"><IconWrench className="w-4 h-4" /><IconCpu className="w-4 h-4" /></span>,
+  'commit_generation': <span className="inline-flex gap-0.5"><IconPuzzle className="w-4 h-4" /><IconCog className="w-4 h-4" /></span>,
+  'context_generation': <span className="inline-flex gap-0.5"><IconBrain className="w-4 h-4" /><IconCpu className="w-4 h-4" /></span>,
   // PROMPT #133 - New job types
-  'interview_question': '🎤',
-  'memory_scan': '🔍',
-  'project_title': '📝',
-  'suggested_epics': '🎯',
+  'interview_question': <IconMicrophone className="w-4 h-4" />,
+  'memory_scan': <IconSearch className="w-4 h-4" />,
+  'project_title': <IconDocument className="w-4 h-4" />,
+  'suggested_epics': <IconTarget className="w-4 h-4" />,
 };
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {

@@ -11,6 +11,7 @@ import { Button } from '@/components/ui';
 import { useNotification } from '@/hooks';
 import { tasksApi } from '@/lib/api';
 import { BacklogItem } from '@/lib/types';
+import { IconClipboard, IconPlay, IconEye, IconCheckCircle, IconArrowLeft, IconBan, IconXCircle, IconArrowRight } from '@/components/icons'; // PROMPT #188
 
 interface WorkflowActionsProps {
   item: BacklogItem;
@@ -21,7 +22,7 @@ interface ValidTransition {
   to_status: string;
   label: string;
   color: 'primary' | 'success' | 'warning' | 'danger';
-  icon: string;
+  icon: React.ReactNode;
 }
 
 export default function WorkflowActions({ item, onTransition }: WorkflowActionsProps) {
@@ -50,43 +51,43 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
         to_status: 'todo',
         label: 'Move to To Do',
         color: 'primary',
-        icon: '📋',
+        icon: <IconClipboard className="w-4 h-4" />,
       },
       'in_progress': {
         to_status: 'in_progress',
         label: 'Start Progress',
         color: 'primary',
-        icon: '▶️',
+        icon: <IconPlay className="w-4 h-4" />,
       },
       'review': {
         to_status: 'review',
         label: 'Send to Review',
         color: 'warning',
-        icon: '👀',
+        icon: <IconEye className="w-4 h-4" />,
       },
       'done': {
         to_status: 'done',
         label: 'Mark as Done',
         color: 'success',
-        icon: '✅',
+        icon: <IconCheckCircle className="w-4 h-4" />,
       },
       'backlog': {
         to_status: 'backlog',
         label: 'Move to Backlog',
         color: 'primary',
-        icon: '⬅️',
+        icon: <IconArrowLeft className="w-4 h-4" />,
       },
       'blocked': {
         to_status: 'blocked',
         label: 'Mark as Blocked',
         color: 'danger',
-        icon: '🚫',
+        icon: <IconBan className="w-4 h-4" />,
       },
       'cancelled': {
         to_status: 'cancelled',
         label: 'Cancel',
         color: 'danger',
-        icon: '❌',
+        icon: <IconXCircle className="w-4 h-4" />,
       },
     };
 
@@ -94,7 +95,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
       to_status: toStatus,
       label: toStatus.replace('_', ' '),
       color: 'primary',
-      icon: '→',
+      icon: <IconArrowRight className="w-4 h-4" />,
     };
   };
 
@@ -151,7 +152,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
               variant={config.color === 'primary' ? 'outline' : config.color}
               size="sm"
               onClick={() => setShowConfirm(toStatus)}
-              leftIcon={<span>{config.icon}</span>}
+              leftIcon={config.icon}
             >
               {config.label}
             </Button>

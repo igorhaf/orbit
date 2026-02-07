@@ -22,10 +22,10 @@ interface ModelFormProps {
 }
 
 const PROVIDERS = [
-  { value: 'anthropic', label: '🤖 Anthropic (Claude)' },
-  { value: 'openai', label: '🧠 OpenAI (GPT)' },
-  { value: 'google', label: '🔍 Google (Gemini)' },
-  { value: 'ollama', label: '🦙 Ollama (Local)' },
+  { value: 'anthropic', label: 'Anthropic (Claude)' },
+  { value: 'openai', label: 'OpenAI (GPT)' },
+  { value: 'google', label: 'Google (Gemini)' },
+  { value: 'ollama', label: 'Ollama (Local)' },
 ];
 
 const USAGE_TYPES = [

@@ -9,6 +9,7 @@
 'use client';
 
 import { Badge } from '@/components/ui';
+import { IconAlert, IconChart, IconCheckCircle } from '@/components/icons'; // PROMPT #188
 
 interface Props {
   score: number; // 0.0 to 1.0
@@ -38,13 +39,13 @@ export function SimilarityBadge({ score, className = '' }: Props) {
   // Icon based on severity
   const getIcon = () => {
     if (percentage >= 90) {
-      return '🚨'; // Alert - modification detected
+      return <IconAlert className="w-4 h-4 inline" />;
     } else if (percentage >= 80) {
-      return '⚠️'; // Warning - high similarity
+      return <IconAlert className="w-4 h-4 inline" />;
     } else if (percentage >= 70) {
-      return '📊'; // Chart - moderate similarity
+      return <IconChart className="w-4 h-4 inline" />;
     } else {
-      return '✅'; // Check - low similarity
+      return <IconCheckCircle className="w-4 h-4 inline" />;
     }
   };
 

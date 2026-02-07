@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { AIModel, AIModelUsageType } from '@/lib/types';
 import { Cpu, Check, X, Settings } from 'lucide-react';
+import { IconCpu, IconBrain, IconSearch } from '@/components/icons'; // PROMPT #188
 
 interface ModelCardProps {
   model: AIModel;
@@ -32,11 +33,12 @@ const USAGE_TYPE_COLORS: Record<AIModelUsageType, string> = {
   [AIModelUsageType.GENERAL]: 'bg-gray-100 text-gray-800',
 };
 
-const PROVIDER_ICONS: Record<string, string> = {
-  anthropic: '🤖',
-  openai: '🧠',
-  google: '🔍',
-  ollama: '🦙',
+// PROMPT #188 - Provider icons as React components
+const PROVIDER_ICON_COMPONENTS: Record<string, React.ReactNode> = {
+  anthropic: <IconCpu className="w-6 h-6" />,
+  openai: <IconBrain className="w-6 h-6" />,
+  google: <IconSearch className="w-6 h-6" />,
+  ollama: <IconCpu className="w-6 h-6" />,
 };
 
 export const ModelCard: React.FC<ModelCardProps> = ({ model }) => {
@@ -46,8 +48,8 @@ export const ModelCard: React.FC<ModelCardProps> = ({ model }) => {
         <CardHeader>
           <div className="flex items-start justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <span className="text-2xl flex-shrink-0">
-                {PROVIDER_ICONS[model.provider.toLowerCase()] || '🤖'}
+              <span className="flex-shrink-0 text-gray-600">
+                {PROVIDER_ICON_COMPONENTS[model.provider.toLowerCase()] || <IconCpu className="w-6 h-6" />}
               </span>
               <CardTitle className="text-base font-semibold text-gray-900 truncate">
                 {model.name}

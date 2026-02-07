@@ -10,7 +10,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { IconBrain, IconSearch, IconWrench, IconCpu, IconPuzzle, IconCog, IconChart, IconBlocks, IconSparkle, IconBolt, IconBeaker, IconGlobe, IconDot } from '@/components/icons';
+import { IconBrain, IconSearch, IconWrench, IconCpu, IconPuzzle, IconCog, IconChart, IconBlocks, IconSparkle, IconBolt, IconBeaker, IconGlobe, IconDot, IconCheckCircle } from '@/components/icons'; // PROMPT #188
 
 interface Props {
   model: string;
@@ -288,7 +288,10 @@ export function AIModelBadge({
             {cached && (
               <div className="flex justify-between">
                 <span className="text-gray-400">Cache:</span>
-                <span className="text-green-400">✓ Resposta em cache</span>
+                <span className="text-green-400 inline-flex items-center gap-1">
+                  <IconCheckCircle className="w-3 h-3" />
+                  Resposta em cache
+                </span>
               </div>
             )}
           </div>

@@ -6,6 +6,7 @@
 import React from 'react';
 import { clsx } from 'clsx';
 import { Badge } from '@/components/ui';
+import { IconClock, IconPlay, IconSearch, IconCheckCircle, IconXCircle } from '@/components/icons'; // PROMPT #188
 
 export type TaskStatus =
   | 'pending'
@@ -29,31 +30,31 @@ export const TaskStatusBadge: React.FC<TaskStatusBadgeProps> = ({
     pending: {
       variant: 'default' as const,
       label: 'Pending',
-      icon: '⏳',
+      icon: <IconClock className="w-3.5 h-3.5" />,
       animation: '',
     },
     in_progress: {
       variant: 'info' as const,
       label: 'Running',
-      icon: '▶️',
+      icon: <IconPlay className="w-3.5 h-3.5" />,
       animation: animated ? 'animate-pulse' : '',
     },
     validating: {
       variant: 'warning' as const,
       label: 'Validating',
-      icon: '🔍',
+      icon: <IconSearch className="w-3.5 h-3.5" />,
       animation: animated ? 'animate-pulse' : '',
     },
     completed: {
       variant: 'success' as const,
       label: 'Completed',
-      icon: '✅',
+      icon: <IconCheckCircle className="w-3.5 h-3.5" />,
       animation: '',
     },
     failed: {
       variant: 'danger' as const,
       label: 'Failed',
-      icon: '❌',
+      icon: <IconXCircle className="w-3.5 h-3.5" />,
       animation: '',
     },
   };

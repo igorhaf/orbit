@@ -16,6 +16,7 @@ import { tasksApi, interviewsApi } from '@/lib/api';  // PROMPT #131 - Added int
 import { BacklogItem, ItemType, PriorityLevel, TaskStatus, Interview } from '@/lib/types';  // PROMPT #131 - Added Interview
 import { TaskCard } from './TaskCard'; // PROMPT #68
 import InlineCardCreator from './InlineCardCreator'; // PROMPT #187
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconDot, IconTree, IconCards, IconChat } from '@/components/icons'; // PROMPT #188
 
 // PROMPT #94 - Helper to check if item is suggested
 const isSuggestedItem = (item: BacklogItem): boolean => {
@@ -50,21 +51,21 @@ interface BacklogListViewProps {
   onInterviewClick?: (item: BacklogItem, interviewId: string) => void;
 }
 
-// Helper function to get item type icon
+// Helper function to get item type icon - PROMPT #188 replaced emojis with SVG icons
 const getItemTypeIcon = (type: ItemType) => {
   switch (type) {
     case ItemType.EPIC:
-      return '🎯';
+      return <IconTarget className="w-4 h-4" />;
     case ItemType.STORY:
-      return '📖';
+      return <IconBook className="w-4 h-4" />;
     case ItemType.TASK:
-      return '✓';
+      return <IconCheck className="w-4 h-4" />;
     case ItemType.SUBTASK:
-      return '◦';
+      return <IconCircle className="w-4 h-4" />;
     case ItemType.BUG:
-      return '🐛';
+      return <IconBug className="w-4 h-4" />;
     default:
-      return '•';
+      return <IconDot className="w-3 h-3" />;
   }
 };
 
@@ -727,7 +728,7 @@ export default function BacklogListView({
             className="flex items-center gap-2 py-1.5 px-4 hover:bg-blue-50 cursor-pointer transition-colors border-t border-gray-100"
             style={{ paddingLeft: `${depth * 1.5 + 10}rem` }}
           >
-            <span className="text-sm">💬</span>
+            <IconChat className="w-4 h-4" />
             <span className="text-sm font-medium text-blue-700">
               {interview.interview_mode === 'context' ? 'Context Interview' :
                interview.interview_mode === 'meta_prompt' ? 'Epic Interview' :
@@ -896,7 +897,7 @@ export default function BacklogListView({
                     }`}
                     title="Tree View"
                   >
-                    🌲 Tree
+                    <span className="inline-flex items-center gap-1"><IconTree className="w-3 h-3" /> Tree</span>
                   </button>
                   <button
                     onClick={() => setViewMode('card')}
@@ -907,7 +908,7 @@ export default function BacklogListView({
                     }`}
                     title="Card View"
                   >
-                    🃏 Cards
+                    <span className="inline-flex items-center gap-1"><IconCards className="w-3 h-3" /> Cards</span>
                   </button>
                 </div>
 

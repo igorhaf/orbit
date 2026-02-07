@@ -251,10 +251,10 @@ function StatusBadge({ status }: { status: string }) {
   };
 
   const icons = {
-    uploaded: '📤',
-    analyzing: '🔍',
-    completed: '✅',
-    failed: '❌',
+    uploaded: 'UP',
+    analyzing: '...',
+    completed: 'OK',
+    failed: 'ERR',
   };
 
   return (

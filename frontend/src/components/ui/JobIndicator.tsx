@@ -15,6 +15,7 @@
 
 import React from 'react';
 import { useNotifications, JobNotification, JOB_TYPE_ICONS } from '@/contexts/NotificationContext';
+import { IconCog } from '@/components/icons'; // PROMPT #188
 import { clsx } from 'clsx';
 
 interface JobIndicatorProps {
@@ -55,7 +56,7 @@ export const JobIndicator: React.FC<JobIndicatorProps> = ({
 
   // Get the most recent/relevant job
   const primaryJob = entityJobs[0];
-  const jobIcon = JOB_TYPE_ICONS[primaryJob.job_type] || '⚙️';
+  const jobIcon = JOB_TYPE_ICONS[primaryJob.job_type] || <IconCog className="w-4 h-4" />;
 
   // Size classes
   const sizeClasses = {

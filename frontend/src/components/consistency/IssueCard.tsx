@@ -38,11 +38,11 @@ export function IssueCard({ issue, onUpdateIssue }: Props) {
     low: 'bg-blue-100 text-blue-800 border-blue-200',
   };
 
-  const severityIcons = {
-    critical: '🔴',
-    high: '🟠',
-    medium: '🟡',
-    low: '🔵',
+  const severityIconColors = {
+    critical: 'text-red-500',
+    high: 'text-orange-500',
+    medium: 'text-yellow-500',
+    low: 'text-blue-500',
   };
 
   const statusColors = {
@@ -62,7 +62,9 @@ export function IssueCard({ issue, onUpdateIssue }: Props) {
           <div className="flex-1 min-w-0">
             {/* Header */}
             <div className="flex items-start gap-3 mb-2">
-              <span className="text-2xl">{severityIcons[issue.severity]}</span>
+              <span className={`flex-shrink-0 ${severityIconColors[issue.severity]}`}>
+                <svg className="w-6 h-6" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="8" /></svg>
+              </span>
               <div className="flex-1">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
                   <h3 className="font-semibold text-gray-900">{issue.title}</h3>

@@ -328,7 +328,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                       <div className="flex items-center justify-between">
                         <CardTitle>AI-Generated Epic</CardTitle>
                         <span className="px-3 py-1 text-xs rounded-full bg-purple-100 text-purple-700 border border-purple-200">
-                          🤖 AI Suggestion
+                          AI Suggestion
                         </span>
                       </div>
                     </CardHeader>
@@ -447,7 +447,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                           <div className="flex items-center justify-between">
                             <CardTitle className="text-base">Story {idx + 1}</CardTitle>
                             <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700">
-                              🤖 AI
+                              AI
                             </span>
                           </div>
                         </CardHeader>
