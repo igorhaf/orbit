@@ -8,18 +8,23 @@
 
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   ReactFlow,
   Background,
   Controls,
+  MiniMap,
   useNodesState,
   useEdgesState,
   Handle,
   Position,
   MarkerType,
+  reconnectEdge,
+  addEdge,
   type Node,
   type Edge,
+  type Connection,
+  type OnReconnect,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
@@ -115,10 +120,14 @@ function ModelNode({ data }: { data: any }) {
 
   return (
     <div
-      className="bg-white rounded-lg shadow-md border-2 min-w-[200px] relative"
+      className="bg-white rounded-lg shadow-md border-2 min-w-[200px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-shadow"
       style={{ borderLeftColor: providerColor, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}
     >
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3 !h-3" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 hover:!w-4 hover:!h-4 transition-all"
+      />
 
       <div className="px-4 py-3">
         <div className="flex items-center gap-3">
@@ -154,7 +163,11 @@ function ModelNode({ data }: { data: any }) {
         </button>
       )}
 
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3 !h-3" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 hover:!w-4 hover:!h-4 transition-all"
+      />
     </div>
   );
 }
@@ -196,7 +209,6 @@ function buildFlowFromChain(
       fontSize: '13px',
       border: 'none',
     },
-    draggable: false,
   });
 
   // Model nodes
@@ -212,7 +224,6 @@ function buildFlowFromChain(
         onRemove: onRemove ? () => onRemove(model.id) : undefined,
       },
       position: { x: START_X + SPACING_X * (index + 1), y: Y - 20 },
-      draggable: false,
     });
 
     const sourceId = index === 0 ? 'start' : `model-${chainModels[index - 1].id}`;
@@ -249,7 +260,6 @@ function buildFlowFromChain(
       fontSize: '13px',
       border: 'none',
     },
-    draggable: false,
   });
 
   edges.push({
@@ -288,6 +298,7 @@ export default function AIFlowPage() {
   // ReactFlow state
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
+  const edgeReconnectSuccessful = useRef(true);
 
   // Current chain for selected usage_type
   const currentChain = useMemo(
@@ -363,6 +374,43 @@ export default function AIFlowPage() {
     setNodes(n);
     setEdges(e);
   }, [chainModels, editChainModels, editMode, handleRemoveFromChain, setNodes, setEdges]);
+
+  // Edge reconnection handlers
+  const onReconnectStart = useCallback(() => {
+    edgeReconnectSuccessful.current = false;
+  }, []);
+
+  const onReconnect: OnReconnect = useCallback((oldEdge, newConnection) => {
+    edgeReconnectSuccessful.current = true;
+    setEdges((els) => reconnectEdge(oldEdge, newConnection, els));
+  }, [setEdges]);
+
+  const onReconnectEnd = useCallback((_: unknown, edge: Edge) => {
+    if (!edgeReconnectSuccessful.current) {
+      setEdges((eds) => eds.filter((e) => e.id !== edge.id));
+    }
+    edgeReconnectSuccessful.current = true;
+  }, [setEdges]);
+
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      setEdges((eds) =>
+        addEdge(
+          {
+            ...connection,
+            animated: true,
+            style: { stroke: '#f59e0b', strokeWidth: 2 },
+            label: 'fallback',
+            labelStyle: { fontSize: 11, fontWeight: 600 },
+            labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
+            markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' },
+          },
+          eds
+        )
+      );
+    },
+    [setEdges]
+  );
 
   // Actions
   const handleEditStart = () => {
@@ -527,7 +575,7 @@ export default function AIFlowPage() {
         </Card>
 
         {/* Main content */}
-        <div className="flex gap-4" style={{ height: '500px' }}>
+        <div className="flex gap-4" style={{ height: '550px' }}>
           {/* ReactFlow Canvas */}
           <div className={`border rounded-lg overflow-hidden bg-gray-50 ${editMode ? 'flex-1' : 'w-full'}`}>
             {(editMode ? editChain.length > 0 : chainModels.length > 0) ? (
@@ -536,18 +584,30 @@ export default function AIFlowPage() {
                 edges={edges}
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
+                onConnect={onConnect}
+                onReconnect={onReconnect}
+                onReconnectStart={onReconnectStart}
+                onReconnectEnd={onReconnectEnd}
                 nodeTypes={nodeTypes}
                 fitView
                 fitViewOptions={{ padding: 0.3 }}
-                nodesDraggable={false}
-                nodesConnectable={false}
-                elementsSelectable={false}
+                nodesDraggable={true}
+                nodesConnectable={true}
+                elementsSelectable={true}
+                snapToGrid={true}
+                snapGrid={[20, 20]}
                 proOptions={{ hideAttribution: true }}
-                minZoom={0.3}
-                maxZoom={1.5}
+                minZoom={0.2}
+                maxZoom={2}
               >
                 <Background color="#e5e7eb" gap={20} />
-                <Controls showInteractive={false} />
+                <Controls />
+                <MiniMap
+                  nodeStrokeWidth={3}
+                  zoomable
+                  pannable
+                  style={{ height: 100, width: 150 }}
+                />
               </ReactFlow>
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-gray-400">
