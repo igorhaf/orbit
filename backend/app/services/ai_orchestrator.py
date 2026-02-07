@@ -302,17 +302,8 @@ class AIOrchestrator:
         Raises:
             ValueError: Se nenhum modelo estiver disponível para o usage_type
         """
-        # 0. PROMPT #122 - Check if an AIFlowChain exists for this usage_type
-        chain_models = self._get_chain_models(usage_type)
-        if chain_models:
-            primary = chain_models[0]
-            logger.info(
-                f"🔗 Using flow chain for {usage_type}: "
-                f"{primary['db_model_name']} (+ {len(chain_models)-1} fallbacks)"
-            )
-            return primary
-
         # 1. Buscar modelo ativo do banco com o usage_type específico
+        # Note: Chain check moved to execute() (PROMPT #123) for full fallback support
         # Order by updated_at DESC para pegar o modelo mais recentemente editado
         db_model = self.db.query(AIModel).filter(
             AIModel.usage_type == usage_type,
@@ -561,6 +552,38 @@ class AIOrchestrator:
         Raises:
             Exception: Se a execução falhar em todos os providers
         """
+        # PROMPT #123 - Chain-based fallback: try each model in the chain before failing
+        chain_models = self._get_chain_models(usage_type)
+        if chain_models and len(chain_models) > 1:
+            last_error = None
+            for chain_idx, chain_model_config in enumerate(chain_models):
+                try:
+                    logger.info(
+                        f"🔗 Chain attempt {chain_idx+1}/{len(chain_models)}: "
+                        f"{chain_model_config['db_model_name']} ({chain_model_config['provider']}/{chain_model_config['model']})"
+                    )
+                    result = await self._execute_with_config(
+                        model_config=chain_model_config,
+                        messages=messages,
+                        system_prompt=system_prompt,
+                        max_tokens=max_tokens,
+                    )
+                    result["chain_position"] = chain_idx + 1
+                    result["chain_total"] = len(chain_models)
+                    result["chain_fallback"] = chain_idx > 0
+                    return result
+                except Exception as e:
+                    last_error = e
+                    logger.warning(
+                        f"🔗 Chain fallback: {chain_model_config['db_model_name']} failed: {e}. "
+                        f"{'Trying next model...' if chain_idx < len(chain_models)-1 else 'No more models in chain.'}"
+                    )
+                    continue
+            raise Exception(
+                f"All {len(chain_models)} models in the flow chain for '{usage_type}' failed. "
+                f"Last error: {last_error}"
+            )
+
         # Escolher modelo do banco com suas configurações
         model_config = self.choose_model(usage_type)
         provider = model_config["provider"]

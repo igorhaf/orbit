@@ -75,8 +75,8 @@ async def process_analysis_background(
         # Initialize services
         file_processor = FileProcessor()
         stack_detector = StackDetector()
-        convention_extractor = ConventionExtractor()
-        pattern_recognizer = PatternRecognizer()
+        convention_extractor = ConventionExtractor(db)
+        pattern_recognizer = PatternRecognizer(db)
 
         # Extract archive
         logger.info(f"  Extracting archive: {file_path}")

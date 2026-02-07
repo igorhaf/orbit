@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #122 (AI Flow: Visual Fallback Chain Configuration)
-**Próximo prompt:** PROMPT #123
+**Último prompt:** PROMPT #123 (Integrate Chain Fallback in All AI Calls)
+**Próximo prompt:** PROMPT #124
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -791,6 +791,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 - **PROMPT #111**: Mandatory Project Folder - Tornou `code_path` OBRIGATÓRIO e IMUTÁVEL na criação de projetos. ORBIT foca em análise de código existente, não provisionamento. Backend: code_path required em ProjectCreate, removed de ProjectUpdate, validação de existência de pasta, migration NOT NULL. Frontend: input obrigatório no wizard, code_path read-only no Edit Dialog. Princípio: projeto = pasta de código existente.
 - **PROMPT #118**: Codebase Memory Scan - Implementou scan automático de codebase durante criação de projeto. Ao selecionar pasta: (1) AI analisa estrutura do código usando novo usage_type "memory". (2) Detecta stack tecnológica. (3) Extrai regras de negócio do código. (4) Identifica features principais. (5) Sugere título do projeto. (6) Armazena findings no RAG. Novo serviço `CodebaseMemoryService`, endpoint `/scan-memory`, overlay de loading no wizard, display de resultados com stack/languages/features/business rules. Regra crítica: todas análises de código devem armazenar regras de negócio.
 - **PROMPT #122**: AI Flow: Visual Fallback Chain Configuration - Implementou editor visual de fallback chains estilo n8n para modelos de IA. Página `/ai-flow` com @xyflow/react mostra diagrama Start → Model1 → Model2 → Error com nós coloridos por provider. Backend: modelo AIFlowChain (unique por usage_type), 4 endpoints CRUD, schemas Pydantic. Orchestrator modificado: `execute_with_chain()` tenta modelos em sequência, fallback automático em caso de falha. Frontend: dropdown por operação, modo edição com sidebar de modelos, reordenação de chain, overview grid de todas as chains configuradas.
+- **PROMPT #123**: Integrate Chain Fallback in All AI Calls - Integrou chain fallback diretamente no `execute()` do AIOrchestrator, tornando-o transparente para todos os 41 call sites sem alterá-los. Fluxo: execute() verifica chain → tenta cada modelo em sequência → fallback automático. Migrou 3 serviços com chamadas diretas à API Anthropic (PatternRecognizer, ConventionExtractor, TaskExecutor) para usar AIOrchestrator. Removeu chain check do `choose_model()` (movido para `execute()`). Resultado: 100% das chamadas de IA passam pelo orchestrator com chain fallback automático.
 
 ---
 

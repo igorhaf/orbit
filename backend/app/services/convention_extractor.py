@@ -7,9 +7,9 @@ import logging
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from anthropic import Anthropic
 
-from app.config import settings
+from sqlalchemy.orm import Session
+from app.services.ai_orchestrator import AIOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,9 @@ class ConventionExtractor:
     Extracts coding conventions from project using AI analysis
     """
 
-    def __init__(self):
-        self.anthropic_client = Anthropic(api_key=settings.anthropic_api_key)
+    def __init__(self, db: Session):
+        self.db = db
+        self.ai_orchestrator = AIOrchestrator(db)
 
     async def extract(
         self,
@@ -75,18 +76,17 @@ class ConventionExtractor:
 
         # Call AI
         try:
-            response = self.anthropic_client.messages.create(
-                model="claude-3-5-haiku-20241022",  # Cheap and fast
-                max_tokens=2000,
-                temperature=0,
+            result = await self.ai_orchestrator.execute(
+                usage_type="pattern_discovery",
                 messages=[{
                     "role": "user",
                     "content": prompt
-                }]
+                }],
+                max_tokens=2000,
             )
 
             # Parse response
-            result_text = response.content[0].text
+            result_text = result["response"]
             conventions = self._parse_conventions_response(result_text)
 
             logger.info(f"Extracted conventions: {conventions}")

@@ -30,9 +30,7 @@ from app.services.task_execution.budget_manager import BudgetManager
 from app.services.task_execution.batch_executor import BatchExecutor
 # PROMPT #103 - External prompts support
 from app.prompts import get_prompt_service
-import anthropic
 import time
-import os
 import logging
 from datetime import datetime
 
@@ -72,10 +70,6 @@ class TaskExecutor:
         self.context_builder = ContextBuilder(db)
         self.budget_manager = BudgetManager(db)
         self.batch_executor = BatchExecutor(db)
-
-        # Get Anthropic API key from environment or config
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        self.client = anthropic.Anthropic(api_key=api_key) if api_key else None
 
     async def execute_task(
         self,
@@ -151,30 +145,30 @@ class TaskExecutor:
 
                 logger.info(f"  Context size: {len(context.split())} words (~{len(context.split()) * 1.3:.0f} tokens)")
 
-                # 3. Execute with Claude
+                # 3. Execute with AIOrchestrator (PROMPT #123 - chain fallback)
                 start_time = time.time()
 
-                if not self.client:
-                    raise ValueError("Anthropic API key not configured")
-
-                response = self.client.messages.create(
-                    model=model,
-                    max_tokens=4000,
+                ai_result = await self.ai_orchestrator.execute(
+                    usage_type="task_execution",
                     messages=[{
                         "role": "user",
                         "content": context
-                    }]
+                    }],
+                    max_tokens=4000,
+                    task_id=task_id,
+                    project_id=project_id,
                 )
 
                 execution_time = time.time() - start_time
 
                 # Parse output
-                output_code = response.content[0].text
+                output_code = ai_result["response"]
+                model = ai_result.get("model", model)
 
                 # 4. Calculate cost
-                input_tokens = response.usage.input_tokens
-                output_tokens = response.usage.output_tokens
-                cost = self._calculate_cost(model, input_tokens, output_tokens)
+                input_tokens = ai_result.get("usage", {}).get("input_tokens", 0)
+                output_tokens = ai_result.get("usage", {}).get("output_tokens", 0)
+                cost = ai_result.get("usage", {}).get("total_cost_usd", 0.0) or self._calculate_cost(model, input_tokens, output_tokens)
 
                 logger.info(f"  Generated {output_tokens} tokens in {execution_time:.2f}s (${cost:.4f})")
 

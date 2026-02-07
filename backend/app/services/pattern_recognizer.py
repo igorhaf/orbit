@@ -7,9 +7,9 @@ import logging
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
-from anthropic import Anthropic
 
-from app.config import settings
+from sqlalchemy.orm import Session
+from app.services.ai_orchestrator import AIOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,9 @@ class PatternRecognizer:
     Recognizes code patterns and generates reusable templates
     """
 
-    def __init__(self):
-        self.anthropic_client = Anthropic(api_key=settings.anthropic_api_key)
+    def __init__(self, db: Session):
+        self.db = db
+        self.ai_orchestrator = AIOrchestrator(db)
 
     async def recognize(
         self,
@@ -177,17 +178,16 @@ class PatternRecognizer:
         prompt = self._build_pattern_prompt(pattern_type, sampled_files, detected_stack)
 
         try:
-            response = self.anthropic_client.messages.create(
-                model="claude-3-5-haiku-20241022",
-                max_tokens=3000,
-                temperature=0,
+            result = await self.ai_orchestrator.execute(
+                usage_type="pattern_discovery",
                 messages=[{
                     "role": "user",
                     "content": prompt
-                }]
+                }],
+                max_tokens=3000,
             )
 
-            template = response.content[0].text.strip()
+            template = result["response"].strip()
 
             # Extract code block if wrapped in ```
             if "```" in template:

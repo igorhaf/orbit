@@ -4,6 +4,9 @@
  *
  * n8n-style flow diagram for configuring per-operation AI model fallback chains.
  * Uses @xyflow/react for the node-based visualization.
+ *
+ * Flow: select operation → canvas shows saved chain (or empty) → add/remove/reorder
+ * models from sidebar → Save.
  */
 
 'use client';
@@ -153,7 +156,7 @@ function ModelNode({ data }: { data: any }) {
         )}
       </div>
 
-      {data.editMode && data.onRemove && (
+      {data.onRemove && (
         <button
           onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm"
@@ -179,7 +182,6 @@ const nodeTypes = { modelNode: ModelNode };
 
 function buildFlowFromChain(
   chainModels: AIFlowChainModel[],
-  editMode: boolean,
   savedPositions?: Record<string, { x: number; y: number }> | null,
   onRemove?: (modelId: string) => void
 ): { nodes: Node[]; edges: Edge[] } {
@@ -223,7 +225,6 @@ function buildFlowFromChain(
       data: {
         ...model,
         position_label: index === 0 ? 'Primary' : `Fallback ${index}`,
-        editMode,
         onRemove: onRemove ? () => onRemove(model.id) : undefined,
       },
       position: pos,
@@ -296,9 +297,8 @@ export default function AIFlowPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Edit state
-  const [editMode, setEditMode] = useState(false);
-  const [editChain, setEditChain] = useState<string[]>([]);
+  // The working chain for the selected usage_type (always editable)
+  const [workingChain, setWorkingChain] = useState<string[]>([]);
 
   // ReactFlow state
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
@@ -311,27 +311,15 @@ export default function AIFlowPage() {
     nodesRef.current = nodes;
   }, [nodes]);
 
-  // Current chain for selected usage_type
+  // Current saved chain for selected usage_type
   const currentChain = useMemo(
     () => chains.find((c) => c.usage_type === selectedUsageType),
     [chains, selectedUsageType]
   );
 
-  const chainModels: AIFlowChainModel[] = useMemo(() => {
-    if (!currentChain?.models) return [];
-    return currentChain.models;
-  }, [currentChain]);
-
-  // Models available to add (not already in the chain)
-  const availableModels = useMemo(() => {
-    const chainIds = new Set(editMode ? editChain : currentChain?.chain || []);
-    return allModels.filter((m) => m.is_active && !chainIds.has(m.id));
-  }, [allModels, editChain, currentChain, editMode]);
-
-  // Resolve edit chain to model objects
-  const editChainModels: AIFlowChainModel[] = useMemo(() => {
-    if (!editMode) return [];
-    return editChain
+  // Resolve working chain IDs to model info objects for the diagram
+  const workingChainModels: AIFlowChainModel[] = useMemo(() => {
+    return workingChain
       .map((id) => {
         const m = allModels.find((am) => am.id === id);
         if (!m) return null;
@@ -345,7 +333,17 @@ export default function AIFlowPage() {
         } as AIFlowChainModel;
       })
       .filter(Boolean) as AIFlowChainModel[];
-  }, [editMode, editChain, allModels]);
+  }, [workingChain, allModels]);
+
+  // Models available to add (only matching usage_type or general, not already in chain)
+  const availableModels = useMemo(() => {
+    const chainIds = new Set(workingChain);
+    return allModels.filter((m) => {
+      if (!m.is_active || chainIds.has(m.id)) return false;
+      const usage = typeof m.usage_type === 'string' ? m.usage_type : (m.usage_type as any)?.value || '';
+      return usage === selectedUsageType || usage === 'general';
+    });
+  }, [allModels, workingChain, selectedUsageType]);
 
   // Fetch data
   const loadData = useCallback(async () => {
@@ -367,26 +365,29 @@ export default function AIFlowPage() {
     loadData();
   }, [loadData]);
 
-  // Build diagram from chain
+  // When selected usage_type or chains change, sync working chain from saved data
+  useEffect(() => {
+    setWorkingChain(currentChain?.chain || []);
+  }, [currentChain, selectedUsageType]);
+
+  // Build diagram whenever working chain changes
   const handleRemoveFromChain = useCallback(
     (modelId: string) => {
-      setEditChain((prev) => prev.filter((id) => id !== modelId));
+      setWorkingChain((prev) => prev.filter((id) => id !== modelId));
     },
     []
   );
 
   useEffect(() => {
-    const models = editMode ? editChainModels : chainModels;
-    const savedPositions = editMode ? null : currentChain?.node_positions;
+    const savedPositions = currentChain?.node_positions;
     const { nodes: n, edges: e } = buildFlowFromChain(
-      models,
-      editMode,
+      workingChainModels,
       savedPositions,
-      editMode ? handleRemoveFromChain : undefined
+      handleRemoveFromChain
     );
     setNodes(n);
     setEdges(e);
-  }, [chainModels, editChainModels, editMode, handleRemoveFromChain, setNodes, setEdges, currentChain?.node_positions]);
+  }, [workingChainModels, handleRemoveFromChain, setNodes, setEdges, currentChain?.node_positions]);
 
   // Edge reconnection handlers
   const onReconnectStart = useCallback(() => {
@@ -425,7 +426,7 @@ export default function AIFlowPage() {
     [setEdges]
   );
 
-  // Collect current node positions from ReactFlow state (uses ref for fresh data)
+  // Collect current node positions from ReactFlow state
   const getNodePositions = useCallback((): Record<string, { x: number; y: number }> => {
     const positions: Record<string, { x: number; y: number }> = {};
     nodesRef.current.forEach((node) => {
@@ -435,23 +436,13 @@ export default function AIFlowPage() {
   }, []);
 
   // Actions
-  const handleEditStart = () => {
-    setEditChain(currentChain?.chain || []);
-    setEditMode(true);
-  };
-
-  const handleEditCancel = () => {
-    setEditMode(false);
-    setEditChain([]);
-  };
-
   const handleAddToChain = (modelId: string) => {
-    setEditChain((prev) => [...prev, modelId]);
+    setWorkingChain((prev) => [...prev, modelId]);
   };
 
   const handleMoveUp = (index: number) => {
     if (index <= 0) return;
-    setEditChain((prev) => {
+    setWorkingChain((prev) => {
       const arr = [...prev];
       [arr[index - 1], arr[index]] = [arr[index], arr[index - 1]];
       return arr;
@@ -459,7 +450,7 @@ export default function AIFlowPage() {
   };
 
   const handleMoveDown = (index: number) => {
-    setEditChain((prev) => {
+    setWorkingChain((prev) => {
       if (index >= prev.length - 1) return prev;
       const arr = [...prev];
       [arr[index], arr[index + 1]] = [arr[index + 1], arr[index]];
@@ -471,49 +462,24 @@ export default function AIFlowPage() {
     setSaving(true);
     try {
       const nodePositions = getNodePositions();
-      await aiFlowApi.upsertChain(selectedUsageType, {
-        chain: editChain,
-        node_positions: nodePositions,
-        is_active: true,
-      });
-      showSuccess('Flow chain saved successfully');
-      setEditMode(false);
-      setEditChain([]);
+      if (workingChain.length === 0 && currentChain) {
+        // Chain was emptied — delete it
+        await aiFlowApi.deleteChain(selectedUsageType);
+        showSuccess('Flow chain deleted');
+      } else if (workingChain.length > 0) {
+        await aiFlowApi.upsertChain(selectedUsageType, {
+          chain: workingChain,
+          node_positions: nodePositions,
+          is_active: true,
+        });
+        showSuccess('Flow saved');
+      }
       await loadData();
     } catch (error) {
       console.error('Failed to save chain:', error);
       showError('Failed to save flow chain');
     } finally {
       setSaving(false);
-    }
-  };
-
-  // Save positions only (without entering edit mode)
-  const handleSavePositions = async () => {
-    if (!currentChain) return;
-    try {
-      const nodePositions = getNodePositions();
-      await aiFlowApi.upsertChain(selectedUsageType, {
-        chain: currentChain.chain,
-        node_positions: nodePositions,
-        is_active: currentChain.is_active,
-      });
-      showSuccess('Layout saved');
-      await loadData();
-    } catch (error) {
-      console.error('Failed to save positions:', error);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!currentChain) return;
-    try {
-      await aiFlowApi.deleteChain(selectedUsageType);
-      showSuccess('Flow chain deleted');
-      await loadData();
-    } catch (error) {
-      console.error('Failed to delete chain:', error);
-      showError('Failed to delete flow chain');
     }
   };
 
@@ -527,35 +493,23 @@ export default function AIFlowPage() {
     );
   }
 
-  const hasChainData = editMode ? editChain.length > 0 : chainModels.length > 0;
+  // Check if working chain differs from saved chain
+  const savedChainStr = JSON.stringify(currentChain?.chain || []);
+  const workingChainStr = JSON.stringify(workingChain);
+  const hasUnsavedChanges = savedChainStr !== workingChainStr;
 
   return (
     <Layout>
       <Breadcrumbs />
       <div className="flex flex-col" style={{ height: 'calc(100vh - 120px)' }}>
-        {/* Header row - compact */}
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">AI Flow</h1>
-            <p className="text-xs text-gray-500 mt-0.5">
-              Configure fallback chains per operation. Models are tried in order.
-            </p>
-          </div>
-        </div>
-
-        {/* Controls bar - compact inline */}
+        {/* Controls bar */}
         <div className="flex items-center justify-between px-3 py-2 bg-white border rounded-lg mb-3 flex-shrink-0">
           <div className="flex items-center gap-3">
             <label className="text-sm font-medium text-gray-700">Operation:</label>
             <select
               value={selectedUsageType}
-              onChange={(e) => {
-                setSelectedUsageType(e.target.value);
-                setEditMode(false);
-                setEditChain([]);
-              }}
+              onChange={(e) => setSelectedUsageType(e.target.value)}
               className="px-2 py-1.5 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              disabled={editMode}
             >
               {USAGE_TYPE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -564,69 +518,38 @@ export default function AIFlowPage() {
               ))}
             </select>
 
-            {currentChain && !editMode && (
+            {workingChain.length > 0 && (
               <span className="text-xs text-gray-500">
-                {currentChain.chain.length} model{currentChain.chain.length !== 1 ? 's' : ''} in chain
+                {workingChain.length} model{workingChain.length !== 1 ? 's' : ''} in chain
               </span>
             )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            {!editMode ? (
-              <>
-                {currentChain && (
-                  <Button variant="outline" size="sm" onClick={handleSavePositions}>
-                    <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    Save Layout
-                  </Button>
-                )}
-                <Button variant="primary" size="sm" onClick={handleEditStart}>
-                  <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  {currentChain ? 'Edit' : 'Configure'}
-                </Button>
-                {currentChain && (
-                  <Button variant="outline" size="sm" onClick={handleDelete}>
-                    <svg className="w-3.5 h-3.5 mr-1 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                    </svg>
-                    Delete
-                  </Button>
-                )}
-              </>
-            ) : (
-              <>
-                <Button variant="outline" size="sm" onClick={handleEditCancel}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={saving || editChain.length === 0}
-                >
-                  {saving ? (
-                    <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white mr-1" />
-                  ) : (
-                    <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                  Save Flow
-                </Button>
-              </>
+            {hasUnsavedChanges && (
+              <span className="text-xs text-amber-600 font-medium">Unsaved changes</span>
             )}
           </div>
+
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={handleSave}
+            disabled={saving || !hasUnsavedChanges}
+          >
+            {saving ? (
+              <div className="animate-spin rounded-full h-3.5 w-3.5 border-b-2 border-white mr-1" />
+            ) : (
+              <svg className="w-3.5 h-3.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+            Save
+          </Button>
         </div>
 
-        {/* Main content - fills remaining height */}
+        {/* Main content */}
         <div className="flex gap-3 flex-1 min-h-0">
           {/* ReactFlow Canvas */}
-          <div className={`border rounded-lg overflow-hidden bg-gray-50 ${editMode ? 'flex-1' : 'w-full'}`}>
-            {hasChainData ? (
+          <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
+            {workingChain.length > 0 ? (
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -662,107 +585,100 @@ export default function AIFlowPage() {
                 <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                <p className="text-lg font-medium">
-                  {editMode ? 'Add models from the sidebar' : 'No flow configured'}
-                </p>
+                <p className="text-lg font-medium">No flow configured</p>
                 <p className="text-sm mt-1">
-                  {editMode
-                    ? 'Click "+ Add" on available models to build your fallback chain'
-                    : `Click "Configure" to set up a fallback chain for ${USAGE_TYPE_OPTIONS.find(o => o.value === selectedUsageType)?.label || selectedUsageType}`
-                  }
+                  Add models from the sidebar to build a fallback chain for {USAGE_TYPE_OPTIONS.find(o => o.value === selectedUsageType)?.label || selectedUsageType}
                 </p>
               </div>
             )}
           </div>
 
-          {/* Right sidebar: available models (edit mode) */}
-          {editMode && (
-            <div className="w-72 border rounded-lg bg-white overflow-hidden flex flex-col flex-shrink-0">
-              {/* Chain order */}
-              <div className="border-b p-3">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Chain Order</h3>
-                {editChain.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">No models added yet</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {editChain.map((id, index) => {
-                      const model = allModels.find((m) => m.id === id);
-                      if (!model) return null;
-                      return (
-                        <div key={id} className={`flex items-center gap-2 p-2 rounded-md border text-sm ${PROVIDER_BG[model.provider.toLowerCase()] || 'bg-gray-50 border-gray-200'}`}>
-                          <span className="text-xs font-bold text-gray-500 w-5">{index + 1}</span>
-                          <ProviderIcon provider={model.provider} size="w-4 h-4" />
-                          <span className="flex-1 truncate text-xs font-medium">{model.name}</span>
-                          <div className="flex items-center gap-0.5">
-                            <button
-                              onClick={() => handleMoveUp(index)}
-                              disabled={index === 0}
-                              className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleMoveDown(index)}
-                              disabled={index === editChain.length - 1}
-                              className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => handleRemoveFromChain(id)}
-                              className="p-0.5 text-red-400 hover:text-red-600"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Available models */}
-              <div className="flex-1 overflow-y-auto p-3">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Available Models</h3>
-                {availableModels.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">All active models are in the chain</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {availableModels.map((model) => (
-                      <div
-                        key={model.id}
-                        className="flex items-center gap-2 p-2 rounded-md hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors"
-                      >
+          {/* Right sidebar: chain order + available models */}
+          <div className="w-72 border rounded-lg bg-white overflow-hidden flex flex-col flex-shrink-0">
+            {/* Chain order */}
+            <div className="border-b p-3">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Chain Order</h3>
+              {workingChain.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">No models added yet</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {workingChain.map((id, index) => {
+                    const model = allModels.find((m) => m.id === id);
+                    if (!model) return null;
+                    return (
+                      <div key={id} className={`flex items-center gap-2 p-2 rounded-md border text-sm ${PROVIDER_BG[model.provider.toLowerCase()] || 'bg-gray-50 border-gray-200'}`}>
+                        <span className="text-xs font-bold text-gray-500 w-5">{index + 1}</span>
                         <ProviderIcon provider={model.provider} size="w-4 h-4" />
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-medium text-gray-900 truncate">{model.name}</div>
-                          <div className="text-[10px] text-gray-500 capitalize">{model.provider}</div>
+                        <span className="flex-1 truncate text-xs font-medium">{model.name}</span>
+                        <div className="flex items-center gap-0.5">
+                          <button
+                            onClick={() => handleMoveUp(index)}
+                            disabled={index === 0}
+                            className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleMoveDown(index)}
+                            disabled={index === workingChain.length - 1}
+                            className="p-0.5 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                            </svg>
+                          </button>
+                          <button
+                            onClick={() => handleRemoveFromChain(id)}
+                            className="p-0.5 text-red-400 hover:text-red-600"
+                          >
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-xs px-2 py-1 h-auto"
-                          onClick={() => handleAddToChain(model.id)}
-                        >
-                          + Add
-                        </Button>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Available models */}
+            <div className="flex-1 overflow-y-auto p-3">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Available Models</h3>
+              {availableModels.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">All active models are in the chain</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {availableModels.map((model) => (
+                    <div
+                      key={model.id}
+                      className="flex items-center gap-2 p-2 rounded-md hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors"
+                    >
+                      <ProviderIcon provider={model.provider} size="w-4 h-4" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-gray-900 truncate">{model.name}</div>
+                        <div className="text-[10px] text-gray-500 capitalize">{model.provider}</div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs px-2 py-1 h-auto"
+                        onClick={() => handleAddToChain(model.id)}
+                      >
+                        + Add
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* Bottom info - compact */}
+        {/* Bottom info */}
         <div className="flex items-center gap-2 mt-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700 flex-shrink-0">
           <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
