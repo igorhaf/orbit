@@ -888,7 +888,8 @@ class RAGService:
                         WHEN metadata->>'source' = 'validation' THEN 3
                         WHEN metadata->>'source' = 'model' THEN 4
                         WHEN metadata->>'source' = 'migration' THEN 5
-                        ELSE 6
+                        WHEN metadata->>'source' = 'git_commit' THEN 6
+                        ELSE 7
                     END,
                     created_at DESC
                 LIMIT :limit
