@@ -4054,7 +4054,8 @@ Retorne APENAS o JSON, sem explicações."""
         self,
         project_id: UUID,
         job_manager=None,
-        job_id: Optional[UUID] = None
+        job_id: Optional[UUID] = None,
+        epic_count: int = 10
     ) -> Dict:
         """
         PROMPT #153 - Generate suggested epics and business rule cards from memory scan.
@@ -4139,13 +4140,18 @@ Retorne APENAS o JSON, sem explicações."""
         else:
             try:
                 if job_manager and job_id:
+                    # Calculate batches from epic_count
+                    import math
+                    epics_per_batch = min(epic_count, 5)
+                    max_batches = math.ceil(epic_count / epics_per_batch) if epics_per_batch > 0 else 1
+                    logger.info(f"📊 Epic generation: {epic_count} epics requested ({max_batches} batches x {epics_per_batch})")
                     # Incremental generation with WebSocket updates
                     epic_result = await self.generate_epics_incrementally(
                         project=project,
                         job_manager=job_manager,
                         job_id=job_id,
-                        max_batches=4,
-                        epics_per_batch=5
+                        max_batches=max_batches,
+                        epics_per_batch=epics_per_batch
                     )
                     result["suggested_epics"] = epic_result.get("epics", [])
                     result["batches_processed"] = epic_result.get("batches_processed", 0)

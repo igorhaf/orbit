@@ -10,7 +10,7 @@ import { useParams, useRouter } from 'next/navigation';  // PROMPT #151 - Restor
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, CardHeader, CardTitle, CardContent, Button, Badge, AIModelBadge } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, Button, Badge, AIModelBadge, Dialog, DialogFooter } from '@/components/ui';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
 import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
@@ -72,6 +72,10 @@ export default function ProjectDetailsPage() {
   const [analyticsData, setAnalyticsData] = useState<BlockingAnalytics | null>(null);
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [analyticsDays, setAnalyticsDays] = useState<number>(30);
+
+  // Epic count dialog states
+  const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
+  const [epicCount, setEpicCount] = useState(10);
 
   const loadProjectData = useCallback(async () => {
     console.log('📋 Loading project data for ID:', projectId);
@@ -399,23 +403,7 @@ export default function ProjectDetailsPage() {
               <Button
                 variant="primary"
                 className="h-10"
-                onClick={async () => {
-                  try {
-                    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-                    const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/generate-cards`, { method: 'POST' });
-                    if (res.ok) {
-                      const data = await res.json();
-                      if (data.job_id) {
-                        showSuccess('Epic generation started in background. Check Jobs page for progress.', 'Epics');
-                      }
-                    } else {
-                      const err = await res.json();
-                      showError(err.detail || 'Failed to generate epics');
-                    }
-                  } catch (e) {
-                    showError('Failed to start epic generation');
-                  }
-                }}
+                onClick={() => setShowEpicCountDialog(true)}
               >
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
@@ -1179,6 +1167,65 @@ export default function ProjectDetailsPage() {
           </div>
         )}
       </div>
+      {/* Epic Count Dialog */}
+      <Dialog
+        open={showEpicCountDialog}
+        onClose={() => setShowEpicCountDialog(false)}
+        title="Generate Epics"
+        description="Choose how many epics you want to generate for this project."
+        size="sm"
+      >
+        <div className="py-4">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Number of Epics
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={30}
+            value={epicCount}
+            onChange={(e) => {
+              const val = parseInt(e.target.value) || 1;
+              setEpicCount(Math.max(1, Math.min(30, val)));
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+          />
+          <p className="mt-1 text-xs text-gray-500">Min: 1, Max: 30</p>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowEpicCountDialog(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            onClick={async () => {
+              setShowEpicCountDialog(false);
+              try {
+                const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+                const res = await fetch(`${API_BASE}/api/v1/projects/${projectId}/generate-cards`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ epic_count: epicCount }),
+                });
+                if (res.ok) {
+                  const data = await res.json();
+                  if (data.job_id) {
+                    showSuccess(`Generation of ${epicCount} epics started in background. Check Jobs page for progress.`, 'Epics');
+                  }
+                } else {
+                  const err = await res.json();
+                  showError(err.detail || 'Failed to generate epics');
+                }
+              } catch (e) {
+                showError('Failed to start epic generation');
+              }
+            }}
+          >
+            Generate
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
       {NotificationComponent}
     </Layout>
   );

@@ -796,11 +796,18 @@ async def _process_cards_from_memory_async(
 
         job_manager.update_progress(job_id, 10.0, "Gerando cards de regras de negócio...")
 
+        # Extract epic_count from job input_data (default: 10)
+        job_obj = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        epic_count = 10
+        if job_obj and job_obj.input_data and isinstance(job_obj.input_data, dict):
+            epic_count = job_obj.input_data.get("epic_count", 10)
+
         # PROMPT #155 - Pass job_manager and job_id for incremental epic generation
         result = await context_service.generate_cards_from_memory(
             project_id=project_id,
             job_manager=job_manager,
-            job_id=job_id
+            job_id=job_id,
+            epic_count=epic_count
         )
 
         job_manager.update_progress(job_id, 95.0, "Finalizando...")
@@ -1636,6 +1643,7 @@ async def toggle_spec_active(
 @router.post("/{project_id}/generate-cards")
 async def generate_cards_from_memory(
     project_id: UUID,
+    body: Optional[dict] = None,
     db: Session = Depends(get_db)
 ):
     """
@@ -1688,6 +1696,11 @@ async def generate_cards_from_memory(
             detail="Project has no memory context. Run a memory scan first."
         )
 
+    # Extract epic_count from request body (default: 10)
+    epic_count = 10
+    if body and isinstance(body, dict) and "epic_count" in body:
+        epic_count = max(1, min(30, int(body["epic_count"])))
+
     # Create background job
     job_manager = JobManager(db)
 
@@ -1695,11 +1708,12 @@ async def generate_cards_from_memory(
         job_type=JobType.CARDS_FROM_MEMORY,
         input_data={
             "project_id": str(project_id),
-            "manual_trigger": True
+            "manual_trigger": True,
+            "epic_count": epic_count
         },
         project_id=project_id,
         deep_link=f"/projects/{project_id}/backlog",
-        notification_title=f"Gerando cards para '{project.name}'..."
+        notification_title=f"Gerando {epic_count} épicos para '{project.name}'..."
     )
 
     # Launch card generation in background via priority queue
