@@ -412,6 +412,9 @@ class ContextGeneratorService:
             conversation_summary=conversation_summary
         )
 
+        # 4.5. PROMPT #175 - Validate context content before saving
+        context_result = self._validate_context_content(context_result, project.name)
+
         # 5. Save to project
         project.context_semantic = context_result["context_semantic"]
         project.context_human = context_result["context_human"]
@@ -1333,22 +1336,33 @@ um comportamento já implementado no sistema.""",
         content: Dict,
         title: str,
         original_description: str,
-        project: Project
+        project: Project,
+        item_type: str = "epic"
     ) -> Dict:
         """
-        PROMPT #173 - Validate and restructure AI-generated content.
+        PROMPT #173/#175 - Validate and restructure AI-generated content.
 
         Ensures all required fields are present and non-empty.
         If critical fields are empty/missing, rebuilds them from available data.
+        Type-aware defaults based on item_type (epic/story/task/subtask).
 
         Required contract:
         - description: non-empty string (human-readable)
         - generated_prompt: non-empty string (semantic markdown for AI)
         - acceptance_criteria: list with at least 1 item
-        - story_points: integer > 0
+        - story_points: integer > 0 (skipped for subtask)
         """
-        MIN_DESCRIPTION_LEN = 50
-        MIN_PROMPT_LEN = 50
+        # PROMPT #175 - Type-aware defaults
+        ITEM_DEFAULTS = {
+            "epic":    {"min_description": 50, "min_prompt": 50, "default_story_points": 13},
+            "story":   {"min_description": 50, "min_prompt": 50, "default_story_points": 8},
+            "task":    {"min_description": 30, "min_prompt": 30, "default_story_points": 3},
+            "subtask": {"min_description": 20, "min_prompt": 20, "default_story_points": None},
+        }
+        defaults = ITEM_DEFAULTS.get(item_type, ITEM_DEFAULTS["epic"])
+        MIN_DESCRIPTION_LEN = defaults["min_description"]
+        MIN_PROMPT_LEN = defaults["min_prompt"]
+        default_story_points = defaults["default_story_points"]
 
         description = content.get("description", "") or ""
         generated_prompt = content.get("generated_prompt", "") or ""
@@ -1420,19 +1434,35 @@ um comportamento já implementado no sistema.""",
                 acceptance_criteria = extracted[:15]
                 logger.info(f"  Restructured: {len(acceptance_criteria)} criteria extracted from description")
             else:
-                # Generate minimal criteria from title
-                acceptance_criteria = [
-                    f"Módulo '{title}' implementado e funcional",
-                    "Testes unitários cobrindo os fluxos principais",
-                    "Documentação técnica atualizada",
-                ]
-                logger.info("  Restructured: fallback acceptance_criteria generated")
+                # PROMPT #175 - Type-aware fallback criteria
+                fallback_criteria = {
+                    "epic": [
+                        f"Módulo '{title}' implementado e funcional",
+                        "Testes unitários cobrindo os fluxos principais",
+                        "Documentação técnica atualizada",
+                    ],
+                    "story": [
+                        f"Story '{title}' funcional e testada",
+                        "Critérios de aceitação verificados",
+                        "Testes de integração passando",
+                    ],
+                    "task": [
+                        f"Task '{title}' implementada",
+                        "Testes unitários adicionados",
+                    ],
+                    "subtask": [
+                        f"Subtask '{title}' concluída",
+                    ],
+                }
+                acceptance_criteria = fallback_criteria.get(item_type, fallback_criteria["epic"])
+                logger.info(f"  Restructured: fallback acceptance_criteria generated for {item_type}")
 
-        # --- Validate story_points ---
-        if not story_points or not isinstance(story_points, (int, float)) or story_points <= 0:
-            issues.append(f"story_points invalid ({story_points})")
-            story_points = 13  # Default for epics
-            logger.info("  Restructured: story_points set to default 13")
+        # --- Validate story_points (skip for subtask) ---
+        if default_story_points is not None:
+            if not story_points or not isinstance(story_points, (int, float)) or story_points <= 0:
+                issues.append(f"story_points invalid ({story_points})")
+                story_points = default_story_points
+                logger.info(f"  Restructured: story_points set to default {default_story_points}")
 
         # --- Log validation results ---
         if issues:
@@ -1448,14 +1478,68 @@ um comportamento já implementado no sistema.""",
             logger.info(f"✅ Content validation passed for '{title[:50]}'")
 
         # Return restructured content
-        return {
+        result = {
             **content,
             "description": description,
             "generated_prompt": generated_prompt,
             "acceptance_criteria": acceptance_criteria,
-            "story_points": int(story_points),
             "semantic_map": semantic_map,
             "interview_insights": interview_insights,
+        }
+        if default_story_points is not None:
+            result["story_points"] = int(story_points)
+        return result
+
+    def _validate_context_content(
+        self,
+        context_result: Dict,
+        project_name: str
+    ) -> Dict:
+        """
+        PROMPT #175 - Validate context generation output.
+
+        Ensures context_semantic and context_human meet minimum quality
+        before saving to the project.
+        """
+        MIN_CONTEXT_LEN = 100
+
+        context_semantic = context_result.get("context_semantic", "") or ""
+        context_human = context_result.get("context_human", "") or ""
+
+        issues = []
+
+        if len(context_semantic.strip()) < MIN_CONTEXT_LEN:
+            issues.append(f"context_semantic too short ({len(context_semantic.strip())} chars)")
+            if len(context_human.strip()) >= MIN_CONTEXT_LEN:
+                context_semantic = context_human
+                logger.info("  Restructured: context_semantic copied from context_human")
+            else:
+                context_semantic = (
+                    f"# Projeto: {project_name}\n\n"
+                    f"Contexto gerado automaticamente. "
+                    f"Informações insuficientes da entrevista para gerar contexto detalhado.\n\n"
+                    f"*Edite para adicionar detalhes.*"
+                )
+                logger.info("  Restructured: context_semantic built from fallback")
+
+        if len(context_human.strip()) < MIN_CONTEXT_LEN:
+            issues.append(f"context_human too short ({len(context_human.strip())} chars)")
+            if len(context_semantic.strip()) >= MIN_CONTEXT_LEN:
+                context_human = context_semantic
+                logger.info("  Restructured: context_human copied from context_semantic")
+
+        if issues:
+            logger.warning(
+                f"⚠️ Context validation found {len(issues)} issues for '{project_name[:50]}': "
+                f"{', '.join(issues)}"
+            )
+        else:
+            logger.info(f"✅ Context validation passed for '{project_name[:50]}'")
+
+        return {
+            **context_result,
+            "context_semantic": context_semantic,
+            "context_human": context_human,
         }
 
     async def _generate_full_epic_content(
@@ -3018,6 +3102,11 @@ Retorne APENAS o array JSON com {count} títulos de Subtasks."""
         # Generate full story content
         story_content = await self._generate_full_story_content(story, project)
 
+        # PROMPT #175 - Validate and restructure AI response before saving
+        story_content = self._validate_and_restructure_content(
+            story_content, story.title, story.description, project, item_type="story"
+        )
+
         # Update story
         story.description = story_content.get("description", story.description)
         story.generated_prompt = story_content.get("generated_prompt")
@@ -3436,6 +3525,11 @@ Retorne APENAS o JSON, sem explicações."""
 
         # Generate full task content with complete hierarchy context
         task_content = await self._generate_full_task_content(task, project, parent_story, grandparent_epic)
+
+        # PROMPT #175 - Validate and restructure AI response before saving
+        task_content = self._validate_and_restructure_content(
+            task_content, task.title, task.description, project, item_type="task"
+        )
 
         # Update task
         task.description = task_content.get("description", task.description)
@@ -3858,6 +3952,11 @@ Retorne APENAS o JSON, sem explicações."""
 
         # Generate FULL subtask content with complete hierarchy context
         subtask_content = await self._generate_full_subtask_content(subtask, project, parent_task, grandparent_story, great_grandparent_epic)
+
+        # PROMPT #175 - Validate and restructure AI response before saving
+        subtask_content = self._validate_and_restructure_content(
+            subtask_content, subtask.title, subtask.description, project, item_type="subtask"
+        )
 
         # Update subtask with generated content
         subtask.description = subtask_content.get("description", subtask.description)
@@ -4787,9 +4886,13 @@ IMPORTANTE:
         base_order = 100  # Start after business rule cards
 
         for i, epic_data in enumerate(epics):
-            title = epic_data.get("title", f"Untitled Epic")
-            description = epic_data.get("description", "")
-            priority_str = epic_data.get("priority", "medium").lower()
+            # PROMPT #175 - Validate batch epic fields
+            title = (epic_data.get("title") or f"Untitled Epic").strip()[:255]
+            if not title or title == "Untitled Epic":
+                title = f"Epic {i + 1} - {project.name}"
+                logger.warning(f"  Batch epic has empty/default title, using fallback: {title}")
+            description = (epic_data.get("description") or "")
+            priority_str = (epic_data.get("priority") or "medium").lower()
 
             # Map priority string to enum
             priority_map = {
