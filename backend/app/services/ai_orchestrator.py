@@ -920,7 +920,7 @@ class AIOrchestrator:
             usage_type=usage_type,
             prompt_preview=prompt_preview,
             full_prompt=json.dumps(messages, ensure_ascii=False)[:5000],
-            project_id=project_id.int if project_id else None
+            project_id=project_id if project_id else None
         ))
 
         try:
