@@ -7,7 +7,7 @@ Extended for JIRA-like functionality with hierarchy, relationships, and AI orche
 from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, Enum as SQLEnum, JSON, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 import enum
 
@@ -168,7 +168,7 @@ class Task(Base):
     assignee = Column(String(100), nullable=True)
 
     # Categorization (JSON arrays)
-    labels = Column(JSON, nullable=True, default=list)  # ["frontend", "urgent", "api"]
+    labels = Column(JSONB, nullable=True, default=list)  # ["frontend", "urgent", "api"]
     components = Column(JSON, nullable=True, default=list)  # ["Authentication", "API"]
 
     # Workflow
