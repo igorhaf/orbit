@@ -24,6 +24,7 @@ from app.models.project_analysis import ProjectAnalysis
 from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
 from app.models.prompt_template import PromptTemplate  # Prompter Architecture - Phase 1
 from app.models.discovery_queue import DiscoveryQueue, DiscoveryQueueStatus  # Project-Specific Specs
+from app.models.ai_flow_chain import AIFlowChain  # PROMPT #122 - AI Flow Fallback Chains
 
 __all__ = [
     # Models
@@ -60,4 +61,5 @@ __all__ = [
     "RelationshipType",  # JIRA Transformation
     "CommentType",  # JIRA Transformation
     "DiscoveryQueueStatus",  # Project-Specific Specs
+    "AIFlowChain",  # PROMPT #122 - AI Flow Fallback Chains
 ]

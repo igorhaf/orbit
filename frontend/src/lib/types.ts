@@ -630,6 +630,31 @@ export interface AIModelDetail extends AIModel {
 }
 
 // ============================================================================
+// AI FLOW CHAIN (PROMPT #122)
+// ============================================================================
+
+export interface AIFlowChain {
+  id: string;
+  usage_type: string;
+  chain: string[];
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  models?: AIFlowChainModel[];
+}
+
+export interface AIFlowChainModel {
+  id: string;
+  name: string;
+  provider: string;
+  usage_type: string;
+  is_active: boolean;
+  config: Record<string, any>;
+  rate_limit_requests?: number | null;
+  rate_limit_window_seconds?: number | null;
+}
+
+// ============================================================================
 // CHAT SESSION
 // ============================================================================
 

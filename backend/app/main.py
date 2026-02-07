@@ -36,7 +36,8 @@ from app.api.routes import (
     discovery_queue,  # PROMPT #77 - Project-Specific Specs Discovery Queue
     contracts,  # PROMPT #164 - Contracts Architecture (replaced prompter)
     git_commits,  # PROMPT #113 - Git Integration: Commits from project code_path
-    console  # PROMPT #168 - Real-time Console Logs
+    console,  # PROMPT #168 - Real-time Console Logs
+    ai_flow,  # PROMPT #122 - AI Flow Fallback Chains
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -207,6 +208,13 @@ app.include_router(
     ai_models.router,
     prefix=f"{API_V1_PREFIX}/ai-models",
     tags=["AI Models"]
+)
+
+# AI Flow Chains (PROMPT #122 - Visual Fallback Chain Configuration)
+app.include_router(
+    ai_flow.router,
+    prefix=f"{API_V1_PREFIX}/ai-flow",
+    tags=["AI Flow"]
 )
 
 # AI Executions (PROMPT #54 - AI Execution Logging)

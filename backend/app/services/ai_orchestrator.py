@@ -14,6 +14,7 @@ from datetime import datetime
 from uuid import UUID
 
 from app.models.ai_model import AIModel, AIModelUsageType
+from app.models.ai_flow_chain import AIFlowChain  # PROMPT #122 - AI Flow Fallback Chains
 from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
 from app.models.prompt import Prompt  # PROMPT #58 - Prompt Audit Logging
 from app.models.task import Task, ItemType, PriorityLevel  # JIRA Transformation - Multi-dimensional model selection
@@ -245,10 +246,52 @@ class AIOrchestrator:
 
         logger.info(f"📊 Initialized async providers: {list(initialized_providers)}")
 
+    def _get_chain_models(self, usage_type: UsageType) -> Optional[List[Dict]]:
+        """
+        PROMPT #122 - Get ordered list of model configs from AIFlowChain.
+        Returns None if no chain exists or chain is inactive/empty.
+        """
+        chain = self.db.query(AIFlowChain).filter(
+            AIFlowChain.usage_type == usage_type,
+            AIFlowChain.is_active == True
+        ).first()
+
+        if not chain or not chain.chain:
+            return None
+
+        model_configs = []
+        for model_id in chain.chain:
+            db_model = self.db.query(AIModel).filter(
+                AIModel.id == model_id,
+                AIModel.is_active == True
+            ).first()
+
+            if db_model and db_model.provider.lower() in self.clients:
+                provider = db_model.provider.lower()
+                model_name = db_model.config.get("model_id", "")
+                model_configs.append({
+                    "provider": provider,
+                    "model": model_name if model_name else self._get_default_model(provider),
+                    "max_tokens": db_model.config.get("max_tokens", 4096),
+                    "temperature": db_model.config.get("temperature", 0.7),
+                    "db_model_id": str(db_model.id),
+                    "db_model_name": db_model.name,
+                    "rate_limit_requests": db_model.rate_limit_requests,
+                    "rate_limit_window_seconds": db_model.rate_limit_window_seconds,
+                })
+            else:
+                logger.warning(
+                    f"⚠️  Skipping model {model_id} in chain: "
+                    f"{'not found or inactive' if not db_model else 'provider not initialized'}"
+                )
+
+        return model_configs if model_configs else None
+
     def choose_model(self, usage_type: UsageType) -> Dict[str, any]:
         """
         Escolhe modelo dinamicamente do banco baseado no usage_type
         PROMPT #51 - Dynamic AI Model Integration
+        PROMPT #122 - AI Flow chain check added
 
         Args:
             usage_type: Tipo de uso (prompt_generation, task_execution, etc)
@@ -259,6 +302,16 @@ class AIOrchestrator:
         Raises:
             ValueError: Se nenhum modelo estiver disponível para o usage_type
         """
+        # 0. PROMPT #122 - Check if an AIFlowChain exists for this usage_type
+        chain_models = self._get_chain_models(usage_type)
+        if chain_models:
+            primary = chain_models[0]
+            logger.info(
+                f"🔗 Using flow chain for {usage_type}: "
+                f"{primary['db_model_name']} (+ {len(chain_models)-1} fallbacks)"
+            )
+            return primary
+
         # 1. Buscar modelo ativo do banco com o usage_type específico
         # Order by updated_at DESC para pegar o modelo mais recentemente editado
         db_model = self.db.query(AIModel).filter(
@@ -920,6 +973,112 @@ class AIOrchestrator:
 
             # Re-raise - removido fallback automático para garantir uso do modelo configurado
             raise
+
+    async def execute_with_chain(
+        self,
+        usage_type: UsageType,
+        messages: List[Dict],
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        **kwargs
+    ) -> Dict:
+        """
+        PROMPT #122 - Execute AI call with chain-based fallback.
+        If an AIFlowChain exists for usage_type, tries each model in sequence.
+        Falls back to standard execute() if no chain exists.
+        """
+        chain_models = self._get_chain_models(usage_type)
+
+        if not chain_models:
+            return await self.execute(
+                usage_type=usage_type,
+                messages=messages,
+                system_prompt=system_prompt,
+                max_tokens=max_tokens,
+                **kwargs
+            )
+
+        last_error = None
+        for i, model_config in enumerate(chain_models):
+            try:
+                logger.info(
+                    f"🔗 Chain attempt {i+1}/{len(chain_models)}: "
+                    f"{model_config['db_model_name']} ({model_config['provider']}/{model_config['model']})"
+                )
+
+                result = await self._execute_with_config(
+                    model_config=model_config,
+                    messages=messages,
+                    system_prompt=system_prompt,
+                    max_tokens=max_tokens,
+                )
+
+                result["chain_position"] = i + 1
+                result["chain_total"] = len(chain_models)
+                result["chain_fallback"] = i > 0
+                return result
+
+            except Exception as e:
+                last_error = e
+                logger.warning(
+                    f"🔗 Chain fallback: {model_config['db_model_name']} failed: {e}. "
+                    f"{'Trying next model...' if i < len(chain_models)-1 else 'No more models in chain.'}"
+                )
+                continue
+
+        raise Exception(
+            f"All {len(chain_models)} models in the flow chain for '{usage_type}' failed. "
+            f"Last error: {last_error}"
+        )
+
+    async def _execute_with_config(
+        self,
+        model_config: Dict,
+        messages: List[Dict],
+        system_prompt: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+    ) -> Dict:
+        """
+        PROMPT #122 - Execute with a specific model config (for chain-based execution).
+        Bypasses choose_model() and uses the provided config directly.
+        """
+        provider = model_config["provider"]
+        model_name = model_config["model"]
+        tokens_limit = max_tokens if max_tokens is not None else model_config["max_tokens"]
+        temperature = model_config["temperature"]
+
+        # Rate limiting check
+        if self.rate_limiter and model_config.get("rate_limit_requests"):
+            can_proceed, wait_time = self.rate_limiter.check_rate_limit(
+                model_config["db_model_id"],
+                model_config["rate_limit_requests"],
+                model_config["rate_limit_window_seconds"],
+            )
+            if not can_proceed:
+                logger.info(f"⏳ Rate limit for {model_config['db_model_name']}, waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+            self.rate_limiter.record_request(
+                model_config["db_model_id"],
+                model_config["rate_limit_window_seconds"],
+            )
+
+        # Dispatch to provider-specific executor
+        if provider == "anthropic":
+            result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature)
+        elif provider == "openai":
+            result = await self._execute_openai(model_name, messages, system_prompt, tokens_limit, temperature)
+        elif provider == "google":
+            result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature)
+        elif provider == "ollama":
+            result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature)
+        elif provider == "cohere":
+            result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature)
+        else:
+            raise ValueError(f"Unknown provider: {provider}")
+
+        result["db_model_id"] = model_config["db_model_id"]
+        result["db_model_name"] = model_config["db_model_name"]
+        return result
 
     async def _execute_anthropic(
         self,

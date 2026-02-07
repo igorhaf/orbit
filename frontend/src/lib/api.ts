@@ -636,6 +636,22 @@ export const aiModelsApi = {
     request<any>(`/api/v1/ai-models/usage/${usageType}`),
 };
 
+// AI Flow Chains API (PROMPT #122 - Visual Fallback Chain Configuration)
+export const aiFlowApi = {
+  listChains: () => request<any>('/api/v1/ai-flow/chains'),
+
+  getChain: (usageType: string) => request<any>(`/api/v1/ai-flow/chains/${usageType}`),
+
+  upsertChain: (usageType: string, data: { chain: string[]; is_active?: boolean }) =>
+    request<any>(`/api/v1/ai-flow/chains/${usageType}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteChain: (usageType: string) =>
+    request<any>(`/api/v1/ai-flow/chains/${usageType}`, { method: 'DELETE' }),
+};
+
 // AI Executions API (PROMPT #54 - AI Execution Logging)
 export const aiExecutionsApi = {
   list: (params?: {

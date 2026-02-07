@@ -436,26 +436,7 @@ export default function ProjectDetailsPage() {
               </Link>
             )}
 
-            <Link href={`/projects/${projectId}/analyze`}>
-              <Button variant="outline" className="h-10">
-                <svg
-                  className="w-4 h-4 mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                  />
-                </svg>
-                Upload Project
-              </Button>
-            </Link>
-
-            <Link href={`/projects/${projectId}/consistency`}>
+<Link href={`/projects/${projectId}/consistency`}>
               <Button variant="outline" className="h-10">
                 <svg
                   className="w-4 h-4 mr-2"
@@ -474,30 +455,6 @@ export default function ProjectDetailsPage() {
               </Button>
             </Link>
 
-            <Link href={`/projects/${projectId}/execute`}>
-              <Button variant="primary" className="h-10">
-                <svg
-                  className="w-4 h-4 mr-2"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
-                  />
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-                Execute All
-              </Button>
-            </Link>
           </div>
         </div>
 
@@ -971,25 +928,30 @@ export default function ProjectDetailsPage() {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* Overview Sub-Tabs */}
-            <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
-              {[
-                { id: 'description', label: 'Project Description' },
-                { id: 'context', label: 'Project Context' },
-                { id: 'semantic', label: 'Semantic Context (for AI)' },
-                { id: 'statistics', label: 'Statistics' },
-              ].map((sub) => (
-                <button
-                  key={sub.id}
-                  onClick={() => setOverviewSubTab(sub.id as OverviewSubTab)}
-                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                    overviewSubTab === sub.id
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
-                  }`}
-                >
-                  {sub.label}
-                </button>
-              ))}
+            <div className="border-b border-gray-200">
+              <nav className="-mb-px flex space-x-8">
+                {[
+                  { id: 'description', label: 'Project Description' },
+                  { id: 'context', label: 'Project Context' },
+                  { id: 'semantic', label: 'Semantic Context (for AI)' },
+                  { id: 'statistics', label: 'Statistics' },
+                ].map((sub) => (
+                  <button
+                    key={sub.id}
+                    onClick={() => setOverviewSubTab(sub.id as OverviewSubTab)}
+                    className={`
+                      pb-4 px-1 border-b-2 font-medium text-sm
+                      ${
+                        overviewSubTab === sub.id
+                          ? 'border-blue-500 text-blue-600'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      }
+                    `}
+                  >
+                    {sub.label}
+                  </button>
+                ))}
+              </nav>
             </div>
 
             {/* Sub-Tab: Project Description */}
