@@ -140,11 +140,21 @@ export default function BacklogListView({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree'); // PROMPT #68
   const { showError, showSuccess, NotificationComponent } = useNotification();
-  const { addJob, notifications } = useNotifications(); // PROMPT #128 - Background notifications
+  const { addJob, notifications, activeJobs } = useNotifications(); // PROMPT #128 - Background notifications
 
   // PROMPT #94 - State for approve/reject actions
-  const [activatingId, setActivatingId] = useState<string | null>(null);
+  // PROMPT #173 - activatingId now derived from activeJobs for persistence across navigation
   const [rejectingId, setRejectingId] = useState<string | null>(null);
+
+  // Derive activating state from activeJobs (persists across navigation)
+  const activationTypes = ['epic_activation', 'story_activation', 'task_activation', 'subtask_activation'];
+  const activatingIds = new Set(
+    activeJobs
+      .filter(j => activationTypes.includes(j.job_type) && (j.status === 'pending' || j.status === 'running'))
+      .map(j => j.task_id)
+      .filter(Boolean)
+  );
+  const isItemActivating = (itemId: string) => activatingIds.has(itemId);
 
   // PROMPT #131 - Interviews state (map of taskId -> interviews)
   const [interviewsMap, setInterviewsMap] = useState<Map<string, Interview[]>>(new Map());
@@ -244,14 +254,11 @@ export default function BacklogListView({
   const prevNotificationsLengthRef = useRef(notifications.length);
   useEffect(() => {
     if (notifications.length > prevNotificationsLengthRef.current) {
-      // Check new notifications for activation completions
       const newNotifications = notifications.slice(prevNotificationsLengthRef.current);
-      const activationTypes = ['epic_activation', 'story_activation', 'task_activation', 'subtask_activation'];
       const hasActivationComplete = newNotifications.some(
         n => activationTypes.includes(n.job_type) && (n.status === 'completed' || n.status === 'failed')
       );
       if (hasActivationComplete) {
-        setActivatingId(null);
         fetchBacklog();
       }
     }
@@ -400,8 +407,8 @@ export default function BacklogListView({
 
   // PROMPT #94 - Activate suggested item
   // PROMPT #128 - Registers job in notification system for background tracking
+  // PROMPT #173 - Loading state derived from activeJobs (persists across navigation)
   const handleActivateItem = async (item: BacklogItem) => {
-    setActivatingId(item.id);
     try {
       const result = await tasksApi.activateSuggestedEpic(item.id);
       console.log('✅ Item activation started:', item.title);
@@ -415,23 +422,18 @@ export default function BacklogListView({
           result.job_id,
           jobType,
           `Ativando ${item.item_type}: ${item.title.substring(0, 30)}...`,
-          item.title
+          item.title,
+          false,
+          item.id // task_id for persistent loading state
         );
-        // Keep activatingId set - button stays in loading state until job completes and backlog refreshes
         showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
-        // Don't call fetchBacklog() here - nothing changed yet, job is still running
-        // The backlog will refresh when the job completes via WebSocket
         return;
-      } else {
-        // Legacy flow - immediate response
-        setActivatingId(null);
       }
 
       fetchBacklog();
     } catch (error: any) {
       console.error('❌ Failed to activate item:', error);
       showError(`Failed to activate item: ${error.message}`);
-      setActivatingId(null);
     }
   };
 
@@ -674,11 +676,11 @@ export default function BacklogListView({
                   e.stopPropagation();
                   handleActivateItem(item);
                 }}
-                disabled={activatingId === item.id || rejectingId === item.id}
+                disabled={isItemActivating(item.id) || rejectingId === item.id}
                 className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                 title="Aprovar sugestão"
               >
-                {activatingId === item.id ? (
+                {isItemActivating(item.id) ? (
                   <>
                     <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
                     <span>Ativando...</span>
@@ -698,7 +700,7 @@ export default function BacklogListView({
                   e.stopPropagation();
                   handleRejectItem(item);
                 }}
-                disabled={activatingId === item.id || rejectingId === item.id}
+                disabled={isItemActivating(item.id) || rejectingId === item.id}
                 className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded border border-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                 title="Rejeitar sugestão"
               >

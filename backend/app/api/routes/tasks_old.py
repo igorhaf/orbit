@@ -1803,7 +1803,10 @@ async def activate_suggested_item(
             "item_type": task.item_type.value,
             "title": task.title
         },
-        project_id=task.project_id
+        project_id=task.project_id,
+        task_id=task_id,
+        deep_link=f"/projects/{task.project_id}?task={task_id}",
+        notification_title=f"Ativação concluída: {task.title[:50]}"
     )
 
     logger.info(f"Created activation job {job.id} for {task.item_type.value} {task_id}")

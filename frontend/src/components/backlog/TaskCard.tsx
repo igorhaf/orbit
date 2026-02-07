@@ -99,13 +99,17 @@ const getItemTypeIcon = (type: ItemType): React.ReactNode => {
 export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true }: TaskCardProps) {
   const router = useRouter();
   const { showError, showSuccess, NotificationComponent } = useNotification();
-  const { addJob } = useNotifications(); // PROMPT #128 - Background notifications
+  const { addJob, activeJobs } = useNotifications(); // PROMPT #128 - Background notifications
   const [showSubtasks, setShowSubtasks] = useState(false);
   const [acceptingSubtasks, setAcceptingSubtasks] = useState(false);
   const [creatingInterview, setCreatingInterview] = useState(false);
 
   // PROMPT #94 - Activate/Reject suggested epic states
-  const [activatingEpic, setActivatingEpic] = useState(false);
+  // PROMPT #173 - activatingEpic now derived from activeJobs for persistence across navigation
+  const activationTypes = ['epic_activation', 'story_activation', 'task_activation', 'subtask_activation'];
+  const activatingEpic = activeJobs.some(
+    j => activationTypes.includes(j.job_type) && j.task_id === task.id && (j.status === 'pending' || j.status === 'running')
+  );
   const [rejectingEpic, setRejectingEpic] = useState(false);
 
   const hasSuggestions = task.subtask_suggestions && task.subtask_suggestions.length > 0;
@@ -171,8 +175,8 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
   // PROMPT #94 - Activate suggested epic
   // PROMPT #102 - Extended to show children generated feedback
   // PROMPT #128 - Registers job in notification system for background tracking
+  // PROMPT #173 - activatingEpic now derived from activeJobs (no more setActivatingEpic)
   const handleActivateEpic = async () => {
-    setActivatingEpic(true);
     try {
       const result = await tasksApi.activateSuggestedEpic(task.id);
       console.log('✅ Item activation started:', result);
@@ -186,12 +190,11 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           result.job_id,
           jobType,
           `Ativando ${task.item_type}: ${task.title.substring(0, 30)}...`,
-          task.title
+          task.title,
+          false,
+          task.id // task_id for persistent loading state
         );
-        // Keep activatingEpic=true - button stays in loading state until job completes and card refreshes
         showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
-        // Don't call onUpdate() here - nothing changed yet, job is still running
-        // The card will refresh when the job completes via WebSocket
         return;
       } else {
         // Legacy flow (synchronous response)
@@ -203,7 +206,6 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           console.log(`📝 Generated ${childrenCount} draft ${childType}`);
           showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
         }
-        setActivatingEpic(false);
       }
 
       if (onUpdate) {
@@ -212,7 +214,6 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
     } catch (error: any) {
       console.error('❌ Failed to activate item:', error);
       showError(`Failed to activate item: ${error.message}`);
-      setActivatingEpic(false);
     }
   };
 

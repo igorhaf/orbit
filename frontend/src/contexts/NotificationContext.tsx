@@ -62,7 +62,7 @@ interface NotificationContextType {
 
   // Methods
   // PROMPT #140 - watching param: if true, job completion won't show unread notification
-  addJob: (jobId: string, jobType: string, title: string, description?: string, watching?: boolean) => void;
+  addJob: (jobId: string, jobType: string, title: string, description?: string, watching?: boolean, taskId?: string) => void;
   updateJob: (jobId: string, updates: Partial<JobNotification>) => void;
   markAsRead: (notificationId: string) => void;
   markAllAsRead: () => void;
@@ -167,7 +167,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   // Add a new job to track
   // PROMPT #140 - watching: if true, user is on the page watching this job
   // When job completes, it will be auto-marked as read (no notification badge)
-  const addJob = useCallback((jobId: string, jobType: string, title: string, description?: string, watching: boolean = false) => {
+  const addJob = useCallback((jobId: string, jobType: string, title: string, description?: string, watching: boolean = false, taskId?: string) => {
     const newJob: JobNotification = {
       id: `notif-${jobId}`,
       job_id: jobId,
@@ -180,6 +180,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       title: title || JOB_TYPE_TITLES[jobType] || 'Processando...',
       description,
       watching, // PROMPT #140
+      task_id: taskId, // PROMPT #173 - Track which task is being activated
     };
 
     setActiveJobs(prev => {
@@ -311,6 +312,8 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         updateJob(data.job_id, {
           status: 'running',
           progress_message: 'Processando...',
+          task_id: data.task_id,
+          project_id: data.project_id,
         });
         break;
 

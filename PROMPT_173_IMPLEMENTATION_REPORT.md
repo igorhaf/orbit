@@ -1,45 +1,74 @@
-# PROMPT #173 - Approve Button Loading State
-## Keep Loading State on Approve Button During Background Activation
+# PROMPT #173 - Persistent Approve Loading + Activation Deep Links
+## Approve Button Loading State Persists Across Navigation + Notification Deep Links
 
 **Date:** February 7, 2026
 **Status:** COMPLETED
-**Priority:** MEDIUM
-**Type:** UX Improvement
-**Impact:** Approve button stays in loading state ("Ativando..." with spinner) while background activation job runs, both inside the detail panel and in the list/card views.
+**Priority:** HIGH
+**Type:** UX Improvement + Feature
+**Impact:** Approve button shows "Ativando..." with spinner persistently (survives navigation), and activation notifications now include clickable deep links to the activated card.
 
 ---
 
 ## Objective
 
-When a user clicks "Aprovar" on a suggested card, the button should remain in loading state (spinner + "Ativando...") until the background activation job completes and the UI refreshes. Previously, the loading state was reset immediately after registering the background job, making the button appear idle even though activation was still in progress.
+Two improvements:
+1. **Persistent loading state**: The "Aprovar" button must show "Ativando..." with spinner during the entire activation cycle, even if the user navigates away and comes back.
+2. **Notification deep links**: When activation completes, the notification should include a clickable link to the activated card.
 
 ---
 
 ## What Was Implemented
 
-### 1. ItemDetailPanel - Keep `isApproving` active (ItemDetailPanel.tsx)
+### 1. Persistent Loading via `activeJobs` (Frontend)
 
-Removed `setIsApproving(false)` from the background job branch. The button now stays in "Ativando..." state with spinner until the panel refreshes when the job completes.
+Replaced local component state (`isApproving`, `activatingId`, `activatingEpic`) with derived state from `activeJobs` in NotificationContext. This persists across navigation because NotificationContext is a global provider.
 
-### 2. BacklogListView - Keep `activatingId` active (BacklogListView.tsx)
+**ItemDetailPanel.tsx:**
+- `isApproving` is now computed: `activeJobs.some(j => activationTypes.includes(j.job_type) && j.task_id === item.id && ...)`
+- Removed all `setIsApproving` calls
 
-Removed `setActivatingId(null)` from the background job branch. The approve button in the tree row stays in loading state. Also updated the button to show "Ativando..." text (instead of "Aprovar") during loading.
+**BacklogListView.tsx:**
+- `isItemActivating(itemId)` function checks `activeJobs` for matching activation jobs
+- Replaced all `activatingId === item.id` with `isItemActivating(item.id)`
+- Removed `activatingId` state variable
 
-### 3. TaskCard - Keep `activatingEpic` active (TaskCard.tsx)
+**TaskCard.tsx:**
+- `activatingEpic` is now computed from `activeJobs` matching `task.id`
+- Removed all `setActivatingEpic` calls
 
-Removed `setActivatingEpic(false)` from the background job branch. The approve button in the card view stays in loading state. Also updated the button to show "Ativando..." text during loading.
+### 2. `addJob` Accepts `taskId` (Frontend)
+
+Updated `addJob()` in NotificationContext to accept an optional `taskId` parameter. All 3 components now pass the item ID when registering activation jobs:
+```typescript
+addJob(result.job_id, jobType, title, description, false, item.id)
+```
+
+### 3. `task_id` in Job Started Broadcast (Backend)
+
+Updated `job_manager.py` to include `task_id` and `project_id` in `job_started` WebSocket events, enabling the frontend to track which item is being activated from the start.
+
+### 4. Deep Link + Notification Title for Activation Jobs (Backend)
+
+Updated `tasks_old.py` activation endpoint to set:
+- `task_id`: Links job to the specific item
+- `deep_link`: `/projects/{project_id}?task={task_id}` - navigates to project with task context
+- `notification_title`: "Ativação concluída: {title}" - shown in notification bell
+
+### 5. Backlog Auto-Refresh on Activation Complete (Frontend)
+
+BacklogListView watches `notifications` for activation job completions and triggers `fetchBacklog()` when detected.
 
 ---
 
 ## Files Modified
 
 ### Modified:
-1. **frontend/src/components/backlog/ItemDetailPanel.tsx** - Kept `isApproving=true` during background job
-2. **frontend/src/components/backlog/BacklogListView.tsx** - Kept `activatingId` set during background job, updated button text to "Ativando..."
-3. **frontend/src/components/backlog/TaskCard.tsx** - Kept `activatingEpic=true` during background job, updated button text to "Ativando..."
-
-### Created:
-1. **PROMPT_173_IMPLEMENTATION_REPORT.md** - This report
+1. **frontend/src/components/backlog/ItemDetailPanel.tsx** - `isApproving` derived from `activeJobs`, pass `taskId` to `addJob`
+2. **frontend/src/components/backlog/BacklogListView.tsx** - `isItemActivating()` from `activeJobs`, pass `taskId` to `addJob`, auto-refresh on completion
+3. **frontend/src/components/backlog/TaskCard.tsx** - `activatingEpic` derived from `activeJobs`, pass `taskId` to `addJob`
+4. **frontend/src/contexts/NotificationContext.tsx** - `addJob` accepts `taskId`, `job_started` handler stores `task_id`
+5. **backend/app/api/routes/tasks_old.py** - Activation job now sets `task_id`, `deep_link`, `notification_title`
+6. **backend/app/services/job_manager.py** - `job_started` broadcast includes `task_id` and `project_id`
 
 ---
 
@@ -48,40 +77,36 @@ Removed `setActivatingEpic(false)` from the background job branch. The approve b
 ### Verification:
 
 ```bash
- ItemDetailPanel approve button stays in "Ativando..." state with spinner
- BacklogListView row approve button shows spinner + "Ativando..." text
- TaskCard approve button shows spinner + "Ativando..." text
- All 3 components keep loading state until job completes
- Error handling still resets loading state correctly
- Legacy synchronous flow still resets loading state correctly
+ Approve button shows "Ativando..." with spinner immediately on click
+ Loading state persists if user navigates away and comes back
+ Loading state clears when job completes (item no longer suggested)
+ Notification bell shows deep link to activated card
+ Backend restarts without errors
+ Frontend compiles without errors
 ```
 
 ---
 
 ## Success Metrics
 
-- **3 components** updated with persistent loading state
-- **Consistent UX** across detail panel, list view, and card view
-- **No breaking changes** - error handling and legacy flow unchanged
+- **3 components** now use persistent `activeJobs`-derived loading state
+- **Deep links** added to activation notifications
+- **Full cycle**: Click Aprovar → Loading visible → Navigate away → Come back → Still loading → Job completes → Item activated → Buttons disappear
 
 ---
 
 ## Key Insights
 
-### 1. Natural State Cleanup
-When the background job completes, the WebSocket notification triggers a backlog refresh. The refreshed item will no longer be in "draft" state or have "suggested" label, so the approve/reject buttons won't render at all - naturally cleaning up the loading state.
+### 1. Global State vs Local State
+Local component state (`useState`) resets on navigation/unmount. By deriving the loading state from `activeJobs` in NotificationContext (which is global and rehydrated from the API on mount), the state persists across the entire app lifecycle.
 
-### 2. Consistent Button Labels
-All 3 locations now show "Ativando..." with a spinner during approval, providing consistent visual feedback across the application.
+### 2. Deep Link Pattern
+Following the existing pattern from other job types (memory_scan, cards_from_memory, context_generation), activation jobs now include `deep_link` and `notification_title` for a consistent notification UX.
 
 ---
 
 ## Status: COMPLETE
 
-The approve button now stays in loading state during background activation across all views.
-
-**Key Achievements:**
-- Approve button shows loading state in ItemDetailPanel (detail view)
-- Approve button shows loading state in BacklogListView (tree/list row)
-- Approve button shows loading state in TaskCard (card view)
-- Consistent "Ativando..." label with spinner across all locations
+Both issues resolved:
+- Approve button persistently shows loading state during activation
+- Activation notifications include clickable deep link to the card

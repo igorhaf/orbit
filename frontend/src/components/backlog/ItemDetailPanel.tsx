@@ -39,7 +39,7 @@ interface ItemDetailPanelProps {
 
 export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToItem, initialInterviewId }: ItemDetailPanelProps) {
   const { showError, showSuccess, NotificationComponent } = useNotification();
-  const { addJob } = useNotifications(); // PROMPT #128 - Background notifications
+  const { addJob, activeJobs } = useNotifications(); // PROMPT #128 - Background notifications
   const [activeTab, setActiveTab] = useState<string>('overview');
   // PROMPT #131 - Selected interview for ChatInterface display
   const [selectedInterviewId, setSelectedInterviewId] = useState<string | null>(initialInterviewId || null);
@@ -64,7 +64,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [isDeleting, setIsDeleting] = useState(false);
 
   // PROMPT #96 - Approve/Reject suggested item state
-  const [isApproving, setIsApproving] = useState(false);
+  // PROMPT #173 - isApproving derived from activeJobs for persistence across navigation
+  const activationTypes = ['epic_activation', 'story_activation', 'task_activation', 'subtask_activation'];
+  const isApproving = activeJobs.some(
+    j => activationTypes.includes(j.job_type) && j.task_id === item.id && (j.status === 'pending' || j.status === 'running')
+  );
   const [isRejecting, setIsRejecting] = useState(false);
 
   // PROMPT #97 - Inline description editing state
@@ -272,8 +276,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   // PROMPT #96 - Approve suggested item handler
   // PROMPT #102 - Extended to show children generated feedback
   // PROMPT #128 - Registers job in notification system for background tracking
+  // PROMPT #173 - isApproving now derived from activeJobs (no more setIsApproving)
   const handleApprove = async () => {
-    setIsApproving(true);
     try {
       const result = await tasksApi.activateSuggestedEpic(item.id);
       console.log('✅ Item activation started:', item.title);
@@ -287,12 +291,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           result.job_id,
           jobType,
           `Ativando ${item.item_type}: ${item.title.substring(0, 30)}...`,
-          item.title
+          item.title,
+          false,
+          item.id // task_id for persistent loading state
         );
-        // Keep isApproving=true - button stays in loading state until job completes and panel refreshes
         showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
-        // Don't call onUpdate() here - nothing changed yet, job is still running
-        // The backlog will refresh when the job completes via WebSocket
         return;
       } else {
         // Legacy flow (synchronous response)
@@ -304,14 +307,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           console.log(`📝 Generated ${childrenCount} draft ${childType}`);
           showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
         }
-        setIsApproving(false);
       }
 
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('❌ Failed to approve item:', error);
       showError(`Failed to approve item: ${error.message || 'Unknown error'}`);
-      setIsApproving(false);
     }
   };
 

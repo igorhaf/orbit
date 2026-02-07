@@ -146,7 +146,9 @@ class JobManager:
             "job_id": str(job_id),
             "job_type": job.job_type.value,
             "status": "running",
-            "notification_title": job.notification_title
+            "notification_title": job.notification_title,
+            "task_id": str(job.task_id) if job.task_id else None,
+            "project_id": str(job.project_id) if job.project_id else None,
         })
 
     def update_progress(
