@@ -877,7 +877,7 @@ class AIOrchestrator:
                     full_response=cached_result.get("response", "")[:10000],
                     tokens_used=0,
                     duration_ms=0,
-                    project_id=project_id.int if project_id else None,
+                    project_id=project_id if project_id else None,
                     cache_hit=True
                 ))
 
@@ -963,7 +963,7 @@ class AIOrchestrator:
                 full_response=response_content[:10000] if response_content else None,
                 tokens_used=result.get("usage", {}).get("total_tokens"),
                 duration_ms=execution_time_ms_console,
-                project_id=project_id.int if project_id else None,
+                project_id=project_id if project_id else None,
                 cache_hit=False
             ))
 
