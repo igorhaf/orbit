@@ -655,6 +655,46 @@ class AIOrchestrator:
                         except Exception as log_err:
                             logger.error(f"Failed to log chain execution: {log_err}")
                             self.db.rollback()
+
+                        # PROMPT #125 - Log to Prompt table for /prompts page (chain path)
+                        if project_id:
+                            try:
+                                user_prompt_text = ""
+                                for msg in reversed(messages):
+                                    if msg.get("role") == "user":
+                                        user_prompt_text = msg.get("content", "")
+                                        break
+                                input_tokens = result.get("usage", {}).get("input_tokens", 0)
+                                output_tokens = result.get("usage", {}).get("output_tokens", 0)
+                                cost = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000)
+                                prompt_metadata = metadata or {}
+                                if task_id:
+                                    prompt_metadata["task_id"] = str(task_id)
+                                prompt_log = Prompt(
+                                    project_id=project_id,
+                                    created_from_interview_id=interview_id,
+                                    content=result.get("content", ""),
+                                    type=usage_type,
+                                    ai_model_used=f"{chain_model_config['provider']}/{chain_model_config['model']}",
+                                    system_prompt=system_prompt,
+                                    user_prompt=user_prompt_text,
+                                    response=result.get("content", ""),
+                                    input_tokens=input_tokens,
+                                    output_tokens=output_tokens,
+                                    total_cost_usd=cost,
+                                    execution_time_ms=result.get("usage", {}).get("execution_time_ms"),
+                                    execution_metadata=prompt_metadata,
+                                    status="success",
+                                    created_at=datetime.utcnow(),
+                                    updated_at=datetime.utcnow()
+                                )
+                                self.db.add(prompt_log)
+                                self.db.commit()
+                                logger.info(f"✅ Logged prompt to audit (chain path): {prompt_log.id}")
+                            except Exception as prompt_error:
+                                logger.error(f"⚠️  Failed to log prompt (chain path): {prompt_error}")
+                                self.db.rollback()
+
                         return result
                     except Exception as e:
                         last_error = e
