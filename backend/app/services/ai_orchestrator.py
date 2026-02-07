@@ -372,7 +372,17 @@ class AIOrchestrator:
                 "rate_limit_window_seconds": fallback_model.rate_limit_window_seconds
             }
 
-        # 3. Nenhum modelo disponível
+        # 3. Fallback: tentar diagrama 'general' (chain) se existir
+        # Este cenário cobre: sem modelo padrão → sem modelo general → diagrama general
+        if usage_type != "general":
+            general_chain = self._get_chain_models("general")
+            if general_chain:
+                logger.info(
+                    f"🔗 choose_model fallback: no settings model, using first model from general chain"
+                )
+                return general_chain[0]
+
+        # 4. Nenhum modelo disponível
         raise ValueError(
             f"❌ No active AI model configured for '{usage_type}'. "
             f"Please configure an AI model in /ai-models page."
@@ -553,38 +563,56 @@ class AIOrchestrator:
             Exception: Se a execução falhar em todos os providers
         """
         # PROMPT #123 - Chain-based fallback: try each model in the chain before failing
+        # Try chains in order: specific usage_type chain → general chain → choose_model()
+        chains_to_try = []
+
+        # 1. Chain for the specific usage_type
         chain_models = self._get_chain_models(usage_type)
-        if chain_models and len(chain_models) > 1:
+        if chain_models and len(chain_models) > 0:
+            chains_to_try.append(("specific", usage_type, chain_models))
+
+        # 2. Chain for 'general' as fallback (only if usage_type is not already general)
+        if usage_type != "general":
+            general_chain_models = self._get_chain_models("general")
+            if general_chain_models and len(general_chain_models) > 0:
+                chains_to_try.append(("general", "general", general_chain_models))
+
+        if chains_to_try:
             last_error = None
-            for chain_idx, chain_model_config in enumerate(chain_models):
-                try:
-                    logger.info(
-                        f"🔗 Chain attempt {chain_idx+1}/{len(chain_models)}: "
-                        f"{chain_model_config['db_model_name']} ({chain_model_config['provider']}/{chain_model_config['model']})"
-                    )
-                    result = await self._execute_with_config(
-                        model_config=chain_model_config,
-                        messages=messages,
-                        system_prompt=system_prompt,
-                        max_tokens=max_tokens,
-                    )
-                    result["chain_position"] = chain_idx + 1
-                    result["chain_total"] = len(chain_models)
-                    result["chain_fallback"] = chain_idx > 0
-                    return result
-                except Exception as e:
-                    last_error = e
-                    logger.warning(
-                        f"🔗 Chain fallback: {chain_model_config['db_model_name']} failed: {e}. "
-                        f"{'Trying next model...' if chain_idx < len(chain_models)-1 else 'No more models in chain.'}"
-                    )
-                    continue
-            raise Exception(
-                f"All {len(chain_models)} models in the flow chain for '{usage_type}' failed. "
-                f"Last error: {last_error}"
+            for chain_source, chain_usage, chain_model_list in chains_to_try:
+                for chain_idx, chain_model_config in enumerate(chain_model_list):
+                    try:
+                        logger.info(
+                            f"🔗 Chain attempt [{chain_source}] {chain_idx+1}/{len(chain_model_list)}: "
+                            f"{chain_model_config['db_model_name']} ({chain_model_config['provider']}/{chain_model_config['model']})"
+                        )
+                        result = await self._execute_with_config(
+                            model_config=chain_model_config,
+                            messages=messages,
+                            system_prompt=system_prompt,
+                            max_tokens=max_tokens,
+                        )
+                        result["chain_position"] = chain_idx + 1
+                        result["chain_total"] = len(chain_model_list)
+                        result["chain_fallback"] = chain_idx > 0 or chain_source == "general"
+                        result["chain_source"] = chain_source
+                        return result
+                    except Exception as e:
+                        last_error = e
+                        logger.warning(
+                            f"🔗 Chain fallback [{chain_source}]: {chain_model_config['db_model_name']} failed: {e}. "
+                            f"{'Trying next model...' if chain_idx < len(chain_model_list)-1 else 'No more models in this chain.'}"
+                        )
+                        continue
+                logger.warning(f"🔗 All models in {chain_source} chain for '{chain_usage}' failed, trying next chain...")
+
+            # All chains exhausted — fall through to choose_model() as last resort
+            logger.warning(
+                f"🔗 All chain models exhausted for '{usage_type}'. "
+                f"Falling back to choose_model()..."
             )
 
-        # Escolher modelo do banco com suas configurações
+        # No chain or all chains failed — use choose_model() (settings model → general model)
         model_config = self.choose_model(usage_type)
         provider = model_config["provider"]
         model_name = model_config["model"]
