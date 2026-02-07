@@ -22,6 +22,7 @@ import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats
 import { useNotification } from '@/hooks';
 
 type Tab = 'kanban' | 'overview' | 'backlog' | 'rag' | 'analytics' | 'commits';  // PROMPT #131 - Removed interviews tab
+type OverviewSubTab = 'description' | 'context' | 'semantic' | 'statistics';
 
 export default function ProjectDetailsPage() {
   const params = useParams();
@@ -32,6 +33,7 @@ export default function ProjectDetailsPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [overviewSubTab, setOverviewSubTab] = useState<OverviewSubTab>('description');
   const [loading, setLoading] = useState(true);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [editedDescription, setEditedDescription] = useState('');
@@ -968,8 +970,30 @@ export default function ProjectDetailsPage() {
 
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* Project Description - Full Width */}
-            {project.description && (
+            {/* Overview Sub-Tabs */}
+            <div className="flex space-x-1 bg-gray-100 rounded-lg p-1">
+              {[
+                { id: 'description', label: 'Project Description' },
+                { id: 'context', label: 'Project Context' },
+                { id: 'semantic', label: 'Semantic Context (for AI)' },
+                { id: 'statistics', label: 'Statistics' },
+              ].map((sub) => (
+                <button
+                  key={sub.id}
+                  onClick={() => setOverviewSubTab(sub.id as OverviewSubTab)}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition-colors ${
+                    overviewSubTab === sub.id
+                      ? 'bg-white text-gray-900 shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  {sub.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Sub-Tab: Project Description */}
+            {overviewSubTab === 'description' && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Project Description</CardTitle>
@@ -1012,30 +1036,33 @@ export default function ProjectDetailsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {isEditingDescription ? (
-                    <textarea
-                      value={editedDescription}
-                      onChange={(e) => setEditedDescription(e.target.value)}
-                      className="w-full min-h-[300px] p-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                      placeholder="Enter project description in Markdown format..."
-                    />
-                  ) : (
-                    <div className="prose prose-sm max-w-none">
-                      <ReactMarkdown>
-                        {editedDescription || project.description}
-                      </ReactMarkdown>
-                      {/* PROMPT #128 - Show AI model icon if description was AI-formatted */}
-                      <div className="mt-2 flex justify-end not-prose">
-                        <AIModelBadge model="description-format" usage_type="general" />
+                  {project.description ? (
+                    isEditingDescription ? (
+                      <textarea
+                        value={editedDescription}
+                        onChange={(e) => setEditedDescription(e.target.value)}
+                        className="w-full min-h-[300px] p-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                        placeholder="Enter project description in Markdown format..."
+                      />
+                    ) : (
+                      <div className="prose prose-sm max-w-none">
+                        <ReactMarkdown>
+                          {editedDescription || project.description}
+                        </ReactMarkdown>
+                        <div className="mt-2 flex justify-end not-prose">
+                          <AIModelBadge model="description-format" usage_type="general" />
+                        </div>
                       </div>
-                    </div>
+                    )
+                  ) : (
+                    <p className="text-gray-500 text-sm italic">No description yet. Click Edit to add one.</p>
                   )}
                 </CardContent>
               </Card>
             )}
 
-            {/* Project Context (PROMPT #89 - Context Interview) */}
-            {(project.context_human || project.context_semantic) && (
+            {/* Sub-Tab: Project Context */}
+            {overviewSubTab === 'context' && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -1056,49 +1083,29 @@ export default function ProjectDetailsPage() {
                   )}
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Human-readable context */}
-                  {project.context_human && (
+                  {project.context_human ? (
                     <div className="prose prose-sm max-w-none">
                       <ReactMarkdown>
                         {project.context_human}
                       </ReactMarkdown>
-                      {/* PROMPT #127 - Show AI model icon for context (generated by AI) */}
                       <div className="mt-2 flex justify-end not-prose">
                         <AIModelBadge model="context-interview" usage_type="context" />
                       </div>
                     </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm italic">No context generated yet. Use the Interview button to establish project context.</p>
                   )}
 
-                  {/* Semantic context (collapsible) */}
-                  {project.context_semantic && (
-                    <details className="group mt-4">
-                      <summary className="cursor-pointer text-sm text-blue-600 hover:text-blue-800 flex items-center gap-2">
-                        <svg className="w-4 h-4 transform group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                        View Semantic Context (for AI)
-                      </summary>
-                      <div className="mt-3 bg-gray-900 rounded-lg p-4 border border-gray-700">
-                        <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">
-                          {project.context_semantic}
-                        </pre>
-                      </div>
-                    </details>
-                  )}
-
-                  {/* Context Lock Info */}
-                  {!project.context_locked && (
+                  {!project.context_locked && project.context_human && (
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
                       <div className="flex items-start gap-2">
                         <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <div>
-                          <p className="text-sm text-blue-800">
-                            This context will be <strong>locked</strong> when you create your first Epic.
-                            After that, it cannot be modified to ensure consistency across all project cards.
-                          </p>
-                        </div>
+                        <p className="text-sm text-blue-800">
+                          This context will be <strong>locked</strong> when you create your first Epic.
+                          After that, it cannot be modified to ensure consistency across all project cards.
+                        </p>
                       </div>
                     </div>
                   )}
@@ -1106,82 +1113,107 @@ export default function ProjectDetailsPage() {
               </Card>
             )}
 
-            {/* Statistics and Progress */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              {/* Statistics */}
+            {/* Sub-Tab: Semantic Context (for AI) */}
+            {overviewSubTab === 'semantic' && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Statistics</CardTitle>
+                  <CardTitle>Semantic Context (for AI)</CardTitle>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Structured context optimized for AI consumption. Used to generate epics, stories, and tasks.
+                  </p>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <p className="text-sm text-gray-500">Total Tasks</p>
-                    <p className="text-2xl font-bold text-gray-900">
-                      {tasks.length}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Completed</p>
-                    <p className="text-2xl font-bold text-green-600">
-                      {tasksByStatus.done.length}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">In Progress</p>
-                    <p className="text-2xl font-bold text-blue-600">
-                      {tasksByStatus.in_progress.length}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-500">Pending</p>
-                    <p className="text-2xl font-bold text-gray-600">
-                      {tasksByStatus.todo.length + tasksByStatus.backlog.length}
-                    </p>
-                  </div>
+                <CardContent>
+                  {project.context_semantic ? (
+                    <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
+                      <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">
+                        {project.context_semantic}
+                      </pre>
+                    </div>
+                  ) : (
+                    <p className="text-gray-500 text-sm italic">No semantic context generated yet.</p>
+                  )}
                 </CardContent>
               </Card>
+            )}
 
-              {/* Progress */}
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>Progress by Status</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {Object.entries(tasksByStatus).map(([status, statusTasks]) => {
-                    const percentage = tasks.length
-                      ? (statusTasks.length / tasks.length) * 100
-                      : 0;
+            {/* Sub-Tab: Statistics */}
+            {overviewSubTab === 'statistics' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                {/* Statistics */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Statistics</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <p className="text-sm text-gray-500">Total Tasks</p>
+                      <p className="text-2xl font-bold text-gray-900">
+                        {tasks.length}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Completed</p>
+                      <p className="text-2xl font-bold text-green-600">
+                        {tasksByStatus.done.length}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">In Progress</p>
+                      <p className="text-2xl font-bold text-blue-600">
+                        {tasksByStatus.in_progress.length}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Pending</p>
+                      <p className="text-2xl font-bold text-gray-600">
+                        {tasksByStatus.todo.length + tasksByStatus.backlog.length}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                    return (
-                      <div key={status}>
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="font-medium text-gray-700 capitalize">
-                            {status.replace('_', ' ')}
-                          </span>
-                          <span className="text-gray-500">
-                            {statusTasks.length} ({percentage.toFixed(0)}%)
-                          </span>
+                {/* Progress */}
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle>Progress by Status</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {Object.entries(tasksByStatus).map(([status, statusTasks]) => {
+                      const percentage = tasks.length
+                        ? (statusTasks.length / tasks.length) * 100
+                        : 0;
+
+                      return (
+                        <div key={status}>
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="font-medium text-gray-700 capitalize">
+                              {status.replace('_', ' ')}
+                            </span>
+                            <span className="text-gray-500">
+                              {statusTasks.length} ({percentage.toFixed(0)}%)
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2">
+                            <div
+                              className={`h-2 rounded-full ${
+                                status === 'done'
+                                  ? 'bg-green-500'
+                                  : status === 'in_progress'
+                                  ? 'bg-blue-500'
+                                  : status === 'review'
+                                  ? 'bg-purple-500'
+                                  : 'bg-gray-400'
+                              }`}
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className={`h-2 rounded-full ${
-                              status === 'done'
-                                ? 'bg-green-500'
-                                : status === 'in_progress'
-                                ? 'bg-blue-500'
-                                : status === 'review'
-                                ? 'bg-purple-500'
-                                : 'bg-gray-400'
-                            }`}
-                            style={{ width: `${percentage}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </CardContent>
-              </Card>
-            </div>
+                      );
+                    })}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
           </div>
         )}
       </div>
