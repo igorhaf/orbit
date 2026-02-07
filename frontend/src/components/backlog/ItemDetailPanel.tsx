@@ -102,6 +102,24 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     fetchItemDetails();
   }, [item.id]);
 
+  // PROMPT #177 - Refresh item data when activation or generation job completes
+  // When isApproving/isGeneratingChildren transitions from true → false, the job finished.
+  // Call onUpdate() so the parent refreshes the backlog and syncs selectedBacklogItem.
+  const prevIsApprovingRef = useRef(isApproving);
+  const prevIsGeneratingRef = useRef(isGeneratingChildren);
+  useEffect(() => {
+    if (prevIsApprovingRef.current && !isApproving) {
+      // Activation job completed - refresh to show generated content
+      if (onUpdate) onUpdate();
+    }
+    if (prevIsGeneratingRef.current && !isGeneratingChildren) {
+      // Children generation job completed - refresh to show new children
+      if (onUpdate) onUpdate();
+    }
+    prevIsApprovingRef.current = isApproving;
+    prevIsGeneratingRef.current = isGeneratingChildren;
+  }, [isApproving, isGeneratingChildren]);
+
   // PROMPT #97 - Sync edited description when item changes
   useEffect(() => {
     setEditedDescription(item.description || '');

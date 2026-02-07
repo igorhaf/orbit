@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #173 (Approve Button Loading State)
-**Próximo prompt:** PROMPT #174
+**Último prompt:** PROMPT #177 (ItemDetailPanel Auto-Refresh on Job Completion)
+**Próximo prompt:** PROMPT #178
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
