@@ -3452,7 +3452,11 @@ Retorne APENAS o JSON, sem explicações."""
             ai_model_used = response.get("model", "unknown")
 
             content = response.get("content", "")
-            result = self._parse_json_response(content)
+            # PROMPT #178 - Use robust parser (8 strategies) instead of simple _parse_json_response
+            try:
+                result = _robust_json_parse(content, context=f"story_content:{story.title[:30]}")
+            except ValueError:
+                result = None
 
             if result and isinstance(result, dict):
                 # Convert semantic to human description
@@ -3463,11 +3467,36 @@ Retorne APENAS o JSON, sem explicações."""
                 result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
-            # Fallback with more detail
+            # PROMPT #178 - Improved fallback: use raw AI response as content if available
+            logger.warning(f"⚠️ Story JSON parsing failed, using raw AI response as fallback")
+            raw_content = content.strip() if content else ""
+            if len(raw_content) > 200:
+                fallback_desc = f"# Story: {story.title}\n\n{raw_content}"
+            else:
+                # Build from parent context
+                epic_desc = (parent_epic.description or parent_epic.generated_prompt or "") if parent_epic else ""
+                project_ctx = (project.context_human or project.context_semantic or "")[:2000]
+                fallback_desc = (
+                    f"# Story: {story.title}\n\n"
+                    f"## Visão Geral\n\n"
+                    f"{story.description or story.title}\n\n"
+                    f"## Contexto do Epic\n\n"
+                    f"**{parent_epic.title if parent_epic else 'N/A'}**\n\n"
+                    f"{epic_desc[:2000]}\n\n"
+                    f"## Contexto do Projeto\n\n"
+                    f"{project_ctx}\n\n"
+                    f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
+                )
             return {
-                "description": story.description or "",
-                "generated_prompt": f"# Story: {story.title}\n\n## Descrição\n{story.description or ''}\n\n## Contexto do Epic\n{parent_epic.title if parent_epic else 'N/A'}",
-                "acceptance_criteria": ["AC1: Funcionalidade implementada", "AC2: Testes passam", "AC3: Código revisado", "AC4: Documentação atualizada", "AC5: Deploy realizado"],
+                "description": fallback_desc,
+                "generated_prompt": fallback_desc,
+                "acceptance_criteria": [
+                    f"AC1: {story.title} completamente implementada",
+                    "AC2: Testes unitários cobrindo os fluxos principais",
+                    "AC3: Integração com módulos dependentes verificada",
+                    "AC4: Interface de usuário funcional e responsiva",
+                    "AC5: Documentação técnica atualizada"
+                ],
                 "semantic_map": epic_semantic_map,
                 "story_points": story.story_points or 5,
                 "interview_insights": {"derived_from_epic": str(parent_epic.id) if parent_epic else None},
@@ -3476,10 +3505,27 @@ Retorne APENAS o JSON, sem explicações."""
 
         except Exception as e:
             logger.error(f"Error generating story content: {e}")
+            # PROMPT #178 - Even on exception, provide meaningful content from parent context
+            epic_desc = ""
+            if story.parent_id:
+                try:
+                    pe = self.db.query(Task).filter(Task.id == story.parent_id).first()
+                    if pe:
+                        epic_desc = f"## Contexto do Epic\n\n**{pe.title}**\n\n{(pe.description or pe.generated_prompt or '')[:2000]}"
+                except Exception:
+                    pass
+            project_ctx = (project.context_human or project.context_semantic or "")[:1500] if project else ""
+            fallback = (
+                f"# Story: {story.title}\n\n"
+                f"{story.description or ''}\n\n"
+                f"{epic_desc}\n\n"
+                f"## Contexto do Projeto\n\n{project_ctx}\n\n"
+                f"*Conteúdo gerado como fallback após erro. Edite para adicionar detalhes.*"
+            )
             return {
-                "description": story.description or "",
-                "generated_prompt": "",
-                "acceptance_criteria": [],
+                "description": fallback,
+                "generated_prompt": fallback,
+                "acceptance_criteria": [f"{story.title} implementada e funcional"],
                 "semantic_map": {},
                 "story_points": story.story_points or 5,
                 "ai_model_used": None  # PROMPT #127
@@ -3878,7 +3924,11 @@ Retorne APENAS o JSON, sem explicações."""
             ai_model_used = response.get("model", "unknown")
 
             content = response.get("content", "")
-            result = self._parse_json_response(content)
+            # PROMPT #178 - Use robust parser (8 strategies) instead of simple _parse_json_response
+            try:
+                result = _robust_json_parse(content, context=f"task_content:{task.title[:30]}")
+            except ValueError:
+                result = None
 
             if result and isinstance(result, dict):
                 # Convert semantic to human description
@@ -3889,10 +3939,32 @@ Retorne APENAS o JSON, sem explicações."""
                 result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
+            # PROMPT #178 - Improved fallback: use raw AI response or parent context
+            logger.warning(f"⚠️ Task JSON parsing failed, using fallback content")
+            raw_content = content.strip() if content else ""
+            if len(raw_content) > 200:
+                fallback_desc = f"# Task: {task.title}\n\n{raw_content}"
+            else:
+                story_desc = (parent_story.description or parent_story.generated_prompt or "") if parent_story else ""
+                epic_desc = (grandparent_epic.description or grandparent_epic.generated_prompt or "") if grandparent_epic else ""
+                fallback_desc = (
+                    f"# Task: {task.title}\n\n"
+                    f"## Visão Geral\n\n{task.description or task.title}\n\n"
+                    f"## Contexto da Story\n\n**{parent_story.title if parent_story else 'N/A'}**\n\n"
+                    f"{story_desc[:1500]}\n\n"
+                    f"## Contexto do Epic\n\n**{grandparent_epic.title if grandparent_epic else 'N/A'}**\n\n"
+                    f"{epic_desc[:1000]}\n\n"
+                    f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
+                )
             return {
-                "description": task.description or "",
-                "generated_prompt": f"# Task: {task.title}\n\n## Descrição\n{task.description or ''}\n\n## Contexto da Story\n{parent_story.title if parent_story else 'N/A'}",
-                "acceptance_criteria": ["AC1: Implementação completa", "AC2: Testes passam", "AC3: Code review aprovado", "AC4: Sem bugs"],
+                "description": fallback_desc,
+                "generated_prompt": fallback_desc,
+                "acceptance_criteria": [
+                    f"AC1: {task.title} implementada",
+                    "AC2: Testes unitários adicionados",
+                    "AC3: Code review aprovado",
+                    "AC4: Sem bugs ou regressões"
+                ],
                 "semantic_map": combined_semantic_map,
                 "story_points": task.story_points or 3,
                 "ai_model_used": ai_model_used  # PROMPT #127
@@ -3900,10 +3972,25 @@ Retorne APENAS o JSON, sem explicações."""
 
         except Exception as e:
             logger.error(f"Error generating task content: {e}")
+            # PROMPT #178 - Provide meaningful content from parent context even on exception
+            story_ctx = ""
+            if task.parent_id:
+                try:
+                    ps = self.db.query(Task).filter(Task.id == task.parent_id).first()
+                    if ps:
+                        story_ctx = f"## Contexto da Story\n\n**{ps.title}**\n\n{(ps.description or ps.generated_prompt or '')[:1500]}"
+                except Exception:
+                    pass
+            fallback = (
+                f"# Task: {task.title}\n\n"
+                f"{task.description or ''}\n\n"
+                f"{story_ctx}\n\n"
+                f"*Conteúdo gerado como fallback após erro. Edite para adicionar detalhes.*"
+            )
             return {
-                "description": task.description or "",
-                "generated_prompt": "",
-                "acceptance_criteria": [],
+                "description": fallback,
+                "generated_prompt": fallback,
+                "acceptance_criteria": [f"{task.title} implementada"],
                 "story_points": task.story_points or 2,
                 "ai_model_used": None  # PROMPT #127
             }
@@ -4288,7 +4375,11 @@ Retorne APENAS o JSON, sem explicações."""
             ai_model_used = response.get("model", "unknown")
 
             content = response.get("content", "")
-            result = self._parse_json_response(content)
+            # PROMPT #178 - Use robust parser (8 strategies) instead of simple _parse_json_response
+            try:
+                result = _robust_json_parse(content, context=f"subtask_content:{subtask.title[:30]}")
+            except ValueError:
+                result = None
 
             if result and isinstance(result, dict):
                 semantic_map = result.get("semantic_map", {})
@@ -4298,20 +4389,56 @@ Retorne APENAS o JSON, sem explicações."""
                 result["ai_model_used"] = ai_model_used  # PROMPT #127
                 return result
 
+            # PROMPT #178 - Improved fallback: use raw AI response or parent context
+            logger.warning(f"⚠️ Subtask JSON parsing failed, using fallback content")
+            raw_content = content.strip() if content else ""
+            if len(raw_content) > 200:
+                fallback_desc = f"# Subtask: {subtask.title}\n\n{raw_content}"
+            else:
+                task_desc = (parent_task.description or parent_task.generated_prompt or "") if parent_task else ""
+                story_desc = (grandparent_story.description or grandparent_story.generated_prompt or "") if grandparent_story else ""
+                fallback_desc = (
+                    f"# Subtask: {subtask.title}\n\n"
+                    f"## Visão Geral\n\n{subtask.description or subtask.title}\n\n"
+                    f"## Contexto da Task\n\n**{parent_task.title if parent_task else 'N/A'}**\n\n"
+                    f"{task_desc[:1500]}\n\n"
+                    f"## Contexto da Story\n\n**{grandparent_story.title if grandparent_story else 'N/A'}**\n\n"
+                    f"{story_desc[:1000]}\n\n"
+                    f"*Conteúdo gerado como fallback. Edite para adicionar detalhes técnicos.*"
+                )
             return {
-                "description": subtask.description or "",
-                "generated_prompt": f"# Subtask: {subtask.title}\n\n## Descrição\n{subtask.description or ''}\n\n## Contexto\nTask pai: {parent_task.title if parent_task else 'N/A'}",
-                "acceptance_criteria": ["AC1: Implementação completa", "AC2: Testes passam", "AC3: Code review aprovado"],
+                "description": fallback_desc,
+                "generated_prompt": fallback_desc,
+                "acceptance_criteria": [
+                    f"AC1: {subtask.title} implementada",
+                    "AC2: Testes passam",
+                    "AC3: Code review aprovado"
+                ],
                 "semantic_map": combined_semantic_map,
                 "ai_model_used": ai_model_used  # PROMPT #127
             }
 
         except Exception as e:
             logger.error(f"Error generating subtask content: {e}")
+            # PROMPT #178 - Provide meaningful content from parent context even on exception
+            task_ctx = ""
+            if subtask.parent_id:
+                try:
+                    pt = self.db.query(Task).filter(Task.id == subtask.parent_id).first()
+                    if pt:
+                        task_ctx = f"## Contexto da Task\n\n**{pt.title}**\n\n{(pt.description or pt.generated_prompt or '')[:1500]}"
+                except Exception:
+                    pass
+            fallback = (
+                f"# Subtask: {subtask.title}\n\n"
+                f"{subtask.description or ''}\n\n"
+                f"{task_ctx}\n\n"
+                f"*Conteúdo gerado como fallback após erro. Edite para adicionar detalhes.*"
+            )
             return {
-                "description": subtask.description or "",
-                "generated_prompt": "",
-                "acceptance_criteria": [],
+                "description": fallback,
+                "generated_prompt": fallback,
+                "acceptance_criteria": [f"{subtask.title} concluída"],
                 "semantic_map": {},
                 "ai_model_used": None  # PROMPT #127
             }
