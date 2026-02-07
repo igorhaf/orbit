@@ -1885,6 +1885,17 @@ Retorne APENAS JSON válido (sem markdown code blocks):
         except Exception as e:
             logger.warning(f"Could not fetch interview answers: {e}")
 
+        # PROMPT #182 - Explicitly fetch business rules from RAG
+        business_rules_context = ""
+        try:
+            rag_service = RAGService(self.db)
+            rules = rag_service.get_business_rules(project_id=project.id, top_k=20)
+            if rules:
+                business_rules_context = rag_service.format_business_rules_for_prompt(rules, max_chars=6000)
+                logger.info(f"📋 Injected {len(rules)} business rules into epic content generation")
+        except Exception as e:
+            logger.warning(f"Could not fetch business rules for epic: {e}")
+
         user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para este Epic/Módulo.
 
 ## CONTEXTO DO PROJETO
@@ -1896,6 +1907,15 @@ Retorne APENAS JSON válido (sem markdown code blocks):
 
 **Contexto Legível do Projeto:**
 {project.context_human or 'Não disponível'}
+
+{business_rules_context}
+{f'''ATENÇÃO CRÍTICA: As regras de negócio acima foram extraídas DIRETAMENTE do código-fonte do projeto.
+Você DEVE:
+1. INCORPORAR estas regras no Mapa Semântico (como RN1, RN2, VAL1, etc.) com seus conteúdos REAIS
+2. USAR as regras nos Critérios de Aceitação — cada regra relevante deve ter um AC correspondente
+3. DETALHAR as regras na seção "Regras de Negócio Detalhadas" com condições, ações e exceções REAIS
+4. RESPEITAR a hierarquia e estrutura das regras do código existente
+NÃO invente regras genéricas — USE as regras REAIS listadas acima.''' if business_rules_context else ''}
 
 ## EPIC/MÓDULO A ESPECIFICAR
 **Título:** {epic_title}
@@ -1912,7 +1932,7 @@ Você DEVE incluir detalhes sobre:
 - Descreva validações específicas de cada campo
 
 ### 2. REGRAS DE NEGÓCIO (obrigatório)
-- Liste TODAS as regras de negócio do módulo
+- {f'INCORPORE as regras de negócio do projeto listadas acima' if business_rules_context else 'Liste TODAS as regras de negócio do módulo'}
 - Especifique CONDIÇÕES de cada regra (quando se aplica)
 - Especifique AÇÕES de cada regra (o que acontece)
 - Especifique EXCEÇÕES (casos especiais)
@@ -3520,6 +3540,17 @@ Retorne APENAS JSON válido (sem markdown code blocks):
         except Exception as e:
             logger.warning(f"Could not fetch interview answers for story: {e}")
 
+        # PROMPT #182 - Explicitly fetch business rules from RAG
+        business_rules_context = ""
+        try:
+            rag_service = RAGService(self.db)
+            rules = rag_service.get_business_rules(project_id=project.id, top_k=20)
+            if rules:
+                business_rules_context = rag_service.format_business_rules_for_prompt(rules, max_chars=4000)
+                logger.info(f"📋 Injected {len(rules)} business rules into story content generation")
+        except Exception as e:
+            logger.warning(f"Could not fetch business rules for story: {e}")
+
         user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para a User Story abaixo.
 
 A Story deve ter o MESMO NÍVEL DE DETALHAMENTO do Epic pai.
@@ -3533,6 +3564,9 @@ Os critérios de aceitação devem ser ESPECÍFICOS para esta Story, não genér
 {epic_full_spec}
 {semantic_map_text}
 {interview_context}
+
+{business_rules_context}
+{f'ATENÇÃO: As regras de negócio acima foram extraídas do código-fonte. INCORPORE as regras relevantes nesta Story.' if business_rules_context else ''}
 
 ## STORY A ESPECIFICAR
 **Título da Story:** {story.title}
@@ -4020,6 +4054,17 @@ Retorne APENAS JSON válido:
             semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
             semantic_map_text += "\n\n**OBRIGATÓRIO:** Reutilize TODOS os identificadores relevantes do Epic/Story e estenda com novos específicos desta Task."
 
+        # PROMPT #182 - Explicitly fetch business rules from RAG
+        business_rules_context = ""
+        try:
+            rag_service = RAGService(self.db)
+            rules = rag_service.get_business_rules(project_id=project.id, top_k=15)
+            if rules:
+                business_rules_context = rag_service.format_business_rules_for_prompt(rules, max_chars=3000)
+                logger.info(f"📋 Injected {len(rules)} business rules into task content generation")
+        except Exception as e:
+            logger.warning(f"Could not fetch business rules for task: {e}")
+
         user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para esta Task.
 
 A Task deve ter o MESMO NÍVEL DE DETALHAMENTO do Epic e da Story pai.
@@ -4034,6 +4079,9 @@ Os critérios de aceitação devem ser TÉCNICOS e ESPECÍFICOS para esta Task.
 {epic_full_spec}
 {story_full_spec}
 {semantic_map_text}
+
+{business_rules_context}
+{f'ATENÇÃO: As regras de negócio acima foram extraídas do código-fonte. IMPLEMENTE as regras relevantes nesta Task.' if business_rules_context else ''}
 
 ## TASK A ESPECIFICAR
 **Título da Task:** {task.title}
@@ -4497,6 +4545,17 @@ Retorne APENAS JSON válido:
             semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
             semantic_map_text += "\n\n**OBRIGATÓRIO:** Reutilize TODOS os identificadores relevantes e estenda com novos específicos desta Subtask."
 
+        # PROMPT #182 - Explicitly fetch business rules from RAG
+        business_rules_context = ""
+        try:
+            rag_service = RAGService(self.db)
+            rules = rag_service.get_business_rules(project_id=project.id, top_k=10)
+            if rules:
+                business_rules_context = rag_service.format_business_rules_for_prompt(rules, max_chars=2000)
+                logger.info(f"📋 Injected {len(rules)} business rules into subtask content generation")
+        except Exception as e:
+            logger.warning(f"Could not fetch business rules for subtask: {e}")
+
         user_prompt = f"""Gere a ESPECIFICAÇÃO COMPLETA para esta Subtask.
 
 A Subtask deve ter o MESMO NÍVEL DE DETALHAMENTO do Epic/Story/Task pai.
@@ -4512,6 +4571,9 @@ Os critérios de aceitação devem ser ESPECÍFICOS para esta Subtask.
 {story_full_spec}
 {task_full_spec}
 {semantic_map_text}
+
+{business_rules_context}
+{f'ATENÇÃO: As regras de negócio acima foram extraídas do código-fonte. IMPLEMENTE as regras relevantes nesta Subtask.' if business_rules_context else ''}
 
 ## SUBTASK A ESPECIFICAR
 **Título da Subtask:** {subtask.title}
