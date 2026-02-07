@@ -304,6 +304,12 @@ export default function AIFlowPage() {
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
   const edgeReconnectSuccessful = useRef(true);
+  const nodesRef = useRef<Node[]>([]);
+
+  // Keep ref in sync so getNodePositions always reads latest
+  useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
 
   // Current chain for selected usage_type
   const currentChain = useMemo(
@@ -419,14 +425,14 @@ export default function AIFlowPage() {
     [setEdges]
   );
 
-  // Collect current node positions from ReactFlow state
+  // Collect current node positions from ReactFlow state (uses ref for fresh data)
   const getNodePositions = useCallback((): Record<string, { x: number; y: number }> => {
     const positions: Record<string, { x: number; y: number }> = {};
-    nodes.forEach((node) => {
+    nodesRef.current.forEach((node) => {
       positions[node.id] = { x: node.position.x, y: node.position.y };
     });
     return positions;
-  }, [nodes]);
+  }, []);
 
   // Actions
   const handleEditStart = () => {
