@@ -632,7 +632,7 @@ export default function AIFlowPage() {
                 onReconnectEnd={onReconnectEnd}
                 nodeTypes={nodeTypes}
                 fitView
-                fitViewOptions={{ padding: 0.3 }}
+                fitViewOptions={{ padding: 0.5, minZoom: 0.8, maxZoom: 1.2 }}
                 nodesDraggable={true}
                 nodesConnectable={true}
                 elementsSelectable={true}
