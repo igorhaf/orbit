@@ -1165,6 +1165,11 @@ um comportamento já implementado no sistema.""",
             epic_description=epic.description
         )
 
+        # 3.5. Validate and restructure AI response
+        epic_content = self._validate_and_restructure_content(
+            epic_content, epic.title, epic.description, project
+        )
+
         # 4. Update epic with generated content
         epic.description = epic_content["description"]
         epic.generated_prompt = epic_content["generated_prompt"]
@@ -1321,6 +1326,136 @@ um comportamento já implementado no sistema.""",
             "parent_title": parent.title,
             "children_generated": len(children),
             "child_type": child_type,
+        }
+
+    def _validate_and_restructure_content(
+        self,
+        content: Dict,
+        title: str,
+        original_description: str,
+        project: Project
+    ) -> Dict:
+        """
+        PROMPT #173 - Validate and restructure AI-generated content.
+
+        Ensures all required fields are present and non-empty.
+        If critical fields are empty/missing, rebuilds them from available data.
+
+        Required contract:
+        - description: non-empty string (human-readable)
+        - generated_prompt: non-empty string (semantic markdown for AI)
+        - acceptance_criteria: list with at least 1 item
+        - story_points: integer > 0
+        """
+        MIN_DESCRIPTION_LEN = 50
+        MIN_PROMPT_LEN = 50
+
+        description = content.get("description", "") or ""
+        generated_prompt = content.get("generated_prompt", "") or ""
+        acceptance_criteria = content.get("acceptance_criteria", []) or []
+        story_points = content.get("story_points")
+        semantic_map = content.get("semantic_map", {}) or {}
+        interview_insights = content.get("interview_insights", {}) or {}
+
+        issues = []
+
+        # --- Validate description ---
+        if len(description.strip()) < MIN_DESCRIPTION_LEN:
+            issues.append(f"description too short ({len(description.strip())} chars)")
+
+            # Restructure: rebuild from generated_prompt or semantic_map
+            if len(generated_prompt.strip()) >= MIN_PROMPT_LEN:
+                description = generated_prompt
+                logger.info("  Restructured: description rebuilt from generated_prompt")
+            elif semantic_map:
+                # Build description from semantic map entries
+                desc_parts = [f"# {title}\n"]
+                for key, value in semantic_map.items():
+                    desc_parts.append(f"- **{key}**: {value}")
+                description = "\n".join(desc_parts)
+                logger.info("  Restructured: description rebuilt from semantic_map")
+            else:
+                # Last resort: use original description + project context
+                project_context = (project.context_human or project.context_semantic or "")[:1000]
+                description = (
+                    f"# {title}\n\n"
+                    f"## Visão Geral\n\n"
+                    f"{original_description or 'Módulo do sistema.'}\n\n"
+                    f"## Contexto do Projeto\n\n"
+                    f"Parte do projeto **{project.name}**.\n\n"
+                    f"{project_context}\n\n"
+                    f"*Conteúdo gerado automaticamente. Edite para adicionar detalhes técnicos.*"
+                )
+                logger.info("  Restructured: description rebuilt from title + project context")
+
+        # --- Validate generated_prompt ---
+        if len(generated_prompt.strip()) < MIN_PROMPT_LEN:
+            issues.append(f"generated_prompt too short ({len(generated_prompt.strip())} chars)")
+
+            # Restructure: use description as prompt
+            if len(description.strip()) >= MIN_PROMPT_LEN:
+                generated_prompt = description
+                logger.info("  Restructured: generated_prompt copied from description")
+
+        # --- Validate acceptance_criteria ---
+        if not acceptance_criteria or len(acceptance_criteria) == 0:
+            issues.append("acceptance_criteria empty")
+
+            # Try to extract from description
+            extracted = []
+            if description:
+                import re as _re
+                for line in description.split("\n"):
+                    line = line.strip()
+                    if _re.match(r'^[-*]\s*\[[ xX]?\]', line) or _re.match(r'^\d+\.\s*\[[ xX]?\]', line):
+                        criterion = _re.sub(r'^[\d\.\-\*\s\[\]xX]+', '', line).strip()
+                        if criterion and len(criterion) > 5:
+                            extracted.append(criterion)
+                    elif _re.match(r'^[-*]\s*\*?\*?AC\d+', line, _re.IGNORECASE):
+                        criterion = _re.sub(r'^[-*]\s*\*?\*?AC\d+[:\s]*', '', line, flags=_re.IGNORECASE).strip()
+                        if criterion and len(criterion) > 5:
+                            extracted.append(criterion)
+
+            if extracted:
+                acceptance_criteria = extracted[:15]
+                logger.info(f"  Restructured: {len(acceptance_criteria)} criteria extracted from description")
+            else:
+                # Generate minimal criteria from title
+                acceptance_criteria = [
+                    f"Módulo '{title}' implementado e funcional",
+                    "Testes unitários cobrindo os fluxos principais",
+                    "Documentação técnica atualizada",
+                ]
+                logger.info("  Restructured: fallback acceptance_criteria generated")
+
+        # --- Validate story_points ---
+        if not story_points or not isinstance(story_points, (int, float)) or story_points <= 0:
+            issues.append(f"story_points invalid ({story_points})")
+            story_points = 13  # Default for epics
+            logger.info("  Restructured: story_points set to default 13")
+
+        # --- Log validation results ---
+        if issues:
+            logger.warning(
+                f"⚠️ Content validation found {len(issues)} issues for '{title[:50]}': "
+                f"{', '.join(issues)}"
+            )
+            logger.info(f"  Final description: {len(description)} chars")
+            logger.info(f"  Final generated_prompt: {len(generated_prompt)} chars")
+            logger.info(f"  Final acceptance_criteria: {len(acceptance_criteria)} items")
+            logger.info(f"  Final story_points: {story_points}")
+        else:
+            logger.info(f"✅ Content validation passed for '{title[:50]}'")
+
+        # Return restructured content
+        return {
+            **content,
+            "description": description,
+            "generated_prompt": generated_prompt,
+            "acceptance_criteria": acceptance_criteria,
+            "story_points": int(story_points),
+            "semantic_map": semantic_map,
+            "interview_insights": interview_insights,
         }
 
     async def _generate_full_epic_content(
