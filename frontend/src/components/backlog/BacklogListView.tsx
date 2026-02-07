@@ -140,7 +140,7 @@ export default function BacklogListView({
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree'); // PROMPT #68
   const { showError, showSuccess, NotificationComponent } = useNotification();
-  const { addJob } = useNotifications(); // PROMPT #128 - Background notifications
+  const { addJob, notifications } = useNotifications(); // PROMPT #128 - Background notifications
 
   // PROMPT #94 - State for approve/reject actions
   const [activatingId, setActivatingId] = useState<string | null>(null);
@@ -239,6 +239,24 @@ export default function BacklogListView({
     fetchBacklog();
     fetchInterviews();  // PROMPT #131 - Fetch interviews
   }, [projectId, filters?.item_type, filters?.priority, filters?.assignee, filters?.labels, filters?.status, refreshKey]);  // PROMPT #123 - Don't re-fetch on search change
+
+  // PROMPT #173 - Refresh backlog when activation job completes (via WebSocket notification)
+  const prevNotificationsLengthRef = useRef(notifications.length);
+  useEffect(() => {
+    if (notifications.length > prevNotificationsLengthRef.current) {
+      // Check new notifications for activation completions
+      const newNotifications = notifications.slice(prevNotificationsLengthRef.current);
+      const activationTypes = ['epic_activation', 'story_activation', 'task_activation', 'subtask_activation'];
+      const hasActivationComplete = newNotifications.some(
+        n => activationTypes.includes(n.job_type) && (n.status === 'completed' || n.status === 'failed')
+      );
+      if (hasActivationComplete) {
+        setActivatingId(null);
+        fetchBacklog();
+      }
+    }
+    prevNotificationsLengthRef.current = notifications.length;
+  }, [notifications]);
 
   // PROMPT #131 - Fetch interviews for all items in the project
   const fetchInterviews = async () => {
@@ -401,6 +419,9 @@ export default function BacklogListView({
         );
         // Keep activatingId set - button stays in loading state until job completes and backlog refreshes
         showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
+        // Don't call fetchBacklog() here - nothing changed yet, job is still running
+        // The backlog will refresh when the job completes via WebSocket
+        return;
       } else {
         // Legacy flow - immediate response
         setActivatingId(null);

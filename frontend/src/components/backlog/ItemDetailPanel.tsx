@@ -291,6 +291,9 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         );
         // Keep isApproving=true - button stays in loading state until job completes and panel refreshes
         showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
+        // Don't call onUpdate() here - nothing changed yet, job is still running
+        // The backlog will refresh when the job completes via WebSocket
+        return;
       } else {
         // Legacy flow (synchronous response)
         const childrenCount = result.children_generated || 0;

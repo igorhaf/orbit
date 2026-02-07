@@ -190,6 +190,9 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         );
         // Keep activatingEpic=true - button stays in loading state until job completes and card refreshes
         showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
+        // Don't call onUpdate() here - nothing changed yet, job is still running
+        // The card will refresh when the job completes via WebSocket
+        return;
       } else {
         // Legacy flow (synchronous response)
         const childrenCount = result.children_generated || 0;
