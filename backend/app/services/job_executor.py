@@ -1,6 +1,7 @@
 """
 Priority Job Executor
 PROMPT #120 - Job Priority System
+PROMPT #191 - Run jobs in separate threads to avoid blocking FastAPI event loop
 
 Manages concurrent execution of background jobs with priority ordering.
 Higher priority jobs get the next available execution slot when concurrency
@@ -10,11 +11,14 @@ Architecture:
 - asyncio.PriorityQueue ensures highest-priority jobs are dequeued first
 - asyncio.Semaphore limits concurrent executions (default=3)
 - Workers run forever, consuming from the queue
+- Each job runs in a dedicated thread with its own event loop,
+  preventing blocking I/O (os.walk, file reads) from freezing the server
 - Singleton pattern ensures one executor per process
 """
 
 import asyncio
 import logging
+import threading
 from typing import Callable, Any
 
 logger = logging.getLogger(__name__)
@@ -79,8 +83,23 @@ class PriorityJobExecutor:
             asyncio.create_task(self._worker(i))
         logger.info(f"Started {self._max_concurrent} priority job workers")
 
+    def _run_in_thread(self, coro_func: Callable[..., Any], args: tuple, kwargs: dict) -> None:
+        """
+        Run an async function in a dedicated thread with its own event loop.
+
+        PROMPT #191 - This prevents blocking I/O operations (os.walk, file reads,
+        synchronous DB queries) inside async jobs from freezing the main FastAPI
+        event loop, which would make the entire server unresponsive.
+        """
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(coro_func(*args, **kwargs))
+        finally:
+            loop.close()
+
     async def _worker(self, worker_id: int) -> None:
-        """Worker loop: dequeue jobs and execute them with semaphore control."""
+        """Worker loop: dequeue jobs and execute them in separate threads."""
         while True:
             try:
                 neg_priority, counter, coro_func, args, kwargs = await self._queue.get()
@@ -88,9 +107,17 @@ class PriorityJobExecutor:
 
                 async with self._semaphore:
                     func_name = getattr(coro_func, '__name__', str(coro_func))
-                    logger.info(f"Worker-{worker_id} executing {func_name} (priority={priority})")
+                    logger.info(f"Worker-{worker_id} executing {func_name} (priority={priority}) in thread")
                     try:
-                        await coro_func(*args, **kwargs)
+                        # PROMPT #191 - Run in separate thread to avoid blocking FastAPI
+                        loop = asyncio.get_event_loop()
+                        await loop.run_in_executor(
+                            None,  # Use default ThreadPoolExecutor
+                            self._run_in_thread,
+                            coro_func,
+                            args,
+                            kwargs or {}
+                        )
                     except Exception as e:
                         logger.error(f"Worker-{worker_id} job failed: {func_name} - {e}")
                     finally:
