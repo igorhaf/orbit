@@ -977,14 +977,21 @@ function OptimizeDialog({
   const [strategy, setStrategy] = useState('balanced');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AIFlowOptimizeChainResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleOptimize = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await aiFlowApi.optimizeChain(usageType, strategy);
       setResult(res);
-    } catch (err) {
-      console.error('Failed to optimize:', err);
+    } catch (err: any) {
+      const msg = err?.message || 'Failed to optimize';
+      if (msg.includes('No chain configured')) {
+        setError('No chain configured for this operation. Add models to the chain first.');
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
@@ -993,6 +1000,7 @@ function OptimizeDialog({
   useEffect(() => {
     if (open) {
       setResult(null);
+      setError(null);
       setStrategy('balanced');
     }
   }, [open]);
@@ -1036,6 +1044,12 @@ function OptimizeDialog({
               ))}
             </div>
           </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+              {error}
+            </div>
+          )}
 
           {!result && (
             <Button
