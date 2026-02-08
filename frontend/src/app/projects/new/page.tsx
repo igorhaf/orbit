@@ -12,17 +12,19 @@
 
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { FolderPicker } from '@/components/ui/FolderPicker';
 import { useNotification, useJobPolling } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
+import { projectsApi, jobsApi } from '@/lib/api';
 
-export default function NewProjectPage() {
+function NewProjectContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { showError, showWarning, NotificationComponent } = useNotification();
   const { addJob } = useNotifications();
 
@@ -36,6 +38,54 @@ export default function NewProjectPage() {
   const [pipelineJobId, setPipelineJobId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
+
+  // PROMPT #189 - Resume pipeline progress when navigated from projects list
+  useEffect(() => {
+    const resumeProjectId = searchParams.get('projectId');
+    const resumeJobId = searchParams.get('jobId');
+
+    if (resumeProjectId) {
+      // Fetch project info and resume progress view
+      const resumePipeline = async () => {
+        try {
+          const project = await projectsApi.get(resumeProjectId);
+          const projectData = project.data || project;
+
+          if (projectData.status === 'processing') {
+            setProjectId(resumeProjectId);
+            setProjectName(projectData.name);
+            setCodePath(projectData.code_path || '');
+            setProcessing(true);
+
+            // Find the active pipeline job
+            if (resumeJobId) {
+              setPipelineJobId(resumeJobId);
+            } else {
+              // Try to find the latest pipeline job for this project
+              const jobsRes = await jobsApi.list({
+                project_id: resumeProjectId,
+                job_type: 'project_pipeline',
+                limit: 1,
+                sort_by: 'created_at',
+                sort_order: 'desc',
+              });
+              const jobList = jobsRes.jobs || [];
+              if (jobList.length > 0 && (jobList[0].status === 'running' || jobList[0].status === 'pending')) {
+                setPipelineJobId(jobList[0].id);
+              }
+            }
+          } else {
+            // Project is no longer processing, go to its page
+            router.push(`/projects/${resumeProjectId}`);
+          }
+        } catch (error) {
+          console.error('Failed to resume pipeline:', error);
+          showError('Failed to load project progress.');
+        }
+      };
+      resumePipeline();
+    }
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pipeline job polling
   const handlePipelineComplete = (result: any) => {
@@ -127,7 +177,7 @@ export default function NewProjectPage() {
       <Breadcrumbs />
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-8">
-          New Project
+          {processing ? 'Processing Project' : 'New Project'}
         </h1>
 
         {!processing ? (
@@ -350,5 +400,21 @@ export default function NewProjectPage() {
         {NotificationComponent}
       </div>
     </Layout>
+  );
+}
+
+// PROMPT #189 - Wrap with Suspense for useSearchParams
+export default function NewProjectPage() {
+  return (
+    <Suspense fallback={
+      <Layout>
+        <Breadcrumbs />
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </Layout>
+    }>
+      <NewProjectContent />
+    </Suspense>
   );
 }

@@ -90,8 +90,7 @@ export default function ProjectsPage() {
             sort_by: 'created_at',
             sort_order: 'desc',
           });
-          const jobs = jobsRes.data || jobsRes;
-          const jobList = Array.isArray(jobs) ? jobs : jobs?.items || [];
+          const jobList = jobsRes.jobs || [];
 
           if (jobList.length > 0) {
             const job = jobList[0];
@@ -240,7 +239,12 @@ export default function ProjectsPage() {
               const folderName = project.code_path?.split('/').pop() || project.name;
 
               return (
-              <Card key={project.id} variant="bordered">
+              <Card
+                key={project.id}
+                variant="bordered"
+                className={isProcessing ? 'cursor-pointer hover:shadow-md transition-shadow border-blue-200 border-dashed' : ''}
+                onClick={isProcessing ? () => router.push(`/projects/new?projectId=${project.id}&jobId=${jobInfo?.jobId || ''}`) : undefined}
+              >
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <CardTitle className={isProcessing ? 'text-gray-500' : ''}>
@@ -268,7 +272,7 @@ export default function ProjectsPage() {
                 </CardHeader>
                 <CardContent>
                   {isProcessing ? (
-                    /* PROMPT #121 - Processing card with live progress bar */
+                    /* PROMPT #189 - Clickable processing card with live progress bar */
                     <div className="space-y-3">
                       {/* Folder path */}
                       {project.code_path && (
@@ -295,9 +299,14 @@ export default function ProjectsPage() {
                         </div>
                       </div>
 
-                      {/* Timestamp */}
-                      <div className="text-xs text-gray-400">
-                        Created: {new Date(project.created_at).toLocaleDateString()}
+                      {/* Click hint */}
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-gray-400">
+                          Created: {new Date(project.created_at).toLocaleDateString()}
+                        </div>
+                        <span className="text-xs text-blue-500 font-medium">
+                          Click for details
+                        </span>
                       </div>
                     </div>
                   ) : (
