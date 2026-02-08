@@ -1131,7 +1131,7 @@ export const ragApi = {
     if (params?.usage_type) queryParams.append('usage_type', params.usage_type);
 
     const queryString = queryParams.toString();
-    return request<any>(`/api/v1/analytics/rag-stats${queryString ? '?' + queryString : ''}`);
+    return request<any>(`/api/v1/cost/rag-stats${queryString ? '?' + queryString : ''}`);
   },
 
   indexCode: (projectId: string, force?: boolean) =>
