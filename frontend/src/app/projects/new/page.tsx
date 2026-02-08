@@ -38,6 +38,7 @@ function NewProjectContent() {
   const [pipelineJobId, setPipelineJobId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   // PROMPT #189 - Resume pipeline progress when navigated from projects list
   useEffect(() => {
@@ -151,6 +152,30 @@ function NewProjectContent() {
       console.error('Create and process failed:', error);
       setProcessing(false);
       showError('Failed to create project. Please try again.');
+    }
+  };
+
+  // PROMPT #190 - Cancel project creation
+  const handleCancelCreation = async () => {
+    if (cancelling) return;
+    setCancelling(true);
+    try {
+      if (pipelineJobId) {
+        try { await jobsApi.cancel(pipelineJobId); } catch { /* job may already be done */ }
+      }
+      if (projectId) {
+        await projectsApi.delete(projectId);
+      }
+      setProcessing(false);
+      setPipelineJobId(null);
+      setProjectId(null);
+      setProjectName(null);
+      router.push('/projects');
+    } catch (error) {
+      console.error('Error cancelling project creation:', error);
+      showError('Failed to cancel project creation.');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -386,7 +411,15 @@ function NewProjectContent() {
                 </div>
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="danger"
+                  onClick={handleCancelCreation}
+                  disabled={cancelling}
+                  isLoading={cancelling}
+                >
+                  Cancel Creation
+                </Button>
                 <Button
                   variant="outline"
                   onClick={() => router.push('/projects')}

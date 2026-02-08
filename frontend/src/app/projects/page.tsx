@@ -48,6 +48,28 @@ export default function ProjectsPage() {
 
   // PROMPT #121 - Processing job progress map: projectId -> job info
   const [processingJobs, setProcessingJobs] = useState<Record<string, ProcessingJobInfo>>({});
+  const [cancellingProject, setCancellingProject] = useState<string | null>(null);
+
+  // PROMPT #190 - Cancel project creation (cancel job + delete project)
+  const handleCancelCreation = async (e: React.MouseEvent, project: Project, jobId?: string) => {
+    e.stopPropagation(); // Prevent card click navigation
+    if (cancellingProject) return;
+
+    setCancellingProject(project.id);
+    try {
+      // Cancel the pipeline job if running
+      if (jobId) {
+        try { await jobsApi.cancel(jobId); } catch { /* job may already be done */ }
+      }
+      // Delete the project
+      await projectsApi.delete(project.id);
+      fetchProjects();
+    } catch (error) {
+      console.error('Error cancelling project creation:', error);
+    } finally {
+      setCancellingProject(null);
+    }
+  };
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -299,14 +321,26 @@ export default function ProjectsPage() {
                         </div>
                       </div>
 
-                      {/* Click hint */}
+                      {/* Actions */}
                       <div className="flex items-center justify-between">
-                        <div className="text-xs text-gray-400">
-                          Created: {new Date(project.created_at).toLocaleDateString()}
-                        </div>
                         <span className="text-xs text-blue-500 font-medium">
                           Click for details
                         </span>
+                        <button
+                          onClick={(e) => handleCancelCreation(e, project, jobInfo?.jobId)}
+                          disabled={cancellingProject === project.id}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                          title="Cancel project creation"
+                        >
+                          {cancellingProject === project.id ? (
+                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-600" />
+                          ) : (
+                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          Cancel
+                        </button>
                       </div>
                     </div>
                   ) : (
