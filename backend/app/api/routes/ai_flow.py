@@ -507,6 +507,89 @@ async def optimize_chain(
     )
 
 
+# PROMPT #209 - Recommended utility nodes per template strategy
+TEMPLATE_UTILITY_NODES = {
+    "high_reliability": [
+        {
+            "id": "retry-tmpl-1",
+            "type": "retry",
+            "label": "Retry",
+            "enabled": True,
+            "config": {"max_retries": 3, "backoff_base_ms": 1000, "backoff_multiplier": 2.0, "retry_on": ["timeout", "rate_limit", "server_error"]},
+            "position": None,
+        },
+        {
+            "id": "timeout-tmpl-1",
+            "type": "timeout",
+            "label": "Timeout",
+            "enabled": True,
+            "config": {"timeout_seconds": 120},
+            "position": None,
+        },
+        {
+            "id": "validator-tmpl-1",
+            "type": "validator",
+            "label": "Validator",
+            "enabled": True,
+            "config": {"validation_type": "not_empty", "schema": {}, "max_length": 0, "required_keywords": [], "retry_on_fail": True},
+            "position": None,
+        },
+    ],
+    "cost_optimized": [
+        {
+            "id": "cache-tmpl-1",
+            "type": "cache",
+            "label": "Cache",
+            "enabled": True,
+            "config": {"ttl_seconds": 86400, "cache_level": "exact", "enabled": True},
+            "position": None,
+        },
+        {
+            "id": "cost_guard-tmpl-1",
+            "type": "cost_guard",
+            "label": "Cost Guard",
+            "enabled": True,
+            "config": {"max_cost_per_call": 0.10, "daily_budget": 10.0, "monthly_budget": 100.0, "action_on_exceed": "block"},
+            "position": None,
+        },
+        {
+            "id": "prompt_transformer-tmpl-1",
+            "type": "prompt_transformer",
+            "label": "Prompt Transformer",
+            "enabled": True,
+            "config": {"transformation": "compress", "max_tokens": 4000, "language": "auto", "override_max_tokens": None, "override_temperature": None},
+            "position": None,
+        },
+    ],
+    "high_quality": [
+        {
+            "id": "rag_context-tmpl-1",
+            "type": "rag_context",
+            "label": "RAG Context",
+            "enabled": True,
+            "config": {"max_results": 5, "similarity_threshold": 0.7, "include_metadata": True},
+            "position": None,
+        },
+        {
+            "id": "validator-tmpl-2",
+            "type": "validator",
+            "label": "Validator",
+            "enabled": True,
+            "config": {"validation_type": "not_empty", "schema": {}, "max_length": 0, "required_keywords": [], "retry_on_fail": True},
+            "position": None,
+        },
+        {
+            "id": "prompt_transformer-tmpl-2",
+            "type": "prompt_transformer",
+            "label": "Prompt Transformer",
+            "enabled": True,
+            "config": {"transformation": "compress", "max_tokens": 4000, "language": "auto", "override_max_tokens": None, "override_temperature": None},
+            "position": None,
+        },
+    ],
+}
+
+
 @router.get("/chain-templates/{usage_type}", response_model=ChainTemplatesResponse)
 async def get_chain_templates(
     usage_type: AIModelUsageType,
@@ -544,6 +627,7 @@ async def get_chain_templates(
             description="Modelos mais capazes primeiro, fallback para mais rápidos",
             chain=[str(m.id) for m in reliability_sorted],
             models=[model_info(m) for m in reliability_sorted],
+            utility_nodes=TEMPLATE_UTILITY_NODES["high_reliability"],
         ),
         ChainTemplate(
             id="cost_optimized",
@@ -551,6 +635,7 @@ async def get_chain_templates(
             description="Modelos mais baratos primeiro, escalando para caros se necessário",
             chain=[str(m.id) for m in cost_sorted],
             models=[model_info(m) for m in cost_sorted],
+            utility_nodes=TEMPLATE_UTILITY_NODES["cost_optimized"],
         ),
         ChainTemplate(
             id="high_quality",
@@ -558,6 +643,7 @@ async def get_chain_templates(
             description="Melhores modelos no topo da chain",
             chain=[str(m.id) for m in quality_sorted],
             models=[model_info(m) for m in quality_sorted],
+            utility_nodes=TEMPLATE_UTILITY_NODES["high_quality"],
         ),
     ]
 

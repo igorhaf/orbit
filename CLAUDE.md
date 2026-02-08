@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #208 (Double-Click Edit Utility Nodes)
-**Próximo prompt:** PROMPT #209
+**Último prompt:** PROMPT #209 (Templates with Utility Nodes)
+**Próximo prompt:** PROMPT #210
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

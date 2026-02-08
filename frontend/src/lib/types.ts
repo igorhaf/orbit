@@ -738,6 +738,7 @@ export interface AIFlowChainTemplate {
   description: string;
   chain: string[];
   models: Array<Record<string, any>>;
+  utility_nodes?: AIFlowUtilityNode[] | null;
 }
 
 export interface AIFlowChainTemplatesResponse {

@@ -185,6 +185,7 @@ class ChainTemplate(BaseModel):
     description: str
     chain: List[str] = Field(default_factory=list)
     models: List[Dict[str, Any]] = Field(default_factory=list)
+    utility_nodes: Optional[List[Dict[str, Any]]] = None
 
 
 class ChainTemplatesResponse(BaseModel):

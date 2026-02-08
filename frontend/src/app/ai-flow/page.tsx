@@ -1853,9 +1853,12 @@ export default function AIFlowPage() {
     }
   };
 
-  // PROMPT #124 - Apply template
+  // PROMPT #124 / #209 - Apply template (models + utility nodes)
   const handleApplyTemplate = (template: AIFlowChainTemplate) => {
     setWorkingChain(template.chain);
+    if (template.utility_nodes && template.utility_nodes.length > 0) {
+      setWorkingUtilityNodes(template.utility_nodes);
+    }
     showSuccess(`Template "${template.name}" applied (unsaved)`);
   };
 
