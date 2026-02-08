@@ -1560,13 +1560,21 @@ async def get_blocking_analytics(
     ).count()
 
     # APPROVED MODIFICATIONS
-    # Tasks that were blocked but got approved (now have new tasks created)
-    # We identify these by looking at task_metadata.approved_modification = true
-    approved_query = base_query.filter(
-        Task.created_at >= start_date,
-        Task.task_metadata['approved_modification'].astext == 'true'
-    )
-    total_approved = approved_query.count()
+    # Tasks that were blocked but got approved
+    # Identify by status_history transitions: blocked → other with approval reason
+    total_approved = 0
+    approved_tasks_with_history = base_query.filter(
+        Task.status_history.isnot(None),
+        Task.created_at >= start_date
+    ).all()
+    for task in approved_tasks_with_history:
+        if task.status_history:
+            for transition in task.status_history:
+                if (transition.get('from') == 'blocked' and
+                    transition.get('to') != 'blocked' and
+                    'approved' in transition.get('reason', '').lower()):
+                    total_approved += 1
+                    break
 
     # REJECTED MODIFICATIONS
     # Tasks that were blocked and then rejected (status changed from BLOCKED to something else)
@@ -1602,10 +1610,7 @@ async def get_blocking_analytics(
     # SIMILARITY METRICS
     # Get all tasks that have/had pending_modification
     tasks_with_modifications = base_query.filter(
-        or_(
-            Task.pending_modification.isnot(None),
-            Task.task_metadata['had_pending_modification'].astext == 'true'
-        )
+        Task.pending_modification.isnot(None)
     ).all()
 
     similarity_scores = []
@@ -1622,10 +1627,6 @@ async def get_blocking_analytics(
         # Check current pending_modification
         if task.pending_modification and isinstance(task.pending_modification, dict):
             score = task.pending_modification.get('similarity_score')
-
-        # Check task_metadata for historical score
-        if not score and task.task_metadata and isinstance(task.task_metadata, dict):
-            score = task.task_metadata.get('original_similarity_score')
 
         if score and isinstance(score, (int, float)):
             similarity_scores.append(score)
