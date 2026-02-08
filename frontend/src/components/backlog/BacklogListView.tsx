@@ -10,6 +10,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 // PROMPT #131 - Removed useRouter, now using onInterviewClick callback
 import { Card, CardHeader, CardTitle, CardContent, AIModelBadge } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { tasksApi, interviewsApi } from '@/lib/api';  // PROMPT #131 - Added interviewsApi
@@ -167,6 +168,15 @@ export default function BacklogListView({
   const [showBulkStatusMenu, setShowBulkStatusMenu] = useState(false);
   const [showBulkPriorityMenu, setShowBulkPriorityMenu] = useState(false);
   const bulkMenuRef = useRef<HTMLDivElement>(null);
+
+  // Confirm dialog state
+  const [confirmDialog, setConfirmDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+    type: 'warning' | 'danger' | 'info';
+    onConfirm: () => void;
+  }>({ open: false, title: '', message: '', type: 'danger', onConfirm: () => {} });
 
   // PROMPT #131 - Close dropdown menus when clicking outside
   useEffect(() => {
@@ -441,46 +451,56 @@ export default function BacklogListView({
   };
 
   // PROMPT #94 - Reject suggested item
-  const handleRejectItem = async (item: BacklogItem) => {
-    if (!confirm(`Are you sure you want to reject and delete "${item.title}"?`)) {
-      return;
-    }
-
-    setRejectingId(item.id);
-    try {
-      await tasksApi.rejectSuggestedEpic(item.id);
-      console.log('❌ Item rejected:', item.title);
-      fetchBacklog();
-    } catch (error: any) {
-      console.error('❌ Failed to reject item:', error);
-      showError(`Failed to reject item: ${error.message}`);
-    } finally {
-      setRejectingId(null);
-    }
+  const handleRejectItem = (item: BacklogItem) => {
+    setConfirmDialog({
+      open: true,
+      title: 'Rejeitar Item',
+      message: `Tem certeza que deseja rejeitar e excluir "${item.title}"? Esta ação não pode ser desfeita.`,
+      type: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        setRejectingId(item.id);
+        try {
+          await tasksApi.rejectSuggestedEpic(item.id);
+          console.log('❌ Item rejected:', item.title);
+          fetchBacklog();
+        } catch (error: any) {
+          console.error('❌ Failed to reject item:', error);
+          showError(`Failed to reject item: ${error.message}`);
+        } finally {
+          setRejectingId(null);
+        }
+      },
+    });
   };
 
   // PROMPT #131 - Bulk Actions
-  const handleBulkDelete = async () => {
+  const handleBulkDelete = () => {
     if (selectedIds.size === 0) return;
 
     const count = selectedIds.size;
-    if (!confirm(`Tem certeza que deseja excluir ${count} item(s)? Esta ação não pode ser desfeita.`)) {
-      return;
-    }
-
-    setBulkActionLoading('delete');
-    try {
-      const deletePromises = Array.from(selectedIds).map(id => tasksApi.delete(id));
-      await Promise.all(deletePromises);
-      showSuccess(`${count} item(s) excluído(s) com sucesso`);
-      onSelectionChange?.(new Set());
-      fetchBacklog();
-    } catch (error: any) {
-      console.error('Failed to delete items:', error);
-      showError(`Erro ao excluir itens: ${error.message}`);
-    } finally {
-      setBulkActionLoading(null);
-    }
+    setConfirmDialog({
+      open: true,
+      title: 'Excluir Itens',
+      message: `Tem certeza que deseja excluir ${count} item(s)? Esta ação não pode ser desfeita.`,
+      type: 'danger',
+      onConfirm: async () => {
+        setConfirmDialog(prev => ({ ...prev, open: false }));
+        setBulkActionLoading('delete');
+        try {
+          const deletePromises = Array.from(selectedIds).map(id => tasksApi.delete(id));
+          await Promise.all(deletePromises);
+          showSuccess(`${count} item(s) excluído(s) com sucesso`);
+          onSelectionChange?.(new Set());
+          fetchBacklog();
+        } catch (error: any) {
+          console.error('Failed to delete items:', error);
+          showError(`Erro ao excluir itens: ${error.message}`);
+        } finally {
+          setBulkActionLoading(null);
+        }
+      },
+    });
   };
 
   const handleBulkStatusChange = async (newStatus: string) => {
@@ -1094,6 +1114,17 @@ export default function BacklogListView({
           </div>
         )}
       </CardContent>
+
+      <ConfirmDialog
+        open={confirmDialog.open}
+        onClose={() => setConfirmDialog(prev => ({ ...prev, open: false }))}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+      />
     </Card>
   );
 }

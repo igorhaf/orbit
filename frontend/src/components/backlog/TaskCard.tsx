@@ -18,6 +18,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge, AIModelBadge } from '@/components/ui';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { tasksApi } from '@/lib/api';
@@ -111,6 +112,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
     j => activationTypes.includes(j.job_type) && j.task_id === task.id && (j.status === 'pending' || j.status === 'running')
   );
   const [rejectingEpic, setRejectingEpic] = useState(false);
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
 
   const hasSuggestions = task.subtask_suggestions && task.subtask_suggestions.length > 0;
 
@@ -218,11 +220,12 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
   };
 
   // PROMPT #94 - Reject suggested epic
-  const handleRejectEpic = async () => {
-    if (!confirm(`Are you sure you want to reject and delete the suggested epic "${task.title}"?`)) {
-      return;
-    }
+  const handleRejectEpic = () => {
+    setShowRejectConfirm(true);
+  };
 
+  const confirmRejectEpic = async () => {
+    setShowRejectConfirm(false);
     setRejectingEpic(true);
     try {
       await tasksApi.rejectSuggestedEpic(task.id);
@@ -502,6 +505,17 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           </div>
         )}
       </CardContent>
+
+      <ConfirmDialog
+        open={showRejectConfirm}
+        onClose={() => setShowRejectConfirm(false)}
+        onConfirm={confirmRejectEpic}
+        title="Rejeitar Item"
+        message={`Tem certeza que deseja rejeitar e excluir "${task.title}"? Esta ação não pode ser desfeita.`}
+        type="danger"
+        confirmLabel="Rejeitar"
+        cancelLabel="Cancelar"
+      />
     </Card>
   );
 }
