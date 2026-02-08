@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #189 (Clickable Processing Project Cards)
-**Próximo prompt:** PROMPT #190
+**Último prompt:** PROMPT #191 (Non-blocking Job Executor)
+**Próximo prompt:** PROMPT #192
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
