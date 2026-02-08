@@ -58,6 +58,7 @@ export function ProjectSpecsList({ projectId }: Props) {
   const [specToDelete, setSpecToDelete] = useState<Spec | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [discovering, setDiscovering] = useState(false);
 
   const [formData, setFormData] = useState({
     category: 'backend',
@@ -111,6 +112,28 @@ export function ProjectSpecsList({ projectId }: Props) {
       console.error('Failed to delete spec:', error);
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleDiscoverSpecs = async () => {
+    setDiscovering(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/projects/${projectId}/discover-specs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await response.json();
+      if (response.ok) {
+        loadSpecs();
+      } else {
+        showError(data.detail || 'Failed to discover specs');
+      }
+    } catch (error) {
+      console.error('Failed to discover specs:', error);
+      showError('Failed to discover specs. Please try again.');
+    } finally {
+      setDiscovering(false);
     }
   };
 
@@ -366,10 +389,22 @@ export function ProjectSpecsList({ projectId }: Props) {
             {specs.length} specs ({specs.filter(s => s.is_active).length} active)
           </span>
         </div>
-        <Button variant="primary" size="sm" onClick={handleOpenCreate}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Spec
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDiscoverSpecs}
+            disabled={discovering || specs.length >= 50}
+            title={specs.length >= 50 ? 'Cap of 50 specs reached' : 'Discover patterns from codebase using AI'}
+          >
+            <RefreshCw className={`w-4 h-4 mr-2 ${discovering ? 'animate-spin' : ''}`} />
+            {discovering ? 'Discovering...' : 'Discover Specs'}
+          </Button>
+          <Button variant="primary" size="sm" onClick={handleOpenCreate}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Spec
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -438,7 +473,7 @@ export function ProjectSpecsList({ projectId }: Props) {
               <div className="text-center py-12">
                 <FileCode className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500">No specs found for this project</p>
-                <p className="text-sm text-gray-400 mt-1">Add specs manually using the button above</p>
+                <p className="text-sm text-gray-400 mt-1">Use &quot;Discover Specs&quot; to auto-detect patterns or add specs manually</p>
               </div>
             ) : (
               <div className="overflow-x-auto">

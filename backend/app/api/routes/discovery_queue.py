@@ -17,6 +17,7 @@ import logging
 from app.database import get_db
 from app.models.discovery_queue import DiscoveryQueue, DiscoveryQueueStatus
 from app.models.project import Project
+from app.models.system_settings import SystemSettings
 from app.services.pattern_discovery import PatternDiscoveryService
 
 logger = logging.getLogger(__name__)
@@ -134,7 +135,7 @@ async def get_queue_item(
 @router.post("/{item_id}/process")
 async def process_queue_item(
     item_id: UUID,
-    max_patterns: int = Query(20, ge=1, le=50, description="Maximum patterns to discover"),
+    max_patterns: Optional[int] = Query(None, ge=1, le=100, description="Maximum patterns to discover (default from settings)"),
     min_occurrences: int = Query(3, ge=2, le=10, description="Minimum file occurrences"),
     db: Session = Depends(get_db)
 ):
@@ -144,7 +145,7 @@ async def process_queue_item(
     **POST** `/api/v1/discovery-queue/{item_id}/process`
 
     **Query Parameters:**
-    - `max_patterns`: Maximum patterns to discover (default: 20)
+    - `max_patterns`: Maximum patterns to discover (default from settings, cap 50 per project)
     - `min_occurrences`: Minimum file occurrences for a pattern (default: 3)
 
     **Response:**
@@ -186,6 +187,13 @@ async def process_queue_item(
             status_code=400,
             detail=f"Code path does not exist: {project.code_path}"
         )
+
+    # Read default from system_settings if not provided
+    if max_patterns is None:
+        setting = db.query(SystemSettings).filter(
+            SystemSettings.key == "max_discovery_patterns"
+        ).first()
+        max_patterns = int(setting.value) if setting else 20
 
     # Mark as processing
     item.status = DiscoveryQueueStatus.PROCESSING

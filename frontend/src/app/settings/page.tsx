@@ -29,6 +29,10 @@ export default function SettingsPage() {
   const [settingToDelete, setSettingToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  // Discovery settings state
+  const [maxPatterns, setMaxPatterns] = useState(20);
+  const [savingDiscovery, setSavingDiscovery] = useState(false);
+
   // Form state for new setting
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
@@ -61,8 +65,15 @@ export default function SettingsPage() {
       const modelsList = Array.isArray(modelsData) ? modelsData : modelsData.data || [];
       setModels(modelsList);
 
+      // Load discovery setting
+      const allSettings = Array.isArray(settingsData) ? settingsData : settingsData.data || [];
+      const discoverySetting = allSettings.find((s: SystemSettings) => s.key === 'max_discovery_patterns');
+      if (discoverySetting) {
+        setMaxPatterns(parseInt(discoverySetting.value) || 20);
+      }
+
       // Extract default models from settings
-      const defaultModelSettings = (Array.isArray(settingsData) ? settingsData : settingsData.data || [])
+      const defaultModelSettings = allSettings
         .filter((s: SystemSettings) => s.key.startsWith('default_model_'));
 
       const defaults: Record<string, string> = {};
@@ -71,7 +82,7 @@ export default function SettingsPage() {
         defaults[usageType] = s.value;
       });
       setDefaultModels(prev => ({ ...prev, ...defaults }));
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load settings:', err);
       setError(err.message || 'Failed to load settings');
     } finally {
@@ -144,12 +155,29 @@ export default function SettingsPage() {
     }
   };
 
+  const handleSaveDiscoverySettings = async () => {
+    setSavingDiscovery(true);
+    try {
+      await settingsApi.set(
+        'max_discovery_patterns',
+        String(maxPatterns),
+        'Max patterns per discovery scan (default 20, cap 50 per project)'
+      );
+      await loadData();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      showError(`Failed to save discovery settings: ${message}`);
+    } finally {
+      setSavingDiscovery(false);
+    }
+  };
+
   const getModelsForUsageType = (usageType: AIModelUsageType) => {
     return models.filter(m => m.usage_type === usageType && m.is_active);
   };
 
   // Filter out default_model_ settings from general settings list
-  const generalSettings = settings.filter(s => !s.key.startsWith('default_model_'));
+  const generalSettings = settings.filter(s => !s.key.startsWith('default_model_') && s.key !== 'max_discovery_patterns');
 
   return (
     <Layout>
@@ -328,6 +356,40 @@ export default function SettingsPage() {
               <Button onClick={handleSaveDefaultModels} disabled={saving}>
                 <Save className="w-4 h-4 mr-2" />
                 {saving ? 'Saving...' : 'Save Default Models'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Discovery Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Discovery Settings</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-600 mb-4">
+              Configure how many code patterns are discovered per scan. Multiple scans accumulate specs up to a cap of 50 per project.
+            </p>
+
+            <div className="flex items-end gap-4">
+              <div className="flex-1 max-w-xs">
+                <Label htmlFor="max-patterns">Max Patterns per Discovery</Label>
+                <Input
+                  id="max-patterns"
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={maxPatterns}
+                  onChange={(e) => setMaxPatterns(Math.min(50, Math.max(1, parseInt(e.target.value) || 1)))}
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Default: 20. Each scan discovers up to this many patterns. Total per project capped at 50.
+                </p>
+              </div>
+              <Button onClick={handleSaveDiscoverySettings} disabled={savingDiscovery}>
+                <Save className="w-4 h-4 mr-2" />
+                {savingDiscovery ? 'Saving...' : 'Save'}
               </Button>
             </div>
           </CardContent>

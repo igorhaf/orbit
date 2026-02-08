@@ -29,10 +29,29 @@ from app.services.job_manager import JobManager
 from app.services.rag_service import RAGService
 from app.services.pattern_discovery import PatternDiscoveryService
 from app.models.spec import Spec, SpecScope
+from app.models.system_settings import SystemSettings
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+MAX_SPECS_PER_PROJECT = 50
+
+
+def _get_max_patterns(db: Session) -> int:
+    """Read max_discovery_patterns from system_settings, default 20."""
+    setting = db.query(SystemSettings).filter(
+        SystemSettings.key == "max_discovery_patterns"
+    ).first()
+    return int(setting.value) if setting else 20
+
+
+def _effective_max_patterns(db: Session, project_id) -> int:
+    """Calculate effective max patterns considering the 50 specs cap."""
+    max_patterns = _get_max_patterns(db)
+    existing_count = db.query(Spec).filter(Spec.project_id == project_id).count()
+    return max(0, min(max_patterns, MAX_SPECS_PER_PROJECT - existing_count))
+
 
 # PROMPT #111 - Base path for mounted projects folder
 PROJECTS_BASE_PATH = Path("/projects")
@@ -296,23 +315,27 @@ async def _process_memory_scan_async(
 
         # PROMPT #202 - Discover specs and sync to RAG after memory scan
         if project_id:
-            job_manager.update_progress(job_id, 90.0, "Discovering code patterns and generating specs...")
-            try:
-                discovery_service = PatternDiscoveryService(db)
-                discovered_patterns = await discovery_service.discover_patterns(
-                    project_path=Path(code_path),
-                    project_id=project_id,
-                    max_patterns=20,
-                    min_occurrences=2
-                )
-                logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
+            effective_max = _effective_max_patterns(db, project_id)
+            if effective_max > 0:
+                job_manager.update_progress(job_id, 90.0, "Discovering code patterns and generating specs...")
+                try:
+                    discovery_service = PatternDiscoveryService(db)
+                    discovered_patterns = await discovery_service.discover_patterns(
+                        project_path=Path(code_path),
+                        project_id=project_id,
+                        max_patterns=effective_max,
+                        min_occurrences=2
+                    )
+                    logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
 
-                from app.services.spec_rag_sync import SpecRAGSync
-                spec_sync = SpecRAGSync(db)
-                sync_result = spec_sync.sync_all_framework_specs()
-                logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
-            except Exception as e:
-                logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
+                    from app.services.spec_rag_sync import SpecRAGSync
+                    spec_sync = SpecRAGSync(db)
+                    sync_result = spec_sync.sync_all_framework_specs()
+                    logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
+                except Exception as e:
+                    logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
+            else:
+                logger.info(f"📋 Project {project_id} already has {MAX_SPECS_PER_PROJECT} specs, skipping discovery")
 
         job_manager.update_progress(job_id, 98.0, "Finalizing results...")
 
@@ -513,24 +536,28 @@ async def _process_quick_create_scan(
             db.commit()
 
         # PROMPT #202 - Discover specs and sync to RAG after memory scan
-        job_manager.update_progress(job_id, 85.0, "Discovering code patterns and generating specs...")
-        try:
-            discovery_service = PatternDiscoveryService(db)
-            discovered_patterns = await discovery_service.discover_patterns(
-                project_path=Path(code_path),
-                project_id=project_id,
-                max_patterns=20,
-                min_occurrences=2
-            )
-            logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
+        effective_max = _effective_max_patterns(db, project_id)
+        if effective_max > 0:
+            job_manager.update_progress(job_id, 85.0, "Discovering code patterns and generating specs...")
+            try:
+                discovery_service = PatternDiscoveryService(db)
+                discovered_patterns = await discovery_service.discover_patterns(
+                    project_path=Path(code_path),
+                    project_id=project_id,
+                    max_patterns=effective_max,
+                    min_occurrences=2
+                )
+                logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
 
-            # Sync all project specs to RAG
-            from app.services.spec_rag_sync import SpecRAGSync
-            spec_sync = SpecRAGSync(db)
-            sync_result = spec_sync.sync_all_framework_specs()
-            logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
-        except Exception as e:
-            logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
+                # Sync all project specs to RAG
+                from app.services.spec_rag_sync import SpecRAGSync
+                spec_sync = SpecRAGSync(db)
+                sync_result = spec_sync.sync_all_framework_specs()
+                logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
+            except Exception as e:
+                logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
+        else:
+            logger.info(f"📋 Project {project_id} already has {MAX_SPECS_PER_PROJECT} specs, skipping discovery")
 
         job_manager.update_progress(job_id, 95.0, "Finalizing...")
 
@@ -736,23 +763,27 @@ async def _process_project_pipeline(
         db.commit()
 
         # === Step A.1: Spec Discovery + RAG Sync (PROMPT #202) ===
-        job_manager.update_progress(job_id, 38.0, "Discovering code patterns and generating specs...")
-        try:
-            discovery_service = PatternDiscoveryService(db)
-            discovered_patterns = await discovery_service.discover_patterns(
-                project_path=Path(code_path),
-                project_id=project_id,
-                max_patterns=20,
-                min_occurrences=2
-            )
-            logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
+        effective_max = _effective_max_patterns(db, project_id)
+        if effective_max > 0:
+            job_manager.update_progress(job_id, 38.0, "Discovering code patterns and generating specs...")
+            try:
+                discovery_service = PatternDiscoveryService(db)
+                discovered_patterns = await discovery_service.discover_patterns(
+                    project_path=Path(code_path),
+                    project_id=project_id,
+                    max_patterns=effective_max,
+                    min_occurrences=2
+                )
+                logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
 
-            from app.services.spec_rag_sync import SpecRAGSync
-            spec_sync = SpecRAGSync(db)
-            sync_result = spec_sync.sync_all_framework_specs()
-            logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
-        except Exception as e:
-            logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
+                from app.services.spec_rag_sync import SpecRAGSync
+                spec_sync = SpecRAGSync(db)
+                sync_result = spec_sync.sync_all_framework_specs()
+                logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
+            except Exception as e:
+                logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
+        else:
+            logger.info(f"📋 Project {project_id} already has {MAX_SPECS_PER_PROJECT} specs, skipping discovery")
 
         job_manager.update_progress(job_id, 40.0, "Gerando contexto rico do projeto...")
 
@@ -1467,7 +1498,7 @@ async def get_code_indexing_stats(
 async def discover_project_specs(
     project_id: UUID,
     replace_existing: bool = Query(False, description="Delete existing specs before discovery"),
-    max_patterns: int = Query(20, ge=1, le=50, description="Maximum patterns to discover"),
+    max_patterns: Optional[int] = Query(None, ge=1, le=100, description="Maximum patterns to discover (uses system setting if not provided)"),
     min_occurrences: int = Query(3, ge=2, le=10, description="Minimum file occurrences for a pattern"),
     db: Session = Depends(get_db)
 ):
@@ -1530,6 +1561,21 @@ async def discover_project_specs(
         db.commit()
         logger.info(f"Deleted {deleted_count} existing specs for project {project_id}")
 
+    # Calculate effective max patterns (cap at 50 per project)
+    if max_patterns is None:
+        effective_max = _effective_max_patterns(db, project_id)
+    else:
+        existing_count = db.query(Spec).filter(Spec.project_id == project_id).count()
+        effective_max = max(0, min(max_patterns, MAX_SPECS_PER_PROJECT - existing_count))
+
+    if effective_max <= 0:
+        return {
+            "project_id": str(project_id),
+            "discovered_count": 0,
+            "patterns": [],
+            "message": f"Project already has {MAX_SPECS_PER_PROJECT} specs (maximum reached)"
+        }
+
     # Run pattern discovery
     discovery_service = PatternDiscoveryService(db)
 
@@ -1537,13 +1583,23 @@ async def discover_project_specs(
         patterns = await discovery_service.discover_patterns(
             project_path=code_path,
             project_id=project_id,
-            max_patterns=max_patterns,
+            max_patterns=effective_max,
             min_occurrences=min_occurrences
         )
+
+        # Sync discovered specs to RAG
+        try:
+            from app.services.spec_rag_sync import SpecRAGSync
+            spec_sync = SpecRAGSync(db)
+            sync_result = spec_sync.sync_all_framework_specs()
+            logger.info(f"📡 Specs synced to RAG after manual discovery")
+        except Exception as e:
+            logger.warning(f"⚠️ RAG sync after discovery failed: {e}")
 
         return {
             "project_id": str(project_id),
             "discovered_count": len(patterns),
+            "patterns_saved": len(patterns),
             "patterns": [
                 {
                     "title": p.title,

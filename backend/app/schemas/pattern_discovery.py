@@ -63,7 +63,7 @@ class PatternDiscoveryRequest(BaseModel):
     """Request to discover patterns from a project codebase"""
     project_id: UUID = Field(..., description="Project UUID")
     project_path: Optional[str] = Field(None, description="Override path (uses project.code_path if None)")
-    max_patterns: int = Field(default=20, ge=1, le=50, description="Maximum patterns to discover")
+    max_patterns: int = Field(default=20, ge=1, le=100, description="Maximum patterns to discover")
     min_occurrences: int = Field(default=3, ge=1, le=10, description="Minimum pattern occurrences required")
     confidence_threshold: float = Field(default=0.6, ge=0.0, le=1.0, description="Minimum AI confidence score")
 
