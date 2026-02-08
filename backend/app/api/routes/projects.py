@@ -39,11 +39,20 @@ MAX_SPECS_PER_PROJECT = 50
 
 
 def _get_max_patterns(db: Session) -> int:
-    """Read max_discovery_patterns from system_settings, default 20."""
+    """Read max_discovery_patterns from system_settings, default 20.
+    Auto-creates the setting with default value if it doesn't exist."""
     setting = db.query(SystemSettings).filter(
         SystemSettings.key == "max_discovery_patterns"
     ).first()
-    return int(setting.value) if setting else 20
+    if not setting:
+        setting = SystemSettings(
+            key="max_discovery_patterns",
+            value="20",
+            description="Max patterns per discovery scan (default 20, cap 50 per project)"
+        )
+        db.add(setting)
+        db.commit()
+    return int(setting.value)
 
 
 def _effective_max_patterns(db: Session, project_id) -> int:
