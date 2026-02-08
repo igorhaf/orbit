@@ -235,8 +235,11 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         // Remove from active jobs
         updatedJobs.splice(jobIndex, 1);
 
-        // Add to notifications history
-        setNotifications(prevNotifs => [updatedJob, ...prevNotifs].slice(0, 50)); // Keep last 50
+        // Add to notifications history (deduplicate by id)
+        setNotifications(prevNotifs => {
+          if (prevNotifs.some(n => n.id === updatedJob.id)) return prevNotifs;
+          return [updatedJob, ...prevNotifs].slice(0, 50); // Keep last 50
+        });
 
         return updatedJobs;
       }
