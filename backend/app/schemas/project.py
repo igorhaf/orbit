@@ -79,7 +79,8 @@ class ProjectResponse(ProjectBase):
     initial_memory_context: Optional[dict] = Field(None, description="Context from codebase memory scan")
 
     # PROMPT #126 - Project lifecycle status
-    status: Literal["draft", "active"] = Field("draft", description="Project status: draft (no epics approved) or active (at least one epic approved)")
+    # PROMPT #189 - Added "processing" to match ProjectStatus enum (was causing processing projects to be invisible)
+    status: Literal["draft", "processing", "active"] = Field("draft", description="Project status: draft, processing (pipeline running), or active (ready to use)")
 
     class Config:
         from_attributes = True
