@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #203 (Configurable max_patterns + Discover Specs Button)
-**Próximo prompt:** PROMPT #204
+**Último prompt:** PROMPT #204 (AI Flow: 8 Utility Node Types)
+**Próximo prompt:** PROMPT #205
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

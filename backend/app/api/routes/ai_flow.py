@@ -34,6 +34,7 @@ from app.schemas.ai_flow_chain import (
     OptimizeModelScore,
     ChainTemplate,
     ChainTemplatesResponse,
+    UTILITY_NODE_TYPES,
 )
 
 import logging
@@ -83,6 +84,7 @@ def _chain_to_dict(chain: AIFlowChain, models: List[dict]) -> dict:
         "usage_type": chain.usage_type.value if hasattr(chain.usage_type, "value") else chain.usage_type,
         "chain": chain.chain,
         "node_positions": chain.node_positions,
+        "utility_nodes": chain.utility_nodes,
         "is_active": chain.is_active,
         "created_at": chain.created_at,
         "updated_at": chain.updated_at,
@@ -134,6 +136,7 @@ async def upsert_chain(
     if existing:
         existing.chain = data.chain
         existing.node_positions = data.node_positions
+        existing.utility_nodes = data.utility_nodes
         existing.is_active = data.is_active
         existing.updated_at = datetime.utcnow()
         db.commit()
@@ -145,6 +148,7 @@ async def upsert_chain(
             usage_type=usage_type,
             chain=data.chain,
             node_positions=data.node_positions,
+            utility_nodes=data.utility_nodes,
             is_active=data.is_active,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
@@ -558,3 +562,117 @@ async def get_chain_templates(
     ]
 
     return ChainTemplatesResponse(templates=templates)
+
+
+# ============================================================================
+# PROMPT #204 - Utility Node Types Catalog
+# ============================================================================
+
+UTILITY_NODE_CATALOG = {
+    "cache": {
+        "type": "cache",
+        "label": "Cache",
+        "description": "Checks Redis cache before calling AI models. Returns cached response if available.",
+        "icon": "database",
+        "color": "#8b5cf6",
+        "default_config": {
+            "ttl_seconds": 86400,
+            "cache_level": "exact",
+            "enabled": True,
+        },
+    },
+    "rag_context": {
+        "type": "rag_context",
+        "label": "RAG Context",
+        "description": "Enriches the prompt with semantic context from the RAG vector store.",
+        "icon": "search",
+        "color": "#06b6d4",
+        "default_config": {
+            "max_results": 5,
+            "similarity_threshold": 0.7,
+            "include_metadata": True,
+        },
+    },
+    "prompt_transformer": {
+        "type": "prompt_transformer",
+        "label": "Prompt Transformer",
+        "description": "Applies transformations to the prompt before sending to AI (compression, translation, etc.).",
+        "icon": "wand",
+        "color": "#f59e0b",
+        "default_config": {
+            "transformation": "compress",
+            "max_tokens": 4000,
+            "language": "auto",
+        },
+    },
+    "router": {
+        "type": "router",
+        "label": "Router",
+        "description": "Routes requests to different model chains based on conditions (complexity, cost, topic).",
+        "icon": "git-branch",
+        "color": "#10b981",
+        "default_config": {
+            "condition": "complexity",
+            "threshold": "medium",
+            "routes": {},
+        },
+    },
+    "retry": {
+        "type": "retry",
+        "label": "Retry",
+        "description": "Retries the same model with exponential backoff on transient failures.",
+        "icon": "refresh-cw",
+        "color": "#3b82f6",
+        "default_config": {
+            "max_retries": 3,
+            "backoff_base_ms": 1000,
+            "backoff_multiplier": 2.0,
+            "retry_on": ["timeout", "rate_limit", "server_error"],
+        },
+    },
+    "validator": {
+        "type": "validator",
+        "label": "Validator",
+        "description": "Validates AI output against rules (JSON schema, length, keywords, format).",
+        "icon": "check-circle",
+        "color": "#22c55e",
+        "default_config": {
+            "validation_type": "json",
+            "schema": {},
+            "max_length": 0,
+            "required_keywords": [],
+            "retry_on_fail": True,
+        },
+    },
+    "cost_guard": {
+        "type": "cost_guard",
+        "label": "Cost Guard",
+        "description": "Blocks requests that would exceed a budget threshold (per-call or cumulative).",
+        "icon": "shield",
+        "color": "#ef4444",
+        "default_config": {
+            "max_cost_per_call": 0.10,
+            "daily_budget": 10.0,
+            "monthly_budget": 100.0,
+            "action_on_exceed": "block",
+        },
+    },
+    "rate_limiter": {
+        "type": "rate_limiter",
+        "label": "Rate Limiter",
+        "description": "Limits the number of requests per time window using a sliding window algorithm.",
+        "icon": "clock",
+        "color": "#ec4899",
+        "default_config": {
+            "max_requests": 60,
+            "window_seconds": 60,
+            "action_on_exceed": "queue",
+        },
+    },
+}
+
+
+@router.get("/utility-node-types")
+async def list_utility_node_types():
+    """List all available utility node types with their default configurations."""
+    return {"node_types": list(UTILITY_NODE_CATALOG.values())}

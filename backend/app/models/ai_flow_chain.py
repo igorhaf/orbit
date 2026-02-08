@@ -2,6 +2,7 @@
 AIFlowChain Model
 Stores per-usage_type ordered fallback chains of AI model IDs.
 PROMPT #122 - AI Flow: Visual Fallback Chain Configuration
+PROMPT #204 - Utility Nodes (Cache, RAG, Transformer, Router, Retry, Validator, Cost Guard, Rate Limiter)
 """
 
 from datetime import datetime
@@ -19,6 +20,8 @@ class AIFlowChain(Base):
 
     Only ONE chain per usage_type (unique constraint).
     The chain field is a JSON array of AI Model UUIDs in fallback order.
+    The utility_nodes field stores configuration for non-model nodes
+    (Cache, RAG Context, Prompt Transformer, Router, Retry, Validator, Cost Guard, Rate Limiter).
     """
 
     __tablename__ = "ai_flow_chains"
@@ -37,6 +40,7 @@ class AIFlowChain(Base):
     )
     chain = Column(JSON, nullable=False, default=list)
     node_positions = Column(JSON, nullable=True, default=None)
+    utility_nodes = Column(JSON, nullable=True, default=None)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(

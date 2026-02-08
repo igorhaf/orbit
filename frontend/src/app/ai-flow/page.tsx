@@ -52,6 +52,9 @@ import type {
   AIFlowOptimizeChainResponse,
   AIFlowOptimizeModelScore,
   AIFlowChainTemplate,
+  AIFlowUtilityNode,
+  AIFlowUtilityNodeType,
+  UtilityNodeType,
 } from '@/lib/types';
 
 // ---------------------------------------------------------------------------
@@ -83,6 +86,92 @@ const PROVIDER_BG: Record<string, string> = {
   ollama: 'bg-orange-50 border-orange-200',
   cohere: 'bg-rose-50 border-rose-200',
 };
+
+// ---------------------------------------------------------------------------
+// PROMPT #204 - Utility Node Colors & Icons
+// ---------------------------------------------------------------------------
+
+const UTILITY_NODE_COLORS: Record<string, string> = {
+  cache: '#8b5cf6',
+  rag_context: '#06b6d4',
+  prompt_transformer: '#f59e0b',
+  router: '#10b981',
+  retry: '#3b82f6',
+  validator: '#22c55e',
+  cost_guard: '#ef4444',
+  rate_limiter: '#ec4899',
+};
+
+const UTILITY_NODE_BG: Record<string, string> = {
+  cache: 'bg-violet-50 border-violet-200',
+  rag_context: 'bg-cyan-50 border-cyan-200',
+  prompt_transformer: 'bg-amber-50 border-amber-200',
+  router: 'bg-emerald-50 border-emerald-200',
+  retry: 'bg-blue-50 border-blue-200',
+  validator: 'bg-green-50 border-green-200',
+  cost_guard: 'bg-red-50 border-red-200',
+  rate_limiter: 'bg-pink-50 border-pink-200',
+};
+
+function UtilityNodeIcon({ type, size = 'w-5 h-5' }: { type: string; size?: string }) {
+  const color = UTILITY_NODE_COLORS[type] || '#6b7280';
+  switch (type) {
+    case 'cache':
+      return (
+        <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
+        </svg>
+      );
+    case 'rag_context':
+      return (
+        <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+      );
+    case 'prompt_transformer':
+      return (
+        <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      );
+    case 'router':
+      return (
+        <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+        </svg>
+      );
+    case 'retry':
+      return (
+        <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      );
+    case 'validator':
+      return (
+        <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      );
+    case 'cost_guard':
+      return (
+        <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+        </svg>
+      );
+    case 'rate_limiter':
+      return (
+        <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      );
+    default:
+      return (
+        <svg className={size} style={{ color: '#6b7280' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+        </svg>
+      );
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Provider Icon
@@ -312,7 +401,269 @@ function ModelNode({ data }: { data: any }) {
   );
 }
 
-const nodeTypes = { modelNode: ModelNode };
+// ---------------------------------------------------------------------------
+// PROMPT #204 - Utility Node Components
+// ---------------------------------------------------------------------------
+
+function CacheNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.cache;
+  return (
+    <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-violet-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="cache" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Cache'}</div>
+            <div className="text-xs text-violet-600">Redis Cache Check</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-violet-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">TTL: <span className="font-semibold text-gray-700">{data.config?.ttl_seconds || 86400}s</span></div>
+          <div className="text-[10px] text-gray-500">Level: <span className="font-semibold text-gray-700">{data.config?.cache_level || 'exact'}</span></div>
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-violet-500 transition-all" />
+    </div>
+  );
+}
+
+function RAGContextNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.rag_context;
+  return (
+    <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-cyan-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="rag_context" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'RAG Context'}</div>
+            <div className="text-xs text-cyan-600">Semantic Enrichment</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-cyan-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">Max Results: <span className="font-semibold text-gray-700">{data.config?.max_results || 5}</span></div>
+          <div className="text-[10px] text-gray-500">Threshold: <span className="font-semibold text-gray-700">{data.config?.similarity_threshold || 0.7}</span></div>
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-cyan-500 transition-all" />
+    </div>
+  );
+}
+
+function PromptTransformerNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.prompt_transformer;
+  return (
+    <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-amber-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="prompt_transformer" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Transformer'}</div>
+            <div className="text-xs text-amber-600">Prompt Transform</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-amber-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">Mode: <span className="font-semibold text-gray-700">{data.config?.transformation || 'compress'}</span></div>
+          <div className="text-[10px] text-gray-500">Max Tokens: <span className="font-semibold text-gray-700">{data.config?.max_tokens || 4000}</span></div>
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-amber-500 transition-all" />
+    </div>
+  );
+}
+
+function RouterNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.router;
+  return (
+    <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-emerald-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="router" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Router'}</div>
+            <div className="text-xs text-emerald-600">Conditional Routing</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">Condition: <span className="font-semibold text-gray-700">{data.config?.condition || 'complexity'}</span></div>
+          <div className="text-[10px] text-gray-500">Threshold: <span className="font-semibold text-gray-700">{data.config?.threshold || 'medium'}</span></div>
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-emerald-500 transition-all" />
+    </div>
+  );
+}
+
+function RetryNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.retry;
+  return (
+    <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="retry" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Retry'}</div>
+            <div className="text-xs text-blue-600">Retry with Backoff</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-blue-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">Max Retries: <span className="font-semibold text-gray-700">{data.config?.max_retries || 3}</span></div>
+          <div className="text-[10px] text-gray-500">Base: <span className="font-semibold text-gray-700">{data.config?.backoff_base_ms || 1000}ms</span></div>
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 transition-all" />
+    </div>
+  );
+}
+
+function ValidatorNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.validator;
+  return (
+    <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-green-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="validator" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Validator'}</div>
+            <div className="text-xs text-green-600">Output Validation</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-green-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">Type: <span className="font-semibold text-gray-700">{data.config?.validation_type || 'json'}</span></div>
+          <div className="text-[10px] text-gray-500">Retry: <span className="font-semibold text-gray-700">{data.config?.retry_on_fail !== false ? 'Yes' : 'No'}</span></div>
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-green-500 transition-all" />
+    </div>
+  );
+}
+
+function CostGuardNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.cost_guard;
+  return (
+    <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-red-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="cost_guard" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Cost Guard'}</div>
+            <div className="text-xs text-red-600">Budget Limiter</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-red-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">Per Call: <span className="font-semibold text-gray-700">${data.config?.max_cost_per_call || 0.10}</span></div>
+          <div className="text-[10px] text-gray-500">Daily: <span className="font-semibold text-gray-700">${data.config?.daily_budget || 10.0}</span></div>
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-red-500 transition-all" />
+    </div>
+  );
+}
+
+function RateLimiterNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.rate_limiter;
+  return (
+    <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-pink-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="rate_limiter" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Rate Limiter'}</div>
+            <div className="text-xs text-pink-600">Request Throttling</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-pink-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">Limit: <span className="font-semibold text-gray-700">{data.config?.max_requests || 60} req</span></div>
+          <div className="text-[10px] text-gray-500">Window: <span className="font-semibold text-gray-700">{data.config?.window_seconds || 60}s</span></div>
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-pink-500 transition-all" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Node Type Registry
+// ---------------------------------------------------------------------------
+
+const nodeTypes = {
+  modelNode: ModelNode,
+  cacheNode: CacheNode,
+  ragContextNode: RAGContextNode,
+  promptTransformerNode: PromptTransformerNode,
+  routerNode: RouterNode,
+  retryNode: RetryNode,
+  validatorNode: ValidatorNode,
+  costGuardNode: CostGuardNode,
+  rateLimiterNode: RateLimiterNode,
+};
+
+// Map utility node type string to ReactFlow node type string
+const UTILITY_TYPE_TO_NODE_TYPE: Record<string, string> = {
+  cache: 'cacheNode',
+  rag_context: 'ragContextNode',
+  prompt_transformer: 'promptTransformerNode',
+  router: 'routerNode',
+  retry: 'retryNode',
+  validator: 'validatorNode',
+  cost_guard: 'costGuardNode',
+  rate_limiter: 'rateLimiterNode',
+};
 
 // ---------------------------------------------------------------------------
 // Build ReactFlow nodes & edges from chain
@@ -323,7 +674,9 @@ function buildFlowFromChain(
   savedPositions?: Record<string, { x: number; y: number }> | null,
   onRemove?: (modelId: string) => void,
   metricsMap?: Record<string, AIFlowModelMetrics>,
-  animationsMap?: Record<string, NodeAnimationState>
+  animationsMap?: Record<string, NodeAnimationState>,
+  utilityNodes?: AIFlowUtilityNode[],
+  onRemoveUtility?: (nodeId: string) => void,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -331,6 +684,8 @@ function buildFlowFromChain(
   const SPACING_X = 300;
   const START_X = 50;
   const Y = 150;
+  const UTILITY_Y_TOP = -20;
+  const UTILITY_Y_BOTTOM = 320;
 
   // Start node
   const startPos = savedPositions?.['start'] || { x: START_X, y: Y };
@@ -428,6 +783,70 @@ function buildFlowFromChain(
     markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' },
     animated: false,
   });
+
+  // PROMPT #204 - Utility nodes (positioned above/below the main chain)
+  if (utilityNodes && utilityNodes.length > 0) {
+    const preProcessTypes = ['cache', 'rag_context', 'prompt_transformer', 'router', 'rate_limiter'];
+    const postProcessTypes = ['retry', 'validator', 'cost_guard'];
+
+    let topIndex = 0;
+    let bottomIndex = 0;
+
+    utilityNodes.forEach((uNode) => {
+      const rfNodeType = UTILITY_TYPE_TO_NODE_TYPE[uNode.type];
+      if (!rfNodeType) return;
+
+      const isPre = preProcessTypes.includes(uNode.type);
+      let defaultPos: { x: number; y: number };
+      if (isPre) {
+        defaultPos = { x: START_X + 120 + topIndex * 250, y: UTILITY_Y_TOP };
+        topIndex++;
+      } else {
+        defaultPos = { x: START_X + 120 + bottomIndex * 250, y: UTILITY_Y_BOTTOM };
+        bottomIndex++;
+      }
+
+      const pos = savedPositions?.[uNode.id] || uNode.position || defaultPos;
+
+      nodes.push({
+        id: uNode.id,
+        type: rfNodeType,
+        data: {
+          ...uNode,
+          onRemove: onRemoveUtility ? () => onRemoveUtility(uNode.id) : undefined,
+        },
+        position: pos,
+      });
+
+      // Connect utility nodes: pre-process connects from start, post-process connects to error
+      const color = UTILITY_NODE_COLORS[uNode.type] || '#6b7280';
+      if (isPre) {
+        edges.push({
+          id: `edge-start-${uNode.id}`,
+          source: 'start',
+          target: uNode.id,
+          label: uNode.type.replace('_', ' '),
+          labelStyle: { fontSize: 9, fontWeight: 500 },
+          labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
+          style: { stroke: color, strokeWidth: 1.5, strokeDasharray: '4,4' },
+          markerEnd: { type: MarkerType.ArrowClosed, color },
+          animated: false,
+        });
+      } else {
+        edges.push({
+          id: `edge-${uNode.id}-error`,
+          source: uNode.id,
+          target: 'error',
+          label: uNode.type.replace('_', ' '),
+          labelStyle: { fontSize: 9, fontWeight: 500 },
+          labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
+          style: { stroke: color, strokeWidth: 1.5, strokeDasharray: '4,4' },
+          markerEnd: { type: MarkerType.ArrowClosed, color },
+          animated: false,
+        });
+      }
+    });
+  }
 
   return { nodes, edges };
 }
@@ -712,6 +1131,10 @@ export default function AIFlowPage() {
   const [templates, setTemplates] = useState<AIFlowChainTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(false);
 
+  // PROMPT #204 - Utility nodes state
+  const [workingUtilityNodes, setWorkingUtilityNodes] = useState<AIFlowUtilityNode[]>([]);
+  const [utilityNodeTypes, setUtilityNodeTypes] = useState<AIFlowUtilityNodeType[]>([]);
+
   // PROMPT #124 - WebSocket animations
   const nodeAnimations = useAIFlowWebSocket(selectedUsageType);
 
@@ -783,7 +1206,21 @@ export default function AIFlowPage() {
   // When selected usage_type or chains change, sync working chain from saved data
   useEffect(() => {
     setWorkingChain(currentChain?.chain || []);
+    setWorkingUtilityNodes(currentChain?.utility_nodes || []);
   }, [currentChain, selectedUsageType]);
+
+  // PROMPT #204 - Fetch utility node types catalog
+  useEffect(() => {
+    const fetchNodeTypes = async () => {
+      try {
+        const res = await aiFlowApi.utilityNodeTypes();
+        setUtilityNodeTypes(res?.node_types || []);
+      } catch {
+        setUtilityNodeTypes([]);
+      }
+    };
+    fetchNodeTypes();
+  }, []);
 
   // PROMPT #124 - Fetch metrics when working chain changes
   useEffect(() => {
@@ -855,6 +1292,14 @@ export default function AIFlowPage() {
     []
   );
 
+  // PROMPT #204 - Remove utility node
+  const handleRemoveUtilityNode = useCallback(
+    (nodeId: string) => {
+      setWorkingUtilityNodes((prev) => prev.filter((n) => n.id !== nodeId));
+    },
+    []
+  );
+
   useEffect(() => {
     const savedPositions = currentChain?.node_positions;
     const { nodes: n, edges: e } = buildFlowFromChain(
@@ -862,11 +1307,13 @@ export default function AIFlowPage() {
       savedPositions,
       handleRemoveFromChain,
       metricsMap,
-      nodeAnimations
+      nodeAnimations,
+      workingUtilityNodes,
+      handleRemoveUtilityNode,
     );
     setNodes(n);
     setEdges(e);
-  }, [workingChainModels, handleRemoveFromChain, setNodes, setEdges, currentChain?.node_positions, metricsMap, nodeAnimations]);
+  }, [workingChainModels, handleRemoveFromChain, handleRemoveUtilityNode, setNodes, setEdges, currentChain?.node_positions, metricsMap, nodeAnimations, workingUtilityNodes]);
 
   // Edge reconnection handlers
   const onReconnectStart = useCallback(() => {
@@ -919,6 +1366,20 @@ export default function AIFlowPage() {
     setWorkingChain((prev) => [...prev, modelId]);
   };
 
+  // PROMPT #204 - Add utility node
+  const handleAddUtilityNode = (nodeType: AIFlowUtilityNodeType) => {
+    const existingCount = workingUtilityNodes.filter((n) => n.type === nodeType.type).length;
+    const newNode: AIFlowUtilityNode = {
+      id: `${nodeType.type}-${Date.now()}`,
+      type: nodeType.type as UtilityNodeType,
+      label: existingCount > 0 ? `${nodeType.label} ${existingCount + 1}` : nodeType.label,
+      enabled: true,
+      config: { ...nodeType.default_config },
+      position: null,
+    };
+    setWorkingUtilityNodes((prev) => [...prev, newNode]);
+  };
+
   const handleMoveUp = (index: number) => {
     if (index <= 0) return;
     setWorkingChain((prev) => {
@@ -941,16 +1402,17 @@ export default function AIFlowPage() {
     setSaving(true);
     try {
       const nodePositions = getNodePositions();
-      if (workingChain.length === 0 && currentChain) {
+      if (workingChain.length === 0 && workingUtilityNodes.length === 0 && currentChain) {
         // Chain was emptied — delete it
         await aiFlowApi.deleteChain(selectedUsageType);
         showSuccess('Flow chain deleted');
-      } else if (workingChain.length > 0) {
+      } else if (workingChain.length > 0 || workingUtilityNodes.length > 0) {
         await aiFlowApi.upsertChain(selectedUsageType, {
           chain: workingChain,
           node_positions: nodePositions,
+          utility_nodes: workingUtilityNodes.length > 0 ? workingUtilityNodes : null,
           is_active: true,
-        });
+        } as any);
         showSuccess('Flow saved');
       }
       await loadData();
@@ -988,7 +1450,9 @@ export default function AIFlowPage() {
   // Check if working chain differs from saved chain
   const savedChainStr = JSON.stringify(currentChain?.chain || []);
   const workingChainStr = JSON.stringify(workingChain);
-  const hasUnsavedChanges = savedChainStr !== workingChainStr;
+  const savedUtilityStr = JSON.stringify(currentChain?.utility_nodes || []);
+  const workingUtilityStr = JSON.stringify(workingUtilityNodes);
+  const hasUnsavedChanges = savedChainStr !== workingChainStr || savedUtilityStr !== workingUtilityStr;
 
   return (
     <Layout>
@@ -1010,9 +1474,10 @@ export default function AIFlowPage() {
               ))}
             </select>
 
-            {workingChain.length > 0 && (
+            {(workingChain.length > 0 || workingUtilityNodes.length > 0) && (
               <span className="text-xs text-gray-500">
-                {workingChain.length} model{workingChain.length !== 1 ? 's' : ''} in chain
+                {workingChain.length} model{workingChain.length !== 1 ? 's' : ''}
+                {workingUtilityNodes.length > 0 && ` + ${workingUtilityNodes.length} node${workingUtilityNodes.length !== 1 ? 's' : ''}`}
               </span>
             )}
             {hasUnsavedChanges && (
@@ -1055,7 +1520,7 @@ export default function AIFlowPage() {
         <div className="flex gap-3 flex-1 min-h-0">
           {/* ReactFlow Canvas */}
           <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
-            {workingChain.length > 0 ? (
+            {(workingChain.length > 0 || workingUtilityNodes.length > 0) ? (
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -1192,7 +1657,7 @@ export default function AIFlowPage() {
             </div>
 
             {/* Available models */}
-            <div className="flex-1 overflow-y-auto p-3">
+            <div className="border-b p-3">
               <h3 className="text-sm font-semibold text-gray-900 mb-2">Available Models</h3>
               {availableModels.length === 0 ? (
                 <p className="text-xs text-gray-400 italic">All active models are in the chain</p>
@@ -1220,6 +1685,47 @@ export default function AIFlowPage() {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* PROMPT #204 - Utility Nodes */}
+            <div className="flex-1 overflow-y-auto p-3">
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Flow Nodes</h3>
+              {workingUtilityNodes.length > 0 && (
+                <div className="mb-3 space-y-1">
+                  <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Active</div>
+                  {workingUtilityNodes.map((uNode) => (
+                    <div key={uNode.id} className={`flex items-center gap-2 p-2 rounded-md border text-xs ${UTILITY_NODE_BG[uNode.type] || 'bg-gray-50 border-gray-200'}`}>
+                      <UtilityNodeIcon type={uNode.type} size="w-4 h-4" />
+                      <span className="flex-1 truncate font-medium">{uNode.label}</span>
+                      <button
+                        onClick={() => handleRemoveUtilityNode(uNode.id)}
+                        className="p-0.5 text-red-400 hover:text-red-600"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Add Node</div>
+              <div className="space-y-1">
+                {utilityNodeTypes.map((nodeType) => (
+                  <button
+                    key={nodeType.type}
+                    onClick={() => handleAddUtilityNode(nodeType)}
+                    className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors text-left"
+                  >
+                    <UtilityNodeIcon type={nodeType.type} size="w-4 h-4" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-gray-900">{nodeType.label}</div>
+                      <div className="text-[10px] text-gray-500 truncate">{nodeType.description}</div>
+                    </div>
+                    <span className="text-xs text-gray-400">+</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -1250,6 +1756,7 @@ export default function AIFlowPage() {
           </svg>
           <span>
             Models are tried in order. If one fails, the next is used automatically.
+            Add utility nodes (Cache, RAG, Validator, etc.) for pre/post-processing.
             Metrics refresh every 30s.
             {' '}<a href="/ai-models" className="underline font-medium">Manage models</a>
           </span>

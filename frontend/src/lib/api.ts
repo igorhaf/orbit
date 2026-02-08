@@ -686,6 +686,10 @@ export const aiFlowApi = {
 
   chainTemplates: (usageType: string) =>
     request<any>(`/api/v1/ai-flow/chain-templates/${usageType}`),
+
+  // PROMPT #204 - Utility Node Types
+  utilityNodeTypes: () =>
+    request<any>('/api/v1/ai-flow/utility-node-types'),
 };
 
 // AI Executions API (PROMPT #54 - AI Execution Logging)

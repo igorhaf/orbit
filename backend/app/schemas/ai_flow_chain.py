@@ -1,6 +1,7 @@
 """
 AIFlowChain Pydantic Schemas
 PROMPT #122 - AI Flow: Visual Fallback Chain Configuration
+PROMPT #204 - Utility Nodes (Cache, RAG, Transformer, Router, Retry, Validator, Cost Guard, Rate Limiter)
 """
 
 from datetime import datetime
@@ -11,6 +12,43 @@ from pydantic import BaseModel, Field
 from app.models.ai_model import AIModelUsageType
 
 
+# ============================================================================
+# PROMPT #204 - Utility Node Types
+# ============================================================================
+
+UTILITY_NODE_TYPES = [
+    "cache",
+    "rag_context",
+    "prompt_transformer",
+    "router",
+    "retry",
+    "validator",
+    "cost_guard",
+    "rate_limiter",
+]
+
+
+class UtilityNodeConfig(BaseModel):
+    """Configuration for a single utility node in the flow."""
+    id: str = Field(description="Unique node ID (e.g. 'cache-1', 'retry-2')")
+    type: str = Field(description="Node type: cache, rag_context, prompt_transformer, router, retry, validator, cost_guard, rate_limiter")
+    label: str = Field(default="", description="Custom label for the node")
+    enabled: bool = Field(default=True)
+    config: Dict[str, Any] = Field(default_factory=dict, description="Type-specific configuration")
+    position: Optional[Dict[str, float]] = Field(default=None, description="{x, y} position on canvas")
+
+
+class UtilityNodeResponse(UtilityNodeConfig):
+    """Response model for utility node with metadata."""
+    description: str = ""
+    icon: str = ""
+    color: str = ""
+
+
+# ============================================================================
+# Chain Schemas
+# ============================================================================
+
 class AIFlowChainBase(BaseModel):
     chain: List[str] = Field(
         default_factory=list,
@@ -19,6 +57,10 @@ class AIFlowChainBase(BaseModel):
     node_positions: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Saved node positions for the flow diagram {nodeId: {x, y}}",
+    )
+    utility_nodes: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description="List of utility node configurations (Cache, RAG, Transformer, etc.)",
     )
     is_active: bool = Field(default=True)
 
@@ -30,6 +72,7 @@ class AIFlowChainCreate(AIFlowChainBase):
 class AIFlowChainUpdate(BaseModel):
     chain: Optional[List[str]] = None
     node_positions: Optional[Dict[str, Any]] = None
+    utility_nodes: Optional[List[Dict[str, Any]]] = None
     is_active: Optional[bool] = None
 
 

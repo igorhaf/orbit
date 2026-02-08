@@ -638,6 +638,7 @@ export interface AIFlowChain {
   usage_type: string;
   chain: string[];
   node_positions?: Record<string, { x: number; y: number }> | null;
+  utility_nodes?: AIFlowUtilityNode[] | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -740,6 +741,27 @@ export interface AIFlowChainTemplatesResponse {
 export interface AIFlowWebSocketEvent {
   type: 'chain_attempt_start' | 'chain_attempt_success' | 'chain_attempt_failed' | 'chain_exhausted';
   data: Record<string, any>;
+}
+
+// PROMPT #204 - Utility Node Types
+export type UtilityNodeType = 'cache' | 'rag_context' | 'prompt_transformer' | 'router' | 'retry' | 'validator' | 'cost_guard' | 'rate_limiter';
+
+export interface AIFlowUtilityNode {
+  id: string;
+  type: UtilityNodeType;
+  label: string;
+  enabled: boolean;
+  config: Record<string, any>;
+  position?: { x: number; y: number } | null;
+}
+
+export interface AIFlowUtilityNodeType {
+  type: UtilityNodeType;
+  label: string;
+  description: string;
+  icon: string;
+  color: string;
+  default_config: Record<string, any>;
 }
 
 // ============================================================================
