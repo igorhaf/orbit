@@ -20,6 +20,7 @@ from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Log
 from app.models.prompt import Prompt  # PROMPT #58 - Prompt Audit Logging
 from app.models.task import Task, ItemType, PriorityLevel  # JIRA Transformation - Multi-dimensional model selection
 from app.services.console_logger import get_console_logger  # PROMPT #168 - Real-time Console Logs
+from app.services.utility_node_executor import UtilityNodeExecutor  # PROMPT #205 - Utility Node Execution
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,14 @@ class AIOrchestrator:
 
         # PROMPT #152 - Initialize rate limiter
         self.rate_limiter = self._initialize_rate_limiter()
+
+        # PROMPT #205 - Initialize utility node executor
+        self.utility_executor = UtilityNodeExecutor(
+            redis_client=self.rate_limiter.redis if self.rate_limiter else None,
+            rag_service=self.rag_service,
+            db=self.db,
+            cache_service=self.cache_service,
+        )
 
     def _initialize_cache(self):
         """
@@ -288,6 +297,21 @@ class AIOrchestrator:
                 )
 
         return model_configs if model_configs else None
+
+    def _get_chain_utility_nodes(self, usage_type: UsageType) -> List[Dict]:
+        """
+        PROMPT #205 - Get utility nodes from AIFlowChain for a usage_type.
+        Returns empty list if no chain or no utility nodes configured.
+        """
+        chain = self.db.query(AIFlowChain).filter(
+            AIFlowChain.usage_type == usage_type,
+            AIFlowChain.is_active == True
+        ).first()
+
+        if not chain or not chain.utility_nodes:
+            return []
+
+        return [n for n in chain.utility_nodes if n.get("enabled", True)]
 
     def choose_model(self, usage_type: UsageType) -> Dict[str, any]:
         """
@@ -582,6 +606,38 @@ class AIOrchestrator:
             if general_chain_models and len(general_chain_models) > 0:
                 chains_to_try.append(("general", "general", general_chain_models))
 
+        # PROMPT #205 - Load utility nodes for this usage_type
+        _utility_nodes = self._get_chain_utility_nodes(usage_type)
+        _utility_pre_done = False
+        _effective_messages = list(messages)
+        _effective_system_prompt = system_prompt
+
+        if _utility_nodes:
+            logger.info(f"🔧 Utility nodes loaded: {[n['type'] for n in _utility_nodes]}")
+            _util_context = {
+                "usage_type": usage_type,
+                "project_id": str(project_id) if project_id else None,
+            }
+            early_result, _effective_messages, _effective_system_prompt = (
+                self.utility_executor.pre_process(
+                    _utility_nodes, messages, system_prompt, _util_context
+                )
+            )
+            _utility_pre_done = True
+
+            if early_result is not None:
+                logger.info(f"⚡ Utility node short-circuit: {early_result.get('model', 'unknown')}")
+                return early_result
+
+            # Handle rate_limit_wait from utility rate limiter node
+            if _util_context.get("_rate_limit_wait"):
+                wait_time = _util_context["_rate_limit_wait"]
+                logger.info(f"⏳ Utility Rate Limiter: waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+
+        # PROMPT #205 - Get retry config from utility nodes
+        _retry_config = UtilityNodeExecutor.get_retry_config(_utility_nodes) if _utility_nodes else None
+
         if chains_to_try:
             last_error = None
             for chain_source, chain_usage, chain_model_list in chains_to_try:
@@ -610,8 +666,8 @@ class AIOrchestrator:
                         }))
                         result = await self._execute_with_config(
                             model_config=chain_model_config,
-                            messages=messages,
-                            system_prompt=system_prompt,
+                            messages=_effective_messages,
+                            system_prompt=_effective_system_prompt,
                             max_tokens=max_tokens,
                         )
                         result["chain_position"] = chain_idx + 1
@@ -696,9 +752,94 @@ class AIOrchestrator:
                                 logger.error(f"⚠️  Failed to log prompt (chain path): {prompt_error}")
                                 self.db.rollback()
 
+                        # PROMPT #205 - Post-process with utility nodes (chain path)
+                        if _utility_nodes and _utility_pre_done:
+                            _util_context_post = {
+                                "usage_type": usage_type,
+                                "model_name": chain_model_config.get("model", ""),
+                                "provider": chain_model_config.get("provider", ""),
+                                "db_model_id": chain_model_config.get("db_model_id", ""),
+                                "db_model_name": chain_model_config.get("db_model_name", ""),
+                            }
+                            result = self.utility_executor.post_process(
+                                _utility_nodes, result, _effective_messages,
+                                _effective_system_prompt, _util_context_post
+                            )
+                            # Handle validator retry
+                            if result.get("retry_needed") and _retry_config:
+                                max_retries = _retry_config["max_retries"]
+                                backoff_base = _retry_config["backoff_base_ms"] / 1000.0
+                                backoff_mult = _retry_config["backoff_multiplier"]
+                                for retry_attempt in range(max_retries):
+                                    wait = backoff_base * (backoff_mult ** retry_attempt)
+                                    logger.info(
+                                        f"🔄 Retry Node: attempt {retry_attempt+1}/{max_retries} "
+                                        f"(waiting {wait:.1f}s, reason: {result.get('validation_error', 'unknown')})"
+                                    )
+                                    await asyncio.sleep(wait)
+                                    result = await self._execute_with_config(
+                                        model_config=chain_model_config,
+                                        messages=_effective_messages,
+                                        system_prompt=_effective_system_prompt,
+                                        max_tokens=max_tokens,
+                                    )
+                                    result = self.utility_executor.post_process(
+                                        _utility_nodes, result, _effective_messages,
+                                        _effective_system_prompt, _util_context_post
+                                    )
+                                    if not result.get("retry_needed"):
+                                        logger.info(f"✅ Retry Node: success on attempt {retry_attempt+1}")
+                                        break
+                                else:
+                                    logger.warning(f"⚠️ Retry Node: all {max_retries} retries exhausted")
+
                         return result
                     except Exception as e:
                         last_error = e
+                        # PROMPT #205 - Handle retry on transient errors (chain path)
+                        if _retry_config:
+                            error_str = str(e).lower()
+                            retry_on = _retry_config.get("retry_on", [])
+                            should_retry = any(
+                                trigger in error_str
+                                for trigger in retry_on
+                            )
+                            if should_retry:
+                                max_retries = _retry_config["max_retries"]
+                                backoff_base = _retry_config["backoff_base_ms"] / 1000.0
+                                backoff_mult = _retry_config["backoff_multiplier"]
+                                for retry_attempt in range(max_retries):
+                                    wait = backoff_base * (backoff_mult ** retry_attempt)
+                                    logger.info(
+                                        f"🔄 Retry Node (error): attempt {retry_attempt+1}/{max_retries} "
+                                        f"(waiting {wait:.1f}s, error: {str(e)[:100]})"
+                                    )
+                                    await asyncio.sleep(wait)
+                                    try:
+                                        result = await self._execute_with_config(
+                                            model_config=chain_model_config,
+                                            messages=_effective_messages,
+                                            system_prompt=_effective_system_prompt,
+                                            max_tokens=max_tokens,
+                                        )
+                                        logger.info(f"✅ Retry Node (error): success on attempt {retry_attempt+1}")
+                                        # Post-process the retried result
+                                        if _utility_nodes and _utility_pre_done:
+                                            _util_context_post = {
+                                                "usage_type": usage_type,
+                                                "model_name": chain_model_config.get("model", ""),
+                                                "provider": chain_model_config.get("provider", ""),
+                                            }
+                                            result = self.utility_executor.post_process(
+                                                _utility_nodes, result, _effective_messages,
+                                                _effective_system_prompt, _util_context_post
+                                            )
+                                        return result
+                                    except Exception as retry_err:
+                                        logger.warning(f"🔄 Retry Node (error): attempt {retry_attempt+1} failed: {retry_err}")
+                                        last_error = retry_err
+                                        continue
+
                         logger.warning(
                             f"🔗 Chain fallback [{chain_source}]: {chain_model_config['db_model_name']} failed: {e}. "
                             f"{'Trying next model...' if chain_idx < len(chain_model_list)-1 else 'No more models in this chain.'}"
@@ -758,6 +899,29 @@ class AIOrchestrator:
         tokens_limit = max_tokens if max_tokens is not None else model_config["max_tokens"]
         temperature = model_config["temperature"]
 
+        # PROMPT #205 - If utility pre-process wasn't done yet (no chain path), do it now
+        if _utility_nodes and not _utility_pre_done:
+            _util_context = {
+                "usage_type": usage_type,
+                "project_id": str(project_id) if project_id else None,
+                "model_name": model_name,
+                "provider": provider,
+                "temperature": temperature,
+            }
+            early_result, _effective_messages, _effective_system_prompt = (
+                self.utility_executor.pre_process(
+                    _utility_nodes, messages, system_prompt, _util_context
+                )
+            )
+            _utility_pre_done = True
+            if early_result is not None:
+                logger.info(f"⚡ Utility node short-circuit (no-chain): {early_result.get('model', 'unknown')}")
+                return early_result
+            if _util_context.get("_rate_limit_wait"):
+                wait_time = _util_context["_rate_limit_wait"]
+                logger.info(f"⏳ Utility Rate Limiter (no-chain): waiting {wait_time:.1f}s")
+                await asyncio.sleep(wait_time)
+
         logger.info(f"📤 Executing with config: max_tokens={tokens_limit}, temperature={temperature}")
 
         # PROMPT #152 - Rate Limiting Check
@@ -796,11 +960,11 @@ class AIOrchestrator:
             "rag_retrieval_time_ms": None
         }
 
-        if enable_rag and self.rag_service and messages:
+        if enable_rag and self.rag_service and _effective_messages:
             try:
                 # Extract query from last user message
                 query = None
-                for msg in reversed(messages):
+                for msg in reversed(_effective_messages):
                     if msg.get("role") == "user":
                         query = msg.get("content", "")
                         break
@@ -842,7 +1006,7 @@ class AIOrchestrator:
                             "role": "user",
                             "content": f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]"
                         }
-                        messages.insert(-1, rag_message)
+                        _effective_messages.insert(-1, rag_message)
                         rag_context_injected = True
 
                         logger.info(
@@ -858,8 +1022,8 @@ class AIOrchestrator:
         if self.cache_service:
             # Prepare cache input (messages converted to single prompt string for caching)
             cache_input = {
-                "prompt": json.dumps(messages),  # Serialize messages for consistent hashing
-                "system_prompt": system_prompt or "",
+                "prompt": json.dumps(_effective_messages),  # Serialize messages for consistent hashing
+                "system_prompt": _effective_system_prompt or "",
                 "usage_type": usage_type,
                 "temperature": temperature,
                 "model": model_name,
@@ -910,7 +1074,7 @@ class AIOrchestrator:
         console = get_console_logger()
         # Extract prompt preview for logging
         prompt_preview = ""
-        for msg in messages:
+        for msg in _effective_messages:
             if msg.get("role") == "user":
                 prompt_preview = msg.get("content", "")[:500]
                 break
@@ -920,32 +1084,32 @@ class AIOrchestrator:
             model=f"{provider}/{model_name}",
             usage_type=usage_type,
             prompt_preview=prompt_preview,
-            full_prompt=json.dumps(messages, ensure_ascii=False)[:5000],
+            full_prompt=json.dumps(_effective_messages, ensure_ascii=False)[:5000],
             project_id=project_id if project_id else None
         ))
 
         try:
             if provider == "anthropic":
                 result = await self._execute_anthropic(
-                    model_name, messages, system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
                 )
             elif provider == "openai":
                 result = await self._execute_openai(
-                    model_name, messages, system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
                 )
             elif provider == "google":
                 result = await self._execute_google(
-                    model_name, messages, system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
                 )
             elif provider == "ollama":
                 # PROMPT #106 - Ollama local LLM integration
                 result = await self._execute_ollama(
-                    model_name, messages, system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
                 )
             elif provider == "cohere":
                 # PROMPT #122 - Cohere AI integration
                 result = await self._execute_cohere(
-                    model_name, messages, system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
                 )
             else:
                 raise ValueError(f"Unknown provider: {provider}")
@@ -1058,8 +1222,8 @@ class AIOrchestrator:
                     cost = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000)
 
                     cache_input = {
-                        "prompt": json.dumps(messages),
-                        "system_prompt": system_prompt or "",
+                        "prompt": json.dumps(_effective_messages),
+                        "system_prompt": _effective_system_prompt or "",
                         "usage_type": usage_type,
                         "temperature": temperature,
                         "model": model_name,
@@ -1078,6 +1242,62 @@ class AIOrchestrator:
                 except Exception as cache_error:
                     logger.error(f"⚠️  Failed to cache result: {cache_error}")
                     # Don't fail request if caching fails
+
+            # PROMPT #205 - Post-process with utility nodes (non-chain path)
+            if _utility_nodes and _utility_pre_done:
+                _util_context_post = {
+                    "usage_type": usage_type,
+                    "model_name": model_name,
+                    "provider": provider,
+                    "db_model_id": model_config.get("db_model_id", ""),
+                    "db_model_name": model_config.get("db_model_name", ""),
+                    "temperature": temperature,
+                }
+                result = self.utility_executor.post_process(
+                    _utility_nodes, result, _effective_messages,
+                    _effective_system_prompt, _util_context_post
+                )
+                # Handle validator retry (non-chain path)
+                if result.get("retry_needed") and _retry_config:
+                    max_retries = _retry_config["max_retries"]
+                    backoff_base = _retry_config["backoff_base_ms"] / 1000.0
+                    backoff_mult = _retry_config["backoff_multiplier"]
+                    for retry_attempt in range(max_retries):
+                        wait = backoff_base * (backoff_mult ** retry_attempt)
+                        logger.info(
+                            f"🔄 Retry Node (no-chain): attempt {retry_attempt+1}/{max_retries} "
+                            f"(waiting {wait:.1f}s, reason: {result.get('validation_error', 'unknown')})"
+                        )
+                        await asyncio.sleep(wait)
+                        if provider == "anthropic":
+                            result = await self._execute_anthropic(
+                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                            )
+                        elif provider == "openai":
+                            result = await self._execute_openai(
+                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                            )
+                        elif provider == "google":
+                            result = await self._execute_google(
+                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                            )
+                        elif provider == "ollama":
+                            result = await self._execute_ollama(
+                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                            )
+                        elif provider == "cohere":
+                            result = await self._execute_cohere(
+                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                            )
+                        result = self.utility_executor.post_process(
+                            _utility_nodes, result, _effective_messages,
+                            _effective_system_prompt, _util_context_post
+                        )
+                        if not result.get("retry_needed"):
+                            logger.info(f"✅ Retry Node (no-chain): success on attempt {retry_attempt+1}")
+                            break
+                    else:
+                        logger.warning(f"⚠️ Retry Node (no-chain): all {max_retries} retries exhausted")
 
             return result
 

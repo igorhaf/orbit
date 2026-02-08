@@ -1656,75 +1656,78 @@ export default function AIFlowPage() {
               )}
             </div>
 
-            {/* Available models */}
-            <div className="border-b p-3">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Available Models</h3>
-              {availableModels.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">All active models are in the chain</p>
-              ) : (
-                <div className="space-y-1.5">
-                  {availableModels.map((model) => (
-                    <div
-                      key={model.id}
-                      className="flex items-center gap-2 p-2 rounded-md hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors"
-                    >
-                      <ProviderIcon provider={model.provider} size="w-4 h-4" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-medium text-gray-900 truncate">{model.name}</div>
-                        <div className="text-[10px] text-gray-500 capitalize">{model.provider}</div>
+            {/* Scrollable area: Available models + Flow Nodes */}
+            <div className="flex-1 overflow-y-auto">
+              {/* Available models */}
+              <div className="border-b p-3">
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">Available Models</h3>
+                {availableModels.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">All active models are in the chain</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {availableModels.map((model) => (
+                      <div
+                        key={model.id}
+                        className="flex items-center gap-2 p-2 rounded-md hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors"
+                      >
+                        <ProviderIcon provider={model.provider} size="w-4 h-4" />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium text-gray-900 truncate">{model.name}</div>
+                          <div className="text-[10px] text-gray-500 capitalize">{model.provider}</div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-xs px-2 py-1 h-auto"
+                          onClick={() => handleAddToChain(model.id)}
+                        >
+                          + Add
+                        </Button>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-xs px-2 py-1 h-auto"
-                        onClick={() => handleAddToChain(model.id)}
-                      >
-                        + Add
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-            {/* PROMPT #204 - Utility Nodes */}
-            <div className="flex-1 overflow-y-auto p-3">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Flow Nodes</h3>
-              {workingUtilityNodes.length > 0 && (
-                <div className="mb-3 space-y-1">
-                  <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Active</div>
-                  {workingUtilityNodes.map((uNode) => (
-                    <div key={uNode.id} className={`flex items-center gap-2 p-2 rounded-md border text-xs ${UTILITY_NODE_BG[uNode.type] || 'bg-gray-50 border-gray-200'}`}>
-                      <UtilityNodeIcon type={uNode.type} size="w-4 h-4" />
-                      <span className="flex-1 truncate font-medium">{uNode.label}</span>
-                      <button
-                        onClick={() => handleRemoveUtilityNode(uNode.id)}
-                        className="p-0.5 text-red-400 hover:text-red-600"
-                      >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                      </button>
-                    </div>
+              {/* PROMPT #204 - Utility Nodes */}
+              <div className="p-3">
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">Flow Nodes</h3>
+                {workingUtilityNodes.length > 0 && (
+                  <div className="mb-3 space-y-1">
+                    <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Active</div>
+                    {workingUtilityNodes.map((uNode) => (
+                      <div key={uNode.id} className={`flex items-center gap-2 p-2 rounded-md border text-xs ${UTILITY_NODE_BG[uNode.type] || 'bg-gray-50 border-gray-200'}`}>
+                        <UtilityNodeIcon type={uNode.type} size="w-4 h-4" />
+                        <span className="flex-1 truncate font-medium">{uNode.label}</span>
+                        <button
+                          onClick={() => handleRemoveUtilityNode(uNode.id)}
+                          className="p-0.5 text-red-400 hover:text-red-600"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Add Node</div>
+                <div className="space-y-1">
+                  {utilityNodeTypes.map((nodeType) => (
+                    <button
+                      key={nodeType.type}
+                      onClick={() => handleAddUtilityNode(nodeType)}
+                      className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors text-left"
+                    >
+                      <UtilityNodeIcon type={nodeType.type} size="w-4 h-4" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-gray-900">{nodeType.label}</div>
+                        <div className="text-[10px] text-gray-500 truncate">{nodeType.description}</div>
+                      </div>
+                      <span className="text-xs text-gray-400">+</span>
+                    </button>
                   ))}
                 </div>
-              )}
-              <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Add Node</div>
-              <div className="space-y-1">
-                {utilityNodeTypes.map((nodeType) => (
-                  <button
-                    key={nodeType.type}
-                    onClick={() => handleAddUtilityNode(nodeType)}
-                    className="w-full flex items-center gap-2 p-2 rounded-md hover:bg-gray-50 border border-transparent hover:border-gray-200 transition-colors text-left"
-                  >
-                    <UtilityNodeIcon type={nodeType.type} size="w-4 h-4" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-gray-900">{nodeType.label}</div>
-                      <div className="text-[10px] text-gray-500 truncate">{nodeType.description}</div>
-                    </div>
-                    <span className="text-xs text-gray-400">+</span>
-                  </button>
-                ))}
               </div>
             </div>
           </div>
