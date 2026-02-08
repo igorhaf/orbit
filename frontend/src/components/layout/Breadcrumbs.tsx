@@ -43,7 +43,6 @@ export const Breadcrumbs: React.FC = () => {
     'prompts': 'Prompts',
     'projects': 'Projects',
     'interviews': 'Interviews',
-    'commits': 'Commits',
     'settings': 'Settings',
     'debug': 'Debug',
     'new': 'New',
@@ -70,8 +69,6 @@ export const Breadcrumbs: React.FC = () => {
         return 'Prompt';
       case 'ai-models':
         return 'Model';
-      case 'commits':
-        return 'Commit';
       default:
         return 'Details';
     }
