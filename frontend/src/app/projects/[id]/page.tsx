@@ -17,11 +17,12 @@ import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 // PROMPT #131 - Removed InterviewTree, interviews now shown below backlog items
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
 import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
+import { ProjectSpecsList } from '@/components/specs';  // PROMPT #197 - Specs tab
 import { projectsApi, tasksApi, ragApi, knowledgeApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
 
-type Tab = 'kanban' | 'overview' | 'backlog' | 'rag' | 'analytics' | 'commits';  // PROMPT #131 - Removed interviews tab
+type Tab = 'kanban' | 'overview' | 'backlog' | 'rag' | 'analytics' | 'commits' | 'specs';  // PROMPT #197 - Added specs tab
 type OverviewSubTab = 'description' | 'context' | 'semantic' | 'statistics';
 
 export default function ProjectDetailsPage() {
@@ -489,6 +490,7 @@ export default function ProjectDetailsPage() {
               { id: 'backlog', label: 'Backlog' },
               { id: 'kanban', label: 'Kanban Board' },
               { id: 'commits', label: 'Commits' },  // PROMPT #113 - Git Integration
+              { id: 'specs', label: 'Specs' },  // PROMPT #197 - Specs tab
               { id: 'rag', label: 'RAG Analytics' },
               { id: 'analytics', label: 'Blocking Analytics' },
             ].map((tab) => (
@@ -602,7 +604,12 @@ export default function ProjectDetailsPage() {
           </div>
         )}
 
-        {/* PROMPT #131 - Removed Interviews tab, now integrated into BacklogListView */}
+        {/* Specs Tab (PROMPT #197) */}
+        {activeTab === 'specs' && (
+          <div>
+            <ProjectSpecsList projectId={projectId} />
+          </div>
+        )}
 
         {/* RAG Analytics Tab (PROMPT #90) */}
         {/* PROMPT #136 - Fixed: CodeIndexingPanel always visible */}
