@@ -165,7 +165,12 @@ class UtilityNodeExecutor:
     # =========================================================================
 
     def _pre_rate_limiter(self, config: Dict, context: Dict) -> Optional[Dict]:
-        """Check sliding window rate limit. Returns error dict if blocked."""
+        """Check sliding window rate limit. Returns error dict if blocked.
+
+        PROMPT #206 - The node values are capped by the AI Model's rate limit.
+        The node can tighten the limit (use fewer requests / shorter window)
+        but can NEVER exceed the model's configured ceiling.
+        """
         if not self.redis:
             return None
 
@@ -173,6 +178,24 @@ class UtilityNodeExecutor:
         window_seconds = config.get("window_seconds", 60)
         action = config.get("action_on_exceed", "queue")
         usage_type = context.get("usage_type", "general")
+
+        # PROMPT #206 - Cap by model rate limits (model is the ceiling)
+        model_caps = context.get("model_rate_caps", {})
+        model_max = model_caps.get("rate_limit_requests")
+        model_window = model_caps.get("rate_limit_window_seconds")
+
+        if model_max is not None:
+            if max_requests > model_max:
+                logger.info(
+                    f"📎 Rate Limiter Node: capped max_requests {max_requests} → {model_max} (model limit)"
+                )
+                max_requests = model_max
+        if model_window is not None:
+            if window_seconds > model_window:
+                logger.info(
+                    f"📎 Rate Limiter Node: capped window {window_seconds}s → {model_window}s (model limit)"
+                )
+                window_seconds = model_window
 
         key = f"utility_rate_limit:{usage_type}"
         now = time.time()

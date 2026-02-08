@@ -614,9 +614,19 @@ class AIOrchestrator:
 
         if _utility_nodes:
             logger.info(f"🔧 Utility nodes loaded: {[n['type'] for n in _utility_nodes]}")
+            # PROMPT #206 - Pass model rate limit caps so utility node can't exceed them
+            _model_rate_caps = {}
+            if chains_to_try:
+                # Use first model in chain as the rate limit ceiling
+                first_model = chains_to_try[0][2][0] if chains_to_try[0][2] else {}
+                _model_rate_caps = {
+                    "rate_limit_requests": first_model.get("rate_limit_requests"),
+                    "rate_limit_window_seconds": first_model.get("rate_limit_window_seconds"),
+                }
             _util_context = {
                 "usage_type": usage_type,
                 "project_id": str(project_id) if project_id else None,
+                "model_rate_caps": _model_rate_caps,
             }
             early_result, _effective_messages, _effective_system_prompt = (
                 self.utility_executor.pre_process(
@@ -901,12 +911,17 @@ class AIOrchestrator:
 
         # PROMPT #205 - If utility pre-process wasn't done yet (no chain path), do it now
         if _utility_nodes and not _utility_pre_done:
+            # PROMPT #206 - Pass model rate limit caps
             _util_context = {
                 "usage_type": usage_type,
                 "project_id": str(project_id) if project_id else None,
                 "model_name": model_name,
                 "provider": provider,
                 "temperature": temperature,
+                "model_rate_caps": {
+                    "rate_limit_requests": model_config.get("rate_limit_requests"),
+                    "rate_limit_window_seconds": model_config.get("rate_limit_window_seconds"),
+                },
             }
             early_result, _effective_messages, _effective_system_prompt = (
                 self.utility_executor.pre_process(
