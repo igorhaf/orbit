@@ -23,6 +23,26 @@ import {
 import { projectsApi, jobsApi } from '@/lib/api';
 import { Project, ProjectCreate } from '@/lib/types';
 
+/**
+ * PROMPT #192 - Strip markdown syntax for plain-text preview in project cards.
+ * Removes #, *, -, >, ```, links, images, etc. leaving clean readable text.
+ */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')       // headers
+    .replace(/\*\*([^*]+)\*\*/g, '$1')  // bold
+    .replace(/\*([^*]+)\*/g, '$1')      // italic
+    .replace(/`([^`]+)`/g, '$1')        // inline code
+    .replace(/```[\s\S]*?```/g, '')     // code blocks
+    .replace(/!\[.*?\]\(.*?\)/g, '')    // images
+    .replace(/\[([^\]]+)\]\(.*?\)/g, '$1') // links
+    .replace(/^[-*]\s+/gm, '')         // list items
+    .replace(/^>\s+/gm, '')            // blockquotes
+    .replace(/---+/g, '')              // horizontal rules
+    .replace(/\n{3,}/g, '\n\n')        // excessive newlines
+    .trim();
+}
+
 // PROMPT #121 - Track pipeline job progress per processing project
 interface ProcessingJobInfo {
   jobId: string;
@@ -347,7 +367,7 @@ export default function ProjectsPage() {
                   <>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <p className="text-sm text-gray-600 line-clamp-3">
-                      {project.description || 'No description'}
+                      {project.description ? stripMarkdown(project.description) : 'No description'}
                     </p>
                     {/* PROMPT #128 - Show AI model icon if project has AI-generated context */}
                     {project.context_human && (
