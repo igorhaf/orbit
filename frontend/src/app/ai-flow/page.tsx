@@ -40,6 +40,9 @@ import '@xyflow/react/dist/style.css';
 
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
+import { Dialog } from '@/components/ui/Dialog';
 import { aiModelsApi, aiFlowApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import type {
@@ -675,6 +678,361 @@ function TimeoutNode({ data }: { data: any }) {
 }
 
 // ---------------------------------------------------------------------------
+// PROMPT #208 - Edit Utility Node Dialog
+// ---------------------------------------------------------------------------
+
+function EditUtilityNodeDialog({
+  node,
+  onSave,
+  onClose,
+}: {
+  node: AIFlowUtilityNode;
+  onSave: (updated: AIFlowUtilityNode) => void;
+  onClose: () => void;
+}) {
+  const [label, setLabel] = useState(node.label);
+  const [enabled, setEnabled] = useState(node.enabled);
+  const [config, setConfig] = useState<Record<string, any>>({ ...node.config });
+
+  const updateConfig = (key: string, value: any) => {
+    setConfig(prev => ({ ...prev, [key]: value }));
+  };
+
+  const handleSave = () => {
+    onSave({ ...node, label, enabled, config });
+  };
+
+  const color = UTILITY_NODE_COLORS[node.type] || '#6b7280';
+
+  const renderFields = () => {
+    switch (node.type) {
+      case 'cache':
+        return (
+          <>
+            <Input
+              label="TTL (seconds)"
+              type="number"
+              min="1"
+              value={config.ttl_seconds ?? 86400}
+              onChange={(e) => updateConfig('ttl_seconds', parseInt(e.target.value) || 86400)}
+            />
+            <Select
+              label="Cache Level"
+              value={config.cache_level ?? 'exact'}
+              onChange={(e) => updateConfig('cache_level', e.target.value)}
+              options={[
+                { value: 'exact', label: 'Exact Match' },
+                { value: 'semantic', label: 'Semantic Match' },
+                { value: 'template', label: 'Template Cache' },
+              ]}
+            />
+          </>
+        );
+
+      case 'rag_context':
+        return (
+          <>
+            <Input
+              label="Max Results"
+              type="number"
+              min="1"
+              max="20"
+              value={config.max_results ?? 5}
+              onChange={(e) => updateConfig('max_results', parseInt(e.target.value) || 5)}
+            />
+            <Input
+              label="Similarity Threshold (0-1)"
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={config.similarity_threshold ?? 0.7}
+              onChange={(e) => updateConfig('similarity_threshold', parseFloat(e.target.value) || 0.7)}
+            />
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="include-metadata"
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                checked={config.include_metadata ?? true}
+                onChange={(e) => updateConfig('include_metadata', e.target.checked)}
+              />
+              <label htmlFor="include-metadata" className="text-sm text-gray-700">Include Metadata</label>
+            </div>
+          </>
+        );
+
+      case 'prompt_transformer':
+        return (
+          <>
+            <Select
+              label="Transformation"
+              value={config.transformation ?? 'compress'}
+              onChange={(e) => updateConfig('transformation', e.target.value)}
+              options={[
+                { value: 'compress', label: 'Compress (truncate long messages)' },
+                { value: 'summarize_context', label: 'Summarize Context (keep last N)' },
+                { value: 'add_instructions', label: 'Add Instructions' },
+              ]}
+            />
+            <Input
+              label="Max Tokens"
+              type="number"
+              min="100"
+              value={config.max_tokens ?? 4000}
+              onChange={(e) => updateConfig('max_tokens', parseInt(e.target.value) || 4000)}
+            />
+            <Input
+              label="Override Max Tokens"
+              type="number"
+              min="0"
+              placeholder="Leave empty to use model default"
+              value={config.override_max_tokens ?? ''}
+              onChange={(e) => updateConfig('override_max_tokens', e.target.value ? parseInt(e.target.value) : null)}
+              helperText="Capped by model max_tokens. Leave empty for no override."
+            />
+            <Input
+              label="Override Temperature"
+              type="number"
+              min="0"
+              max="2"
+              step="0.1"
+              placeholder="Leave empty to use model default"
+              value={config.override_temperature ?? ''}
+              onChange={(e) => updateConfig('override_temperature', e.target.value ? parseFloat(e.target.value) : null)}
+              helperText="Free value (0.0-2.0). Leave empty for no override."
+            />
+          </>
+        );
+
+      case 'router':
+        return (
+          <>
+            <Select
+              label="Condition"
+              value={config.condition ?? 'complexity'}
+              onChange={(e) => updateConfig('condition', e.target.value)}
+              options={[
+                { value: 'complexity', label: 'Complexity' },
+                { value: 'cost', label: 'Cost' },
+                { value: 'message_count', label: 'Message Count' },
+              ]}
+            />
+            <Select
+              label="Threshold"
+              value={config.threshold ?? 'medium'}
+              onChange={(e) => updateConfig('threshold', e.target.value)}
+              options={[
+                { value: 'low', label: 'Low' },
+                { value: 'medium', label: 'Medium' },
+                { value: 'high', label: 'High' },
+              ]}
+            />
+          </>
+        );
+
+      case 'retry':
+        return (
+          <>
+            <Input
+              label="Max Retries"
+              type="number"
+              min="1"
+              max="10"
+              value={config.max_retries ?? 3}
+              onChange={(e) => updateConfig('max_retries', parseInt(e.target.value) || 3)}
+            />
+            <Input
+              label="Backoff Base (ms)"
+              type="number"
+              min="100"
+              value={config.backoff_base_ms ?? 1000}
+              onChange={(e) => updateConfig('backoff_base_ms', parseInt(e.target.value) || 1000)}
+            />
+            <Input
+              label="Backoff Multiplier"
+              type="number"
+              min="1"
+              max="10"
+              step="0.5"
+              value={config.backoff_multiplier ?? 2.0}
+              onChange={(e) => updateConfig('backoff_multiplier', parseFloat(e.target.value) || 2.0)}
+            />
+          </>
+        );
+
+      case 'validator':
+        return (
+          <>
+            <Select
+              label="Validation Type"
+              value={config.validation_type ?? 'json'}
+              onChange={(e) => updateConfig('validation_type', e.target.value)}
+              options={[
+                { value: 'json', label: 'JSON Parsing' },
+                { value: 'length', label: 'Length Check' },
+                { value: 'keywords', label: 'Required Keywords' },
+                { value: 'not_empty', label: 'Not Empty' },
+              ]}
+            />
+            <Input
+              label="Max Length (0 = no limit)"
+              type="number"
+              min="0"
+              value={config.max_length ?? 0}
+              onChange={(e) => updateConfig('max_length', parseInt(e.target.value) || 0)}
+            />
+            <Input
+              label="Required Keywords (comma-separated)"
+              placeholder="e.g., result, status, data"
+              value={Array.isArray(config.required_keywords) ? config.required_keywords.join(', ') : (config.required_keywords || '')}
+              onChange={(e) => updateConfig('required_keywords', e.target.value ? e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) : [])}
+            />
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="retry-on-fail"
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                checked={config.retry_on_fail ?? true}
+                onChange={(e) => updateConfig('retry_on_fail', e.target.checked)}
+              />
+              <label htmlFor="retry-on-fail" className="text-sm text-gray-700">Retry on Validation Failure</label>
+            </div>
+          </>
+        );
+
+      case 'cost_guard':
+        return (
+          <>
+            <Input
+              label="Max Cost per Call ($)"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={config.max_cost_per_call ?? 0.10}
+              onChange={(e) => updateConfig('max_cost_per_call', parseFloat(e.target.value) || 0.10)}
+            />
+            <Input
+              label="Daily Budget ($)"
+              type="number"
+              min="0"
+              step="0.50"
+              value={config.daily_budget ?? 10.0}
+              onChange={(e) => updateConfig('daily_budget', parseFloat(e.target.value) || 10.0)}
+            />
+            <Input
+              label="Monthly Budget ($)"
+              type="number"
+              min="0"
+              step="1"
+              value={config.monthly_budget ?? 100.0}
+              onChange={(e) => updateConfig('monthly_budget', parseFloat(e.target.value) || 100.0)}
+            />
+            <Select
+              label="Action on Exceed"
+              value={config.action_on_exceed ?? 'block'}
+              onChange={(e) => updateConfig('action_on_exceed', e.target.value)}
+              options={[
+                { value: 'block', label: 'Block Request' },
+                { value: 'warn', label: 'Warn Only' },
+              ]}
+            />
+          </>
+        );
+
+      case 'rate_limiter':
+        return (
+          <>
+            <Input
+              label="Max Requests"
+              type="number"
+              min="1"
+              value={config.max_requests ?? 60}
+              onChange={(e) => updateConfig('max_requests', parseInt(e.target.value) || 60)}
+            />
+            <Input
+              label="Window (seconds)"
+              type="number"
+              min="1"
+              value={config.window_seconds ?? 60}
+              onChange={(e) => updateConfig('window_seconds', parseInt(e.target.value) || 60)}
+            />
+            <Select
+              label="Action on Exceed"
+              value={config.action_on_exceed ?? 'queue'}
+              onChange={(e) => updateConfig('action_on_exceed', e.target.value)}
+              options={[
+                { value: 'queue', label: 'Queue (wait)' },
+                { value: 'block', label: 'Block Request' },
+              ]}
+            />
+          </>
+        );
+
+      case 'timeout':
+        return (
+          <Input
+            label="Timeout (seconds)"
+            type="number"
+            min="1"
+            value={config.timeout_seconds ?? 120}
+            onChange={(e) => updateConfig('timeout_seconds', parseInt(e.target.value) || 120)}
+            helperText="Overrides AI Model timeout and System Settings default."
+          />
+        );
+
+      default:
+        return <p className="text-sm text-gray-500">No editable configuration for this node type.</p>;
+    }
+  };
+
+  return (
+    <Dialog open={true} onClose={onClose} title={`Edit ${node.type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}`} size="md">
+      <div className="space-y-4">
+        {/* Header with icon and color indicator */}
+        <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
+          <div className="p-2 rounded-lg" style={{ backgroundColor: color + '15' }}>
+            <UtilityNodeIcon type={node.type} size="w-6 h-6" />
+          </div>
+          <div className="flex-1">
+            <Input
+              label="Label"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Node label"
+            />
+          </div>
+        </div>
+
+        {/* Enabled toggle */}
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="node-enabled"
+            className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+          />
+          <label htmlFor="node-enabled" className="text-sm font-medium text-gray-700">Enabled</label>
+        </div>
+
+        {/* Type-specific fields */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold text-gray-900">Configuration</h4>
+          {renderFields()}
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave}>Save</Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Node Type Registry
 // ---------------------------------------------------------------------------
 
@@ -1187,6 +1545,8 @@ export default function AIFlowPage() {
   // PROMPT #204 - Utility nodes state
   const [workingUtilityNodes, setWorkingUtilityNodes] = useState<AIFlowUtilityNode[]>([]);
   const [utilityNodeTypes, setUtilityNodeTypes] = useState<AIFlowUtilityNodeType[]>([]);
+  // PROMPT #208 - Edit utility node dialog
+  const [editingNode, setEditingNode] = useState<AIFlowUtilityNode | null>(null);
 
   // PROMPT #124 - WebSocket animations
   const nodeAnimations = useAIFlowWebSocket(selectedUsageType);
@@ -1419,6 +1779,22 @@ export default function AIFlowPage() {
     setWorkingChain((prev) => [...prev, modelId]);
   };
 
+  // PROMPT #208 - Save edited utility node
+  const handleSaveNodeEdit = useCallback((updatedNode: AIFlowUtilityNode) => {
+    setWorkingUtilityNodes(prev =>
+      prev.map(n => n.id === updatedNode.id ? updatedNode : n)
+    );
+    setEditingNode(null);
+  }, []);
+
+  // PROMPT #208 - Double-click handler for utility nodes
+  const handleNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    const utilityNode = workingUtilityNodes.find(n => n.id === node.id);
+    if (utilityNode) {
+      setEditingNode({ ...utilityNode, config: { ...utilityNode.config } });
+    }
+  }, [workingUtilityNodes]);
+
   // PROMPT #204 - Add utility node
   const handleAddUtilityNode = (nodeType: AIFlowUtilityNodeType) => {
     const existingCount = workingUtilityNodes.filter((n) => n.type === nodeType.type).length;
@@ -1583,6 +1959,7 @@ export default function AIFlowPage() {
                 onReconnect={onReconnect}
                 onReconnectStart={onReconnectStart}
                 onReconnectEnd={onReconnectEnd}
+                onNodeDoubleClick={handleNodeDoubleClick}
                 nodeTypes={nodeTypes}
                 fitView
                 fitViewOptions={{ padding: 0.5, minZoom: 0.8, maxZoom: 1.2 }}
@@ -1826,6 +2203,15 @@ export default function AIFlowPage() {
         onApply={handleApplyOptimize}
         usageType={selectedUsageType}
       />
+
+      {/* PROMPT #208 - Edit Utility Node Dialog */}
+      {editingNode && (
+        <EditUtilityNodeDialog
+          node={editingNode}
+          onSave={handleSaveNodeEdit}
+          onClose={() => setEditingNode(null)}
+        />
+      )}
 
       {NotificationComponent}
 
