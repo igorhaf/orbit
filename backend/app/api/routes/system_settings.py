@@ -16,10 +16,25 @@ from app.api.dependencies import get_setting_or_404
 
 router = APIRouter()
 
+# Default settings that should always exist in the database.
+# Each entry: (key, default_value, description)
+_DEFAULT_SETTINGS = [
+    ("max_discovery_patterns", "20", "Max patterns per discovery scan (default 20, cap 50 per project)"),
+]
+
 
 class BulkUpdateRequest(BaseModel):
     """Request model for bulk updating settings."""
     settings: Dict[str, Any]
+
+
+def _ensure_default_settings(db: Session) -> None:
+    """Create default settings if they don't exist yet."""
+    for key, value, description in _DEFAULT_SETTINGS:
+        existing = db.query(SystemSettings).filter(SystemSettings.key == key).first()
+        if not existing:
+            db.add(SystemSettings(key=key, value=value, description=description))
+    db.commit()
 
 
 @router.get("/", response_model=List[SystemSettingsResponse])
@@ -32,7 +47,10 @@ async def list_settings(
     List all system settings.
 
     Returns all configuration settings with their values and descriptions.
+    Automatically creates default settings if they don't exist.
     """
+    _ensure_default_settings(db)
+
     settings = db.query(SystemSettings).order_by(
         SystemSettings.key
     ).offset(skip).limit(limit).all()
