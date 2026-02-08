@@ -1136,14 +1136,18 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
     ) -> List[Dict]:
         """
         PROMPT #120 - Generate closed cards for verified business rules.
+        PROMPT #193 - Hierarchical structure: Epic > Story > Task > Subtask.
 
-        Creates cards for business rules that were extracted from the codebase
-        during the memory scan. These are facts verified in the existing code,
-        so they are created as CLOSED/IMPLEMENTED cards.
+        Uses AI to classify business rules into a proper hierarchy grouped
+        by business domain. Each level of the tree maps to an item_type:
+        - Level 0 = Epic (business domain/module)
+        - Level 1 = Story (business rule)
+        - Level 2 = Task (technical aspect)
+        - Level 3 = Subtask (implementation detail)
 
-        Structure:
-        - Parent Epic: "Regras de Negócio Documentadas" (closed)
-        - Child Stories: One for each business rule (closed)
+        All cards are CLOSED/DONE since they represent already-implemented rules.
+
+        Falls back to flat structure (1 Epic + N Stories) if AI classification fails.
 
         Args:
             project_id: Project ID
@@ -1166,39 +1170,179 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             logger.info(f"Project {project_id} has no business rules in memory context")
             return []
 
-        logger.info(f"📋 Generating {len(business_rules)} business rule cards for project {project.name}")
+        logger.info(f"Generating {len(business_rules)} business rule cards for project {project.name}")
+
+        # PROMPT #193 - Try hierarchical classification via AI
+        hierarchy = await self._classify_rules_hierarchy(project, business_rules)
+
+        if hierarchy:
+            # Create cards recursively from AI-classified hierarchy
+            saved_cards = self._create_hierarchy_cards(project_id, hierarchy)
+            self.db.commit()
+            logger.info(f"Generated {len(saved_cards)} hierarchical business rule cards")
+            return saved_cards
+
+        # Fallback: flat structure (original PROMPT #120 behavior)
+        logger.warning("Hierarchical classification failed, using flat structure")
+        return self._create_flat_business_rule_cards(project_id, business_rules)
+
+    async def _classify_rules_hierarchy(
+        self,
+        project: Any,
+        business_rules: List[str]
+    ) -> Optional[List[Dict]]:
+        """
+        PROMPT #193 - Use AI to classify business rules into hierarchical structure.
+
+        Returns list of hierarchy nodes or None if classification fails.
+        """
+        try:
+            from app.contracts.loader import ContractLoader
+            loader = ContractLoader()
+
+            # Format rules as numbered text
+            rules_text = "\n".join([f"{i}. {rule}" for i, rule in enumerate(business_rules, 1)])
+
+            # Get additional context from memory
+            memory_ctx = project.initial_memory_context or {}
+            key_features = memory_ctx.get("key_features", [])
+            entities = memory_ctx.get("entities", [])
+
+            features_text = "\n".join([f"- {f}" for f in key_features]) if key_features else ""
+            entities_text = "\n".join([f"- {e}" for e in entities]) if entities else ""
+
+            system_prompt, user_prompt = loader.render(
+                "memory/business_rules_hierarchy",
+                {
+                    "project_name": project.name,
+                    "rules_text": rules_text,
+                    "key_features": features_text,
+                    "entities": entities_text
+                }
+            )
+
+            response = await self.orchestrator.execute(
+                usage_type="memory",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=6000,
+                project_id=str(project.id)
+            )
+
+            content = response.get("content", "")
+
+            # Parse JSON response
+            import json
+            json_start = content.find("{")
+            json_end = content.rfind("}") + 1
+            if json_start >= 0 and json_end > json_start:
+                parsed = json.loads(content[json_start:json_end])
+                hierarchy = parsed.get("hierarchy", [])
+                if hierarchy and isinstance(hierarchy, list):
+                    logger.info(f"AI classified rules into {len(hierarchy)} domain groups")
+                    return hierarchy
+
+            logger.warning("AI response did not contain valid hierarchy")
+            return None
+
+        except Exception as e:
+            logger.error(f"Business rules hierarchy classification failed: {e}")
+            return None
+
+    def _create_hierarchy_cards(
+        self,
+        project_id: UUID,
+        nodes: List[Dict],
+        parent_id: Optional[UUID] = None,
+        depth: int = 0,
+        order_start: int = 0
+    ) -> List[Dict]:
+        """
+        PROMPT #193 - Recursively create cards from AI-classified hierarchy.
+
+        Maps depth to item_type:
+        - 0 = Epic, 1 = Story, 2 = Task, 3+ = Subtask
+        """
+        DEPTH_TO_TYPE = {
+            0: ItemType.EPIC,
+            1: ItemType.STORY,
+            2: ItemType.TASK,
+            3: ItemType.SUBTASK
+        }
 
         saved_cards = []
 
-        # Create parent Epic: "Regras de Negócio Documentadas"
+        for i, node in enumerate(nodes):
+            item_type = DEPTH_TO_TYPE.get(depth, ItemType.SUBTASK)
+            title = node.get("title", "Sem titulo")[:200]
+            description = node.get("description", "")
+
+            card = Task(
+                id=uuid4(),
+                project_id=project_id,
+                parent_id=parent_id,
+                title=title,
+                description=description,
+                generated_prompt=description,
+                item_type=item_type,
+                status=TaskStatus.DONE,
+                priority=PriorityLevel.HIGH if depth == 0 else PriorityLevel.MEDIUM,
+                order=order_start + i,
+                labels=["business_rule", "verified", "from_code"],
+                workflow_state="closed",
+                resolution="fixed",
+                reporter="system",
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            self.db.add(card)
+
+            saved_cards.append({
+                "id": str(card.id),
+                "title": card.title,
+                "item_type": item_type.value if hasattr(item_type, 'value') else str(item_type),
+                "workflow_state": "closed",
+                "depth": depth
+            })
+
+            # Recurse into children (max depth 3 = subtask)
+            children = node.get("children", [])
+            if children and depth < 3:
+                child_cards = self._create_hierarchy_cards(
+                    project_id, children, parent_id=card.id, depth=depth + 1
+                )
+                saved_cards.extend(child_cards)
+
+        return saved_cards
+
+    def _create_flat_business_rule_cards(
+        self,
+        project_id: UUID,
+        business_rules: List[str]
+    ) -> List[Dict]:
+        """
+        PROMPT #120 - Original flat structure fallback.
+        Creates 1 Epic + N Stories for business rules.
+        """
+        saved_cards = []
+
         parent_epic = Task(
             id=uuid4(),
             project_id=project_id,
-            title="Regras de Negócio Documentadas",
-            description=f"""# Regras de Negócio Verificadas
-
-Este épico contém as regras de negócio que foram **automaticamente identificadas**
-no código-fonte existente durante a análise inicial do projeto.
-
-**Total de Regras:** {len(business_rules)}
-**Status:** Implementadas e verificadas no código
-**Fonte:** Análise automática via Memory Scan (PROMPT #118)
-
-Cada story filha representa uma regra de negócio específica que já está
-funcionando no sistema atual.""",
+            title="Regras de Negocio Documentadas",
+            description=f"Regras de negocio verificadas no codigo-fonte. Total: {len(business_rules)}",
             item_type=ItemType.EPIC,
-            status=TaskStatus.DONE,  # Already done - verified in code
+            status=TaskStatus.DONE,
             priority=PriorityLevel.HIGH,
-            order=0,  # First position - foundational
+            order=0,
             labels=["business_rule", "verified", "from_code"],
-            workflow_state="closed",  # Closed - already implemented
-            resolution="fixed",  # Resolution: implemented
+            workflow_state="closed",
+            resolution="fixed",
             reporter="system",
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
         self.db.add(parent_epic)
-
         saved_cards.append({
             "id": str(parent_epic.id),
             "title": parent_epic.title,
@@ -1206,9 +1350,7 @@ funcionando no sistema atual.""",
             "workflow_state": "closed"
         })
 
-        # Create Story for each business rule
         for i, rule in enumerate(business_rules, 1):
-            # Extract a short title from the rule (first sentence or first 80 chars)
             rule_title = rule.split(":")[0] if ":" in rule else rule[:80]
             if len(rule_title) > 80:
                 rule_title = rule_title[:77] + "..."
@@ -1218,20 +1360,8 @@ funcionando no sistema atual.""",
                 project_id=project_id,
                 parent_id=parent_epic.id,
                 title=f"RN{i}: {rule_title}",
-                description=f"""## Regra de Negócio #{i}
-
-**Descrição Completa:**
-{rule}
-
----
-
-**Status:** [VERIFICADA] no codigo-fonte
-**Identificador:** RN{i}
-**Origem:** Análise automática do codebase
-
-Esta regra foi identificada durante a análise do código existente e representa
-um comportamento já implementado no sistema.""",
-                generated_prompt=f"RN{i}: {rule}",  # Semantic reference
+                description=rule,
+                generated_prompt=f"RN{i}: {rule}",
                 item_type=ItemType.STORY,
                 status=TaskStatus.DONE,
                 priority=PriorityLevel.MEDIUM,
@@ -1244,19 +1374,15 @@ um comportamento já implementado no sistema.""",
                 updated_at=datetime.utcnow()
             )
             self.db.add(story)
-
             saved_cards.append({
                 "id": str(story.id),
                 "title": story.title,
                 "item_type": "story",
-                "workflow_state": "closed",
-                "rule_index": i
+                "workflow_state": "closed"
             })
 
         self.db.commit()
-
-        logger.info(f"✅ Generated {len(saved_cards)} business rule cards (1 epic + {len(business_rules)} stories)")
-
+        logger.info(f"Generated {len(saved_cards)} flat business rule cards (fallback)")
         return saved_cards
 
     async def lock_context(self, project_id: UUID) -> bool:
