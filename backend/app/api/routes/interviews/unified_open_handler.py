@@ -77,6 +77,58 @@ def build_unified_open_prompt(
     previous_answers = previous_answers or {}
     question_number = (message_count // 2) + 1
 
+    # PROMPT #195 - Card-focused interviews use specialized prompts
+    # When interview_mode is "card_focused", use build_card_focused_prompt
+    # which includes motivation type, card details, and hierarchy-aware context
+    if interview.interview_mode == "card_focused" and parent_task:
+        from app.api.routes.interviews.card_focused_prompts import (
+            build_card_focused_prompt, get_card_hierarchy
+        )
+
+        # Extract motivation_type, card title, card description from Q1-Q3 answers
+        motivation_type = "feature"  # default
+        card_title = ""
+        card_description = ""
+        user_answers = [
+            msg.get('content', '')
+            for msg in interview.conversation_data
+            if msg.get('role') == 'user'
+        ]
+        if len(user_answers) >= 1:
+            motivation_type = user_answers[0].lower()
+        if len(user_answers) >= 2:
+            card_title = user_answers[1]
+        if len(user_answers) >= 3:
+            card_description = user_answers[2]
+
+        # Build stack context
+        stack_context = ""
+        if project.stack_backend:
+            stack_context = f"""
+STACK TÉCNICA:
+- Backend: {project.stack_backend}
+- Database: {project.stack_database or 'Não definido'}
+- Frontend: {project.stack_frontend or 'Não definido'}
+- CSS: {project.stack_css or 'Não definido'}
+- Mobile: {project.stack_mobile or 'Não definido'}
+"""
+
+        # Get full hierarchy
+        hierarchy = get_card_hierarchy(parent_task, db) if db else []
+
+        logger.info(f"🎯 Card-focused prompt: motivation={motivation_type}, title={card_title[:50]}, parent={parent_task.title[:50]}")
+
+        return build_card_focused_prompt(
+            project=project,
+            motivation_type=motivation_type,
+            card_title=card_title,
+            card_description=card_description,
+            message_count=message_count,
+            parent_card=parent_task,
+            stack_context=stack_context,
+            hierarchy=hierarchy if hierarchy else None
+        )
+
     # Build project context (dynamic, passed to template)
     project_context = f"""
 **PROJETO:**
