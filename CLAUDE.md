@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #193 (Hierarchical Business Rule Cards)
-**Próximo prompt:** PROMPT #194
+**Último prompt:** PROMPT #194 (Strip Markdown from Project Cards)
+**Próximo prompt:** PROMPT #195
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
