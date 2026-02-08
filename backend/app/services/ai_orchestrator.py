@@ -612,21 +612,27 @@ class AIOrchestrator:
         _effective_messages = list(messages)
         _effective_system_prompt = system_prompt
 
+        # PROMPT #206 - Shared context for utility node overrides
+        _util_context = {}
+
         if _utility_nodes:
             logger.info(f"🔧 Utility nodes loaded: {[n['type'] for n in _utility_nodes]}")
-            # PROMPT #206 - Pass model rate limit caps so utility node can't exceed them
+            # PROMPT #206 - Pass model caps so utility nodes can't exceed them
             _model_rate_caps = {}
+            _model_max_tokens = None
             if chains_to_try:
-                # Use first model in chain as the rate limit ceiling
+                # Use first model in chain as the ceiling
                 first_model = chains_to_try[0][2][0] if chains_to_try[0][2] else {}
                 _model_rate_caps = {
                     "rate_limit_requests": first_model.get("rate_limit_requests"),
                     "rate_limit_window_seconds": first_model.get("rate_limit_window_seconds"),
                 }
+                _model_max_tokens = first_model.get("max_tokens")
             _util_context = {
                 "usage_type": usage_type,
                 "project_id": str(project_id) if project_id else None,
                 "model_rate_caps": _model_rate_caps,
+                "model_max_tokens": _model_max_tokens,
             }
             early_result, _effective_messages, _effective_system_prompt = (
                 self.utility_executor.pre_process(
@@ -679,6 +685,7 @@ class AIOrchestrator:
                             messages=_effective_messages,
                             system_prompt=_effective_system_prompt,
                             max_tokens=max_tokens,
+                            overrides=_util_context if _util_context else None,
                         )
                         result["chain_position"] = chain_idx + 1
                         result["chain_total"] = len(chain_model_list)
@@ -792,6 +799,7 @@ class AIOrchestrator:
                                         messages=_effective_messages,
                                         system_prompt=_effective_system_prompt,
                                         max_tokens=max_tokens,
+                                        overrides=_util_context if _util_context else None,
                                     )
                                     result = self.utility_executor.post_process(
                                         _utility_nodes, result, _effective_messages,
@@ -831,6 +839,7 @@ class AIOrchestrator:
                                             messages=_effective_messages,
                                             system_prompt=_effective_system_prompt,
                                             max_tokens=max_tokens,
+                                            overrides=_util_context if _util_context else None,
                                         )
                                         logger.info(f"✅ Retry Node (error): success on attempt {retry_attempt+1}")
                                         # Post-process the retried result
@@ -911,13 +920,14 @@ class AIOrchestrator:
 
         # PROMPT #205 - If utility pre-process wasn't done yet (no chain path), do it now
         if _utility_nodes and not _utility_pre_done:
-            # PROMPT #206 - Pass model rate limit caps
+            # PROMPT #206 - Pass model caps (rate limit + max_tokens)
             _util_context = {
                 "usage_type": usage_type,
                 "project_id": str(project_id) if project_id else None,
                 "model_name": model_name,
                 "provider": provider,
                 "temperature": temperature,
+                "model_max_tokens": model_config.get("max_tokens"),
                 "model_rate_caps": {
                     "rate_limit_requests": model_config.get("rate_limit_requests"),
                     "rate_limit_window_seconds": model_config.get("rate_limit_window_seconds"),
@@ -936,6 +946,14 @@ class AIOrchestrator:
                 wait_time = _util_context["_rate_limit_wait"]
                 logger.info(f"⏳ Utility Rate Limiter (no-chain): waiting {wait_time:.1f}s")
                 await asyncio.sleep(wait_time)
+
+        # PROMPT #206 - Apply utility node overrides to max_tokens and temperature
+        if _util_context.get("_override_max_tokens") is not None:
+            tokens_limit = _util_context["_override_max_tokens"]
+            logger.info(f"🔧 Override max_tokens → {tokens_limit}")
+        if _util_context.get("_override_temperature") is not None:
+            temperature = _util_context["_override_temperature"]
+            logger.info(f"🔧 Override temperature → {temperature}")
 
         logger.info(f"📤 Executing with config: max_tokens={tokens_limit}, temperature={temperature}")
 
@@ -1460,15 +1478,29 @@ class AIOrchestrator:
         messages: List[Dict],
         system_prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        overrides: Optional[Dict] = None,
     ) -> Dict:
         """
         PROMPT #122 - Execute with a specific model config (for chain-based execution).
         Bypasses choose_model() and uses the provided config directly.
+
+        PROMPT #206 - overrides dict can contain:
+          - _override_max_tokens: capped by model (can reduce, not increase)
+          - _override_temperature: free value (0.0-2.0)
         """
         provider = model_config["provider"]
         model_name = model_config["model"]
         tokens_limit = max_tokens if max_tokens is not None else model_config["max_tokens"]
         temperature = model_config["temperature"]
+
+        # PROMPT #206 - Apply utility node overrides
+        if overrides:
+            if overrides.get("_override_max_tokens") is not None:
+                tokens_limit = overrides["_override_max_tokens"]
+                logger.info(f"🔧 Override max_tokens → {tokens_limit}")
+            if overrides.get("_override_temperature") is not None:
+                temperature = overrides["_override_temperature"]
+                logger.info(f"🔧 Override temperature → {temperature}")
 
         # Rate limiting check
         if self.rate_limiter and model_config.get("rate_limit_requests"):

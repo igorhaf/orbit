@@ -596,13 +596,15 @@ UTILITY_NODE_CATALOG = {
     "prompt_transformer": {
         "type": "prompt_transformer",
         "label": "Prompt Transformer",
-        "description": "Applies transformations to the prompt before sending to AI (compression, translation, etc.).",
+        "description": "Applies transformations to the prompt before sending to AI (compression, translation, etc.). Can override max_tokens (capped by model) and temperature (free).",
         "icon": "wand",
         "color": "#f59e0b",
         "default_config": {
             "transformation": "compress",
             "max_tokens": 4000,
             "language": "auto",
+            "override_max_tokens": None,
+            "override_temperature": None,
         },
     },
     "router": {

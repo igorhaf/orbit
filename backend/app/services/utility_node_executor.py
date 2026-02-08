@@ -472,7 +472,13 @@ class UtilityNodeExecutor:
         self, config: Dict, messages: List[Dict],
         system_prompt: Optional[str], context: Dict
     ) -> Tuple[List[Dict], Optional[str]]:
-        """Transform prompt: compress, truncate, or add instructions."""
+        """Transform prompt: compress, truncate, or add instructions.
+
+        PROMPT #206 - Also supports overriding max_tokens and temperature:
+          - override_max_tokens: capped by model's max_tokens (can reduce, not increase)
+          - override_temperature: free to set any value (0.0-2.0)
+        If set, these are written into context for the orchestrator to use.
+        """
         transformation = config.get("transformation", "compress")
         max_tokens = config.get("max_tokens", 4000)
 
@@ -507,6 +513,29 @@ class UtilityNodeExecutor:
             elif extra:
                 modified_system = extra
             logger.info(f"📝 Prompt Transformer: added instructions to system prompt")
+
+        # PROMPT #206 - Override max_tokens (capped by model default)
+        override_max_tokens = config.get("override_max_tokens")
+        if override_max_tokens is not None:
+            model_caps = context.get("model_rate_caps", {})
+            # Get model max_tokens from context if available
+            model_max_tokens = context.get("model_max_tokens")
+            if model_max_tokens is not None and override_max_tokens > model_max_tokens:
+                logger.info(
+                    f"📎 Prompt Transformer: capped override_max_tokens "
+                    f"{override_max_tokens} → {model_max_tokens} (model limit)"
+                )
+                override_max_tokens = model_max_tokens
+            context["_override_max_tokens"] = override_max_tokens
+            logger.info(f"🔧 Prompt Transformer: override max_tokens → {override_max_tokens}")
+
+        # PROMPT #206 - Override temperature (free, no cap)
+        override_temperature = config.get("override_temperature")
+        if override_temperature is not None:
+            # Clamp to valid range
+            override_temperature = max(0.0, min(2.0, float(override_temperature)))
+            context["_override_temperature"] = override_temperature
+            logger.info(f"🔧 Prompt Transformer: override temperature → {override_temperature}")
 
         return modified_messages, modified_system
 
