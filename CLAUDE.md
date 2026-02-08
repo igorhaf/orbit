@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #197 (Move Specs to Project Tab)
-**Próximo prompt:** PROMPT #198
+**Último prompt:** PROMPT #198 (Proportional Hierarchy Context)
+**Próximo prompt:** PROMPT #199
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
