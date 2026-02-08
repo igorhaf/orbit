@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #200 (Replace confirm() with ConfirmDialog)
-**Próximo prompt:** PROMPT #201
+**Último prompt:** PROMPT #202 (Auto Specs + RAG After Codebase Scan)
+**Próximo prompt:** PROMPT #203
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

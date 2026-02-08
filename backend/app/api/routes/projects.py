@@ -294,6 +294,26 @@ async def _process_memory_scan_async(
             progress_callback=progress_callback
         )
 
+        # PROMPT #202 - Discover specs and sync to RAG after memory scan
+        if project_id:
+            job_manager.update_progress(job_id, 90.0, "Discovering code patterns and generating specs...")
+            try:
+                discovery_service = PatternDiscoveryService(db)
+                discovered_patterns = await discovery_service.discover_patterns(
+                    project_path=Path(code_path),
+                    project_id=project_id,
+                    max_patterns=20,
+                    min_occurrences=2
+                )
+                logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
+
+                from app.services.spec_rag_sync import SpecRAGSync
+                spec_sync = SpecRAGSync(db)
+                sync_result = spec_sync.sync_all_framework_specs()
+                logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
+            except Exception as e:
+                logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
+
         job_manager.update_progress(job_id, 98.0, "Finalizing results...")
 
         # PROMPT #133 - Update notification_title for success
@@ -492,7 +512,27 @@ async def _process_quick_create_scan(
             project.updated_at = datetime.utcnow()
             db.commit()
 
-        job_manager.update_progress(job_id, 90.0, "Finalizing...")
+        # PROMPT #202 - Discover specs and sync to RAG after memory scan
+        job_manager.update_progress(job_id, 85.0, "Discovering code patterns and generating specs...")
+        try:
+            discovery_service = PatternDiscoveryService(db)
+            discovered_patterns = await discovery_service.discover_patterns(
+                project_path=Path(code_path),
+                project_id=project_id,
+                max_patterns=20,
+                min_occurrences=2
+            )
+            logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
+
+            # Sync all project specs to RAG
+            from app.services.spec_rag_sync import SpecRAGSync
+            spec_sync = SpecRAGSync(db)
+            sync_result = spec_sync.sync_all_framework_specs()
+            logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
+        except Exception as e:
+            logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
+
+        job_manager.update_progress(job_id, 95.0, "Finalizing...")
 
         # Update notification title for success
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
@@ -694,6 +734,25 @@ async def _process_project_pipeline(
         project.initial_memory_context = result
         project.updated_at = datetime.utcnow()
         db.commit()
+
+        # === Step A.1: Spec Discovery + RAG Sync (PROMPT #202) ===
+        job_manager.update_progress(job_id, 38.0, "Discovering code patterns and generating specs...")
+        try:
+            discovery_service = PatternDiscoveryService(db)
+            discovered_patterns = await discovery_service.discover_patterns(
+                project_path=Path(code_path),
+                project_id=project_id,
+                max_patterns=20,
+                min_occurrences=2
+            )
+            logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
+
+            from app.services.spec_rag_sync import SpecRAGSync
+            spec_sync = SpecRAGSync(db)
+            sync_result = spec_sync.sync_all_framework_specs()
+            logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
+        except Exception as e:
+            logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
 
         job_manager.update_progress(job_id, 40.0, "Gerando contexto rico do projeto...")
 
