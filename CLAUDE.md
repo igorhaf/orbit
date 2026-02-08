@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #205 (Utility Node Execution Logic)
-**Próximo prompt:** PROMPT #206
+**Último prompt:** PROMPT #207 (Configurable Timeout Hierarchy)
+**Próximo prompt:** PROMPT #208
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

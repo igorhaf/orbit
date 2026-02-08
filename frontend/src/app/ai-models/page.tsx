@@ -114,6 +114,8 @@ export default function AIModelsPage() {
       // PROMPT #152 - Rate limiting fields
       rate_limit_requests: model.rate_limit_requests,
       rate_limit_window_seconds: model.rate_limit_window_seconds,
+      // PROMPT #207 - Timeout field
+      timeout_seconds: model.timeout_seconds,
     });
     setShowEditDialog(true);
   };
@@ -399,6 +401,15 @@ export default function AIModelsPage() {
                             </div>
                           </div>
                         )}
+                        {/* PROMPT #207 - Timeout Display */}
+                        {model.timeout_seconds && (
+                          <div>
+                            <div className="text-gray-500 text-xs">Timeout</div>
+                            <div className="font-semibold text-gray-900">
+                              {model.timeout_seconds}s
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -653,6 +664,27 @@ export default function AIModelsPage() {
                 </p>
               </div>
 
+              {/* Timeout Section (PROMPT #207) */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">API Timeout</h4>
+                <Input
+                  label="Timeout (seconds)"
+                  type="number"
+                  min="1"
+                  placeholder="e.g., 120"
+                  value={createFormData.timeout_seconds || ''}
+                  onChange={(e) =>
+                    setCreateFormData({
+                      ...createFormData,
+                      timeout_seconds: e.target.value ? parseInt(e.target.value) : null,
+                    })
+                  }
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Leave empty to use system default. Overridden by Timeout Node in AI Flow diagram.
+                </p>
+              </div>
+
               {/* Is Active */}
               <div className="flex items-center">
                 <input
@@ -848,6 +880,27 @@ export default function AIModelsPage() {
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
                   Leave empty for no rate limiting. Example: 3 requests per 60 seconds.
+                </p>
+              </div>
+
+              {/* Timeout Section (PROMPT #207) */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">API Timeout</h4>
+                <Input
+                  label="Timeout (seconds)"
+                  type="number"
+                  min="1"
+                  placeholder="e.g., 120"
+                  value={editFormData.timeout_seconds || ''}
+                  onChange={(e) =>
+                    setEditFormData({
+                      ...editFormData,
+                      timeout_seconds: e.target.value ? parseInt(e.target.value) : null,
+                    })
+                  }
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Leave empty to use system default. Overridden by Timeout Node in AI Flow diagram.
                 </p>
               </div>
 

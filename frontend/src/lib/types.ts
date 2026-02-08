@@ -597,6 +597,8 @@ export interface AIModel {
   // Rate Limiting (PROMPT #152)
   rate_limit_requests?: number | null;
   rate_limit_window_seconds?: number | null;
+  // Timeout (PROMPT #207)
+  timeout_seconds?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -611,6 +613,8 @@ export interface AIModelCreate {
   // Rate Limiting (PROMPT #152)
   rate_limit_requests?: number | null;
   rate_limit_window_seconds?: number | null;
+  // Timeout (PROMPT #207)
+  timeout_seconds?: number | null;
 }
 
 export interface AIModelUpdate {
@@ -623,6 +627,8 @@ export interface AIModelUpdate {
   // Rate Limiting (PROMPT #152)
   rate_limit_requests?: number | null;
   rate_limit_window_seconds?: number | null;
+  // Timeout (PROMPT #207)
+  timeout_seconds?: number | null;
 }
 
 export interface AIModelDetail extends AIModel {
@@ -744,7 +750,7 @@ export interface AIFlowWebSocketEvent {
 }
 
 // PROMPT #204 - Utility Node Types
-export type UtilityNodeType = 'cache' | 'rag_context' | 'prompt_transformer' | 'router' | 'retry' | 'validator' | 'cost_guard' | 'rate_limiter';
+export type UtilityNodeType = 'cache' | 'rag_context' | 'prompt_transformer' | 'router' | 'retry' | 'validator' | 'cost_guard' | 'rate_limiter' | 'timeout';
 
 export interface AIFlowUtilityNode {
   id: string;

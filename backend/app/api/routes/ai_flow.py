@@ -671,6 +671,16 @@ UTILITY_NODE_CATALOG = {
             "action_on_exceed": "queue",
         },
     },
+    "timeout": {
+        "type": "timeout",
+        "label": "Timeout",
+        "description": "Sets the API call timeout in seconds. Overrides model and system defaults. Hierarchy: Timeout Node → AI Model timeout → System Settings default.",
+        "icon": "timer",
+        "color": "#f97316",
+        "default_config": {
+            "timeout_seconds": 120,
+        },
+    },
 }
 
 

@@ -38,6 +38,11 @@ class AIModelBase(BaseModel):
         None,
         description="Time window size in seconds (None = no limit)"
     )
+    # Timeout (PROMPT #207)
+    timeout_seconds: Optional[int] = Field(
+        None,
+        description="API timeout in seconds for this model (None = use system default)"
+    )
 
 
 class AIModelCreate(AIModelBase):
@@ -66,6 +71,8 @@ class AIModelUpdate(BaseModel):
     # Rate Limiting (PROMPT #152)
     rate_limit_requests: Optional[int] = None
     rate_limit_window_seconds: Optional[int] = None
+    # Timeout (PROMPT #207)
+    timeout_seconds: Optional[int] = None
 
 
 class AIModelResponse(AIModelBase):

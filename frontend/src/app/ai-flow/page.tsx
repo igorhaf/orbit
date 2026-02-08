@@ -100,6 +100,7 @@ const UTILITY_NODE_COLORS: Record<string, string> = {
   validator: '#22c55e',
   cost_guard: '#ef4444',
   rate_limiter: '#ec4899',
+  timeout: '#f97316',
 };
 
 const UTILITY_NODE_BG: Record<string, string> = {
@@ -111,6 +112,7 @@ const UTILITY_NODE_BG: Record<string, string> = {
   validator: 'bg-green-50 border-green-200',
   cost_guard: 'bg-red-50 border-red-200',
   rate_limiter: 'bg-pink-50 border-pink-200',
+  timeout: 'bg-orange-50 border-orange-200',
 };
 
 function UtilityNodeIcon({ type, size = 'w-5 h-5' }: { type: string; size?: string }) {
@@ -162,6 +164,13 @@ function UtilityNodeIcon({ type, size = 'w-5 h-5' }: { type: string; size?: stri
       return (
         <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      );
+    case 'timeout':
+      return (
+        <svg className={size} style={{ color }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M1 4l2-2m18 2l-2-2" />
         </svg>
       );
     default:
@@ -637,6 +646,34 @@ function RateLimiterNode({ data }: { data: any }) {
   );
 }
 
+function TimeoutNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.timeout;
+  return (
+    <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-orange-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="timeout" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Timeout'}</div>
+            <div className="text-xs text-orange-600">API Timeout</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-orange-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">Timeout: <span className="font-semibold text-gray-700">{data.config?.timeout_seconds || 120}s</span></div>
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-orange-500 transition-all" />
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Node Type Registry
 // ---------------------------------------------------------------------------
@@ -651,6 +688,7 @@ const nodeTypes = {
   validatorNode: ValidatorNode,
   costGuardNode: CostGuardNode,
   rateLimiterNode: RateLimiterNode,
+  timeoutNode: TimeoutNode,
 };
 
 // Map utility node type string to ReactFlow node type string
@@ -663,6 +701,7 @@ const UTILITY_TYPE_TO_NODE_TYPE: Record<string, string> = {
   validator: 'validatorNode',
   cost_guard: 'costGuardNode',
   rate_limiter: 'rateLimiterNode',
+  timeout: 'timeoutNode',
 };
 
 // ---------------------------------------------------------------------------

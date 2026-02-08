@@ -63,6 +63,10 @@ class AIModel(Base):
     rate_limit_requests = Column(Integer, nullable=True)  # Max requests per window (e.g., 3)
     rate_limit_window_seconds = Column(Integer, nullable=True)  # Window size in seconds (e.g., 60)
 
+    # Timeout (PROMPT #207)
+    # Per-model API timeout in seconds. NULL = use system default from settings.
+    timeout_seconds = Column(Integer, nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(

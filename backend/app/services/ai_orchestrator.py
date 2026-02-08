@@ -19,6 +19,7 @@ from app.models.ai_flow_chain import AIFlowChain  # PROMPT #122 - AI Flow Fallba
 from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
 from app.models.prompt import Prompt  # PROMPT #58 - Prompt Audit Logging
 from app.models.task import Task, ItemType, PriorityLevel  # JIRA Transformation - Multi-dimensional model selection
+from app.models.system_settings import SystemSettings  # PROMPT #207 - System default timeout
 from app.services.console_logger import get_console_logger  # PROMPT #168 - Real-time Console Logs
 from app.services.utility_node_executor import UtilityNodeExecutor  # PROMPT #205 - Utility Node Execution
 
@@ -289,6 +290,8 @@ class AIOrchestrator:
                     "api_key": db_model.api_key,  # PROMPT #127 - Pass API key for chain execution
                     "rate_limit_requests": db_model.rate_limit_requests,
                     "rate_limit_window_seconds": db_model.rate_limit_window_seconds,
+                    # PROMPT #207 - Per-model timeout
+                    "timeout_seconds": db_model.timeout_seconds,
                 })
             else:
                 logger.warning(
@@ -312,6 +315,46 @@ class AIOrchestrator:
             return []
 
         return [n for n in chain.utility_nodes if n.get("enabled", True)]
+
+    def _resolve_timeout(self, model_config: Dict, utility_nodes: List[Dict]) -> float:
+        """
+        PROMPT #207 - Resolve timeout using 3-layer hierarchy:
+          1. Timeout Node (from diagram utility nodes) - highest priority
+          2. AI Model timeout_seconds field - middle priority
+          3. SystemSettings default_api_timeout_seconds - fallback
+
+        Returns timeout in seconds (float).
+        """
+        # Layer 1: Timeout Node from diagram
+        for node in utility_nodes:
+            if node.get("type") == "timeout" and node.get("enabled", True):
+                node_timeout = node.get("config", {}).get("timeout_seconds")
+                if node_timeout is not None:
+                    timeout = float(node_timeout)
+                    logger.info(f"⏱️ Timeout from diagram node: {timeout}s")
+                    return timeout
+
+        # Layer 2: AI Model timeout_seconds field
+        model_timeout = model_config.get("timeout_seconds")
+        if model_timeout is not None:
+            timeout = float(model_timeout)
+            logger.info(f"⏱️ Timeout from AI Model: {timeout}s")
+            return timeout
+
+        # Layer 3: SystemSettings default
+        try:
+            setting = self.db.query(SystemSettings).filter(
+                SystemSettings.key == "default_api_timeout_seconds"
+            ).first()
+            if setting and setting.value:
+                timeout = float(setting.value)
+                logger.info(f"⏱️ Timeout from system settings: {timeout}s")
+                return timeout
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to read default timeout from settings: {e}")
+
+        # Absolute fallback
+        return 120.0
 
     def choose_model(self, usage_type: UsageType) -> Dict[str, any]:
         """
@@ -360,7 +403,9 @@ class AIOrchestrator:
                     "db_model_name": db_model.name,
                     # PROMPT #152 - Rate limiting config
                     "rate_limit_requests": db_model.rate_limit_requests,
-                    "rate_limit_window_seconds": db_model.rate_limit_window_seconds
+                    "rate_limit_window_seconds": db_model.rate_limit_window_seconds,
+                    # PROMPT #207 - Per-model timeout
+                    "timeout_seconds": db_model.timeout_seconds,
                 }
             else:
                 logger.warning(
@@ -395,7 +440,9 @@ class AIOrchestrator:
                 "db_model_name": fallback_model.name,
                 # PROMPT #152 - Rate limiting config
                 "rate_limit_requests": fallback_model.rate_limit_requests,
-                "rate_limit_window_seconds": fallback_model.rate_limit_window_seconds
+                "rate_limit_window_seconds": fallback_model.rate_limit_window_seconds,
+                # PROMPT #207 - Per-model timeout
+                "timeout_seconds": fallback_model.timeout_seconds,
             }
 
         # 3. Fallback: tentar diagrama 'general' (chain) se existir
@@ -650,6 +697,14 @@ class AIOrchestrator:
                 wait_time = _util_context["_rate_limit_wait"]
                 logger.info(f"⏳ Utility Rate Limiter: waiting {wait_time:.1f}s")
                 await asyncio.sleep(wait_time)
+
+            # PROMPT #207 - Resolve timeout from diagram node and store in context for chain path
+            for node in _utility_nodes:
+                if node.get("type") == "timeout" and node.get("enabled", True):
+                    node_timeout = node.get("config", {}).get("timeout_seconds")
+                    if node_timeout is not None:
+                        _util_context["_override_timeout"] = float(node_timeout)
+                        break
 
         # PROMPT #205 - Get retry config from utility nodes
         _retry_config = UtilityNodeExecutor.get_retry_config(_utility_nodes) if _utility_nodes else None
@@ -1121,28 +1176,36 @@ class AIOrchestrator:
             project_id=project_id if project_id else None
         ))
 
+        # PROMPT #207 - Resolve timeout using hierarchy: diagram node → model → settings
+        _resolved_timeout = self._resolve_timeout(model_config, _utility_nodes)
+
         try:
             if provider == "anthropic":
                 result = await self._execute_anthropic(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                    timeout_seconds=_resolved_timeout
                 )
             elif provider == "openai":
                 result = await self._execute_openai(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                    timeout_seconds=_resolved_timeout
                 )
             elif provider == "google":
                 result = await self._execute_google(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                    timeout_seconds=_resolved_timeout
                 )
             elif provider == "ollama":
                 # PROMPT #106 - Ollama local LLM integration
                 result = await self._execute_ollama(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                    timeout_seconds=_resolved_timeout
                 )
             elif provider == "cohere":
                 # PROMPT #122 - Cohere AI integration
                 result = await self._execute_cohere(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                    timeout_seconds=_resolved_timeout
                 )
             else:
                 raise ValueError(f"Unknown provider: {provider}")
@@ -1520,17 +1583,38 @@ class AIOrchestrator:
         # PROMPT #127 - Pass API key from chain model config to override default client key
         api_key_override = model_config.get("api_key")
 
+        # PROMPT #207 - Resolve timeout: diagram node → model config → system settings
+        resolved_timeout = None
+        if overrides and overrides.get("_override_timeout") is not None:
+            resolved_timeout = float(overrides["_override_timeout"])
+            logger.info(f"⏱️ Chain timeout from diagram node: {resolved_timeout}s")
+        elif model_config.get("timeout_seconds"):
+            resolved_timeout = float(model_config["timeout_seconds"])
+            logger.info(f"⏱️ Chain timeout from model config: {resolved_timeout}s")
+        else:
+            # Fallback to system settings
+            try:
+                setting = self.db.query(SystemSettings).filter(
+                    SystemSettings.key == "default_api_timeout_seconds"
+                ).first()
+                if setting and setting.value:
+                    resolved_timeout = float(setting.value)
+            except Exception:
+                pass
+            if not resolved_timeout:
+                resolved_timeout = 120.0
+
         # Dispatch to provider-specific executor
         if provider == "anthropic":
-            result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override)
+            result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
         elif provider == "openai":
-            result = await self._execute_openai(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override)
+            result = await self._execute_openai(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
         elif provider == "google":
-            result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override)
+            result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
         elif provider == "ollama":
-            result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature)
+            result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout)
         elif provider == "cohere":
-            result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override)
+            result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -1545,12 +1629,14 @@ class AIOrchestrator:
         system_prompt: Optional[str],
         max_tokens: int,
         temperature: float,
-        api_key_override: Optional[str] = None
+        api_key_override: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
     ) -> Dict:
         """
         Executa com Anthropic Claude usando configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
         PROMPT #75 - Async execution with await (non-blocking)
+        PROMPT #207 - Configurable timeout
         """
         client = self.clients["anthropic"]  # AsyncAnthropic instance
 
@@ -1560,13 +1646,18 @@ class AIOrchestrator:
             client = AsyncAnthropic(api_key=api_key_override)
 
         # PROMPT #75 - Await async call to yield to event loop during API request
-        response = await client.messages.create(
+        # PROMPT #207 - Apply configurable timeout
+        api_call = client.messages.create(
             model=model,
             max_tokens=max_tokens,
             temperature=temperature,
             system=system_prompt if system_prompt else "You are a helpful AI assistant.",
             messages=messages
         )
+        if timeout_seconds:
+            response = await asyncio.wait_for(api_call, timeout=timeout_seconds)
+        else:
+            response = await api_call
 
         return {
             "provider": "anthropic",
@@ -1586,12 +1677,14 @@ class AIOrchestrator:
         system_prompt: Optional[str],
         max_tokens: int,
         temperature: float,
-        api_key_override: Optional[str] = None
+        api_key_override: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
     ) -> Dict:
         """
         Executa com OpenAI GPT usando configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
         PROMPT #75 - Async execution with await (non-blocking)
+        PROMPT #207 - Configurable timeout
         """
         client = self.clients["openai"]  # AsyncOpenAI instance
 
@@ -1610,12 +1703,17 @@ class AIOrchestrator:
         openai_messages.extend(messages)
 
         # PROMPT #75 - Await async call to yield to event loop during API request
-        response = await client.chat.completions.create(
+        # PROMPT #207 - Apply configurable timeout
+        api_call = client.chat.completions.create(
             model=model,
             messages=openai_messages,
             max_tokens=max_tokens,
             temperature=temperature
         )
+        if timeout_seconds:
+            response = await asyncio.wait_for(api_call, timeout=timeout_seconds)
+        else:
+            response = await api_call
 
         return {
             "provider": "openai",
@@ -1635,12 +1733,14 @@ class AIOrchestrator:
         system_prompt: Optional[str],
         max_tokens: int,
         temperature: float,
-        api_key_override: Optional[str] = None
+        api_key_override: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
     ) -> Dict:
         """
         Executa com Google Gemini usando configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
         PROMPT #75 - Async execution with httpx AsyncClient (non-blocking)
+        PROMPT #207 - Configurable timeout
         """
         google_config = self.clients["google"]  # Dict with api_key and http_client
         api_key = api_key_override or google_config["api_key"]
@@ -1669,8 +1769,10 @@ class AIOrchestrator:
         }
 
         # PROMPT #75 - Await async HTTP call to yield to event loop during API request
+        # PROMPT #207 - Use configurable timeout (was hardcoded 120.0)
+        effective_timeout = timeout_seconds if timeout_seconds else 120.0
         try:
-            response = await http_client.post(url, json=payload, timeout=120.0)
+            response = await http_client.post(url, json=payload, timeout=effective_timeout)
         except Exception as http_error:
             raise Exception(f"HTTP request failed: {type(http_error).__name__}: {str(http_error)}")
 
@@ -1737,11 +1839,13 @@ class AIOrchestrator:
         messages: List[Dict],
         system_prompt: Optional[str],
         max_tokens: int,
-        temperature: float
+        temperature: float,
+        timeout_seconds: Optional[float] = None,
     ) -> Dict:
         """
         Executa com Ollama local LLM usando configurações do banco
         PROMPT #106 - Ollama local LLM integration
+        PROMPT #207 - Configurable timeout
 
         Ollama API é compatível com OpenAI, usando endpoint /api/chat
         Docs: https://github.com/ollama/ollama/blob/main/docs/api.md
@@ -1774,9 +1878,15 @@ class AIOrchestrator:
 
         logger.info(f"🦙 Calling Ollama: {url} with model {model} (this may take a while without GPU...)")
 
+        # PROMPT #207 - Use configurable timeout if provided (Ollama client already has its own timeout)
         try:
-            response = await http_client.post(url, json=payload)
+            if timeout_seconds:
+                response = await asyncio.wait_for(http_client.post(url, json=payload), timeout=timeout_seconds)
+            else:
+                response = await http_client.post(url, json=payload)
             response.raise_for_status()
+        except asyncio.TimeoutError:
+            raise Exception(f"Ollama request timed out after {timeout_seconds}s")
         except Exception as e:
             logger.error(f"❌ Ollama request failed: {e}")
             logger.error(f"   Tip: Without GPU, large prompts can take 2-5+ minutes. Consider enabling GPU or using cloud APIs.")
@@ -1809,11 +1919,13 @@ class AIOrchestrator:
         system_prompt: Optional[str],
         max_tokens: int,
         temperature: float,
-        api_key_override: Optional[str] = None
+        api_key_override: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
     ) -> Dict:
         """
         Executa com Cohere AI usando configurações do banco
         PROMPT #122 - Cohere AI integration
+        PROMPT #207 - Configurable timeout
 
         Cohere Chat API docs: https://docs.cohere.com/reference/chat
 
@@ -1881,8 +1993,10 @@ class AIOrchestrator:
 
         logger.info(f"🟠 Calling Cohere: {url} with model {model}")
 
+        # PROMPT #207 - Use configurable timeout
+        effective_timeout = timeout_seconds if timeout_seconds else 60.0
         try:
-            response = await http_client.post(url, json=payload, headers=headers)
+            response = await http_client.post(url, json=payload, headers=headers, timeout=effective_timeout)
         except Exception as http_error:
             raise Exception(f"HTTP request failed: {type(http_error).__name__}: {str(http_error)}")
 

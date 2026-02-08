@@ -20,6 +20,7 @@ router = APIRouter()
 # Each entry: (key, default_value, description)
 _DEFAULT_SETTINGS = [
     ("max_discovery_patterns", "20", "Max patterns per discovery scan (default 20, cap 50 per project)"),
+    ("default_api_timeout_seconds", "120", "Default API timeout in seconds for all AI model calls (PROMPT #207)"),
 ]
 
 
