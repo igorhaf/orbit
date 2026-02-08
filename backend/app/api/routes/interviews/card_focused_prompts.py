@@ -46,8 +46,12 @@ def get_card_hierarchy(task: Task, db: Session) -> List[Task]:
 def build_hierarchy_context(hierarchy: List[Task]) -> str:
     """
     PROMPT #132 - Build human-readable hierarchy context section.
+    PROMPT #198 - Proportional weighting: closer parents get more detail.
 
     Shows the full path from Epic down to the current card's parent.
+    The immediate parent (last in list) gets the most detail (~40%),
+    grandparent gets medium detail (~30%), great-grandparent gets
+    minimal detail (~20%), and further ancestors get title only.
 
     Args:
         hierarchy: List of parent tasks from root to immediate parent
@@ -69,29 +73,71 @@ def build_hierarchy_context(hierarchy: List[Task]) -> str:
 
     context = """
 ═══════════════════════════════════════════════════════════════
-📊 HIERARQUIA DO CARD (CONTEXTO COMPLETO)
+📊 HIERARQUIA DO CARD (CONTEXTO PROPORCIONAL)
 ═══════════════════════════════════════════════════════════════
 """
+
+    total_levels = len(hierarchy)
 
     for i, card in enumerate(hierarchy):
         item_type = (card.item_type or "task").lower()
         icon = type_icons.get(item_type, "•")
         indent = "  " * i
 
-        context += f"""
-{indent}{icon} **{item_type.upper()}**: {card.title}
-{indent}   Descrição: {(card.description or 'Não especificado')[:200]}{'...' if card.description and len(card.description) > 200 else ''}
+        # PROMPT #198 - Weight based on distance from current card
+        # Last item = immediate parent = highest weight
+        distance_from_current = total_levels - i
+
+        if distance_from_current == 1:
+            # HIGH (~40%) - Immediate parent: full detail
+            context += f"""
+{indent}{icon} **{item_type.upper()} [CONTEXTO PRINCIPAL]**: {card.title}
+{indent}   Descrição: {card.description or 'Não especificado'}
+"""
+            if card.acceptance_criteria and len(card.acceptance_criteria) > 0:
+                criteria_list = "\n".join([f"{indent}     - {c}" for c in card.acceptance_criteria])
+                context += f"{indent}   Critérios de Aceitação:\n{criteria_list}\n"
+            if card.story_points:
+                context += f"{indent}   Story Points: {card.story_points}\n"
+            if card.labels and len(card.labels) > 0:
+                context += f"{indent}   Labels: {', '.join(card.labels)}\n"
+            if card.generated_prompt:
+                context += f"{indent}   Prompt Gerado: {card.generated_prompt[:500]}{'...' if len(card.generated_prompt) > 500 else ''}\n"
+
+        elif distance_from_current == 2:
+            # MEDIUM (~30%) - Grandparent: summarized
+            desc = (card.description or 'Não especificado')[:300]
+            ellipsis = '...' if card.description and len(card.description) > 300 else ''
+            context += f"""
+{indent}{icon} **{item_type.upper()} [CONTEXTO SECUNDÁRIO]**: {card.title}
+{indent}   Descrição: {desc}{ellipsis}
+"""
+            if card.acceptance_criteria and len(card.acceptance_criteria) > 0:
+                context += f"{indent}   Critérios de Aceitação: {len(card.acceptance_criteria)} definidos\n"
+            if card.story_points:
+                context += f"{indent}   Story Points: {card.story_points}\n"
+
+        elif distance_from_current == 3:
+            # LOW (~20%) - Great-grandparent: minimal
+            desc = (card.description or 'Não especificado')[:150]
+            ellipsis = '...' if card.description and len(card.description) > 150 else ''
+            context += f"""
+{indent}{icon} **{item_type.upper()} [REFERÊNCIA]**: {card.title}
+{indent}   Descrição: {desc}{ellipsis}
 """
 
-        # Add acceptance criteria summary if exists (for context)
-        if card.acceptance_criteria and len(card.acceptance_criteria) > 0:
-            context += f"{indent}   Critérios de Aceitação: {len(card.acceptance_criteria)} definidos\n"
+        else:
+            # MINIMAL - Title only
+            context += f"""
+{indent}{icon} **{item_type.upper()}**: {card.title}
+"""
 
     context += """
 ═══════════════════════════════════════════════════════════════
-⚠️ IMPORTANTE: Suas perguntas devem ser CONTEXTUALIZADAS com a hierarquia acima!
-   - Considere os objetivos do Epic
-   - Mantenha consistência com a Story
+⚠️ PRIORIDADE DE CONTEXTO:
+   - FOQUE PRINCIPALMENTE no card marcado [CONTEXTO PRINCIPAL] (pai imediato)
+   - Use os níveis [CONTEXTO SECUNDÁRIO] e [REFERÊNCIA] como apoio
+   - Suas perguntas devem ser ESPECÍFICAS para o nível atual, não genéricas
    - Complemente (não repita) informações já definidas nos níveis superiores
 ═══════════════════════════════════════════════════════════════
 """
@@ -144,15 +190,33 @@ def build_card_focused_prompt(
     """
     question_num = (message_count // 2) + 1
 
-    # Project context
-    project_context = f"""
+    # PROMPT #198 - Proportional project context based on hierarchy depth
+    hierarchy_depth = len(hierarchy) if hierarchy else 0
+
+    if hierarchy_depth >= 3:
+        # Subtask with Epic>Story>Task - project gets ~10% (name only)
+        project_context = f"\nPROJETO: {project.name}\n"
+    elif hierarchy_depth == 2:
+        # Task with Epic>Story - project gets ~30%
+        project_context = f"\nPROJETO: {project.name}\nDescrição: {(project.description or '')[:150]}\n"
+    elif hierarchy_depth == 1:
+        # Story with Epic - project gets ~60%
+        project_context = f"""
+INFORMAÇÕES DO PROJETO:
+- Nome: {project.name}
+- Descrição: {project.description or ''}
+{stack_context}
+"""
+    else:
+        # Epic or no hierarchy - project gets 100%
+        project_context = f"""
 INFORMAÇÕES DO PROJETO:
 - Nome: {project.name}
 - Descrição: {project.description}
 {stack_context}
 """
 
-    # PROMPT #132 - Full hierarchy context (Epic → Story → Task → current)
+    # PROMPT #132/198 - Proportional hierarchy context (Epic → Story → Task → current)
     hierarchy_context = ""
     if hierarchy and len(hierarchy) > 0:
         hierarchy_context = build_hierarchy_context(hierarchy)

@@ -126,6 +126,7 @@ STACK TÉCNICA:
             message_count=message_count,
             parent_card=parent_task,
             stack_context=stack_context,
+            current_card=parent_task,  # PROMPT #198 - Full card for rich context
             hierarchy=hierarchy if hierarchy else None
         )
 
