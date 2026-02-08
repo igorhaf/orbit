@@ -5671,6 +5671,7 @@ IMPORTANTE:
             content = response.get("content", "")
 
             # Parse JSON response
+            # PROMPT #192 - Robust JSON parsing for AI responses with unescaped newlines
             import json
             context_semantic = ""
             context_human = ""
@@ -5679,11 +5680,29 @@ IMPORTANTE:
                 json_start = content.find("{")
                 json_end = content.rfind("}") + 1
                 if json_start >= 0 and json_end > json_start:
-                    parsed = json.loads(content[json_start:json_end])
-                    context_semantic = parsed.get("context_semantic", "")
-                    context_human = parsed.get("context_human", "")
-            except json.JSONDecodeError:
-                logger.warning("Could not parse consolidation JSON, using raw content")
+                    json_str = content[json_start:json_end]
+                    try:
+                        parsed = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        # AI often returns JSON with unescaped newlines inside string values
+                        # Fix by escaping newlines within JSON string values
+                        import re
+                        # Extract values using regex for each known key
+                        sem_match = re.search(r'"context_semantic"\s*:\s*"(.*?)"(?:\s*,\s*"context_human")', json_str, re.DOTALL)
+                        hum_match = re.search(r'"context_human"\s*:\s*"(.*?)"(?:\s*[,}])\s*$', json_str, re.DOTALL)
+                        if sem_match and hum_match:
+                            context_semantic = sem_match.group(1).replace('\\n', '\n')
+                            context_human = hum_match.group(1).replace('\\n', '\n')
+                            parsed = None  # Skip the parsed.get below
+                        else:
+                            # Last resort: try to fix newlines by replacing them in string values
+                            fixed = re.sub(r'(?<=": ")(.*?)(?="[,}])', lambda m: m.group(0).replace('\n', '\\n'), json_str, flags=re.DOTALL)
+                            parsed = json.loads(fixed)
+                    if parsed is not None:
+                        context_semantic = parsed.get("context_semantic", "")
+                        context_human = parsed.get("context_human", "")
+            except (json.JSONDecodeError, Exception) as e:
+                logger.warning(f"Could not parse consolidation JSON: {e}, using raw content")
                 context_semantic = content
                 context_human = content
 

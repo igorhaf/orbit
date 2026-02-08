@@ -122,15 +122,18 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   // PROMPT #177 - Refresh item data when activation or generation job completes
   // When isApproving/isGeneratingChildren transitions from true → false, the job finished.
   // Call onUpdate() so the parent refreshes the backlog and syncs selectedBacklogItem.
+  // PROMPT #192 - Also re-fetch children directly so hierarchy tab updates immediately.
   const prevIsApprovingRef = useRef(isApproving);
   const prevIsGeneratingRef = useRef(isGeneratingChildren);
   useEffect(() => {
     if (prevIsApprovingRef.current && !isApproving) {
       // Activation job completed - refresh to show generated content
+      fetchItemDetails();
       if (onUpdate) onUpdate();
     }
     if (prevIsGeneratingRef.current && !isGeneratingChildren) {
       // Children generation job completed - refresh to show new children
+      fetchItemDetails();
       if (onUpdate) onUpdate();
     }
     prevIsApprovingRef.current = isApproving;
