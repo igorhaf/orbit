@@ -17,16 +17,14 @@ import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import WorkflowActions from './WorkflowActions';
 import InlineCardCreator from './InlineCardCreator'; // PROMPT #187
-import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconClipboard, IconTree, IconLink, IconChat, IconChart, IconCpu, IconMicrophone, IconPencil, IconCheckCircle } from '@/components/icons';
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconClipboard, IconTree, IconChat, IconChart, IconCpu, IconMicrophone, IconPencil, IconCheckCircle } from '@/components/icons';
 import {
   BacklogItem,
   ItemType,
   PriorityLevel,
-  TaskRelationship,
   TaskComment,
   StatusTransition,
   CommentType,
-  RelationshipType,
   Interview,  // PROMPT #130
 } from '@/lib/types';
 
@@ -44,7 +42,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [activeTab, setActiveTab] = useState<string>('overview');
   // PROMPT #131 - Selected interview for ChatInterface display
   const [selectedInterviewId, setSelectedInterviewId] = useState<string | null>(initialInterviewId || null);
-  const [relationships, setRelationships] = useState<TaskRelationship[]>([]);
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [transitions, setTransitions] = useState<StatusTransition[]>([]);
   const [children, setChildren] = useState<BacklogItem[]>([]);
@@ -157,10 +154,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const fetchItemDetails = async () => {
     setLoading(true);
     try {
-      // Fetch relationships
-      const relData = await tasksApi.getRelationships(item.id);
-      setRelationships(relData || []);
-
       // Fetch comments
       const commentsData = await tasksApi.getComments(item.id);
       setComments(commentsData || []);
@@ -568,10 +561,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const tabs: Array<{ id: string; label: string; icon: React.ReactNode; count?: number; hasPrompt?: boolean }> = [
     { id: 'overview', label: 'Overview', icon: <IconClipboard className="w-4 h-4" /> },
     { id: 'hierarchy', label: 'Hierarchy', icon: <IconTree className="w-4 h-4" /> },
-    { id: 'relationships', label: 'Links', icon: <IconLink className="w-4 h-4" /> },
     { id: 'comments', label: 'Comments', icon: <IconChat className="w-4 h-4" />, count: comments.length },
     { id: 'transitions', label: 'History', icon: <IconChart className="w-4 h-4" />, count: transitions.length },
-    { id: 'ai-config', label: 'AI Config', icon: <IconCpu className="w-4 h-4" /> },
     { id: 'interview', label: 'Interview', icon: <IconMicrophone className="w-4 h-4" />, count: cardInterviews.length },
     { id: 'prompt', label: 'Prompt', icon: <IconPencil className="w-4 h-4" />, hasPrompt: !!item.generated_prompt },
     { id: 'acceptance', label: 'Criteria', icon: <IconCheckCircle className="w-4 h-4" />, count: item.acceptance_criteria?.length || 0 },
@@ -1127,45 +1118,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </div>
               )}
 
-              {/* Relationships Tab */}
-              {activeTab === 'relationships' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Relationships ({relationships.length})
-                    </h3>
-                    <Button size="sm" variant="outline">
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Add Link
-                    </Button>
-                  </div>
-
-                  {relationships.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">No relationships defined</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {relationships.map((rel) => (
-                        <div key={rel.id} className="border border-gray-200 rounded-lg p-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <span className="text-xs font-semibold text-gray-500 uppercase">
-                                {rel.relationship_type.replace('_', ' ')}
-                              </span>
-                              <p className="text-sm text-gray-900 mt-1">
-                                Task ID: {rel.target_task_id}
-                              </p>
-                            </div>
-                            <button className="text-red-600 hover:text-red-700 text-sm">Remove</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
               {/* Comments Tab */}
               {activeTab === 'comments' && (
                 <div className="space-y-4">
@@ -1287,58 +1239,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-
-              {/* AI Config Tab */}
-              {activeTab === 'ai-config' && (
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">AI Orchestration Settings</h3>
-                    <div className="space-y-4">
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Target AI Model</span>
-                        <p className="text-sm text-gray-900 mt-1">
-                          {item.target_ai_model_id || 'Not set (will auto-select)'}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Token Budget</span>
-                        <p className="text-sm text-gray-900 mt-1">
-                          {item.token_budget ? `${item.token_budget.toLocaleString()} tokens` : 'Not set'}
-                        </p>
-                      </div>
-                      {item.actual_tokens_used && (
-                        <div>
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Tokens Used</span>
-                          <p className="text-sm text-gray-900 mt-1">
-                            {item.actual_tokens_used.toLocaleString()} tokens
-                            {item.token_budget && (
-                              <span className="text-xs text-gray-500 ml-2">
-                                ({Math.round((item.actual_tokens_used / item.token_budget) * 100)}% of budget)
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      )}
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Prompt Template</span>
-                        <p className="text-sm text-gray-900 mt-1">
-                          {item.prompt_template_id || 'Default template'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Generation Context */}
-                  {item.generation_context && Object.keys(item.generation_context).length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900 mb-2">Generation Context</h3>
-                      <pre className="text-xs bg-gray-50 p-3 rounded border border-gray-200 overflow-x-auto">
-                        {JSON.stringify(item.generation_context, null, 2)}
-                      </pre>
-                    </div>
-                  )}
                 </div>
               )}
 
