@@ -233,7 +233,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     try {
       // Run card inference first
       const currentInterview = cardInterviews.find(i => i.id === selectedInterviewId);
-      if (currentInterview?.interview_mode === 'card_inference') {
+      if (currentInterview?.interview_mode === 'card_focused') {
         console.log('🔄 Running card inference for task:', item.id);
         try {
           await tasksApi.runCardInference(item.id, selectedInterviewId);
@@ -1245,7 +1245,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       <div className="flex items-center gap-3 flex-shrink-0">
                         <IconChat className="w-5 h-5 text-blue-600" />
                         <h3 className="text-sm font-semibold text-gray-900">
-                          {cardInterviews.find(i => i.id === selectedInterviewId)?.interview_mode === 'card_inference' ? 'Card Interview' : 'Interview'}
+                          {cardInterviews.find(i => i.id === selectedInterviewId)?.interview_mode === 'card_focused' ? 'Card Interview' : 'Interview'}
                         </h3>
                         <span className={`px-2 py-0.5 text-xs rounded-full ${
                           cardInterviews.find(i => i.id === selectedInterviewId)?.status === 'completed'
@@ -1310,7 +1310,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       <div className="border border-gray-200 rounded-lg overflow-hidden flex-1 min-h-0">
                         <ChatInterface
                           interviewId={selectedInterviewId}
-                          interviewMode="card_inference"
+                          interviewMode="card_focused"
                           onStatusChange={() => {
                             fetchCardInterview();
                             onUpdate?.();
@@ -1392,7 +1392,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                                 <span className="text-sm font-medium text-blue-700">
                                   {interview.interview_mode === 'context' ? 'Context Interview' :
                                    interview.interview_mode === 'meta_prompt' ? 'Epic Interview' :
-                                   interview.interview_mode === 'card_inference' ? 'Card Interview' :
+                                   interview.interview_mode === 'card_focused' ? 'Card Interview' :
                                    interview.interview_mode === 'task_focused' ? 'Task Interview' :
                                    'Interview'}
                                 </span>

@@ -753,7 +753,7 @@ export default function BacklogListView({
             <span className="text-sm font-medium text-blue-700">
               {interview.interview_mode === 'context' ? 'Context Interview' :
                interview.interview_mode === 'meta_prompt' ? 'Epic Interview' :
-               interview.interview_mode === 'card_inference' ? 'Card Interview' :
+               interview.interview_mode === 'card_focused' ? 'Card Interview' :
                interview.interview_mode === 'task_focused' ? 'Task Interview' :
                'Interview'}
             </span>

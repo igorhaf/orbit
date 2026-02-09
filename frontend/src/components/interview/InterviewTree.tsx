@@ -53,7 +53,7 @@ const getInterviewModeLabel = (mode?: string) => {
       return 'Context Interview';
     case 'meta_prompt':
       return 'Epic Interview';
-    case 'card_inference':
+    case 'card_focused':
       return 'Card Interview';
     case 'task_focused':
       return 'Task Interview';
@@ -71,7 +71,7 @@ const getInterviewModeIcon = (mode?: string): React.ReactNode => {
       return <IconGlobe className="w-5 h-5" />;
     case 'meta_prompt':
       return <IconTarget className="w-5 h-5" />;
-    case 'card_inference':
+    case 'card_focused':
       return <IconLightbulb className="w-5 h-5" />;
     case 'task_focused':
       return <IconCheck className="w-5 h-5" />;

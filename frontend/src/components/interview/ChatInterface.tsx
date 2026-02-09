@@ -20,10 +20,10 @@ interface Props {
   interviewId: string;
   onStatusChange?: () => void;
   onComplete?: () => void;  // PROMPT #89 - Called when interview is completed (for context generation)
-  interviewMode?: 'context' | 'meta_prompt' | 'orchestrator' | 'card_inference' | string;  // PROMPT #89 - Interview mode hint
+  interviewMode?: 'context' | 'meta_prompt' | 'orchestrator' | 'card_focused' | string;  // PROMPT #89 - Interview mode hint
   embedded?: boolean;  // PROMPT #130 - When true, removes outer container styling for embedding in modals/panels
   readOnly?: boolean;  // PROMPT #130 - When true, hides input and action buttons (display mode only)
-  parentTaskId?: string;  // PROMPT #131 - Parent task ID for card_inference mode
+  parentTaskId?: string;  // PROMPT #131 - Parent task ID for card_focused mode
   hideHeader?: boolean;  // PROMPT #131 - When true, hides internal header (parent handles it)
 }
 
@@ -768,7 +768,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
   const handleComplete = async () => {
     // PROMPT #131 - Card inference mode: complete and run inference
-    const isCardInference = interviewMode === 'card_inference';
+    const isCardInference = interviewMode === 'card_focused';
 
     setConfirmDialog({
       open: true,
@@ -782,7 +782,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, isLoading: true }));
         try {
-          // PROMPT #131 - Run card inference if in card_inference mode
+          // PROMPT #131 - Run card inference if in card_focused mode
           if (isCardInference && parentTaskId) {
             console.log('🔄 Running card inference for task:', parentTaskId);
             try {
@@ -1029,7 +1029,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
             <div className="flex gap-2">
               {/* PROMPT #89 - Context Interview: Generate Context Button */}
               {/* PROMPT #80 - Meta Prompt: Generate Epic Button */}
-              {/* PROMPT #131 - Hide Gerar Épico for card_inference mode */}
+              {/* PROMPT #131 - Hide Gerar Épico for card_focused mode */}
               {/* PROMPT #122 - Allow generating context immediately if memory scan captured context */}
               {interviewMode === 'context' && (
                 <Button
@@ -1044,7 +1044,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                   📝 Gerar Contexto
                 </Button>
               )}
-              {interviewMode !== 'context' && interviewMode !== 'card_inference' && (
+              {interviewMode !== 'context' && interviewMode !== 'card_focused' && (
                 <Button
                   variant="primary"
                   size="sm"
