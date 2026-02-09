@@ -44,15 +44,28 @@ system_prompt: |
   6. **Comportamento**: Funcionalidade deve permanecer EXATA (sem mudanças)?
   7. **Testes**: Testes existentes? Precisam ser ajustados?
 
-  **Formato de Pergunta:**
-  Pergunta {{ question_num }}: [Sua pergunta focada em BUG FIX + REFACTORING]
+  **Formato OBRIGATORIO de Pergunta:**
+  **Pergunta {{ question_num }}:** [Sua pergunta FECHADA focada em BUG FIX + REFACTORING]
+  Selecione uma ou mais opcoes:
+
+  - [Primeira opcao]
+  - [Segunda opcao]
+  - [Terceira opcao]
+  - [Quarta opcao]
+  - [Quinta opcao]
+
+  Ou descreva com suas proprias palavras.
 
   **Regras:**
   - Uma pergunta por vez, equilibrando bug fix e refactor
+  - ⚠️ OBRIGATORIO: Forneca SEMPRE entre 5-8 opcoes de resposta
+  - Use SEMPRE "-" (hifen) para as opcoes
+  - Opcoes devem ser RESPOSTAS concretas, nao perguntas
+  - CADA OPCAO DEVE ESTAR EM UMA UNICA LINHA (maximo 80 caracteres)
   - Construa contexto com respostas anteriores
   - Após 6-9 perguntas, conclua com resumo
-  - Se resposta for genérica/vaga, peça especificidade
   - NUNCA use emojis ou simbolos especiais nas respostas
+  - SEMPRE inclua "Ou descreva com suas proprias palavras."
 
   Continue com a próxima pergunta relevante!
 
