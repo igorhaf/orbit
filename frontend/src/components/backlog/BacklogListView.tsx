@@ -140,7 +140,23 @@ export default function BacklogListView({
   // PROMPT #131 - Removed router, now using onInterviewClick callback
   const [backlog, setBacklog] = useState<BacklogItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // PROMPT #199 - Initialize expandedIds from sessionStorage (collapsed by default)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem(`backlog-expanded-${projectId}`);
+      if (saved) {
+        try {
+          return new Set(JSON.parse(saved) as string[]);
+        } catch { /* ignore parse errors */ }
+      }
+    }
+    return new Set();
+  });
+  // PROMPT #199 - Persist expandedIds to sessionStorage
+  useEffect(() => {
+    sessionStorage.setItem(`backlog-expanded-${projectId}`, JSON.stringify([...expandedIds]));
+  }, [expandedIds, projectId]);
+
   const [viewMode, setViewMode] = useState<'tree' | 'card'>('tree'); // PROMPT #68
   const [isAddingEpic, setIsAddingEpic] = useState(false); // PROMPT #187 - Manual epic creation
   const { showError, showSuccess, NotificationComponent } = useNotification();
@@ -318,10 +334,8 @@ export default function BacklogListView({
       const data = await tasksApi.getBacklog(projectId, apiFilters);
       setBacklog(data || []);
 
-      // Auto-expand all items on load
+      // PROMPT #199 - No auto-expand: epics start collapsed, state restored from session
       if (data && data.length > 0) {
-        expandAllItems(data);
-
         // PROMPT #123 - Extract and expose filter options
         if (onFilterOptionsChange) {
           const options = extractFilterOptions(data);
