@@ -274,8 +274,83 @@ async def handle_unified_open_interview(
         system_prompt = get_context_ai_prompt(interview.conversation_data, project)
         logger.info(f"📋 Context Interview - using context AI prompt with memory_context")
 
+    # PROMPT #217 - Card-focused Interview uses fixed questions Q1-Q3
+    elif interview.interview_mode == "card_focused":
+        from app.api.routes.interviews.card_focused_questions import (
+            get_card_focused_fixed_question,
+            count_fixed_questions_card_focused
+        )
+
+        question_number = (message_count // 2) + 1
+        total_fixed = count_fixed_questions_card_focused()
+
+        logger.info(f"📋 Card-Focused Interview - question_number={question_number}, fixed_count={total_fixed}")
+
+        # Check if we're still in fixed questions phase (Q1-Q3)
+        if question_number <= total_fixed:
+            # Extract previous answers for context
+            previous_answers = {}
+            for i, msg in enumerate(interview.conversation_data):
+                if msg.get('role') == 'user':
+                    q_num = (i + 1) // 2
+                    previous_answers[f'question_{q_num}'] = msg.get('content', '')
+
+            fixed_question = get_card_focused_fixed_question(
+                question_number=question_number,
+                project=project,
+                db=db,
+                parent_card=parent_task,
+                previous_answers=previous_answers
+            )
+            if fixed_question:
+                # Store motivation type from Q1 answer
+                if question_number == 2:
+                    # Q1 answer is the motivation type
+                    user_answers = [
+                        msg.get('content', '')
+                        for msg in interview.conversation_data
+                        if msg.get('role') == 'user'
+                    ]
+                    if user_answers:
+                        interview.motivation_type = user_answers[0].lower()
+
+                interview.conversation_data.append(fixed_question)
+                flag_modified(interview, "conversation_data")
+                interview.ai_model_used = "system/fixed-question-card-focused"
+
+                db.commit()
+                db.refresh(interview)
+
+                logger.info(f"✅ Card-Focused Interview: Returning FIXED Q{question_number}")
+
+                return {
+                    "success": True,
+                    "message": fixed_question,
+                    "usage": {"fixed_question": True}
+                }
+
+        # After fixed questions (Q4+), use AI with card-focused context
+        logger.info(f"📋 Card-Focused Interview - generating AI contextual question (Q{question_number})")
+
+        # Extract previous answers
+        previous_answers = {}
+        for i, msg in enumerate(interview.conversation_data):
+            if msg.get('role') == 'user':
+                q_num = (i + 1) // 2
+                previous_answers[f'q{q_num}'] = msg.get('content', '')
+
+        # Build system prompt (delegates to build_card_focused_prompt)
+        system_prompt = build_unified_open_prompt(
+            project=project,
+            interview=interview,
+            message_count=message_count,
+            parent_task=parent_task,
+            previous_answers=previous_answers,
+            db=db
+        )
+
     else:
-        # Non-context interviews use the unified open prompt
+        # Non-context, non-card-focused interviews use the unified open prompt
         # Extract previous answers from conversation
         previous_answers = {}
         for i, msg in enumerate(interview.conversation_data):
@@ -526,6 +601,19 @@ async def generate_first_question(
     if interview.interview_mode == "context":
         logger.info(f"📋 Using FIXED Q1 for Context Interview")
         fixed_question = get_context_fixed_question(1, project, db)
+        if fixed_question:
+            return fixed_question
+
+    # PROMPT #217 - Card-focused Interview uses fixed Q1 (motivation type)
+    if interview.interview_mode == "card_focused":
+        from app.api.routes.interviews.card_focused_questions import get_card_focused_fixed_question
+        logger.info(f"📋 Using FIXED Q1 for Card-Focused Interview (parent: {parent_task.title if parent_task else 'None'})")
+        fixed_question = get_card_focused_fixed_question(
+            question_number=1,
+            project=project,
+            db=db,
+            parent_card=parent_task
+        )
         if fixed_question:
             return fixed_question
 
