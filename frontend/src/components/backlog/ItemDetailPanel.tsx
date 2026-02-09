@@ -105,6 +105,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   };
   const childTypeLabel = childTypeLabelMap[item.item_type];
 
+  // PROMPT #218 - Acceptance Criteria CRUD state
+  const [newCriterion, setNewCriterion] = useState('');
+  const [isAddingCriterion, setIsAddingCriterion] = useState(false);
+  const [editingCriterionIdx, setEditingCriterionIdx] = useState<number | null>(null);
+  const [editingCriterionText, setEditingCriterionText] = useState('');
+
   // PROMPT #131 - Card interviews state (list instead of single)
   const [cardInterviews, setCardInterviews] = useState<Interview[]>([]);
   const [loadingInterview, setLoadingInterview] = useState(false);
@@ -437,6 +443,44 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const handleCancelEdit = () => {
     setEditedDescription(item.description || '');
     setIsEditingDescription(false);
+  };
+
+  // PROMPT #218 - Acceptance Criteria handlers
+  const handleAddCriterion = async () => {
+    if (!newCriterion.trim()) return;
+    try {
+      const updated = [...(item.acceptance_criteria || []), newCriterion.trim()];
+      await tasksApi.update(item.id, { acceptance_criteria: updated });
+      setNewCriterion('');
+      setIsAddingCriterion(false);
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      showError(`Failed to add criterion: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleDeleteCriterion = async (idx: number) => {
+    try {
+      const updated = (item.acceptance_criteria || []).filter((_, i) => i !== idx);
+      await tasksApi.update(item.id, { acceptance_criteria: updated });
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      showError(`Failed to delete criterion: ${error.message || 'Unknown error'}`);
+    }
+  };
+
+  const handleEditCriterion = async (idx: number) => {
+    if (!editingCriterionText.trim()) return;
+    try {
+      const updated = [...(item.acceptance_criteria || [])];
+      updated[idx] = editingCriterionText.trim();
+      await tasksApi.update(item.id, { acceptance_criteria: updated });
+      setEditingCriterionIdx(null);
+      setEditingCriterionText('');
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      showError(`Failed to update criterion: ${error.message || 'Unknown error'}`);
+    }
   };
 
   // PROMPT #97 - Markdown formatting helpers
@@ -1542,14 +1586,14 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </div>
               )}
 
-              {/* Acceptance Criteria Tab */}
+              {/* Acceptance Criteria Tab - PROMPT #218 - Full CRUD */}
               {activeTab === 'acceptance' && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-gray-900">
                       Acceptance Criteria ({item.acceptance_criteria?.length || 0})
                     </h3>
-                    <Button size="sm" variant="outline">
+                    <Button size="sm" variant="outline" onClick={() => setIsAddingCriterion(true)}>
                       <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                       </svg>
@@ -1557,22 +1601,100 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                     </Button>
                   </div>
 
+                  {/* Add criterion input */}
+                  {isAddingCriterion && (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newCriterion}
+                        onChange={(e) => setNewCriterion(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleAddCriterion();
+                          if (e.key === 'Escape') { setIsAddingCriterion(false); setNewCriterion(''); }
+                        }}
+                        placeholder="Describe the acceptance criterion..."
+                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        autoFocus
+                      />
+                      <Button size="sm" variant="primary" onClick={handleAddCriterion} disabled={!newCriterion.trim()}>
+                        Add
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => { setIsAddingCriterion(false); setNewCriterion(''); }}>
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+
                   {!item.acceptance_criteria || item.acceptance_criteria.length === 0 ? (
                     <p className="text-sm text-gray-500 italic">No acceptance criteria defined</p>
                   ) : (
                     <ul className="space-y-2">
                       {item.acceptance_criteria.map((criterion, idx) => (
-                        <li key={idx} className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50">
-                          <input
-                            type="checkbox"
-                            className="mt-1 w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                          />
-                          <span className="flex-1 text-sm text-gray-900">{criterion}</span>
-                          <button className="text-gray-400 hover:text-red-600">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                        <li key={idx} className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 group">
+                          {editingCriterionIdx === idx ? (
+                            /* Editing mode */
+                            <div className="flex-1 flex gap-2">
+                              <input
+                                type="text"
+                                value={editingCriterionText}
+                                onChange={(e) => setEditingCriterionText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleEditCriterion(idx);
+                                  if (e.key === 'Escape') { setEditingCriterionIdx(null); setEditingCriterionText(''); }
+                                }}
+                                className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded focus:ring-2 focus:ring-blue-500"
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => handleEditCriterion(idx)}
+                                className="p-1 text-green-600 hover:text-green-700"
+                                title="Save"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => { setEditingCriterionIdx(null); setEditingCriterionText(''); }}
+                                className="p-1 text-gray-400 hover:text-gray-600"
+                                title="Cancel"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            </div>
+                          ) : (
+                            /* View mode */
+                            <>
+                              <span className="mt-0.5 text-gray-400 text-xs font-mono">{idx + 1}.</span>
+                              <span
+                                className="flex-1 text-sm text-gray-900 cursor-pointer"
+                                onDoubleClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterion); }}
+                                title="Double-click to edit"
+                              >
+                                {criterion}
+                              </span>
+                              <button
+                                onClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterion); }}
+                                className="p-1 text-gray-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Edit"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCriterion(idx)}
+                                className="p-1 text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Delete"
+                              >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                </svg>
+                              </button>
+                            </>
+                          )}
                         </li>
                       ))}
                     </ul>
