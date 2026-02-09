@@ -15,13 +15,11 @@ import {
   CardTitle,
   CardContent,
   Button,
-  Input,
   Dialog,
-  DialogFooter,
   AIModelBadge,
 } from '@/components/ui';
 import { projectsApi, jobsApi } from '@/lib/api';
-import { Project, ProjectCreate } from '@/lib/types';
+import { Project } from '@/lib/types';
 
 /**
  * PROMPT #192 - Strip markdown syntax for plain-text preview in project cards.
@@ -54,16 +52,8 @@ export default function ProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
-  const [projectToEdit, setProjectToEdit] = useState<Project | null>(null);
-  // PROMPT #111 - formData não inclui code_path (imutável após criação)
-  const [formData, setFormData] = useState<Omit<ProjectCreate, 'code_path'>>({
-    name: '',
-    description: '',
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   // PROMPT #121 - Processing job progress map: projectId -> job info
@@ -159,36 +149,6 @@ export default function ProjectsPage() {
     const interval = setInterval(fetchJobProgress, 3000);
     return () => clearInterval(interval);
   }, [projects, fetchProjects]);
-
-  const handleOpenEdit = (project: Project) => {
-    setProjectToEdit(project);
-    // PROMPT #111 - code_path é imutável, não incluir no formData
-    setFormData({
-      name: project.name,
-      description: project.description || '',
-    });
-    setShowEditDialog(true);
-  };
-
-  const handleUpdateProject = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!projectToEdit) return;
-
-    setIsSubmitting(true);
-
-    try {
-      await projectsApi.update(projectToEdit.id, formData);
-      setShowEditDialog(false);
-      setProjectToEdit(null);
-      // PROMPT #111 - code_path removido (imutável)
-      setFormData({ name: '', description: '' });
-      fetchProjects();
-    } catch (error) {
-      console.error('Error updating project:', error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleDeleteProject = async (project: Project) => {
     setProjectToDelete(project);
@@ -401,25 +361,6 @@ export default function ProjectsPage() {
                       </Button>
                     </Link>
                     <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleOpenEdit(project)}
-                    >
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                        />
-                      </svg>
-                    </Button>
-                    <Button
                       variant="danger"
                       size="sm"
                       onClick={() => handleDeleteProject(project)}
@@ -489,59 +430,6 @@ export default function ProjectsPage() {
           </div>
         </Dialog>
 
-        {/* Edit Project Dialog */}
-        <Dialog
-          open={showEditDialog}
-          onClose={() => setShowEditDialog(false)}
-          title="Edit Project"
-          description="Update project information"
-        >
-          <form onSubmit={handleUpdateProject}>
-            <div className="space-y-4">
-              <Input
-                label="Project Name"
-                placeholder="My AI Project"
-                required
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-              />
-              <Input
-                label="Description"
-                placeholder="Project description..."
-                value={formData.description || ''}
-                onChange={(e) =>
-                  setFormData({ ...formData, description: e.target.value })
-                }
-              />
-              {/* PROMPT #111 - code_path é imutável, exibir apenas como read-only */}
-              {projectToEdit?.code_path && (
-                <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                  <div className="text-xs font-medium text-gray-500 mb-1">Code Folder (immutable)</div>
-                  <div className="text-sm text-gray-700 font-mono break-all">
-                    {projectToEdit.code_path}
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">
-                    This path cannot be changed after project creation.
-                  </p>
-                </div>
-              )}
-            </div>
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setShowEditDialog(false)}
-              >
-                Cancel
-              </Button>
-              <Button type="submit" variant="primary" isLoading={isSubmitting}>
-                Update Project
-              </Button>
-            </DialogFooter>
-          </form>
-        </Dialog>
       </div>
     </Layout>
   );
