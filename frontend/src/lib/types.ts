@@ -430,7 +430,6 @@ export interface BacklogItem extends TaskWithRelations {
 export interface BacklogFilters {
   item_type?: ItemType[];
   priority?: PriorityLevel[];
-  assignee?: string;
   labels?: string[];
   status?: TaskStatus[];
   search?: string;

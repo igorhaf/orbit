@@ -940,17 +940,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       <span className="text-xs font-semibold text-gray-500 uppercase">Priority</span>
                       <p className="text-sm text-gray-900 mt-1">{item.priority}</p>
                     </div>
-                    {item.assignee && (
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Assignee</span>
-                        <div className="flex items-center gap-2 mt-1">
-                          <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center">
-                            {item.assignee.charAt(0).toUpperCase()}
-                          </div>
-                          <p className="text-sm text-gray-900">{item.assignee}</p>
-                        </div>
-                      </div>
-                    )}
                     {item.reporter && (
                       <div>
                         <span className="text-xs font-semibold text-gray-500 uppercase">Reporter</span>

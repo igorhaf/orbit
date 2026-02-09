@@ -13,7 +13,6 @@ import { PriorityLevel, TaskStatus } from '@/lib/types';
 interface BulkActionBarProps {
   selectedCount: number;
   selectedIds: Set<string>;
-  onAssignTo?: (assignee: string) => void;
   onChangePriority?: (priority: PriorityLevel) => void;
   onAddLabel?: (label: string) => void;
   onMoveToStatus?: (status: TaskStatus) => void;
@@ -24,33 +23,22 @@ interface BulkActionBarProps {
 export default function BulkActionBar({
   selectedCount,
   selectedIds,
-  onAssignTo,
   onChangePriority,
   onAddLabel,
   onMoveToStatus,
   onDelete,
   onClearSelection,
 }: BulkActionBarProps) {
-  const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [showPriorityDialog, setShowPriorityDialog] = useState(false);
   const [showLabelDialog, setShowLabelDialog] = useState(false);
   const [showStatusDialog, setShowStatusDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
-  const [assigneeInput, setAssigneeInput] = useState('');
   const [labelInput, setLabelInput] = useState('');
 
   if (selectedCount === 0) {
     return null;
   }
-
-  const handleAssign = () => {
-    if (onAssignTo && assigneeInput.trim()) {
-      onAssignTo(assigneeInput.trim());
-      setAssigneeInput('');
-      setShowAssignDialog(false);
-    }
-  };
 
   const handleAddLabel = () => {
     if (onAddLabel && labelInput.trim()) {
@@ -88,45 +76,6 @@ export default function BulkActionBar({
 
           {/* Action Buttons */}
           <div className="flex items-center gap-2">
-            {/* Assign */}
-            {onAssignTo && (
-              <div className="relative">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAssignDialog(!showAssignDialog)}
-                  leftIcon={
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  }
-                >
-                  Assign
-                </Button>
-                {showAssignDialog && (
-                  <div className="absolute bottom-full mb-2 left-0 bg-white border border-gray-300 rounded-lg shadow-lg p-3 min-w-[200px]">
-                    <input
-                      type="text"
-                      placeholder="Assignee username..."
-                      value={assigneeInput}
-                      onChange={(e) => setAssigneeInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAssign()}
-                      className="w-full px-2 py-1 text-sm border border-gray-300 rounded mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="primary" onClick={handleAssign} className="flex-1">
-                        Assign
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setShowAssignDialog(false)}>
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* Priority */}
             {onChangePriority && (
               <div className="relative">

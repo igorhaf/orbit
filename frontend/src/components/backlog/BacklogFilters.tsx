@@ -1,8 +1,8 @@
 /**
  * Backlog Filters Component
- * Filters for Item Type, Priority, Assignee, Labels, and Status
+ * Filters for Item Type, Priority, Labels, and Status
  * JIRA Transformation - PROMPT #62 - Phase 3
- * PROMPT #123 - Added Assignee and Labels filters with dynamic options
+ * PROMPT #123 - Added Labels filters with dynamic options
  */
 
 'use client';
@@ -17,7 +17,6 @@ interface BacklogFiltersProps {
   onFiltersChange: (filters: IBacklogFilters) => void;
   onClearFilters: () => void;
   availableLabels?: string[];  // PROMPT #123 - Available labels from backlog items
-  availableAssignees?: string[];  // PROMPT #123 - Available assignees from backlog items
 }
 
 export default function BacklogFilters({
@@ -25,7 +24,6 @@ export default function BacklogFilters({
   onFiltersChange,
   onClearFilters,
   availableLabels = [],
-  availableAssignees = [],
 }: BacklogFiltersProps) {
   // PROMPT #123 - State for label input
   const [labelInput, setLabelInput] = useState('');
@@ -96,7 +94,6 @@ export default function BacklogFilters({
       (filters.priority && filters.priority.length > 0) ||
       (filters.status && filters.status.length > 0) ||
       (filters.labels && filters.labels.length > 0) ||
-      filters.assignee ||
       filters.search
     );
   };
@@ -108,7 +105,6 @@ export default function BacklogFilters({
     if (filters.priority?.length) count += filters.priority.length;
     if (filters.status?.length) count += filters.status.length;
     if (filters.labels?.length) count += filters.labels.length;
-    if (filters.assignee) count += 1;
     if (filters.search) count += 1;
     return count;
   };
@@ -194,53 +190,6 @@ export default function BacklogFilters({
               {filters.search && (
                 <button
                   onClick={() => onFiltersChange({ ...filters, search: '' })}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* PROMPT #123 - Assignee Filter */}
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Assignee</label>
-            <div className="relative">
-              <svg
-                className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-              {availableAssignees.length > 0 ? (
-                <select
-                  value={filters.assignee || ''}
-                  onChange={(e) => onFiltersChange({ ...filters, assignee: e.target.value || undefined })}
-                  className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-white"
-                >
-                  <option value="">All assignees</option>
-                  {availableAssignees.map((assignee) => (
-                    <option key={assignee} value={assignee}>
-                      {assignee}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  placeholder="Filter by assignee..."
-                  value={filters.assignee || ''}
-                  onChange={(e) => onFiltersChange({ ...filters, assignee: e.target.value || undefined })}
-                  className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              )}
-              {filters.assignee && (
-                <button
-                  onClick={() => onFiltersChange({ ...filters, assignee: undefined })}
                   className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

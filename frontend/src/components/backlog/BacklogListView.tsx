@@ -27,7 +27,6 @@ const isSuggestedItem = (item: BacklogItem): boolean => {
 // PROMPT #123 - Interface for available filter options
 interface FilterOptions {
   labels: string[];
-  assignees: string[];
 }
 
 interface BacklogListViewProps {
@@ -38,7 +37,6 @@ interface BacklogListViewProps {
   filters?: {
     item_type?: ItemType[];
     priority?: PriorityLevel[];
-    assignee?: string;
     labels?: string[];
     status?: TaskStatus[];
     search?: string;  // PROMPT #123 - Local search filter
@@ -207,17 +205,13 @@ export default function BacklogListView({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // PROMPT #123 - Extract labels and assignees from backlog items
+  // PROMPT #123 - Extract labels from backlog items
   const extractFilterOptions = (items: BacklogItem[]): FilterOptions => {
     const labelsSet = new Set<string>();
-    const assigneesSet = new Set<string>();
 
     const traverse = (item: BacklogItem) => {
       if (item.labels) {
         item.labels.forEach(label => labelsSet.add(label));
-      }
-      if (item.assignee) {
-        assigneesSet.add(item.assignee);
       }
       if (item.children && item.children.length > 0) {
         item.children.forEach(child => traverse(child as BacklogItem));
@@ -227,8 +221,7 @@ export default function BacklogListView({
     items.forEach(traverse);
 
     return {
-      labels: Array.from(labelsSet).sort(),
-      assignees: Array.from(assigneesSet).sort()
+      labels: Array.from(labelsSet).sort()
     };
   };
 
@@ -244,7 +237,6 @@ export default function BacklogListView({
       return (
         item.title.toLowerCase().includes(lowerSearch) ||
         (item.description && item.description.toLowerCase().includes(lowerSearch)) ||
-        (item.assignee && item.assignee.toLowerCase().includes(lowerSearch)) ||
         (item.labels && item.labels.some(label => label.toLowerCase().includes(lowerSearch)))
       );
     };
@@ -277,7 +269,7 @@ export default function BacklogListView({
   useEffect(() => {
     fetchBacklog();
     fetchInterviews();  // PROMPT #131 - Fetch interviews
-  }, [projectId, filters?.item_type, filters?.priority, filters?.assignee, filters?.labels, filters?.status, refreshKey]);  // PROMPT #123 - Don't re-fetch on search change
+  }, [projectId, filters?.item_type, filters?.priority, filters?.labels, filters?.status, refreshKey]);  // PROMPT #123 - Don't re-fetch on search change
 
   // PROMPT #173 - Refresh backlog when activation job completes (via WebSocket notification)
   const prevNotificationsLengthRef = useRef(notifications.length);
@@ -326,7 +318,6 @@ export default function BacklogListView({
       const apiFilters = filters ? {
         item_type: filters.item_type,
         priority: filters.priority,
-        assignee: filters.assignee,
         labels: filters.labels,
         status: filters.status
       } : undefined;
@@ -675,15 +666,6 @@ export default function BacklogListView({
             <span className="px-2 py-0.5 text-xs font-medium rounded bg-purple-50 text-purple-700 border border-purple-200">
               {item.story_points} pts
             </span>
-          )}
-
-          {/* Assignee */}
-          {item.assignee && (
-            <div className="flex items-center gap-1">
-              <div className="w-6 h-6 rounded-full bg-blue-500 text-white text-xs flex items-center justify-center font-medium">
-                {item.assignee.charAt(0).toUpperCase()}
-              </div>
-            </div>
           )}
 
           {/* Labels */}

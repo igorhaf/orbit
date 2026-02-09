@@ -47,7 +47,6 @@ export default function ProjectDetailsPage() {
   const [backlogRefreshKey, setBacklogRefreshKey] = useState(0);  // PROMPT #96 - Trigger backlog refresh
   // PROMPT #123 - Available filter options from backlog
   const [availableLabels, setAvailableLabels] = useState<string[]>([]);
-  const [availableAssignees, setAvailableAssignees] = useState<string[]>([]);
   // PROMPT #131 - Selected interview to open in ItemDetailPanel
   const [selectedInterviewId, setSelectedInterviewId] = useState<string | null>(null);
   // PROMPT #131 - Bulk selection for mass actions
@@ -544,7 +543,6 @@ export default function ProjectDetailsPage() {
                     onFiltersChange={setBacklogFilters}
                     onClearFilters={() => setBacklogFilters({})}
                     availableLabels={availableLabels}
-                    availableAssignees={availableAssignees}
                   />
                 </div>
               )}
@@ -562,7 +560,6 @@ export default function ProjectDetailsPage() {
                   selectedItemId={selectedBacklogItem?.id}
                   onFilterOptionsChange={(options) => {
                     setAvailableLabels(options.labels);
-                    setAvailableAssignees(options.assignees);
                   }}
                   onInterviewClick={(item, interviewId) => {
                     // PROMPT #131 - Open card with interview tab and specific interview
