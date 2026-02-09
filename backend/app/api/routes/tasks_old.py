@@ -1959,6 +1959,8 @@ async def _activate_item_async(
     Background task to activate a suggested item (Epic, Story, Task, Subtask).
 
     PROMPT #108 - Background queue for prompt executions
+    PROMPT #211 - Cascade ancestor activation: when activating a child item,
+                  all unactivated ancestors are activated first (root to child).
 
     This can take 30-120 seconds depending on item type:
     - Epic: Generate content + 15-20 story drafts
@@ -1971,6 +1973,7 @@ async def _activate_item_async(
     from app.database import SessionLocal
     from app.services.job_manager import JobManager
     from app.services.context_generator import ContextGeneratorService
+    from app.services.task_hierarchy import TaskHierarchyService
 
     # Create new DB session for background task
     db = SessionLocal()
@@ -1981,17 +1984,51 @@ async def _activate_item_async(
         logger.info(f"🚀 Starting activation job {job_id} for {item_type.value} {task_id}")
 
         context_service = ContextGeneratorService(db)
+        hierarchy_service = TaskHierarchyService(db)
 
-        # Update progress based on item type
+        # PROMPT #211 - Cascade: activate unactivated ancestors first (root to child)
+        ancestors = hierarchy_service.get_all_ancestors(task_id)
+        # Filter to only unactivated ancestors (draft or suggested)
+        unactivated_ancestors = [
+            a for a in ancestors
+            if (a.labels and "suggested" in a.labels) or a.workflow_state == "draft"
+        ]
+        # Reverse to activate from root (Epic) down to immediate parent
+        unactivated_ancestors = list(reversed(unactivated_ancestors))
+
+        # Calculate progress steps: ancestors + target item
+        total_steps = len(unactivated_ancestors) + 1
+        progress_per_step = 80.0 / total_steps  # Reserve 10% start + 10% end
+
+        # Activate each ancestor in order (root first)
+        for i, ancestor in enumerate(unactivated_ancestors):
+            ancestor_progress = 10.0 + (i * progress_per_step)
+            job_manager.update_progress(
+                job_id, ancestor_progress,
+                f"Ativando {ancestor.item_type.value} ancestral: {ancestor.title[:40]}..."
+            )
+            logger.info(f"   ↳ Cascade activating ancestor {ancestor.item_type.value}: {ancestor.title}")
+
+            if ancestor.item_type == ItemType.EPIC:
+                await context_service.activate_suggested_epic(epic_id=ancestor.id)
+            elif ancestor.item_type == ItemType.STORY:
+                await context_service.activate_suggested_story(story_id=ancestor.id)
+            elif ancestor.item_type == ItemType.TASK:
+                await context_service.activate_suggested_task(task_id=ancestor.id)
+            elif ancestor.item_type == ItemType.SUBTASK:
+                await context_service.activate_suggested_subtask(subtask_id=ancestor.id)
+
+        # Now activate the target item
+        target_progress = 10.0 + (len(unactivated_ancestors) * progress_per_step)
         item_type_messages = {
-            ItemType.EPIC: ("Generating epic content...", "Generating story drafts..."),
-            ItemType.STORY: ("Generating story content...", "Generating task drafts..."),
-            ItemType.TASK: ("Generating task content...", "Generating subtask drafts..."),
-            ItemType.SUBTASK: ("Generating subtask content...", "Finalizing..."),
+            ItemType.EPIC: "Generating epic content...",
+            ItemType.STORY: "Generating story content...",
+            ItemType.TASK: "Generating task content...",
+            ItemType.SUBTASK: "Generating subtask content...",
         }
-        start_msg, mid_msg = item_type_messages.get(item_type, ("Processing...", "Finalizing..."))
+        start_msg = item_type_messages.get(item_type, "Processing...")
 
-        job_manager.update_progress(job_id, 10.0, start_msg)
+        job_manager.update_progress(job_id, target_progress, start_msg)
 
         # Call appropriate activation function based on item type
         if item_type == ItemType.EPIC:
@@ -2003,20 +2040,29 @@ async def _activate_item_async(
         elif item_type == ItemType.SUBTASK:
             result = await context_service.activate_suggested_subtask(subtask_id=task_id)
         else:
-            # Fallback to epic activation
             result = await context_service.activate_suggested_epic(epic_id=task_id)
 
         job_manager.update_progress(job_id, 90.0, "Activation complete!")
 
         children_count = result.get('children_generated', 0)
+        ancestors_activated = len(unactivated_ancestors)
 
-        logger.info(
-            f"✅ Activation job {job_id} completed for {item_type.value} {task_id}\n"
-            f"   Title: {result['title']}\n"
-            f"   Description: {len(result.get('description', ''))} chars\n"
-            f"   Generated Prompt: {len(result.get('generated_prompt', ''))} chars\n"
-            f"   Children Generated: {children_count}"
-        )
+        if ancestors_activated > 0:
+            result['ancestors_activated'] = ancestors_activated
+            logger.info(
+                f"✅ Activation job {job_id} completed for {item_type.value} {task_id}\n"
+                f"   Title: {result['title']}\n"
+                f"   Ancestors auto-activated: {ancestors_activated}\n"
+                f"   Children Generated: {children_count}"
+            )
+        else:
+            logger.info(
+                f"✅ Activation job {job_id} completed for {item_type.value} {task_id}\n"
+                f"   Title: {result['title']}\n"
+                f"   Description: {len(result.get('description', ''))} chars\n"
+                f"   Generated Prompt: {len(result.get('generated_prompt', ''))} chars\n"
+                f"   Children Generated: {children_count}"
+            )
 
         # Complete job with result (in ActivateEpicResponse format)
         job_manager.complete_job(job_id, result)
