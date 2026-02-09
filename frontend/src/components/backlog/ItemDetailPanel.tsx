@@ -154,6 +154,14 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     }
   }, [initialInterviewId]);
 
+  // PROMPT #216 - Reset interview selection when switching away from interview tab
+  // After completing/closing an interview, returning to the tab should show the list
+  useEffect(() => {
+    if (activeTab !== 'interview') {
+      setSelectedInterviewId(null);
+    }
+  }, [activeTab]);
+
   const fetchItemDetails = async () => {
     setLoading(true);
     try {
