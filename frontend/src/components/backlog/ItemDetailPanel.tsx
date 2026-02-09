@@ -83,6 +83,9 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   // Check if item is a suggested/draft item
   const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
 
+  // PROMPT #213 - Check if item was created from codebase memory scan (business rules)
+  const isFromCode = item.labels?.includes('from_code') === true;
+
   // PROMPT #127 - Generate children dialog state
   const [showGenerateChildrenDialog, setShowGenerateChildrenDialog] = useState(false);
   const [childrenCount, setChildrenCount] = useState(10);
@@ -558,12 +561,13 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   };
 
   // PROMPT #131 - Removed AI Suggestions tab (now handled by card interviews)
+  // PROMPT #213 - Hide Interview tab for cards created from codebase memory scan
   const tabs: Array<{ id: string; label: string; icon: React.ReactNode; count?: number; hasPrompt?: boolean }> = [
     { id: 'overview', label: 'Overview', icon: <IconClipboard className="w-4 h-4" /> },
     { id: 'hierarchy', label: 'Hierarchy', icon: <IconTree className="w-4 h-4" /> },
     { id: 'comments', label: 'Comments', icon: <IconChat className="w-4 h-4" />, count: comments.length },
     { id: 'transitions', label: 'History', icon: <IconChart className="w-4 h-4" />, count: transitions.length },
-    { id: 'interview', label: 'Interview', icon: <IconMicrophone className="w-4 h-4" />, count: cardInterviews.length },
+    ...(!isFromCode ? [{ id: 'interview', label: 'Interview', icon: <IconMicrophone className="w-4 h-4" />, count: cardInterviews.length }] : []),
     { id: 'prompt', label: 'Prompt', icon: <IconPencil className="w-4 h-4" />, hasPrompt: !!item.generated_prompt },
     { id: 'acceptance', label: 'Criteria', icon: <IconCheckCircle className="w-4 h-4" />, count: item.acceptance_criteria?.length || 0 },
   ];

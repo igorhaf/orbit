@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #210 (Fix Broken AI Tooltips)
-**Próximo prompt:** PROMPT #211
+**Último prompt:** PROMPT #213 (Hide Interview for Memory-Scan Cards)
+**Próximo prompt:** PROMPT #214
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

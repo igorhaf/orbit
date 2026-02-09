@@ -123,6 +123,9 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
   // PROMPT #92 - Check if this is a suggested (inactive) epic
   const isSuggested = task.labels?.includes('suggested') || task.workflow_state === 'draft';
 
+  // PROMPT #213 - Check if item was created from codebase memory scan (business rules)
+  const isFromCode = task.labels?.includes('from_code') === true;
+
   const handleCreateSubInterview = async () => {
     setCreatingInterview(true);
     try {
@@ -325,8 +328,8 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           </div>
         )}
 
-        {/* AI-Suggested Subtasks - Hide for suggested items */}
-        {hasSuggestions && showInterviewButtons && !isSuggested && (
+        {/* AI-Suggested Subtasks - Hide for suggested items and from_code items */}
+        {hasSuggestions && showInterviewButtons && !isSuggested && !isFromCode && (
           <div className="border-t pt-4 mt-4">
             <div className="flex items-center justify-between mb-3">
               <button
@@ -429,8 +432,8 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           </div>
         )}
 
-        {/* Create Sub-Interview button (always available) - Hide for suggested items */}
-        {!hasSuggestions && showInterviewButtons && !isSuggested && (
+        {/* Create Sub-Interview button (always available) - Hide for suggested and from_code items */}
+        {!hasSuggestions && showInterviewButtons && !isSuggested && !isFromCode && (
           <div className="border-t pt-4 mt-4">
             <Button
               onClick={(e) => {

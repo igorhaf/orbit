@@ -741,7 +741,8 @@ export default function BacklogListView({
         </div>
 
         {/* PROMPT #131 - Render Interviews for this item (aligned with card title) */}
-        {interviewsMap.get(item.id)?.map((interview) => (
+        {/* PROMPT #213 - Hide interviews for cards created from codebase memory scan */}
+        {!item.labels?.includes('from_code') && interviewsMap.get(item.id)?.map((interview) => (
           <div
             key={interview.id}
             onClick={() => onInterviewClick?.(item, interview.id)}
