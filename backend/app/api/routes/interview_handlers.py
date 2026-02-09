@@ -766,7 +766,7 @@ async def _execute_ai_question(
         # Append to conversation
         interview.conversation_data.append(assistant_message)
         flag_modified(interview, "conversation_data")  # PROMPT #99: SQLAlchemy JSONB fix
-        interview.ai_model_used = response["model"]
+        interview.ai_model_used = f"{response['provider']}/{response['model']}"
 
         db.commit()
         db.refresh(interview)
@@ -1980,7 +1980,7 @@ async def _handle_card_focused_ai_question(
         "role": "assistant",
         "content": cleaned_response,
         "timestamp": datetime.utcnow().isoformat(),
-        "model": response.get('model', 'unknown'),
+        "model": f"{response.get('provider', 'unknown')}/{response.get('model', 'unknown')}",
         "question_number": (message_count // 2) + 1
     }
 
@@ -2009,7 +2009,7 @@ async def _handle_card_focused_ai_question(
         "success": True,
         "message": assistant_message,
         "usage": response.get('usage', {
-            "model": response.get('model', 'unknown'),
+            "model": f"{response.get('provider', 'unknown')}/{response.get('model', 'unknown')}",
             "input_tokens": 0,
             "output_tokens": 0,
             "total_cost_usd": 0.0

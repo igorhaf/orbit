@@ -1007,7 +1007,7 @@ export default function ProjectDetailsPage() {
                           {editedDescription || project.description}
                         </ReactMarkdown>
                         <div className="mt-2 flex justify-end not-prose">
-                          <AIModelBadge model="description-format" usage_type="general" />
+                          <AIModelBadge model="description-format" usage_type="general" decorative />
                         </div>
                       </div>
                     )
@@ -1046,7 +1046,7 @@ export default function ProjectDetailsPage() {
                         {project.context_human}
                       </ReactMarkdown>
                       <div className="mt-2 flex justify-end not-prose">
-                        <AIModelBadge model="context-interview" usage_type="context" />
+                        <AIModelBadge model="context-interview" usage_type="context" decorative />
                       </div>
                     </div>
                   ) : (

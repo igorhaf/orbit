@@ -371,7 +371,7 @@ export default function ProjectsPage() {
                     </p>
                     {/* PROMPT #128 - Show AI model icon if project has AI-generated context */}
                     {project.context_human && (
-                      <AIModelBadge model="context" usage_type="context" />
+                      <AIModelBadge model="context" usage_type="context" decorative />
                     )}
                   </div>
                   {/* PROMPT #111 - Show code_path */}

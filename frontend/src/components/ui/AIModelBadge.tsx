@@ -20,8 +20,23 @@ interface Props {
   cost?: number;
   latency_ms?: number;
   cached?: boolean;
+  decorative?: boolean;
   className?: string;
 }
+
+// Friendly labels for usage types
+const USAGE_TYPE_LABELS: Record<string, string> = {
+  'interview': 'Entrevista',
+  'task_execution': 'Execução de Tarefas',
+  'prompt_generation': 'Geração de Prompts',
+  'commit_generation': 'Geração de Commits',
+  'memory': 'Memória (Scan)',
+  'rag': 'RAG',
+  'general': 'Geral',
+  'context': 'Contexto',
+  'backlog': 'Backlog',
+  'discovery': 'Descoberta',
+};
 
 // Map model IDs to friendly names
 const MODEL_NAMES: Record<string, string> = {
@@ -111,21 +126,35 @@ export function AIModelBadge({
   cost,
   latency_ms,
   cached,
+  decorative = false,
   className = '',
 }: Props) {
   const [showTooltip, setShowTooltip] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0, arrowLeft: '50%' });
   const iconRef = useRef<HTMLSpanElement>(null);
 
+  // PROMPT #210 - Parse "provider/model_id" format (e.g. "anthropic/claude-3-5-sonnet-20241022")
+  let parsedModel = model;
+  let parsedProvider = provider;
+  if (!provider && model && model.includes('/')) {
+    const slashIdx = model.indexOf('/');
+    const maybeProv = model.substring(0, slashIdx);
+    // Only split if the prefix looks like a known provider
+    if (['anthropic', 'openai', 'google', 'ollama', 'cohere', 'system'].includes(maybeProv)) {
+      parsedProvider = maybeProv;
+      parsedModel = model.substring(slashIdx + 1);
+    }
+  }
+
   // Get friendly model name
-  const displayName = MODEL_NAMES[model] || model;
+  const displayName = MODEL_NAMES[parsedModel] || parsedModel;
 
   // Detect provider from model name if not provided
-  const detectedProvider = provider ||
-    (model.includes('claude') ? 'anthropic' :
-     model.includes('gpt') ? 'openai' :
-     model.includes('gemini') ? 'google' :
-     model.includes('system') ? 'system' : 'unknown');
+  const detectedProvider = parsedProvider ||
+    (parsedModel.includes('claude') ? 'anthropic' :
+     parsedModel.includes('gpt') ? 'openai' :
+     parsedModel.includes('gemini') ? 'google' :
+     parsedModel.includes('system') ? 'system' : 'unknown');
 
   // Get icon key based on usage_type first, then provider
   const getIconKey = () => {
@@ -225,38 +254,44 @@ export function AIModelBadge({
               </span>
             </div>
 
-            {/* Model */}
-            <div className="flex justify-between">
-              <span className="text-gray-400">Modelo:</span>
-              <span className="text-yellow-400 font-medium">{displayName}</span>
-            </div>
+            {/* Model - hidden for decorative badges */}
+            {!decorative && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Modelo:</span>
+                <span className="text-yellow-400 font-medium">{displayName}</span>
+              </div>
+            )}
 
-            {/* Model ID */}
-            <div className="flex justify-between">
-              <span className="text-gray-400">ID:</span>
-              <span className="text-cyan-400 font-mono text-[10px] truncate max-w-[140px]">{model}</span>
-            </div>
+            {/* Model ID - hidden for decorative badges */}
+            {!decorative && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">ID:</span>
+                <span className="text-cyan-400 font-mono text-[10px] truncate max-w-[140px]">{parsedModel}</span>
+              </div>
+            )}
 
-            {/* Provider */}
-            <div className="flex justify-between">
-              <span className="text-gray-400">Provider:</span>
-              <span className={`font-medium ${
-                detectedProvider === 'anthropic' ? 'text-orange-400' :
-                detectedProvider === 'openai' ? 'text-green-400' :
-                detectedProvider === 'google' ? 'text-blue-400' :
-                detectedProvider === 'cohere' ? 'text-purple-400' :
-                detectedProvider === 'ollama' ? 'text-teal-400' :
-                'text-gray-400'
-              }`}>
-                {detectedProvider.charAt(0).toUpperCase() + detectedProvider.slice(1)}
-              </span>
-            </div>
+            {/* Provider - hidden for decorative or unknown */}
+            {!decorative && detectedProvider !== 'unknown' && (
+              <div className="flex justify-between">
+                <span className="text-gray-400">Provider:</span>
+                <span className={`font-medium ${
+                  detectedProvider === 'anthropic' ? 'text-orange-400' :
+                  detectedProvider === 'openai' ? 'text-green-400' :
+                  detectedProvider === 'google' ? 'text-blue-400' :
+                  detectedProvider === 'cohere' ? 'text-purple-400' :
+                  detectedProvider === 'ollama' ? 'text-teal-400' :
+                  'text-gray-400'
+                }`}>
+                  {detectedProvider.charAt(0).toUpperCase() + detectedProvider.slice(1)}
+                </span>
+              </div>
+            )}
 
             {/* Usage Type */}
             {usage_type && (
               <div className="flex justify-between">
                 <span className="text-gray-400">Uso:</span>
-                <span className="text-purple-400">{usage_type}</span>
+                <span className="text-purple-400">{USAGE_TYPE_LABELS[usage_type] || usage_type}</span>
               </div>
             )}
 
