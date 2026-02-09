@@ -41,7 +41,15 @@ export default function SettingsPage() {
     commit_generation: '',
     task_execution: '',
     pattern_discovery: '',
+    queue_orchestration: '',
     general: '',
+  });
+
+  // PROMPT #215 - Queue settings state
+  const [queueSettings, setQueueSettings] = useState({
+    queue_auto_sort_strategy: 'balanced',
+    queue_max_concurrent: '1',
+    queue_auto_populate: 'true',
   });
 
   useEffect(() => {
@@ -72,6 +80,14 @@ export default function SettingsPage() {
         defaults[usageType] = s.value;
       });
       setDefaultModels(prev => ({ ...prev, ...defaults }));
+
+      // PROMPT #215 - Extract queue settings
+      const queueKeys = ['queue_auto_sort_strategy', 'queue_max_concurrent', 'queue_auto_populate'];
+      const queueDefaults: Record<string, string> = {};
+      allSettings
+        .filter((s: SystemSettings) => queueKeys.includes(s.key))
+        .forEach((s: SystemSettings) => { queueDefaults[s.key] = s.value; });
+      setQueueSettings(prev => ({ ...prev, ...queueDefaults }));
     } catch (err: unknown) {
       console.error('Failed to load settings:', err);
       setError(err.message || 'Failed to load settings');
@@ -149,8 +165,22 @@ export default function SettingsPage() {
     return models.filter(m => m.usage_type === usageType && m.is_active);
   };
 
-  // Filter out default_model_ settings from general settings list
-  const generalSettings = settings.filter(s => !s.key.startsWith('default_model_'));
+  // PROMPT #215 - Save queue settings
+  const [savingQueue, setSavingQueue] = useState(false);
+  const handleSaveQueueSettings = async () => {
+    setSavingQueue(true);
+    try {
+      await settingsApi.bulk(queueSettings);
+      await loadData();
+    } catch (err: any) {
+      showError(`Failed to save queue settings: ${err.message}`);
+    } finally {
+      setSavingQueue(false);
+    }
+  };
+
+  // Filter out default_model_ and queue_ settings from general settings list
+  const generalSettings = settings.filter(s => !s.key.startsWith('default_model_') && !s.key.startsWith('queue_'));
 
   return (
     <Layout>
@@ -306,6 +336,27 @@ export default function SettingsPage() {
                 </p>
               </div>
 
+              {/* PROMPT #215 - Queue Orchestration */}
+              <div>
+                <Label htmlFor="model-queue">Queue Orchestration</Label>
+                <Select
+                  id="model-queue"
+                  value={defaultModels.queue_orchestration || ''}
+                  onChange={(e) => setDefaultModels({ ...defaultModels, queue_orchestration: e.target.value })}
+                  options={[
+                    { value: '', label: 'No default model' },
+                    ...getModelsForUsageType(AIModelUsageType.QUEUE_ORCHESTRATION).map(m => ({
+                      value: m.id,
+                      label: m.name,
+                    })),
+                  ]}
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Used for prompt execution from the orchestration queue
+                </p>
+              </div>
+
               {/* General */}
               <div>
                 <Label htmlFor="model-general">General</Label>
@@ -329,6 +380,83 @@ export default function SettingsPage() {
               <Button onClick={handleSaveDefaultModels} disabled={saving}>
                 <Save className="w-4 h-4 mr-2" />
                 {saving ? 'Saving...' : 'Save Default Models'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* PROMPT #215 - Prompt Queue Settings */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Prompt Queue</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-600 mb-4">
+              Configure prompt orchestration queue behavior for execution ordering.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="queue-strategy">Auto-Sort Strategy</Label>
+                <Select
+                  id="queue-strategy"
+                  value={queueSettings.queue_auto_sort_strategy}
+                  onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_sort_strategy: e.target.value })}
+                  options={[
+                    { value: 'balanced', label: 'Balanced (35% hierarchy, 30% priority, 25% dependency, 10% age)' },
+                    { value: 'hierarchy_first', label: 'Hierarchy First (epics > stories > tasks > subtasks)' },
+                    { value: 'priority_first', label: 'Priority First (critical > high > medium > low)' },
+                    { value: 'dependency_first', label: 'Dependency First (resolve dependencies first)' },
+                    { value: 'age_first', label: 'Age First (oldest cards first)' },
+                  ]}
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Determines how cards are automatically ordered in the execution queue
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="queue-concurrent">Max Concurrent Executions</Label>
+                <Select
+                  id="queue-concurrent"
+                  value={queueSettings.queue_max_concurrent}
+                  onChange={(e) => setQueueSettings({ ...queueSettings, queue_max_concurrent: e.target.value })}
+                  options={[
+                    { value: '1', label: '1 (Sequential - recommended)' },
+                    { value: '2', label: '2' },
+                    { value: '3', label: '3' },
+                    { value: '5', label: '5' },
+                  ]}
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  How many prompts can execute simultaneously from the queue
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="queue-auto-populate">Auto-Populate Queue</Label>
+                <Select
+                  id="queue-auto-populate"
+                  value={queueSettings.queue_auto_populate}
+                  onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_populate: e.target.value })}
+                  options={[
+                    { value: 'true', label: 'Enabled - auto-add activated cards to queue' },
+                    { value: 'false', label: 'Disabled - manually add cards to queue' },
+                  ]}
+                  className="mt-1"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  When enabled, cards are automatically added to the queue when activated
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-4 flex justify-end">
+              <Button onClick={handleSaveQueueSettings} disabled={savingQueue}>
+                <Save className="w-4 h-4 mr-2" />
+                {savingQueue ? 'Saving...' : 'Save Queue Settings'}
               </Button>
             </div>
           </CardContent>

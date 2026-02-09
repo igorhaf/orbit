@@ -25,6 +25,7 @@ UTILITY_NODE_TYPES = [
     "validator",
     "cost_guard",
     "rate_limiter",
+    "prompt_queue",  # PROMPT #215 - Prompt orchestration queue node
 ]
 
 

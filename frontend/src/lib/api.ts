@@ -1384,3 +1384,58 @@ export const knowledgeApi = {
       };
     }>('/api/v1/knowledge/projects-stats'),
 };
+
+// PROMPT #215 - Prompt Queue API
+export const promptQueueApi = {
+  get: (projectId: string, statusFilter?: string) => {
+    const params = statusFilter ? `?status_filter=${statusFilter}` : '';
+    return request<any>(`/api/v1/projects/${projectId}/queue${params}`);
+  },
+
+  add: (projectId: string, taskId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/queue`, {
+      method: 'POST',
+      body: JSON.stringify({ task_id: taskId }),
+    }),
+
+  bulkAdd: (projectId: string, taskIds: string[]) =>
+    request<any>(`/api/v1/projects/${projectId}/queue/bulk`, {
+      method: 'POST',
+      body: JSON.stringify({ task_ids: taskIds }),
+    }),
+
+  remove: (projectId: string, queueItemId: string) =>
+    request<void>(`/api/v1/projects/${projectId}/queue/${queueItemId}`, {
+      method: 'DELETE',
+    }),
+
+  clearCompleted: (projectId: string) =>
+    request<void>(`/api/v1/projects/${projectId}/queue`, {
+      method: 'DELETE',
+    }),
+
+  reorder: (projectId: string, orderedIds: string[]) =>
+    request<any>(`/api/v1/projects/${projectId}/queue/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ ordered_ids: orderedIds }),
+    }),
+
+  autoSort: (projectId: string, strategy: string = 'balanced') =>
+    request<any>(`/api/v1/projects/${projectId}/queue/auto-sort`, {
+      method: 'POST',
+      body: JSON.stringify({ strategy }),
+    }),
+
+  populate: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/queue/populate`, {
+      method: 'POST',
+    }),
+
+  updateStatus: (projectId: string, queueItemId: string, newStatus: string) =>
+    request<any>(`/api/v1/projects/${projectId}/queue/${queueItemId}/status?new_status=${newStatus}`, {
+      method: 'PATCH',
+    }),
+
+  stats: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/queue/stats`),
+};

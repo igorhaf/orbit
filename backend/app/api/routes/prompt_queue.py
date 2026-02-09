@@ -1,0 +1,546 @@
+"""
+Prompt Queue API Router - PROMPT #215
+CRUD + orchestration for per-project prompt execution queue.
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from typing import List, Optional
+from uuid import UUID, uuid4
+from datetime import datetime
+import logging
+
+from app.database import get_db
+from app.models.prompt_queue import PromptQueue, QueueItemStatus
+from app.models.task import Task, ItemType, PriorityLevel
+from app.schemas.prompt_queue import (
+    PromptQueueItemCreate,
+    PromptQueueBulkCreate,
+    PromptQueueReorder,
+    PromptQueueItemResponse,
+    PromptQueueResponse,
+    PromptQueueAutoSortRequest,
+    PromptQueueAutoSortResponse,
+    PromptQueueStatsResponse,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+# ============================================================================
+# Scoring constants
+# ============================================================================
+
+# Hierarchy score: epics first, then stories, then tasks, then subtasks
+HIERARCHY_SCORES = {
+    ItemType.EPIC: 100,
+    ItemType.STORY: 75,
+    ItemType.TASK: 50,
+    ItemType.SUBTASK: 25,
+    ItemType.BUG: 60,
+}
+
+# Priority score: higher = more urgent
+PRIORITY_SCORES = {
+    PriorityLevel.CRITICAL: 100,
+    PriorityLevel.HIGH: 80,
+    PriorityLevel.MEDIUM: 50,
+    PriorityLevel.LOW: 25,
+    PriorityLevel.TRIVIAL: 10,
+}
+
+
+def _compute_scores(task: Task) -> dict:
+    """Compute scoring factors for a task."""
+    # Hierarchy score
+    hierarchy = HIERARCHY_SCORES.get(task.item_type, 50)
+
+    # Priority score
+    priority = PRIORITY_SCORES.get(task.priority, 50)
+
+    # Age score: older cards get higher score (days since creation, capped at 100)
+    age_days = (datetime.utcnow() - task.created_at).days if task.created_at else 0
+    age = min(age_days, 100)
+
+    # Dependency score: cards with more dependents should be executed first
+    depends_on = task.depends_on or []
+    dependency = max(0, 100 - len(depends_on) * 20)  # Fewer deps = higher score
+
+    return {
+        "hierarchy_score": hierarchy,
+        "priority_score": priority,
+        "age_score": age,
+        "dependency_score": dependency,
+    }
+
+
+def _compute_total_score(item: PromptQueue, strategy: str = "balanced") -> float:
+    """Compute total score based on strategy weights."""
+    weights = {
+        "balanced": {"hierarchy": 0.35, "priority": 0.30, "age": 0.10, "dependency": 0.25},
+        "hierarchy_first": {"hierarchy": 0.60, "priority": 0.20, "age": 0.05, "dependency": 0.15},
+        "priority_first": {"hierarchy": 0.15, "priority": 0.60, "age": 0.10, "dependency": 0.15},
+        "age_first": {"hierarchy": 0.20, "priority": 0.20, "age": 0.45, "dependency": 0.15},
+        "dependency_first": {"hierarchy": 0.15, "priority": 0.20, "age": 0.05, "dependency": 0.60},
+    }
+
+    w = weights.get(strategy, weights["balanced"])
+    return (
+        item.hierarchy_score * w["hierarchy"] +
+        item.priority_score * w["priority"] +
+        item.age_score * w["age"] +
+        item.dependency_score * w["dependency"]
+    )
+
+
+def _build_item_response(queue_item: PromptQueue, task: Task) -> PromptQueueItemResponse:
+    """Build response with joined task info."""
+    return PromptQueueItemResponse(
+        id=queue_item.id,
+        project_id=queue_item.project_id,
+        task_id=queue_item.task_id,
+        position=queue_item.position,
+        status=queue_item.status.value if hasattr(queue_item.status, 'value') else queue_item.status,
+        priority_score=queue_item.priority_score,
+        hierarchy_score=queue_item.hierarchy_score,
+        age_score=queue_item.age_score,
+        dependency_score=queue_item.dependency_score,
+        manual_override=queue_item.manual_override,
+        execution_job_id=queue_item.execution_job_id,
+        execution_notes=queue_item.execution_notes,
+        created_at=queue_item.created_at,
+        updated_at=queue_item.updated_at,
+        executed_at=queue_item.executed_at,
+        task_title=task.title if task else None,
+        task_item_type=(task.item_type.value if task and task.item_type else None),
+        task_priority=(task.priority.value if task and task.priority else None),
+        task_workflow_state=task.workflow_state if task else None,
+        task_parent_id=task.parent_id if task else None,
+        task_created_at=task.created_at if task else None,
+        task_labels=task.labels if task else None,
+    )
+
+
+# ============================================================================
+# CRUD endpoints
+# ============================================================================
+
+@router.get("/{project_id}/queue", response_model=PromptQueueResponse)
+async def get_queue(
+    project_id: UUID,
+    status_filter: Optional[str] = Query(None, description="Filter by status"),
+    db: Session = Depends(get_db)
+):
+    """Get the full prompt queue for a project, ordered by position."""
+    query = (
+        db.query(PromptQueue, Task)
+        .join(Task, PromptQueue.task_id == Task.id)
+        .filter(PromptQueue.project_id == project_id)
+    )
+
+    if status_filter:
+        query = query.filter(PromptQueue.status == status_filter)
+
+    query = query.order_by(PromptQueue.position)
+    results = query.all()
+
+    items = [_build_item_response(qi, task) for qi, task in results]
+
+    # Count by status
+    status_counts = (
+        db.query(PromptQueue.status, func.count(PromptQueue.id))
+        .filter(PromptQueue.project_id == project_id)
+        .group_by(PromptQueue.status)
+        .all()
+    )
+    counts = {s.value if hasattr(s, 'value') else s: c for s, c in status_counts}
+
+    return PromptQueueResponse(
+        project_id=project_id,
+        items=items,
+        total=sum(counts.values()),
+        pending_count=counts.get("pending", 0),
+        ready_count=counts.get("ready", 0),
+        executing_count=counts.get("executing", 0),
+        completed_count=counts.get("completed", 0),
+    )
+
+
+@router.post("/{project_id}/queue", response_model=PromptQueueItemResponse, status_code=status.HTTP_201_CREATED)
+async def add_to_queue(
+    project_id: UUID,
+    item: PromptQueueItemCreate,
+    db: Session = Depends(get_db)
+):
+    """Add a single card/task to the prompt queue."""
+    # Check task exists
+    task = db.query(Task).filter(Task.id == item.task_id, Task.project_id == project_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found in this project")
+
+    # Check not already in queue
+    existing = db.query(PromptQueue).filter(
+        PromptQueue.project_id == project_id,
+        PromptQueue.task_id == item.task_id
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Task already in queue")
+
+    # Get next position
+    max_pos = db.query(func.max(PromptQueue.position)).filter(
+        PromptQueue.project_id == project_id
+    ).scalar() or 0
+
+    # Compute scores
+    scores = _compute_scores(task)
+
+    queue_item = PromptQueue(
+        id=uuid4(),
+        project_id=project_id,
+        task_id=item.task_id,
+        position=max_pos + 1,
+        status=QueueItemStatus.PENDING,
+        **scores,
+    )
+    db.add(queue_item)
+    db.commit()
+    db.refresh(queue_item)
+
+    logger.info(f"Added task {task.title} to queue at position {queue_item.position}")
+    return _build_item_response(queue_item, task)
+
+
+@router.post("/{project_id}/queue/bulk", response_model=PromptQueueResponse)
+async def bulk_add_to_queue(
+    project_id: UUID,
+    request: PromptQueueBulkCreate,
+    db: Session = Depends(get_db)
+):
+    """Add multiple cards to the queue at once."""
+    max_pos = db.query(func.max(PromptQueue.position)).filter(
+        PromptQueue.project_id == project_id
+    ).scalar() or 0
+
+    added = 0
+    for task_id in request.task_ids:
+        task = db.query(Task).filter(Task.id == task_id, Task.project_id == project_id).first()
+        if not task:
+            continue
+
+        existing = db.query(PromptQueue).filter(
+            PromptQueue.project_id == project_id,
+            PromptQueue.task_id == task_id
+        ).first()
+        if existing:
+            continue
+
+        scores = _compute_scores(task)
+        max_pos += 1
+        queue_item = PromptQueue(
+            id=uuid4(),
+            project_id=project_id,
+            task_id=task_id,
+            position=max_pos,
+            status=QueueItemStatus.PENDING,
+            **scores,
+        )
+        db.add(queue_item)
+        added += 1
+
+    db.commit()
+    logger.info(f"Bulk added {added} tasks to queue for project {project_id}")
+
+    # Return full queue
+    return await get_queue(project_id, db=db)
+
+
+@router.delete("/{project_id}/queue/{queue_item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_from_queue(
+    project_id: UUID,
+    queue_item_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Remove an item from the queue."""
+    item = db.query(PromptQueue).filter(
+        PromptQueue.id == queue_item_id,
+        PromptQueue.project_id == project_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+
+    removed_pos = item.position
+    db.delete(item)
+
+    # Reindex positions after removal
+    remaining = (
+        db.query(PromptQueue)
+        .filter(PromptQueue.project_id == project_id, PromptQueue.position > removed_pos)
+        .order_by(PromptQueue.position)
+        .all()
+    )
+    for qi in remaining:
+        qi.position -= 1
+
+    db.commit()
+
+
+@router.delete("/{project_id}/queue", status_code=status.HTTP_204_NO_CONTENT)
+async def clear_completed(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Remove all completed/skipped items from the queue."""
+    db.query(PromptQueue).filter(
+        PromptQueue.project_id == project_id,
+        PromptQueue.status.in_([QueueItemStatus.COMPLETED, QueueItemStatus.SKIPPED])
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    # Reindex positions
+    items = (
+        db.query(PromptQueue)
+        .filter(PromptQueue.project_id == project_id)
+        .order_by(PromptQueue.position)
+        .all()
+    )
+    for i, item in enumerate(items, 1):
+        item.position = i
+    db.commit()
+
+
+# ============================================================================
+# Reorder & Auto-sort
+# ============================================================================
+
+@router.put("/{project_id}/queue/reorder", response_model=PromptQueueResponse)
+async def reorder_queue(
+    project_id: UUID,
+    request: PromptQueueReorder,
+    db: Session = Depends(get_db)
+):
+    """Manually reorder items in the queue (drag-and-drop)."""
+    for new_position, item_id in enumerate(request.ordered_ids, 1):
+        item = db.query(PromptQueue).filter(
+            PromptQueue.id == item_id,
+            PromptQueue.project_id == project_id
+        ).first()
+        if item:
+            item.position = new_position
+            item.manual_override = True
+            item.updated_at = datetime.utcnow()
+
+    db.commit()
+    return await get_queue(project_id, db=db)
+
+
+@router.post("/{project_id}/queue/auto-sort", response_model=PromptQueueAutoSortResponse)
+async def auto_sort_queue(
+    project_id: UUID,
+    request: PromptQueueAutoSortRequest = PromptQueueAutoSortRequest(),
+    db: Session = Depends(get_db)
+):
+    """Auto-sort the queue using the scoring algorithm."""
+    items = (
+        db.query(PromptQueue)
+        .filter(
+            PromptQueue.project_id == project_id,
+            PromptQueue.status.in_([QueueItemStatus.PENDING, QueueItemStatus.READY, QueueItemStatus.BLOCKED])
+        )
+        .all()
+    )
+
+    if not items:
+        return PromptQueueAutoSortResponse(
+            items_reordered=0,
+            strategy=request.strategy,
+            message="No pending items to sort"
+        )
+
+    # Refresh scores from current task data
+    for item in items:
+        task = db.query(Task).filter(Task.id == item.task_id).first()
+        if task:
+            scores = _compute_scores(task)
+            item.hierarchy_score = scores["hierarchy_score"]
+            item.priority_score = scores["priority_score"]
+            item.age_score = scores["age_score"]
+            item.dependency_score = scores["dependency_score"]
+
+    # Sort by total score (highest first)
+    items.sort(key=lambda x: _compute_total_score(x, request.strategy), reverse=True)
+
+    # Dependency resolution: ensure parents come before children
+    task_ids_in_queue = {item.task_id for item in items}
+    task_map = {}
+    for item in items:
+        task = db.query(Task).filter(Task.id == item.task_id).first()
+        if task:
+            task_map[item.task_id] = task
+
+    # Topological adjustment: if a parent is in the queue, it must come before its children
+    sorted_items = []
+    processed = set()
+
+    def _add_with_parents(item):
+        if item.task_id in processed:
+            return
+        task = task_map.get(item.task_id)
+        if task and task.parent_id and task.parent_id in task_ids_in_queue:
+            # Find parent item in the queue
+            parent_item = next((i for i in items if i.task_id == task.parent_id), None)
+            if parent_item and parent_item.task_id not in processed:
+                _add_with_parents(parent_item)
+        processed.add(item.task_id)
+        sorted_items.append(item)
+
+    for item in items:
+        _add_with_parents(item)
+
+    # Assign new positions (after any completed/executing items)
+    min_pos = db.query(func.max(PromptQueue.position)).filter(
+        PromptQueue.project_id == project_id,
+        PromptQueue.status.in_([QueueItemStatus.EXECUTING, QueueItemStatus.COMPLETED])
+    ).scalar() or 0
+
+    for i, item in enumerate(sorted_items, min_pos + 1):
+        item.position = i
+        item.manual_override = False
+        item.updated_at = datetime.utcnow()
+
+    db.commit()
+
+    return PromptQueueAutoSortResponse(
+        items_reordered=len(sorted_items),
+        strategy=request.strategy,
+        message=f"Reordered {len(sorted_items)} items using '{request.strategy}' strategy"
+    )
+
+
+# ============================================================================
+# Queue population (auto-populate from project cards)
+# ============================================================================
+
+@router.post("/{project_id}/queue/populate", response_model=PromptQueueResponse)
+async def populate_queue(
+    project_id: UUID,
+    include_types: Optional[str] = Query(None, description="Comma-separated item types: epic,story,task,subtask"),
+    exclude_closed: bool = Query(True, description="Exclude closed/done cards"),
+    db: Session = Depends(get_db)
+):
+    """Auto-populate queue from project's active cards that have generated_prompt."""
+    query = db.query(Task).filter(
+        Task.project_id == project_id,
+        Task.generated_prompt.isnot(None),
+        Task.generated_prompt != "",
+    )
+
+    if exclude_closed:
+        query = query.filter(
+            Task.workflow_state.notin_(["closed", "done"]),
+            ~Task.labels.op("@>")('"from_code"'),  # Exclude memory-scan cards
+        )
+
+    if include_types:
+        types = [t.strip() for t in include_types.split(",")]
+        query = query.filter(Task.item_type.in_(types))
+
+    tasks = query.all()
+
+    max_pos = db.query(func.max(PromptQueue.position)).filter(
+        PromptQueue.project_id == project_id
+    ).scalar() or 0
+
+    added = 0
+    for task in tasks:
+        existing = db.query(PromptQueue).filter(
+            PromptQueue.project_id == project_id,
+            PromptQueue.task_id == task.id
+        ).first()
+        if existing:
+            continue
+
+        scores = _compute_scores(task)
+        max_pos += 1
+        queue_item = PromptQueue(
+            id=uuid4(),
+            project_id=project_id,
+            task_id=task.id,
+            position=max_pos,
+            status=QueueItemStatus.PENDING,
+            **scores,
+        )
+        db.add(queue_item)
+        added += 1
+
+    db.commit()
+    logger.info(f"Populated queue with {added} tasks for project {project_id}")
+
+    # Auto-sort after populate
+    if added > 0:
+        await auto_sort_queue(project_id, PromptQueueAutoSortRequest(strategy="balanced"), db=db)
+
+    return await get_queue(project_id, db=db)
+
+
+# ============================================================================
+# Status management
+# ============================================================================
+
+@router.patch("/{project_id}/queue/{queue_item_id}/status")
+async def update_item_status(
+    project_id: UUID,
+    queue_item_id: UUID,
+    new_status: str = Query(..., description="New status: pending, ready, skipped, blocked"),
+    db: Session = Depends(get_db)
+):
+    """Update status of a queue item."""
+    item = db.query(PromptQueue).filter(
+        PromptQueue.id == queue_item_id,
+        PromptQueue.project_id == project_id
+    ).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Queue item not found")
+
+    valid_statuses = ["pending", "ready", "skipped", "blocked"]
+    if new_status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+
+    item.status = QueueItemStatus(new_status)
+    item.updated_at = datetime.utcnow()
+    db.commit()
+
+    task = db.query(Task).filter(Task.id == item.task_id).first()
+    return _build_item_response(item, task)
+
+
+# ============================================================================
+# Statistics
+# ============================================================================
+
+@router.get("/{project_id}/queue/stats", response_model=PromptQueueStatsResponse)
+async def get_queue_stats(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """Get queue statistics for a project."""
+    status_counts = (
+        db.query(PromptQueue.status, func.count(PromptQueue.id))
+        .filter(PromptQueue.project_id == project_id)
+        .group_by(PromptQueue.status)
+        .all()
+    )
+    counts = {s.value if hasattr(s, 'value') else s: c for s, c in status_counts}
+
+    return PromptQueueStatsResponse(
+        total=sum(counts.values()),
+        pending=counts.get("pending", 0),
+        ready=counts.get("ready", 0),
+        executing=counts.get("executing", 0),
+        completed=counts.get("completed", 0),
+        failed=counts.get("failed", 0),
+        skipped=counts.get("skipped", 0),
+        blocked=counts.get("blocked", 0),
+    )

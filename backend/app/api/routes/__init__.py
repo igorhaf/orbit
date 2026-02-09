@@ -18,7 +18,8 @@ from . import (
     jobs,  # PROMPT #65 - Async Job System
     knowledge,  # PROMPT #84 - RAG Phase 2: Knowledge Search
     discovery_queue,  # Project-Specific Specs: Discovery queue management
-    console  # PROMPT #168 - Real-time Console Logs
+    console,  # PROMPT #168 - Real-time Console Logs
+    prompt_queue,  # PROMPT #215 - Prompt Orchestration Priority Queue
 )
 
 __all__ = [
@@ -36,5 +37,6 @@ __all__ = [
     "jobs",  # PROMPT #65 - Async Job System
     "knowledge",  # PROMPT #84 - RAG Phase 2: Knowledge Search
     "discovery_queue",  # Project-Specific Specs: Discovery queue management
-    "console"  # PROMPT #168 - Real-time Console Logs
+    "console",  # PROMPT #168 - Real-time Console Logs
+    "prompt_queue",  # PROMPT #215 - Prompt Orchestration Priority Queue
 ]

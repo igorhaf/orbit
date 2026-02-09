@@ -18,11 +18,12 @@ import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
 import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
 import { ProjectSpecsList } from '@/components/specs';  // PROMPT #197 - Specs tab
+import PromptQueuePanel from '@/components/backlog/PromptQueuePanel';  // PROMPT #215 - Prompt Queue
 import { projectsApi, tasksApi, ragApi, knowledgeApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
 
-type Tab = 'kanban' | 'overview' | 'backlog' | 'rag' | 'analytics' | 'commits' | 'specs';  // PROMPT #197 - Added specs tab
+type Tab = 'kanban' | 'overview' | 'backlog' | 'rag' | 'analytics' | 'commits' | 'specs' | 'queue';  // PROMPT #215 - Added queue tab
 type OverviewSubTab = 'description' | 'context' | 'semantic' | 'statistics';
 
 export default function ProjectDetailsPage() {
@@ -489,6 +490,7 @@ export default function ProjectDetailsPage() {
               { id: 'backlog', label: 'Backlog' },
               { id: 'kanban', label: 'Kanban Board' },
               { id: 'commits', label: 'Commits' },  // PROMPT #113 - Git Integration
+              { id: 'queue', label: 'Queue' },  // PROMPT #215 - Prompt Queue
               { id: 'specs', label: 'Specs' },  // PROMPT #197 - Specs tab
               { id: 'rag', label: 'RAG Analytics' },
               { id: 'analytics', label: 'Blocking Analytics' },
@@ -605,6 +607,13 @@ export default function ProjectDetailsPage() {
         {activeTab === 'specs' && (
           <div>
             <ProjectSpecsList projectId={projectId} />
+          </div>
+        )}
+
+        {/* PROMPT #215 - Prompt Queue Tab */}
+        {activeTab === 'queue' && (
+          <div>
+            <PromptQueuePanel projectId={projectId} />
           </div>
         )}
 

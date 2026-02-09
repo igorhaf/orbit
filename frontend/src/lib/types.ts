@@ -94,6 +94,7 @@ export enum AIModelUsageType {
   TASK_EXECUTION = 'task_execution',
   PATTERN_DISCOVERY = 'pattern_discovery',
   MEMORY = 'memory',  // PROMPT #118 - Codebase memory scan and business rules extraction
+  QUEUE_ORCHESTRATION = 'queue_orchestration',  // PROMPT #215 - Prompt queue execution
   GENERAL = 'general',
 }
 
@@ -750,7 +751,7 @@ export interface AIFlowWebSocketEvent {
 }
 
 // PROMPT #204 - Utility Node Types
-export type UtilityNodeType = 'cache' | 'rag_context' | 'prompt_transformer' | 'router' | 'retry' | 'validator' | 'cost_guard' | 'rate_limiter' | 'timeout';
+export type UtilityNodeType = 'cache' | 'rag_context' | 'prompt_transformer' | 'router' | 'retry' | 'validator' | 'cost_guard' | 'rate_limiter' | 'timeout' | 'prompt_queue';  // PROMPT #215
 
 export interface AIFlowUtilityNode {
   id: string;
@@ -1039,4 +1040,44 @@ export interface GlobalRagStats {
     subtask?: number;
   };
   project_id: string | null;
+}
+
+// ============================================================================
+// PROMPT QUEUE (PROMPT #215)
+// ============================================================================
+
+export interface PromptQueueItem {
+  id: string;
+  project_id: string;
+  task_id: string;
+  position: number;
+  status: string;
+  priority_score: number;
+  hierarchy_score: number;
+  age_score: number;
+  dependency_score: number;
+  manual_override: boolean;
+  execution_job_id: string | null;
+  execution_notes: string | null;
+  created_at: string;
+  updated_at: string;
+  executed_at: string | null;
+  // Joined task info
+  task_title: string | null;
+  task_item_type: string | null;
+  task_priority: string | null;
+  task_workflow_state: string | null;
+  task_parent_id: string | null;
+  task_created_at: string | null;
+  task_labels: string[] | null;
+}
+
+export interface PromptQueueResponse {
+  project_id: string;
+  items: PromptQueueItem[];
+  total: number;
+  pending_count: number;
+  ready_count: number;
+  executing_count: number;
+  completed_count: number;
 }

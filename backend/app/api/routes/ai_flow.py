@@ -767,6 +767,18 @@ UTILITY_NODE_CATALOG = {
             "timeout_seconds": 120,
         },
     },
+    "prompt_queue": {
+        "type": "prompt_queue",
+        "label": "Prompt Queue",
+        "description": "Orchestration priority queue. Orders prompts by hierarchy, priority, dependencies, and age. Ensures parent cards execute before children for code consistency.",
+        "icon": "list-ordered",
+        "color": "#8b5cf6",
+        "default_config": {
+            "strategy": "balanced",
+            "max_concurrent": 1,
+            "auto_populate": True,
+        },
+    },
 }
 
 

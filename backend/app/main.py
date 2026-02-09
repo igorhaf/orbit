@@ -38,6 +38,7 @@ from app.api.routes import (
     git_commits,  # PROMPT #113 - Git Integration: Commits from project code_path
     console,  # PROMPT #168 - Real-time Console Logs
     ai_flow,  # PROMPT #122 - AI Flow Fallback Chains
+    prompt_queue,  # PROMPT #215 - Prompt Orchestration Priority Queue
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -365,6 +366,13 @@ app.include_router(
     console.router,
     prefix=f"{API_V1_PREFIX}/console",
     tags=["Console"]
+)
+
+# Prompt Queue (PROMPT #215 - Orchestration Priority Queue)
+app.include_router(
+    prompt_queue.router,
+    prefix=f"{API_V1_PREFIX}/projects",
+    tags=["Prompt Queue"]
 )
 
 

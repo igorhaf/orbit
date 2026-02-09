@@ -21,6 +21,10 @@ router = APIRouter()
 _DEFAULT_SETTINGS = [
     ("max_discovery_patterns", "20", "Max patterns per discovery scan (default 20, cap 50 per project)"),
     ("default_api_timeout_seconds", "120", "Default API timeout in seconds for all AI model calls (PROMPT #207)"),
+    # PROMPT #215 - Prompt Queue Settings
+    ("queue_auto_sort_strategy", "balanced", "Default queue sort strategy: balanced, hierarchy_first, priority_first, age_first, dependency_first"),
+    ("queue_max_concurrent", "1", "Maximum concurrent prompt executions from queue"),
+    ("queue_auto_populate", "true", "Auto-populate queue when cards are activated (true/false)"),
 ]
 
 
