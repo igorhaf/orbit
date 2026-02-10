@@ -26,6 +26,10 @@ def upgrade() -> None:
     """
     Seed a dedicated AI model for pattern_discovery usage type.
     Uses Google Gemini 2.0 Flash by default (good for code analysis).
+
+    PROMPT #216 Fix: env.py now uses transaction_per_migration=True so each
+    migration commits independently. The 'pattern_discovery' enum value added
+    by ff42c2846a70 is committed before this migration runs.
     """
     connection = op.get_bind()
 

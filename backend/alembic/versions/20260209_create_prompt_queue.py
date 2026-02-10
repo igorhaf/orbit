@@ -8,7 +8,7 @@ Create Date: 2026-02-09
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, ENUM
 
 
 # revision identifiers, used by Alembic.
@@ -19,12 +19,16 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Create queue_item_status enum
-    queue_status_enum = sa.Enum(
+    # Create queue_item_status enum (PROMPT #216 - use postgresql.ENUM with create_type=False
+    # in column definition to prevent duplicate creation with transaction_per_migration)
+    op.execute("DO $$ BEGIN CREATE TYPE queue_item_status AS ENUM ('pending', 'ready', 'executing', 'completed', 'failed', 'skipped', 'blocked'); EXCEPTION WHEN duplicate_object THEN NULL; END $$")
+
+    # Reference enum without auto-creating it
+    column_enum = ENUM(
         'pending', 'ready', 'executing', 'completed', 'failed', 'skipped', 'blocked',
-        name='queue_item_status'
+        name='queue_item_status',
+        create_type=False
     )
-    queue_status_enum.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         'prompt_queue',
@@ -32,7 +36,7 @@ def upgrade() -> None:
         sa.Column('project_id', UUID(as_uuid=True), sa.ForeignKey('projects.id', ondelete='CASCADE'), nullable=False, index=True),
         sa.Column('task_id', UUID(as_uuid=True), sa.ForeignKey('tasks.id', ondelete='CASCADE'), nullable=False, index=True),
         sa.Column('position', sa.Integer(), nullable=False, default=0, index=True),
-        sa.Column('status', queue_status_enum, nullable=False, default='pending'),
+        sa.Column('status', column_enum, nullable=False, default='pending'),
         sa.Column('priority_score', sa.Integer(), nullable=False, default=0),
         sa.Column('hierarchy_score', sa.Integer(), nullable=False, default=0),
         sa.Column('age_score', sa.Integer(), nullable=False, default=0),

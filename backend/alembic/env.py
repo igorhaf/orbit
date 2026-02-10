@@ -88,7 +88,12 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            # PROMPT #216 - Run each migration in its own transaction.
+            # Required for PostgreSQL ALTER TYPE ADD VALUE which cannot be
+            # used within the same transaction that adds the enum value.
+            transaction_per_migration=True,
         )
 
         with context.begin_transaction():
