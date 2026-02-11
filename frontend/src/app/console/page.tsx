@@ -6,6 +6,7 @@
  *
  * Displays live logs from the ORBIT system including:
  * - AI prompts and responses
+ * - AI streaming (real-time token generation) - PROMPT #217
  * - Specs loaded
  * - RAG operations
  * - Job events
@@ -28,6 +29,14 @@ interface LogEntry {
   job_id?: string;
   duration_ms?: number;
   tokens_used?: number;
+}
+
+// PROMPT #217 - Active streaming response tracker
+interface ActiveStream {
+  streamId: string;
+  model: string;
+  fullText: string;
+  startTime: number;
 }
 
 // Level colors for terminal output
@@ -90,6 +99,7 @@ export default function ConsolePage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
   const [showDetails, setShowDetails] = useState(true);
+  const [activeStreams, setActiveStreams] = useState<Map<string, ActiveStream>>(new Map());
 
   const logsEndRef = useRef<HTMLDivElement>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
@@ -121,7 +131,38 @@ export default function ConsolePage() {
           return;
         }
 
-        // Add log entry
+        // PROMPT #217 - Handle streaming chunks separately
+        if (data.category === 'ai_streaming') {
+          const details = data.details as Record<string, unknown> | undefined;
+          const streamId = details?.stream_id as string;
+          const chunkText = details?.chunk_text as string || '';
+          const isComplete = details?.is_complete as boolean || false;
+
+          if (streamId) {
+            setActiveStreams(prev => {
+              const next = new Map(prev);
+              if (isComplete) {
+                next.delete(streamId);
+              } else {
+                const existing = next.get(streamId);
+                if (existing) {
+                  next.set(streamId, { ...existing, fullText: existing.fullText + chunkText });
+                } else {
+                  next.set(streamId, {
+                    streamId,
+                    model: (details?.model as string) || 'unknown',
+                    fullText: chunkText,
+                    startTime: Date.now(),
+                  });
+                }
+              }
+              return next;
+            });
+          }
+          return; // Don't add streaming chunks to main log array
+        }
+
+        // Add regular log entry
         setLogs((prev) => {
           // Prevent duplicates
           if (prev.some((log) => log.id === data.id)) {
@@ -165,12 +206,12 @@ export default function ConsolePage() {
     };
   }, [connectToStream]);
 
-  // Auto-scroll to bottom when new logs arrive
+  // Auto-scroll to bottom when new logs or streaming updates arrive
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, autoScroll]);
+  }, [logs, activeStreams, autoScroll]);
 
   // Filter logs
   const filteredLogs = logs.filter((log) => {
@@ -336,7 +377,7 @@ export default function ConsolePage() {
         className="flex-1 overflow-auto p-2 select-text cursor-text"
         style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 #111827' }}
       >
-        {filteredLogs.length === 0 ? (
+        {filteredLogs.length === 0 && activeStreams.size === 0 ? (
           <div className="text-gray-600">
             <p>$ waiting for logs...</p>
             <p className="animate-pulse">_</p>
@@ -356,6 +397,23 @@ export default function ConsolePage() {
                 {'\n'}
               </div>
             ))}
+            {/* PROMPT #217 - Active streaming responses */}
+            {Array.from(activeStreams.values()).map((stream) => (
+              <div key={stream.streamId} className="border-l-2 border-cyan-500 pl-2 my-1 py-1">
+                <span className="text-cyan-400">
+                  {'[STREAMING] '}AI Response {'<-'} {stream.model}
+                </span>
+                <span className="text-gray-500 text-xs ml-2">
+                  ({((Date.now() - stream.startTime) / 1000).toFixed(1)}s)
+                </span>
+                {'\n'}
+                <span className="text-green-300">
+                  {stream.fullText}
+                </span>
+                <span className="animate-pulse text-green-400">{'\u2588'}</span>
+                {'\n'}
+              </div>
+            ))}
             <div ref={logsEndRef} />
           </pre>
         )}
@@ -368,6 +426,11 @@ export default function ConsolePage() {
           Press Ctrl+C to copy selected text
         </span>
         <span>
+          {activeStreams.size > 0 && (
+            <span className="text-cyan-400 mr-2">
+              {activeStreams.size} stream{activeStreams.size > 1 ? 's' : ''} active
+            </span>
+          )}
           {autoScroll ? 'auto-scroll enabled' : 'auto-scroll disabled'} |
           buffer: {logs.length}/1000
         </span>

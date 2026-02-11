@@ -34,6 +34,7 @@ class LogLevel(str, Enum):
 class LogCategory(str, Enum):
     AI_PROMPT = "ai_prompt"
     AI_RESPONSE = "ai_response"
+    AI_STREAMING = "ai_streaming"  # PROMPT #217 - Real-time streaming chunks
     SPEC_LOADED = "spec_loaded"
     RAG_OPERATION = "rag_operation"
     JOB_EVENT = "job_event"
@@ -123,22 +124,32 @@ class ConsoleLogger:
             tokens_used=tokens_used
         )
 
-        async with self._buffer_lock:
-            self.buffer.append(entry)
+        # PROMPT #217 - Streaming chunks are ephemeral: only sent to SSE subscribers,
+        # not stored in the buffer (prevents flooding the 1000-entry log buffer)
+        is_streaming_chunk = (
+            category == LogCategory.AI_STREAMING
+            and details
+            and not details.get("is_complete", False)
+        )
 
-        # Notify all subscribers
+        if not is_streaming_chunk:
+            async with self._buffer_lock:
+                self.buffer.append(entry)
+
+        # Notify all subscribers (including streaming chunks)
         await self._notify_subscribers(entry)
 
-        # Also log to standard logger for container logs
-        log_msg = f"[{category.value}] {title}: {message}"
-        if level == LogLevel.ERROR:
-            logger.error(log_msg)
-        elif level == LogLevel.WARNING:
-            logger.warning(log_msg)
-        elif level == LogLevel.DEBUG:
-            logger.debug(log_msg)
-        else:
-            logger.info(log_msg)
+        # Also log to standard logger for container logs (skip streaming chunks to avoid noise)
+        if not is_streaming_chunk:
+            log_msg = f"[{category.value}] {title}: {message}"
+            if level == LogLevel.ERROR:
+                logger.error(log_msg)
+            elif level == LogLevel.WARNING:
+                logger.warning(log_msg)
+            elif level == LogLevel.DEBUG:
+                logger.debug(log_msg)
+            else:
+                logger.info(log_msg)
 
         return entry
 
@@ -266,6 +277,44 @@ class ConsoleLogger:
             job_id=job_id,
             duration_ms=duration_ms,
             tokens_used=tokens_used
+        )
+
+    async def log_ai_streaming_chunk(
+        self,
+        stream_id: str,
+        model: str,
+        chunk_text: str,
+        chunk_index: int,
+        is_complete: bool = False,
+        accumulated_text: Optional[str] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None
+    ):
+        """
+        Log a streaming AI response chunk - PROMPT #217
+        Ephemeral entries (is_complete=False) are only sent to SSE subscribers,
+        not stored in the buffer.
+        """
+        if is_complete:
+            title = f"AI Stream Complete <- {model}"
+        else:
+            title = f"AI Streaming <- {model}"
+
+        await self.log(
+            level=LogLevel.INFO,
+            category=LogCategory.AI_STREAMING,
+            title=title,
+            message=chunk_text,
+            details={
+                "stream_id": stream_id,
+                "model": model,
+                "chunk_text": chunk_text,
+                "chunk_index": chunk_index,
+                "is_complete": is_complete,
+                "accumulated_length": len(accumulated_text) if accumulated_text else 0,
+            },
+            project_id=project_id,
+            job_id=job_id
         )
 
     async def log_spec_loaded(

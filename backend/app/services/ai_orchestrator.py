@@ -1179,36 +1179,93 @@ class AIOrchestrator:
         # PROMPT #207 - Resolve timeout using hierarchy: diagram node → model → settings
         _resolved_timeout = self._resolve_timeout(model_config, _utility_nodes)
 
+        # PROMPT #217 - Create streaming callback for real-time console output
+        import uuid as _uuid
+        _stream_id = str(_uuid.uuid4())
+        _model_label = f"{provider}/{model_name}"
+        _stream_cb, _chunk_counter, _flush_cb = self._create_stream_callback(
+            stream_id=_stream_id,
+            model_label=_model_label,
+            project_id=str(project_id) if project_id else None,
+        )
+
         try:
-            if provider == "anthropic":
-                result = await self._execute_anthropic(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                    timeout_seconds=_resolved_timeout
-                )
-            elif provider == "openai":
-                result = await self._execute_openai(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                    timeout_seconds=_resolved_timeout
-                )
-            elif provider == "google":
-                result = await self._execute_google(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                    timeout_seconds=_resolved_timeout
-                )
-            elif provider == "ollama":
-                # PROMPT #106 - Ollama local LLM integration
-                result = await self._execute_ollama(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                    timeout_seconds=_resolved_timeout
-                )
-            elif provider == "cohere":
-                # PROMPT #122 - Cohere AI integration
-                result = await self._execute_cohere(
-                    model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                    timeout_seconds=_resolved_timeout
-                )
-            else:
-                raise ValueError(f"Unknown provider: {provider}")
+            # PROMPT #217 - Try streaming first, fall back to non-streaming on error
+            try:
+                if provider == "anthropic":
+                    result = await self._execute_anthropic_streaming(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        stream_callback=_stream_cb, flush_callback=_flush_cb,
+                        timeout_seconds=_resolved_timeout
+                    )
+                elif provider == "openai":
+                    result = await self._execute_openai_streaming(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        stream_callback=_stream_cb, flush_callback=_flush_cb,
+                        timeout_seconds=_resolved_timeout
+                    )
+                elif provider == "google":
+                    result = await self._execute_google_streaming(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        stream_callback=_stream_cb, flush_callback=_flush_cb,
+                        timeout_seconds=_resolved_timeout
+                    )
+                elif provider == "ollama":
+                    result = await self._execute_ollama_streaming(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        stream_callback=_stream_cb, flush_callback=_flush_cb,
+                        timeout_seconds=_resolved_timeout
+                    )
+                elif provider == "cohere":
+                    result = await self._execute_cohere_streaming(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        stream_callback=_stream_cb, flush_callback=_flush_cb,
+                        timeout_seconds=_resolved_timeout
+                    )
+                else:
+                    raise ValueError(f"Unknown provider: {provider}")
+
+                # Emit stream completion event
+                asyncio.create_task(console.log_ai_streaming_chunk(
+                    stream_id=_stream_id,
+                    model=_model_label,
+                    chunk_text="",
+                    chunk_index=_chunk_counter[0] + 1,
+                    is_complete=True,
+                    accumulated_text=result.get("content", ""),
+                    project_id=str(project_id) if project_id else None,
+                ))
+
+            except Exception as stream_err:
+                # Fallback to non-streaming if streaming fails
+                logger.warning(f"⚠️ Streaming failed, falling back to non-streaming: {stream_err}")
+                if provider == "anthropic":
+                    result = await self._execute_anthropic(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        timeout_seconds=_resolved_timeout
+                    )
+                elif provider == "openai":
+                    result = await self._execute_openai(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        timeout_seconds=_resolved_timeout
+                    )
+                elif provider == "google":
+                    result = await self._execute_google(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        timeout_seconds=_resolved_timeout
+                    )
+                elif provider == "ollama":
+                    result = await self._execute_ollama(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        timeout_seconds=_resolved_timeout
+                    )
+                elif provider == "cohere":
+                    result = await self._execute_cohere(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        timeout_seconds=_resolved_timeout
+                    )
+                else:
+                    raise ValueError(f"Unknown provider: {provider}")
 
             # Adicionar informações do modelo do banco na resposta
             result["db_model_id"] = model_config["db_model_id"]
@@ -1604,19 +1661,49 @@ class AIOrchestrator:
             if not resolved_timeout:
                 resolved_timeout = 120.0
 
-        # Dispatch to provider-specific executor
-        if provider == "anthropic":
-            result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-        elif provider == "openai":
-            result = await self._execute_openai(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-        elif provider == "google":
-            result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-        elif provider == "ollama":
-            result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout)
-        elif provider == "cohere":
-            result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-        else:
-            raise ValueError(f"Unknown provider: {provider}")
+        # PROMPT #217 - Streaming dispatch with fallback to non-streaming
+        import uuid as _uuid
+        _stream_id = str(_uuid.uuid4())
+        _model_label = f"{provider}/{model_name}"
+        _stream_cb, _chunk_counter, _flush_cb = self._create_stream_callback(
+            stream_id=_stream_id, model_label=_model_label,
+        )
+
+        try:
+            if provider == "anthropic":
+                result = await self._execute_anthropic_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+            elif provider == "openai":
+                result = await self._execute_openai_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+            elif provider == "google":
+                result = await self._execute_google_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+            elif provider == "ollama":
+                result = await self._execute_ollama_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout)
+            elif provider == "cohere":
+                result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+            else:
+                raise ValueError(f"Unknown provider: {provider}")
+
+            # Emit stream completion
+            console = get_console_logger()
+            asyncio.create_task(console.log_ai_streaming_chunk(
+                stream_id=_stream_id, model=_model_label,
+                chunk_text="", chunk_index=_chunk_counter[0] + 1,
+                is_complete=True, accumulated_text=result.get("content", ""),
+            ))
+        except Exception as stream_err:
+            logger.warning(f"⚠️ Chain streaming failed, falling back: {stream_err}")
+            if provider == "anthropic":
+                result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+            elif provider == "openai":
+                result = await self._execute_openai(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+            elif provider == "google":
+                result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+            elif provider == "ollama":
+                result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout)
+            elif provider == "cohere":
+                result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+            else:
+                raise ValueError(f"Unknown provider: {provider}")
 
         result["db_model_id"] = model_config["db_model_id"]
         result["db_model_name"] = model_config["db_model_name"]
@@ -2026,6 +2113,400 @@ class AIOrchestrator:
                 "input_tokens": tokens.get("input_tokens", 0),
                 "output_tokens": tokens.get("output_tokens", 0),
                 "total_tokens": tokens.get("input_tokens", 0) + tokens.get("output_tokens", 0)
+            }
+        }
+
+    # ===================================================================
+    # PROMPT #217 - Streaming provider methods for real-time console output
+    # ===================================================================
+
+    def _create_stream_callback(
+        self,
+        stream_id: str,
+        model_label: str,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+    ):
+        """
+        Create a callback for streaming chunks to console logger.
+        Uses time-based batching: accumulates chunks for 200ms or 50 chars,
+        then flushes as one SSE event (~5 events/sec instead of 50+).
+        """
+        console = get_console_logger()
+        chunk_counter = [0]
+        buffer = []
+        last_flush = [time.time()]
+
+        async def callback(chunk_text: str):
+            chunk_counter[0] += 1
+            buffer.append(chunk_text)
+            now = time.time()
+            buffered_text = "".join(buffer)
+
+            # Flush every 200ms or when buffer >= 50 chars
+            if now - last_flush[0] >= 0.2 or len(buffered_text) >= 50:
+                await console.log_ai_streaming_chunk(
+                    stream_id=stream_id,
+                    model=model_label,
+                    chunk_text=buffered_text,
+                    chunk_index=chunk_counter[0],
+                    is_complete=False,
+                    project_id=project_id,
+                    job_id=job_id,
+                )
+                buffer.clear()
+                last_flush[0] = now
+
+        async def flush_remaining():
+            """Flush any remaining buffered text"""
+            if buffer:
+                buffered_text = "".join(buffer)
+                await console.log_ai_streaming_chunk(
+                    stream_id=stream_id,
+                    model=model_label,
+                    chunk_text=buffered_text,
+                    chunk_index=chunk_counter[0],
+                    is_complete=False,
+                    project_id=project_id,
+                    job_id=job_id,
+                )
+                buffer.clear()
+
+        return callback, chunk_counter, flush_remaining
+
+    async def _execute_anthropic_streaming(
+        self,
+        model: str,
+        messages: List[Dict],
+        system_prompt: Optional[str],
+        max_tokens: int,
+        temperature: float,
+        stream_callback,
+        flush_callback,
+        api_key_override: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
+    ) -> Dict:
+        """Anthropic streaming using client.messages.stream()"""
+        client = self.clients["anthropic"]
+
+        if api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
+            from anthropic import AsyncAnthropic
+            client = AsyncAnthropic(api_key=api_key_override)
+
+        accumulated = ""
+        input_tokens = 0
+        output_tokens = 0
+
+        async with client.messages.stream(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system_prompt or "You are a helpful AI assistant.",
+            messages=messages,
+        ) as stream:
+            async for text in stream.text_stream:
+                accumulated += text
+                await stream_callback(text)
+
+            await flush_callback()
+            final_message = await stream.get_final_message()
+            input_tokens = final_message.usage.input_tokens
+            output_tokens = final_message.usage.output_tokens
+
+        return {
+            "provider": "anthropic",
+            "model": model,
+            "content": accumulated,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+        }
+
+    async def _execute_openai_streaming(
+        self,
+        model: str,
+        messages: List[Dict],
+        system_prompt: Optional[str],
+        max_tokens: int,
+        temperature: float,
+        stream_callback,
+        flush_callback,
+        api_key_override: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
+    ) -> Dict:
+        """OpenAI streaming using stream=True"""
+        client = self.clients["openai"]
+
+        if api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
+            from openai import AsyncOpenAI
+            client = AsyncOpenAI(api_key=api_key_override)
+
+        openai_messages = []
+        if system_prompt:
+            openai_messages.append({"role": "system", "content": system_prompt})
+        openai_messages.extend(messages)
+
+        accumulated = ""
+        input_tokens = 0
+        output_tokens = 0
+
+        response_stream = await client.chat.completions.create(
+            model=model,
+            messages=openai_messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            stream=True,
+            stream_options={"include_usage": True},
+        )
+
+        async for chunk in response_stream:
+            if chunk.choices and chunk.choices[0].delta.content:
+                text = chunk.choices[0].delta.content
+                accumulated += text
+                await stream_callback(text)
+            if hasattr(chunk, 'usage') and chunk.usage:
+                input_tokens = chunk.usage.prompt_tokens or 0
+                output_tokens = chunk.usage.completion_tokens or 0
+
+        await flush_callback()
+
+        return {
+            "provider": "openai",
+            "model": model,
+            "content": accumulated,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+        }
+
+    async def _execute_google_streaming(
+        self,
+        model: str,
+        messages: List[Dict],
+        system_prompt: Optional[str],
+        max_tokens: int,
+        temperature: float,
+        stream_callback,
+        flush_callback,
+        api_key_override: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
+    ) -> Dict:
+        """Google Gemini streaming using streamGenerateContent with alt=sse"""
+        google_config = self.clients["google"]
+        api_key = api_key_override or google_config["api_key"]
+        http_client = google_config["http_client"]
+
+        conversation = []
+        if system_prompt:
+            conversation.append(f"System Instructions: {system_prompt}\n")
+        for msg in messages:
+            role = "User" if msg["role"] == "user" else "Model"
+            conversation.append(f"{role}: {msg['content']}")
+        prompt = "\n\n".join(conversation)
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent?key={api_key}&alt=sse"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "maxOutputTokens": max_tokens,
+                "temperature": temperature,
+            }
+        }
+
+        accumulated = ""
+        input_tokens = 0
+        output_tokens = 0
+        effective_timeout = timeout_seconds or 120.0
+
+        async with http_client.stream("POST", url, json=payload, timeout=effective_timeout) as response:
+            async for line in response.aiter_lines():
+                if not line.startswith("data: "):
+                    continue
+                try:
+                    data = json.loads(line[6:])
+                    candidates = data.get("candidates", [])
+                    if candidates:
+                        parts = candidates[0].get("content", {}).get("parts", [])
+                        for part in parts:
+                            text = part.get("text", "")
+                            if text:
+                                accumulated += text
+                                await stream_callback(text)
+                    usage_meta = data.get("usageMetadata", {})
+                    if usage_meta:
+                        input_tokens = usage_meta.get("promptTokenCount", input_tokens)
+                        output_tokens = usage_meta.get("candidatesTokenCount", output_tokens)
+                except json.JSONDecodeError:
+                    pass
+
+        await flush_callback()
+
+        return {
+            "provider": "google",
+            "model": model,
+            "content": accumulated,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+        }
+
+    async def _execute_ollama_streaming(
+        self,
+        model: str,
+        messages: List[Dict],
+        system_prompt: Optional[str],
+        max_tokens: int,
+        temperature: float,
+        stream_callback,
+        flush_callback,
+        timeout_seconds: Optional[float] = None,
+    ) -> Dict:
+        """Ollama streaming using stream=True (NDJSON response)"""
+        ollama_config = self.clients["ollama"]
+        base_url = ollama_config["base_url"]
+        http_client = ollama_config["http_client"]
+
+        ollama_messages = []
+        if system_prompt:
+            ollama_messages.append({"role": "system", "content": system_prompt})
+        ollama_messages.extend(messages)
+
+        url = f"{base_url}/api/chat"
+        payload = {
+            "model": model,
+            "messages": ollama_messages,
+            "stream": True,
+            "options": {
+                "num_predict": max_tokens,
+                "temperature": temperature,
+            }
+        }
+
+        logger.info(f"🦙 Calling Ollama (streaming): {url} with model {model}")
+
+        accumulated = ""
+        input_tokens = 0
+        output_tokens = 0
+
+        async with http_client.stream("POST", url, json=payload, timeout=timeout_seconds or 300.0) as response:
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                try:
+                    data = json.loads(line)
+                    chunk_text = data.get("message", {}).get("content", "")
+                    if chunk_text:
+                        accumulated += chunk_text
+                        await stream_callback(chunk_text)
+                    if data.get("done"):
+                        input_tokens = data.get("prompt_eval_count", 0)
+                        output_tokens = data.get("eval_count", 0)
+                except json.JSONDecodeError:
+                    pass
+
+        await flush_callback()
+
+        return {
+            "provider": "ollama",
+            "model": model,
+            "content": accumulated,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+            }
+        }
+
+    async def _execute_cohere_streaming(
+        self,
+        model: str,
+        messages: List[Dict],
+        system_prompt: Optional[str],
+        max_tokens: int,
+        temperature: float,
+        stream_callback,
+        flush_callback,
+        api_key_override: Optional[str] = None,
+        timeout_seconds: Optional[float] = None,
+    ) -> Dict:
+        """Cohere streaming using stream=True (NDJSON with event_type)"""
+        cohere_config = self.clients["cohere"]
+        api_key = api_key_override or cohere_config["api_key"]
+        http_client = cohere_config["http_client"]
+
+        chat_history = []
+        current_message = ""
+        for msg in messages:
+            role = msg.get("role", "user").lower()
+            cohere_role = "USER" if role == "user" else "CHATBOT"
+            chat_history.append({"role": cohere_role, "message": msg.get("content", "")})
+
+        if chat_history and chat_history[-1]["role"] == "USER":
+            current_message = chat_history.pop()["message"]
+        else:
+            current_message = "Continue the conversation."
+
+        url = "https://api.cohere.ai/v1/chat"
+        payload = {
+            "model": model,
+            "message": current_message,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        if chat_history:
+            payload["chat_history"] = chat_history
+        if system_prompt:
+            payload["preamble"] = system_prompt
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+
+        accumulated = ""
+        input_tokens = 0
+        output_tokens = 0
+        effective_timeout = timeout_seconds or 60.0
+
+        async with http_client.stream("POST", url, json=payload, headers=headers, timeout=effective_timeout) as response:
+            async for line in response.aiter_lines():
+                if not line.strip():
+                    continue
+                try:
+                    data = json.loads(line)
+                    event_type = data.get("event_type", "")
+                    if event_type == "text-generation":
+                        text = data.get("text", "")
+                        if text:
+                            accumulated += text
+                            await stream_callback(text)
+                    elif event_type == "stream-end":
+                        response_data = data.get("response", {})
+                        meta = response_data.get("meta", {})
+                        tokens = meta.get("tokens", {})
+                        input_tokens = tokens.get("input_tokens", 0)
+                        output_tokens = tokens.get("output_tokens", 0)
+                except json.JSONDecodeError:
+                    pass
+
+        await flush_callback()
+
+        return {
+            "provider": "cohere",
+            "model": model,
+            "content": accumulated,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
             }
         }
 
