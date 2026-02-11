@@ -164,103 +164,436 @@ CHAIN_STRATEGY = {
 
 # ============================================================================
 # Utility nodes per usage_type for maximum performance
-# Cache: avoids repeated API calls (instant on hit)
-# Timeout: prevents hanging requests
-# Validator: ensures valid JSON output
+# Frontend layout: pre-process nodes above chain (y=-20), post-process below (y=320)
+# Pre-process: cache, rag_context, prompt_transformer, router, rate_limiter, timeout
+# Post-process: retry, validator, cost_guard
+# Node positions: x = 170 + index * 250
 # ============================================================================
+
+# Pre-process node positions (above chain, y=-20)
+PRE_Y = -20
+# Post-process node positions (below chain, y=320)
+POST_Y = 320
+# X start offset
+X_START = 170
+X_STEP = 250
+
+
 def _build_utility_nodes(usage_key: str) -> list:
-    """Build utility nodes optimized for each operation type."""
+    """Build utility nodes optimized for each operation type.
 
-    # Base nodes that every chain gets
-    cache_node = {
-        "id": "cache-1",
-        "type": "cache",
-        "label": "Cache",
-        "enabled": True,
-        "config": {
-            "ttl_seconds": 86400,  # 24h
-            "cache_level": "exact",
-            "enabled": True,
-        },
-        "position": {"x": 100, "y": 50},
-    }
+    Each operation gets a curated set of nodes based on its needs:
+    - Speed-critical ops: cache + timeout + rate_limiter
+    - Quality-critical ops: cache + timeout + validator + retry
+    - Batch ops: cache + timeout + rate_limiter + validator
+    - RAG ops: cache + rag_context + timeout + validator
+    """
 
-    timeout_node = {
-        "id": "timeout-1",
-        "type": "timeout",
-        "label": "Timeout",
-        "enabled": True,
-        "config": {
-            "timeout_seconds": 300,  # 5 min (GPU RTX 4080 is fast)
-        },
-        "position": {"x": 100, "y": 350},
-    }
-
-    validator_json_node = {
-        "id": "validator-1",
-        "type": "validator",
-        "label": "JSON Validator",
-        "enabled": True,
-        "config": {
-            "validation_type": "json",
-            "retry_on_fail": False,  # Don't retry - fallback to next model instead
-        },
-        "position": {"x": 100, "y": 500},
-    }
-
-    validator_notempty_node = {
-        "id": "validator-1",
-        "type": "validator",
-        "label": "Not Empty",
-        "enabled": True,
-        "config": {
-            "validation_type": "not_empty",
-            "retry_on_fail": False,
-        },
-        "position": {"x": 100, "y": 500},
-    }
-
-    # Per-operation customization
     configs = {
-        # Interview: cache questions (same project = same questions),
-        # no JSON validation (output is natural language)
-        "interview": [cache_node, timeout_node, validator_notempty_node],
-
-        # Prompt generation: cache generated prompts, validate not empty
-        "prompt_generation": [cache_node, timeout_node, validator_notempty_node],
-
-        # Task execution: cache code output, validate not empty
-        "task_execution": [cache_node, timeout_node, validator_notempty_node],
-
-        # Commit generation: short output, fast timeout
+        # ----------------------------------------------------------------
+        # Interview: quality matters, cache repeated project questions
+        # Cache (pre) + Timeout (pre) + Validator (post) + Retry (post)
+        # ----------------------------------------------------------------
+        "interview": [
+            # PRE-PROCESS (above chain)
+            {
+                "id": "cache-1707000001",
+                "type": "cache",
+                "label": "Cache",
+                "enabled": True,
+                "config": {
+                    "ttl_seconds": 86400,
+                    "cache_level": "exact",
+                    "enabled": True,
+                },
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "timeout-1707000002",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 300},
+                "position": {"x": X_START + X_STEP, "y": PRE_Y},
+            },
+            # POST-PROCESS (below chain)
+            {
+                "id": "validator-1707000003",
+                "type": "validator",
+                "label": "Validator",
+                "enabled": True,
+                "config": {
+                    "validation_type": "not_empty",
+                    "retry_on_fail": True,
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
+            {
+                "id": "retry-1707000004",
+                "type": "retry",
+                "label": "Retry",
+                "enabled": True,
+                "config": {
+                    "max_retries": 2,
+                    "backoff_base_ms": 2000,
+                    "backoff_multiplier": 2.0,
+                    "retry_on": ["timeout", "server_error"],
+                },
+                "position": {"x": X_START + X_STEP, "y": POST_Y},
+            },
+        ],
+        # ----------------------------------------------------------------
+        # Prompt generation: creative + verbose, cache heavily
+        # Cache (pre) + Timeout (pre) + Validator (post)
+        # ----------------------------------------------------------------
+        "prompt_generation": [
+            {
+                "id": "cache-1707100001",
+                "type": "cache",
+                "label": "Cache",
+                "enabled": True,
+                "config": {
+                    "ttl_seconds": 86400,
+                    "cache_level": "exact",
+                    "enabled": True,
+                },
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "timeout-1707100002",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 300},
+                "position": {"x": X_START + X_STEP, "y": PRE_Y},
+            },
+            {
+                "id": "validator-1707100003",
+                "type": "validator",
+                "label": "Validator",
+                "enabled": True,
+                "config": {
+                    "validation_type": "not_empty",
+                    "retry_on_fail": False,
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
+        ],
+        # ----------------------------------------------------------------
+        # Task execution: speed + code quality, rate limit to avoid GPU overload
+        # Cache (pre) + Rate Limiter (pre) + Timeout (pre) + Validator (post)
+        # ----------------------------------------------------------------
+        "task_execution": [
+            {
+                "id": "cache-1707200001",
+                "type": "cache",
+                "label": "Cache",
+                "enabled": True,
+                "config": {
+                    "ttl_seconds": 86400,
+                    "cache_level": "exact",
+                    "enabled": True,
+                },
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "rate_limiter-1707200002",
+                "type": "rate_limiter",
+                "label": "Rate Limiter",
+                "enabled": True,
+                "config": {
+                    "max_requests": 10,
+                    "window_seconds": 60,
+                    "action_on_exceed": "queue",
+                },
+                "position": {"x": X_START + X_STEP, "y": PRE_Y},
+            },
+            {
+                "id": "timeout-1707200003",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 300},
+                "position": {"x": X_START + X_STEP * 2, "y": PRE_Y},
+            },
+            {
+                "id": "validator-1707200004",
+                "type": "validator",
+                "label": "Validator",
+                "enabled": True,
+                "config": {
+                    "validation_type": "not_empty",
+                    "retry_on_fail": False,
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
+        ],
+        # ----------------------------------------------------------------
+        # Commit generation: short output, fast timeout, cost guard
+        # Cache (pre) + Timeout (pre) + Cost Guard (post)
+        # ----------------------------------------------------------------
         "commit_generation": [
-            cache_node,
-            {**timeout_node, "config": {"timeout_seconds": 120}},  # 2 min (commits are short)
-            validator_notempty_node,
+            {
+                "id": "cache-1707300001",
+                "type": "cache",
+                "label": "Cache",
+                "enabled": True,
+                "config": {
+                    "ttl_seconds": 86400,
+                    "cache_level": "exact",
+                    "enabled": True,
+                },
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "timeout-1707300002",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 120},
+                "position": {"x": X_START + X_STEP, "y": PRE_Y},
+            },
+            {
+                "id": "cost_guard-1707300003",
+                "type": "cost_guard",
+                "label": "Cost Guard",
+                "enabled": True,
+                "config": {
+                    "max_cost_per_call": 0.10,
+                    "daily_budget": 10.0,
+                    "monthly_budget": 100.0,
+                    "action_on_exceed": "block",
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
         ],
-
-        # Pattern discovery: long analysis, extended timeout
+        # ----------------------------------------------------------------
+        # Pattern discovery: deep reasoning, long timeout, JSON validation + retry
+        # Cache (pre) + Timeout (pre) + Validator JSON (post) + Retry (post)
+        # ----------------------------------------------------------------
         "pattern_discovery": [
-            cache_node,
-            {**timeout_node, "config": {"timeout_seconds": 600}},  # 10 min (deep reasoning)
-            validator_json_node,
+            {
+                "id": "cache-1707400001",
+                "type": "cache",
+                "label": "Cache",
+                "enabled": True,
+                "config": {
+                    "ttl_seconds": 86400,
+                    "cache_level": "exact",
+                    "enabled": True,
+                },
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "timeout-1707400002",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 600},
+                "position": {"x": X_START + X_STEP, "y": PRE_Y},
+            },
+            {
+                "id": "validator-1707400003",
+                "type": "validator",
+                "label": "JSON Validator",
+                "enabled": True,
+                "config": {
+                    "validation_type": "json",
+                    "retry_on_fail": True,
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
+            {
+                "id": "retry-1707400004",
+                "type": "retry",
+                "label": "Retry",
+                "enabled": True,
+                "config": {
+                    "max_retries": 2,
+                    "backoff_base_ms": 3000,
+                    "backoff_multiplier": 2.0,
+                    "retry_on": ["timeout", "rate_limit", "server_error"],
+                },
+                "position": {"x": X_START + X_STEP, "y": POST_Y},
+            },
         ],
-
-        # Memory / RAG: JSON output required, standard timeout
-        "memory": [cache_node, timeout_node, validator_json_node],
-
-        # Queue orchestration: batch speed, shorter cache
+        # ----------------------------------------------------------------
+        # Memory / Continuous RAG: quality extraction, RAG context, JSON required
+        # Cache (pre) + RAG Context (pre) + Timeout (pre) + Validator JSON (post) + Retry (post)
+        # ----------------------------------------------------------------
+        "memory": [
+            {
+                "id": "cache-1707500001",
+                "type": "cache",
+                "label": "Cache",
+                "enabled": True,
+                "config": {
+                    "ttl_seconds": 86400,
+                    "cache_level": "exact",
+                    "enabled": True,
+                },
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "rag_context-1707500002",
+                "type": "rag_context",
+                "label": "RAG Context",
+                "enabled": True,
+                "config": {
+                    "max_results": 3,
+                    "similarity_threshold": 0.8,
+                    "include_metadata": True,
+                },
+                "position": {"x": X_START + X_STEP, "y": PRE_Y},
+            },
+            {
+                "id": "timeout-1707500003",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 300},
+                "position": {"x": X_START + X_STEP * 2, "y": PRE_Y},
+            },
+            {
+                "id": "validator-1707500004",
+                "type": "validator",
+                "label": "JSON Validator",
+                "enabled": True,
+                "config": {
+                    "validation_type": "json",
+                    "retry_on_fail": True,
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
+            {
+                "id": "retry-1707500005",
+                "type": "retry",
+                "label": "Retry",
+                "enabled": True,
+                "config": {
+                    "max_retries": 2,
+                    "backoff_base_ms": 2000,
+                    "backoff_multiplier": 2.0,
+                    "retry_on": ["timeout", "server_error"],
+                },
+                "position": {"x": X_START + X_STEP, "y": POST_Y},
+            },
+        ],
+        # ----------------------------------------------------------------
+        # Queue orchestration: batch processing, rate limit, short cache
+        # Cache (pre) + Rate Limiter (pre) + Timeout (pre) + Validator (post)
+        # ----------------------------------------------------------------
         "queue_orchestration": [
-            {**cache_node, "config": {**cache_node["config"], "ttl_seconds": 3600}},  # 1h cache
-            timeout_node,
-            validator_notempty_node,
+            {
+                "id": "cache-1707600001",
+                "type": "cache",
+                "label": "Cache",
+                "enabled": True,
+                "config": {
+                    "ttl_seconds": 3600,
+                    "cache_level": "exact",
+                    "enabled": True,
+                },
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "rate_limiter-1707600002",
+                "type": "rate_limiter",
+                "label": "Rate Limiter",
+                "enabled": True,
+                "config": {
+                    "max_requests": 10,
+                    "window_seconds": 60,
+                    "action_on_exceed": "queue",
+                },
+                "position": {"x": X_START + X_STEP, "y": PRE_Y},
+            },
+            {
+                "id": "timeout-1707600003",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 300},
+                "position": {"x": X_START + X_STEP * 2, "y": PRE_Y},
+            },
+            {
+                "id": "validator-1707600004",
+                "type": "validator",
+                "label": "Validator",
+                "enabled": True,
+                "config": {
+                    "validation_type": "not_empty",
+                    "retry_on_fail": False,
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
         ],
-
-        # General: balanced defaults
-        "general": [cache_node, timeout_node, validator_notempty_node],
+        # ----------------------------------------------------------------
+        # General fallback: balanced - cache + timeout + validator + retry
+        # Cache (pre) + Timeout (pre) + Validator (post) + Retry (post) + Cost Guard (post)
+        # ----------------------------------------------------------------
+        "general": [
+            {
+                "id": "cache-1707700001",
+                "type": "cache",
+                "label": "Cache",
+                "enabled": True,
+                "config": {
+                    "ttl_seconds": 86400,
+                    "cache_level": "exact",
+                    "enabled": True,
+                },
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "timeout-1707700002",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 300},
+                "position": {"x": X_START + X_STEP, "y": PRE_Y},
+            },
+            {
+                "id": "validator-1707700003",
+                "type": "validator",
+                "label": "Validator",
+                "enabled": True,
+                "config": {
+                    "validation_type": "not_empty",
+                    "retry_on_fail": True,
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
+            {
+                "id": "retry-1707700004",
+                "type": "retry",
+                "label": "Retry",
+                "enabled": True,
+                "config": {
+                    "max_retries": 2,
+                    "backoff_base_ms": 2000,
+                    "backoff_multiplier": 2.0,
+                    "retry_on": ["timeout", "rate_limit", "server_error"],
+                },
+                "position": {"x": X_START + X_STEP, "y": POST_Y},
+            },
+            {
+                "id": "cost_guard-1707700005",
+                "type": "cost_guard",
+                "label": "Cost Guard",
+                "enabled": True,
+                "config": {
+                    "max_cost_per_call": 0.10,
+                    "daily_budget": 10.0,
+                    "monthly_budget": 100.0,
+                    "action_on_exceed": "block",
+                },
+                "position": {"x": X_START + X_STEP * 2, "y": POST_Y},
+            },
+        ],
     }
 
-    return configs.get(usage_key, [cache_node, timeout_node, validator_notempty_node])
+    return configs.get(usage_key, configs["general"])
 
 
 def seed_ai_flow_chains():
@@ -369,15 +702,20 @@ def seed_ai_flow_chains():
                 continue
 
             # Calculate node positions for visual diagram
-            # Start → Model1 → Model2 → Model3 → Error
-            positions = {"start": {"x": 50, "y": 200}}
+            # Frontend constants: START_X=50, SPACING_X=300, Y=150
+            positions = {"start": {"x": 50, "y": 150}}
             for i, mid in enumerate(chain_ids):
-                positions[mid] = {"x": 250 + (i * 250), "y": 200}
-            positions["error"] = {"x": 250 + (len(chain_ids) * 250), "y": 200}
+                positions[mid] = {"x": 50 + 300 * (i + 1), "y": 150}
+            positions["error"] = {"x": 50 + 300 * (len(chain_ids) + 1), "y": 150}
 
             # Build utility nodes for this operation
             utility_nodes = _build_utility_nodes(usage_key)
             node_types = [n["type"] for n in utility_nodes]
+
+            # Add utility node positions to the positions dict
+            for unode in utility_nodes:
+                if unode.get("position"):
+                    positions[unode["id"]] = unode["position"]
 
             # Upsert chain
             existing = db.query(AIFlowChain).filter(
