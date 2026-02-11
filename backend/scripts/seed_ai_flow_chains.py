@@ -1,7 +1,7 @@
 """
 Seed AI Flow Chains - PROMPT #220
 Configure all Ollama models with top_p/top_k and create optimal AI Flow chains
-for all 8 usage types.
+for all 8 usage types with performance utility nodes.
 
 Strategy per operation:
 - interview:           Gemma3 12B (quality) → Qwen3 14B (speed) → Claude Haiku
@@ -12,6 +12,11 @@ Strategy per operation:
 - memory:              Gemma3 12B (best rules, fast) → Qwen3 14B → DeepSeek-R1
 - queue_orchestration: Qwen3 14B (fastest tok/s) → Gemma3 12B → Phi-4
 - general:             Gemma3 12B (best overall) → Qwen3 14B → DeepSeek-R1
+
+Utility nodes per chain:
+- Cache: exact match, 24h TTL (instant response on cache hit)
+- Timeout: 300s GPU (prevents hanging)
+- Validator: JSON validation (ensures valid output)
 
 Usage:
     docker exec -w /app orbit-backend python scripts/seed_ai_flow_chains.py
@@ -157,6 +162,107 @@ CHAIN_STRATEGY = {
 }
 
 
+# ============================================================================
+# Utility nodes per usage_type for maximum performance
+# Cache: avoids repeated API calls (instant on hit)
+# Timeout: prevents hanging requests
+# Validator: ensures valid JSON output
+# ============================================================================
+def _build_utility_nodes(usage_key: str) -> list:
+    """Build utility nodes optimized for each operation type."""
+
+    # Base nodes that every chain gets
+    cache_node = {
+        "id": "cache-1",
+        "type": "cache",
+        "label": "Cache",
+        "enabled": True,
+        "config": {
+            "ttl_seconds": 86400,  # 24h
+            "cache_level": "exact",
+            "enabled": True,
+        },
+        "position": {"x": 100, "y": 50},
+    }
+
+    timeout_node = {
+        "id": "timeout-1",
+        "type": "timeout",
+        "label": "Timeout",
+        "enabled": True,
+        "config": {
+            "timeout_seconds": 300,  # 5 min (GPU RTX 4080 is fast)
+        },
+        "position": {"x": 100, "y": 350},
+    }
+
+    validator_json_node = {
+        "id": "validator-1",
+        "type": "validator",
+        "label": "JSON Validator",
+        "enabled": True,
+        "config": {
+            "validation_type": "json",
+            "retry_on_fail": False,  # Don't retry - fallback to next model instead
+        },
+        "position": {"x": 100, "y": 500},
+    }
+
+    validator_notempty_node = {
+        "id": "validator-1",
+        "type": "validator",
+        "label": "Not Empty",
+        "enabled": True,
+        "config": {
+            "validation_type": "not_empty",
+            "retry_on_fail": False,
+        },
+        "position": {"x": 100, "y": 500},
+    }
+
+    # Per-operation customization
+    configs = {
+        # Interview: cache questions (same project = same questions),
+        # no JSON validation (output is natural language)
+        "interview": [cache_node, timeout_node, validator_notempty_node],
+
+        # Prompt generation: cache generated prompts, validate not empty
+        "prompt_generation": [cache_node, timeout_node, validator_notempty_node],
+
+        # Task execution: cache code output, validate not empty
+        "task_execution": [cache_node, timeout_node, validator_notempty_node],
+
+        # Commit generation: short output, fast timeout
+        "commit_generation": [
+            cache_node,
+            {**timeout_node, "config": {"timeout_seconds": 120}},  # 2 min (commits are short)
+            validator_notempty_node,
+        ],
+
+        # Pattern discovery: long analysis, extended timeout
+        "pattern_discovery": [
+            cache_node,
+            {**timeout_node, "config": {"timeout_seconds": 600}},  # 10 min (deep reasoning)
+            validator_json_node,
+        ],
+
+        # Memory / RAG: JSON output required, standard timeout
+        "memory": [cache_node, timeout_node, validator_json_node],
+
+        # Queue orchestration: batch speed, shorter cache
+        "queue_orchestration": [
+            {**cache_node, "config": {**cache_node["config"], "ttl_seconds": 3600}},  # 1h cache
+            timeout_node,
+            validator_notempty_node,
+        ],
+
+        # General: balanced defaults
+        "general": [cache_node, timeout_node, validator_notempty_node],
+    }
+
+    return configs.get(usage_key, [cache_node, timeout_node, validator_notempty_node])
+
+
 def seed_ai_flow_chains():
     logger.info("Starting AI Flow Chains seed (PROMPT #220)...")
 
@@ -269,6 +375,10 @@ def seed_ai_flow_chains():
                 positions[mid] = {"x": 250 + (i * 250), "y": 200}
             positions["error"] = {"x": 250 + (len(chain_ids) * 250), "y": 200}
 
+            # Build utility nodes for this operation
+            utility_nodes = _build_utility_nodes(usage_key)
+            node_types = [n["type"] for n in utility_nodes]
+
             # Upsert chain
             existing = db.query(AIFlowChain).filter(
                 AIFlowChain.usage_type == usage_type
@@ -277,6 +387,7 @@ def seed_ai_flow_chains():
             if existing:
                 existing.chain = chain_ids
                 existing.node_positions = positions
+                existing.utility_nodes = utility_nodes
                 existing.is_active = True
                 existing.updated_at = datetime.utcnow()
                 chains_updated += 1
@@ -287,6 +398,7 @@ def seed_ai_flow_chains():
                     usage_type=usage_type,
                     chain=chain_ids,
                     node_positions=positions,
+                    utility_nodes=utility_nodes,
                     is_active=True,
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow(),
@@ -295,7 +407,7 @@ def seed_ai_flow_chains():
                 chains_created += 1
                 action = "Created"
 
-            logger.info(f"  {action} chain: {usage_key} = {' → '.join(chain_names)}")
+            logger.info(f"  {action} chain: {usage_key} = {' → '.join(chain_names)} + nodes: {node_types}")
 
         db.commit()
 

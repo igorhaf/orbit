@@ -45,7 +45,32 @@ All 7 Ollama models updated with model-specific optimal parameters:
 | **queue_orchestration** | Qwen3 14B -> Gemma3 12B -> Phi-4 | Batch speed + reliable fallback |
 | **general** | Gemma3 12B -> Qwen3 14B -> DeepSeek-R1 | Best overall balance |
 
-### 3. Model Selection Rationale
+### 3. Utility Nodes (Performance Optimization)
+
+Each chain includes 3 utility nodes for maximum speed:
+
+| Node | Type | Config | Impact |
+|---|---|---|---|
+| **Cache** | cache | exact match, 24h TTL | Resposta instantanea em cache hit (~5ms vs 30s+) |
+| **Timeout** | timeout | 120-600s por operacao | Previne requests pendurados |
+| **Validator** | validator | JSON ou not_empty | Garante output valido sem retry cascading |
+
+Customizacoes por operacao:
+
+| Operacao | Cache TTL | Timeout | Validator |
+|---|---|---|---|
+| interview | 24h | 300s | not_empty |
+| prompt_generation | 24h | 300s | not_empty |
+| task_execution | 24h | 300s | not_empty |
+| commit_generation | 24h | 120s (output curto) | not_empty |
+| pattern_discovery | 24h | 600s (reasoning longo) | json |
+| memory | 24h | 300s | json (regras de negocio) |
+| queue_orchestration | 1h (batch muda rapido) | 300s | not_empty |
+| general | 24h | 300s | not_empty |
+
+**Decisao: `retry_on_fail=False` em todos os validators** - Se o output for invalido, o orchestrator passa para o proximo modelo na chain (fallback) ao inves de ficar retentando o mesmo modelo lento. Isso e mais rapido que retry exponencial (1s + 2s + 4s + re-execucao).
+
+### 4. Model Selection Rationale
 
 **Gemma3 12B** (primary for quality operations):
 - Best quality: 9 rules, 9 valid, 5 entities
@@ -109,9 +134,15 @@ AI FLOW CHAINS (8 chains):
 - All chains use local Ollama models (free, no API costs)
 - Fallback ordering based on PROMPT #219 benchmark data
 - Visual node positions set for AI Flow diagram rendering
+- 3 utility nodes per chain (Cache + Timeout + Validator)
+- Cache 24h = respostas identicas retornam em ~5ms
+- Timeout customizado por operacao (120s-600s)
+- Validator sem retry cascading (fallback direto)
 
 **Impact:**
 - All AI operations now have automatic fallback chains
 - Operations use the best model for each task type
 - Zero API costs (100% local Ollama models)
 - If primary model fails, automatic fallback to next best
+- Cache hit rate esperado ~20-30% = economia significativa de tempo
+- Timeout previne requests pendurados indefinidamente
