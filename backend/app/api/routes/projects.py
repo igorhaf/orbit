@@ -541,6 +541,8 @@ async def _process_quick_create_scan(
 
             # Store memory context for Context Interview
             project.initial_memory_context = result
+            # PROMPT #222 - Signal that initial scan is done so Continuous RAG can start
+            project.initial_scan_complete = True
             project.updated_at = datetime.utcnow()
             db.commit()
 
@@ -768,6 +770,8 @@ async def _process_project_pipeline(
             logger.info(f"Updated project name to: {suggested_title}")
 
         project.initial_memory_context = result
+        # PROMPT #222 - Signal that initial scan is done so Continuous RAG can start
+        project.initial_scan_complete = True
         project.updated_at = datetime.utcnow()
         db.commit()
 

@@ -152,9 +152,11 @@ async def lifespan(app: FastAPI):
                         from app.models.async_job import AsyncJob, JobStatus, JobType
                         from app.services.job_manager import JobManager
 
+                        # PROMPT #222 - Only process projects whose initial scan completed
                         projects = db_session.query(Project).filter(
                             Project.code_path.isnot(None),
-                            Project.code_path != ""
+                            Project.code_path != "",
+                            Project.initial_scan_complete == True,
                         ).all()
 
                         for project in projects:

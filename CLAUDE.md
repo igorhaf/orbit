@@ -735,8 +735,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #221 (Streaming Hang Fix + top_p/top_k)
-**Próximo prompt:** PROMPT #222
+**Último prompt:** PROMPT #222 (Continuous RAG Gate - Wait for Initial Scan)
+**Próximo prompt:** PROMPT #223
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

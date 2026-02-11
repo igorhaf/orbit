@@ -94,6 +94,11 @@ class Project(Base):
     # If present, context interview uses this rich context for better questions
     initial_memory_context = Column(JSON, nullable=True)
 
+    # PROMPT #222 - Continuous RAG must wait for initial scan to complete
+    # Set to True when the initial memory scan (MEMORY_SCAN job) finishes successfully.
+    # The Continuous RAG scheduler only processes projects where this flag is True.
+    initial_scan_complete = Column(Boolean, default=False, nullable=False, server_default="false")
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
