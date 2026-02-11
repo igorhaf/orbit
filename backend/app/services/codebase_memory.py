@@ -313,6 +313,9 @@ class CodebaseMemoryService:
         self.current_scan_depth = "normal"
         # PROMPT #166 - Dynamic ignore patterns from .gitignore
         self._gitignore_patterns: Set[str] = set()
+        # PROMPT #223 - Instance-level ignore dirs (starts as copy of class-level)
+        # AI-detected custom patterns are added here without contaminating the class set
+        self._effective_ignore_dirs: Set[str] = set(self.IGNORE_DIRECTORIES)
 
     def _load_gitignore_patterns(self, root_path: Path) -> Set[str]:
         """
@@ -383,9 +386,9 @@ class CodebaseMemoryService:
         rel_str = str(rel_path)
         name = path.name
 
-        # Check if any part of the path is in IGNORE_DIRECTORIES
+        # Check if any part of the path is in effective ignore dirs (PROMPT #223)
         for part in rel_path.parts:
-            if part in self.IGNORE_DIRECTORIES:
+            if part in self._effective_ignore_dirs:
                 return True
 
         # Check file patterns
@@ -420,8 +423,8 @@ class CodebaseMemoryService:
         Returns:
             True if directory should be skipped
         """
-        # Check built-in ignore list
-        if dirname in self.IGNORE_DIRECTORIES:
+        # Check built-in + AI-detected ignore list (PROMPT #223)
+        if dirname in self._effective_ignore_dirs:
             return True
 
         # Check .gitignore patterns (directory names only)
@@ -430,6 +433,134 @@ class CodebaseMemoryService:
                 return True
 
         return False
+
+    def _quick_directory_listing(self, root_path: Path) -> str:
+        """
+        PROMPT #223 - List top-level directory structure for AI analysis.
+
+        Walks only 2 levels deep, counting total files and code files per dir.
+        This is a fast filesystem-only operation (no AI, no file reads).
+
+        Returns:
+            Formatted string showing directory tree with file counts
+        """
+        lines = []
+        for root, dirs, files in os.walk(root_path):
+            # Prune already-known ignored dirs
+            dirs[:] = sorted(d for d in dirs if not self._should_ignore_dir(d))
+            rel = Path(root).relative_to(root_path)
+            depth = len(rel.parts)
+            if depth > 2:
+                dirs.clear()
+                continue
+            indent = "  " * depth
+            dir_name = rel.name if rel.parts else root_path.name
+            code_count = sum(
+                1 for f in files
+                if Path(f).suffix.lower() in self.ANALYSIS_EXTENSIONS
+            )
+            lines.append(f"{indent}{dir_name}/ ({len(files)} files, {code_count} code)")
+        return "\n".join(lines[:100])
+
+    async def _detect_ignore_directories(
+        self, root_path: Path, project_id: Optional[UUID] = None
+    ) -> Dict[str, Any]:
+        """
+        PROMPT #223 - Use AI to detect non-standard directories to exclude.
+
+        Sends a compact directory listing to the AI and asks it to identify
+        directories containing third-party code, vendored dependencies, or
+        non-business-logic files.
+
+        Args:
+            root_path: Project root path
+            project_id: Optional project ID for orchestrator tracking
+
+        Returns:
+            Dict with "directories" (list of names) and "rationale" (dict)
+        """
+        import json as _json
+        from datetime import datetime as _dt
+
+        dir_listing = self._quick_directory_listing(root_path)
+        if not dir_listing.strip():
+            return {"directories": [], "rationale": {}, "detected_by_ai": True}
+
+        already_ignored = ", ".join(sorted(list(self._effective_ignore_dirs)[:30]))
+
+        # Load prompt from YAML
+        try:
+            from app.prompts.loader import PromptLoader
+            loader = PromptLoader()
+            system_prompt, user_prompt = loader.render(
+                "memory/detect_ignore_dirs",
+                {
+                    "directory_listing": dir_listing,
+                    "already_ignored": already_ignored,
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Failed to load detect_ignore_dirs YAML, using inline: {e}")
+            system_prompt = (
+                "You analyze project directory structures to identify folders that should be "
+                "EXCLUDED from business logic analysis. Respond with ONLY a JSON object: "
+                '{"directories": ["dir1"], "rationale": {"dir1": "reason"}}. '
+                "If none, respond: {\"directories\": [], \"rationale\": {}}. "
+                "Do NOT list standard dirs (node_modules, vendor, .git, dist, build, __pycache__)."
+            )
+            user_prompt = (
+                f"Project directory structure (2 levels deep):\n\n{dir_listing}\n\n"
+                f"Already ignored: {already_ignored}\n\n"
+                "Identify NON-STANDARD directories to exclude."
+            )
+
+        try:
+            response = await self.orchestrator.execute(
+                usage_type="memory",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=500,
+                project_id=project_id,
+            )
+
+            content = response.get("content", "").strip()
+            # Strip markdown code fences if present
+            if content.startswith("```"):
+                content = "\n".join(content.split("\n")[1:])
+            if content.endswith("```"):
+                content = "\n".join(content.split("\n")[:-1])
+            content = content.strip()
+
+            parsed = _json.loads(content)
+            dirs = parsed.get("directories", [])
+            rationale = parsed.get("rationale", {})
+
+            # Filter out dirs already in the built-in ignore set
+            new_dirs = [
+                d for d in dirs
+                if d not in self._effective_ignore_dirs and d not in self._gitignore_patterns
+            ]
+
+            result = {
+                "directories": new_dirs,
+                "rationale": {k: v for k, v in rationale.items() if k in new_dirs},
+                "detected_by_ai": True,
+                "detection_timestamp": _dt.utcnow().isoformat(),
+            }
+
+            if new_dirs:
+                logger.info(f"🤖 AI detected {len(new_dirs)} additional dirs to ignore: {new_dirs}")
+            else:
+                logger.info("🤖 AI found no additional directories to ignore")
+
+            return result
+
+        except _json.JSONDecodeError as e:
+            logger.warning(f"AI returned invalid JSON for ignore detection: {e}")
+            return {"directories": [], "rationale": {}, "detected_by_ai": True}
+        except Exception as e:
+            logger.warning(f"AI ignore detection failed (non-blocking): {e}")
+            return {"directories": [], "rationale": {}, "detected_by_ai": True}
 
     async def scan_and_memorize(
         self,
@@ -482,7 +613,34 @@ class CodebaseMemoryService:
 
         # PROMPT #166 - Load .gitignore patterns for this project
         self._gitignore_patterns = self._load_gitignore_patterns(path)
-        logger.info(f"🚫 Ignoring {len(self.IGNORE_DIRECTORIES)} built-in dirs + {len(self._gitignore_patterns)} .gitignore patterns")
+        # PROMPT #223 - Reset effective ignore dirs for this scan
+        self._effective_ignore_dirs = set(self.IGNORE_DIRECTORIES)
+        logger.info(f"🚫 Ignoring {len(self._effective_ignore_dirs)} built-in dirs + {len(self._gitignore_patterns)} .gitignore patterns")
+
+        # PROMPT #223 - AI pre-scan to detect non-standard directories to exclude
+        if project_id:
+            try:
+                # Check if project already has saved custom ignores
+                from app.models.project import Project
+                project_obj = self.db.query(Project).filter(Project.id == project_id).first()
+                if project_obj and project_obj.custom_ignore_patterns:
+                    # Reuse previously detected patterns
+                    saved_dirs = project_obj.custom_ignore_patterns.get("directories", [])
+                    if saved_dirs:
+                        self._effective_ignore_dirs.update(saved_dirs)
+                        logger.info(f"🤖 Loaded {len(saved_dirs)} saved AI-detected ignore dirs: {saved_dirs}")
+                else:
+                    # First scan - ask AI to detect directories to ignore
+                    ai_ignores = await self._detect_ignore_directories(path, project_id)
+                    if ai_ignores.get("directories"):
+                        self._effective_ignore_dirs.update(ai_ignores["directories"])
+                        # Save to project for future use (Continuous RAG, re-scans)
+                        if project_obj:
+                            project_obj.custom_ignore_patterns = ai_ignores
+                            self.db.commit()
+                            logger.info(f"💾 Saved AI-detected ignore patterns to project")
+            except Exception as e:
+                logger.warning(f"AI ignore detection skipped (non-blocking): {e}")
 
         # PROMPT #165 - Auto-detect local model (Ollama) and use optimized profile
         try:

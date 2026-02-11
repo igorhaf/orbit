@@ -99,6 +99,11 @@ class Project(Base):
     # The Continuous RAG scheduler only processes projects where this flag is True.
     initial_scan_complete = Column(Boolean, default=False, nullable=False, server_default="false")
 
+    # PROMPT #223 - AI-detected ignore patterns for this project
+    # Populated by AI pre-scan analysis before initial memory scan
+    # JSON: {"directories": [...], "rationale": {...}, "detected_by_ai": true}
+    custom_ignore_patterns = Column(JSON, nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(

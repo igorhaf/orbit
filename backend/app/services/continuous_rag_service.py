@@ -151,6 +151,14 @@ class ContinuousRAGService:
         # Load .gitignore patterns (reuse from CodebaseMemoryService)
         self._memory._gitignore_patterns = self._memory._load_gitignore_patterns(code_path)
 
+        # PROMPT #223 - Reset effective ignore dirs and load project-specific custom ignores
+        self._memory._effective_ignore_dirs = set(self._memory.IGNORE_DIRECTORIES)
+        if project.custom_ignore_patterns:
+            custom_dirs = project.custom_ignore_patterns.get("directories", [])
+            if custom_dirs:
+                self._memory._effective_ignore_dirs.update(custom_dirs)
+                logger.info(f"🤖 Loaded {len(custom_dirs)} project-specific ignore dirs: {custom_dirs}")
+
         # Get existing file states from DB
         existing_states = {}
         for state in self.db.query(RAGFileState).filter(
