@@ -15,7 +15,7 @@ import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
 import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 // PROMPT #131 - Removed InterviewTree, interviews now shown below backlog items
-import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel } from '@/components/rag';
+import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel, ContinuousRAGPanel } from '@/components/rag';
 import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
 import { ProjectSpecsList } from '@/components/specs';  // PROMPT #197 - Specs tab
 import PromptQueuePanel from '@/components/backlog/PromptQueuePanel';  // PROMPT #215 - Prompt Queue
@@ -712,6 +712,12 @@ export default function ProjectDetailsPage() {
                     </CardContent>
                   </Card>
                 )}
+
+                {/* PROMPT #218 - Continuous RAG Evolution Panel */}
+                <ContinuousRAGPanel
+                  projectId={projectId}
+                  onScanComplete={loadRagStats}
+                />
 
                 {/* Code Indexing Panel - ALWAYS visible (PROMPT #136) */}
                 <CodeIndexingPanel

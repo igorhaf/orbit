@@ -1146,6 +1146,23 @@ export const ragApi = {
 
   codeStats: (projectId: string) =>
     request<any>(`/api/v1/projects/${projectId}/code-stats`),
+
+  // PROMPT #218 - Continuous RAG Evolution
+  continuousScan: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/scan`, {
+      method: 'POST',
+    }),
+
+  continuousStatus: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/status`),
+
+  continuousFiles: (projectId: string, status?: string, page: number = 1) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/files?page=${page}${status ? '&status=' + status : ''}`),
+
+  continuousReset: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/reset`, {
+      method: 'DELETE',
+    }),
 };
 
 // PROMPT #80 - Backlog Generation API (Epic → Stories → Tasks)

@@ -20,6 +20,7 @@ from . import (
     discovery_queue,  # Project-Specific Specs: Discovery queue management
     console,  # PROMPT #168 - Real-time Console Logs
     prompt_queue,  # PROMPT #215 - Prompt Orchestration Priority Queue
+    continuous_rag,  # PROMPT #218 - Continuous RAG Evolution
 )
 
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     "discovery_queue",  # Project-Specific Specs: Discovery queue management
     "console",  # PROMPT #168 - Real-time Console Logs
     "prompt_queue",  # PROMPT #215 - Prompt Orchestration Priority Queue
+    "continuous_rag",  # PROMPT #218 - Continuous RAG Evolution
 ]

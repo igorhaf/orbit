@@ -65,6 +65,9 @@ class JobType(str, enum.Enum):
     # PROMPT #121: Full project creation pipeline (scan + context + title)
     PROJECT_PIPELINE = "project_pipeline"
 
+    # PROMPT #218: Continuous RAG Evolution - periodic codebase re-scan
+    RAG_CONTINUOUS_SCAN = "rag_continuous_scan"
+
 
 # Default priority per job type
 JOB_TYPE_DEFAULT_PRIORITY: dict[JobType, int] = {
@@ -92,6 +95,8 @@ JOB_TYPE_DEFAULT_PRIORITY: dict[JobType, int] = {
     JobType.PROJECT_PROVISIONING: JobPriority.LOW,
     # HIGH - user waiting for project creation
     JobType.PROJECT_PIPELINE: JobPriority.HIGH,
+    # LOW - background continuous RAG scan (PROMPT #218)
+    JobType.RAG_CONTINUOUS_SCAN: JobPriority.LOW,
 }
 
 

@@ -11,3 +11,4 @@ export { RagStatsCard, StatCard } from './RagStatsCard';
 export { RagUsageTypeTable } from './RagUsageTypeTable';
 export { RagHitRatePieChart } from './RagCharts';
 export { CodeIndexingPanel } from './CodeIndexingPanel';
+export { ContinuousRAGPanel } from './ContinuousRAGPanel';  // PROMPT #218
