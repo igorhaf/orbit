@@ -26,11 +26,11 @@ Usage:
     changes = await service.scan_for_changes(project_id)
 
     # Process pending files
-    result = await service.process_pending_files(project_id, batch_size=10)
+    result = await service.process_pending_files(project_id, batch_size=50)
 """
 
+import asyncio
 import hashlib
-import json
 import logging
 import os
 from datetime import datetime
@@ -41,6 +41,7 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.contracts.loader import ContractLoader
 from app.models.project import Project
 from app.models.rag_file_state import FileProcessingStatus, RAGFileState
 from app.services.ai_orchestrator import AIOrchestrator
@@ -50,6 +51,9 @@ from app.services.console_logger import ConsoleLogger
 from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
+
+# Concurrent AI requests to Ollama (matches OLLAMA_NUM_PARALLEL)
+MAX_PARALLEL_EXTRACTIONS = 3
 
 
 def _get_console_logger():
@@ -75,6 +79,7 @@ class ContinuousRAGService:
         self.rag = RAGService(db)
         self.orchestrator = AIOrchestrator(db)
         self.indexer = CodebaseIndexer(db)
+        self._contract_loader = ContractLoader()
 
         # Reuse CodebaseMemoryService for ignore lists and analysis utilities
         self._memory = CodebaseMemoryService(db)
@@ -91,7 +96,6 @@ class ContinuousRAGService:
         """
         console = _get_console_logger()
         if console:
-            import asyncio
             asyncio.create_task(console.log_memory_scan(
                 phase="continuous_start",
                 message="Starting continuous RAG evolution cycle",
@@ -116,7 +120,6 @@ class ContinuousRAGService:
         }
 
         if console:
-            import asyncio
             total_changes = scan_result.get("new_files", 0) + scan_result.get("modified_files", 0)
             asyncio.create_task(console.log_memory_scan(
                 phase="continuous_complete",
@@ -135,6 +138,7 @@ class ContinuousRAGService:
         Walk the project's code_path, compute file hashes, and detect changes.
 
         Reuses CodebaseMemoryService's ignore infrastructure for filtering.
+        Uses async hashing to avoid blocking the event loop.
         """
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path:
@@ -155,10 +159,8 @@ class ContinuousRAGService:
         ).all():
             existing_states[state.file_path] = state
 
-        # Walk filesystem
-        found_files = set()
-        new_count = 0
-        modified_count = 0
+        # Walk filesystem - collect files first, then hash in parallel
+        files_to_hash = []
 
         for root, dirs, files in os.walk(code_path):
             # Prune ignored directories (reuse from CodebaseMemoryService)
@@ -177,37 +179,50 @@ class ContinuousRAGService:
                     continue
 
                 rel_path = str(file_path.relative_to(code_path))
-                found_files.add(rel_path)
+                files_to_hash.append((file_path, rel_path))
 
-                # Compute file hash
-                file_hash = self._compute_file_hash(file_path)
-                if not file_hash:
-                    continue
+        # Hash files in parallel using thread pool (non-blocking)
+        loop = asyncio.get_event_loop()
+        hash_tasks = [
+            loop.run_in_executor(None, self._compute_file_hash, fp)
+            for fp, _ in files_to_hash
+        ]
+        hashes = await asyncio.gather(*hash_tasks)
 
-                file_stat = file_path.stat()
+        # Process results
+        found_files = set()
+        new_count = 0
+        modified_count = 0
 
-                if rel_path in existing_states:
-                    state = existing_states[rel_path]
-                    if state.file_hash != file_hash:
-                        # File modified
-                        state.file_hash = file_hash
-                        state.file_size = file_stat.st_size
-                        state.last_modified = datetime.fromtimestamp(file_stat.st_mtime)
-                        state.status = FileProcessingStatus.PENDING
-                        state.error_message = None
-                        modified_count += 1
-                else:
-                    # New file
-                    new_state = RAGFileState(
-                        project_id=project_id,
-                        file_path=rel_path,
-                        file_hash=file_hash,
-                        file_size=file_stat.st_size,
-                        last_modified=datetime.fromtimestamp(file_stat.st_mtime),
-                        status=FileProcessingStatus.PENDING,
-                    )
-                    self.db.add(new_state)
-                    new_count += 1
+        for (file_path, rel_path), file_hash in zip(files_to_hash, hashes):
+            if not file_hash:
+                continue
+
+            found_files.add(rel_path)
+            file_stat = file_path.stat()
+
+            if rel_path in existing_states:
+                state = existing_states[rel_path]
+                if state.file_hash != file_hash:
+                    # File modified
+                    state.file_hash = file_hash
+                    state.file_size = file_stat.st_size
+                    state.last_modified = datetime.fromtimestamp(file_stat.st_mtime)
+                    state.status = FileProcessingStatus.PENDING
+                    state.error_message = None
+                    modified_count += 1
+            else:
+                # New file
+                new_state = RAGFileState(
+                    project_id=project_id,
+                    file_path=rel_path,
+                    file_hash=file_hash,
+                    file_size=file_stat.st_size,
+                    last_modified=datetime.fromtimestamp(file_stat.st_mtime),
+                    status=FileProcessingStatus.PENDING,
+                )
+                self.db.add(new_state)
+                new_count += 1
 
         # Detect deleted files
         deleted_count = 0
@@ -219,7 +234,7 @@ class ContinuousRAGService:
         self.db.commit()
 
         logger.info(
-            f"📡 Scan complete for project {project_id}: "
+            f"Scan complete for project {project_id}: "
             f"{new_count} new, {modified_count} modified, {deleted_count} deleted"
         )
 
@@ -245,16 +260,7 @@ class ContinuousRAGService:
         rag_docs_removed = 0
 
         for state in deleted_states:
-            # Delete RAG documents associated with this file
-            if state.rag_document_ids:
-                for doc_id in state.rag_document_ids:
-                    try:
-                        self.rag.delete(doc_id)
-                        rag_docs_removed += 1
-                    except Exception as e:
-                        logger.warning(f"Failed to delete RAG doc {doc_id}: {e}")
-
-            # Also delete by source_file metadata filter
+            # Delete RAG documents by source_file filter (covers all docs)
             try:
                 count = self.rag.delete_by_filter({
                     "project_id": str(project_id),
@@ -271,7 +277,7 @@ class ContinuousRAGService:
 
         self.db.commit()
 
-        logger.info(f"🗑️ Cleaned {len(deleted_states)} deleted files, {rag_docs_removed} RAG docs removed")
+        logger.info(f"Cleaned {len(deleted_states)} deleted files, {rag_docs_removed} RAG docs removed")
 
         return {
             "deleted_files": len(deleted_states),
@@ -281,12 +287,13 @@ class ContinuousRAGService:
     async def process_pending_files(
         self,
         project_id: UUID,
-        batch_size: int = 10
+        batch_size: int = 50
     ) -> Dict[str, Any]:
         """
         Process pending files using AI to extract business rules.
 
-        Files are prioritized by relevance score (reusing CodebaseMemoryService scoring).
+        Uses asyncio.Semaphore for parallel AI extraction (up to MAX_PARALLEL_EXTRACTIONS
+        concurrent requests to Ollama/cloud models).
         """
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path:
@@ -304,109 +311,151 @@ class ContinuousRAGService:
             return {"processed": 0, "rules_extracted": 0, "errors": 0}
 
         console = _get_console_logger()
+        total_count = len(pending_states)
+
+        # Mark all as processing upfront
+        for state in pending_states:
+            state.status = FileProcessingStatus.PROCESSING
+        self.db.commit()
+
+        # Semaphore limits concurrent AI requests
+        semaphore = asyncio.Semaphore(MAX_PARALLEL_EXTRACTIONS)
+
+        # Shared counters (accessed sequentially after gather)
+        results = []
+
+        async def _process_one(idx: int, state: RAGFileState) -> Dict[str, Any]:
+            """Process a single file with semaphore-controlled concurrency."""
+            file_full_path = code_path / state.file_path
+
+            if not file_full_path.exists():
+                return {"state_id": state.id, "status": "deleted"}
+
+            if console:
+                asyncio.create_task(console.log_memory_scan(
+                    phase=f"file_{idx+1}/{total_count}",
+                    message=f"Analyzing: {state.file_path}",
+                    files_processed=idx + 1,
+                    project_id=str(project_id)
+                ))
+
+            async with semaphore:
+                try:
+                    # Read file content (fast, local I/O)
+                    content = file_full_path.read_text(encoding="utf-8", errors="ignore")
+
+                    # Detect language
+                    language = self.indexer._detect_language(file_full_path) or "unknown"
+
+                    # Truncate very large files
+                    max_content = 15000
+                    if len(content) > max_content:
+                        content = content[:max_content]
+
+                    # Extract business rules via AI (this is the slow part)
+                    rules = await self._extract_rules_from_file(
+                        filename=state.file_path,
+                        content=content,
+                        language=language,
+                        project_id=project_id,
+                        project_context=project.context_semantic,
+                    )
+
+                    return {
+                        "state_id": state.id,
+                        "file_path": state.file_path,
+                        "status": "success",
+                        "rules": rules,
+                    }
+
+                except Exception as e:
+                    return {
+                        "state_id": state.id,
+                        "file_path": state.file_path,
+                        "status": "error",
+                        "error": str(e)[:500],
+                    }
+
+        # Launch all tasks with controlled concurrency
+        tasks = [_process_one(i, state) for i, state in enumerate(pending_states)]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Process results sequentially (DB writes are not thread-safe)
         processed = 0
         total_rules = 0
         errors = 0
 
-        for i, state in enumerate(pending_states):
-            file_full_path = code_path / state.file_path
+        # Build state lookup for quick access
+        state_lookup = {state.id: state for state in pending_states}
 
-            if not file_full_path.exists():
+        for result in results:
+            if isinstance(result, Exception):
+                errors += 1
+                logger.error(f"Unexpected error in parallel processing: {result}")
+                continue
+
+            state = state_lookup.get(result.get("state_id"))
+            if not state:
+                continue
+
+            if result["status"] == "deleted":
                 state.status = FileProcessingStatus.DELETED
                 self.db.commit()
                 continue
 
-            # Mark as processing
-            state.status = FileProcessingStatus.PROCESSING
-            self.db.commit()
-
-            if console:
-                import asyncio
-                asyncio.create_task(console.log_memory_scan(
-                    phase=f"file_{i+1}/{len(pending_states)}",
-                    message=f"Analyzing: {state.file_path}",
-                    files_processed=i + 1,
-                    project_id=str(project_id)
-                ))
-
-            try:
-                # Read file content
-                content = file_full_path.read_text(encoding="utf-8", errors="ignore")
-
-                # Detect language
-                language = self.indexer._detect_language(file_full_path) or "unknown"
-
-                # Truncate very large files
-                max_content = 15000  # ~15K chars for 32B model context
-                if len(content) > max_content:
-                    content = content[:max_content]
-
-                # Extract business rules via AI
-                rules = await self._extract_rules_from_file(
-                    filename=state.file_path,
-                    content=content,
-                    language=language,
-                    project_id=project_id,
-                    project_context=project.context_semantic,
-                )
-
-                # Delete old RAG documents for this file
-                if state.rag_document_ids:
-                    for doc_id in state.rag_document_ids:
-                        try:
-                            self.rag.delete(doc_id)
-                        except Exception:
-                            pass
-
-                # Also clean by source_file filter
-                try:
-                    self.rag.delete_by_filter({
-                        "project_id": str(project_id),
-                        "type": "business_rule",
-                        "source": "continuous_scan",
-                        "source_file": state.file_path
-                    })
-                except Exception:
-                    pass
-
-                # Store new rules in RAG
-                new_doc_ids = []
-                for rule in rules:
-                    rule_text = rule.get("rule_text", "")
-                    if not rule_text or len(rule_text) < 10:
-                        continue
-
-                    doc_id = self.rag.store_business_rule(
-                        content=rule_text,
-                        project_id=project_id,
-                        source="continuous_scan",
-                        source_file=state.file_path,
-                        rule_type=rule.get("rule_type", "general"),
-                        priority="normal" if rule.get("confidence") != "high" else "high"
-                    )
-                    new_doc_ids.append(str(doc_id))
-
-                # Update file state
-                state.status = FileProcessingStatus.COMPLETED
-                state.last_processed_at = datetime.utcnow()
-                state.rag_document_ids = new_doc_ids
-                state.rules_extracted = len(new_doc_ids)
-                state.error_message = None
-                self.db.commit()
-
-                processed += 1
-                total_rules += len(new_doc_ids)
-
-                logger.info(
-                    f"✅ {state.file_path}: {len(new_doc_ids)} rules extracted"
-                )
-
-            except Exception as e:
+            if result["status"] == "error":
                 state.status = FileProcessingStatus.FAILED
-                state.error_message = str(e)[:500]
+                state.error_message = result.get("error", "Unknown error")
                 self.db.commit()
                 errors += 1
-                logger.error(f"❌ Failed to process {state.file_path}: {e}")
+                logger.error(f"Failed to process {result.get('file_path')}: {result.get('error')}")
+                continue
+
+            # Success — update RAG
+            rules = result.get("rules", [])
+
+            # Delete old RAG documents for this file (single unified call)
+            try:
+                self.rag.delete_by_filter({
+                    "project_id": str(project_id),
+                    "type": "business_rule",
+                    "source": "continuous_scan",
+                    "source_file": state.file_path
+                })
+            except Exception:
+                pass
+
+            # Store new rules in RAG
+            new_doc_ids = []
+            for rule in rules:
+                rule_text = rule.get("rule_text", "")
+                if not rule_text or len(rule_text) < 10:
+                    continue
+
+                doc_id = self.rag.store_business_rule(
+                    content=rule_text,
+                    project_id=project_id,
+                    source="continuous_scan",
+                    source_file=state.file_path,
+                    rule_type=rule.get("rule_type", "general"),
+                    priority="normal" if rule.get("confidence") != "high" else "high"
+                )
+                new_doc_ids.append(str(doc_id))
+
+            # Update file state
+            state.status = FileProcessingStatus.COMPLETED
+            state.last_processed_at = datetime.utcnow()
+            state.rag_document_ids = new_doc_ids
+            state.rules_extracted = len(new_doc_ids)
+            state.error_message = None
+            self.db.commit()
+
+            processed += 1
+            total_rules += len(new_doc_ids)
+
+            logger.info(
+                f"{state.file_path}: {len(new_doc_ids)} rules extracted"
+            )
 
         return {
             "processed": processed,
@@ -480,7 +529,7 @@ class ContinuousRAGService:
         ).delete()
         self.db.commit()
 
-        logger.info(f"🔄 Reset continuous RAG for project {project_id}: {deleted} files, {removed} RAG docs")
+        logger.info(f"Reset continuous RAG for project {project_id}: {deleted} files, {removed} RAG docs")
 
         return {
             "files_cleared": deleted,
@@ -517,10 +566,7 @@ class ContinuousRAGService:
         Uses externalized YAML contract and AIOrchestrator with chain fallback.
         """
         try:
-            from app.contracts.loader import ContractLoader
-            loader = ContractLoader()
-
-            system_prompt, user_prompt = loader.render(
+            system_prompt, user_prompt = self._contract_loader.render(
                 "memory/continuous_rag_extract",
                 {
                     "filename": filename,

@@ -134,6 +134,8 @@ services:
     volumes:
       # Bind mount for persistence - models stored in ./data/ollama
       - ./data/ollama:/root/.ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-3}
     networks:
       - orbit-network
     # ==========================================================================
