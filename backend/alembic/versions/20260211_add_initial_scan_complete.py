@@ -8,7 +8,7 @@ For existing projects that already have initial_memory_context populated,
 the migration sets initial_scan_complete = True (they already completed their scan).
 
 Revision ID: 20260211_scan_complete
-Revises: None (standalone)
+Revises: 218a_rag_file_state
 Create Date: 2026-02-11
 """
 
@@ -16,7 +16,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "20260211_scan_complete"
-down_revision = None
+down_revision = "218a_rag_file_state"
 branch_labels = None
 depends_on = None
 

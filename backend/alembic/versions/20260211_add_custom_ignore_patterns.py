@@ -4,7 +4,7 @@ PROMPT #223 - AI Pre-Scan Ignore Detection.
 Stores AI-detected directories to exclude from memory scan and Continuous RAG.
 
 Revision ID: 20260211_custom_ignore
-Revises: None (standalone)
+Revises: 20260211_scan_complete
 Create Date: 2026-02-11
 """
 
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSON
 
 revision = "20260211_custom_ignore"
-down_revision = None
+down_revision = "20260211_scan_complete"
 branch_labels = None
 depends_on = None
 
