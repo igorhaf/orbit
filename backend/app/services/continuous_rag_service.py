@@ -550,7 +550,7 @@ class ContinuousRAGService:
 
             rules = result.get("business_rules", [])
 
-            # Handle case where AI returns list of strings instead of dicts
+            # Normalize rules: AI may return various key names
             parsed_rules = []
             for rule in rules:
                 if isinstance(rule, str):
@@ -560,7 +560,29 @@ class ContinuousRAGService:
                         "confidence": "medium",
                     })
                 elif isinstance(rule, dict):
-                    parsed_rules.append(rule)
+                    # Normalize rule_text from various possible keys
+                    rule_text = (
+                        rule.get("rule_text")
+                        or rule.get("description")
+                        or rule.get("rule")
+                        or rule.get("text")
+                        or rule.get("content")
+                        or ""
+                    )
+                    # Append condition/action context if present
+                    condition = rule.get("condition", "")
+                    action = rule.get("action", "")
+                    if condition and action:
+                        rule_text = f"{rule_text} [Condition: {condition}] [Action: {action}]"
+                    elif condition:
+                        rule_text = f"{rule_text} [Condition: {condition}]"
+
+                    parsed_rules.append({
+                        "rule_text": rule_text,
+                        "rule_type": rule.get("rule_type") or rule.get("type") or rule.get("category") or "general",
+                        "confidence": rule.get("confidence") or "medium",
+                        "source_context": rule.get("source_context") or rule.get("context") or "",
+                    })
 
             return parsed_rules
 

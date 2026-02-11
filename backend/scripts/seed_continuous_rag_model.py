@@ -1,6 +1,6 @@
 """
 Seed script for Continuous RAG Evolution
-PROMPT #218 - Creates Ollama qwen2.5:32b model + AI Flow chain for memory usage type
+PROMPT #218 - Creates Ollama qwen2.5:14b model + AI Flow chain for memory usage type
 
 Usage:
     cd backend && poetry run python scripts/seed_continuous_rag_model.py
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 def seed_continuous_rag():
     """
-    Seed Ollama qwen2.5:32b model for continuous RAG evolution
+    Seed Ollama qwen2.5:14b model for continuous RAG evolution
     and create AI Flow chain for memory usage type.
     """
     logger.info("🧠 Starting Continuous RAG Evolution seed...")
@@ -37,7 +37,7 @@ def seed_continuous_rag():
 
     try:
         # =====================================================================
-        # 1. Create/update Qwen2.5 32B model for memory usage type
+        # 1. Create/update Qwen2.5 14B model for memory usage type
         # =====================================================================
         ollama_memory = db.query(AIModel).filter(
             AIModel.provider == "ollama",
@@ -46,11 +46,11 @@ def seed_continuous_rag():
 
         if not ollama_memory:
             ollama_memory = AIModel(
-                name="Qwen2.5 32B (Ollama - RAG Evolution)",
+                name="Qwen2.5 14B (Ollama - RAG Evolution)",
                 provider="ollama",
                 api_key="",  # No API key needed for local Ollama
                 config={
-                    "model_id": "qwen2.5:32b",
+                    "model_id": "qwen2.5:14b",
                     "max_tokens": 8192,
                     "temperature": 0.1  # Deterministic for rule extraction
                 },
@@ -61,12 +61,12 @@ def seed_continuous_rag():
             db.add(ollama_memory)
             db.commit()
             db.refresh(ollama_memory)
-            logger.info(f"✅ Created Qwen2.5 32B (Ollama) for memory usage - ID: {ollama_memory.id}")
+            logger.info(f"✅ Created Qwen2.5 14B (Ollama) for memory usage - ID: {ollama_memory.id}")
         else:
-            # Update to qwen2.5:32b if it was a different model
-            ollama_memory.name = "Qwen2.5 32B (Ollama - RAG Evolution)"
+            # Update to qwen2.5:14b if it was a different model
+            ollama_memory.name = "Qwen2.5 14B (Ollama - RAG Evolution)"
             ollama_memory.config = {
-                "model_id": "qwen2.5:32b",
+                "model_id": "qwen2.5:14b",
                 "max_tokens": 8192,
                 "temperature": 0.1
             }
@@ -74,7 +74,7 @@ def seed_continuous_rag():
             ollama_memory.timeout_seconds = 600
             db.commit()
             db.refresh(ollama_memory)
-            logger.info(f"🔄 Updated existing Ollama memory model to qwen2.5:32b - ID: {ollama_memory.id}")
+            logger.info(f"🔄 Updated existing Ollama memory model to qwen2.5:14b - ID: {ollama_memory.id}")
 
         # =====================================================================
         # 2. Find Claude Haiku for fallback
@@ -133,7 +133,7 @@ def seed_continuous_rag():
         logger.info(f"📊 Summary:")
         logger.info(f"   Models: {total_models} total, {ollama_models} Ollama")
         logger.info(f"   Chains: {chains} total")
-        logger.info(f"   Memory chain: Qwen2.5 32B (Ollama)" + (f" → Claude Haiku (fallback)" if haiku_model else ""))
+        logger.info(f"   Memory chain: Qwen2.5 14B (Ollama)" + (f" → Claude Haiku (fallback)" if haiku_model else ""))
         logger.info("🎉 Continuous RAG Evolution seed completed!")
 
     except Exception as e:

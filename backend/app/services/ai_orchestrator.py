@@ -1980,6 +1980,13 @@ class AIOrchestrator:
             raise
 
         data = response.json()
+
+        # PROMPT #218 - Ollama returns HTTP 200 with {"error": "..."} for OOM and other errors
+        if "error" in data:
+            error_msg = data["error"]
+            logger.error(f"❌ Ollama returned error: {error_msg}")
+            raise Exception(f"Ollama error: {error_msg}")
+
         content = data.get("message", {}).get("content", "")
 
         # Log execution time info from response
