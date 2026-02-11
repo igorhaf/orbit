@@ -1,6 +1,6 @@
 """
 Seed script for Continuous RAG Evolution
-PROMPT #218 - Creates Ollama qwen2.5:14b model as general fallback + AI Flow chain
+PROMPT #218 - Creates Ollama qwen2.5:32b model as general fallback + AI Flow chain
 
 The Ollama model is configured as usage_type=general so it serves as the
 universal fallback for ALL operations (including memory/continuous_rag).
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 def seed_continuous_rag():
     """
-    Seed Ollama qwen2.5:14b model as general usage type.
+    Seed Ollama qwen2.5:32b model as general usage type.
     The general type acts as universal fallback for any usage_type
     that doesn't have a specific model configured (including memory).
     """
@@ -43,7 +43,7 @@ def seed_continuous_rag():
 
     try:
         # =====================================================================
-        # 1. Create/update Qwen2.5 14B model as general (universal fallback)
+        # 1. Create/update Qwen2.5 32B model as general (universal fallback)
         # =====================================================================
         ollama_model = db.query(AIModel).filter(
             AIModel.provider == "ollama",
@@ -51,11 +51,11 @@ def seed_continuous_rag():
 
         if not ollama_model:
             ollama_model = AIModel(
-                name="Qwen2.5 14B (Ollama - RAG Evolution)",
+                name="Qwen2.5 32B (Ollama - RAG Evolution)",
                 provider="ollama",
                 api_key="",  # No API key needed for local Ollama
                 config={
-                    "model_id": "qwen2.5:14b",
+                    "model_id": "qwen2.5:32b",
                     "max_tokens": 8192,
                     "temperature": 0.1  # Deterministic for rule extraction
                 },
@@ -66,11 +66,11 @@ def seed_continuous_rag():
             db.add(ollama_model)
             db.commit()
             db.refresh(ollama_model)
-            logger.info(f"✅ Created Qwen2.5 14B (Ollama) as general - ID: {ollama_model.id}")
+            logger.info(f"✅ Created Qwen2.5 32B (Ollama) as general - ID: {ollama_model.id}")
         else:
-            ollama_model.name = "Qwen2.5 14B (Ollama - RAG Evolution)"
+            ollama_model.name = "Qwen2.5 32B (Ollama - RAG Evolution)"
             ollama_model.config = {
-                "model_id": "qwen2.5:14b",
+                "model_id": "qwen2.5:32b",
                 "max_tokens": 8192,
                 "temperature": 0.1
             }

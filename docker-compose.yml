@@ -137,30 +137,20 @@ services:
     networks:
       - orbit-network
     # ==========================================================================
-    # GPU NVIDIA SUPPORT (desabilitado por padrão)
+    # GPU NVIDIA SUPPORT
     # ==========================================================================
-    # Para habilitar GPU NVIDIA, descomente as linhas abaixo:
-    #
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all  # ou "1" para usar apenas 1 GPU
-    #           capabilities: [gpu]
-    #
-    # Requisitos para GPU:
+    # Requisitos:
     # 1. NVIDIA Driver instalado no host
-    # 2. NVIDIA Container Toolkit instalado:
-    #    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-    #    curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-    #      sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-    #      sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-    #    sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-    #    sudo nvidia-ctk runtime configure --runtime=docker
-    #    sudo systemctl restart docker
+    # 2. NVIDIA Container Toolkit instalado
     # 3. Verificar com: docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi
     # ==========================================================================
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   # Qdrant - Vector Database
   # Docs: https://qdrant.tech/documentation/
