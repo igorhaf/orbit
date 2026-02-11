@@ -154,19 +154,25 @@ class ConsoleLogger:
         return entry
 
     async def _notify_subscribers(self, entry: ConsoleLogEntry):
-        """Notify all SSE subscribers of new log entry"""
+        """Notify all SSE subscribers of new log entry.
+
+        PROMPT #221 - Non-blocking: uses put_nowait() to prevent streaming
+        stalls when subscriber queues are full. If a queue is full, drops
+        the oldest entry to make room (streaming chunks are ephemeral).
+        """
         dead_subscribers = []
 
         for queue in self.subscribers:
             try:
-                await asyncio.wait_for(
-                    queue.put(entry),
-                    timeout=1.0
-                )
-            except asyncio.TimeoutError:
-                dead_subscribers.append(queue)
-            except Exception as e:
-                logger.warning(f"Failed to notify subscriber: {e}")
+                queue.put_nowait(entry)
+            except asyncio.QueueFull:
+                # Drop oldest entry and push new one
+                try:
+                    queue.get_nowait()
+                    queue.put_nowait(entry)
+                except (asyncio.QueueEmpty, asyncio.QueueFull):
+                    dead_subscribers.append(queue)
+            except Exception:
                 dead_subscribers.append(queue)
 
         # Remove dead subscribers

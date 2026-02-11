@@ -376,8 +376,26 @@ class ContinuousRAGService:
                         "error": str(e)[:500],
                     }
 
+        # PROMPT #221 - Per-file timeout to prevent indefinite hangs
+        PER_FILE_TIMEOUT = 600  # 10 minutes max per file
+
+        async def _process_one_with_timeout(idx: int, state: RAGFileState) -> Dict[str, Any]:
+            try:
+                return await asyncio.wait_for(
+                    _process_one(idx, state),
+                    timeout=PER_FILE_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(f"File extraction timed out after {PER_FILE_TIMEOUT}s: {state.file_path}")
+                return {
+                    "state_id": state.id,
+                    "file_path": state.file_path,
+                    "status": "error",
+                    "error": f"Extraction timed out after {PER_FILE_TIMEOUT}s",
+                }
+
         # Launch all tasks with controlled concurrency
-        tasks = [_process_one(i, state) for i, state in enumerate(pending_states)]
+        tasks = [_process_one_with_timeout(i, state) for i, state in enumerate(pending_states)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Process results sequentially (DB writes are not thread-safe)

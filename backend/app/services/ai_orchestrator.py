@@ -285,6 +285,9 @@ class AIOrchestrator:
                     "model": model_name if model_name else self._get_default_model(provider),
                     "max_tokens": db_model.config.get("max_tokens", 4096),
                     "temperature": db_model.config.get("temperature", 0.7),
+                    # PROMPT #221 - Sampling parameters for Ollama
+                    "top_p": db_model.config.get("top_p"),
+                    "top_k": db_model.config.get("top_k"),
                     "db_model_id": str(db_model.id),
                     "db_model_name": db_model.name,
                     "api_key": db_model.api_key,  # PROMPT #127 - Pass API key for chain execution
@@ -399,6 +402,9 @@ class AIOrchestrator:
                     "model": model_name if model_name else self._get_default_model(provider),
                     "max_tokens": max_tokens,
                     "temperature": temperature,
+                    # PROMPT #221 - Sampling parameters for Ollama
+                    "top_p": db_model.config.get("top_p"),
+                    "top_k": db_model.config.get("top_k"),
                     "db_model_id": str(db_model.id),
                     "db_model_name": db_model.name,
                     # PROMPT #152 - Rate limiting config
@@ -436,6 +442,9 @@ class AIOrchestrator:
                 "model": model_name if model_name else self._get_default_model(provider),
                 "max_tokens": max_tokens,
                 "temperature": temperature,
+                # PROMPT #221 - Sampling parameters for Ollama
+                "top_p": fallback_model.config.get("top_p"),
+                "top_k": fallback_model.config.get("top_k"),
                 "db_model_id": str(fallback_model.id),
                 "db_model_name": fallback_model.name,
                 # PROMPT #152 - Rate limiting config
@@ -521,6 +530,9 @@ class AIOrchestrator:
                         "model": db_model.config.get("model_id", self._get_default_model(provider)),
                         "max_tokens": db_model.config.get("max_tokens", 4096),
                         "temperature": db_model.config.get("temperature", 0.7),
+                        # PROMPT #221 - Sampling parameters for Ollama
+                        "top_p": db_model.config.get("top_p"),
+                        "top_k": db_model.config.get("top_k"),
                         "db_model_id": str(db_model.id),
                         "db_model_name": db_model.name,
                         # PROMPT #152 - Rate limiting config
@@ -972,6 +984,9 @@ class AIOrchestrator:
         # Usar max_tokens do banco se não foi especificado
         tokens_limit = max_tokens if max_tokens is not None else model_config["max_tokens"]
         temperature = model_config["temperature"]
+        # PROMPT #221 - Sampling parameters for Ollama
+        _top_p = model_config.get("top_p")
+        _top_k = model_config.get("top_k")
 
         # PROMPT #205 - If utility pre-process wasn't done yet (no chain path), do it now
         if _utility_nodes and not _utility_pre_done:
@@ -1214,7 +1229,7 @@ class AIOrchestrator:
                     result = await self._execute_ollama_streaming(
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
                         stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout
+                        timeout_seconds=_resolved_timeout, top_p=_top_p, top_k=_top_k
                     )
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(
@@ -1257,7 +1272,7 @@ class AIOrchestrator:
                 elif provider == "ollama":
                     result = await self._execute_ollama(
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout
+                        timeout_seconds=_resolved_timeout, top_p=_top_p, top_k=_top_k
                     )
                 elif provider == "cohere":
                     result = await self._execute_cohere(
@@ -1436,7 +1451,8 @@ class AIOrchestrator:
                             )
                         elif provider == "ollama":
                             result = await self._execute_ollama(
-                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                                top_p=_top_p, top_k=_top_k
                             )
                         elif provider == "cohere":
                             result = await self._execute_cohere(
@@ -1613,6 +1629,10 @@ class AIOrchestrator:
         tokens_limit = max_tokens if max_tokens is not None else model_config["max_tokens"]
         temperature = model_config["temperature"]
 
+        # PROMPT #221 - Sampling parameters (primarily for Ollama)
+        top_p = model_config.get("top_p")
+        top_k = model_config.get("top_k")
+
         # PROMPT #206 - Apply utility node overrides
         if overrides:
             if overrides.get("_override_max_tokens") is not None:
@@ -1677,7 +1697,7 @@ class AIOrchestrator:
             elif provider == "google":
                 result = await self._execute_google_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
             elif provider == "ollama":
-                result = await self._execute_ollama_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout)
+                result = await self._execute_ollama_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k)
             elif provider == "cohere":
                 result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
             else:
@@ -1699,7 +1719,7 @@ class AIOrchestrator:
             elif provider == "google":
                 result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
             elif provider == "ollama":
-                result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout)
+                result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k)
             elif provider == "cohere":
                 result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
             else:
@@ -1928,11 +1948,14 @@ class AIOrchestrator:
         max_tokens: int,
         temperature: float,
         timeout_seconds: Optional[float] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
     ) -> Dict:
         """
         Executa com Ollama local LLM usando configurações do banco
         PROMPT #106 - Ollama local LLM integration
         PROMPT #207 - Configurable timeout
+        PROMPT #221 - top_p/top_k sampling parameters
 
         Ollama API é compatível com OpenAI, usando endpoint /api/chat
         Docs: https://github.com/ollama/ollama/blob/main/docs/api.md
@@ -1953,17 +1976,24 @@ class AIOrchestrator:
         # Endpoint e payload para Ollama
         url = f"{base_url}/api/chat"
 
+        # PROMPT #221 - Build options with optional top_p/top_k
+        options = {
+            "num_predict": max_tokens,
+            "temperature": temperature,
+        }
+        if top_p is not None:
+            options["top_p"] = top_p
+        if top_k is not None:
+            options["top_k"] = top_k
+
         payload = {
             "model": model,
             "messages": ollama_messages,
             "stream": False,
-            "options": {
-                "num_predict": max_tokens,
-                "temperature": temperature
-            }
+            "options": options,
         }
 
-        logger.info(f"🦙 Calling Ollama: {url} with model {model} (this may take a while without GPU...)")
+        logger.info(f"🦙 Calling Ollama: {url} with model {model} (options={options})")
 
         # PROMPT #207 - Use configurable timeout if provided (Ollama client already has its own timeout)
         try:
@@ -2151,8 +2181,9 @@ class AIOrchestrator:
             buffered_text = "".join(buffer)
 
             # Flush every 200ms or when buffer >= 50 chars
+            # PROMPT #221 - Fire-and-forget to prevent streaming stalls
             if now - last_flush[0] >= 0.2 or len(buffered_text) >= 50:
-                await console.log_ai_streaming_chunk(
+                asyncio.create_task(console.log_ai_streaming_chunk(
                     stream_id=stream_id,
                     model=model_label,
                     chunk_text=buffered_text,
@@ -2160,7 +2191,7 @@ class AIOrchestrator:
                     is_complete=False,
                     project_id=project_id,
                     job_id=job_id,
-                )
+                ))
                 buffer.clear()
                 last_flush[0] = now
 
@@ -2168,7 +2199,7 @@ class AIOrchestrator:
             """Flush any remaining buffered text"""
             if buffer:
                 buffered_text = "".join(buffer)
-                await console.log_ai_streaming_chunk(
+                asyncio.create_task(console.log_ai_streaming_chunk(
                     stream_id=stream_id,
                     model=model_label,
                     chunk_text=buffered_text,
@@ -2176,7 +2207,7 @@ class AIOrchestrator:
                     is_complete=False,
                     project_id=project_id,
                     job_id=job_id,
-                )
+                ))
                 buffer.clear()
 
         return callback, chunk_counter, flush_remaining
@@ -2373,8 +2404,12 @@ class AIOrchestrator:
         stream_callback,
         flush_callback,
         timeout_seconds: Optional[float] = None,
+        top_p: Optional[float] = None,
+        top_k: Optional[int] = None,
     ) -> Dict:
-        """Ollama streaming using stream=True (NDJSON response)"""
+        """Ollama streaming using stream=True (NDJSON response)
+        PROMPT #221 - Added top_p/top_k and streaming timeout
+        """
         ollama_config = self.clients["ollama"]
         base_url = ollama_config["base_url"]
         http_client = ollama_config["http_client"]
@@ -2384,24 +2419,34 @@ class AIOrchestrator:
             ollama_messages.append({"role": "system", "content": system_prompt})
         ollama_messages.extend(messages)
 
+        # PROMPT #221 - Build options with optional top_p/top_k
+        options = {
+            "num_predict": max_tokens,
+            "temperature": temperature,
+        }
+        if top_p is not None:
+            options["top_p"] = top_p
+        if top_k is not None:
+            options["top_k"] = top_k
+
         url = f"{base_url}/api/chat"
         payload = {
             "model": model,
             "messages": ollama_messages,
             "stream": True,
-            "options": {
-                "num_predict": max_tokens,
-                "temperature": temperature,
-            }
+            "options": options,
         }
 
-        logger.info(f"🦙 Calling Ollama (streaming): {url} with model {model}")
+        effective_timeout = timeout_seconds or 300.0
+        logger.info(f"🦙 Calling Ollama (streaming): {url} with model {model} (timeout={effective_timeout}s)")
 
         accumulated = ""
         input_tokens = 0
         output_tokens = 0
 
-        async with http_client.stream("POST", url, json=payload, timeout=timeout_seconds or 300.0) as response:
+        # PROMPT #221 - Wrap streaming loop with timeout to prevent indefinite hangs
+        async def _consume_stream(response):
+            nonlocal accumulated, input_tokens, output_tokens
             async for line in response.aiter_lines():
                 if not line.strip():
                     continue
@@ -2416,6 +2461,12 @@ class AIOrchestrator:
                         output_tokens = data.get("eval_count", 0)
                 except json.JSONDecodeError:
                     pass
+
+        async with http_client.stream("POST", url, json=payload, timeout=effective_timeout) as response:
+            await asyncio.wait_for(
+                _consume_stream(response),
+                timeout=effective_timeout
+            )
 
         await flush_callback()
 
