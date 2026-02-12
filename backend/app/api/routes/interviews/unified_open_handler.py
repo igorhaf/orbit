@@ -28,6 +28,7 @@ from app.services.interview_question_deduplicator import InterviewQuestionDedupl
 from app.prompts import get_prompt_service
 from app.prompts.loader import PromptLoader
 from app.api.routes.interviews.option_parser import parse_ai_question_options, analyze_and_convert_choice_type
+from app.services.interview_query_classifier import classify_interview_query
 from app.api.routes.interviews.response_cleaners import clean_ai_response
 # PROMPT #89: Context Interview fixed questions
 from app.api.routes.interviews.context_questions import (
@@ -435,6 +436,18 @@ Gere uma pergunta DIFERENTE das acima.
     orchestrator = AIOrchestrator(db, enable_cache=False)
 
     try:
+        # PROMPT #231 - Classify the last user message to route to appropriate model tier
+        last_user_msg = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                last_user_msg = msg.get("content", "")
+                break
+        _classification = classify_interview_query(
+            question_text=last_user_msg,
+            options=None,
+            conversation_history_length=len(messages),
+        )
+
         response = await orchestrator.execute(
             usage_type="interview",
             messages=messages,  # PROMPT #82 - Full context (not summarized)
@@ -442,7 +455,8 @@ Gere uma pergunta DIFERENTE das acima.
             max_tokens=2000,  # PROMPT #149 - Increased to 2000 to ensure 5-8 options always fit
             project_id=interview.project_id,
             interview_id=interview.id,
-            enable_rag=True  # PROMPT #124 - Enable RAG for interviews
+            enable_rag=True,  # PROMPT #124 - Enable RAG for interviews
+            metadata={"query_classification": _classification},  # PROMPT #231
         )
 
         # Clean response
@@ -658,6 +672,13 @@ Contextualize sua primeira pergunta com base no card pai.
             {"role": "user", "content": f"Ótimo formato! Agora comece a entrevista para o projeto \"{project.name}\". IMPORTANTE: Use EXATAMENTE o mesmo formato da pergunta anterior, com \"○\" (círculo vazio)."}
         ]
 
+        # PROMPT #231 - First question is always simple (closed with options)
+        _first_classification = classify_interview_query(
+            question_text=f"Start interview for project {project.name}",
+            options=["option1", "option2", "option3", "option4"],
+            conversation_history_length=0,
+        )
+
         response = await orchestrator.execute(
             usage_type="interview",
             messages=initial_messages,
@@ -665,7 +686,8 @@ Contextualize sua primeira pergunta com base no card pai.
             max_tokens=1500,  # PROMPT #149 - Increased to 1500 to ensure 5-8 options always fit
             project_id=interview.project_id,
             interview_id=interview.id,
-            enable_rag=True  # PROMPT #124 - Enable RAG for interviews
+            enable_rag=True,  # PROMPT #124 - Enable RAG for interviews
+            metadata={"query_classification": _first_classification},  # PROMPT #231
         )
 
         # Clean response

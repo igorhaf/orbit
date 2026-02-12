@@ -702,12 +702,16 @@ UTILITY_NODE_CATALOG = {
     "router": {
         "type": "router",
         "label": "Router",
-        "description": "Routes requests to different model chains based on conditions (complexity, cost, topic).",
+        "description": "Routes requests to different model chains based on conditions (complexity, cost, topic). PROMPT #231: reads query_classification from metadata to skip cheap models for complex queries.",
         "icon": "git-branch",
         "color": "#10b981",
         "default_config": {
             "condition": "complexity",
-            "threshold": "medium",
+            "tier_mapping": {
+                "fast": 0,
+                "balanced": "middle",
+                "strong": "last",
+            },
             "routes": {},
         },
     },
@@ -728,7 +732,7 @@ UTILITY_NODE_CATALOG = {
     "validator": {
         "type": "validator",
         "label": "Validator",
-        "description": "Validates AI output against rules (JSON schema, length, keywords, format). Auto-repair: attempts JSON fix before triggering retry.",
+        "description": "Validates AI output against rules (JSON schema, length, keywords, format). Auto-repair: attempts JSON fix before triggering retry. PROMPT #231: interview_score type with 0.0-1.0 structural scoring.",
         "icon": "check-circle",
         "color": "#22c55e",
         "default_config": {
@@ -738,6 +742,7 @@ UTILITY_NODE_CATALOG = {
             "required_keywords": [],
             "retry_on_fail": True,
             "auto_repair_json": True,
+            "min_score": 0.5,
         },
     },
     "cost_guard": {

@@ -722,50 +722,78 @@ class UtilityNodeExecutor:
     # =========================================================================
 
     def _pre_router(self, config: Dict, messages: List[Dict], context: Dict):
-        """Evaluate condition and set routing hints in context."""
+        """Evaluate condition and set routing hints in context.
+
+        PROMPT #231 - Enhanced: Sets _router_start_index (int) that the
+        orchestrator uses to skip cheap models for complex queries.
+        Also reads query_classification from metadata if available.
+        """
         condition = config.get("condition", "complexity")
-        threshold = config.get("threshold", "medium")
+        tier_mapping = config.get("tier_mapping", {
+            "fast": 0,
+            "balanced": "middle",
+            "strong": "last",
+        })
 
-        # Estimate prompt complexity based on message length and count
-        total_chars = sum(len(m.get("content", "")) for m in messages)
-        msg_count = len(messages)
+        # PROMPT #231 - Check if interview query classifier provided a classification
+        query_classification = context.get("query_classification", {})
+        recommended_tier = query_classification.get("recommended_tier")
+        estimated_tokens = query_classification.get("estimated_output_tokens")
 
-        if condition == "complexity":
-            # Simple heuristic: short prompts = low, medium, long = high
-            if total_chars < 500:
-                complexity = "low"
-            elif total_chars < 3000:
-                complexity = "medium"
+        if recommended_tier:
+            # Use pre-computed classification from interview handler
+            tier = recommended_tier
+            context["_router_estimated_tokens"] = estimated_tokens or 500
+            logger.info(f"🔀 Router Node: using query classification → tier={tier}")
+        else:
+            # Fallback: estimate from message content
+            total_chars = sum(len(m.get("content", "")) for m in messages)
+            msg_count = len(messages)
+
+            if condition == "complexity":
+                if total_chars < 500:
+                    tier = "fast"
+                elif total_chars < 3000:
+                    tier = "balanced"
+                else:
+                    tier = "strong"
+            elif condition == "cost":
+                est_tokens = total_chars // 4
+                if est_tokens < 500:
+                    tier = "fast"
+                elif est_tokens < 2000:
+                    tier = "balanced"
+                else:
+                    tier = "strong"
+                context["_router_estimated_tokens"] = est_tokens
+            elif condition == "message_count":
+                if msg_count <= 2:
+                    tier = "fast"
+                elif msg_count <= 6:
+                    tier = "balanced"
+                else:
+                    tier = "strong"
             else:
-                complexity = "high"
+                tier = "balanced"
 
-            context["_router_complexity"] = complexity
-            context["_router_recommendation"] = (
-                "cheap" if complexity == "low"
-                else "balanced" if complexity == "medium"
-                else "quality"
-            )
-            logger.info(f"🔀 Router Node: complexity={complexity} → recommend {context['_router_recommendation']}")
+            logger.info(f"🔀 Router Node: condition={condition} → tier={tier}")
 
-        elif condition == "cost":
-            # Route based on estimated token count
-            estimated_tokens = total_chars // 4
-            if estimated_tokens < 500:
-                context["_router_recommendation"] = "cheap"
-            elif estimated_tokens < 2000:
-                context["_router_recommendation"] = "balanced"
-            else:
-                context["_router_recommendation"] = "quality"
-            logger.info(f"🔀 Router Node: ~{estimated_tokens} tokens → recommend {context['_router_recommendation']}")
+        # Convert tier to chain start index
+        chain_total = context.get("_chain_total", 1)
+        tier_value = tier_mapping.get(tier, 0)
 
-        elif condition == "message_count":
-            if msg_count <= 2:
-                context["_router_recommendation"] = "cheap"
-            elif msg_count <= 6:
-                context["_router_recommendation"] = "balanced"
-            else:
-                context["_router_recommendation"] = "quality"
-            logger.info(f"🔀 Router Node: {msg_count} messages → recommend {context['_router_recommendation']}")
+        if tier_value == "middle":
+            start_index = max(0, chain_total // 2)
+        elif tier_value == "last":
+            start_index = max(0, chain_total - 1)
+        elif isinstance(tier_value, int):
+            start_index = min(tier_value, max(0, chain_total - 1))
+        else:
+            start_index = 0
+
+        context["_router_start_index"] = start_index
+        context["_router_recommendation"] = tier
+        logger.info(f"🔀 Router Node: start_index={start_index}/{chain_total} (tier={tier})")
 
     # =========================================================================
     # VALIDATOR - Validate AI output
@@ -820,6 +848,17 @@ class UtilityNodeExecutor:
                 is_valid = False
                 reason = "Response is empty"
 
+        elif validation_type == "interview_score":
+            # PROMPT #231 - Structural scoring for interview responses (0.0-1.0)
+            min_score = config.get("min_score", 0.5)
+            score = self._score_interview_response(content)
+            result["validation_score"] = score
+            if score < min_score:
+                is_valid = False
+                reason = f"Interview response score too low ({score:.2f} < {min_score})"
+            else:
+                logger.info(f"📊 Validator Node: interview score={score:.2f} (>= {min_score})")
+
         if is_valid:
             logger.info(f"✅ Validator Node: output is valid ({validation_type})")
             result["validated"] = True
@@ -831,6 +870,44 @@ class UtilityNodeExecutor:
                 result["retry_needed"] = True
 
         return result
+
+    @staticmethod
+    def _score_interview_response(content: str) -> float:
+        """Score an interview AI response structurally (0.0-1.0).
+
+        PROMPT #231 - Replaces binary pass/fail with granular scoring:
+        - Has question text (non-empty): +0.3
+        - Has valid structure indicator (question mark, numbered): +0.2
+        - Has options (closed question markers): +0.3
+        - Has reasonable length (> 50 chars): +0.2
+        """
+        import re
+        score = 0.0
+        stripped = content.strip()
+
+        if not stripped:
+            return 0.0
+
+        # Has non-empty content
+        if len(stripped) > 10:
+            score += 0.3
+
+        # Has question-like structure (question mark or numbered question)
+        if "?" in stripped or re.search(r"(?:pergunta|question|❓)\s*\d*", stripped, re.IGNORECASE):
+            score += 0.2
+
+        # Has options (closed question indicators)
+        option_markers = re.findall(r"(?:^|\n)\s*(?:○|●|☐|☑|-|\d+\.)\s+\S", stripped)
+        if len(option_markers) >= 2:
+            score += 0.3
+        elif len(option_markers) >= 1:
+            score += 0.15
+
+        # Reasonable length for a meaningful response
+        if len(stripped) > 50:
+            score += 0.2
+
+        return min(score, 1.0)
 
     @staticmethod
     def _try_parse_json(content: str, auto_repair: bool = True) -> Optional[Any]:

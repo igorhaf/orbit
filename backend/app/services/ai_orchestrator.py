@@ -334,12 +334,26 @@ class AIOrchestrator:
 
         return [n for n in chain.utility_nodes if n.get("enabled", True)]
 
-    def _resolve_timeout(self, model_config: Dict, utility_nodes: List[Dict]) -> float:
+    # PROMPT #231 - Provider speed profiles (tokens per second estimates)
+    PROVIDER_SPEED_PROFILES = {
+        "ollama": 15,
+        "anthropic": 80,
+        "openai": 60,
+        "google": 70,
+    }
+
+    def _resolve_timeout(self, model_config: Dict, utility_nodes: List[Dict],
+                         provider: str = None, estimated_tokens: int = None) -> float:
         """
         PROMPT #207 - Resolve timeout using 3-layer hierarchy:
           1. Timeout Node (from diagram utility nodes) - highest priority
           2. AI Model timeout_seconds field - middle priority
           3. SystemSettings default_api_timeout_seconds - fallback
+
+        PROMPT #231 - Enhanced with adaptive timeout:
+          After resolving the static timeout, calculates an adaptive timeout
+          based on estimated output tokens and provider speed.
+          Uses max(static, adaptive) to never reduce below configured value.
 
         Returns timeout in seconds (float).
         """
@@ -353,26 +367,40 @@ class AIOrchestrator:
                     return timeout
 
         # Layer 2: AI Model timeout_seconds field
+        static_timeout = None
         model_timeout = model_config.get("timeout_seconds")
         if model_timeout is not None:
-            timeout = float(model_timeout)
-            logger.info(f"⏱️ Timeout from AI Model: {timeout}s")
-            return timeout
+            static_timeout = float(model_timeout)
+            logger.info(f"⏱️ Timeout from AI Model: {static_timeout}s")
 
         # Layer 3: SystemSettings default
-        try:
-            setting = self.db.query(SystemSettings).filter(
-                SystemSettings.key == "default_api_timeout_seconds"
-            ).first()
-            if setting and setting.value:
-                timeout = float(setting.value)
-                logger.info(f"⏱️ Timeout from system settings: {timeout}s")
-                return timeout
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to read default timeout from settings: {e}")
+        if static_timeout is None:
+            try:
+                setting = self.db.query(SystemSettings).filter(
+                    SystemSettings.key == "default_api_timeout_seconds"
+                ).first()
+                if setting and setting.value:
+                    static_timeout = float(setting.value)
+                    logger.info(f"⏱️ Timeout from system settings: {static_timeout}s")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to read default timeout from settings: {e}")
 
-        # Absolute fallback
-        return 120.0
+        if static_timeout is None:
+            static_timeout = 120.0
+
+        # PROMPT #231 - Adaptive timeout based on estimated tokens and provider speed
+        if estimated_tokens and provider:
+            speed = self.PROVIDER_SPEED_PROFILES.get(provider, 50)
+            adaptive_timeout = (estimated_tokens / speed) * 1.5 + 5.0
+            if adaptive_timeout > static_timeout:
+                logger.info(
+                    f"⏱️ Adaptive timeout: {adaptive_timeout:.1f}s "
+                    f"(est {estimated_tokens} tokens @ {speed} tok/s for {provider}) "
+                    f"> static {static_timeout}s"
+                )
+                return adaptive_timeout
+
+        return static_timeout
 
     def choose_model(self, usage_type: UsageType) -> Dict[str, any]:
         """
@@ -708,12 +736,18 @@ class AIOrchestrator:
                     "rate_limit_window_seconds": first_model.get("rate_limit_window_seconds"),
                 }
                 _model_max_tokens = first_model.get("max_tokens")
+            # PROMPT #231 - Calculate total chain length for router node
+            _chain_total = sum(len(c[2]) for c in chains_to_try) if chains_to_try else 1
             _util_context = {
                 "usage_type": usage_type,
                 "project_id": str(project_id) if project_id else None,
                 "model_rate_caps": _model_rate_caps,
                 "model_max_tokens": _model_max_tokens,
+                "_chain_total": _chain_total,
             }
+            # PROMPT #231 - Pass query classification from metadata to utility context
+            if metadata and "query_classification" in metadata:
+                _util_context["query_classification"] = metadata["query_classification"]
             early_result, _effective_messages, _effective_system_prompt = (
                 self.utility_executor.pre_process(
                     _utility_nodes, messages, system_prompt, _util_context
@@ -745,8 +779,21 @@ class AIOrchestrator:
         if chains_to_try:
             last_error = None
             _skip_providers = set()  # PROMPT #229 - Smart fallback: skip providers on OOM
+
+            # PROMPT #231 - Apply router start_index to skip cheap models for complex queries
+            _router_start_index = _util_context.get("_router_start_index", 0) if _util_context else 0
+            if _router_start_index > 0:
+                logger.info(f"🔀 Router: skipping first {_router_start_index} model(s) in chain")
+
             for chain_source, chain_usage, chain_model_list in chains_to_try:
                 for chain_idx, chain_model_config in enumerate(chain_model_list):
+                    # PROMPT #231 - Skip models before router start index (first chain only)
+                    if chain_source == "specific" and chain_idx < _router_start_index:
+                        logger.info(
+                            f"🔀 Router skip [{chain_source}] {chain_idx+1}/{len(chain_model_list)}: "
+                            f"{chain_model_config['db_model_name']} (below router start_index)"
+                        )
+                        continue
                     # PROMPT #229 - Smart fallback: skip providers flagged by previous failures
                     if chain_model_config.get("provider") in _skip_providers:
                         logger.warning(
@@ -1759,6 +1806,20 @@ class AIOrchestrator:
                 pass
             if not resolved_timeout:
                 resolved_timeout = 120.0
+
+        # PROMPT #231 - Adaptive timeout: if router estimated tokens, adjust timeout
+        if overrides:
+            _est_tokens = overrides.get("_router_estimated_tokens")
+            _provider = model_config.get("provider")
+            if _est_tokens and _provider:
+                _speed = self.PROVIDER_SPEED_PROFILES.get(_provider, 50)
+                _adaptive = (_est_tokens / _speed) * 1.5 + 5.0
+                if _adaptive > resolved_timeout:
+                    logger.info(
+                        f"⏱️ Chain adaptive timeout: {_adaptive:.1f}s "
+                        f"(est {_est_tokens} tokens @ {_speed} tok/s) > static {resolved_timeout}s"
+                    )
+                    resolved_timeout = _adaptive
 
         # PROMPT #217 - Streaming dispatch with fallback to non-streaming
         import uuid as _uuid
