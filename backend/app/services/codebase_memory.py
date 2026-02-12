@@ -178,6 +178,10 @@ class CodebaseMemoryService:
         # Docker
         ".docker",
 
+        # Backups / Snapshots
+        ".claude-backups", "backups", "backup",
+        ".backups", "_backups",
+
         # Misc
         ".terraform", ".serverless",
         ".aws-sam", ".amplify",
@@ -246,13 +250,14 @@ class CodebaseMemoryService:
             "description": "Deep scan: ALL files, N phases (~15-30+ min)"
         },
         # PROMPT #165 - Profile optimized for local models (Ollama/Qwen)
-        # Smaller prompts to avoid timeout/memory issues with 7B models
+        # PROMPT #236 - Increased max_files from 15→50 so chain prompting
+        # can pick a proportional subset (50% of available, min 5, max 25)
         "local": {
-            "max_files": 15,
+            "max_files": 50,
             "max_content_per_file": 2000,  # Much smaller to fit in 32K context
             "phases": ["quick_scan"],  # Single phase for simplicity
             "files_per_phase": 10,
-            "description": "Local model scan: 15 files, 1 phase (~2-5 min)"
+            "description": "Local model scan: up to 50 files, chain prompting (~5-15 min)"
         }
     }
 
@@ -643,13 +648,19 @@ class CodebaseMemoryService:
             except Exception as e:
                 logger.warning(f"AI ignore detection skipped (non-blocking): {e}")
 
-        # PROMPT #165 - Auto-detect local model (Ollama) and use optimized profile
+        # PROMPT #165 / PROMPT #236 - Auto-detect local model (Ollama)
+        # Uses chain prompting (small prompts per file) instead of batch phases
         try:
             from app.models.ai_model import AIModelUsageType
             model_config = self.orchestrator.choose_model(AIModelUsageType.MEMORY)
             if model_config.get("provider") == "ollama":
+                original_depth = scan_depth
                 scan_depth = "local"
-                logger.info(f"🦙 Detected Ollama provider, switching to 'local' scan profile for better performance")
+                logger.info(
+                    f"Detected Ollama provider for 'memory' usage type. "
+                    f"Scan mode: {original_depth} -> local (chain prompting, 2K/file). "
+                    f"Model: {model_config.get('db_model_name', 'unknown')}"
+                )
         except Exception as e:
             logger.debug(f"Could not detect model provider: {e}")
             # Continue with original scan_depth
@@ -1773,11 +1784,12 @@ class CodebaseMemoryService:
         all_phases = {}
         file_insights = []
 
-        # PROMPT #168 - Reduced to 5 files for better performance with local models
-        # Each file can take 2-4 minutes without GPU, so 5 files = ~10-20 min total
-        max_files = 5  # Reduced from 15 for better UX with local models
+        # PROMPT #236 - Proportional file limit: analyze ~50% of available files
+        # (min 5, max 25) instead of hardcoded 5. For 30 files = 15 analyzed.
+        available_count = len(code_samples)
+        max_files = max(5, min(25, available_count * 50 // 100))
 
-        logger.info(f"🔗 Chain Prompting: Analyzing up to {max_files} files individually")
+        logger.info(f"🔗 Chain Prompting: Analyzing {max_files}/{available_count} files individually")
 
         # PROMPT #168 - Console logging for chain prompting
         console = get_console_logger()
