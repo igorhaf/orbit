@@ -119,115 +119,21 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"RAG sync skipped (non-fatal): {e}")
 
-    # PROMPT #218 - Continuous RAG Evolution: Redis-based periodic scheduler
-    rag_scheduler_task = None
+    # PROMPT #241 - Living Wiki Watchdog: bootstrap on startup
+    # Replaces the old periodic RAG scheduler loop.
+    # The watchdog self-re-queues after each cycle, so no interval loop needed.
     try:
         import asyncio
-        import redis
-
-        redis_host = settings.redis_host if hasattr(settings, 'redis_host') else os.environ.get('REDIS_HOST', 'redis')
-        redis_port = int(settings.redis_port if hasattr(settings, 'redis_port') else os.environ.get('REDIS_PORT', '6379'))
-        scan_interval = int(os.environ.get('RAG_SCAN_INTERVAL_SECONDS', '300'))
-
-        redis_client = redis.Redis(host=redis_host, port=redis_port, db=0, decode_responses=True)
-
-        async def _rag_scheduler_loop():
-            """Redis-based scheduler: uses SETNX with TTL to ensure only one instance runs scans."""
-            logger.info(f"🔄 Continuous RAG scheduler started (interval: {scan_interval}s)")
-            while True:
-                try:
-                    await asyncio.sleep(scan_interval)
-
-                    # Try to acquire lock - only one backend instance should schedule
-                    lock_key = "orbit:rag:scheduler_lock"
-                    acquired = redis_client.set(lock_key, "1", nx=True, ex=scan_interval - 10)
-                    if not acquired:
-                        continue  # Another instance is handling this cycle
-
-                    # Get all projects with code_path
-                    from app.database import get_db as get_db_gen
-                    db_session = next(get_db_gen())
-                    try:
-                        from app.models.project import Project
-                        from app.models.async_job import AsyncJob, JobStatus, JobType
-                        from app.services.job_manager import JobManager
-
-                        # PROMPT #222 - Only process projects whose initial scan completed
-                        projects = db_session.query(Project).filter(
-                            Project.code_path.isnot(None),
-                            Project.code_path != "",
-                            Project.initial_scan_complete == True,
-                        ).all()
-
-                        for project in projects:
-                            # Check if scan already pending/running
-                            existing = db_session.query(AsyncJob).filter(
-                                AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
-                                AsyncJob.project_id == project.id,
-                                AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
-                            ).first()
-
-                            if existing:
-                                continue
-
-                            # Create background scan job
-                            jm = JobManager(db_session)
-                            job = jm.create_job(
-                                job_type=JobType.RAG_CONTINUOUS_SCAN,
-                                input_data={"project_id": str(project.id), "manual": False},
-                                project_id=project.id,
-                                notification_title=f"RAG Scan: {project.name or 'Project'}",
-                                deep_link=f"/projects/{project.id}",
-                            )
-                            logger.info(f"📡 Scheduled RAG scan for project {project.name} (job {job.id})")
-
-                            # Execute scan
-                            try:
-                                jm.start_job(job.id)
-                                from app.services.continuous_rag_service import ContinuousRAGService
-                                service = ContinuousRAGService(db_session)
-                                result = await service.run_full_cycle(project.id)
-                                # PROMPT #239: Living wiki enrichment after RAG cycle
-                                try:
-                                    from app.api.routes.projects import _enrich_context_from_rag
-                                    await _enrich_context_from_rag(db_session, project.id)
-                                except Exception as wiki_e:
-                                    logger.warning(f"Wiki enrichment skipped: {wiki_e}")
-                                jm.complete_job(job.id, result)
-                            except Exception as e:
-                                try:
-                                    jm.fail_job(job.id, str(e))
-                                except Exception:
-                                    pass
-                                logger.error(f"RAG scan failed for {project.name}: {e}")
-                    finally:
-                        db_session.close()
-
-                except asyncio.CancelledError:
-                    logger.info("RAG scheduler shutting down")
-                    break
-                except Exception as e:
-                    logger.warning(f"RAG scheduler error (non-fatal): {e}")
-
-        rag_scheduler_task = asyncio.create_task(_rag_scheduler_loop())
-        logger.info("✅ Continuous RAG scheduler initialized")
-
+        from app.services.watchdog import bootstrap_watchdog
+        asyncio.create_task(bootstrap_watchdog())
+        logger.info("Watchdog bootstrap scheduled for active projects")
     except Exception as e:
-        logger.warning(f"Continuous RAG scheduler skipped (non-fatal): {e}")
+        logger.warning(f"Watchdog bootstrap skipped (non-fatal): {e}")
 
     yield
 
     # Shutdown
     logger.info("Shutting down Orbit API...")
-
-    # Cancel RAG scheduler
-    if rag_scheduler_task and not rag_scheduler_task.done():
-        rag_scheduler_task.cancel()
-        try:
-            import asyncio
-            await asyncio.wait_for(rag_scheduler_task, timeout=5.0)
-        except (asyncio.CancelledError, asyncio.TimeoutError):
-            pass
 
 
 # Create FastAPI application

@@ -210,6 +210,15 @@ async def get_enrichment_status(
         AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
     ).all()
 
+    # PROMPT #241 - Count auto-discovered cards
+    from app.models.task import Task
+    from sqlalchemy import func as sql_func, cast
+    from sqlalchemy.dialects.postgresql import ARRAY
+    auto_discovered_count = db.query(sql_func.count(Task.id)).filter(
+        Task.project_id == project_id,
+        Task.reporter == "watchdog",
+    ).scalar() or 0
+
     return {
         "is_enriching": len(active_jobs) > 0,
         "active_jobs": [
@@ -225,4 +234,5 @@ async def get_enrichment_status(
         "context_locked": project.context_locked or False,
         "has_description": bool(project.description),
         "has_context": bool(project.context_human),
+        "auto_discovered_cards": auto_discovered_count,
     }

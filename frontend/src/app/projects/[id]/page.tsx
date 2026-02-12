@@ -512,13 +512,13 @@ export default function ProjectDetailsPage() {
           </div>
         )}
 
-        {/* PROMPT #239 - Background enrichment banner */}
+        {/* PROMPT #241 - Watchdog active banner */}
         {isEnriching && project.status !== 'processing' && (
           <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
             <div className="flex items-center gap-2">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500" />
               <span className="text-sm text-gray-600">
-                Background enrichment in progress — RAG scanning, pattern discovery, and wiki update running...
+                Watchdog active — continuously discovering and updating project knowledge
               </span>
             </div>
           </div>

@@ -727,9 +727,9 @@ async def _process_project_pipeline(
     scan_depth: str = "normal"
 ):
     """
-    Background pipeline: scan codebase → generate rich context → set title → activate.
+    Background pipeline: scan codebase → activate → start watchdog.
 
-    PROMPT #121 - Full project processing pipeline.
+    PROMPT #241 - Fast project creation. Rich context deferred to watchdog.
     """
     from app.database import SessionLocal
     from app.models.project import ProjectStatus
@@ -743,7 +743,7 @@ async def _process_project_pipeline(
 
         folder_name = Path(code_path).name
 
-        # === Step A: Memory Scan (0-40%) ===
+        # === Step A: Memory Scan (0-80%) ===
         job_manager.update_progress(job_id, 5.0, "Iniciando varredura do codebase...")
 
         memory_service = CodebaseMemoryService(db)
@@ -756,7 +756,7 @@ async def _process_project_pipeline(
             scan_depth=scan_depth
         )
 
-        job_manager.update_progress(job_id, 35.0, "Varredura concluida. Salvando resultados...")
+        job_manager.update_progress(job_id, 70.0, "Varredura concluida. Salvando resultados...")
 
         # Update project with scan results
         project = db.query(Project).filter(Project.id == project_id).first()
@@ -770,49 +770,21 @@ async def _process_project_pipeline(
             logger.info(f"Updated project name to: {suggested_title}")
 
         project.initial_memory_context = result
-        # PROMPT #222 - Signal that initial scan is done so Continuous RAG can start
         project.initial_scan_complete = True
+        # PROMPT #241: Set initial description from scan summary
+        if not project.description:
+            summary = result.get("scan_summary", "") or result.get("interview_context", "")
+            if summary:
+                project.description = str(summary)[:2000]
         project.updated_at = datetime.utcnow()
         db.commit()
 
-        # PROMPT #239: Pattern discovery + spec sync moved to background enrichment (Phase 2)
+        # === Step B: Finalize (80-95%) ===
+        job_manager.update_progress(job_id, 85.0, "Finalizando projeto...")
 
-        job_manager.update_progress(job_id, 40.0, "Gerando contexto rico do projeto...")
-
-        # === Step B: Rich Context Generation (40-85%) ===
-        # PROMPT #240: Wrapped in try/except - if context gen fails, project still activates
-        # The living wiki enrichment (PROMPT #239) will fill context later
-        from app.services.context_generator import ContextGeneratorService
-
-        context_gen = ContextGeneratorService(db)
-
-        async def progress_cb(percent, message):
-            job_manager.update_progress(job_id, percent, message)
-
-        try:
-            context_result = await context_gen.generate_rich_context_from_memory(
-                project_id=project_id,
-                progress_callback=progress_cb
-            )
-        except Exception as ctx_err:
-            logger.warning(f"Rich context generation failed (non-blocking): {ctx_err}")
-            # Set fallback description from scan data
-            project = db.query(Project).filter(Project.id == project_id).first()
-            if project and not project.description:
-                memory = project.initial_memory_context or {}
-                summary = memory.get("scan_summary", "") or memory.get("interview_context", "")
-                if summary:
-                    project.description = str(summary)[:2000]
-                db.commit()
-
-        job_manager.update_progress(job_id, 90.0, "Finalizando projeto...")
-
-        # === Step C: Finalize ===
-        project = db.query(Project).filter(Project.id == project_id).first()
-        if project:
-            project.status = ProjectStatus.active
-            project.updated_at = datetime.utcnow()
-            db.commit()
+        project.status = ProjectStatus.active
+        project.updated_at = datetime.utcnow()
+        db.commit()
 
         # Update notification title
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
@@ -825,37 +797,18 @@ async def _process_project_pipeline(
             "success": True,
             "project_id": str(project_id),
             "project_name": project.name if project else folder_name,
-            "context_generated": True,
             "scan_depth": scan_depth
         })
 
         logger.info(f"Pipeline completed for project {project_id}")
 
-        # === Step D: Auto-trigger background enrichment (PROMPT #239) ===
+        # === Step C: Start watchdog (PROMPT #241) ===
         try:
-            enrichment_job = job_manager.create_job(
-                job_type=JobType.RAG_CONTINUOUS_SCAN,
-                input_data={
-                    "project_id": str(project_id),
-                    "code_path": code_path,
-                    "auto_trigger": True,
-                },
-                project_id=project_id,
-                notification_title=f"Enriching: {project.name if project else folder_name}",
-                deep_link=f"/projects/{project_id}",
-            )
-            from app.services.job_executor import PriorityJobExecutor
-            executor = PriorityJobExecutor.get_instance()
-            await executor.submit(
-                JobPriority.LOW,
-                _run_post_pipeline_enrichment,
-                enrichment_job.id,
-                project_id,
-                code_path,
-            )
-            logger.info(f"Auto-triggered background enrichment for project {project_id}")
+            from app.services.watchdog import submit_watchdog_cycle
+            submit_watchdog_cycle(db, project_id)
+            logger.info(f"Watchdog started for project {project_id}")
         except Exception as e:
-            logger.warning(f"Auto-trigger enrichment failed (non-blocking): {e}")
+            logger.warning(f"Watchdog start failed (non-blocking): {e}")
 
     except Exception as e:
         logger.error(f"Pipeline failed for project {project_id}: {str(e)}", exc_info=True)
@@ -885,73 +838,7 @@ async def _process_project_pipeline(
         db.close()
 
 
-async def _run_post_pipeline_enrichment(
-    job_id: UUID,
-    project_id: UUID,
-    code_path: str,
-):
-    """
-    PROMPT #239 - Background enrichment after project pipeline.
-    Combines: RAG scan + pattern discovery + spec sync + wiki enrichment.
-    Runs at LOW priority so it doesn't block user-facing operations.
-    """
-    from app.database import SessionLocal
-    from app.models.project import ProjectStatus
-
-    db = SessionLocal()
-    try:
-        jm = JobManager(db)
-        jm.start_job(job_id)
-
-        # 1. Continuous RAG scan
-        jm.update_progress(job_id, 10.0, "RAG: scanning for new files...")
-        try:
-            from app.services.continuous_rag_service import ContinuousRAGService
-            rag_service = ContinuousRAGService(db)
-            rag_result = await rag_service.run_full_cycle(project_id)
-            logger.info(f"RAG scan completed for {project_id}: {rag_result}")
-        except Exception as e:
-            logger.warning(f"RAG scan failed (non-blocking): {e}")
-
-        # 2. Pattern discovery + spec sync
-        jm.update_progress(job_id, 40.0, "Discovering code patterns...")
-        try:
-            effective_max = _effective_max_patterns(db, project_id)
-            if effective_max > 0:
-                discovery_service = PatternDiscoveryService(db)
-                discovered_patterns = await discovery_service.discover_patterns(
-                    project_path=Path(code_path),
-                    project_id=project_id,
-                    max_patterns=effective_max,
-                    min_occurrences=2,
-                )
-                logger.info(f"Discovered {len(discovered_patterns)} patterns for {project_id}")
-
-                from app.services.spec_rag_sync import SpecRAGSync
-                spec_sync = SpecRAGSync(db)
-                sync_result = spec_sync.sync_all_framework_specs()
-                logger.info(f"Specs synced: {sync_result.get('synced', 0)} new")
-        except Exception as e:
-            logger.warning(f"Pattern discovery failed (non-blocking): {e}")
-
-        # 3. Living wiki enrichment
-        jm.update_progress(job_id, 70.0, "Enriching project wiki...")
-        try:
-            await _enrich_context_from_rag(db, project_id)
-        except Exception as e:
-            logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
-
-        jm.complete_job(job_id, {"success": True, "project_id": str(project_id)})
-        logger.info(f"Post-pipeline enrichment completed for {project_id}")
-
-    except Exception as e:
-        logger.error(f"Post-pipeline enrichment failed for {project_id}: {e}", exc_info=True)
-        try:
-            jm.fail_job(job_id, str(e))
-        except Exception:
-            pass
-    finally:
-        db.close()
+    # PROMPT #241: _run_post_pipeline_enrichment removed - replaced by watchdog service
 
 
 async def _enrich_context_from_rag(db, project_id: UUID):
