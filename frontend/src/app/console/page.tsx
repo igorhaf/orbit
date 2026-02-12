@@ -98,11 +98,11 @@ export default function ConsolePage() {
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
-  const [showDetails, setShowDetails] = useState(true);
   const [activeStreams, setActiveStreams] = useState<Map<string, ActiveStream>>(new Map());
 
   const logsEndRef = useRef<HTMLDivElement>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
+  const userScrolledRef = useRef(false);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -206,9 +206,24 @@ export default function ConsolePage() {
     };
   }, [connectToStream]);
 
-  // Auto-scroll to bottom when new logs or streaming updates arrive
+  // Smart auto-scroll: detect if user scrolled up manually
+  const handleConsoleScroll = useCallback(() => {
+    const el = consoleRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    // If user is within 80px of bottom, consider them "at bottom"
+    if (distanceFromBottom < 80) {
+      userScrolledRef.current = false;
+      setAutoScroll(true);
+    } else {
+      userScrolledRef.current = true;
+      setAutoScroll(false);
+    }
+  }, []);
+
+  // Auto-scroll to bottom when new logs arrive (only if user hasn't scrolled up)
   useEffect(() => {
-    if (autoScroll && logsEndRef.current) {
+    if (autoScroll && !userScrolledRef.current && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [logs, activeStreams, autoScroll]);
@@ -248,7 +263,7 @@ export default function ConsolePage() {
     const text = filteredLogs
       .map((log) => {
         let output = formatLogLine(log);
-        if (showDetails && log.details) {
+        if (log.details) {
           output += '\n' + formatDetails(log.details);
         }
         return output;
@@ -318,19 +333,16 @@ export default function ConsolePage() {
 
           {/* Toggle buttons */}
           <button
-            onClick={() => setShowDetails(!showDetails)}
-            className={`px-2 py-1 text-xs rounded ${
-              showDetails
-                ? 'bg-gray-700 text-white'
-                : 'bg-gray-800 text-gray-500'
-            }`}
-            title="Toggle details"
-          >
-            details
-          </button>
-
-          <button
-            onClick={() => setAutoScroll(!autoScroll)}
+            onClick={() => {
+              if (!autoScroll) {
+                // Re-enable and scroll to bottom
+                userScrolledRef.current = false;
+                setAutoScroll(true);
+                logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              } else {
+                setAutoScroll(false);
+              }
+            }}
             className={`px-2 py-1 text-xs rounded ${
               autoScroll
                 ? 'bg-gray-700 text-white'
@@ -376,6 +388,7 @@ export default function ConsolePage() {
         ref={consoleRef}
         className="flex-1 overflow-auto p-2 select-text cursor-text"
         style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 #111827' }}
+        onScroll={handleConsoleScroll}
       >
         {filteredLogs.length === 0 && activeStreams.size === 0 ? (
           <div className="text-gray-600">
@@ -389,7 +402,7 @@ export default function ConsolePage() {
                 <span className={LEVEL_COLORS[log.level]}>
                   {formatLogLine(log)}
                 </span>
-                {showDetails && log.details && (
+                {log.details && (
                   <span className="text-gray-600">
                     {'\n' + formatDetails(log.details)}
                   </span>
