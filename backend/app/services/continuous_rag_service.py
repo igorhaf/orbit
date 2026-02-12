@@ -355,8 +355,16 @@ class ContinuousRAGService:
                     # Detect language
                     language = self.indexer._detect_language(file_full_path) or "unknown"
 
-                    # Truncate very large files
-                    max_content = 15000
+                    # PROMPT #224 - Detect provider to set appropriate content limit
+                    # Local models (Ollama) are much slower with large inputs
+                    try:
+                        from app.models.ai_model import AIModelUsageType
+                        _mc = self.orchestrator.choose_model(AIModelUsageType.MEMORY)
+                        _is_local = _mc.get("provider") == "ollama"
+                    except Exception:
+                        _is_local = False
+
+                    max_content = 3000 if _is_local else 15000
                     if len(content) > max_content:
                         content = content[:max_content]
 
@@ -384,8 +392,8 @@ class ContinuousRAGService:
                         "error": str(e)[:500],
                     }
 
-        # PROMPT #221 - Per-file timeout to prevent indefinite hangs
-        PER_FILE_TIMEOUT = 600  # 10 minutes max per file
+        # PROMPT #221 / #224 - Per-file timeout to prevent indefinite hangs
+        PER_FILE_TIMEOUT = 300  # 5 minutes max per file
 
         async def _process_one_with_timeout(idx: int, state: RAGFileState) -> Dict[str, Any]:
             try:
@@ -603,11 +611,19 @@ class ContinuousRAGService:
                 }
             )
 
+            # PROMPT #224 - Reduce max_tokens for local models (JSON rules don't need 4K)
+            try:
+                from app.models.ai_model import AIModelUsageType
+                _mc = self.orchestrator.choose_model(AIModelUsageType.MEMORY)
+                _resp_tokens = 1024 if _mc.get("provider") == "ollama" else 4096
+            except Exception:
+                _resp_tokens = 2048
+
             response = await self.orchestrator.execute(
                 usage_type="memory",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=4096,
+                max_tokens=_resp_tokens,
                 project_id=project_id,
                 metadata={
                     "phase": "continuous_rag_extract",
