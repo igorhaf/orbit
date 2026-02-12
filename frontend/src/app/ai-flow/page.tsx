@@ -363,7 +363,7 @@ function ModelNode({ data }: { data: any }) {
           <div className="text-[10px] text-gray-400 mt-1.5 font-mono truncate">{data.config.model}</div>
         )}
         {data.position_label && (
-          <div className="mt-1.5">
+          <div className="mt-1.5 flex items-center gap-1.5">
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
               data.position_label === 'Primary'
                 ? 'bg-blue-100 text-blue-700'
@@ -371,6 +371,11 @@ function ModelNode({ data }: { data: any }) {
             }`}>
               {data.position_label}
             </span>
+            {data.hasOverrides && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700" title="Per-flow overrides applied">
+                Overrides
+              </span>
+            )}
           </div>
         )}
 
@@ -1033,6 +1038,124 @@ function EditUtilityNodeDialog({
 }
 
 // ---------------------------------------------------------------------------
+// PROMPT #226 - Edit Model Node Dialog (per-instance overrides)
+// ---------------------------------------------------------------------------
+
+interface ModelOverrides {
+  temperature?: number | null;
+  max_tokens?: number | null;
+  timeout_seconds?: number | null;
+}
+
+function EditModelNodeDialog({
+  model,
+  overrides,
+  onSave,
+  onClose,
+}: {
+  model: AIFlowChainModel;
+  overrides: ModelOverrides;
+  onSave: (modelId: string, overrides: ModelOverrides) => void;
+  onClose: () => void;
+}) {
+  const [temperature, setTemperature] = useState<string>(
+    overrides.temperature != null ? String(overrides.temperature) : ''
+  );
+  const [maxTokens, setMaxTokens] = useState<string>(
+    overrides.max_tokens != null ? String(overrides.max_tokens) : ''
+  );
+  const [timeoutSeconds, setTimeoutSeconds] = useState<string>(
+    overrides.timeout_seconds != null ? String(overrides.timeout_seconds) : ''
+  );
+
+  const handleSave = () => {
+    onSave(model.id, {
+      temperature: temperature !== '' ? parseFloat(temperature) : null,
+      max_tokens: maxTokens !== '' ? parseInt(maxTokens) : null,
+      timeout_seconds: timeoutSeconds !== '' ? parseInt(timeoutSeconds) : null,
+    });
+  };
+
+  const providerColor = PROVIDER_COLORS[model.provider] || '#6b7280';
+
+  return (
+    <Dialog open={true} onClose={onClose} title={`Edit Model: ${model.name}`} size="md">
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
+          <div className="p-2 rounded-lg" style={{ backgroundColor: providerColor + '15' }}>
+            <ProviderIcon provider={model.provider} />
+          </div>
+          <div className="flex-1">
+            <div className="font-semibold text-gray-900">{model.name}</div>
+            <div className="text-xs text-gray-500 capitalize">{model.provider} &middot; {model.config?.model || 'N/A'}</div>
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
+          Override model defaults for this specific flow position. Leave fields empty to use the model's global settings.
+        </div>
+
+        {/* Override fields */}
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold text-gray-900">Per-Flow Overrides</h4>
+
+          <Input
+            label="Temperature"
+            type="number"
+            min="0"
+            max="2"
+            step="0.1"
+            placeholder={`Default: ${model.config?.temperature ?? 'model default'}`}
+            value={temperature}
+            onChange={(e) => setTemperature(e.target.value)}
+            helperText="0.0 = deterministic, 2.0 = very creative. Empty = use model default."
+          />
+
+          <Input
+            label="Max Tokens"
+            type="number"
+            min="1"
+            placeholder={`Default: ${model.config?.max_tokens ?? 'model default'}`}
+            value={maxTokens}
+            onChange={(e) => setMaxTokens(e.target.value)}
+            helperText="Maximum response length. Empty = use model default."
+          />
+
+          <Input
+            label="Timeout (seconds)"
+            type="number"
+            min="1"
+            placeholder="Default: model/system default"
+            value={timeoutSeconds}
+            onChange={(e) => setTimeoutSeconds(e.target.value)}
+            helperText="API call timeout. Empty = use model default."
+          />
+        </div>
+
+        {/* Current global settings (read-only) */}
+        <div className="space-y-1 pt-2 border-t border-gray-200">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase">Global Model Settings</h4>
+          <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+            <div>Max Tokens: <span className="font-medium text-gray-900">{model.config?.max_tokens || 'N/A'}</span></div>
+            <div>Temperature: <span className="font-medium text-gray-900">{model.config?.temperature ?? 'N/A'}</span></div>
+            <div>Rate Limit: <span className="font-medium text-gray-900">{model.rate_limit_requests ? `${model.rate_limit_requests} req/${model.rate_limit_window_seconds}s` : 'None'}</span></div>
+            <div>Active: <span className="font-medium text-gray-900">{model.is_active ? 'Yes' : 'No'}</span></div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave}>Save Overrides</Button>
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Node Type Registry
 // ---------------------------------------------------------------------------
 
@@ -1141,6 +1264,7 @@ function buildFlowFromChain(
   animationsMap?: Record<string, NodeAnimationState>,
   utilityNodes?: AIFlowUtilityNode[],
   onRemoveUtility?: (nodeId: string) => void,
+  modelOverridesMap?: Record<string, ModelOverrides>,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -1216,6 +1340,7 @@ function buildFlowFromChain(
     const nodeId = `model-${model.id}`;
     const defaultPos = { x: cursorX, y: MAIN_Y - 20 };
     const pos = savedPositions?.[nodeId] || defaultPos;
+    const overrides = modelOverridesMap?.[model.id];
     nodes.push({
       id: nodeId,
       type: 'modelNode',
@@ -1225,6 +1350,7 @@ function buildFlowFromChain(
         onRemove: onRemove ? () => onRemove(model.id) : undefined,
         metrics: metricsMap?.[model.id],
         animation: animationsMap?.[nodeId] || 'idle',
+        hasOverrides: overrides && (overrides.temperature != null || overrides.max_tokens != null || overrides.timeout_seconds != null),
       },
       position: pos,
     });
@@ -1652,6 +1778,10 @@ export default function AIFlowPage() {
   // PROMPT #208 - Edit utility node dialog
   const [editingNode, setEditingNode] = useState<AIFlowUtilityNode | null>(null);
 
+  // PROMPT #226 - Edit model node dialog (per-flow overrides)
+  const [editingModel, setEditingModel] = useState<AIFlowChainModel | null>(null);
+  const [modelOverrides, setModelOverrides] = useState<Record<string, ModelOverrides>>({});
+
   // PROMPT #124 - WebSocket animations
   const nodeAnimations = useAIFlowWebSocket(selectedUsageType);
 
@@ -1724,6 +1854,9 @@ export default function AIFlowPage() {
   useEffect(() => {
     setWorkingChain(currentChain?.chain || []);
     setWorkingUtilityNodes(currentChain?.utility_nodes || []);
+    // PROMPT #226 - Load model overrides from node_positions
+    const savedOverrides = (currentChain?.node_positions as any)?.__model_overrides;
+    setModelOverrides(savedOverrides && typeof savedOverrides === 'object' ? savedOverrides : {});
   }, [currentChain, selectedUsageType]);
 
   // PROMPT #204 - Fetch utility node types catalog
@@ -1827,10 +1960,11 @@ export default function AIFlowPage() {
       nodeAnimations,
       workingUtilityNodes,
       handleRemoveUtilityNode,
+      modelOverrides,
     );
     setNodes(n);
     setEdges(e);
-  }, [workingChainModels, handleRemoveFromChain, handleRemoveUtilityNode, setNodes, setEdges, currentChain?.node_positions, metricsMap, nodeAnimations, workingUtilityNodes]);
+  }, [workingChainModels, handleRemoveFromChain, handleRemoveUtilityNode, setNodes, setEdges, currentChain?.node_positions, metricsMap, nodeAnimations, workingUtilityNodes, modelOverrides]);
 
   // Edge reconnection handlers
   const onReconnectStart = useCallback(() => {
@@ -1883,6 +2017,20 @@ export default function AIFlowPage() {
     setWorkingChain((prev) => [...prev, modelId]);
   };
 
+  // PROMPT #226 - Save model override
+  const handleSaveModelOverride = useCallback((modelId: string, overrides: ModelOverrides) => {
+    const hasValues = overrides.temperature != null || overrides.max_tokens != null || overrides.timeout_seconds != null;
+    setModelOverrides(prev => {
+      if (!hasValues) {
+        const next = { ...prev };
+        delete next[modelId];
+        return next;
+      }
+      return { ...prev, [modelId]: overrides };
+    });
+    setEditingModel(null);
+  }, []);
+
   // PROMPT #208 - Save edited utility node
   const handleSaveNodeEdit = useCallback((updatedNode: AIFlowUtilityNode) => {
     setWorkingUtilityNodes(prev =>
@@ -1891,13 +2039,23 @@ export default function AIFlowPage() {
     setEditingNode(null);
   }, []);
 
-  // PROMPT #208 - Double-click handler for utility nodes
+  // PROMPT #208 / #226 - Double-click handler for utility nodes AND model nodes
   const handleNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    // Check utility nodes first
     const utilityNode = workingUtilityNodes.find(n => n.id === node.id);
     if (utilityNode) {
       setEditingNode({ ...utilityNode, config: { ...utilityNode.config } });
+      return;
     }
-  }, [workingUtilityNodes]);
+    // Check model nodes (id starts with "model-")
+    if (node.id.startsWith('model-')) {
+      const modelId = node.id.replace('model-', '');
+      const chainModel = workingChainModels.find(m => m.id === modelId);
+      if (chainModel) {
+        setEditingModel(chainModel);
+      }
+    }
+  }, [workingUtilityNodes, workingChainModels]);
 
   // PROMPT #204 - Add utility node
   const handleAddUtilityNode = (nodeType: AIFlowUtilityNodeType) => {
@@ -1935,6 +2093,11 @@ export default function AIFlowPage() {
     setSaving(true);
     try {
       const nodePositions = getNodePositions();
+      // PROMPT #226 - Store model overrides alongside positions
+      const positionsWithOverrides = {
+        ...nodePositions,
+        ...(Object.keys(modelOverrides).length > 0 ? { __model_overrides: modelOverrides } : {}),
+      };
       if (workingChain.length === 0 && workingUtilityNodes.length === 0 && currentChain) {
         // Chain was emptied — delete it
         await aiFlowApi.deleteChain(selectedUsageType);
@@ -1942,7 +2105,7 @@ export default function AIFlowPage() {
       } else if (workingChain.length > 0 || workingUtilityNodes.length > 0) {
         await aiFlowApi.upsertChain(selectedUsageType, {
           chain: workingChain,
-          node_positions: nodePositions,
+          node_positions: positionsWithOverrides,
           utility_nodes: workingUtilityNodes.length > 0 ? workingUtilityNodes : null,
           is_active: true,
         } as any);
@@ -1988,7 +2151,9 @@ export default function AIFlowPage() {
   const workingChainStr = JSON.stringify(workingChain);
   const savedUtilityStr = JSON.stringify(currentChain?.utility_nodes || []);
   const workingUtilityStr = JSON.stringify(workingUtilityNodes);
-  const hasUnsavedChanges = savedChainStr !== workingChainStr || savedUtilityStr !== workingUtilityStr;
+  const savedOverridesStr = JSON.stringify((currentChain?.node_positions as any)?.__model_overrides || {});
+  const workingOverridesStr = JSON.stringify(modelOverrides);
+  const hasUnsavedChanges = savedChainStr !== workingChainStr || savedUtilityStr !== workingUtilityStr || savedOverridesStr !== workingOverridesStr;
 
   return (
     <Layout>
@@ -2317,6 +2482,16 @@ export default function AIFlowPage() {
           node={editingNode}
           onSave={handleSaveNodeEdit}
           onClose={() => setEditingNode(null)}
+        />
+      )}
+
+      {/* PROMPT #226 - Edit Model Node Dialog */}
+      {editingModel && (
+        <EditModelNodeDialog
+          model={editingModel}
+          overrides={modelOverrides[editingModel.id] || {}}
+          onSave={handleSaveModelOverride}
+          onClose={() => setEditingModel(null)}
         />
       )}
 
