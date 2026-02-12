@@ -228,7 +228,7 @@ class AIOrchestrator:
                         # PROMPT #107 - Increased timeout for CPU inference (can take 2-5 min without GPU)
                         import httpx
                         ollama_host = os.getenv("OLLAMA_HOST", "http://ollama:11434")
-                        ollama_timeout = float(os.getenv("OLLAMA_TIMEOUT", "300"))  # 5 min default
+                        ollama_timeout = float(os.getenv("OLLAMA_TIMEOUT", "600"))  # 10 min default (aligned with model timeout)
                         self.clients["ollama"] = {
                             "base_url": ollama_host,
                             "http_client": httpx.AsyncClient(
@@ -1977,9 +1977,11 @@ class AIOrchestrator:
         url = f"{base_url}/api/chat"
 
         # PROMPT #221 - Build options with optional top_p/top_k
+        # PROMPT #224 - Add num_ctx to limit context window
         options = {
             "num_predict": max_tokens,
             "temperature": temperature,
+            "num_ctx": 4096,
         }
         if top_p is not None:
             options["top_p"] = top_p
@@ -2420,9 +2422,11 @@ class AIOrchestrator:
         ollama_messages.extend(messages)
 
         # PROMPT #221 - Build options with optional top_p/top_k
+        # PROMPT #224 - Add num_ctx to limit context window (saves memory, speeds up inference)
         options = {
             "num_predict": max_tokens,
             "temperature": temperature,
+            "num_ctx": 4096,  # Limit context window (default is model max, wastes RAM)
         }
         if top_p is not None:
             options["top_p"] = top_p

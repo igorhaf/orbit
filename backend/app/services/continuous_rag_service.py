@@ -326,11 +326,44 @@ class ContinuousRAGService:
             state.status = FileProcessingStatus.PROCESSING
         self.db.commit()
 
-        # Semaphore limits concurrent AI requests
-        semaphore = asyncio.Semaphore(MAX_PARALLEL_EXTRACTIONS)
+        # PROMPT #224 - Detect provider for parallelism tuning
+        # Ollama processes requests sequentially (FIFO), so parallel > 1 just queues
+        try:
+            from app.models.ai_model import AIModelUsageType
+            _model_cfg = self.orchestrator.choose_model(AIModelUsageType.MEMORY)
+            _is_ollama = _model_cfg.get("provider") == "ollama"
+        except Exception:
+            _is_ollama = False
+            _model_cfg = {}
+
+        _parallel = 1 if _is_ollama else MAX_PARALLEL_EXTRACTIONS
+        semaphore = asyncio.Semaphore(_parallel)
 
         # Shared counters (accessed sequentially after gather)
         results = []
+
+        # PROMPT #224 - File patterns unlikely to contain business rules
+        _SKIP_PATTERNS = {
+            # Test files
+            ".test.", ".spec.", "_test.", "_spec.", ".tests.", ".specs.",
+            "test_", "spec_", "tests/", "test/", "__tests__/", "__test__/",
+            # Config/tooling
+            "webpack.config", "babel.config", "jest.config", "eslint",
+            "prettier", "tsconfig", "rollup.config", "vite.config",
+            ".eslintrc", ".prettierrc", ".babelrc", "stylelint",
+            # Type definitions
+            ".d.ts",
+            # Generated
+            ".generated.", ".g.cs", ".designer.cs",
+            # Migrations (already captured by initial scan)
+            "migration", "migrations/",
+            # Fixtures/seeds
+            "fixture", "seed", "factory",
+        }
+
+        def _is_low_value_file(filepath: str) -> bool:
+            fp_lower = filepath.lower()
+            return any(pat in fp_lower for pat in _SKIP_PATTERNS)
 
         async def _process_one(idx: int, state: RAGFileState) -> Dict[str, Any]:
             """Process a single file with semaphore-controlled concurrency."""
@@ -338,6 +371,14 @@ class ContinuousRAGService:
 
             if not file_full_path.exists():
                 return {"state_id": state.id, "status": "deleted"}
+
+            # PROMPT #224 - Skip files unlikely to have business rules
+            if _is_low_value_file(state.file_path):
+                return {
+                    "state_id": state.id,
+                    "file_path": state.file_path,
+                    "status": "skipped",
+                }
 
             if console:
                 asyncio.create_task(console.log_memory_scan(
@@ -355,18 +396,12 @@ class ContinuousRAGService:
                     # Detect language
                     language = self.indexer._detect_language(file_full_path) or "unknown"
 
-                    # PROMPT #224 - Detect provider to set appropriate content limit
-                    # Local models (Ollama) are much slower with large inputs
-                    try:
-                        from app.models.ai_model import AIModelUsageType
-                        _mc = self.orchestrator.choose_model(AIModelUsageType.MEMORY)
-                        _is_local = _mc.get("provider") == "ollama"
-                    except Exception:
-                        _is_local = False
-
-                    max_content = 3000 if _is_local else 15000
+                    # PROMPT #224 - Use cached provider detection (from batch level)
+                    max_content = 3000 if _is_ollama else 15000
                     if len(content) > max_content:
                         content = content[:max_content]
+
+                    _resp_tokens = 1024 if _is_ollama else 4096
 
                     # Extract business rules via AI (this is the slow part)
                     rules = await self._extract_rules_from_file(
@@ -375,6 +410,8 @@ class ContinuousRAGService:
                         language=language,
                         project_id=project_id,
                         project_context=project.context_semantic,
+                        is_local=_is_ollama,
+                        max_resp_tokens=_resp_tokens,
                     )
 
                     return {
@@ -435,6 +472,16 @@ class ContinuousRAGService:
             if result["status"] == "deleted":
                 state.status = FileProcessingStatus.DELETED
                 self.db.commit()
+                continue
+
+            # PROMPT #224 - Mark skipped files as completed (no rules to extract)
+            if result["status"] == "skipped":
+                state.status = FileProcessingStatus.COMPLETED
+                state.last_processed_at = datetime.utcnow()
+                state.rules_extracted = 0
+                state.error_message = None
+                self.db.commit()
+                processed += 1
                 continue
 
             if result["status"] == "error":
@@ -586,6 +633,13 @@ class ContinuousRAGService:
             logger.warning(f"Failed to hash {file_path}: {e}")
             return None
 
+    # PROMPT #224 - Compact prompt for local models (fewer tokens = faster inference)
+    _LOCAL_SYSTEM_PROMPT = (
+        "Extract business rules from code. "
+        "Respond ONLY with valid JSON: "
+        '{"business_rules":[{"rule_text":"...","rule_type":"validation|workflow|constraint|domain","confidence":"high|medium"}]}'
+    )
+
     async def _extract_rules_from_file(
         self,
         filename: str,
@@ -593,37 +647,37 @@ class ContinuousRAGService:
         language: str,
         project_id: UUID,
         project_context: Optional[str] = None,
+        is_local: bool = False,
+        max_resp_tokens: int = 4096,
     ) -> List[Dict[str, str]]:
         """
         Use AI to extract business rules from a single file.
 
         Uses externalized YAML contract and AIOrchestrator with chain fallback.
+        PROMPT #224 - Uses compact prompt for local models to reduce inference time.
         """
         try:
-            system_prompt, user_prompt = self._contract_loader.render(
-                "memory/continuous_rag_extract",
-                {
-                    "filename": filename,
-                    "file_content": content,
-                    "language": language,
-                    "project_context": project_context or "",
-                    "stack_info": "",
-                }
-            )
-
-            # PROMPT #224 - Reduce max_tokens for local models (JSON rules don't need 4K)
-            try:
-                from app.models.ai_model import AIModelUsageType
-                _mc = self.orchestrator.choose_model(AIModelUsageType.MEMORY)
-                _resp_tokens = 1024 if _mc.get("provider") == "ollama" else 4096
-            except Exception:
-                _resp_tokens = 2048
+            if is_local:
+                # Compact prompt: ~60 tokens system + minimal user prompt
+                system_prompt = self._LOCAL_SYSTEM_PROMPT
+                user_prompt = f"{filename} ({language}):\n{content}"
+            else:
+                system_prompt, user_prompt = self._contract_loader.render(
+                    "memory/continuous_rag_extract",
+                    {
+                        "filename": filename,
+                        "file_content": content,
+                        "language": language,
+                        "project_context": project_context or "",
+                        "stack_info": "",
+                    }
+                )
 
             response = await self.orchestrator.execute(
                 usage_type="memory",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=_resp_tokens,
+                max_tokens=max_resp_tokens,
                 project_id=project_id,
                 metadata={
                     "phase": "continuous_rag_extract",
