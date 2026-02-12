@@ -97,12 +97,11 @@ export default function ConsolePage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const [autoScroll, setAutoScroll] = useState(true);
   const [activeStreams, setActiveStreams] = useState<Map<string, ActiveStream>>(new Map());
 
   const logsEndRef = useRef<HTMLDivElement>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
-  const userScrolledRef = useRef(false);
+  const isNearBottomRef = useRef(true);
   const eventSourceRef = useRef<EventSource | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -139,11 +138,33 @@ export default function ConsolePage() {
           const isComplete = details?.is_complete as boolean || false;
 
           if (streamId) {
-            setActiveStreams(prev => {
-              const next = new Map(prev);
-              if (isComplete) {
+            if (isComplete) {
+              // Move completed stream content into main logs so it persists
+              setActiveStreams(prev => {
+                const completed = prev.get(streamId);
+                if (completed && completed.fullText.trim()) {
+                  const elapsed = ((Date.now() - completed.startTime) / 1000).toFixed(1);
+                  setLogs(prevLogs => {
+                    const logEntry: LogEntry = {
+                      id: `stream-${streamId}`,
+                      timestamp: new Date().toISOString(),
+                      level: 'success',
+                      category: 'ai_response',
+                      title: `AI Response <- ${completed.model}`,
+                      message: completed.fullText,
+                      details: { model: completed.model, duration: `${elapsed}s`, stream_id: streamId },
+                    };
+                    const newLogs = [...prevLogs, logEntry];
+                    return newLogs.length > 1000 ? newLogs.slice(-1000) : newLogs;
+                  });
+                }
+                const next = new Map(prev);
                 next.delete(streamId);
-              } else {
+                return next;
+              });
+            } else {
+              setActiveStreams(prev => {
+                const next = new Map(prev);
                 const existing = next.get(streamId);
                 if (existing) {
                   next.set(streamId, { ...existing, fullText: existing.fullText + chunkText });
@@ -155,9 +176,9 @@ export default function ConsolePage() {
                     startTime: Date.now(),
                   });
                 }
-              }
-              return next;
-            });
+                return next;
+              });
+            }
           }
           return; // Don't add streaming chunks to main log array
         }
@@ -206,27 +227,20 @@ export default function ConsolePage() {
     };
   }, [connectToStream]);
 
-  // Smart auto-scroll: detect if user scrolled up manually
+  // Smart auto-scroll: only update ref, no state changes (avoids re-render loops)
   const handleConsoleScroll = useCallback(() => {
     const el = consoleRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    // If user is within 80px of bottom, consider them "at bottom"
-    if (distanceFromBottom < 80) {
-      userScrolledRef.current = false;
-      setAutoScroll(true);
-    } else {
-      userScrolledRef.current = true;
-      setAutoScroll(false);
-    }
+    isNearBottomRef.current = distanceFromBottom < 80;
   }, []);
 
-  // Auto-scroll to bottom when new logs arrive (only if user hasn't scrolled up)
+  // Auto-scroll to bottom when new logs arrive (only if user is near bottom)
   useEffect(() => {
-    if (autoScroll && !userScrolledRef.current && logsEndRef.current) {
+    if (isNearBottomRef.current && logsEndRef.current) {
       logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, activeStreams, autoScroll]);
+  }, [logs, activeStreams]);
 
   // Filter logs
   const filteredLogs = logs.filter((log) => {
@@ -331,26 +345,16 @@ export default function ConsolePage() {
             ))}
           </select>
 
-          {/* Toggle buttons */}
+          {/* Scroll to bottom button */}
           <button
             onClick={() => {
-              if (!autoScroll) {
-                // Re-enable and scroll to bottom
-                userScrolledRef.current = false;
-                setAutoScroll(true);
-                logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-              } else {
-                setAutoScroll(false);
-              }
+              isNearBottomRef.current = true;
+              logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             }}
-            className={`px-2 py-1 text-xs rounded ${
-              autoScroll
-                ? 'bg-gray-700 text-white'
-                : 'bg-gray-800 text-gray-500'
-            }`}
-            title="Toggle auto-scroll"
+            className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-white"
+            title="Scroll to bottom"
           >
-            scroll
+            bottom
           </button>
 
           <button
@@ -444,7 +448,6 @@ export default function ConsolePage() {
               {activeStreams.size} stream{activeStreams.size > 1 ? 's' : ''} active
             </span>
           )}
-          {autoScroll ? 'auto-scroll enabled' : 'auto-scroll disabled'} |
           buffer: {logs.length}/1000
         </span>
       </div>
