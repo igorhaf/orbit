@@ -738,45 +738,56 @@ class UtilityNodeExecutor:
         # PROMPT #231 - Check if interview query classifier provided a classification
         query_classification = context.get("query_classification", {})
         recommended_tier = query_classification.get("recommended_tier")
-        estimated_tokens = query_classification.get("estimated_output_tokens")
+        estimated_tokens = query_classification.get("estimated_output_tokens") or query_classification.get("estimated_tokens")
 
         if recommended_tier:
-            # Use pre-computed classification from interview handler
+            # Use pre-computed classification from specialized or general classifier
             tier = recommended_tier
             context["_router_estimated_tokens"] = estimated_tokens or 500
             logger.info(f"🔀 Router Node: using query classification → tier={tier}")
         else:
-            # Fallback: estimate from message content
-            total_chars = sum(len(m.get("content", "")) for m in messages)
-            msg_count = len(messages)
+            # PROMPT #235 - Use general_query_classifier as universal fallback
+            try:
+                from app.services.general_query_classifier import classify_general_query
+                system_prompt = context.get("_original_system_prompt")
+                classification = classify_general_query(messages, system_prompt)
+                tier = classification.get("recommended_tier", "balanced")
+                context["_router_estimated_tokens"] = classification.get("estimated_tokens", 500)
+                context["query_classification"] = classification
+                logger.info(f"🔀 Router Node: general classifier → tier={tier}")
+            except Exception as e:
+                logger.warning(f"🔀 Router Node: general classifier failed ({e}), using heuristic")
+                # Original heuristic fallback
+                total_chars = sum(len(m.get("content", "")) for m in messages)
+                msg_count = len(messages)
 
-            if condition == "complexity":
-                if total_chars < 500:
-                    tier = "fast"
-                elif total_chars < 3000:
-                    tier = "balanced"
+                if condition == "complexity":
+                    if total_chars < 500:
+                        tier = "fast"
+                    elif total_chars < 3000:
+                        tier = "balanced"
+                    else:
+                        tier = "strong"
+                elif condition == "cost":
+                    est_tokens = total_chars // 4
+                    if est_tokens < 500:
+                        tier = "fast"
+                    elif est_tokens < 2000:
+                        tier = "balanced"
+                    else:
+                        tier = "strong"
+                    context["_router_estimated_tokens"] = est_tokens
+                elif condition == "message_count":
+                    if msg_count <= 2:
+                        tier = "fast"
+                    elif msg_count <= 6:
+                        tier = "balanced"
+                    else:
+                        tier = "strong"
                 else:
-                    tier = "strong"
-            elif condition == "cost":
-                est_tokens = total_chars // 4
-                if est_tokens < 500:
-                    tier = "fast"
-                elif est_tokens < 2000:
                     tier = "balanced"
-                else:
-                    tier = "strong"
-                context["_router_estimated_tokens"] = est_tokens
-            elif condition == "message_count":
-                if msg_count <= 2:
-                    tier = "fast"
-                elif msg_count <= 6:
-                    tier = "balanced"
-                else:
-                    tier = "strong"
-            else:
-                tier = "balanced"
 
-            logger.info(f"🔀 Router Node: condition={condition} → tier={tier}")
+                logger.info(f"🔀 Router Node: condition={condition} → tier={tier}")
 
         # Convert tier to chain start index
         chain_total = context.get("_chain_total", 1)
@@ -858,6 +869,21 @@ class UtilityNodeExecutor:
                 reason = f"Interview response score too low ({score:.2f} < {min_score})"
             else:
                 logger.info(f"📊 Validator Node: interview score={score:.2f} (>= {min_score})")
+
+        elif validation_type == "general_quality":
+            # PROMPT #235 - General response quality validation
+            try:
+                from app.services.general_response_validator import validate_response
+                classification = config.get("_classification")
+                validation = validate_response(content, classification)
+                result["validation_score"] = validation["confidence"]
+                if not validation["is_valid"]:
+                    is_valid = False
+                    reason = f"General quality check failed: {', '.join(validation['issues'])}"
+                if validation["should_escalate"]:
+                    result["escalation_reason"] = validation["escalation_reason"]
+            except Exception as e:
+                logger.warning(f"⚠️ Validator Node: general quality check error: {e}")
 
         if is_valid:
             logger.info(f"✅ Validator Node: output is valid ({validation_type})")

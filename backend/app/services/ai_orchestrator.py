@@ -761,11 +761,37 @@ class AIOrchestrator:
             if general_chain_models and len(general_chain_models) > 0:
                 chains_to_try.append(("general", "general", general_chain_models))
 
+        # PROMPT #235 - General Operation Flow: classify + build context as universal fallback
+        _general_classification = None
+        if not (metadata and metadata.get("query_classification")):
+            try:
+                from app.services.general_query_classifier import classify_general_query
+                _general_classification = classify_general_query(messages, system_prompt)
+                if metadata is None:
+                    metadata = {}
+                metadata["query_classification"] = _general_classification
+            except Exception as _gc_err:
+                logger.warning(f"General classifier skipped: {_gc_err}")
+
+        # PROMPT #235 - Apply dynamic context builder when general classifier ran
+        _pre_built_messages = messages
+        _pre_built_system = system_prompt
+        if _general_classification:
+            try:
+                from app.services.general_context_builder import build_context
+                _ctx_result = build_context(messages, system_prompt, _general_classification)
+                _pre_built_messages = _ctx_result["messages"]
+                _pre_built_system = _ctx_result["system_prompt"]
+                if max_tokens is None:
+                    max_tokens = _ctx_result["recommended_max_tokens"]
+            except Exception as _cb_err:
+                logger.warning(f"Context builder skipped: {_cb_err}")
+
         # PROMPT #205 - Load utility nodes for this usage_type
         _utility_nodes = self._get_chain_utility_nodes(usage_type)
         _utility_pre_done = False
-        _effective_messages = list(messages)
-        _effective_system_prompt = system_prompt
+        _effective_messages = list(_pre_built_messages)
+        _effective_system_prompt = _pre_built_system
 
         # PROMPT #206 - Shared context for utility node overrides
         _util_context = {}
@@ -791,6 +817,7 @@ class AIOrchestrator:
                 "model_rate_caps": _model_rate_caps,
                 "model_max_tokens": _model_max_tokens,
                 "_chain_total": _chain_total,
+                "_original_system_prompt": system_prompt,  # PROMPT #235 - for general classifier in router
             }
             # PROMPT #231 - Pass query classification from metadata to utility context
             if metadata and "query_classification" in metadata:
@@ -1004,6 +1031,35 @@ class AIOrchestrator:
                         # PROMPT #229 - Attach observability metrics
                         if _util_context.get("_rag_metrics"):
                             result["rag_metrics"] = _util_context["_rag_metrics"]
+
+                        # PROMPT #235 - General response validator as default safety net
+                        # Only runs if no validator utility node already handled it
+                        _has_validator_node = any(
+                            n.get("type") == "validator" and n.get("enabled", True)
+                            for n in (_utility_nodes or [])
+                        )
+                        if not _has_validator_node and not result.get("error"):
+                            try:
+                                from app.services.general_response_validator import validate_response
+                                _val = validate_response(
+                                    result.get("content", ""),
+                                    _general_classification,
+                                    _effective_messages,
+                                )
+                                result["general_validation"] = {
+                                    "confidence": _val["confidence"],
+                                    "issues": _val["issues"],
+                                }
+                                if _val["should_escalate"]:
+                                    logger.warning(
+                                        f"General validator: escalation recommended "
+                                        f"({_val['escalation_reason']})"
+                                    )
+                                    # Continue to next model in chain instead of returning
+                                    last_error = Exception(_val["escalation_reason"])
+                                    continue
+                            except Exception as _gv_err:
+                                logger.warning(f"General validator skipped: {_gv_err}")
 
                         return result
                     except Exception as e:
@@ -1629,6 +1685,31 @@ class AIOrchestrator:
                             break
                     else:
                         logger.warning(f"⚠️ Retry Node (no-chain): all {max_retries} retries exhausted")
+
+            # PROMPT #235 - General response validator (non-chain path)
+            _has_validator_node = any(
+                n.get("type") == "validator" and n.get("enabled", True)
+                for n in (_utility_nodes or [])
+            )
+            if not _has_validator_node and not result.get("error"):
+                try:
+                    from app.services.general_response_validator import validate_response
+                    _val = validate_response(
+                        result.get("content", ""),
+                        _general_classification,
+                        _effective_messages,
+                    )
+                    result["general_validation"] = {
+                        "confidence": _val["confidence"],
+                        "issues": _val["issues"],
+                    }
+                    if _val["should_escalate"]:
+                        logger.warning(
+                            f"General validator (no-chain): quality low "
+                            f"({_val['escalation_reason']})"
+                        )
+                except Exception as _gv_err:
+                    logger.warning(f"General validator skipped (no-chain): {_gv_err}")
 
             return result
 
