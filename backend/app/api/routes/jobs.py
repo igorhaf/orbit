@@ -131,48 +131,49 @@ async def get_job_stats(
     """
     cutoff_time = datetime.utcnow() - timedelta(hours=hours)
 
-    # Base query
-    base_query = db.query(AsyncJob)
+    # Build project filter
+    project_filter = []
     if project_id:
-        base_query = base_query.filter(AsyncJob.project_id == project_id)
+        project_filter.append(AsyncJob.project_id == project_id)
 
-    # Total jobs in time range
-    total_jobs = base_query.filter(AsyncJob.created_at >= cutoff_time).count()
+    time_filter = AsyncJob.created_at >= cutoff_time
 
-    # Jobs by status
-    status_counts = {}
-    for status_val in JobStatus:
-        count = base_query.filter(
-            AsyncJob.status == status_val,
-            AsyncJob.created_at >= cutoff_time
-        ).count()
-        status_counts[status_val.value] = count
+    # Single query: total + status counts via GROUP BY
+    status_rows = db.query(
+        AsyncJob.status, func.count(AsyncJob.id)
+    ).filter(time_filter, *project_filter).group_by(AsyncJob.status).all()
 
-    # Jobs by type
+    status_counts = {s.value: 0 for s in JobStatus}
+    total_jobs = 0
+    for status_val, cnt in status_rows:
+        status_counts[status_val.value if hasattr(status_val, 'value') else status_val] = cnt
+        total_jobs += cnt
+
+    # Single query: type counts via GROUP BY
+    type_rows = db.query(
+        AsyncJob.job_type, func.count(AsyncJob.id)
+    ).filter(time_filter, *project_filter).group_by(AsyncJob.job_type).all()
+
     type_counts = {}
-    for type_val in JobType:
-        count = base_query.filter(
-            AsyncJob.job_type == type_val,
-            AsyncJob.created_at >= cutoff_time
-        ).count()
-        if count > 0:  # Only include types with jobs
-            type_counts[type_val.value] = count
+    for type_val, cnt in type_rows:
+        if cnt > 0:
+            type_counts[type_val.value if hasattr(type_val, 'value') else type_val] = cnt
 
-    # Average duration for completed jobs
-    completed_jobs = base_query.filter(
+    # Single query: average duration for completed jobs
+    avg_result = db.query(
+        func.avg(
+            func.extract('epoch', AsyncJob.completed_at) -
+            func.extract('epoch', AsyncJob.started_at)
+        )
+    ).filter(
+        time_filter,
         AsyncJob.status == JobStatus.COMPLETED,
         AsyncJob.started_at.isnot(None),
         AsyncJob.completed_at.isnot(None),
-        AsyncJob.created_at >= cutoff_time
-    ).all()
+        *project_filter,
+    ).scalar()
 
-    durations = []
-    for job in completed_jobs:
-        if job.started_at and job.completed_at:
-            duration = (job.completed_at - job.started_at).total_seconds()
-            durations.append(duration)
-
-    avg_duration = sum(durations) / len(durations) if durations else 0
+    avg_duration = float(avg_result) if avg_result else 0
 
     # Error rate
     failed_count = status_counts.get("failed", 0)
@@ -180,27 +181,24 @@ async def get_job_stats(
     total_finished = failed_count + completed_count
     error_rate = failed_count / total_finished if total_finished > 0 else 0
 
-    # Recent errors
-    recent_errors = base_query.filter(
+    # Recent errors (single query, limited)
+    recent_errors = db.query(AsyncJob).filter(
+        time_filter,
         AsyncJob.status == JobStatus.FAILED,
-        AsyncJob.created_at >= cutoff_time
+        *project_filter,
     ).order_by(desc(AsyncJob.completed_at)).limit(10).all()
 
-    # Jobs per hour (last 24 hours)
-    jobs_per_hour = []
-    for i in range(min(hours, 24)):
-        hour_start = datetime.utcnow() - timedelta(hours=i+1)
-        hour_end = datetime.utcnow() - timedelta(hours=i)
-        count = base_query.filter(
-            AsyncJob.created_at >= hour_start,
-            AsyncJob.created_at < hour_end
-        ).count()
-        jobs_per_hour.append({
-            "hour": hour_start.strftime("%H:%M"),
-            "count": count
-        })
+    # Single query: jobs per hour via GROUP BY date_trunc
+    hour_rows = db.query(
+        func.date_trunc('hour', AsyncJob.created_at).label('hour'),
+        func.count(AsyncJob.id)
+    ).filter(time_filter, *project_filter).group_by('hour').order_by('hour').all()
 
-    jobs_per_hour.reverse()  # Oldest first
+    hour_map = {row[0].strftime("%H:%M"): row[1] for row in hour_rows if row[0]}
+    jobs_per_hour = []
+    for i in range(min(hours, 24) - 1, -1, -1):
+        h = (datetime.utcnow() - timedelta(hours=i+1)).strftime("%H:00")
+        jobs_per_hour.append({"hour": h, "count": hour_map.get(h, 0)})
 
     return {
         "total_jobs": total_jobs,
