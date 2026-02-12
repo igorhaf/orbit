@@ -73,6 +73,7 @@ from app.services.codebase_indexer import CodebaseIndexer
 from app.services.rag_service import RAGService
 from app.services.ai_orchestrator import AIOrchestrator
 from app.services.console_logger import get_console_logger  # PROMPT #168 - Real-time Console Logs
+from app.services.symbol_extractor import extract_and_format_batch, extract_symbols, format_symbol_map  # PROMPT #230
 
 logger = logging.getLogger(__name__)
 
@@ -1147,49 +1148,68 @@ class CodebaseMemoryService:
         lower = filename.lower()
         return any(p in lower for p in ["controller", "service", "handler", "usecase", "validator", "request", "policy"])
 
-    def _format_samples_for_prompt(self, samples: List[Dict]) -> str:
-        """Format code samples as a string for the prompt."""
+    def _format_samples_for_prompt(self, samples: List[Dict], use_symbols: bool = True) -> str:
+        """
+        Format code samples as a string for the prompt.
+
+        PROMPT #230 - Uses symbol extraction by default for 5-10x compression.
+        Falls back to raw code for documentation/config files.
+        """
+        if not use_symbols:
+            # Legacy mode: raw code
+            parts = []
+            for sample in samples:
+                parts.append(f"\n### File: {sample['filename']} ({sample['type']})")
+                parts.append("```")
+                parts.append(sample["content"])
+                parts.append("```\n")
+            return "\n".join(parts)
+
+        # PROMPT #230 - Symbol extraction mode
+        code_samples = [s for s in samples if s.get("type") == "code"]
+        doc_samples = [s for s in samples if s.get("type") != "code"]
+
         parts = []
-        for sample in samples:
+
+        # Documentation files: include raw content (they're already compact)
+        for sample in doc_samples:
+            content = sample.get("content", "")[:3000]  # Cap docs at 3K
             parts.append(f"\n### File: {sample['filename']} ({sample['type']})")
-            parts.append("```")
-            parts.append(sample["content"])
-            parts.append("```\n")
+            parts.append(content)
+
+        # Code files: use symbol extraction
+        if code_samples:
+            parts.append("\n### ARCHITECTURAL SYMBOL MAP (extracted from code files)")
+            parts.append(extract_and_format_batch(code_samples))
+
         return "\n".join(parts)
 
     def _parse_phase_response(self, content: str) -> Dict:
-        """Parse JSON response from a phase analysis."""
-        try:
-            # Try to extract JSON from response (might have markdown)
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
+        """
+        Parse JSON response from a phase analysis.
 
-            # Fix invalid escape sequences
-            content = self._fix_invalid_escapes(content.strip())
-            return json.loads(content)
-        except Exception as e:
-            logger.warning(f"Failed to parse phase response: {e}")
-            return {
-                "partial_title": "",
-                "business_rules_found": [],
-                "features_found": [],
-                "entities_found": [],
-                "insights": ""
-            }
+        PROMPT #230 - Uses _try_parse_json from PROMPT #229 for robust
+        4-strategy autocorrection instead of ad-hoc parsing.
+        """
+        from app.services.utility_node_executor import UtilityNodeExecutor
 
-    def _fix_invalid_escapes(self, s: str) -> str:
-        """Fix invalid escape sequences in JSON string."""
-        invalid_escapes = ['\\a', '\\c', '\\d', '\\e', '\\g', '\\h', '\\i', '\\j',
-                           '\\k', '\\l', '\\m', '\\o', '\\p', '\\q', '\\s', '\\v',
-                           '\\w', '\\x', '\\y', '\\z', '\\A', '\\B', '\\C', '\\D',
-                           '\\E', '\\F', '\\G', '\\H', '\\I', '\\J', '\\K', '\\L',
-                           '\\M', '\\N', '\\O', '\\P', '\\Q', '\\R', '\\S', '\\T',
-                           '\\U', '\\V', '\\W', '\\X', '\\Y', '\\Z']
-        for esc in invalid_escapes:
-            s = s.replace(esc, '\\\\' + esc[1])
-        return s
+        default = {
+            "partial_title": "",
+            "business_rules_found": [],
+            "features_found": [],
+            "entities_found": [],
+            "insights": ""
+        }
+
+        if not content or not content.strip():
+            return default
+
+        parsed = UtilityNodeExecutor._try_parse_json(content.strip(), auto_repair=True)
+        if parsed and isinstance(parsed, dict):
+            return parsed
+
+        logger.warning(f"Failed to parse phase response even with autocorrection")
+        return default
 
     # PROMPT #184 - Git commit analysis for business rules
     NOISE_COMMIT_PATTERNS = [
@@ -1324,6 +1344,61 @@ class CodebaseMemoryService:
             logger.warning(f"Git commit AI analysis failed: {e}")
             return []
 
+    def _score_phase_confidence(self, result: Dict) -> int:
+        """
+        PROMPT #230 - Score the quality of a phase analysis result.
+
+        Returns 0-100 confidence score. Used to decide if a larger model
+        should be used for re-analysis.
+        """
+        score = 0
+        if result.get("partial_title"):
+            score += 20
+        rules = result.get("business_rules_found", [])
+        if len(rules) >= 3:
+            score += 30
+        elif len(rules) >= 1:
+            score += 15
+        features = result.get("features_found", [])
+        if len(features) >= 3:
+            score += 20
+        elif len(features) >= 1:
+            score += 10
+        if result.get("entities_found"):
+            score += 15
+        if result.get("insights") and len(result.get("insights", "")) > 20:
+            score += 15
+        return score
+
+    def _rerank_samples_for_phase(self, samples: List[Dict], phase_name: str) -> List[Dict]:
+        """
+        PROMPT #230 - Rerank code samples by relevance to the current phase.
+
+        Uses symbol extraction keywords for fast local reranking (no AI).
+        """
+        phase_keywords = {
+            "documentation": {"readme", "config", "package", "composer", "setup", "install", "docker"},
+            "domain": {"model", "entity", "migration", "schema", "domain", "table", "column", "relationship"},
+            "logic": {"service", "controller", "handler", "usecase", "validator", "middleware", "policy", "guard"},
+            "quick_scan": set(),  # No reranking for quick scan
+        }
+        keywords = phase_keywords.get(phase_name, set())
+        if not keywords:
+            return samples
+
+        def phase_score(sample: Dict) -> float:
+            filename = sample.get("filename", "").lower()
+            content = sample.get("content", "").lower()[:2000]
+            score = 0.0
+            for kw in keywords:
+                if kw in filename:
+                    score += 3.0
+                if kw in content:
+                    score += 1.0
+            return score
+
+        return sorted(samples, key=phase_score, reverse=True)
+
     async def _analyze_phase(
         self,
         phase_name: str,
@@ -1336,6 +1411,7 @@ class CodebaseMemoryService:
         Execute one phase of analysis using externalized YAML prompt.
 
         PROMPT #163 - Each phase saves a prompt to the prompts table.
+        PROMPT #230 - Symbol extraction, confidence scoring, reranking.
         """
         if not samples:
             logger.info(f"⏭️ Skipping phase '{phase_name}' - no samples")
@@ -1347,6 +1423,9 @@ class CodebaseMemoryService:
                 "insights": f"No files found for {phase_name} phase"
             }
 
+        # PROMPT #230 - Rerank samples for this specific phase
+        samples = self._rerank_samples_for_phase(samples, phase_name)
+
         logger.info(f"🔄 Starting phase: {phase_name} ({len(samples)} files)")
 
         try:
@@ -1354,7 +1433,8 @@ class CodebaseMemoryService:
             from app.contracts.loader import ContractLoader
             loader = ContractLoader()
 
-            code_content = self._format_samples_for_prompt(samples)
+            # PROMPT #230 - Use symbol extraction for code samples
+            code_content = self._format_samples_for_prompt(samples, use_symbols=True)
             previous_analysis = json.dumps(previous_context, ensure_ascii=False) if previous_context else None
 
             system_prompt, user_prompt = loader.render(
@@ -1384,42 +1464,48 @@ class CodebaseMemoryService:
 
             result = self._parse_phase_response(response.get("content", "{}"))
 
-            # PROMPT #165 - Check if result is valid (not empty)
-            if result.get("partial_title") or result.get("business_rules_found") or result.get("features_found"):
-                logger.info(f"✅ Completed phase: {phase_name} - found {len(result.get('business_rules_found', []))} rules")
+            # PROMPT #230 - Score confidence and decide if fallback needed
+            confidence = self._score_phase_confidence(result)
+            logger.info(f"📊 Phase '{phase_name}' confidence: {confidence}/100")
+
+            if confidence >= 30:
+                logger.info(f"✅ Completed phase: {phase_name} - found {len(result.get('business_rules_found', []))} rules (confidence: {confidence})")
                 return result
 
-            # PROMPT #165 - Result is empty, retry with fewer files
-            logger.warning(f"⚠️ Phase '{phase_name}' returned empty result, retrying with fewer files...")
-            if len(samples) > 5:
-                smaller_samples = samples[:5]
-                code_content = self._format_samples_for_prompt(smaller_samples)
-                system_prompt, user_prompt = loader.render(
-                    "memory/codebase_analysis",
-                    {
-                        "folder_name": self.current_folder_name,
-                        "phase_name": phase_name,
-                        "code_content": code_content,
-                        "previous_analysis": previous_analysis,
-                        "stack_detected": stack_info.get("detected_stack", "")
-                    }
-                )
-                response = await self.orchestrator.execute(
-                    usage_type="memory",
-                    messages=[{"role": "user", "content": user_prompt}],
-                    system_prompt=system_prompt,
-                    project_id=project_id,
-                    metadata={
-                        "phase": f"{phase_name}_retry",
-                        "files_count": len(smaller_samples),
-                        "scan_type": "memory_scan_phase_retry",
-                        "scan_depth": self.current_scan_depth
-                    }
-                )
-                result = self._parse_phase_response(response.get("content", "{}"))
-                if result.get("partial_title") or result.get("business_rules_found"):
-                    logger.info(f"✅ Retry succeeded for phase: {phase_name}")
-                    return result
+            # PROMPT #230 - Low confidence: retry with force_fallback to escalate model
+            logger.warning(f"⚠️ Phase '{phase_name}' low confidence ({confidence}), retrying with fallback model...")
+            smaller_samples = samples[:max(5, len(samples) // 2)]
+            code_content = self._format_samples_for_prompt(smaller_samples, use_symbols=True)
+            system_prompt, user_prompt = loader.render(
+                "memory/codebase_analysis",
+                {
+                    "folder_name": self.current_folder_name,
+                    "phase_name": phase_name,
+                    "code_content": code_content,
+                    "previous_analysis": previous_analysis,
+                    "stack_detected": stack_info.get("detected_stack", "")
+                }
+            )
+            response = await self.orchestrator.execute(
+                usage_type="memory",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                project_id=project_id,
+                metadata={
+                    "phase": f"{phase_name}_fallback",
+                    "files_count": len(smaller_samples),
+                    "scan_type": "memory_scan_phase_fallback",
+                    "scan_depth": self.current_scan_depth,
+                    "confidence_original": confidence
+                }
+            )
+            fallback_result = self._parse_phase_response(response.get("content", "{}"))
+            fallback_confidence = self._score_phase_confidence(fallback_result)
+
+            # Use whichever result is better
+            if fallback_confidence > confidence:
+                logger.info(f"✅ Fallback improved confidence: {confidence} -> {fallback_confidence}")
+                return fallback_result
 
             logger.info(f"✅ Completed phase: {phase_name} - found {len(result.get('business_rules_found', []))} rules")
             return result
@@ -1482,21 +1568,18 @@ class CodebaseMemoryService:
 
             content = response.get("content", "{}")
 
-            # Parse JSON
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
+            # PROMPT #230 - Use robust JSON autocorrection
+            from app.services.utility_node_executor import UtilityNodeExecutor
+            parsed = UtilityNodeExecutor._try_parse_json(content.strip(), auto_repair=True)
+            if parsed and isinstance(parsed, dict):
+                logger.info(f"✅ Consolidation complete - Title: {parsed.get('suggested_title', 'N/A')}")
+                return parsed
 
-            content = self._fix_invalid_escapes(content.strip())
-            result = json.loads(content)
-
-            logger.info(f"✅ Consolidation complete - Title: {result.get('suggested_title', 'N/A')}")
-            return result
+            logger.warning("Consolidation returned invalid JSON, using merge fallback")
+            return self._merge_phase_results(all_phases, stack_info)
 
         except Exception as e:
             logger.error(f"❌ Consolidation failed: {e}")
-            # Return merged results from phases
             return self._merge_phase_results(all_phases, stack_info)
 
     def _merge_phase_results(self, all_phases: Dict, stack_info: Dict) -> Dict:
@@ -1578,23 +1661,21 @@ class CodebaseMemoryService:
             phases_completed += 1
 
         elif scan_depth == "normal":
-            # Normal mode: 4 phases
-            # Phase 1: Documentation
+            # Normal mode: 3 phases (documentation + domain parallel, then logic)
+            # PROMPT #230 - Parallel execution: doc + domain have no dependency
             doc_samples = [s for s in code_samples if s["type"] in ["documentation", "configuration"]]
-            all_phases["documentation"] = await self._analyze_phase(
-                "documentation", doc_samples, stack_info, project_id
-            )
-            phases_completed += 1
-
-            # Phase 2: Domain (models, migrations)
             domain_samples = [s for s in code_samples if self._is_domain_file(s["filename"])][:25]
-            all_phases["domain"] = await self._analyze_phase(
-                "domain", domain_samples, stack_info, project_id,
-                previous_context=all_phases.get("documentation")
-            )
-            phases_completed += 1
 
-            # Phase 3: Logic (controllers, services)
+            logger.info("🚀 Running documentation + domain phases in parallel...")
+            doc_result, domain_result = await asyncio.gather(
+                self._analyze_phase("documentation", doc_samples, stack_info, project_id),
+                self._analyze_phase("domain", domain_samples, stack_info, project_id),
+            )
+            all_phases["documentation"] = doc_result
+            all_phases["domain"] = domain_result
+            phases_completed += 2
+
+            # Logic depends on domain (needs previous_context) - runs after
             logic_samples = [s for s in code_samples if self._is_logic_file(s["filename"])][:25]
             all_phases["logic"] = await self._analyze_phase(
                 "logic", logic_samples, stack_info, project_id,
@@ -1758,17 +1839,22 @@ class CodebaseMemoryService:
     ) -> Optional[Dict]:
         """
         PROMPT #167 - Analyze a single file with a tiny prompt.
+        PROMPT #230 - Uses symbol extraction instead of raw code.
 
         The prompt is intentionally very small and simple to work with local models.
         """
-        # Super simple prompt - just ask what this file does
+        # PROMPT #230 - Extract symbols instead of sending raw code
+        try:
+            symbols = extract_symbols(filename, content)
+            symbol_text = format_symbol_map(symbols)
+        except Exception:
+            symbol_text = content[:1500]
+
         system_prompt = "Você é um analista de código. Responda de forma MUITO CURTA e DIRETA."
 
         user_prompt = f"""Arquivo: {filename}
 
-```
-{content}
-```
+{symbol_text}
 
 Em NO MÁXIMO 4 linhas, responda:
 1. O que este arquivo FAZ? (1 frase)
@@ -1869,14 +1955,11 @@ Baseado APENAS nessas análises, responda em JSON:
 
             content = response.get("content", "{}")
 
-            # Parse JSON
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
-
-            content = self._fix_invalid_escapes(content.strip())
-            result = json.loads(content)
+            # PROMPT #230 - Use robust JSON autocorrection
+            from app.services.utility_node_executor import UtilityNodeExecutor
+            result = UtilityNodeExecutor._try_parse_json(content.strip(), auto_repair=True)
+            if not result or not isinstance(result, dict):
+                result = {}
 
             # Validate title
             title = result.get("suggested_title", "")
@@ -2045,35 +2128,12 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
                 # max_tokens now comes from ai_models.config
             )
 
-            # Parse JSON response
-            import json
-            import re
+            # PROMPT #230 - Use robust JSON autocorrection
             content = response.get("content", "{}")
-
-            # Try to extract JSON from response (might have markdown)
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
-
-            # PROMPT #121 FIX - Sanitize invalid escape sequences before JSON parse
-            # AI sometimes returns regex patterns with \s, \d, etc. that are invalid in JSON
-            # Replace invalid escapes with double backslash to make them valid
-            def fix_invalid_escapes(s):
-                # Replace invalid escape sequences with double backslash
-                # JSON only allows: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
-                invalid_escapes = ['\\a', '\\c', '\\d', '\\e', '\\g', '\\h', '\\i', '\\j',
-                                   '\\k', '\\l', '\\m', '\\o', '\\p', '\\q', '\\s', '\\v',
-                                   '\\w', '\\x', '\\y', '\\z', '\\A', '\\B', '\\C', '\\D',
-                                   '\\E', '\\F', '\\G', '\\H', '\\I', '\\J', '\\K', '\\L',
-                                   '\\M', '\\N', '\\O', '\\P', '\\Q', '\\R', '\\S', '\\T',
-                                   '\\U', '\\V', '\\W', '\\X', '\\Y', '\\Z']
-                for esc in invalid_escapes:
-                    s = s.replace(esc, '\\\\' + esc[1])
-                return s
-
-            content = fix_invalid_escapes(content.strip())
-            result = json.loads(content)
+            from app.services.utility_node_executor import UtilityNodeExecutor
+            result = UtilityNodeExecutor._try_parse_json(content.strip(), auto_repair=True)
+            if not result or not isinstance(result, dict):
+                result = {}
 
             return {
                 "suggested_title": result.get("suggested_title", ""),
