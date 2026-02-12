@@ -237,63 +237,10 @@ function ProviderIcon({ provider, size = 'w-5 h-5' }: { provider: string; size?:
 
 type NodeAnimationState = 'idle' | 'executing' | 'success' | 'failed';
 
-function useAIFlowWebSocket(selectedUsageType: string) {
-  const [nodeAnimations, setNodeAnimations] = useState<Record<string, NodeAnimationState>>({});
-  const wsRef = useRef<WebSocket | null>(null);
-
-  useEffect(() => {
-    const wsUrl = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000')
-      .replace(/^http/, 'ws') + '/api/v1/ws/ai-flow';
-
-    let ws: WebSocket;
-    try {
-      ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-    } catch {
-      return;
-    }
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        const { type, data } = msg;
-
-        // Only show animations for the currently selected usage type
-        if (data?.usage_type && data.usage_type !== selectedUsageType) return;
-
-        const modelId = data?.model_id;
-        if (!modelId) return;
-
-        const nodeId = `model-${modelId}`;
-
-        if (type === 'chain_attempt_start') {
-          setNodeAnimations((prev) => ({ ...prev, [nodeId]: 'executing' }));
-        } else if (type === 'chain_attempt_success') {
-          setNodeAnimations((prev) => ({ ...prev, [nodeId]: 'success' }));
-          setTimeout(() => {
-            setNodeAnimations((prev) => ({ ...prev, [nodeId]: 'idle' }));
-          }, 2000);
-        } else if (type === 'chain_attempt_failed') {
-          setNodeAnimations((prev) => ({ ...prev, [nodeId]: 'failed' }));
-          setTimeout(() => {
-            setNodeAnimations((prev) => ({ ...prev, [nodeId]: 'idle' }));
-          }, 2000);
-        }
-      } catch {
-        // Ignore parse errors
-      }
-    };
-
-    ws.onerror = () => {};
-    ws.onclose = () => {};
-
-    return () => {
-      ws.close();
-      wsRef.current = null;
-    };
-  }, [selectedUsageType]);
-
-  return nodeAnimations;
+function useAIFlowWebSocket(_selectedUsageType: string) {
+  // PROMPT #227 - Disabled real-time WebSocket polling.
+  // Metrics are loaded once when the chain changes, no continuous connection needed.
+  return {} as Record<string, NodeAnimationState>;
 }
 
 // ---------------------------------------------------------------------------
@@ -1895,8 +1842,6 @@ export default function AIFlowPage() {
     };
 
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 30000); // Poll every 30s
-    return () => clearInterval(interval);
   }, [workingChain]);
 
   // PROMPT #124 - Fetch templates when usage type changes
