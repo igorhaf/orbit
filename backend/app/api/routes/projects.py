@@ -780,6 +780,8 @@ async def _process_project_pipeline(
         job_manager.update_progress(job_id, 40.0, "Gerando contexto rico do projeto...")
 
         # === Step B: Rich Context Generation (40-85%) ===
+        # PROMPT #240: Wrapped in try/except - if context gen fails, project still activates
+        # The living wiki enrichment (PROMPT #239) will fill context later
         from app.services.context_generator import ContextGeneratorService
 
         context_gen = ContextGeneratorService(db)
@@ -787,10 +789,21 @@ async def _process_project_pipeline(
         async def progress_cb(percent, message):
             job_manager.update_progress(job_id, percent, message)
 
-        context_result = await context_gen.generate_rich_context_from_memory(
-            project_id=project_id,
-            progress_callback=progress_cb
-        )
+        try:
+            context_result = await context_gen.generate_rich_context_from_memory(
+                project_id=project_id,
+                progress_callback=progress_cb
+            )
+        except Exception as ctx_err:
+            logger.warning(f"Rich context generation failed (non-blocking): {ctx_err}")
+            # Set fallback description from scan data
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if project and not project.description:
+                memory = project.initial_memory_context or {}
+                summary = memory.get("scan_summary", "") or memory.get("interview_context", "")
+                if summary:
+                    project.description = str(summary)[:2000]
+                db.commit()
 
         job_manager.update_progress(job_id, 90.0, "Finalizando projeto...")
 

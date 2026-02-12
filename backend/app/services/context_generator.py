@@ -17,6 +17,7 @@ from typing import Dict, List, Optional, Any, Set
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.orm import Session
+import asyncio
 import json
 import logging
 import re
@@ -5556,13 +5557,16 @@ IMPORTANTE:
     async def generate_rich_context_from_memory(
         self,
         project_id: UUID,
-        progress_callback=None
+        progress_callback=None,
+        ai_timeout: int = 120
     ) -> Dict:
         """
         PROMPT #121 - Generate rich project context from memory scan data using AI.
 
         Makes 3 focused AI calls (architecture, business domain, features) then
         consolidates into context_semantic + context_human via a 4th AI call.
+
+        PROMPT #240 - Each AI call has a timeout (default 120s) to prevent hanging.
 
         Args:
             project_id: Project UUID
@@ -5617,16 +5621,22 @@ IMPORTANTE:
                     "scan_summary": scan_summary or "Resumo nao disponivel"
                 }
             )
-            response = await self.orchestrator.execute(
-                usage_type="memory",
-                messages=[{"role": "user", "content": usr_prompt}],
-                system_prompt=sys_prompt,
-                max_tokens=4000,
-                enable_rag=True,
-                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
+            response = await asyncio.wait_for(
+                self.orchestrator.execute(
+                    usage_type="memory",
+                    messages=[{"role": "user", "content": usr_prompt}],
+                    system_prompt=sys_prompt,
+                    max_tokens=4000,
+                    enable_rag=True,
+                    project_id=str(project.id)
+                ),
+                timeout=ai_timeout
             )
             architecture_analysis = response.get("content", "")
             logger.info(f"Architecture analysis complete for {project.name}")
+        except asyncio.TimeoutError:
+            logger.warning(f"Architecture analysis timed out after {ai_timeout}s for {project.name}")
+            architecture_analysis = "Analise arquitetural indisponivel: timeout"
         except Exception as e:
             logger.error(f"Architecture analysis failed: {e}")
             architecture_analysis = f"Analise arquitetural indisponivel: {str(e)}"
@@ -5644,16 +5654,22 @@ IMPORTANTE:
                         "key_features": key_features
                     }
                 )
-                response = await self.orchestrator.execute(
-                    usage_type="memory",
-                    messages=[{"role": "user", "content": usr_prompt}],
-                    system_prompt=sys_prompt,
-                    max_tokens=4000,
-                    enable_rag=True,
-                    project_id=str(project.id)  # PROMPT #125 - Log to prompts table
+                response = await asyncio.wait_for(
+                    self.orchestrator.execute(
+                        usage_type="memory",
+                        messages=[{"role": "user", "content": usr_prompt}],
+                        system_prompt=sys_prompt,
+                        max_tokens=4000,
+                        enable_rag=True,
+                        project_id=str(project.id)
+                    ),
+                    timeout=ai_timeout
                 )
                 business_domain_analysis = response.get("content", "")
                 logger.info(f"Business domain analysis complete for {project.name}")
+            except asyncio.TimeoutError:
+                logger.warning(f"Business domain analysis timed out after {ai_timeout}s for {project.name}")
+                business_domain_analysis = "Analise de dominio indisponivel: timeout"
             except Exception as e:
                 logger.error(f"Business domain analysis failed: {e}")
                 business_domain_analysis = f"Analise de dominio indisponivel: {str(e)}"
@@ -5674,16 +5690,22 @@ IMPORTANTE:
                         "interview_context": interview_context
                     }
                 )
-                response = await self.orchestrator.execute(
-                    usage_type="memory",
-                    messages=[{"role": "user", "content": usr_prompt}],
-                    system_prompt=sys_prompt,
-                    max_tokens=4000,
-                    enable_rag=True,
-                    project_id=str(project.id)  # PROMPT #125 - Log to prompts table
+                response = await asyncio.wait_for(
+                    self.orchestrator.execute(
+                        usage_type="memory",
+                        messages=[{"role": "user", "content": usr_prompt}],
+                        system_prompt=sys_prompt,
+                        max_tokens=4000,
+                        enable_rag=True,
+                        project_id=str(project.id)
+                    ),
+                    timeout=ai_timeout
                 )
                 feature_landscape = response.get("content", "")
                 logger.info(f"Feature landscape complete for {project.name}")
+            except asyncio.TimeoutError:
+                logger.warning(f"Feature landscape timed out after {ai_timeout}s for {project.name}")
+                feature_landscape = "Mapa de funcionalidades indisponivel: timeout"
             except Exception as e:
                 logger.error(f"Feature landscape failed: {e}")
                 feature_landscape = f"Mapa de funcionalidades indisponivel: {str(e)}"
@@ -5702,13 +5724,16 @@ IMPORTANTE:
                     "feature_landscape": feature_landscape
                 }
             )
-            response = await self.orchestrator.execute(
-                usage_type="memory",
-                messages=[{"role": "user", "content": usr_prompt}],
-                system_prompt=sys_prompt,
-                max_tokens=8000,
-                enable_rag=True,
-                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
+            response = await asyncio.wait_for(
+                self.orchestrator.execute(
+                    usage_type="memory",
+                    messages=[{"role": "user", "content": usr_prompt}],
+                    system_prompt=sys_prompt,
+                    max_tokens=8000,
+                    enable_rag=True,
+                    project_id=str(project.id)
+                ),
+                timeout=ai_timeout * 2  # Consolidation gets double timeout (larger output)
             )
 
             content = response.get("content", "")
@@ -5754,6 +5779,10 @@ IMPORTANTE:
             if not context_human:
                 context_human = content
 
+        except asyncio.TimeoutError:
+            logger.warning(f"Consolidation timed out after {ai_timeout * 2}s for {project.name}, using direct combination")
+            context_semantic = f"# {project.name}\n\n{architecture_analysis}\n\n{business_domain_analysis}\n\n{feature_landscape}"
+            context_human = context_semantic
         except Exception as e:
             logger.error(f"Consolidation failed: {e}")
             # Fallback: combine the 3 analyses directly
