@@ -1802,11 +1802,11 @@ class CodebaseMemoryService:
 
             # Progress: 50-80% for file analysis (30% spread across files)
             progress = 50 + (i / total_files) * 30
-            logger.info(f"   📄 Analyzing file {i+1}/{total_files}: {filename} (this may take 2-4 min without GPU)")
+            logger.info(f"   Analyzing file {i+1}/{total_files}: {filename}")
 
             asyncio.create_task(console.log_memory_scan(
                 phase=f"file_{i+1}/{total_files}",
-                message=f"Analyzing: {filename} (CPU mode - please wait ~2-4 min)",
+                message=f"Analyzing: {filename} ({i+1}/{total_files})",
                 files_processed=i+1,
                 project_id=str(project_id) if project_id else None
             ))
