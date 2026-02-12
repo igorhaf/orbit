@@ -599,6 +599,8 @@ export interface AIModel {
   rate_limit_window_seconds?: number | null;
   // Timeout (PROMPT #207)
   timeout_seconds?: number | null;
+  // Concurrency (PROMPT #228)
+  max_concurrent_requests?: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -615,6 +617,8 @@ export interface AIModelCreate {
   rate_limit_window_seconds?: number | null;
   // Timeout (PROMPT #207)
   timeout_seconds?: number | null;
+  // Concurrency (PROMPT #228)
+  max_concurrent_requests?: number | null;
 }
 
 export interface AIModelUpdate {
@@ -629,6 +633,8 @@ export interface AIModelUpdate {
   rate_limit_window_seconds?: number | null;
   // Timeout (PROMPT #207)
   timeout_seconds?: number | null;
+  // Concurrency (PROMPT #228)
+  max_concurrent_requests?: number | null;
 }
 
 export interface AIModelDetail extends AIModel {
@@ -660,6 +666,8 @@ export interface AIFlowChainModel {
   config: Record<string, any>;
   rate_limit_requests?: number | null;
   rate_limit_window_seconds?: number | null;
+  // Concurrency (PROMPT #228)
+  max_concurrent_requests?: number | null;
 }
 
 // PROMPT #124 - AI Flow Metrics, Animation, Analytics & Smart Reorder

@@ -116,6 +116,8 @@ export default function AIModelsPage() {
       rate_limit_window_seconds: model.rate_limit_window_seconds,
       // PROMPT #207 - Timeout field
       timeout_seconds: model.timeout_seconds,
+      // PROMPT #228 - Concurrency field
+      max_concurrent_requests: model.max_concurrent_requests,
     });
     setShowEditDialog(true);
   };
@@ -410,6 +412,15 @@ export default function AIModelsPage() {
                             </div>
                           </div>
                         )}
+                        {/* PROMPT #228 - Concurrency Display */}
+                        {model.max_concurrent_requests && (
+                          <div>
+                            <div className="text-gray-500 text-xs">Concurrency</div>
+                            <div className="font-semibold text-gray-900">
+                              {model.max_concurrent_requests}x
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -685,6 +696,27 @@ export default function AIModelsPage() {
                 </p>
               </div>
 
+              {/* Concurrency Section (PROMPT #228) */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Concurrency</h4>
+                <Input
+                  label="Max Concurrent Requests"
+                  type="number"
+                  min="1"
+                  placeholder="Unlimited"
+                  value={createFormData.max_concurrent_requests || ''}
+                  onChange={(e) =>
+                    setCreateFormData({
+                      ...createFormData,
+                      max_concurrent_requests: e.target.value ? parseInt(e.target.value) : null,
+                    })
+                  }
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Max parallel API calls to this model. Leave empty for unlimited.
+                </p>
+              </div>
+
               {/* Is Active */}
               <div className="flex items-center">
                 <input
@@ -901,6 +933,27 @@ export default function AIModelsPage() {
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Leave empty to use system default. Overridden by Timeout Node in AI Flow diagram.
+                </p>
+              </div>
+
+              {/* Concurrency Section (PROMPT #228) */}
+              <div className="border-t pt-4 mt-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Concurrency</h4>
+                <Input
+                  label="Max Concurrent Requests"
+                  type="number"
+                  min="1"
+                  placeholder="Unlimited"
+                  value={editFormData.max_concurrent_requests || ''}
+                  onChange={(e) =>
+                    setEditFormData({
+                      ...editFormData,
+                      max_concurrent_requests: e.target.value ? parseInt(e.target.value) : null,
+                    })
+                  }
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Max parallel API calls to this model. Leave empty for unlimited.
                 </p>
               </div>
 

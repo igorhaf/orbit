@@ -25,6 +25,19 @@ from app.services.utility_node_executor import UtilityNodeExecutor  # PROMPT #20
 
 logger = logging.getLogger(__name__)
 
+# PROMPT #228 - Module-level semaphore pool for concurrency control per model.
+# Shared across all AIOrchestrator instances within the same process.
+_model_semaphores: Dict[str, asyncio.Semaphore] = {}
+
+
+def _get_model_semaphore(model_id: str, max_concurrent: int) -> asyncio.Semaphore:
+    """Get or create a semaphore for a given model with the specified concurrency limit."""
+    existing = _model_semaphores.get(model_id)
+    if existing is None or existing._value != max_concurrent:
+        _model_semaphores[model_id] = asyncio.Semaphore(max_concurrent)
+    return _model_semaphores[model_id]
+
+
 UsageType = Literal[
     "prompt_generation",
     "task_execution",
@@ -295,6 +308,8 @@ class AIOrchestrator:
                     "rate_limit_window_seconds": db_model.rate_limit_window_seconds,
                     # PROMPT #207 - Per-model timeout
                     "timeout_seconds": db_model.timeout_seconds,
+                    # PROMPT #228 - Concurrency limit
+                    "max_concurrent_requests": db_model.max_concurrent_requests,
                 })
             else:
                 logger.warning(
@@ -412,6 +427,8 @@ class AIOrchestrator:
                     "rate_limit_window_seconds": db_model.rate_limit_window_seconds,
                     # PROMPT #207 - Per-model timeout
                     "timeout_seconds": db_model.timeout_seconds,
+                    # PROMPT #228 - Concurrency limit
+                    "max_concurrent_requests": db_model.max_concurrent_requests,
                 }
             else:
                 logger.warning(
@@ -452,6 +469,8 @@ class AIOrchestrator:
                 "rate_limit_window_seconds": fallback_model.rate_limit_window_seconds,
                 # PROMPT #207 - Per-model timeout
                 "timeout_seconds": fallback_model.timeout_seconds,
+                # PROMPT #228 - Concurrency limit
+                "max_concurrent_requests": fallback_model.max_concurrent_requests,
             }
 
         # 3. Fallback: tentar diagrama 'general' (chain) se existir
@@ -537,7 +556,9 @@ class AIOrchestrator:
                         "db_model_name": db_model.name,
                         # PROMPT #152 - Rate limiting config
                         "rate_limit_requests": db_model.rate_limit_requests,
-                        "rate_limit_window_seconds": db_model.rate_limit_window_seconds
+                        "rate_limit_window_seconds": db_model.rate_limit_window_seconds,
+                        # PROMPT #228 - Concurrency limit
+                        "max_concurrent_requests": db_model.max_concurrent_requests,
                     }
                 else:
                     logger.warning(f"⚠️  Explicit model {db_model.name} not initialized, falling back to scoring")
@@ -1166,6 +1187,17 @@ class AIOrchestrator:
                     "rag_enhanced": rag_context_injected  # PROMPT #83
                 }
 
+        # PROMPT #228 - Concurrency control: acquire semaphore slot before API call
+        _concurrency_sem = None
+        _max_concurrent = model_config.get('max_concurrent_requests')
+        if _max_concurrent:
+            _concurrency_sem = _get_model_semaphore(model_config['db_model_id'], _max_concurrent)
+            await _concurrency_sem.acquire()
+            logger.info(
+                f"🔒 Concurrency slot acquired for {model_config['db_model_name']} "
+                f"(max: {_max_concurrent})"
+            )
+
         # PROMPT #54 - Track execution time
         start_time = time.time()
         execution_log = None
@@ -1551,6 +1583,12 @@ class AIOrchestrator:
             # Re-raise - removido fallback automático para garantir uso do modelo configurado
             raise
 
+        finally:
+            # PROMPT #228 - Release concurrency slot
+            if _concurrency_sem is not None:
+                _concurrency_sem.release()
+                logger.info(f"🔓 Concurrency slot released for {model_config.get('db_model_name', 'unknown')}")
+
     async def execute_with_chain(
         self,
         usage_type: UsageType,
@@ -1657,6 +1695,17 @@ class AIOrchestrator:
                 model_config["rate_limit_window_seconds"],
             )
 
+        # PROMPT #228 - Concurrency control for chain execution
+        _chain_sem = None
+        _chain_max_concurrent = model_config.get('max_concurrent_requests')
+        if _chain_max_concurrent:
+            _chain_sem = _get_model_semaphore(model_config['db_model_id'], _chain_max_concurrent)
+            await _chain_sem.acquire()
+            logger.info(
+                f"🔒 Chain concurrency slot acquired for {model_config['db_model_name']} "
+                f"(max: {_chain_max_concurrent})"
+            )
+
         # PROMPT #127 - Pass API key from chain model config to override default client key
         api_key_override = model_config.get("api_key")
 
@@ -1690,44 +1739,50 @@ class AIOrchestrator:
         )
 
         try:
-            if provider == "anthropic":
-                result = await self._execute_anthropic_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-            elif provider == "openai":
-                result = await self._execute_openai_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-            elif provider == "google":
-                result = await self._execute_google_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-            elif provider == "ollama":
-                result = await self._execute_ollama_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k)
-            elif provider == "cohere":
-                result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-            else:
-                raise ValueError(f"Unknown provider: {provider}")
+            try:
+                if provider == "anthropic":
+                    result = await self._execute_anthropic_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                elif provider == "openai":
+                    result = await self._execute_openai_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                elif provider == "google":
+                    result = await self._execute_google_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                elif provider == "ollama":
+                    result = await self._execute_ollama_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k)
+                elif provider == "cohere":
+                    result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                else:
+                    raise ValueError(f"Unknown provider: {provider}")
 
-            # Emit stream completion
-            console = get_console_logger()
-            asyncio.create_task(console.log_ai_streaming_chunk(
-                stream_id=_stream_id, model=_model_label,
-                chunk_text="", chunk_index=_chunk_counter[0] + 1,
-                is_complete=True, accumulated_text=result.get("content", ""),
-            ))
-        except Exception as stream_err:
-            logger.warning(f"⚠️ Chain streaming failed, falling back: {stream_err}")
-            if provider == "anthropic":
-                result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-            elif provider == "openai":
-                result = await self._execute_openai(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-            elif provider == "google":
-                result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-            elif provider == "ollama":
-                result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k)
-            elif provider == "cohere":
-                result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
-            else:
-                raise ValueError(f"Unknown provider: {provider}")
+                # Emit stream completion
+                console = get_console_logger()
+                asyncio.create_task(console.log_ai_streaming_chunk(
+                    stream_id=_stream_id, model=_model_label,
+                    chunk_text="", chunk_index=_chunk_counter[0] + 1,
+                    is_complete=True, accumulated_text=result.get("content", ""),
+                ))
+            except Exception as stream_err:
+                logger.warning(f"⚠️ Chain streaming failed, falling back: {stream_err}")
+                if provider == "anthropic":
+                    result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                elif provider == "openai":
+                    result = await self._execute_openai(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                elif provider == "google":
+                    result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                elif provider == "ollama":
+                    result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k)
+                elif provider == "cohere":
+                    result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                else:
+                    raise ValueError(f"Unknown provider: {provider}")
 
-        result["db_model_id"] = model_config["db_model_id"]
-        result["db_model_name"] = model_config["db_model_name"]
-        return result
+            result["db_model_id"] = model_config["db_model_id"]
+            result["db_model_name"] = model_config["db_model_name"]
+            return result
+        finally:
+            # PROMPT #228 - Release concurrency slot
+            if _chain_sem is not None:
+                _chain_sem.release()
+                logger.info(f"🔓 Chain concurrency slot released for {model_config.get('db_model_name', 'unknown')}")
 
     async def _execute_anthropic(
         self,

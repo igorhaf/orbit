@@ -992,6 +992,7 @@ interface ModelOverrides {
   temperature?: number | null;
   max_tokens?: number | null;
   timeout_seconds?: number | null;
+  max_concurrent_requests?: number | null;
 }
 
 function EditModelNodeDialog({
@@ -1014,12 +1015,16 @@ function EditModelNodeDialog({
   const [timeoutSeconds, setTimeoutSeconds] = useState<string>(
     overrides.timeout_seconds != null ? String(overrides.timeout_seconds) : ''
   );
+  const [maxConcurrent, setMaxConcurrent] = useState<string>(
+    overrides.max_concurrent_requests != null ? String(overrides.max_concurrent_requests) : ''
+  );
 
   const handleSave = () => {
     onSave(model.id, {
       temperature: temperature !== '' ? parseFloat(temperature) : null,
       max_tokens: maxTokens !== '' ? parseInt(maxTokens) : null,
       timeout_seconds: timeoutSeconds !== '' ? parseInt(timeoutSeconds) : null,
+      max_concurrent_requests: maxConcurrent !== '' ? parseInt(maxConcurrent) : null,
     });
   };
 
@@ -1079,6 +1084,16 @@ function EditModelNodeDialog({
             onChange={(e) => setTimeoutSeconds(e.target.value)}
             helperText="API call timeout. Empty = use model default."
           />
+
+          <Input
+            label="Max Concurrent Requests"
+            type="number"
+            min="1"
+            placeholder={`Default: ${model.max_concurrent_requests || 'Unlimited'}`}
+            value={maxConcurrent}
+            onChange={(e) => setMaxConcurrent(e.target.value)}
+            helperText="Max parallel API calls. Empty = use model default."
+          />
         </div>
 
         {/* Current global settings (read-only) */}
@@ -1088,7 +1103,7 @@ function EditModelNodeDialog({
             <div>Max Tokens: <span className="font-medium text-gray-900">{model.config?.max_tokens || 'N/A'}</span></div>
             <div>Temperature: <span className="font-medium text-gray-900">{model.config?.temperature ?? 'N/A'}</span></div>
             <div>Rate Limit: <span className="font-medium text-gray-900">{model.rate_limit_requests ? `${model.rate_limit_requests} req/${model.rate_limit_window_seconds}s` : 'None'}</span></div>
-            <div>Active: <span className="font-medium text-gray-900">{model.is_active ? 'Yes' : 'No'}</span></div>
+            <div>Concurrency: <span className="font-medium text-gray-900">{model.max_concurrent_requests ? `${model.max_concurrent_requests}x` : 'Unlimited'}</span></div>
           </div>
         </div>
 
@@ -1297,7 +1312,7 @@ function buildFlowFromChain(
         onRemove: onRemove ? () => onRemove(model.id) : undefined,
         metrics: metricsMap?.[model.id],
         animation: animationsMap?.[nodeId] || 'idle',
-        hasOverrides: overrides && (overrides.temperature != null || overrides.max_tokens != null || overrides.timeout_seconds != null),
+        hasOverrides: overrides && (overrides.temperature != null || overrides.max_tokens != null || overrides.timeout_seconds != null || overrides.max_concurrent_requests != null),
       },
       position: pos,
     });

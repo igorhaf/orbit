@@ -43,6 +43,11 @@ class AIModelBase(BaseModel):
         None,
         description="API timeout in seconds for this model (None = use system default)"
     )
+    # Concurrency (PROMPT #228)
+    max_concurrent_requests: Optional[int] = Field(
+        None,
+        description="Max parallel API calls to this model (None = unlimited)"
+    )
 
 
 class AIModelCreate(AIModelBase):
@@ -73,6 +78,8 @@ class AIModelUpdate(BaseModel):
     rate_limit_window_seconds: Optional[int] = None
     # Timeout (PROMPT #207)
     timeout_seconds: Optional[int] = None
+    # Concurrency (PROMPT #228)
+    max_concurrent_requests: Optional[int] = None
 
 
 class AIModelResponse(AIModelBase):

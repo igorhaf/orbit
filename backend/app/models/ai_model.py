@@ -68,6 +68,10 @@ class AIModel(Base):
     # Per-model API timeout in seconds. NULL = use system default from settings.
     timeout_seconds = Column(Integer, nullable=True)
 
+    # Concurrency (PROMPT #228)
+    # Max parallel API calls to this model. NULL = unlimited.
+    max_concurrent_requests = Column(Integer, nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
