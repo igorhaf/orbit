@@ -5,7 +5,7 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';  // PROMPT #151 - Restored useRouter for redirect
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
@@ -74,6 +74,10 @@ export default function ProjectDetailsPage() {
   const [loadingAnalytics, setLoadingAnalytics] = useState(false);
   const [analyticsDays, setAnalyticsDays] = useState<number>(30);
 
+  // PROMPT #239 - Enrichment status for living wiki
+  const [isEnriching, setIsEnriching] = useState(false);
+  const prevEnrichingRef = useRef(false);
+
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
   const [epicCount, setEpicCount] = useState(10);
@@ -105,6 +109,33 @@ export default function ProjectDetailsPage() {
   useEffect(() => {
     loadProjectData();
   }, [loadProjectData]);
+
+  // PROMPT #239 - Poll enrichment status and auto-refresh when enrichment completes
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    const checkEnrichment = async () => {
+      try {
+        const status = await ragApi.enrichmentStatus(projectId);
+        setIsEnriching(status.is_enriching);
+
+        // When enrichment transitions from active to done, refresh project data
+        if (prevEnrichingRef.current && !status.is_enriching) {
+          loadProjectData();
+        }
+        prevEnrichingRef.current = status.is_enriching;
+      } catch {
+        // Ignore errors
+      }
+    };
+
+    checkEnrichment();
+    interval = setInterval(checkEnrichment, 10000); // Poll every 10s
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [projectId, loadProjectData]);
 
   // PROMPT #155 - Listen for incremental epic batch creation events
   useEffect(() => {
@@ -477,6 +508,18 @@ export default function ProjectDetailsPage() {
                   The codebase is being analyzed. This may take a few minutes.
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* PROMPT #239 - Background enrichment banner */}
+        {isEnriching && project.status !== 'processing' && (
+          <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500" />
+              <span className="text-sm text-gray-600">
+                Background enrichment in progress — RAG scanning, pattern discovery, and wiki update running...
+              </span>
             </div>
           </div>
         )}

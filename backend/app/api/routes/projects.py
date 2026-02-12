@@ -775,28 +775,7 @@ async def _process_project_pipeline(
         project.updated_at = datetime.utcnow()
         db.commit()
 
-        # === Step A.1: Spec Discovery + RAG Sync (PROMPT #202) ===
-        effective_max = _effective_max_patterns(db, project_id)
-        if effective_max > 0:
-            job_manager.update_progress(job_id, 38.0, "Discovering code patterns and generating specs...")
-            try:
-                discovery_service = PatternDiscoveryService(db)
-                discovered_patterns = await discovery_service.discover_patterns(
-                    project_path=Path(code_path),
-                    project_id=project_id,
-                    max_patterns=effective_max,
-                    min_occurrences=2
-                )
-                logger.info(f"📋 Discovered {len(discovered_patterns)} patterns for project {project_id}")
-
-                from app.services.spec_rag_sync import SpecRAGSync
-                spec_sync = SpecRAGSync(db)
-                sync_result = spec_sync.sync_all_framework_specs()
-                logger.info(f"📡 Specs synced to RAG: {sync_result.get('synced', 0)} new, {sync_result.get('skipped', 0)} skipped")
-            except Exception as e:
-                logger.warning(f"⚠️ Spec discovery/sync failed (non-blocking): {e}")
-        else:
-            logger.info(f"📋 Project {project_id} already has {MAX_SPECS_PER_PROJECT} specs, skipping discovery")
+        # PROMPT #239: Pattern discovery + spec sync moved to background enrichment (Phase 2)
 
         job_manager.update_progress(job_id, 40.0, "Gerando contexto rico do projeto...")
 
@@ -839,6 +818,32 @@ async def _process_project_pipeline(
 
         logger.info(f"Pipeline completed for project {project_id}")
 
+        # === Step D: Auto-trigger background enrichment (PROMPT #239) ===
+        try:
+            enrichment_job = job_manager.create_job(
+                job_type=JobType.RAG_CONTINUOUS_SCAN,
+                input_data={
+                    "project_id": str(project_id),
+                    "code_path": code_path,
+                    "auto_trigger": True,
+                },
+                project_id=project_id,
+                notification_title=f"Enriching: {project.name if project else folder_name}",
+                deep_link=f"/projects/{project_id}",
+            )
+            from app.services.job_executor import PriorityJobExecutor
+            executor = PriorityJobExecutor.get_instance()
+            await executor.submit(
+                JobPriority.LOW,
+                _run_post_pipeline_enrichment,
+                enrichment_job.id,
+                project_id,
+                code_path,
+            )
+            logger.info(f"Auto-triggered background enrichment for project {project_id}")
+        except Exception as e:
+            logger.warning(f"Auto-trigger enrichment failed (non-blocking): {e}")
+
     except Exception as e:
         logger.error(f"Pipeline failed for project {project_id}: {str(e)}", exc_info=True)
 
@@ -865,6 +870,142 @@ async def _process_project_pipeline(
 
     finally:
         db.close()
+
+
+async def _run_post_pipeline_enrichment(
+    job_id: UUID,
+    project_id: UUID,
+    code_path: str,
+):
+    """
+    PROMPT #239 - Background enrichment after project pipeline.
+    Combines: RAG scan + pattern discovery + spec sync + wiki enrichment.
+    Runs at LOW priority so it doesn't block user-facing operations.
+    """
+    from app.database import SessionLocal
+    from app.models.project import ProjectStatus
+
+    db = SessionLocal()
+    try:
+        jm = JobManager(db)
+        jm.start_job(job_id)
+
+        # 1. Continuous RAG scan
+        jm.update_progress(job_id, 10.0, "RAG: scanning for new files...")
+        try:
+            from app.services.continuous_rag_service import ContinuousRAGService
+            rag_service = ContinuousRAGService(db)
+            rag_result = await rag_service.run_full_cycle(project_id)
+            logger.info(f"RAG scan completed for {project_id}: {rag_result}")
+        except Exception as e:
+            logger.warning(f"RAG scan failed (non-blocking): {e}")
+
+        # 2. Pattern discovery + spec sync
+        jm.update_progress(job_id, 40.0, "Discovering code patterns...")
+        try:
+            effective_max = _effective_max_patterns(db, project_id)
+            if effective_max > 0:
+                discovery_service = PatternDiscoveryService(db)
+                discovered_patterns = await discovery_service.discover_patterns(
+                    project_path=Path(code_path),
+                    project_id=project_id,
+                    max_patterns=effective_max,
+                    min_occurrences=2,
+                )
+                logger.info(f"Discovered {len(discovered_patterns)} patterns for {project_id}")
+
+                from app.services.spec_rag_sync import SpecRAGSync
+                spec_sync = SpecRAGSync(db)
+                sync_result = spec_sync.sync_all_framework_specs()
+                logger.info(f"Specs synced: {sync_result.get('synced', 0)} new")
+        except Exception as e:
+            logger.warning(f"Pattern discovery failed (non-blocking): {e}")
+
+        # 3. Living wiki enrichment
+        jm.update_progress(job_id, 70.0, "Enriching project wiki...")
+        try:
+            await _enrich_context_from_rag(db, project_id)
+        except Exception as e:
+            logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
+
+        jm.complete_job(job_id, {"success": True, "project_id": str(project_id)})
+        logger.info(f"Post-pipeline enrichment completed for {project_id}")
+
+    except Exception as e:
+        logger.error(f"Post-pipeline enrichment failed for {project_id}: {e}", exc_info=True)
+        try:
+            jm.fail_job(job_id, str(e))
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+async def _enrich_context_from_rag(db, project_id: UUID):
+    """
+    PROMPT #239 - Living Wiki: enrich project description from RAG findings.
+    Only runs when context is NOT locked.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        return
+
+    # Respect context_locked
+    if project.context_locked:
+        logger.info(f"Context locked for {project_id}, skipping wiki enrichment")
+        return
+
+    # Get business rules from RAG
+    from sqlalchemy import text as sql_text
+    result = db.execute(sql_text("""
+        SELECT content FROM rag_documents
+        WHERE project_id = :pid
+        AND metadata->>'content_type' = 'business_rule'
+        ORDER BY created_at DESC
+        LIMIT 50
+    """), {"pid": str(project_id)})
+    rules = [row[0] for row in result.fetchall()]
+
+    if not rules:
+        logger.info(f"No RAG rules for {project_id}, skipping wiki enrichment")
+        return
+
+    # Use AI to enrich the description
+    from app.services.ai_orchestrator import AIOrchestrator
+    from app.prompts.loader import PromptLoader
+
+    loader = PromptLoader()
+    try:
+        sys_prompt, usr_prompt = loader.render(
+            "context/wiki_enrichment",
+            {
+                "project_name": project.name or "",
+                "current_description": project.description or "",
+                "current_context": project.context_human or "",
+                "new_rules": "\n".join(f"- {r}" for r in rules),
+                "stack_info": str(project.initial_memory_context.get("stack_info", {})) if project.initial_memory_context else "",
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Wiki enrichment prompt not found: {e}")
+        return
+
+    orchestrator = AIOrchestrator(db)
+    response = await orchestrator.execute(
+        usage_type="memory",
+        messages=[{"role": "user", "content": usr_prompt}],
+        system_prompt=sys_prompt,
+        max_tokens=4000,
+        project_id=str(project_id),
+        metadata={"type": "wiki_enrichment"},
+    )
+
+    enriched = response.get("content", "")
+    if enriched and len(enriched) > 100:
+        project.description = enriched
+        project.updated_at = datetime.utcnow()
+        db.commit()
+        logger.info(f"Wiki enriched for project {project_id} ({len(enriched)} chars)")
 
 
 async def _process_cards_from_memory_async(

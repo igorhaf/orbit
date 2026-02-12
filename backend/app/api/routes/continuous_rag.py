@@ -189,3 +189,40 @@ async def reset_rag_state(
         "message": "Continuous RAG state reset successfully",
         **result,
     }
+
+
+@router.get("/{project_id}/rag/enrichment-status")
+async def get_enrichment_status(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #239 - Get background enrichment status for a project.
+    Used by the frontend to show enrichment progress indicator.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    active_jobs = db.query(AsyncJob).filter(
+        AsyncJob.project_id == project_id,
+        AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+    ).all()
+
+    return {
+        "is_enriching": len(active_jobs) > 0,
+        "active_jobs": [
+            {
+                "id": str(j.id),
+                "type": j.job_type.value if j.job_type else None,
+                "status": j.status.value if j.status else None,
+                "progress_percent": j.progress_percent,
+                "progress_message": j.progress_message,
+            }
+            for j in active_jobs
+        ],
+        "context_locked": project.context_locked or False,
+        "has_description": bool(project.description),
+        "has_context": bool(project.context_human),
+    }

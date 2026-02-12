@@ -1163,6 +1163,10 @@ export const ragApi = {
     request<any>(`/api/v1/projects/${projectId}/rag/reset`, {
       method: 'DELETE',
     }),
+
+  // PROMPT #239 - Enrichment status for living wiki
+  enrichmentStatus: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/enrichment-status`),
 };
 
 // PROMPT #80 - Backlog Generation API (Epic → Stories → Tasks)

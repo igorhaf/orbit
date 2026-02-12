@@ -187,6 +187,12 @@ async def lifespan(app: FastAPI):
                                 from app.services.continuous_rag_service import ContinuousRAGService
                                 service = ContinuousRAGService(db_session)
                                 result = await service.run_full_cycle(project.id)
+                                # PROMPT #239: Living wiki enrichment after RAG cycle
+                                try:
+                                    from app.api.routes.projects import _enrich_context_from_rag
+                                    await _enrich_context_from_rag(db_session, project.id)
+                                except Exception as wiki_e:
+                                    logger.warning(f"Wiki enrichment skipped: {wiki_e}")
                                 jm.complete_job(job.id, result)
                             except Exception as e:
                                 try:
