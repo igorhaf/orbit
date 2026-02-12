@@ -237,10 +237,12 @@ function ProviderIcon({ provider, size = 'w-5 h-5' }: { provider: string; size?:
 
 type NodeAnimationState = 'idle' | 'executing' | 'success' | 'failed';
 
+const EMPTY_ANIMATIONS: Record<string, NodeAnimationState> = {};
+
 function useAIFlowWebSocket(_selectedUsageType: string) {
   // PROMPT #227 - Disabled real-time WebSocket polling.
   // Metrics are loaded once when the chain changes, no continuous connection needed.
-  return {} as Record<string, NodeAnimationState>;
+  return EMPTY_ANIMATIONS;
 }
 
 // ---------------------------------------------------------------------------
