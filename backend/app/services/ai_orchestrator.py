@@ -402,6 +402,53 @@ class AIOrchestrator:
 
         return static_timeout
 
+    # PROMPT #232 - RAG relevance scoring
+    # Type boosts for prompt_generation usage
+    _RAG_TYPE_BOOSTS = {
+        "prompt_generation": {"business_rule": 0.15, "interview_answer": 0.10, "spec": 0.05},
+        "task_execution": {"spec": 0.15, "code_context": 0.10},
+    }
+
+    def _score_and_filter_rag_results(
+        self,
+        rag_results: List[Dict],
+        query: str,
+        usage_type: str,
+        min_score: float = 0.3,
+    ) -> List[Dict]:
+        """
+        PROMPT #232 - Score RAG results by combined relevance and filter low-quality ones.
+
+        Combined score = embedding_similarity * 0.6 + keyword_overlap * 0.3 + type_boost * 0.1
+        """
+        type_boosts = self._RAG_TYPE_BOOSTS.get(usage_type, {})
+
+        scored = []
+        for r in rag_results:
+            sim = r.get("similarity", 0.0)
+            kw = self._keyword_overlap_score(r.get("content", ""), query)
+            doc_type = r.get("type", "")
+            boost = type_boosts.get(doc_type, 0.0)
+
+            combined = sim * 0.6 + kw * 0.3 + boost
+            r["relevance_score"] = round(combined, 3)
+            if combined >= min_score:
+                scored.append(r)
+
+        scored.sort(key=lambda x: x["relevance_score"], reverse=True)
+        return scored
+
+    @staticmethod
+    def _keyword_overlap_score(content: str, query: str) -> float:
+        """Fraction of query words that appear in content (case-insensitive)."""
+        if not query:
+            return 0.0
+        query_words = set(query.lower().split())
+        content_words = set(content.lower().split())
+        if not query_words:
+            return 0.0
+        return len(query_words & content_words) / len(query_words)
+
     def choose_model(self, usage_type: UsageType) -> Dict[str, any]:
         """
         Escolhe modelo dinamicamente do banco baseado no usage_type
@@ -1191,27 +1238,33 @@ class AIOrchestrator:
                     rag_metrics["rag_retrieval_time_ms"] = (time.time() - rag_start_time) * 1000
 
                     if rag_results:
-                        # Update metrics
+                        # PROMPT #232 - Score and filter RAG results by relevance
+                        scored_results = self._score_and_filter_rag_results(
+                            rag_results, query, usage_type
+                        )
                         rag_metrics["rag_hit"] = True
-                        rag_metrics["rag_results_count"] = len(rag_results)
-                        rag_metrics["rag_top_similarity"] = rag_results[0]["similarity"] if rag_results else None
+                        rag_metrics["rag_results_count"] = len(scored_results)
+                        rag_metrics["rag_filtered_out"] = len(rag_results) - len(scored_results)
+                        rag_metrics["rag_top_similarity"] = scored_results[0]["similarity"] if scored_results else None
 
-                        # Format RAG context for injection
-                        rag_context_text = "\n".join([
-                            f"[{i+1}] (similarity: {r['similarity']:.2f})\n{r['content']}"
-                            for i, r in enumerate(rag_results)
-                        ])
+                        if scored_results:
+                            # Format RAG context for injection (with relevance scores)
+                            rag_context_text = "\n".join([
+                                f"[{i+1}] (relevance: {r.get('relevance_score', r['similarity']):.2f})\n{r['content']}"
+                                for i, r in enumerate(scored_results)
+                            ])
 
-                        # Inject RAG context before last user message
-                        rag_message = {
-                            "role": "user",
-                            "content": f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]"
-                        }
-                        _effective_messages.insert(-1, rag_message)
-                        rag_context_injected = True
+                            # Inject RAG context before last user message
+                            rag_message = {
+                                "role": "user",
+                                "content": f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]"
+                            }
+                            _effective_messages.insert(-1, rag_message)
+                            rag_context_injected = True
 
                         logger.info(
-                            f"🔍 RAG HIT: {len(rag_results)} docs (top similarity: {rag_metrics['rag_top_similarity']:.2f}, "
+                            f"🔍 RAG scored: {len(rag_results)} → {len(scored_results)} results "
+                            f"({rag_metrics['rag_filtered_out']} discarded, "
                             f"retrieval: {rag_metrics['rag_retrieval_time_ms']:.1f}ms)"
                         )
                     else:

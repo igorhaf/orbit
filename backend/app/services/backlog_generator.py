@@ -293,32 +293,35 @@ Retorne APENAS JSON válido (sem markdown code blocks, sem explicação):
 - NUNCA substitua identificadores por seus significados - mantenha sempre os identificadores no texto
 """
 
-        # Convert conversation to readable format
-        conversation_text = self._format_conversation(conversation)
+        # PROMPT #232 - Compressed context replaces full conversation + business rules
+        from app.services.prompt_context_compressor import PromptContextCompressor
+        _project = self.db.query(Project).filter(Project.id == project_id).first()
+        _compressor = PromptContextCompressor(self.db)
+        _ctx = _compressor.compress_hierarchy_context(
+            item_type="epic",
+            item_title="",
+            project=_project,
+            conversation=conversation,
+            max_context_tokens=10000,
+        )
 
-        # PROMPT #170 - Inject business rules as high-priority context
-        business_rules_text = _get_business_rules_context(self.db, project_id)
-        business_rules_section = ""
-        if business_rules_text:
-            business_rules_section = f"""
-{business_rules_text}
-
-ATENÇÃO: O Epic gerado DEVE respeitar TODAS as regras de negócio listadas acima.
-Incorpore as regras relevantes nos critérios de aceitação e insights.
-
-"""
+        # Fallback: if conversation wasn't compressed (short), format raw
+        _conversation_text = _ctx.conversation_summary or self._format_conversation(conversation)
 
         user_prompt = f"""Analise esta conversa de entrevista e extraia o Epic principal usando a Metodologia de Referências Semânticas.
-{business_rules_section}
+
+{_ctx.business_rules}
+{f'ATENÇÃO: O Epic gerado DEVE respeitar TODAS as regras de negócio listadas acima.' if _ctx.business_rules else ''}
+
 CONVERSA:
-{conversation_text}
+{_conversation_text}
 
 INSTRUÇÕES:
 1. Crie um Mapa Semântico definindo TODOS os conceitos como identificadores (N1, N2, P1, E1, D1, S1, C1, AC1...)
 2. Escreva a narrativa do Epic usando APENAS esses identificadores
 3. Gere o campo "description_markdown" com o Markdown completo formatado (incluindo Mapa Semântico)
 4. Gere o campo "semantic_map" com o dicionário de identificadores
-{f"5. IMPORTANTE: Incorpore as regras de negócio nos critérios de aceitação (AC1, AC2...)" if business_rules_text else ""}
+{f"5. IMPORTANTE: Incorpore as regras de negócio nos critérios de aceitação (AC1, AC2...)" if _ctx.business_rules else ""}
 
 Retorne o Epic como JSON seguindo EXATAMENTE o schema fornecido no system prompt.
 
@@ -327,7 +330,7 @@ LEMBRE-SE:
 - Use identificadores semânticos em TODA a narrativa
 - NUNCA substitua identificadores por seus significados
 - O Mapa Semântico deve aparecer tanto no Markdown quanto no JSON
-{f"- REGRAS DE NEGÓCIO são OBRIGATÓRIAS e devem influenciar o conteúdo gerado" if business_rules_text else ""}"""
+{f"- REGRAS DE NEGÓCIO são OBRIGATÓRIAS e devem influenciar o conteúdo gerado" if _ctx.business_rules else ""}"""
 
         # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Generating Epic from Interview {interview_id}...")

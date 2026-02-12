@@ -3765,57 +3765,16 @@ Retorne APENAS JSON válido (sem markdown code blocks):
 - TUDO EM PORTUGUÊS
 """
 
-        # Build COMPLETE context from Epic - NO TRUNCATION
-        epic_full_spec = ""
-        semantic_map_text = ""
-        if parent_epic:
-            # Use FULL generated_prompt from Epic - this is the key!
-            epic_full_spec = f"""
-## ===== ESPECIFICAÇÃO COMPLETA DO EPIC PAI (USE COMO BASE) =====
-
-**Título do Epic:** {parent_epic.title}
-
-**Descrição do Epic:**
-{parent_epic.description or 'N/A'}
-
-**ESPECIFICAÇÃO TÉCNICA COMPLETA DO EPIC (generated_prompt):**
-{parent_epic.generated_prompt or 'N/A'}
-
-## ===== FIM DA ESPECIFICAÇÃO DO EPIC =====
-"""
-            if epic_semantic_map:
-                semantic_map_text = "\n\n## MAPA SEMÂNTICO DO EPIC (VOCÊ DEVE REUTILIZAR E ESTENDER):\n"
-                semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
-
-        # PROMPT #162 - Fetch relevant interview answers from RAG
-        interview_context = ""
-        try:
-            rag_service = RAGService(self.db)
-            relevant_answers = rag_service.get_relevant_interview_answers(
-                query=story.title,
-                project_id=story.project_id,
-                top_k=3,
-                similarity_threshold=0.5
-            )
-            if relevant_answers:
-                interview_context = "\n\n## RESPOSTAS RELEVANTES DA ENTREVISTA\n"
-                for answer in relevant_answers:
-                    content = answer.get("content", "")[:300]
-                    interview_context += f"- {content}\n"
-                logger.info(f"📝 Added {len(relevant_answers)} interview answers to story context")
-        except Exception as e:
-            logger.warning(f"Could not fetch interview answers for story: {e}")
-
-        # PROMPT #182 - Explicitly fetch business rules from RAG
-        business_rules_context = ""
-        try:
-            rag_service = RAGService(self.db)
-            rules = rag_service.get_business_rules(project_id=project.id, top_k=20)
-            if rules:
-                business_rules_context = rag_service.format_business_rules_for_prompt(rules, max_chars=4000)
-                logger.info(f"📋 Injected {len(rules)} business rules into story content generation")
-        except Exception as e:
-            logger.warning(f"Could not fetch business rules for story: {e}")
+        # PROMPT #232 - Compressed context replaces NO TRUNCATION pattern
+        from app.services.prompt_context_compressor import PromptContextCompressor
+        _compressor = PromptContextCompressor(self.db)
+        _ctx = _compressor.compress_hierarchy_context(
+            item_type="story",
+            item_title=story.title,
+            project=project,
+            parent_card=parent_epic,
+            max_context_tokens=8000,
+        )
 
         user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para a User Story abaixo.
 
@@ -3827,12 +3786,11 @@ Os critérios de aceitação devem ser ESPECÍFICOS para esta Story, não genér
 **Contexto:**
 {(project.context_human or project.context_semantic or 'Não disponível')[:3000]}
 
-{epic_full_spec}
-{semantic_map_text}
-{interview_context}
+{_ctx.parent_context}
+{_ctx.semantic_map_text}
 
-{business_rules_context}
-{f'ATENÇÃO: As regras de negócio acima foram extraídas do código-fonte. INCORPORE as regras relevantes nesta Story.' if business_rules_context else ''}
+{_ctx.business_rules}
+{f'ATENÇÃO: As regras de negócio acima DEVEM influenciar esta Story.' if _ctx.business_rules and 'Consulte' not in _ctx.business_rules else ''}
 
 ## STORY A ESPECIFICAR
 **Título da Story:** {story.title}
@@ -4280,56 +4238,17 @@ Retorne APENAS JSON válido:
 - TUDO EM PORTUGUÊS
 """
 
-        # Build COMPLETE context from Epic + Story - NO TRUNCATION
-        epic_full_spec = ""
-        story_full_spec = ""
-        semantic_map_text = ""
-
-        if grandparent_epic:
-            epic_full_spec = f"""
-## ===== ESPECIFICAÇÃO COMPLETA DO EPIC (AVÔ) =====
-
-**Título do Epic:** {grandparent_epic.title}
-
-**Descrição do Epic:**
-{grandparent_epic.description or 'N/A'}
-
-**ESPECIFICAÇÃO TÉCNICA COMPLETA DO EPIC (generated_prompt):**
-{grandparent_epic.generated_prompt or 'N/A'}
-
-## ===== FIM DA ESPECIFICAÇÃO DO EPIC =====
-"""
-
-        if parent_story:
-            story_full_spec = f"""
-## ===== ESPECIFICAÇÃO COMPLETA DA STORY (PAI DIRETO) =====
-
-**Título da Story:** {parent_story.title}
-
-**Descrição da Story:**
-{parent_story.description or 'N/A'}
-
-**ESPECIFICAÇÃO TÉCNICA COMPLETA DA STORY (generated_prompt):**
-{parent_story.generated_prompt or 'N/A'}
-
-## ===== FIM DA ESPECIFICAÇÃO DA STORY =====
-"""
-
-        if combined_semantic_map:
-            semantic_map_text = "\n\n## MAPA SEMÂNTICO COMBINADO (EPIC + STORY - VOCÊ DEVE REUTILIZAR):\n"
-            semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
-            semantic_map_text += "\n\n**OBRIGATÓRIO:** Reutilize TODOS os identificadores relevantes do Epic/Story e estenda com novos específicos desta Task."
-
-        # PROMPT #182 - Explicitly fetch business rules from RAG
-        business_rules_context = ""
-        try:
-            rag_service = RAGService(self.db)
-            rules = rag_service.get_business_rules(project_id=project.id, top_k=15)
-            if rules:
-                business_rules_context = rag_service.format_business_rules_for_prompt(rules, max_chars=3000)
-                logger.info(f"📋 Injected {len(rules)} business rules into task content generation")
-        except Exception as e:
-            logger.warning(f"Could not fetch business rules for task: {e}")
+        # PROMPT #232 - Compressed context replaces NO TRUNCATION pattern
+        from app.services.prompt_context_compressor import PromptContextCompressor
+        _compressor = PromptContextCompressor(self.db)
+        _ctx = _compressor.compress_hierarchy_context(
+            item_type="task",
+            item_title=task.title,
+            project=project,
+            parent_card=parent_story,
+            grandparent_card=grandparent_epic,
+            max_context_tokens=6000,
+        )
 
         user_prompt = f"""Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para esta Task.
 
@@ -4342,12 +4261,10 @@ Os critérios de aceitação devem ser TÉCNICOS e ESPECÍFICOS para esta Task.
 **Contexto do Projeto:**
 {project.context_human or project.context_semantic or 'Não disponível'}
 
-{epic_full_spec}
-{story_full_spec}
-{semantic_map_text}
+{_ctx.parent_context}
+{_ctx.semantic_map_text}
 
-{business_rules_context}
-{f'ATENÇÃO: As regras de negócio acima foram extraídas do código-fonte. IMPLEMENTE as regras relevantes nesta Task.' if business_rules_context else ''}
+{_ctx.business_rules}
 
 ## TASK A ESPECIFICAR
 **Título da Task:** {task.title}
