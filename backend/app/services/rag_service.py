@@ -188,9 +188,24 @@ class RAGService:
                 where_clauses.append("metadata->>'type' = :type")
                 params["type"] = filter["type"]
 
+            # PROMPT #229 - Type inclusion/exclusion filters for RAG optimization
+            if "type__in" in filter:
+                types_list = filter["type__in"]
+                type_in_placeholders = ", ".join([f":type_in_{i}" for i in range(len(types_list))])
+                where_clauses.append(f"metadata->>'type' IN ({type_in_placeholders})")
+                for i, t in enumerate(types_list):
+                    params[f"type_in_{i}"] = t
+
+            if "type__not_in" in filter:
+                types_list = filter["type__not_in"]
+                type_notin_placeholders = ", ".join([f":type_notin_{i}" for i in range(len(types_list))])
+                where_clauses.append(f"metadata->>'type' NOT IN ({type_notin_placeholders})")
+                for i, t in enumerate(types_list):
+                    params[f"type_notin_{i}"] = t
+
             # Generic metadata filters (future extensibility)
             for key, value in filter.items():
-                if key not in ["project_id", "type"]:
+                if key not in ["project_id", "type", "type__in", "type__not_in"]:
                     where_clauses.append(f"metadata->>'{key}' = :{key}")
                     params[key] = value
 

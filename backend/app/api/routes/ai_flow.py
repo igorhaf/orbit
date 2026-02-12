@@ -670,13 +670,19 @@ UTILITY_NODE_CATALOG = {
     "rag_context": {
         "type": "rag_context",
         "label": "RAG Context",
-        "description": "Enriches the prompt with semantic context from the RAG vector store.",
+        "description": "Enriches the prompt with semantic context from the RAG vector store. PROMPT #229: type filtering, deduplication, context compression, and reranking.",
         "icon": "search",
         "color": "#06b6d4",
         "default_config": {
             "max_results": 5,
             "similarity_threshold": 0.7,
             "include_metadata": True,
+            "filter_types": None,
+            "exclude_types": None,
+            "dedupe_threshold": 0.95,
+            "max_context_chars": 6000,
+            "compression_strategy": "key_sentences",
+            "rerank_top_k": 3,
         },
     },
     "prompt_transformer": {
@@ -708,7 +714,7 @@ UTILITY_NODE_CATALOG = {
     "retry": {
         "type": "retry",
         "label": "Retry",
-        "description": "Retries the same model with exponential backoff on transient failures.",
+        "description": "Retries the same model with exponential backoff on transient failures. Smart skip: permanent errors (401, 404) are never retried.",
         "icon": "refresh-cw",
         "color": "#3b82f6",
         "default_config": {
@@ -716,12 +722,13 @@ UTILITY_NODE_CATALOG = {
             "backoff_base_ms": 1000,
             "backoff_multiplier": 2.0,
             "retry_on": ["timeout", "rate_limit", "server_error"],
+            "skip_permanent_errors": True,
         },
     },
     "validator": {
         "type": "validator",
         "label": "Validator",
-        "description": "Validates AI output against rules (JSON schema, length, keywords, format).",
+        "description": "Validates AI output against rules (JSON schema, length, keywords, format). Auto-repair: attempts JSON fix before triggering retry.",
         "icon": "check-circle",
         "color": "#22c55e",
         "default_config": {
@@ -730,6 +737,7 @@ UTILITY_NODE_CATALOG = {
             "max_length": 0,
             "required_keywords": [],
             "retry_on_fail": True,
+            "auto_repair_json": True,
         },
     },
     "cost_guard": {

@@ -744,8 +744,16 @@ class AIOrchestrator:
 
         if chains_to_try:
             last_error = None
+            _skip_providers = set()  # PROMPT #229 - Smart fallback: skip providers on OOM
             for chain_source, chain_usage, chain_model_list in chains_to_try:
                 for chain_idx, chain_model_config in enumerate(chain_model_list):
+                    # PROMPT #229 - Smart fallback: skip providers flagged by previous failures
+                    if chain_model_config.get("provider") in _skip_providers:
+                        logger.warning(
+                            f"🔗 Chain skip [{chain_source}]: {chain_model_config['db_model_name']} "
+                            f"(provider {chain_model_config['provider']} flagged - GPU thrashing prevention)"
+                        )
+                        continue
                     _chain_ctx = {
                         "usage_type": chain_usage,
                         "position": chain_idx + 1,
@@ -899,11 +907,33 @@ class AIOrchestrator:
                                 else:
                                     logger.warning(f"⚠️ Retry Node: all {max_retries} retries exhausted")
 
+                        # PROMPT #229 - Attach observability metrics
+                        if _util_context.get("_rag_metrics"):
+                            result["rag_metrics"] = _util_context["_rag_metrics"]
+
                         return result
                     except Exception as e:
                         last_error = e
-                        # PROMPT #205 - Handle retry on transient errors (chain path)
-                        if _retry_config:
+                        # PROMPT #229 - Classify error for smart fallback
+                        from app.services.error_classifier import classify_error
+                        _error_class = classify_error(e)
+
+                        if _error_class == "oom" and chain_model_config.get("provider") == "ollama":
+                            logger.warning(
+                                f"🧠 OOM on Ollama model {chain_model_config['db_model_name']}. "
+                                f"Skipping ALL remaining Ollama models to prevent GPU thrashing."
+                            )
+                            _skip_providers.add("ollama")
+
+                        if _error_class == "permanent":
+                            logger.warning(
+                                f"🚫 Permanent error on {chain_model_config['db_model_name']}: "
+                                f"{str(e)[:100]}. Skipping to next model."
+                            )
+                            # Fall through to chain fallback (skip retry for permanent errors)
+                        elif _retry_config:
+                            # PROMPT #205 - Handle retry on transient errors (chain path)
+                            # PROMPT #229 - Only retry transient/oom errors, not permanent
                             error_str = str(e).lower()
                             retry_on = _retry_config.get("retry_on", [])
                             should_retry = any(
@@ -2033,10 +2063,13 @@ class AIOrchestrator:
 
         # PROMPT #221 - Build options with optional top_p/top_k
         # PROMPT #224 - Add num_ctx to limit context window
+        # PROMPT #229 - Ollama GPU optimization: num_gpu layers, keep_alive
         options = {
             "num_predict": max_tokens,
             "temperature": temperature,
             "num_ctx": 4096,
+            "num_gpu": 99,  # PROMPT #229 - Offload all layers to GPU for max throughput
+            "num_batch": 512,  # PROMPT #229 - Batch size for prompt eval (higher = faster, more VRAM)
         }
         if top_p is not None:
             options["top_p"] = top_p
@@ -2048,6 +2081,7 @@ class AIOrchestrator:
             "messages": ollama_messages,
             "stream": False,
             "options": options,
+            "keep_alive": "5m",  # PROMPT #229 - Keep model loaded for 5 min (prevents cold-start)
         }
 
         logger.info(f"🦙 Calling Ollama: {url} with model {model} (options={options})")
@@ -2478,10 +2512,13 @@ class AIOrchestrator:
 
         # PROMPT #221 - Build options with optional top_p/top_k
         # PROMPT #224 - Add num_ctx to limit context window (saves memory, speeds up inference)
+        # PROMPT #229 - Ollama GPU optimization: num_gpu layers, batch size
         options = {
             "num_predict": max_tokens,
             "temperature": temperature,
             "num_ctx": 4096,  # Limit context window (default is model max, wastes RAM)
+            "num_gpu": 99,  # PROMPT #229 - Offload all layers to GPU
+            "num_batch": 512,  # PROMPT #229 - Batch size for prompt eval
         }
         if top_p is not None:
             options["top_p"] = top_p
@@ -2494,6 +2531,7 @@ class AIOrchestrator:
             "messages": ollama_messages,
             "stream": True,
             "options": options,
+            "keep_alive": "5m",  # PROMPT #229 - Keep model loaded
         }
 
         effective_timeout = timeout_seconds or 300.0

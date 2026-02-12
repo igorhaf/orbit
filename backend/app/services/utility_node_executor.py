@@ -403,7 +403,14 @@ class UtilityNodeExecutor:
     # =========================================================================
 
     def _pre_rag_context(self, config: Dict, messages: List[Dict], context: Dict) -> List[Dict]:
-        """Retrieve and inject RAG context into messages."""
+        """Retrieve and inject RAG context into messages.
+
+        PROMPT #229 - Enhanced with:
+        - Type filtering (filter_types, exclude_types)
+        - Result deduplication (dedupe_threshold)
+        - Context compression (max_context_chars, compression_strategy)
+        - Reranking (rerank_top_k)
+        """
         if not self.rag_service:
             return messages
 
@@ -411,6 +418,14 @@ class UtilityNodeExecutor:
         threshold = config.get("similarity_threshold", 0.7)
         include_metadata = config.get("include_metadata", True)
         project_id = context.get("project_id")
+
+        # PROMPT #229 - New config options
+        filter_types = config.get("filter_types")
+        exclude_types = config.get("exclude_types")
+        dedupe_threshold = config.get("dedupe_threshold", 0.95)
+        max_context_chars = config.get("max_context_chars", 6000)
+        compression_strategy = config.get("compression_strategy", "key_sentences")
+        rerank_top_k = config.get("rerank_top_k")
 
         try:
             # Extract query from last user message
@@ -427,6 +442,12 @@ class UtilityNodeExecutor:
             if project_id:
                 filter_dict["project_id"] = project_id
 
+            # PROMPT #229 - Type inclusion/exclusion filtering
+            if filter_types:
+                filter_dict["type__in"] = filter_types
+            if exclude_types:
+                filter_dict["type__not_in"] = exclude_types
+
             rag_start = time.time()
             results = self.rag_service.retrieve(
                 query=query,
@@ -437,12 +458,32 @@ class UtilityNodeExecutor:
             retrieval_ms = (time.time() - rag_start) * 1000
 
             if results:
+                # PROMPT #229 - Deduplicate near-identical results
+                if dedupe_threshold < 1.0 and len(results) > 1:
+                    results = self._deduplicate_rag_results(results, dedupe_threshold)
+
+                # PROMPT #229 - Reranking: keep only top_k most relevant
+                if rerank_top_k and rerank_top_k < len(results):
+                    results = results[:rerank_top_k]
+
                 parts = []
                 for i, r in enumerate(results):
                     sim = f" (similarity: {r['similarity']:.2f})" if include_metadata else ""
                     parts.append(f"[{i+1}]{sim}\n{r['content']}")
 
                 rag_text = "\n\n".join(parts)
+
+                # PROMPT #229 - Context compression
+                original_len = len(rag_text)
+                if max_context_chars and len(rag_text) > max_context_chars:
+                    rag_text = self._compress_rag_context(
+                        rag_text, max_context_chars, compression_strategy
+                    )
+                    logger.info(
+                        f"📦 RAG Context compressed: {original_len} -> {len(rag_text)} chars "
+                        f"({compression_strategy})"
+                    )
+
                 rag_message = {
                     "role": "user",
                     "content": f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_text}\n\n[END CONTEXT]"
@@ -451,9 +492,19 @@ class UtilityNodeExecutor:
                 modified = list(messages)
                 modified.insert(-1, rag_message)
 
+                # PROMPT #229 - Enhanced metrics
+                context["_rag_metrics"] = {
+                    "retrieval_ms": round(retrieval_ms, 1),
+                    "docs_retrieved": len(results),
+                    "top_similarity": round(results[0]["similarity"], 3),
+                    "context_chars": len(rag_text),
+                    "compressed": original_len != len(rag_text),
+                }
+
                 logger.info(
                     f"🔍 RAG Context Node: {len(results)} docs injected "
-                    f"(top: {results[0]['similarity']:.2f}, {retrieval_ms:.0f}ms)"
+                    f"(top: {results[0]['similarity']:.2f}, {retrieval_ms:.0f}ms, "
+                    f"{len(rag_text)} chars)"
                 )
                 return modified
             else:
@@ -463,6 +514,133 @@ class UtilityNodeExecutor:
             logger.warning(f"⚠️ RAG Context Node error: {e}")
 
         return messages
+
+    @staticmethod
+    def _deduplicate_rag_results(results: List[Dict], threshold: float = 0.95) -> List[Dict]:
+        """Remove near-duplicate RAG results using character-level Jaccard similarity.
+
+        PROMPT #229 - Prevents injecting redundant context that wastes tokens.
+        """
+        if len(results) <= 1:
+            return results
+
+        deduplicated = [results[0]]
+        for r in results[1:]:
+            is_duplicate = False
+            r_words = set(r["content"].lower().split())
+            for kept in deduplicated:
+                k_words = set(kept["content"].lower().split())
+                if not r_words and not k_words:
+                    continue
+                intersection = len(r_words & k_words)
+                union = len(r_words | k_words)
+                similarity = intersection / union if union > 0 else 0
+                if similarity >= threshold:
+                    is_duplicate = True
+                    break
+            if not is_duplicate:
+                deduplicated.append(r)
+
+        if len(deduplicated) < len(results):
+            logger.info(
+                f"🔍 RAG dedup: {len(results)} -> {len(deduplicated)} results "
+                f"(threshold: {threshold})"
+            )
+        return deduplicated
+
+    @staticmethod
+    def _compress_rag_context(
+        rag_text: str, max_chars: int, strategy: str = "key_sentences"
+    ) -> str:
+        """Compress RAG context to fit within max_chars.
+
+        PROMPT #229 - Strategies:
+        - truncate: Simple cut with ellipsis
+        - key_sentences: Score sentences by position and length, keep best
+        - extractive: Keep first+last sentence per doc + highest-scoring middles
+        """
+        if len(rag_text) <= max_chars:
+            return rag_text
+
+        if strategy == "truncate":
+            return rag_text[:max_chars] + "\n[... truncated ...]"
+
+        import re
+
+        if strategy == "key_sentences":
+            # Split into sentences
+            sentences = re.split(r'(?<=[.!?])\s+', rag_text)
+            if not sentences:
+                return rag_text[:max_chars]
+
+            # Score each sentence: position weight + length weight
+            scored = []
+            total = len(sentences)
+            for idx, sent in enumerate(sentences):
+                score = 0.0
+                # Position: first and last sentences score highest
+                if idx == 0:
+                    score += 3.0
+                elif idx == total - 1:
+                    score += 2.0
+                elif idx < total * 0.3:
+                    score += 1.5  # Early sentences slightly preferred
+
+                # Length: medium-length sentences preferred (20-100 words)
+                word_count = len(sent.split())
+                if 20 <= word_count <= 100:
+                    score += 1.0
+                elif word_count >= 10:
+                    score += 0.5
+
+                # Boost sentences with document markers [N]
+                if re.match(r'^\[\d+\]', sent.strip()):
+                    score += 2.0
+
+                scored.append((score, idx, sent))
+
+            # Sort by score descending, pick until max_chars
+            scored.sort(key=lambda x: -x[0])
+            selected = []
+            current_len = 0
+            for score, idx, sent in scored:
+                if current_len + len(sent) + 2 > max_chars:
+                    continue
+                selected.append((idx, sent))
+                current_len += len(sent) + 2
+
+            # Restore original order
+            selected.sort(key=lambda x: x[0])
+            return "\n".join(s for _, s in selected)
+
+        if strategy == "extractive":
+            # Split by document markers [N]
+            docs = re.split(r'(?=\[\d+\])', rag_text)
+            docs = [d.strip() for d in docs if d.strip()]
+
+            compressed_parts = []
+            chars_per_doc = max_chars // max(len(docs), 1)
+
+            for doc in docs:
+                sentences = re.split(r'(?<=[.!?])\s+', doc)
+                if len(sentences) <= 2:
+                    compressed_parts.append(doc[:chars_per_doc])
+                else:
+                    # Keep first, last, and highest-scoring middle
+                    kept = [sentences[0], sentences[-1]]
+                    mid_budget = chars_per_doc - len(sentences[0]) - len(sentences[-1])
+                    for s in sentences[1:-1]:
+                        if mid_budget <= 0:
+                            break
+                        if len(s) <= mid_budget:
+                            kept.insert(-1, s)
+                            mid_budget -= len(s)
+                    compressed_parts.append(" ".join(kept))
+
+            return "\n\n".join(compressed_parts)
+
+        # Fallback: truncate
+        return rag_text[:max_chars] + "\n[... truncated ...]"
 
     # =========================================================================
     # PROMPT TRANSFORMER - Transform prompt before sending
@@ -594,30 +772,34 @@ class UtilityNodeExecutor:
     # =========================================================================
 
     def _post_validator(self, config: Dict, result: Dict) -> Dict:
-        """Validate AI output. Sets retry_needed flag if validation fails."""
+        """Validate AI output. Attempts autocorrection before triggering retry.
+
+        PROMPT #229 - Enhanced with JSON autocorrection:
+        1. Try parsing raw content
+        2. Try extracting from markdown code blocks
+        3. Try autocorrection (fix common LLM JSON errors)
+        4. Only trigger retry if all repair attempts fail
+        """
         validation_type = config.get("validation_type", "json")
         retry_on_fail = config.get("retry_on_fail", True)
+        auto_repair_json = config.get("auto_repair_json", True)  # PROMPT #229
         content = result.get("content", "")
 
         is_valid = True
         reason = ""
 
         if validation_type == "json":
-            try:
-                json.loads(content)
-            except (json.JSONDecodeError, TypeError):
-                # Try extracting JSON from markdown code blocks
-                import re
-                json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', content, re.DOTALL)
-                if json_match:
-                    try:
-                        json.loads(json_match.group(1))
-                    except (json.JSONDecodeError, TypeError):
-                        is_valid = False
-                        reason = "Response is not valid JSON"
-                else:
-                    is_valid = False
-                    reason = "Response is not valid JSON"
+            parsed = self._try_parse_json(content, auto_repair=auto_repair_json)
+            if parsed is not None:
+                # If autocorrection changed the content, update it
+                repaired = json.dumps(parsed, ensure_ascii=False)
+                if repaired != content:
+                    result["content"] = repaired
+                    result["json_auto_repaired"] = True
+                    logger.info(f"🔧 Validator Node: JSON auto-repaired successfully")
+            else:
+                is_valid = False
+                reason = "Response is not valid JSON (autocorrection failed)"
 
         elif validation_type == "length":
             max_length = config.get("max_length", 0)
@@ -650,6 +832,63 @@ class UtilityNodeExecutor:
 
         return result
 
+    @staticmethod
+    def _try_parse_json(content: str, auto_repair: bool = True) -> Optional[Any]:
+        """Attempt to parse JSON with multiple fallback strategies.
+
+        PROMPT #229 - JSON autocorrection reduces retry dependency:
+        1. Direct parse
+        2. Extract from markdown code blocks
+        3. Auto-repair common LLM errors (trailing commas, unquoted keys, etc.)
+        """
+        import re
+
+        # Strategy 1: Direct parse
+        try:
+            return json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            pass
+
+        # Strategy 2: Extract from markdown code blocks
+        json_match = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', content, re.DOTALL)
+        if json_match:
+            try:
+                return json.loads(json_match.group(1))
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        if not auto_repair:
+            return None
+
+        # Strategy 3: Find the outermost JSON object/array in content
+        text = content.strip()
+        # Try to find JSON between first { and last } or first [ and last ]
+        for open_char, close_char in [('{', '}'), ('[', ']')]:
+            start = text.find(open_char)
+            end = text.rfind(close_char)
+            if start != -1 and end != -1 and end > start:
+                candidate = text[start:end + 1]
+                try:
+                    return json.loads(candidate)
+                except (json.JSONDecodeError, TypeError):
+                    # Strategy 4: Auto-repair common errors
+                    repaired = candidate
+                    # Fix trailing commas before } or ]
+                    repaired = re.sub(r',\s*([}\]])', r'\1', repaired)
+                    # Fix single quotes → double quotes (careful with apostrophes)
+                    repaired = re.sub(r"(?<!\\)'([^']*)'(?=\s*:)", r'"\1"', repaired)
+                    repaired = re.sub(r":\s*'([^']*)'", r': "\1"', repaired)
+                    # Fix unquoted keys
+                    repaired = re.sub(r'(\{|,)\s*(\w+)\s*:', r'\1 "\2":', repaired)
+                    # Fix newlines inside strings
+                    repaired = re.sub(r'(?<=": ")([^"]*)\n([^"]*")', r'\1\\n\2', repaired)
+                    try:
+                        return json.loads(repaired)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+        return None
+
     # =========================================================================
     # RETRY - Handled in orchestrator (sets flag for retry loop)
     # =========================================================================
@@ -665,5 +904,6 @@ class UtilityNodeExecutor:
                     "backoff_base_ms": config.get("backoff_base_ms", 1000),
                     "backoff_multiplier": config.get("backoff_multiplier", 2.0),
                     "retry_on": config.get("retry_on", ["timeout", "rate_limit", "server_error"]),
+                    "skip_permanent_errors": config.get("skip_permanent_errors", True),  # PROMPT #229
                 }
         return None

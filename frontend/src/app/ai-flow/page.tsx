@@ -713,6 +713,61 @@ function EditUtilityNodeDialog({
               />
               <label htmlFor="include-metadata" className="text-sm text-gray-700">Include Metadata</label>
             </div>
+            <div className="border-t border-gray-200 pt-3 mt-3">
+              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">PROMPT #229 - RAG Optimization</p>
+            </div>
+            <Input
+              label="Filter Types (comma-separated)"
+              placeholder="e.g., spec, business_rule, feature"
+              value={config.filter_types ?? ''}
+              onChange={(e) => updateConfig('filter_types', e.target.value || null)}
+              helperText="Only include these document types. Leave empty for all."
+            />
+            <Input
+              label="Exclude Types (comma-separated)"
+              placeholder="e.g., commit, log"
+              value={config.exclude_types ?? ''}
+              onChange={(e) => updateConfig('exclude_types', e.target.value || null)}
+              helperText="Exclude these document types from results."
+            />
+            <Input
+              label="Deduplication Threshold (0-1)"
+              type="number"
+              min="0"
+              max="1"
+              step="0.05"
+              value={config.dedupe_threshold ?? 0.95}
+              onChange={(e) => updateConfig('dedupe_threshold', parseFloat(e.target.value) || 0.95)}
+              helperText="Jaccard similarity above this removes duplicate docs."
+            />
+            <Input
+              label="Max Context Chars"
+              type="number"
+              min="500"
+              step="500"
+              value={config.max_context_chars ?? 6000}
+              onChange={(e) => updateConfig('max_context_chars', parseInt(e.target.value) || 6000)}
+              helperText="Compress context to this size before sending to LLM."
+            />
+            <Select
+              label="Compression Strategy"
+              value={config.compression_strategy ?? 'key_sentences'}
+              onChange={(e) => updateConfig('compression_strategy', e.target.value)}
+              options={[
+                { value: 'key_sentences', label: 'Key Sentences (score by position + length)' },
+                { value: 'extractive', label: 'Extractive (first + last + best middles)' },
+                { value: 'truncate', label: 'Truncate (simple cut at max chars)' },
+              ]}
+            />
+            <Input
+              label="Rerank Top K"
+              type="number"
+              min="1"
+              max="20"
+              value={config.rerank_top_k ?? 3}
+              onChange={(e) => updateConfig('rerank_top_k', parseInt(e.target.value) || 3)}
+              helperText="After initial retrieval, keep only the top K most relevant docs."
+            />
           </>
         );
 
@@ -812,6 +867,17 @@ function EditUtilityNodeDialog({
               value={config.backoff_multiplier ?? 2.0}
               onChange={(e) => updateConfig('backoff_multiplier', parseFloat(e.target.value) || 2.0)}
             />
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="skip-permanent-errors"
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                checked={config.skip_permanent_errors ?? true}
+                onChange={(e) => updateConfig('skip_permanent_errors', e.target.checked)}
+              />
+              <label htmlFor="skip-permanent-errors" className="text-sm text-gray-700">Skip Permanent Errors (401, 404)</label>
+            </div>
+            <p className="text-xs text-gray-500 ml-6">When enabled, permanent errors are never retried - falls through directly to chain fallback.</p>
           </>
         );
 
@@ -852,6 +918,17 @@ function EditUtilityNodeDialog({
               />
               <label htmlFor="retry-on-fail" className="text-sm text-gray-700">Retry on Validation Failure</label>
             </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="auto-repair-json"
+                className="h-4 w-4 text-blue-600 border-gray-300 rounded"
+                checked={config.auto_repair_json ?? true}
+                onChange={(e) => updateConfig('auto_repair_json', e.target.checked)}
+              />
+              <label htmlFor="auto-repair-json" className="text-sm text-gray-700">Auto-repair JSON</label>
+            </div>
+            <p className="text-xs text-gray-500 ml-6">Attempt to fix malformed JSON (trailing commas, single quotes, code blocks) before triggering retry.</p>
           </>
         );
 
