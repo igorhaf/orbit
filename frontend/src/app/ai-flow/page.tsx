@@ -1063,6 +1063,73 @@ const UTILITY_TYPE_TO_NODE_TYPE: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
+// PROMPT #225 - Pipeline classification & edge helper
+// ---------------------------------------------------------------------------
+
+// Utility nodes that execute BEFORE the AI model call
+const PRE_PROCESS_TYPES = ['cache', 'rag_context', 'prompt_transformer', 'router', 'rate_limiter', 'timeout'];
+// Utility nodes that execute AFTER the AI model call
+const POST_PROCESS_TYPES = ['retry', 'validator', 'cost_guard'];
+
+interface EdgeProps {
+  label: string;
+  color: string;
+  strokeWidth: number;
+  dashed: boolean;
+  animated: boolean;
+}
+
+function computeEdgeProps(
+  sourceId: string,
+  targetId: string,
+  chainModels: AIFlowChainModel[],
+  preNodes: AIFlowUtilityNode[],
+  postNodes: AIFlowUtilityNode[],
+  animationsMap?: Record<string, NodeAnimationState>,
+): EdgeProps {
+  const isSourceModel = sourceId.startsWith('model-');
+  const isTargetModel = targetId.startsWith('model-');
+  const firstModelId = chainModels.length > 0 ? `model-${chainModels[0].id}` : null;
+  const lastModelId = chainModels.length > 0 ? `model-${chainModels[chainModels.length - 1].id}` : null;
+  const allUtility = [...preNodes, ...postNodes];
+  const targetUtility = allUtility.find((n) => n.id === targetId);
+  const isAnimating = animationsMap?.[targetId] === 'executing';
+
+  // Edge going TO the first model (the "try" edge)
+  if (targetId === firstModelId && !isSourceModel) {
+    return { label: 'try', color: '#3b82f6', strokeWidth: isAnimating ? 3 : 2, dashed: false, animated: true };
+  }
+
+  // Model-to-model fallback
+  if (isSourceModel && isTargetModel) {
+    return { label: 'fallback', color: isAnimating ? '#3b82f6' : '#f59e0b', strokeWidth: isAnimating ? 3 : 2, dashed: false, animated: true };
+  }
+
+  // Last model → first post-process or response
+  if (sourceId === lastModelId && !isTargetModel && targetId !== 'error') {
+    if (targetId === 'response') {
+      return { label: 'success', color: '#22c55e', strokeWidth: 2, dashed: false, animated: false };
+    }
+    const utilColor = targetUtility ? (UTILITY_NODE_COLORS[targetUtility.type] || '#6b7280') : '#22c55e';
+    return { label: targetUtility ? targetUtility.type.replace(/_/g, ' ') : 'process', color: utilColor, strokeWidth: 1.5, dashed: false, animated: false };
+  }
+
+  // Any node → Response (final edge)
+  if (targetId === 'response') {
+    return { label: 'done', color: '#22c55e', strokeWidth: 2, dashed: false, animated: false };
+  }
+
+  // Utility-to-utility or start-to-utility edges
+  if (targetUtility) {
+    const utilColor = UTILITY_NODE_COLORS[targetUtility.type] || '#6b7280';
+    return { label: targetUtility.type.replace(/_/g, ' '), color: utilColor, strokeWidth: 1.5, dashed: false, animated: false };
+  }
+
+  // Fallback
+  return { label: '', color: '#6b7280', strokeWidth: 1.5, dashed: false, animated: false };
+}
+
+// ---------------------------------------------------------------------------
 // Build ReactFlow nodes & edges from chain
 // ---------------------------------------------------------------------------
 
@@ -1078,14 +1145,28 @@ function buildFlowFromChain(
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  const SPACING_X = 300;
+  // PROMPT #225 - Linear pipeline layout constants
+  const MODEL_SPACING_X = 300;
+  const UTILITY_SPACING_X = 230;
   const START_X = 50;
-  const Y = 150;
-  const UTILITY_Y_TOP = -20;
-  const UTILITY_Y_BOTTOM = 320;
+  const MAIN_Y = 150;
+  const ERROR_Y_OFFSET = 200;
 
-  // Start node
-  const startPos = savedPositions?.['start'] || { x: START_X, y: Y };
+  // --- Classify utility nodes into pre/post-process ---
+  const preNodes: AIFlowUtilityNode[] = [];
+  const postNodes: AIFlowUtilityNode[] = [];
+  if (utilityNodes) {
+    for (const uNode of utilityNodes) {
+      if (!UTILITY_TYPE_TO_NODE_TYPE[uNode.type]) continue;
+      if (PRE_PROCESS_TYPES.includes(uNode.type)) preNodes.push(uNode);
+      else if (POST_PROCESS_TYPES.includes(uNode.type)) postNodes.push(uNode);
+    }
+  }
+
+  let cursorX = START_X;
+
+  // --- 1. Start node (blue circle) ---
+  const startPos = savedPositions?.['start'] || { x: cursorX, y: MAIN_Y };
   nodes.push({
     id: 'start',
     type: 'input',
@@ -1105,11 +1186,35 @@ function buildFlowFromChain(
       border: 'none',
     },
   });
+  cursorX += preNodes.length > 0 ? UTILITY_SPACING_X : MODEL_SPACING_X;
 
-  // Model nodes
+  // --- 2. Pre-process utility nodes ---
+  for (const uNode of preNodes) {
+    const rfNodeType = UTILITY_TYPE_TO_NODE_TYPE[uNode.type];
+    const defaultPos = { x: cursorX, y: MAIN_Y - 10 };
+    const pos = savedPositions?.[uNode.id] || uNode.position || defaultPos;
+    nodes.push({
+      id: uNode.id,
+      type: rfNodeType,
+      data: {
+        ...uNode,
+        onRemove: onRemoveUtility ? () => onRemoveUtility(uNode.id) : undefined,
+      },
+      position: pos,
+    });
+    cursorX += UTILITY_SPACING_X;
+  }
+
+  // Extra gap between pre-process and models for visual separation
+  if (preNodes.length > 0 && chainModels.length > 0) {
+    cursorX += 40;
+  }
+
+  // --- 3. Model nodes ---
+  let lastModelNodeX = cursorX;
   chainModels.forEach((model, index) => {
     const nodeId = `model-${model.id}`;
-    const defaultPos = { x: START_X + SPACING_X * (index + 1), y: Y - 20 };
+    const defaultPos = { x: cursorX, y: MAIN_Y - 20 };
     const pos = savedPositions?.[nodeId] || defaultPos;
     nodes.push({
       id: nodeId,
@@ -1123,43 +1228,45 @@ function buildFlowFromChain(
       },
       position: pos,
     });
-
-    const sourceId = index === 0 ? 'start' : `model-${chainModels[index - 1].id}`;
-    const isActive = animationsMap?.[nodeId] === 'executing';
-    edges.push({
-      id: `edge-${sourceId}-${nodeId}`,
-      source: sourceId,
-      target: nodeId,
-      label: index === 0 ? 'try' : 'fallback',
-      labelStyle: { fontSize: 11, fontWeight: 600 },
-      labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
-      animated: true,
-      style: {
-        stroke: isActive ? '#3b82f6' : (index === 0 ? '#3b82f6' : '#f59e0b'),
-        strokeWidth: isActive ? 3 : 2,
-      },
-      markerEnd: {
-        type: MarkerType.ArrowClosed,
-        color: isActive ? '#3b82f6' : (index === 0 ? '#3b82f6' : '#f59e0b'),
-      },
-    });
+    lastModelNodeX = cursorX;
+    cursorX += MODEL_SPACING_X;
   });
 
-  // Error/End node
-  const lastSourceId = chainModels.length > 0 ? `model-${chainModels[chainModels.length - 1].id}` : 'start';
-  const errorDefaultPos = { x: START_X + SPACING_X * (chainModels.length + 1), y: Y };
-  const errorPos = savedPositions?.['error'] || errorDefaultPos;
+  // Extra gap between models and post-process
+  if (chainModels.length > 0 && postNodes.length > 0) {
+    cursorX += 40;
+  }
+
+  // --- 4. Post-process utility nodes ---
+  for (const uNode of postNodes) {
+    const rfNodeType = UTILITY_TYPE_TO_NODE_TYPE[uNode.type];
+    const defaultPos = { x: cursorX, y: MAIN_Y - 10 };
+    const pos = savedPositions?.[uNode.id] || uNode.position || defaultPos;
+    nodes.push({
+      id: uNode.id,
+      type: rfNodeType,
+      data: {
+        ...uNode,
+        onRemove: onRemoveUtility ? () => onRemoveUtility(uNode.id) : undefined,
+      },
+      position: pos,
+    });
+    cursorX += UTILITY_SPACING_X;
+  }
+
+  // --- 5. Response node (green circle) ---
+  const responsePos = savedPositions?.['response'] || { x: cursorX, y: MAIN_Y };
   nodes.push({
-    id: 'error',
+    id: 'response',
     type: 'output',
-    data: { label: 'Error' },
-    position: errorPos,
+    data: { label: 'Response' },
+    position: responsePos,
     style: {
-      background: '#ef4444',
+      background: '#22c55e',
       color: 'white',
-      borderRadius: '8px',
+      borderRadius: '50%',
       width: 80,
-      height: 50,
+      height: 80,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -1169,79 +1276,76 @@ function buildFlowFromChain(
     },
   });
 
-  edges.push({
-    id: `edge-${lastSourceId}-error`,
-    source: lastSourceId,
-    target: 'error',
-    label: 'all failed',
-    labelStyle: { fontSize: 10, fontWeight: 500 },
-    labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
-    style: { stroke: '#ef4444', strokeWidth: 1.5, strokeDasharray: '5,5' },
-    markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' },
-    animated: false,
-  });
+  // --- 6. Error node (below the model chain, only when models exist) ---
+  if (chainModels.length > 0) {
+    const errorDefaultPos = { x: lastModelNodeX, y: MAIN_Y + ERROR_Y_OFFSET };
+    const errorPos = savedPositions?.['error'] || errorDefaultPos;
+    nodes.push({
+      id: 'error',
+      type: 'output',
+      data: { label: 'Error' },
+      position: errorPos,
+      style: {
+        background: '#ef4444',
+        color: 'white',
+        borderRadius: '8px',
+        width: 80,
+        height: 50,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontWeight: 700,
+        fontSize: '13px',
+        border: 'none',
+      },
+    });
+  }
 
-  // PROMPT #204 - Utility nodes (positioned above/below the main chain)
-  if (utilityNodes && utilityNodes.length > 0) {
-    const preProcessTypes = ['cache', 'rag_context', 'prompt_transformer', 'router', 'rate_limiter'];
-    const postProcessTypes = ['retry', 'validator', 'cost_guard'];
+  // --- 7. Build pipeline edges (linear chain) ---
+  const pipeline: string[] = ['start'];
+  preNodes.forEach((n) => pipeline.push(n.id));
+  chainModels.forEach((m) => pipeline.push(`model-${m.id}`));
+  postNodes.forEach((n) => pipeline.push(n.id));
+  pipeline.push('response');
 
-    let topIndex = 0;
-    let bottomIndex = 0;
+  for (let i = 0; i < pipeline.length - 1; i++) {
+    const sourceId = pipeline[i];
+    const targetId = pipeline[i + 1];
+    const props = computeEdgeProps(sourceId, targetId, chainModels, preNodes, postNodes, animationsMap);
 
-    utilityNodes.forEach((uNode) => {
-      const rfNodeType = UTILITY_TYPE_TO_NODE_TYPE[uNode.type];
-      if (!rfNodeType) return;
+    edges.push({
+      id: `edge-${sourceId}-${targetId}`,
+      source: sourceId,
+      target: targetId,
+      label: props.label,
+      labelStyle: {
+        fontSize: (props.label === 'try' || props.label === 'fallback') ? 11 : 9,
+        fontWeight: (props.label === 'try' || props.label === 'fallback') ? 600 : 500,
+      },
+      labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
+      animated: props.animated,
+      style: {
+        stroke: props.color,
+        strokeWidth: props.strokeWidth,
+        ...(props.dashed ? { strokeDasharray: '4,4' } : {}),
+      },
+      markerEnd: { type: MarkerType.ArrowClosed, color: props.color },
+    });
+  }
 
-      const isPre = preProcessTypes.includes(uNode.type);
-      let defaultPos: { x: number; y: number };
-      if (isPre) {
-        defaultPos = { x: START_X + 120 + topIndex * 250, y: UTILITY_Y_TOP };
-        topIndex++;
-      } else {
-        defaultPos = { x: START_X + 120 + bottomIndex * 250, y: UTILITY_Y_BOTTOM };
-        bottomIndex++;
-      }
-
-      const pos = savedPositions?.[uNode.id] || uNode.position || defaultPos;
-
-      nodes.push({
-        id: uNode.id,
-        type: rfNodeType,
-        data: {
-          ...uNode,
-          onRemove: onRemoveUtility ? () => onRemoveUtility(uNode.id) : undefined,
-        },
-        position: pos,
-      });
-
-      // Connect utility nodes: pre-process connects from start, post-process connects to error
-      const color = UTILITY_NODE_COLORS[uNode.type] || '#6b7280';
-      if (isPre) {
-        edges.push({
-          id: `edge-start-${uNode.id}`,
-          source: 'start',
-          target: uNode.id,
-          label: uNode.type.replace('_', ' '),
-          labelStyle: { fontSize: 9, fontWeight: 500 },
-          labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
-          style: { stroke: color, strokeWidth: 1.5, strokeDasharray: '4,4' },
-          markerEnd: { type: MarkerType.ArrowClosed, color },
-          animated: false,
-        });
-      } else {
-        edges.push({
-          id: `edge-${uNode.id}-error`,
-          source: uNode.id,
-          target: 'error',
-          label: uNode.type.replace('_', ' '),
-          labelStyle: { fontSize: 9, fontWeight: 500 },
-          labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
-          style: { stroke: color, strokeWidth: 1.5, strokeDasharray: '4,4' },
-          markerEnd: { type: MarkerType.ArrowClosed, color },
-          animated: false,
-        });
-      }
+  // --- 8. "All failed" edge from last model to Error ---
+  if (chainModels.length > 0) {
+    const lastModelId = `model-${chainModels[chainModels.length - 1].id}`;
+    edges.push({
+      id: `edge-${lastModelId}-error`,
+      source: lastModelId,
+      target: 'error',
+      label: 'all failed',
+      labelStyle: { fontSize: 10, fontWeight: 500 },
+      labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
+      style: { stroke: '#ef4444', strokeWidth: 1.5, strokeDasharray: '5,5' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' },
+      animated: false,
     });
   }
 
