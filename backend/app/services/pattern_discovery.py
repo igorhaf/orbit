@@ -99,34 +99,11 @@ class PatternDiscoveryService:
         file_groups = self._group_files(file_inventory)
         logger.info(f"📂 Created {len(file_groups)} file groups")
 
-        # Step 3: AI-powered pattern discovery
-        discovered_patterns = []
-
-        for group_key, file_group in file_groups.items():
-            if len(file_group.file_paths) < min_occurrences:
-                logger.debug(f"⏭️  Skipping {group_key}: only {len(file_group.file_paths)} files")
-                continue
-
-            logger.info(f"🤖 Analyzing group: {group_key} ({len(file_group.file_paths)} files)")
-
-            # Sample representative files
-            sampled_files = self._sample_files(project_path, file_group.file_paths, max_samples=5)
-
-            # Ask AI to identify pattern
-            pattern = await self._ai_discover_pattern(
-                group_key,
-                sampled_files,
-                file_group,
-                project_id
-            )
-
-            if pattern:
-                pattern.occurrences = len(file_group.file_paths)
-                pattern.sample_files = [str(f) for f in file_group.file_paths[:5]]
-                discovered_patterns.append(pattern)
-                logger.info(f"   ✅ Pattern found: {pattern.title} (confidence: {pattern.confidence_score:.2f})")
-            else:
-                logger.debug(f"   ❌ No pattern identified for {group_key}")
+        # PROMPT #234 - Staged pattern discovery pipeline
+        # Replaces per-group AI call with: static extraction + clustering + graph + AI fallback
+        discovered_patterns = await self._staged_pattern_pipeline(
+            project_path, file_groups, project_id, min_occurrences
+        )
 
         # Step 4: Rank patterns by significance
         ranked = self._rank_patterns(discovered_patterns)
@@ -142,6 +119,134 @@ class PatternDiscoveryService:
         logger.info(f"💾 Saved {len(saved_specs)} patterns to database (specs table)")
 
         return final_patterns
+
+    # ------------------------------------------------------------------
+    # PROMPT #234 - Staged Pattern Pipeline
+    # ------------------------------------------------------------------
+
+    async def _staged_pattern_pipeline(
+        self,
+        project_path: Path,
+        file_groups: Dict[str, FileGroup],
+        project_id: UUID,
+        min_occurrences: int = 3,
+    ) -> List[DiscoveredPattern]:
+        """
+        Three-stage pattern detection pipeline (PROMPT #234).
+        Stage 1: Static extraction (no AI)
+        Stage 2: Clustering (no AI)
+        Stage 3: Knowledge graph (no AI)
+        Stage 4: LLM interpretation (only for ambiguous/uncovered groups)
+        """
+        from app.services.static_pattern_extractor import StaticPatternExtractor
+        from app.services.pattern_clusterer import PatternClusterer
+        from app.services.knowledge_graph_builder import KnowledgeGraphBuilder
+
+        # Filter eligible groups
+        eligible_groups = {
+            k: v for k, v in file_groups.items()
+            if len(v.file_paths) >= min_occurrences
+        }
+
+        if not eligible_groups:
+            return []
+
+        total_groups = len(eligible_groups)
+
+        # Stage 1: Static pattern extraction
+        logger.info(f"Stage 1: Static pattern extraction ({total_groups} groups)...")
+        static_extractor = StaticPatternExtractor()
+        static_patterns = static_extractor.extract_patterns(
+            project_path, eligible_groups
+        )
+        symbols_by_file = static_extractor.last_symbols_by_file
+
+        # Stage 2: Statistical clustering
+        logger.info("Stage 2: Statistical clustering...")
+        clusterer = PatternClusterer()
+        clusters = clusterer.cluster_files(symbols_by_file, eligible_groups)
+        enriched_patterns = clusterer.merge_with_static_patterns(clusters, static_patterns)
+
+        # Stage 3: Knowledge graph analysis
+        logger.info("Stage 3: Knowledge graph analysis...")
+        graph_builder = KnowledgeGraphBuilder()
+        graph_summary = graph_builder.build_graph(symbols_by_file, project_path)
+        graph_patterns = graph_builder.convert_to_patterns(graph_summary)
+
+        # Merge all static patterns
+        all_static = enriched_patterns + graph_patterns
+
+        # Separate high-confidence from ambiguous
+        high_confidence = [p for p in all_static if p.is_high_confidence]
+        ambiguous = [p for p in all_static if not p.is_high_confidence]
+
+        # Identify groups still uncovered by static analysis
+        covered_groups = {p.group_key for p in all_static if not p.group_key.startswith("graph:")}
+        uncovered_groups = [k for k in eligible_groups if k not in covered_groups]
+
+        # Groups needing AI: uncovered + low-confidence ambiguous
+        groups_needing_ai = list(uncovered_groups)
+        for p in ambiguous:
+            if p.confidence_score < 0.5 and p.group_key not in groups_needing_ai and not p.group_key.startswith("graph:"):
+                groups_needing_ai.append(p.group_key)
+
+        logger.info(
+            f"Staged results: {len(high_confidence)} high-confidence, "
+            f"{len(ambiguous)} ambiguous, {len(uncovered_groups)} uncovered. "
+            f"Stage 4: LLM for {len(groups_needing_ai)}/{total_groups} groups "
+            f"(skipped {total_groups - len(groups_needing_ai)} AI calls)"
+        )
+
+        # Stage 4: LLM only for ambiguous + uncovered
+        ai_patterns: List[DiscoveredPattern] = []
+        for group_key in groups_needing_ai:
+            if group_key not in eligible_groups:
+                continue
+            file_group = eligible_groups[group_key]
+            logger.info(f"Stage 4 AI: {group_key} ({len(file_group.file_paths)} files)")
+            sampled_files = self._sample_files(project_path, file_group.file_paths, max_samples=5)
+            pattern = await self._ai_discover_pattern(
+                group_key, sampled_files, file_group, project_id
+            )
+            if pattern:
+                pattern.occurrences = len(file_group.file_paths)
+                pattern.sample_files = [str(f) for f in file_group.file_paths[:5]]
+                ai_patterns.append(pattern)
+                logger.info(f"   AI pattern: {pattern.title} (confidence: {pattern.confidence_score:.2f})")
+
+        # Convert static patterns to DiscoveredPattern for backward compatibility
+        converted = [self._static_to_discovered(p) for p in high_confidence]
+
+        # Also convert medium-confidence ambiguous NOT sent to AI
+        for p in ambiguous:
+            if p.group_key not in groups_needing_ai and p.confidence_score >= 0.5:
+                converted.append(self._static_to_discovered(p))
+
+        return converted + ai_patterns
+
+    @staticmethod
+    def _static_to_discovered(p) -> DiscoveredPattern:
+        """Convert a StaticPattern to DiscoveredPattern for backward compatibility."""
+        group_parts = p.group_key.split(":")
+        category = group_parts[1] if len(group_parts) > 1 else "custom"
+        name = group_parts[0].lstrip(".") if len(group_parts) > 1 else p.title.lower().replace(" ", "_")
+
+        return DiscoveredPattern(
+            category=category,
+            name=name,
+            spec_type=p.pattern_type,
+            title=p.title,
+            description=p.description,
+            template_content=p.template_content,
+            language=p.language or "multi",
+            confidence_score=p.confidence_score,
+            reasoning=f"Detected via {p.detection_method}: {'; '.join(p.evidence[:3])}",
+            key_characteristics=p.key_characteristics,
+            is_framework_worthy=False,
+            occurrences=p.occurrences,
+            sample_files=p.evidence[:5],
+            discovery_method=p.detection_method,
+        )
 
     def _build_file_inventory(self, project_path: Path) -> List[Path]:
         """
