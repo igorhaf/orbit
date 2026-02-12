@@ -1,6 +1,7 @@
 """
 Service para gerar mensagens de commit automáticas usando IA (Gemini)
 Analisa mudanças e gera commits seguindo Conventional Commits
+PROMPT #233 - Refactored with diff complexity analyzer, change summarizer, PromptLoader
 """
 
 from typing import Dict
@@ -13,8 +14,10 @@ import logging
 from app.models.task import Task
 from app.models.commit import Commit
 from app.models.chat_session import ChatSession
-# PROMPT #103 - External prompts support
-from app.prompts import get_prompt_service
+# PROMPT #233 - Structured change summarization + diff complexity analysis
+from app.services.commit_change_summarizer import summarize_changes
+from app.services.commit_diff_analyzer import analyze_commit_complexity
+from app.prompts.loader import PromptLoader
 
 logger = logging.getLogger(__name__)
 
@@ -62,27 +65,43 @@ class CommitGenerator:
         if not session or not session.messages:
             raise ValueError("No conversation found for this task")
 
-        # 3. Extrair resumo das mudanças
-        changes_summary = self._extract_changes_summary(session.messages)
+        # 3. PROMPT #233 - Structured change summarization
+        changes_summary = summarize_changes(session.messages, task.title)
 
-        # 4. Criar prompt para IA gerar commit
-        commit_prompt = self._create_commit_prompt(task, changes_summary)
+        # 4. PROMPT #233 - Diff complexity analysis for model routing
+        complexity = analyze_commit_complexity(
+            changes_summary, task.title, task.description
+        )
 
-        # 5. Usar orquestrador (vai usar Gemini!)
+        # 5. PROMPT #233 - Use PromptLoader instead of hardcoded prompt
+        loader = PromptLoader()
+        _, commit_prompt = loader.render("commits/commit_message", {
+            "task_title": task.title,
+            "task_description": task.description or "No description",
+            "task_status": task.status.value,
+            "changes": changes_summary,
+        })
+
+        # 6. Usar orquestrador with complexity-based routing
         orchestrator = AIOrchestrator(db)
 
-        logger.info("Calling AI Orchestrator for commit generation (will use Gemini)...")
+        logger.info(
+            f"Calling AI Orchestrator for commit generation "
+            f"(complexity={complexity['complexity']}, tier={complexity['recommended_tier']})"
+        )
         response = await orchestrator.execute(
-            usage_type="commit_generation",  # Usa Gemini!
+            usage_type="commit_generation",
             messages=[{
                 "role": "user",
                 "content": commit_prompt
             }],
-            max_tokens=500,
-            # PROMPT #58 - Add context for prompt logging
+            max_tokens=complexity["estimated_tokens"],
             project_id=task.project_id,
             task_id=task.id,
-            metadata={"chat_session_id": chat_session_id}
+            metadata={
+                "chat_session_id": chat_session_id,
+                "query_classification": complexity,
+            }
         )
 
         logger.info(f"Received commit from {response['provider']} ({response['model']})")
@@ -141,10 +160,21 @@ class CommitGenerator:
         if not task:
             raise ValueError(f"Task {task_id} not found")
 
-        # Criar prompt
-        commit_prompt = self._create_commit_prompt(task, changes_description)
+        # PROMPT #233 - Diff complexity analysis for model routing
+        complexity = analyze_commit_complexity(
+            changes_description, task.title, task.description
+        )
 
-        # Usar orquestrador
+        # PROMPT #233 - Use PromptLoader instead of hardcoded prompt
+        loader = PromptLoader()
+        _, commit_prompt = loader.render("commits/commit_message", {
+            "task_title": task.title,
+            "task_description": task.description or "No description",
+            "task_status": task.status.value,
+            "changes": changes_description,
+        })
+
+        # Usar orquestrador with complexity-based routing
         orchestrator = AIOrchestrator(db)
 
         response = await orchestrator.execute(
@@ -153,11 +183,14 @@ class CommitGenerator:
                 "role": "user",
                 "content": commit_prompt
             }],
-            max_tokens=500,
-            # PROMPT #58 - Add context for prompt logging
+            max_tokens=complexity["estimated_tokens"],
             project_id=task.project_id,
             task_id=task.id,
-            metadata={"manual": True, "changes_description": changes_description}
+            metadata={
+                "manual": True,
+                "changes_description": changes_description,
+                "query_classification": complexity,
+            }
         )
 
         # Parse e salvar
@@ -180,92 +213,6 @@ class CommitGenerator:
         logger.info(f"✅ Manual commit generated: {commit.message}")
 
         return commit
-
-    def _extract_changes_summary(self, messages: list) -> str:
-        """
-        Extrai resumo das mudanças da conversa
-
-        Args:
-            messages: Lista de mensagens da chat session
-
-        Returns:
-            Resumo das mudanças
-        """
-        # Pegar últimas mensagens do assistente (onde está o código/solução)
-        assistant_messages = [
-            msg["content"]
-            for msg in messages
-            if msg.get("role") == "assistant"
-        ]
-
-        if not assistant_messages:
-            return "Task completed"
-
-        # Usar última mensagem como contexto principal
-        last_message = assistant_messages[-1]
-
-        # Limitar tamanho (primeiros 800 caracteres)
-        return last_message[:800] if len(last_message) > 800 else last_message
-
-    def _create_commit_prompt(self, task: Task, changes: str) -> str:
-        """
-        Cria prompt para IA gerar commit message
-
-        Args:
-            task: Task a ser commitada
-            changes: Descrição das mudanças
-
-        Returns:
-            Prompt formatado
-        """
-        return f"""Generate a professional git commit message following Conventional Commits specification.
-
-TASK INFORMATION:
-Title: {task.title}
-Description: {task.description or 'No description'}
-Status: {task.status.value}
-
-CHANGES MADE:
-{changes}
-
-CONVENTIONAL COMMIT TYPES:
-- feat: New feature
-- fix: Bug fix
-- docs: Documentation only
-- style: Code style/formatting (no logic change)
-- refactor: Code refactoring
-- test: Adding tests
-- chore: Maintenance, dependencies
-- perf: Performance improvement
-
-FORMAT:
-type(scope): subject
-
-RULES:
-1. Subject in lowercase
-2. No period at end
-3. Maximum 72 characters
-4. Be specific and clear
-5. Use English
-6. Use imperative mood (e.g., "add" not "added")
-
-EXAMPLES:
-- feat(auth): implement JWT authentication
-- fix(api): resolve database connection timeout
-- docs(readme): update installation guide
-- refactor(user): simplify profile update logic
-- perf(query): optimize database indexes
-
-RESPONSE FORMAT (JSON):
-{{
-  "type": "feat",
-  "scope": "auth",
-  "subject": "implement JWT authentication",
-  "description": "Brief explanation of what was done"
-}}
-
-Generate the commit message based on the task and changes above.
-Return ONLY the JSON, no markdown or extra text."""
 
     def _parse_commit_response(self, response_text: str) -> Dict:
         """

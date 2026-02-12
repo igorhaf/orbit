@@ -1,0 +1,203 @@
+"""
+PROMPT #233 - Change Summarizer for Commit Generation
+Pre-processes chat session messages into structured change summaries
+before LLM commit generation. Replaces the naive last-800-char extraction.
+"""
+
+import re
+import logging
+from typing import Dict, List, Optional, Tuple
+from collections import defaultdict
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Intent detection patterns
+# ---------------------------------------------------------------------------
+
+INTENT_PATTERNS: List[Tuple[str, re.Pattern]] = [
+    ("added", re.compile(
+        r"\b(?:created?|added?|implement(?:ed)?|introduc(?:ed?|ing)|built|new)\b",
+        re.IGNORECASE,
+    )),
+    ("fixed", re.compile(
+        r"\b(?:fix(?:ed)?|resolv(?:ed?|ing)|correct(?:ed)?|patch(?:ed)?|repair(?:ed)?|debug(?:ged)?)\b",
+        re.IGNORECASE,
+    )),
+    ("modified", re.compile(
+        r"\b(?:updat(?:ed?|ing)|modif(?:ied|y|ying)|chang(?:ed?|ing)|adjust(?:ed)?|tweak(?:ed)?)\b",
+        re.IGNORECASE,
+    )),
+    ("removed", re.compile(
+        r"\b(?:remov(?:ed?|ing)|delet(?:ed?|ing)|drop(?:ped)?|deprecat(?:ed)?|strip(?:ped)?)\b",
+        re.IGNORECASE,
+    )),
+    ("refactored", re.compile(
+        r"\b(?:refactor(?:ed|ing)?|reorganiz(?:ed?|ing)|simplif(?:ied|y)|extract(?:ed)?|split|merg(?:ed?|ing))\b",
+        re.IGNORECASE,
+    )),
+]
+
+# File path extraction
+FILE_PATH_RE = re.compile(
+    r"(?:^|\s|[`\"'])"
+    r"((?:[\w\-]+/)+[\w\-]+\.[\w]+)"
+    r"(?:\s|$|[`\"':,])",
+    re.MULTILINE,
+)
+
+# Minimum message length to consider (filter greetings/acks)
+MIN_RELEVANT_LENGTH = 30
+
+
+def summarize_changes(
+    messages: List[Dict],
+    task_title: Optional[str] = None,
+    max_chars: int = 1500,
+) -> str:
+    """
+    Summarize chat session messages into structured change description.
+
+    Args:
+        messages: Chat session messages list [{"role": "...", "content": "..."}]
+        task_title: Optional task title for context
+        max_chars: Maximum output length
+
+    Returns:
+        Structured change summary string
+    """
+    if not messages:
+        return "Task completed"
+
+    # 1. Extract last N relevant assistant messages
+    assistant_msgs = _extract_relevant_messages(messages, max_count=3)
+
+    if not assistant_msgs:
+        return "Task completed"
+
+    combined_text = "\n".join(assistant_msgs)
+
+    # 2. Extract file paths and group by directory
+    file_groups = _group_files_by_module(combined_text)
+
+    # 3. Extract change intents
+    intents = _extract_intents(combined_text)
+
+    # 4. Build structured summary
+    summary = _build_structured_summary(
+        intents, file_groups, task_title, combined_text, max_chars
+    )
+
+    logger.info(
+        f"Change summary: {len(intents)} intents, "
+        f"{sum(len(f) for f in file_groups.values())} files, "
+        f"{len(summary)} chars"
+    )
+
+    return summary
+
+
+def _extract_relevant_messages(
+    messages: List[Dict], max_count: int = 3
+) -> List[str]:
+    """Extract last N relevant assistant messages (skip short acks)."""
+    assistant_msgs = []
+    for msg in reversed(messages):
+        if msg.get("role") != "assistant":
+            continue
+        content = msg.get("content", "")
+        if isinstance(content, str) and len(content.strip()) >= MIN_RELEVANT_LENGTH:
+            assistant_msgs.append(content.strip())
+        if len(assistant_msgs) >= max_count:
+            break
+
+    assistant_msgs.reverse()
+    return assistant_msgs
+
+
+def _group_files_by_module(text: str) -> Dict[str, List[str]]:
+    """Extract file paths and group by parent directory."""
+    matches = FILE_PATH_RE.findall(text)
+    unique_files = list(dict.fromkeys(matches))  # preserve order, deduplicate
+
+    groups: Dict[str, List[str]] = defaultdict(list)
+    for fpath in unique_files:
+        parts = fpath.split("/")
+        if len(parts) >= 2:
+            module = "/".join(parts[:2])
+        else:
+            module = parts[0]
+        if fpath not in groups[module]:
+            groups[module].append(fpath)
+
+    return dict(groups)
+
+
+def _extract_intents(text: str) -> List[Tuple[str, str]]:
+    """
+    Extract change intents from text.
+    Returns list of (intent_type, context_sentence).
+    """
+    intents: List[Tuple[str, str]] = []
+    seen_intents: set = set()
+
+    sentences = re.split(r"[.\n]", text)
+
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if len(sentence) < 10:
+            continue
+
+        for intent_type, pattern in INTENT_PATTERNS:
+            if pattern.search(sentence):
+                # Deduplicate by intent+first-20-chars
+                key = f"{intent_type}:{sentence[:40]}"
+                if key not in seen_intents:
+                    seen_intents.add(key)
+                    # Truncate long sentences
+                    ctx = sentence[:120] + ("..." if len(sentence) > 120 else "")
+                    intents.append((intent_type, ctx))
+                break  # first matching intent wins per sentence
+
+    return intents
+
+
+def _build_structured_summary(
+    intents: List[Tuple[str, str]],
+    file_groups: Dict[str, List[str]],
+    task_title: Optional[str],
+    raw_text: str,
+    max_chars: int,
+) -> str:
+    """Build the final structured summary string."""
+    parts: List[str] = []
+
+    # If we have structured intents, use them
+    if intents:
+        parts.append("Changes:")
+        for intent_type, context in intents[:10]:  # Cap at 10 intents
+            parts.append(f"- [{intent_type}] {context}")
+    elif task_title:
+        # Fallback: no intents detected, use raw text
+        parts.append("Changes:")
+        fallback = raw_text[:max_chars - 100]
+        parts.append(fallback)
+    else:
+        parts.append(raw_text[:max_chars])
+        return "\n".join(parts)
+
+    # Add file listing if any
+    all_files = []
+    for module_files in file_groups.values():
+        all_files.extend(module_files)
+
+    if all_files:
+        file_list = ", ".join(all_files[:15])  # Cap at 15 files
+        parts.append(f"\nFiles: {file_list}")
+
+    # Build and enforce max_chars
+    summary = "\n".join(parts)
+    if len(summary) > max_chars:
+        summary = summary[:max_chars - 3] + "..."
+
+    return summary

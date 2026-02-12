@@ -353,18 +353,17 @@ async def _generate_commit_auto_async(
 
         logger.info(f"✅ Commit generation job {job_id} completed")
 
-        # Complete job with result (CommitResponse format)
+        # PROMPT #233 - Fixed schema mismatch (scope/subject/body don't exist in Commit model)
         job_manager.complete_job(job_id, {
             "id": str(commit.id),
             "project_id": str(commit.project_id) if commit.project_id else None,
             "task_id": str(commit.task_id) if commit.task_id else None,
             "type": commit.type.value if commit.type else None,
-            "scope": commit.scope,
-            "subject": commit.subject,
-            "body": commit.body,
             "message": commit.message,
+            "changes": commit.changes,
+            "created_by_ai_model": commit.created_by_ai_model,
+            "author": commit.author,
             "timestamp": commit.timestamp.isoformat() if commit.timestamp else None,
-            "metadata": commit.metadata
         })
 
     except Exception as e:
@@ -409,18 +408,17 @@ async def _generate_commit_manual_async(
 
         logger.info(f"✅ Manual commit generation job {job_id} completed")
 
-        # Complete job with result (CommitResponse format)
+        # PROMPT #233 - Fixed schema mismatch (scope/subject/body don't exist in Commit model)
         job_manager.complete_job(job_id, {
             "id": str(commit.id),
             "project_id": str(commit.project_id) if commit.project_id else None,
             "task_id": str(commit.task_id) if commit.task_id else None,
             "type": commit.type.value if commit.type else None,
-            "scope": commit.scope,
-            "subject": commit.subject,
-            "body": commit.body,
             "message": commit.message,
+            "changes": commit.changes,
+            "created_by_ai_model": commit.created_by_ai_model,
+            "author": commit.author,
             "timestamp": commit.timestamp.isoformat() if commit.timestamp else None,
-            "metadata": commit.metadata
         })
 
     except Exception as e:
