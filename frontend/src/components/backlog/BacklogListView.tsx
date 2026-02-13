@@ -48,6 +48,8 @@ interface BacklogListViewProps {
   onFilterOptionsChange?: (options: FilterOptions) => void;
   // PROMPT #131 - Callback when interview is clicked (opens card with interview tab)
   onInterviewClick?: (item: BacklogItem, interviewId: string) => void;
+  // PROMPT #272 - Generate Epics callback (shown next to Add Epic)
+  onGenerateEpics?: () => void;
 }
 
 // Helper function to get item type icon - PROMPT #188 replaced emojis with SVG icons
@@ -133,7 +135,8 @@ export default function BacklogListView({
   refreshKey,  // PROMPT #96
   selectedItemId,  // PROMPT #96
   onFilterOptionsChange,  // PROMPT #123
-  onInterviewClick  // PROMPT #131 - Interview click callback
+  onInterviewClick,  // PROMPT #131 - Interview click callback
+  onGenerateEpics,  // PROMPT #272 - Generate Epics callback
 }: BacklogListViewProps) {
   // PROMPT #131 - Removed router, now using onInterviewClick callback
   const [backlog, setBacklog] = useState<BacklogItem[]>([]);
@@ -888,6 +891,18 @@ export default function BacklogListView({
               </svg>
               Add Epic
             </button>
+            {/* PROMPT #272 - Generate Epics button (next to Add Epic) */}
+            {onGenerateEpics && (
+              <button
+                onClick={onGenerateEpics}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-md transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                Generate Epics
+              </button>
+            )}
             <div className="text-sm text-gray-500">
               {/* PROMPT #123 - Show filtered count vs total */}
               {filters?.search ? (
