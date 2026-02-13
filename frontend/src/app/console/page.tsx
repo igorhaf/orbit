@@ -261,15 +261,28 @@ export default function ConsolePage() {
     return true;
   });
 
-  // Clear logs
+  // Clear logs - close SSE, clear backend buffer, reconnect
   const clearLogs = async () => {
-    setLogs([]);
+    // 1. Close current SSE to stop receiving buffered events
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+
+    // 2. Clear backend buffer
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       await fetch(`${apiUrl}/api/v1/console/logs`, { method: 'DELETE' });
     } catch {
       // Ignore errors
     }
+
+    // 3. Clear local state
+    setLogs([]);
+    setActiveStreams(new Map());
+
+    // 4. Reconnect SSE (backend buffer is now empty, no stale logs)
+    connectToStream();
   };
 
   // Copy all visible logs to clipboard
