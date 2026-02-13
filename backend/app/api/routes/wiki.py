@@ -7,7 +7,7 @@ CRUD endpoints for wiki pages within projects.
 
 import re
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -202,6 +202,21 @@ async def generate_wiki_from_context(
             db, project_id, "resumo-codebase", "Resumo do Codebase",
             scan_content, 5, "ai_generated"
         ))
+
+    # PROMPT #265 - Parse enriched project.description into separate wiki pages
+    # If the description contains ## sections (from AI enrichment), each section
+    # becomes its own wiki page (Arquitetura, Integracoes, etc.)
+    if project.description and '## ' in project.description:
+        sections = _parse_wiki_sections(project.description)
+        for slug, (title, content) in sections.items():
+            # Only add sections not already created above
+            existing_slugs = [p.slug for p in created_pages if p]
+            if slug not in existing_slugs:
+                page = _upsert_wiki_page(
+                    db, project_id, slug, title, content,
+                    len(created_pages), "enrichment"
+                )
+                created_pages.append(page)
 
     db.commit()
 
@@ -487,3 +502,67 @@ def _build_scan_page(scan_summary: dict) -> str:
 
     lines.append("")
     return "\n".join(lines)
+
+
+def _parse_wiki_sections(markdown: str) -> Dict[str, Tuple[str, str]]:
+    """
+    PROMPT #265 - Parse AI-generated markdown into wiki page sections.
+
+    Splits a markdown document by ## headers and maps each section to a wiki page slug.
+    Returns ordered dict of {slug: (title, content)}.
+    """
+    SECTION_MAP = {
+        "visao geral": ("visao-geral", "Visao Geral"),
+        "stack tecnologica": ("stack-tecnologica", "Stack Tecnologica"),
+        "arquitetura": ("arquitetura", "Arquitetura"),
+        "regras de negocio": ("regras-de-negocio", "Regras de Negocio"),
+        "features principais": ("features-principais", "Features Principais"),
+        "features": ("features-principais", "Features Principais"),
+        "integracoes": ("integracoes", "Integracoes"),
+        "resumo do codebase": ("resumo-codebase", "Resumo do Codebase"),
+    }
+
+    def _normalize(text: str) -> str:
+        """Remove accents and special chars for matching."""
+        replacements = {
+            'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a',
+            'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+            'í': 'i', 'ì': 'i', 'î': 'i', 'ï': 'i',
+            'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
+            'ú': 'u', 'ù': 'u', 'û': 'u', 'ü': 'u',
+            'ç': 'c', 'ñ': 'n',
+        }
+        result = text.lower().strip().rstrip(':')
+        for char, replacement in replacements.items():
+            result = result.replace(char, replacement)
+        return result
+
+    sections: Dict[str, Tuple[str, str]] = {}
+
+    # Split by ## headers, keeping the header text
+    parts = re.split(r'^## (.+)$', markdown, flags=re.MULTILINE)
+
+    # parts[0] = content before first ##
+    # parts[1] = first header, parts[2] = first content, etc.
+
+    for i in range(1, len(parts), 2):
+        header = parts[i].strip()
+        content = parts[i + 1].strip() if i + 1 < len(parts) else ""
+        header_normalized = _normalize(header)
+
+        # Try to match against known sections
+        matched = False
+        for key, (slug, title) in SECTION_MAP.items():
+            if key in header_normalized:
+                full_content = f"## {header}\n\n{content}"
+                sections[slug] = (title, full_content)
+                matched = True
+                break
+
+        if not matched:
+            # Unknown section - create page with slugified header
+            slug = _slugify(header)
+            if slug:
+                sections[slug] = (header, f"## {header}\n\n{content}")
+
+    return sections

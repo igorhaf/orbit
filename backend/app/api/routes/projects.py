@@ -1037,49 +1037,29 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
         db.commit()
         logger.info(f"Wiki enriched for project {project_id} ({len(enriched)} chars)")
 
-        # PROMPT #261 - Also generate structured wiki pages
+        # PROMPT #265 - Parse AI-enriched markdown into separate wiki pages
+        # The AI generates a structured markdown with ## sections (Visao Geral,
+        # Stack Tecnologica, Arquitetura, Regras de Negocio, Features, Integracoes).
+        # We parse each section into its own wiki page instead of dumping everything
+        # into a single "Visao Geral" page.
         try:
-            from app.api.routes.wiki import _upsert_wiki_page
-            from sqlalchemy import and_
+            from app.api.routes.wiki import _upsert_wiki_page, _parse_wiki_sections
 
-            # Visao Geral from enriched description
-            _upsert_wiki_page(db, project_id, "visao-geral", "Visao Geral", enriched, 0, "enrichment")
+            sections = _parse_wiki_sections(enriched)
 
-            # Stack Tecnologica
-            if stack_info:
-                from app.api.routes.wiki import _build_stack_page
-                imc = project.initial_memory_context or {}
-                stack_content = _build_stack_page(project, imc.get("stack_info", {}), imc.get("scan_summary", {}))
-                _upsert_wiki_page(db, project_id, "stack-tecnologica", "Stack Tecnologica", stack_content, 1, "ai_generated")
+            order = 0
+            for slug, (title, content) in sections.items():
+                _upsert_wiki_page(db, project_id, slug, title, content, order, "enrichment")
+                order += 1
 
-            # Regras de Negocio
-            if has_rules:
-                rules_md = "## Regras de Negocio\n\nRegras extraidas automaticamente do codebase.\n\n"
-                for i, r in enumerate(rules[:30], 1):
-                    rules_md += f"### {i}. {r[:200]}\n\n"
-                _upsert_wiki_page(db, project_id, "regras-de-negocio", "Regras de Negocio", rules_md, 2, "ai_generated")
-
-            # Features Principais
-            if has_features:
-                features_md = "## Features Principais\n\nFuncionalidades identificadas no projeto.\n\n" + existing_features
-                _upsert_wiki_page(db, project_id, "features-principais", "Features Principais", features_md, 3, "ai_generated")
-
-            # Contexto do Projeto (from interview)
-            if has_interviews:
-                interview_md = "## Contexto da Entrevista\n\nRespostas coletadas durante a entrevista do projeto.\n\n"
-                for a in interview_answers[:20]:
-                    interview_md += f"- {a[:300]}\n"
-                _upsert_wiki_page(db, project_id, "contexto-entrevista", "Contexto da Entrevista", interview_md, 4, "enrichment")
-
-            # Resumo do Codebase
-            if has_scan:
-                scan_md = "## Resumo do Codebase\n\n" + scan_summary
-                _upsert_wiki_page(db, project_id, "resumo-codebase", "Resumo do Codebase", scan_md, 5, "ai_generated")
+            # Fallback: if parsing produced no sections, create single overview page
+            if not sections:
+                _upsert_wiki_page(db, project_id, "visao-geral", "Visao Geral", enriched, 0, "enrichment")
 
             db.commit()
-            logger.info(f"Wiki pages generated for project {project_id}")
+            logger.info(f"Wiki: {len(sections) or 1} pages from enriched content for project {project_id}")
         except Exception as e:
-            logger.warning(f"Failed to generate wiki pages: {e}")
+            logger.warning(f"Failed to parse wiki sections: {e}")
 
         return True
 
