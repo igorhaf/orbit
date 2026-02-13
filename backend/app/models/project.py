@@ -99,6 +99,9 @@ class Project(Base):
     # The Continuous RAG scheduler only processes projects where this flag is True.
     initial_scan_complete = Column(Boolean, default=False, nullable=False, server_default="false")
 
+    # PROMPT #245 - Store scan depth for batch processing across restarts
+    scan_depth = Column(String(10), nullable=True)
+
     # PROMPT #223 - AI-detected ignore patterns for this project
     # Populated by AI pre-scan analysis before initial memory scan
     # JSON: {"directories": [...], "rationale": {...}, "detected_by_ai": true}

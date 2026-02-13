@@ -788,8 +788,20 @@ async def _process_project_pipeline(
                     )
             if summary:
                 project.description = summary[:2000]
+        # PROMPT #245 - Save scan_depth for batch processing across restarts
+        project.scan_depth = scan_depth
         project.updated_at = datetime.utcnow()
         db.commit()
+
+        # PROMPT #245 - Register ALL remaining files for batch processing
+        if scan_depth != "deep":
+            try:
+                from app.services.continuous_rag_service import ContinuousRAGService
+                rag_service = ContinuousRAGService(db)
+                await rag_service.scan_for_changes(project_id)
+                logger.info(f"Registered remaining files for batch processing (scan_depth={scan_depth})")
+            except Exception as e:
+                logger.warning(f"Failed to register files for batch processing (non-blocking): {e}")
 
         # PROMPT #243 - Enrich wiki immediately after initial scan
         job_manager.update_progress(job_id, 82.0, "Enriching project wiki from scan findings...")
@@ -822,13 +834,19 @@ async def _process_project_pipeline(
 
         logger.info(f"Pipeline completed for project {project_id}")
 
-        # === Step C: Start watchdog (PROMPT #241) ===
+        # === Step C: Start batch processing or watchdog (PROMPT #245) ===
         try:
-            from app.services.watchdog import submit_watchdog_cycle
-            submit_watchdog_cycle(db, project_id)
-            logger.info(f"Watchdog started for project {project_id}")
+            if scan_depth == "deep":
+                from app.services.watchdog import submit_watchdog_cycle
+                submit_watchdog_cycle(db, project_id)
+                logger.info(f"Watchdog started for project {project_id} (deep scan)")
+            else:
+                from app.services.watchdog import submit_batch_processing_cycle
+                batch_size = {"quick": 30, "normal": 100}.get(scan_depth, 30)
+                submit_batch_processing_cycle(db, project_id, batch_size=batch_size)
+                logger.info(f"Batch processing started for project {project_id} (batch_size={batch_size})")
         except Exception as e:
-            logger.warning(f"Watchdog start failed (non-blocking): {e}")
+            logger.warning(f"Post-pipeline job start failed (non-blocking): {e}")
 
     except Exception as e:
         logger.error(f"Pipeline failed for project {project_id}: {str(e)}", exc_info=True)
