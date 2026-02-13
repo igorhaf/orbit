@@ -387,7 +387,7 @@ def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int
         AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
         AsyncJob.project_id == project_id,
         AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
-        AsyncJob.updated_at < stale_cutoff,
+        AsyncJob.created_at < stale_cutoff,
     ).all()
     if stale_jobs:
         for job in stale_jobs:
@@ -468,7 +468,7 @@ def submit_watchdog_cycle(db: Session, project_id: UUID):
         AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
         AsyncJob.project_id == project_id,
         AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
-        AsyncJob.updated_at < stale_cutoff,
+        AsyncJob.created_at < stale_cutoff,
     ).all()
     if stale_jobs:
         for job in stale_jobs:
@@ -709,7 +709,7 @@ async def bootstrap_watchdog():
         stale_jobs = db.query(AsyncJob).filter(
             AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
             AsyncJob.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
-            AsyncJob.updated_at < stale_cutoff,
+            AsyncJob.created_at < stale_cutoff,
         ).all()
         if stale_jobs:
             for job in stale_jobs:
