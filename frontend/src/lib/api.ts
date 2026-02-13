@@ -352,6 +352,19 @@ export const tasksApi = {
       body: JSON.stringify({ count }),
     }),
 
+  // PROMPT #253 - AI title suggestion
+  suggestTitle: (data: {
+    user_input: string;
+    item_type: string;
+    project_id: string;
+    parent_id?: string | null;
+  }) =>
+    request<{ suggested_title: string }>('/api/v1/tasks/suggest-title', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    }),
+
   // PROMPT #108 - Execute single task (returns job_id)
   execute: (taskId: string, maxAttempts: number = 3) =>
     request<{

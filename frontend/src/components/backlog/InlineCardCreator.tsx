@@ -1,6 +1,7 @@
 /**
  * Inline Card Creator Component
  * PROMPT #187 - Manual card creation with ghost card pattern
+ * PROMPT #253 - AI title suggestion button
  *
  * Renders a temporary "ghost card" with an inline title input.
  * Card is only persisted to the database when the user types a title and confirms.
@@ -49,6 +50,42 @@ const getItemTypeBadgeColor = (type: ItemType): string => {
   }
 };
 
+function AISuggestButton({
+  onClick,
+  isGenerating,
+  disabled,
+}: {
+  onClick: () => void;
+  isGenerating: boolean;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      disabled={disabled || isGenerating}
+      title="Suggest a better title with AI"
+      className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      {isGenerating ? (
+        <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+        </svg>
+      ) : (
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+        </svg>
+      )}
+      <span>AI</span>
+    </button>
+  );
+}
+
 interface InlineCardCreatorProps {
   itemType: ItemType;
   projectId: string;
@@ -68,6 +105,7 @@ export default function InlineCardCreator({
 }: InlineCardCreatorProps) {
   const [title, setTitle] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const isSubmitting = useRef(false);
@@ -109,6 +147,33 @@ export default function InlineCardCreator({
     }
   };
 
+  const handleSuggestTitle = async () => {
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) return;
+    if (isGenerating) return;
+
+    setIsGenerating(true);
+    setError(null);
+
+    try {
+      const response = await tasksApi.suggestTitle({
+        user_input: trimmedTitle,
+        item_type: itemType,
+        project_id: projectId,
+        parent_id: parentId || undefined,
+      });
+      if (response.suggested_title) {
+        setTitle(response.suggested_title);
+      }
+    } catch (err) {
+      console.error('Failed to suggest title:', err);
+      setError('AI suggestion failed. Try again.');
+    } finally {
+      setIsGenerating(false);
+      inputRef.current?.focus();
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -120,11 +185,14 @@ export default function InlineCardCreator({
     }
   };
 
-  const handleBlur = () => {
-    if (isSaving) return;
+  const handleBlur = (e: React.FocusEvent) => {
+    if (isSaving || isGenerating) return;
+    // Check if focus moved to the AI button - if so, don't cancel
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
+    if (relatedTarget?.closest('[data-ai-suggest]')) return;
     // Small delay to allow click events to fire first
     setTimeout(() => {
-      if (isSubmitting.current || isSaving) return;
+      if (isSubmitting.current || isSaving || isGenerating) return;
       if (title.trim()) {
         handleCreate();
       } else {
@@ -134,6 +202,7 @@ export default function InlineCardCreator({
   };
 
   const label = getItemTypeLabel(itemType);
+  const hasInput = title.trim().length > 0;
 
   if (variant === 'backlog-row') {
     return (
@@ -153,16 +222,25 @@ export default function InlineCardCreator({
             </div>
           ) : (
             <div className="flex-1">
-              <input
-                ref={inputRef}
-                type="text"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onBlur={handleBlur}
-                placeholder={`New ${label} title...`}
-                className="w-full px-3 py-1.5 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onBlur={handleBlur}
+                  placeholder={`New ${label} title...`}
+                  className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                />
+                <div data-ai-suggest>
+                  <AISuggestButton
+                    onClick={handleSuggestTitle}
+                    isGenerating={isGenerating}
+                    disabled={!hasInput}
+                  />
+                </div>
+              </div>
               <div className="flex items-center gap-3 mt-1">
                 <p className="text-xs text-gray-400">Enter to save, Esc to cancel</p>
                 {error && <p className="text-xs text-red-500">{error}</p>}
@@ -189,16 +267,25 @@ export default function InlineCardCreator({
           </div>
         ) : (
           <div className="flex-1">
-            <input
-              ref={inputRef}
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onBlur={handleBlur}
-              placeholder={`New ${label} title...`}
-              className="w-full px-3 py-1.5 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                ref={inputRef}
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+                placeholder={`New ${label} title...`}
+                className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              />
+              <div data-ai-suggest>
+                <AISuggestButton
+                  onClick={handleSuggestTitle}
+                  isGenerating={isGenerating}
+                  disabled={!hasInput}
+                />
+              </div>
+            </div>
             <div className="flex items-center gap-3 mt-1">
               <p className="text-xs text-gray-400">Enter to save, Esc to cancel</p>
               {error && <p className="text-xs text-red-500">{error}</p>}

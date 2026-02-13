@@ -2414,3 +2414,103 @@ Extraia informações relevantes para enriquecer este card."""
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Card inference failed: {str(e)}"
         )
+
+
+# =============================================================================
+# PROMPT #253 - AI Title Suggestion
+# =============================================================================
+
+class SuggestTitleRequest(BaseModel):
+    """Request model for AI title suggestion."""
+    user_input: str
+    item_type: str = "story"
+    project_id: str
+    parent_id: Optional[str] = None
+
+
+class SuggestTitleResponse(BaseModel):
+    """Response model for AI title suggestion."""
+    suggested_title: str
+
+
+@router.post("/suggest-title", response_model=SuggestTitleResponse)
+async def suggest_title(
+    body: SuggestTitleRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #253 - Generate a better title for a backlog card using AI.
+    Takes the user's rough input and returns a polished, professional title.
+    """
+    from app.models.project import Project
+    from app.services.ai_orchestrator import AIOrchestrator
+    from app.prompts.loader import PromptLoader
+
+    if not body.user_input or not body.user_input.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="user_input is required"
+        )
+
+    # Gather context
+    project = db.query(Project).filter(Project.id == body.project_id).first()
+    project_name = project.name if project else ""
+    project_description = (project.description or "")[:200] if project else ""
+
+    parent_title = ""
+    if body.parent_id:
+        parent = db.query(Task).filter(Task.id == body.parent_id).first()
+        if parent:
+            parent_title = parent.title or ""
+
+    # Get sibling titles for context
+    sibling_titles = ""
+    if body.parent_id:
+        siblings = db.query(Task.title).filter(
+            Task.parent_id == body.parent_id,
+        ).limit(10).all()
+        sibling_titles = ", ".join(s[0] for s in siblings if s[0])
+    elif project:
+        siblings = db.query(Task.title).filter(
+            Task.project_id == project.id,
+            Task.item_type == body.item_type,
+            Task.parent_id.is_(None),
+        ).limit(10).all()
+        sibling_titles = ", ".join(s[0] for s in siblings if s[0])
+
+    # Load prompt and call AI
+    loader = PromptLoader()
+    try:
+        sys_prompt, usr_prompt = loader.render(
+            "backlog/suggest_title",
+            {
+                "item_type": body.item_type,
+                "user_input": body.user_input.strip(),
+                "project_name": project_name,
+                "project_description": project_description,
+                "parent_title": parent_title,
+                "sibling_titles": sibling_titles,
+            },
+        )
+    except Exception as e:
+        logger.error(f"Failed to load suggest_title prompt: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to load prompt template"
+        )
+
+    orchestrator = AIOrchestrator(db)
+    response = await orchestrator.execute(
+        usage_type="general",
+        messages=[{"role": "user", "content": usr_prompt}],
+        system_prompt=sys_prompt,
+        max_tokens=100,
+        project_id=body.project_id,
+        metadata={"type": "suggest_title"},
+    )
+
+    suggested = response.get("content", "").strip().strip('"').strip("'")
+    if not suggested:
+        suggested = body.user_input.strip()
+
+    return SuggestTitleResponse(suggested_title=suggested)
