@@ -3,14 +3,14 @@
 PROMPT #245 - Batch Processing Pipeline
 
 Revision ID: 245a_scan_depth
-Revises: 218a_rag_file_state
+Revises: 20260212_max_concurrent
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 revision = "245a_scan_depth"
-down_revision = "218a_rag_file_state"
+down_revision = "20260212_max_concurrent"
 branch_labels = None
 depends_on = None
 
