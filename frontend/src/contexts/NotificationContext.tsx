@@ -372,6 +372,46 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }, [updateJob]);
 
+  // PROMPT #262 - Reconcile active jobs with backend (removes ghost jobs, adds missing)
+  const reconcileActiveJobs = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/jobs/active`);
+      if (!response.ok) return;
+      const backendJobs = await response.json();
+      const backendJobIds = new Set(backendJobs.map((j: any) => j.id));
+
+      setActiveJobs(prev => {
+        // Remove jobs no longer active in backend (ghost jobs)
+        let reconciled = prev.filter(j => backendJobIds.has(j.job_id));
+
+        // Add jobs from backend not yet in frontend
+        const frontendJobIds = new Set(reconciled.map(j => j.job_id));
+        for (const job of backendJobs) {
+          if (!frontendJobIds.has(job.id)) {
+            reconciled.push({
+              id: `notif-${job.id}`,
+              job_id: job.id,
+              job_type: job.job_type,
+              status: job.status,
+              progress_percent: job.progress_percent,
+              progress_message: job.progress_message,
+              created_at: job.created_at,
+              read: false,
+              title: job.notification_title || JOB_TYPE_TITLES[job.job_type] || 'Processando...',
+              deep_link: job.deep_link,
+              project_id: job.project_id,
+              task_id: job.task_id,
+              interview_id: job.interview_id,
+            });
+          }
+        }
+        return reconciled;
+      });
+    } catch {
+      // Silent - network may be down during reconnect
+    }
+  }, [API_BASE]);
+
   // PROMPT #134 - Connect to WebSocket
   const connect = useCallback(() => {
     // Don't connect if already connected or connecting
@@ -387,6 +427,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
         console.log('🔔 Notification WebSocket connected');
+
+        // PROMPT #262 - Reconcile jobs on reconnect to remove ghost notifications
+        reconcileActiveJobs();
 
         // Start ping interval to keep connection alive
         if (pingIntervalRef.current) {
@@ -438,51 +481,24 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     } catch (error) {
       console.error('Failed to create WebSocket:', error);
     }
-  }, [WS_URL, handleWebSocketEvent]);
+  }, [WS_URL, handleWebSocketEvent, reconcileActiveJobs]);
 
   // PROMPT #134 - Connect WebSocket on mount
   useEffect(() => {
     connect();
 
-    // Fetch active jobs on mount (for jobs that started before connection)
-    const fetchActiveJobs = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/v1/jobs/active`);
-        if (response.ok) {
-          const jobs = await response.json();
-          if (jobs.length > 0) {
-            const mappedJobs: JobNotification[] = jobs.map((job: any) => ({
-              id: `notif-${job.id}`,
-              job_id: job.id,
-              job_type: job.job_type,
-              status: job.status,
-              progress_percent: job.progress_percent,
-              progress_message: job.progress_message,
-              created_at: job.created_at,
-              read: false,
-              title: job.notification_title || JOB_TYPE_TITLES[job.job_type] || 'Processando...',
-              deep_link: job.deep_link,
-              project_id: job.project_id,
-              task_id: job.task_id,
-              interview_id: job.interview_id,
-            }));
-            setActiveJobs(prev => {
-              // Merge, avoiding duplicates
-              const existingIds = new Set(prev.map(j => j.job_id));
-              const newJobs = mappedJobs.filter(j => !existingIds.has(j.job_id));
-              return [...prev, ...newJobs];
-            });
-          }
-        }
-      } catch (error) {
-        console.log('Could not fetch active jobs:', error);
-      }
-    };
+    // Fetch active jobs on mount
+    reconcileActiveJobs();
 
-    fetchActiveJobs();
+    // PROMPT #262 - Periodic ghost job cleanup (every 60s)
+    // Removes frontend-only jobs that are stale (no backend match)
+    const ghostCleanupInterval = setInterval(() => {
+      reconcileActiveJobs();
+    }, 60000);
 
     // Cleanup on unmount
     return () => {
+      clearInterval(ghostCleanupInterval);
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
@@ -496,7 +512,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         wsRef.current.close();
       }
     };
-  }, [connect, API_BASE]);
+  }, [connect, reconcileActiveJobs]);
 
   return (
     <NotificationContext.Provider

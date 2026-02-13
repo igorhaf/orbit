@@ -146,7 +146,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
         logger.info(f"Watchdog cycle started for '{project_name}'")
 
         # --- Step 1: RAG file scan ---
-        jm.update_progress(job_id, 10.0, "Scanning files for changes...")
+        jm.update_progress(job_id, 10.0, "Escaneando arquivos por mudancas...")
         rag_result = {}
         try:
             from app.services.continuous_rag_service import ContinuousRAGService
@@ -157,7 +157,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             logger.warning(f"RAG scan failed (non-blocking): {e}")
 
         # --- Step 2: Git commit sync ---
-        jm.update_progress(job_id, 30.0, "Syncing git commits...")
+        jm.update_progress(job_id, 30.0, "Sincronizando commits git...")
         git_result = {}
         try:
             from app.services.prompt_doc_rag_sync import GitCommitRAGSync
@@ -168,7 +168,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             logger.warning(f"Git sync failed (non-blocking): {e}")
 
         # --- Step 3: Pattern discovery + spec sync ---
-        jm.update_progress(job_id, 50.0, "Discovering code patterns...")
+        jm.update_progress(job_id, 50.0, "Descobrindo padroes no codigo...")
         try:
             from app.services.pattern_discovery import PatternDiscoveryService
             from app.api.routes.projects import _effective_max_patterns
@@ -196,10 +196,10 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             already_enriched = rag_result.get("wiki_enriched", False)
 
         if already_enriched:
-            jm.update_progress(job_id, 70.0, "Wiki already enriched from new discoveries")
+            jm.update_progress(job_id, 70.0, "Wiki ja enriquecida com novas descobertas")
             logger.info(f"Wiki enrichment skipped for '{project_name}' (already done in RAG scan)")
         else:
-            jm.update_progress(job_id, 70.0, "Enriching project wiki...")
+            jm.update_progress(job_id, 70.0, "Enriquecendo wiki do projeto...")
             try:
                 from app.api.routes.projects import _enrich_context_from_rag
                 enriched = await _enrich_context_from_rag(db, project_id)
@@ -208,10 +208,10 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
                 else:
                     logger.info(f"Wiki enrichment skipped for '{project_name}' (no update needed)")
             except Exception as e:
-                logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
+                logger.warning(f"Wiki enrichment failed (non-blocking): {e}", exc_info=True)
 
         # --- Step 5: Auto-discover cards ---
-        jm.update_progress(job_id, 85.0, "Checking for new discoveries...")
+        jm.update_progress(job_id, 85.0, "Verificando novas descobertas...")
         card_result = {}
         try:
             card_result = await _auto_discover_cards(db, project_id)
@@ -230,7 +230,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
                 rag_rules = processed.get("rules_extracted", 0)
 
         if new_cards == 0 and rag_rules == 0:
-            jm.update_progress(job_id, 92.0, "Enriching stub cards (idle mode)...")
+            jm.update_progress(job_id, 92.0, "Enriquecendo cards existentes (modo idle)...")
             try:
                 enriched_cards = await _auto_enrich_stub_cards(db, project_id, max_cards=1)
                 if enriched_cards > 0:
@@ -322,13 +322,17 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         logger.info(f"Batch processing cycle for '{project_name}' (batch_size={batch_size})")
 
         # --- Step 1: Process next batch of pending files ---
-        jm.update_progress(job_id, 10.0, f"Processing batch of {batch_size} files...")
+        jm.update_progress(job_id, 10.0, f"Processando proximo lote ({batch_size} arquivos max)...")
         process_result = {}
         try:
             from app.services.continuous_rag_service import ContinuousRAGService
             rag_service = ContinuousRAGService(db)
             process_result = await rag_service.process_pending_files(project_id, batch_size=batch_size)
-            logger.info(f"Batch processed for '{project_name}': {process_result.get('processed', 0)} files, {process_result.get('rules_extracted', 0)} rules")
+            actual = process_result.get('processed', 0)
+            remaining = process_result.get('pending_remaining', 0)
+            rules = process_result.get('rules_extracted', 0)
+            logger.info(f"Batch processed for '{project_name}': {actual} files, {rules} rules")
+            jm.update_progress(job_id, 30.0, f"Processados {actual} arquivos, {remaining} restantes, {rules} regras extraidas")
         except Exception as e:
             logger.warning(f"Batch processing failed (non-blocking): {e}")
 
@@ -339,7 +343,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         # PROMPT #255 - Use boolean return from _enrich_context_from_rag (PROMPT #252 fix)
         wiki_enriched = False
         if rules_extracted > 0:
-            jm.update_progress(job_id, 50.0, f"Enriching wiki with {rules_extracted} new rules...")
+            jm.update_progress(job_id, 50.0, f"Enriquecendo wiki com {rules_extracted} novas regras...")
             try:
                 from app.api.routes.projects import _enrich_context_from_rag
                 wiki_enriched = await _enrich_context_from_rag(db, project_id)
@@ -348,13 +352,13 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
                 else:
                     logger.info(f"Wiki enrichment skipped for '{project_name}' (no update needed)")
             except Exception as e:
-                logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
+                logger.warning(f"Wiki enrichment failed (non-blocking): {e}", exc_info=True)
 
         # --- Step 3: Create cards from new business rules ---
         # PROMPT #260 - Batch mode uses higher card limit (15) for faster initial coverage
         card_result = {}
         if rules_extracted > 0:
-            jm.update_progress(job_id, 70.0, "Creating cards from new discoveries...")
+            jm.update_progress(job_id, 70.0, "Criando cards a partir de novas descobertas...")
             try:
                 card_result = await _auto_discover_cards(db, project_id, max_cards=15)
                 if card_result.get("created", 0) > 0:
@@ -365,7 +369,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         # --- Step 4: If idle (no new rules), enrich existing stub cards ---
         enriched_cards = 0
         if rules_extracted == 0 and card_result.get("created", 0) == 0:
-            jm.update_progress(job_id, 80.0, "Enriching existing stub cards...")
+            jm.update_progress(job_id, 80.0, "Enriquecendo cards existentes...")
             try:
                 enriched_cards = await _auto_enrich_stub_cards(db, project_id, max_cards=2)
                 if enriched_cards > 0:

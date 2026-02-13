@@ -1048,7 +1048,8 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             # Stack Tecnologica
             if stack_info:
                 from app.api.routes.wiki import _build_stack_page
-                stack_content = _build_stack_page(project, project.initial_memory_context.get("stack_info", {}) if project.initial_memory_context else {})
+                imc = project.initial_memory_context or {}
+                stack_content = _build_stack_page(project, imc.get("stack_info", {}), imc.get("scan_summary", {}))
                 _upsert_wiki_page(db, project_id, "stack-tecnologica", "Stack Tecnologica", stack_content, 1, "ai_generated")
 
             # Regras de Negocio
