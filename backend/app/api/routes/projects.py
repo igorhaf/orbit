@@ -773,9 +773,21 @@ async def _process_project_pipeline(
         project.initial_scan_complete = True
         # PROMPT #241: Set initial description from scan summary
         if not project.description:
-            summary = result.get("scan_summary", "") or result.get("interview_context", "")
+            # interview_context is AI-generated text; scan_summary is a dict (stats only)
+            summary = (result.get("interview_context") or "").strip()
+            if not summary:
+                # Build readable description from scan_summary dict
+                scan_info = result.get("scan_summary", {})
+                if isinstance(scan_info, dict) and scan_info:
+                    langs = scan_info.get("languages", {})
+                    lang_str = ", ".join(f"{k} ({v})" for k, v in sorted(langs.items(), key=lambda x: -x[1])[:5]) if langs else "N/A"
+                    summary = (
+                        f"Codebase with {scan_info.get('code_files', 0)} code files "
+                        f"({scan_info.get('total_files', 0)} total). "
+                        f"Languages: {lang_str}."
+                    )
             if summary:
-                project.description = str(summary)[:2000]
+                project.description = summary[:2000]
         project.updated_at = datetime.utcnow()
         db.commit()
 
