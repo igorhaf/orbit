@@ -160,8 +160,9 @@ async def generate_wiki_from_context(
             stack_content, 1, "ai_generated"
         ))
 
-    # 3. Regras de Negocio - from RAG (complete) + initial_memory_context (fallback)
-    # PROMPT #266 - Fetch ALL rules from RAG for a comprehensive wiki page
+    # 3. Regras de Negocio - PROMPT #268
+    # The main "regras-de-negocio" page comes from AI enrichment (parsed from description).
+    # Here we create a raw reference catalog as supplementary page.
     from sqlalchemy import text as sql_text
     rag_result = db.execute(sql_text("""
         SELECT content FROM rag_documents
@@ -172,7 +173,6 @@ async def generate_wiki_from_context(
     """), {"pid": str(project_id)})
     rag_rules = [row[0] for row in rag_result.fetchall()]
 
-    # Combine RAG rules + initial_memory_context rules (deduplicated)
     business_rules = imc.get("business_rules", [])
     all_rules = rag_rules if rag_rules else business_rules
     if not all_rules and business_rules:
@@ -180,8 +180,10 @@ async def generate_wiki_from_context(
 
     if all_rules:
         rules_parts = [
-            "## Regras de Negocio - Catalogo Completo\n",
+            "## Catalogo de Referencia - Regras Brutas\n",
             f"Total de regras extraidas do codebase: **{len(all_rules)}**\n",
+            "Estas sao as regras brutas extraidas automaticamente do codigo-fonte.",
+            "A pagina principal de Regras de Negocio contem a versao enriquecida e organizada.\n",
         ]
         for i, rule in enumerate(all_rules, 1):
             if isinstance(rule, dict):
@@ -195,8 +197,9 @@ async def generate_wiki_from_context(
                 rules_parts.append(f"{i}. {rule_text}")
         rules_content = "\n".join(rules_parts)
         created_pages.append(_upsert_wiki_page(
-            db, project_id, "regras-de-negocio", "Regras de Negocio",
-            rules_content, 2, "ai_generated"
+            db, project_id, "regras-catalogo-bruto",
+            "Catalogo de Referencia - Regras Brutas",
+            rules_content, 12, "ai_generated"
         ))
 
     # 4. Features Principais - from initial_memory_context
@@ -274,13 +277,15 @@ async def generate_wiki_from_context(
             git_content, 10, "ai_generated"
         ))
 
-    # PROMPT #265 - Parse enriched project.description into separate wiki pages
-    # If the description contains ## sections (from AI enrichment), each section
-    # becomes its own wiki page (Arquitetura, Integracoes, etc.)
-    if project.description and '## ' in project.description:
+    # PROMPT #265/#268 - Parse enriched project.description into separate wiki pages.
+    # The AI enrichment generates markdown with ## or ### sections.
+    # Each section becomes its own wiki page (Regras, Features, Arquitetura, etc.)
+    if project.description and ('## ' in project.description or '### ' in project.description):
         sections = _parse_wiki_sections(project.description)
+        # Also parse ### headers if ## parsing yielded few results
+        if len(sections) <= 1:
+            sections.update(_parse_wiki_subsections(project.description))
         for slug, (title, content) in sections.items():
-            # Only add sections not already created above
             existing_slugs = [p.slug for p in created_pages if p]
             if slug not in existing_slugs:
                 page = _upsert_wiki_page(
@@ -575,9 +580,55 @@ def _build_scan_page(scan_summary: dict) -> str:
     return "\n".join(lines)
 
 
+def _translate_spec_type(spec_type: str) -> str:
+    """Translate spec_type labels to Portuguese."""
+    SPEC_PT = {
+        "layered_architecture": "Arquitetura em Camadas",
+        "graph_hub_spoke": "Grafo Hub-Spoke",
+        "rest_api": "API REST",
+        "graph_paired_imports": "Imports Pareados",
+        "configuration_file": "Arquivo de Configuracao",
+        "naming_convention": "Convencao de Nomenclatura",
+        "class_hierarchy": "Hierarquia de Classes",
+        "import_pattern": "Padrao de Imports",
+        "function_signature": "Assinatura de Funcoes",
+        "decorator_pattern": "Padrao de Decorators",
+        "ui_component": "Componente de Interface",
+        "ui_blueprint": "Blueprint de Interface",
+        "ui_component_documentation": "Documentacao de Componente",
+        "css_configuration": "Configuracao CSS",
+        "css_template": "Template CSS",
+        "stylesheet": "Folha de Estilo",
+        "documentation_blueprint": "Blueprint de Documentacao",
+        "markdown_documentation": "Documentacao Markdown",
+    }
+    return SPEC_PT.get(spec_type, spec_type.replace("_", " ").title())
+
+
+def _translate_category(category: str) -> str:
+    """Translate category labels to Portuguese."""
+    CAT_PT = {
+        "model": "Modelos",
+        "controller": "Controladores",
+        "test": "Testes",
+        "service": "Servicos",
+        "general": "Geral",
+        "architecture": "Arquitetura",
+        "component": "Componentes",
+        "api": "APIs",
+        "documentation": "Documentacao",
+        "css": "Estilos CSS",
+        "ui_component": "Componentes de Interface",
+        "backup": "Backup",
+        "hub_spoke": "Hub-Spoke",
+        "paired_imports": "Imports Pareados",
+    }
+    return CAT_PT.get(category, category.title() if category else "Geral")
+
+
 def _build_architecture_patterns_page(db, project_id: UUID) -> Optional[str]:
     """
-    PROMPT #267 - Build wiki page from RAG architecture patterns.
+    PROMPT #267/#268 - Build wiki page from RAG architecture patterns.
     Fetches layered_architecture, hub-spoke graphs, REST APIs, paired imports.
     """
     from sqlalchemy import text as sql_text
@@ -609,13 +660,11 @@ def _build_architecture_patterns_page(db, project_id: UUID) -> Optional[str]:
 
         if spec_type != current_spec:
             current_spec = spec_type
-            spec_label = spec_type.replace("_", " ").title()
-            lines.append(f"\n### {spec_label}\n")
+            lines.append(f"\n### {_translate_spec_type(spec_type)}\n")
 
-        # Extract meaningful content (first 600 chars)
         content_text = content[:600] if len(content) > 600 else content
         if category:
-            lines.append(f"**{category}:**")
+            lines.append(f"**{_translate_category(category)}:**")
         lines.append(f"{content_text}\n")
 
     return "\n".join(lines)
@@ -657,9 +706,9 @@ def _build_code_conventions_page(db, project_id: UUID) -> Optional[str]:
 
         if category != current_category:
             current_category = category
-            lines.append(f"\n### {category.title()}\n")
+            lines.append(f"\n### {_translate_category(category)}\n")
 
-        spec_label = spec_type.replace("_", " ").title()
+        spec_label = _translate_spec_type(spec_type)
         occ_text = f" ({occurrences} ocorrencias)" if occurrences else ""
         lines.append(f"**{spec_label}{occ_text}:**")
         content_text = content[:500] if len(content) > 500 else content
@@ -699,7 +748,7 @@ def _build_ui_components_page(db, project_id: UUID) -> Optional[str]:
         spec_type = meta.get("spec_type", "")
         name = meta.get("name", f"Componente {i}")
 
-        spec_label = spec_type.replace("_", " ").title()
+        spec_label = _translate_spec_type(spec_type)
         lines.append(f"### {i}. {name} ({spec_label})\n")
         content_text = content[:800] if len(content) > 800 else content
         lines.append(f"{content_text}\n")
@@ -782,13 +831,13 @@ def _build_git_history_page(db, project_id: UUID) -> Optional[str]:
     lines = [
         "## Historico de Desenvolvimento\n",
         f"Total de commits analisados: **{len(rows)}**\n",
+        "Historico dos commits mais recentes do repositorio.\n",
     ]
     for i, row in enumerate(rows, 1):
         content = row[0]
         meta = row[1] if row[1] else {}
         short_hash = meta.get("short_hash", "")
 
-        # First line of content is the commit message
         first_line = content.split("\n")[0] if content else "Sem mensagem"
         hash_text = f" `{short_hash}`" if short_hash else ""
         lines.append(f"{i}.{hash_text} {first_line}")
@@ -856,5 +905,51 @@ def _parse_wiki_sections(markdown: str) -> Dict[str, Tuple[str, str]]:
             slug = _slugify(header)
             if slug:
                 sections[slug] = (header, f"## {header}\n\n{content}")
+
+    return sections
+
+
+def _parse_wiki_subsections(markdown: str) -> Dict[str, Tuple[str, str]]:
+    """
+    PROMPT #268 - Parse ### headers into wiki pages when ## parsing yields few results.
+    Some AI models generate with ### instead of ## for subsections.
+    """
+    SECTION_MAP = {
+        "visao geral": ("visao-geral", "Visao Geral"),
+        "stack tecnologica": ("stack-tecnologica", "Stack Tecnologica"),
+        "arquitetura": ("arquitetura", "Arquitetura"),
+        "regras de negocio": ("regras-de-negocio", "Regras de Negocio"),
+        "features principais": ("features-principais", "Features Principais"),
+        "features": ("features-principais", "Features Principais"),
+        "integracoes": ("integracoes", "Integracoes"),
+    }
+
+    def _normalize(text: str) -> str:
+        replacements = {
+            'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a',
+            'é': 'e', 'è': 'e', 'ê': 'e',
+            'í': 'i', 'ì': 'i', 'î': 'i',
+            'ó': 'o', 'ò': 'o', 'ô': 'o', 'õ': 'o',
+            'ú': 'u', 'ù': 'u', 'û': 'u',
+            'ç': 'c', 'ñ': 'n',
+        }
+        result = text.lower().strip().rstrip(':')
+        for char, replacement in replacements.items():
+            result = result.replace(char, replacement)
+        return result
+
+    sections: Dict[str, Tuple[str, str]] = {}
+    parts = re.split(r'^### (.+)$', markdown, flags=re.MULTILINE)
+
+    for i in range(1, len(parts), 2):
+        header = parts[i].strip()
+        content = parts[i + 1].strip() if i + 1 < len(parts) else ""
+        header_normalized = _normalize(header)
+
+        for key, (slug, title) in SECTION_MAP.items():
+            if key in header_normalized:
+                full_content = f"## {header}\n\n{content}"
+                sections[slug] = (title, full_content)
+                break
 
     return sections

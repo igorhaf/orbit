@@ -7,7 +7,7 @@ version: 2
 category: context
 description: Enriquece descricao do projeto com regras de negocio, entrevistas e insights do scan
 usage_type: memory
-estimated_tokens: 6000
+estimated_tokens: 12000
 tags:
   - contexto
   - enriquecimento
@@ -40,8 +40,10 @@ system_prompt: |
   3. Use formatacao Markdown limpa (headers, listas, negrito para termos-chave)
   4. NUNCA use emojis ou simbolos especiais
   5. Deduplicar - se uma regra ja esta coberta, pule
-  6. TODO o conteudo DEVE ser em portugues
-  7. Saida maxima: ~4000 palavras
+  6. TODO o conteudo DEVE ser em portugues - TRADUZA qualquer regra que esteja em ingles
+  7. Saida maxima: ~8000 palavras
+  8. As Regras de Negocio sao o NUCLEO da wiki - dedique a maior parte do conteudo a elas
+  9. Inclua o MAXIMO de regras possivel, organizadas por categoria
 
   ESTRUTURA OBRIGATORIA (use exatamente estas secoes):
 

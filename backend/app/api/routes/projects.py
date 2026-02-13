@@ -1022,11 +1022,12 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
 
     # --- 6. Call AI to enrich ---
     orchestrator = AIOrchestrator(db)
+    # PROMPT #268 - Increased from 6000 to 12000 to allow richer rule coverage
     response = await orchestrator.execute(
         usage_type="memory",
         messages=[{"role": "user", "content": usr_prompt}],
         system_prompt=sys_prompt,
-        max_tokens=6000,
+        max_tokens=12000,
         project_id=str(project_id),
         metadata={"type": "wiki_enrichment"},
     )
@@ -1057,25 +1058,26 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             if not sections:
                 _upsert_wiki_page(db, project_id, "visao-geral", "Visao Geral", enriched, 0, "enrichment")
 
-            # PROMPT #266 - Create comprehensive rules page directly from ALL RAG rules.
-            # The AI enrichment compresses rules to fit token limits, so we create a
-            # separate page with the full uncompressed list of all extracted rules.
+            # PROMPT #266/#268 - Raw rules catalog as separate reference page.
+            # The AI enrichment creates the main "regras-de-negocio" page in Portuguese.
+            # This raw catalog is a supplementary reference with ALL extracted rules.
             if rules:
                 rules_md_parts = [
-                    "## Regras de Negocio - Catalogo Completo\n",
+                    "## Catalogo de Referencia - Regras Brutas\n",
                     f"Total de regras extraidas do codebase: **{len(rules)}**\n",
+                    "Estas sao as regras brutas extraidas automaticamente do codigo-fonte.",
+                    "A pagina principal de Regras de Negocio contem a versao enriquecida e organizada.\n",
                 ]
                 for i, rule in enumerate(rules, 1):
-                    # Truncate very long rules to keep page manageable
                     rule_text = rule[:500] if len(rule) > 500 else rule
                     rules_md_parts.append(f"{i}. {rule_text}")
                 rules_md = "\n".join(rules_md_parts)
                 _upsert_wiki_page(
-                    db, project_id, "regras-de-negocio",
-                    "Regras de Negocio", rules_md,
-                    2, "ai_generated"
+                    db, project_id, "regras-catalogo-bruto",
+                    "Catalogo de Referencia - Regras Brutas", rules_md,
+                    12, "ai_generated"
                 )
-                logger.info(f"Wiki: rules page with {len(rules)} rules for project {project_id}")
+                logger.info(f"Wiki: raw rules catalog with {len(rules)} rules for project {project_id}")
 
             # PROMPT #267 - Generate wiki pages from ALL RAG data types
             from app.api.routes.wiki import (
