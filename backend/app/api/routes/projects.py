@@ -879,19 +879,16 @@ async def _process_project_pipeline(
     # PROMPT #241: _run_post_pipeline_enrichment removed - replaced by watchdog service
 
 
-async def _enrich_context_from_rag(db, project_id: UUID):
+async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
     """
     PROMPT #239 - Living Wiki: enrich project description from RAG findings.
-    Only runs when context is NOT locked.
+    PROMPT #252 - Removed context_locked guard. Description evolves continuously.
+    context_semantic and context_human remain immutable (managed by epic flow).
+    Returns True if enrichment actually happened, False otherwise.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        return
-
-    # Respect context_locked
-    if project.context_locked:
-        logger.info(f"Context locked for {project_id}, skipping wiki enrichment")
-        return
+        return False
 
     # Get business rules from RAG
     from sqlalchemy import text as sql_text
@@ -906,7 +903,7 @@ async def _enrich_context_from_rag(db, project_id: UUID):
 
     if not rules:
         logger.info(f"No RAG rules for {project_id}, skipping wiki enrichment")
-        return
+        return False
 
     # Use AI to enrich the description
     from app.services.ai_orchestrator import AIOrchestrator
@@ -926,7 +923,7 @@ async def _enrich_context_from_rag(db, project_id: UUID):
         )
     except Exception as e:
         logger.warning(f"Wiki enrichment prompt not found: {e}")
-        return
+        return False
 
     orchestrator = AIOrchestrator(db)
     response = await orchestrator.execute(
@@ -944,6 +941,10 @@ async def _enrich_context_from_rag(db, project_id: UUID):
         project.updated_at = datetime.utcnow()
         db.commit()
         logger.info(f"Wiki enriched for project {project_id} ({len(enriched)} chars)")
+        return True
+
+    logger.info(f"Wiki enrichment response too short for {project_id}, skipping")
+    return False
 
 
 async def _process_cards_from_memory_async(

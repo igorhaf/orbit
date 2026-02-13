@@ -160,6 +160,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
 
         # --- Step 4: Wiki enrichment ---
         # PROMPT #243 - Skip if already enriched in RAG scan (run_full_cycle)
+        # PROMPT #252 - Use boolean return to track actual enrichment
         already_enriched = False
         if isinstance(rag_result, dict):
             already_enriched = rag_result.get("wiki_enriched", False)
@@ -171,8 +172,11 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             jm.update_progress(job_id, 70.0, "Enriching project wiki...")
             try:
                 from app.api.routes.projects import _enrich_context_from_rag
-                await _enrich_context_from_rag(db, project_id)
-                logger.info(f"Wiki enrichment done for '{project_name}'")
+                enriched = await _enrich_context_from_rag(db, project_id)
+                if enriched:
+                    logger.info(f"Wiki enrichment done for '{project_name}'")
+                else:
+                    logger.info(f"Wiki enrichment skipped for '{project_name}' (no update needed)")
             except Exception as e:
                 logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
 
@@ -368,12 +372,29 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
 def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int = 30):
     """
     PROMPT #245 - Submit a batch processing cycle.
+    PROMPT #252: Cleans up stale jobs (>30min) before checking.
     Uses NORMAL priority (higher than watchdog's LOW) because initial
     ingestion is more important than maintenance scanning.
     """
+    from datetime import timedelta
     from app.models.async_job import AsyncJob, JobStatus, JobType, JobPriority
     from app.services.job_manager import JobManager
     from app.services.job_executor import PriorityJobExecutor
+
+    # PROMPT #252 - Clean up stale jobs before checking for duplicates
+    stale_cutoff = datetime.utcnow() - timedelta(minutes=30)
+    stale_jobs = db.query(AsyncJob).filter(
+        AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
+        AsyncJob.project_id == project_id,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+        AsyncJob.updated_at < stale_cutoff,
+    ).all()
+    if stale_jobs:
+        for job in stale_jobs:
+            job.status = JobStatus.FAILED
+            job.result = {"error": "Stale job cleaned up"}
+        db.commit()
+        logger.info(f"Cleaned up {len(stale_jobs)} stale batch jobs for project {project_id}")
 
     # Check no pending/running cycle exists
     existing = db.query(AsyncJob).filter(
@@ -433,11 +454,28 @@ def submit_watchdog_cycle(db: Session, project_id: UUID):
     """
     Submit a new watchdog cycle for a project.
     Checks for existing pending/running jobs to avoid duplicates.
+    PROMPT #252: Cleans up stale jobs (>30min) before checking.
     Creates a silent (no notification) LOW priority job.
     """
+    from datetime import timedelta
     from app.models.async_job import AsyncJob, JobStatus, JobType, JobPriority
     from app.services.job_manager import JobManager
     from app.services.job_executor import PriorityJobExecutor
+
+    # PROMPT #252 - Clean up stale jobs before checking for duplicates
+    stale_cutoff = datetime.utcnow() - timedelta(minutes=30)
+    stale_jobs = db.query(AsyncJob).filter(
+        AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
+        AsyncJob.project_id == project_id,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+        AsyncJob.updated_at < stale_cutoff,
+    ).all()
+    if stale_jobs:
+        for job in stale_jobs:
+            job.status = JobStatus.FAILED
+            job.result = {"error": "Stale job cleaned up"}
+        db.commit()
+        logger.info(f"Cleaned up {len(stale_jobs)} stale jobs for project {project_id}")
 
     # Check no pending/running cycle exists
     existing = db.query(AsyncJob).filter(
@@ -656,13 +694,30 @@ async def bootstrap_watchdog():
     On startup, ensure every active project has appropriate cycle queued.
     PROMPT #245: Projects with pending files resume batch processing.
     PROMPT #251: Uses resilient session with retry on startup.
+    PROMPT #252: Cleans up stale jobs before queuing new cycles.
     Called once from main.py lifespan.
     """
+    from datetime import timedelta
+    from app.models.async_job import AsyncJob, JobStatus, JobType
     from app.models.project import Project
     from app.models.rag_file_state import RAGFileState, FileProcessingStatus
 
     db = _get_resilient_session(max_retries=5, delay=10.0)
     try:
+        # PROMPT #252 - Clean up stale running jobs (>30 min old)
+        stale_cutoff = datetime.utcnow() - timedelta(minutes=30)
+        stale_jobs = db.query(AsyncJob).filter(
+            AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
+            AsyncJob.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
+            AsyncJob.updated_at < stale_cutoff,
+        ).all()
+        if stale_jobs:
+            for job in stale_jobs:
+                job.status = JobStatus.FAILED
+                job.result = {"error": "Stale job cleaned up by bootstrap"}
+            db.commit()
+            logger.info(f"Cleaned up {len(stale_jobs)} stale RAG jobs")
+
         projects = db.query(Project).filter(
             Project.code_path.isnot(None),
             Project.code_path != "",

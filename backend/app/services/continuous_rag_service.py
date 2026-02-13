@@ -112,14 +112,17 @@ class ContinuousRAGService:
         process_result = await self.process_pending_files(project_id)
 
         # PROMPT #243 - Realtime wiki enrichment: update wiki immediately when new rules found
+        # PROMPT #252 - Use boolean return to track actual enrichment success
         wiki_enriched = False
         rules_extracted = process_result.get("rules_extracted", 0)
         if rules_extracted > 0:
             try:
                 from app.api.routes.projects import _enrich_context_from_rag
-                await _enrich_context_from_rag(self.db, project_id)
-                wiki_enriched = True
-                logger.info(f"Wiki enriched after {rules_extracted} new rules extracted for project {project_id}")
+                wiki_enriched = await _enrich_context_from_rag(self.db, project_id)
+                if wiki_enriched:
+                    logger.info(f"Wiki enriched after {rules_extracted} new rules for project {project_id}")
+                else:
+                    logger.info(f"Wiki enrichment skipped (no update needed) for project {project_id}")
             except Exception as e:
                 logger.warning(f"Wiki enrichment after RAG failed (non-blocking): {e}")
 
