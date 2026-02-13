@@ -237,7 +237,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
           }`}
           style={{ paddingLeft: `${8 + depth * 14}px` }}
         >
-          <span className="truncate block">{item.title}</span>
+          <span className="block">{item.title}</span>
         </button>
         {item.children && item.children.map((child) => renderSidebarItem(child, depth + 1))}
       </div>
@@ -374,10 +374,10 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
 
       <div className="flex gap-4">
         {/* Sidebar tree */}
-        <div className="w-56 flex-shrink-0">
+        <div className="w-72 flex-shrink-0">
           <Card className="p-3">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Paginas</h2>
-            <div className="space-y-0.5 max-h-[600px] overflow-y-auto">
+            <div className="space-y-0.5">
               {tree.map((item) => renderSidebarItem(item))}
             </div>
           </Card>

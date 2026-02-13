@@ -25,7 +25,7 @@ import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats
 import { useNotification } from '@/hooks';
 
 type Tab = 'kanban' | 'overview' | 'backlog' | 'rag' | 'analytics' | 'commits' | 'specs' | 'queue' | 'wiki';  // PROMPT #272 - Added wiki tab
-type OverviewSubTab = 'description' | 'context' | 'semantic' | 'statistics';
+type OverviewSubTab = 'description' | 'statistics';
 
 export default function ProjectDetailsPage() {
   const params = useParams();
@@ -78,14 +78,6 @@ export default function ProjectDetailsPage() {
   // PROMPT #239 - Enrichment status for living wiki
   const [isEnriching, setIsEnriching] = useState(false);
   const prevEnrichingRef = useRef(false);
-
-  // PROMPT #258 - Wiki stats for description overview
-  const [wikiStats, setWikiStats] = useState<{
-    business_rules_count: number;
-    interview_answers_count: number;
-    code_files_count: number;
-    total_documents: number;
-  } | null>(null);
 
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
@@ -145,31 +137,6 @@ export default function ProjectDetailsPage() {
       if (interval) clearInterval(interval);
     };
   }, [projectId, loadProjectData]);
-
-  // PROMPT #258 - Load wiki stats and auto-refresh description while enrichment active
-  useEffect(() => {
-    if (activeTab !== 'overview' || overviewSubTab !== 'description') return;
-
-    const loadWikiStats = async () => {
-      try {
-        const stats = await knowledgeApi.getFullStats(projectId);
-        setWikiStats(stats);
-      } catch {
-        // Ignore - stats are decorative
-      }
-    };
-
-    loadWikiStats();
-
-    // Auto-refresh description every 30s while enrichment or scan is active
-    if (isEnriching || project?.status === 'processing') {
-      const interval = setInterval(() => {
-        loadWikiStats();
-        loadProjectData();
-      }, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [activeTab, overviewSubTab, projectId, isEnriching, project?.status, loadProjectData]);
 
   // PROMPT #249 - Auto-refresh while project is processing (pipeline running)
   useEffect(() => {
@@ -1031,8 +998,6 @@ export default function ProjectDetailsPage() {
               <nav className="-mb-px flex space-x-8">
                 {[
                   { id: 'description', label: 'Project Description' },
-                  { id: 'context', label: 'Project Context' },
-                  { id: 'semantic', label: 'Semantic Context (for AI)' },
                   { id: 'statistics', label: 'Statistics' },
                 ].map((sub) => (
                   <button
@@ -1123,81 +1088,6 @@ export default function ProjectDetailsPage() {
                 </CardContent>
               </Card>
               </>
-            )}
-
-            {/* Sub-Tab: Project Context */}
-            {overviewSubTab === 'context' && (
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <CardTitle>Project Context</CardTitle>
-                    {project.context_locked && (
-                      <Badge variant="secondary" className="bg-amber-100 text-amber-800 border-amber-200">
-                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                        Locked
-                      </Badge>
-                    )}
-                  </div>
-                  {project.context_locked_at && (
-                    <span className="text-xs text-gray-500">
-                      Locked on {new Date(project.context_locked_at).toLocaleDateString()}
-                    </span>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {project.context_human ? (
-                    <div className="prose prose-sm max-w-none">
-                      <ReactMarkdown>
-                        {project.context_human}
-                      </ReactMarkdown>
-                      <div className="mt-2 flex justify-end not-prose">
-                        <AIModelBadge model="context-interview" usage_type="context" decorative />
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm italic">No context generated yet. Use the Interview button to establish project context.</p>
-                  )}
-
-                  {!project.context_locked && project.context_human && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mt-4">
-                      <div className="flex items-start gap-2">
-                        <svg className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        <p className="text-sm text-blue-800">
-                          This context will be <strong>locked</strong> when you create your first Epic.
-                          After that, it cannot be modified to ensure consistency across all project cards.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Sub-Tab: Semantic Context (for AI) */}
-            {overviewSubTab === 'semantic' && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Semantic Context (for AI)</CardTitle>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Structured context optimized for AI consumption. Used to generate epics, stories, and tasks.
-                  </p>
-                </CardHeader>
-                <CardContent>
-                  {project.context_semantic ? (
-                    <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
-                      <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">
-                        {project.context_semantic}
-                      </pre>
-                    </div>
-                  ) : (
-                    <p className="text-gray-500 text-sm italic">No semantic context generated yet.</p>
-                  )}
-                </CardContent>
-              </Card>
             )}
 
             {/* Sub-Tab: Statistics */}
