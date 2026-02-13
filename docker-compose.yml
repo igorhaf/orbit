@@ -60,6 +60,7 @@ services:
       - ./backend:/app
       - /app/.venv
       - ./projects:/projects
+      - .:/projects/orbit:ro  # PROMPT #244 - Self-analysis: mount ORBIT root as a project
     ports:
       - "8000:8000"
     depends_on:
