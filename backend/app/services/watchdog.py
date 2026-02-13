@@ -32,6 +32,22 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
+def _submit_to_executor(executor, priority: int, coro_func, *args):
+    """
+    PROMPT #255 - Submit a coroutine to the executor, handling both async and sync contexts.
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        loop.create_task(executor.submit(priority, coro_func, *args))
+    except RuntimeError:
+        import threading
+        def _submit():
+            new_loop = asyncio.new_event_loop()
+            new_loop.run_until_complete(executor.submit(priority, coro_func, *args))
+            new_loop.close()
+        threading.Thread(target=_submit, daemon=True).start()
+
+
 def _get_resilient_session(max_retries: int = 3, delay: float = 5.0):
     """
     Create a DB session with retry logic for transient connection failures.
@@ -293,14 +309,17 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         pending_remaining = process_result.get("pending_remaining", 0)
 
         # --- Step 2: Enrich wiki if new rules found ---
+        # PROMPT #255 - Use boolean return from _enrich_context_from_rag (PROMPT #252 fix)
         wiki_enriched = False
         if rules_extracted > 0:
             jm.update_progress(job_id, 50.0, f"Enriching wiki with {rules_extracted} new rules...")
             try:
                 from app.api.routes.projects import _enrich_context_from_rag
-                await _enrich_context_from_rag(db, project_id)
-                wiki_enriched = True
-                logger.info(f"Wiki enriched after batch for '{project_name}'")
+                wiki_enriched = await _enrich_context_from_rag(db, project_id)
+                if wiki_enriched:
+                    logger.info(f"Wiki enriched after batch for '{project_name}'")
+                else:
+                    logger.info(f"Wiki enrichment skipped for '{project_name}' (no update needed)")
             except Exception as e:
                 logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
 
@@ -404,7 +423,13 @@ def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int
     ).first()
 
     if existing:
-        logger.debug(f"Batch processing already queued for project {project_id}")
+        # PROMPT #255 - Re-submit pending job to executor if queue is empty
+        if existing.status == JobStatus.PENDING:
+            executor = PriorityJobExecutor.get_instance()
+            if executor.queue_size == 0:
+                bs = (existing.input_data or {}).get("batch_size", batch_size)
+                _submit_to_executor(executor, JobPriority.NORMAL, batch_processing_cycle, existing.id, project_id, bs)
+                logger.info(f"Re-submitted existing pending batch job {existing.id} to executor")
         return
 
     jm = JobManager(db)
@@ -420,29 +445,7 @@ def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int
     )
 
     executor = PriorityJobExecutor.get_instance()
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(executor.submit(
-            JobPriority.NORMAL,
-            batch_processing_cycle,
-            job.id,
-            project_id,
-            batch_size,
-        ))
-    except RuntimeError:
-        import threading
-        def _submit():
-            new_loop = asyncio.new_event_loop()
-            new_loop.run_until_complete(executor.submit(
-                JobPriority.NORMAL,
-                batch_processing_cycle,
-                job.id,
-                project_id,
-                batch_size,
-            ))
-            new_loop.close()
-        threading.Thread(target=_submit, daemon=True).start()
-
+    _submit_to_executor(executor, JobPriority.NORMAL, batch_processing_cycle, job.id, project_id, batch_size)
     logger.debug(f"Batch processing cycle queued for project {project_id} (batch_size={batch_size}, job {job.id})")
 
 
@@ -485,7 +488,13 @@ def submit_watchdog_cycle(db: Session, project_id: UUID):
     ).first()
 
     if existing:
-        logger.debug(f"Watchdog already queued for project {project_id}")
+        # PROMPT #255 - If pending job exists in DB but executor might not have it
+        # (after restart), re-submit to executor to ensure it runs
+        if existing.status == JobStatus.PENDING:
+            executor = PriorityJobExecutor.get_instance()
+            if executor.queue_size == 0:
+                _submit_to_executor(executor, JobPriority.LOW, watchdog_cycle, existing.id, project_id)
+                logger.info(f"Re-submitted existing pending watchdog job {existing.id} to executor")
         return
 
     jm = JobManager(db)
@@ -497,28 +506,7 @@ def submit_watchdog_cycle(db: Session, project_id: UUID):
     )
 
     executor = PriorityJobExecutor.get_instance()
-    try:
-        loop = asyncio.get_running_loop()
-        loop.create_task(executor.submit(
-            JobPriority.LOW,
-            watchdog_cycle,
-            job.id,
-            project_id,
-        ))
-    except RuntimeError:
-        # No running event loop - schedule via thread
-        import threading
-        def _submit():
-            new_loop = asyncio.new_event_loop()
-            new_loop.run_until_complete(executor.submit(
-                JobPriority.LOW,
-                watchdog_cycle,
-                job.id,
-                project_id,
-            ))
-            new_loop.close()
-        threading.Thread(target=_submit, daemon=True).start()
-
+    _submit_to_executor(executor, JobPriority.LOW, watchdog_cycle, job.id, project_id)
     logger.debug(f"Watchdog cycle queued for project {project_id} (job {job.id})")
 
 
@@ -695,20 +683,35 @@ async def bootstrap_watchdog():
     PROMPT #245: Projects with pending files resume batch processing.
     PROMPT #251: Uses resilient session with retry on startup.
     PROMPT #252: Cleans up stale jobs before queuing new cycles.
+    PROMPT #255: Re-submits orphaned pending DB jobs to in-memory executor.
     Called once from main.py lifespan.
     """
     from datetime import timedelta
-    from app.models.async_job import AsyncJob, JobStatus, JobType
+    from app.models.async_job import AsyncJob, JobStatus, JobType, JobPriority
     from app.models.project import Project
     from app.models.rag_file_state import RAGFileState, FileProcessingStatus
+    from app.services.job_executor import PriorityJobExecutor
 
     db = _get_resilient_session(max_retries=5, delay=10.0)
     try:
-        # PROMPT #252 - Clean up stale running jobs (>30 min old)
+        # PROMPT #255 - On startup, ALL running jobs are zombies (threads died with restart).
+        # Mark them as failed so they don't block new submissions.
+        zombie_jobs = db.query(AsyncJob).filter(
+            AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
+            AsyncJob.status == JobStatus.RUNNING,
+        ).all()
+        if zombie_jobs:
+            for job in zombie_jobs:
+                job.status = JobStatus.FAILED
+                job.result = {"error": "Zombie job cleaned up on restart"}
+            db.commit()
+            logger.info(f"Cleaned up {len(zombie_jobs)} zombie running jobs on restart")
+
+        # PROMPT #252 - Clean up stale pending jobs (>30 min old)
         stale_cutoff = datetime.utcnow() - timedelta(minutes=30)
         stale_jobs = db.query(AsyncJob).filter(
             AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
-            AsyncJob.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
+            AsyncJob.status == JobStatus.PENDING,
             AsyncJob.created_at < stale_cutoff,
         ).all()
         if stale_jobs:
@@ -716,7 +719,44 @@ async def bootstrap_watchdog():
                 job.status = JobStatus.FAILED
                 job.result = {"error": "Stale job cleaned up by bootstrap"}
             db.commit()
-            logger.info(f"Cleaned up {len(stale_jobs)} stale RAG jobs")
+            logger.info(f"Cleaned up {len(stale_jobs)} stale pending jobs")
+
+        # PROMPT #255 - Re-submit orphaned pending jobs to in-memory executor.
+        # After restart, DB jobs may be 'pending' but not in the executor's in-memory queue.
+        orphaned_jobs = db.query(AsyncJob).filter(
+            AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
+            AsyncJob.status == JobStatus.PENDING,
+        ).all()
+        if orphaned_jobs:
+            executor = PriorityJobExecutor.get_instance()
+            for orphan in orphaned_jobs:
+                input_data = orphan.input_data or {}
+                project_id_str = input_data.get("project_id")
+                if not project_id_str:
+                    continue
+                orphan_project_id = UUID(project_id_str)
+
+                if input_data.get("batch_processing"):
+                    batch_size = input_data.get("batch_size", 30)
+                    await executor.submit(
+                        JobPriority.NORMAL,
+                        batch_processing_cycle,
+                        orphan.id,
+                        orphan_project_id,
+                        batch_size,
+                    )
+                    logger.info(f"Re-submitted orphaned batch job {orphan.id} for project {project_id_str}")
+                else:
+                    await executor.submit(
+                        JobPriority.LOW,
+                        watchdog_cycle,
+                        orphan.id,
+                        orphan_project_id,
+                    )
+                    logger.info(f"Re-submitted orphaned watchdog job {orphan.id} for project {project_id_str}")
+            logger.info(f"Re-submitted {len(orphaned_jobs)} orphaned jobs to executor")
+            db.close()
+            return  # Don't create new jobs - orphaned ones will handle it
 
         projects = db.query(Project).filter(
             Project.code_path.isnot(None),
