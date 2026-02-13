@@ -1086,6 +1086,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                 _build_ui_components_page,
                 _build_code_structure_page,
                 _build_git_history_page,
+                _build_business_rules_wiki_pages,
             )
             page_builders = [
                 ("padroes-arquitetura", "Padroes de Arquitetura", _build_architecture_patterns_page, 6),
@@ -1102,6 +1103,11 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                     rag_pages_count += 1
             if rag_pages_count:
                 logger.info(f"Wiki: {rag_pages_count} RAG data pages for project {project_id}")
+
+            # PROMPT #269 - Individual business rule wiki pages (hierarchical)
+            rule_pages = _build_business_rules_wiki_pages(db, project_id)
+            if rule_pages:
+                logger.info(f"Wiki: {len(rule_pages)} business rule pages for project {project_id}")
 
             db.commit()
             logger.info(f"Wiki: {len(sections) or 1} pages from enriched content for project {project_id}")

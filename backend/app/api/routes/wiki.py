@@ -294,10 +294,15 @@ async def generate_wiki_from_context(
                 )
                 created_pages.append(page)
 
+    # PROMPT #269 - Individual business rule wiki pages (hierarchical)
+    rule_pages = _build_business_rules_wiki_pages(db, project_id)
+    created_pages.extend(rule_pages)
+
     db.commit()
 
+    total_pages = len([p for p in created_pages if p])
     return {
-        "detail": f"{len(created_pages)} wiki pages generated",
+        "detail": f"{total_pages} wiki pages generated",
         "pages": [p.slug for p in created_pages if p],
     }
 
@@ -843,6 +848,245 @@ def _build_git_history_page(db, project_id: UUID) -> Optional[str]:
         lines.append(f"{i}.{hash_text} {first_line}")
 
     return "\n".join(lines)
+
+
+# =============================================================================
+# PROMPT #269 - Individual Business Rule Wiki Pages
+# =============================================================================
+
+# Domain classification map: path fragments → (domain_name, domain_slug)
+_DOMAIN_MAP = [
+    ("Aluno/",        "Aluno",         "aluno"),
+    ("aluno/",        "Aluno",         "aluno"),
+    ("Aulas/",        "Aulas",         "aulas"),
+    ("aulas/",        "Aulas",         "aulas"),
+    ("Auth/",         "Autenticacao",  "autenticacao"),
+    ("auth/",         "Autenticacao",  "autenticacao"),
+    ("Categorias/",   "Categorias",    "categorias"),
+    ("categorias/",   "Categorias",    "categorias"),
+    ("Cursos/",       "Cursos",        "cursos"),
+    ("cursos/",       "Cursos",        "cursos"),
+    ("Instrutor/",    "Instrutor",     "instrutor"),
+    ("instrutor/",    "Instrutor",     "instrutor"),
+    ("Instrutores",   "Instrutor",     "instrutor"),
+    ("instrutores/",  "Instrutor",     "instrutor"),
+    ("Trilhas/",      "Trilhas",       "trilhas"),
+    ("trilhas/",      "Trilhas",       "trilhas"),
+    ("Planos",        "Planos",        "planos"),
+    ("planos/",       "Planos",        "planos"),
+    ("avaliacoes/",   "Avaliacoes",    "avaliacoes"),
+    ("Avaliacoes/",   "Avaliacoes",    "avaliacoes"),
+    ("Review",        "Avaliacoes",    "avaliacoes"),
+    ("certificado",   "Certificados",  "certificados"),
+    ("Certificado",   "Certificados",  "certificados"),
+    ("Certificate",   "Certificados",  "certificados"),
+    ("mensagens/",    "Mensagens",     "mensagens"),
+    ("notificacoes/", "Notificacoes",  "notificacoes"),
+    ("Notification",  "Notificacoes",  "notificacoes"),
+    ("checkout",      "Pagamentos",    "pagamentos"),
+    ("Enrollment",    "Inscricoes",    "inscricoes"),
+    ("inscricao",     "Inscricoes",    "inscricoes"),
+    ("inscricoes",    "Inscricoes",    "inscricoes"),
+    ("ajuda/",        "Ajuda",         "ajuda"),
+    ("Models/",       "Modelos",       "modelos"),
+    ("Observers/",    "Modelos",       "modelos"),
+    ("Policies/",     "Modelos",       "modelos"),
+    ("Requests/",     "Validacao",     "validacao"),
+    ("config/",       "Configuracao",  "configuracao"),
+    ("bootstrap/",    "Configuracao",  "configuracao"),
+    ("docker-",       "Configuracao",  "configuracao"),
+    ("composer.",     "Configuracao",  "configuracao"),
+    ("package.",      "Configuracao",  "configuracao"),
+    ("routes/",       "Rotas",         "rotas"),
+]
+
+
+def _classify_domain(source_file: str) -> Tuple[str, str]:
+    """
+    PROMPT #269 - Classify a source file into a business domain.
+    Returns (domain_name, domain_slug).
+    """
+    if not source_file:
+        return ("Geral", "geral")
+    for fragment, name, slug in _DOMAIN_MAP:
+        if fragment in source_file:
+            return (name, slug)
+    return ("Geral", "geral")
+
+
+def _build_business_rules_wiki_pages(
+    db: "Session", project_id: UUID
+) -> List[WikiPage]:
+    """
+    PROMPT #269 - Build hierarchical wiki pages for business rules.
+
+    Creates:
+    1. Index page listing all domains with rule counts
+    2. Per-domain page with bullet list of rules (linking to individual pages)
+    3. Per-rule individual page with rich content
+
+    Uses parent_id for hierarchy:
+      regras-de-negocio (existing) -> domain pages -> individual rule pages
+    """
+    from sqlalchemy import text as sql_text
+    from collections import defaultdict
+    import hashlib
+
+    result = db.execute(sql_text("""
+        SELECT id, content, metadata->>'source_file' as source_file
+        FROM rag_documents
+        WHERE project_id = :pid
+        AND (metadata->>'content_type' = 'business_rule'
+             OR metadata->>'type' = 'business_rule')
+        ORDER BY metadata->>'source_file', created_at
+    """), {"pid": str(project_id)})
+    rows = result.fetchall()
+    if not rows:
+        return []
+
+    # Group rules by domain, deduplicating by content hash
+    domains: Dict[str, list] = defaultdict(list)
+    seen_hashes: set = set()
+    for row in rows:
+        doc_id = str(row[0])
+        content = row[1] or ""
+        source_file = row[2] or ""
+        if not content.strip():
+            continue
+        # Generate short stable slug from content hash - skip duplicates
+        rule_hash = hashlib.md5(content.encode()).hexdigest()[:8]
+        if rule_hash in seen_hashes:
+            continue
+        seen_hashes.add(rule_hash)
+        domain_name, domain_slug = _classify_domain(source_file)
+        domains[domain_name].append({
+            "id": doc_id,
+            "content": content,
+            "source_file": source_file,
+            "domain_slug": domain_slug,
+            "rule_hash": rule_hash,
+        })
+
+    created_pages: List[WikiPage] = []
+
+    # Find parent page (regras-de-negocio) if it exists
+    parent_page = (
+        db.query(WikiPage)
+        .filter(
+            WikiPage.project_id == project_id,
+            WikiPage.slug == "regras-de-negocio",
+        )
+        .first()
+    )
+    parent_id = parent_page.id if parent_page else None
+
+    # --- Index page ---
+    index_lines = [
+        "## Regras de Negocio - Indice por Dominio\n",
+        f"Total de regras extraidas: **{len(rows)}** em **{len(domains)}** dominios\n",
+        "Clique em um dominio para ver todas as regras daquela area.\n",
+    ]
+    for domain_name in sorted(domains.keys()):
+        rules = domains[domain_name]
+        domain_slug = rules[0]["domain_slug"]
+        index_lines.append(
+            f"- **[{domain_name}](regras-{domain_slug})** ({len(rules)} regras)"
+        )
+
+    index_page = _upsert_wiki_page(
+        db, project_id, "regras-indice",
+        "Regras de Negocio - Indice",
+        "\n".join(index_lines),
+        20, "ai_generated"
+    )
+    if parent_id and index_page:
+        index_page.parent_id = parent_id
+    created_pages.append(index_page)
+
+    # --- Per-domain pages + individual rule pages ---
+    domain_order = 21
+    for domain_name in sorted(domains.keys()):
+        rules = domains[domain_name]
+        domain_slug = rules[0]["domain_slug"]
+        page_slug = f"regras-{domain_slug}"
+
+        # Domain page with bullet list
+        domain_lines = [
+            f"## Regras de Negocio - {domain_name}\n",
+            f"Total de regras neste dominio: **{len(rules)}**\n",
+        ]
+
+        # Group by source file within domain
+        by_file: Dict[str, list] = defaultdict(list)
+        for rule in rules:
+            by_file[rule["source_file"]].append(rule)
+
+        for source_file in sorted(by_file.keys()):
+            file_rules = by_file[source_file]
+            file_display = source_file.split("/projects/")[-1] if "/projects/" in source_file else source_file
+            domain_lines.append(f"\n### {file_display}\n")
+            for rule in file_rules:
+                # Title: first sentence, max 120 chars
+                title = rule["content"].split(".")[0].strip()
+                if len(title) > 120:
+                    title = title[:117] + "..."
+                if not title or len(title) < 5:
+                    title = rule["content"][:120]
+                rule_slug = f"regra-{rule['rule_hash']}"
+                domain_lines.append(f"- [{title}]({rule_slug})")
+
+        domain_page = _upsert_wiki_page(
+            db, project_id, page_slug,
+            f"Regras de Negocio - {domain_name}",
+            "\n".join(domain_lines),
+            domain_order, "ai_generated"
+        )
+        if index_page and domain_page:
+            domain_page.parent_id = index_page.id
+        created_pages.append(domain_page)
+
+        # Individual rule pages
+        rule_order = domain_order * 100
+        for rule in rules:
+            rule_slug = f"regra-{rule['rule_hash']}"
+            title = rule["content"].split(".")[0].strip()
+            if len(title) > 120:
+                title = title[:117] + "..."
+            if not title or len(title) < 5:
+                title = rule["content"][:120]
+
+            source_display = rule["source_file"]
+            if "/projects/" in source_display:
+                source_display = source_display.split("/projects/")[-1]
+
+            rule_content = (
+                f"## {title}\n\n"
+                f"**Dominio:** {domain_name}  \n"
+                f"**Arquivo Fonte:** `{source_display}`\n\n"
+                f"---\n\n"
+                f"### Descricao\n\n"
+                f"{rule['content']}\n\n"
+                f"---\n\n"
+                f"### Contexto\n\n"
+                f"Regra de negocio extraida automaticamente do arquivo "
+                f"`{source_display}`, parte do modulo **{domain_name}** do projeto.\n\n"
+                f"Esta regra foi identificada durante a analise do codigo-fonte "
+                f"e representa um comportamento ou restricao implementada no sistema.\n"
+            )
+
+            rule_page = _upsert_wiki_page(
+                db, project_id, rule_slug,
+                title, rule_content,
+                rule_order, "ai_generated"
+            )
+            if domain_page and rule_page:
+                rule_page.parent_id = domain_page.id
+            created_pages.append(rule_page)
+            rule_order += 1
+
+        domain_order += 1
+
+    return created_pages
 
 
 def _parse_wiki_sections(markdown: str) -> Dict[str, Tuple[str, str]]:
