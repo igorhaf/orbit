@@ -1194,61 +1194,76 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
     ) -> Optional[List[Dict]]:
         """
         PROMPT #193 - Use AI to classify business rules into hierarchical structure.
+        PROMPT #264 - Added retry logic (2 attempts) with timeout and detailed logging.
 
         Returns list of hierarchy nodes or None if classification fails.
         """
-        try:
-            from app.contracts.loader import ContractLoader
-            loader = ContractLoader()
+        import json
+        import traceback
 
-            # Format rules as numbered text
-            rules_text = "\n".join([f"{i}. {rule}" for i, rule in enumerate(business_rules, 1)])
+        from app.contracts.loader import ContractLoader
+        loader = ContractLoader()
 
-            # Get additional context from memory
-            memory_ctx = project.initial_memory_context or {}
-            key_features = memory_ctx.get("key_features", [])
-            entities = memory_ctx.get("entities", [])
+        # Format rules as numbered text
+        rules_text = "\n".join([f"{i}. {rule}" for i, rule in enumerate(business_rules, 1)])
 
-            features_text = "\n".join([f"- {f}" for f in key_features]) if key_features else ""
-            entities_text = "\n".join([f"- {e}" for e in entities]) if entities else ""
+        # Get additional context from memory
+        memory_ctx = project.initial_memory_context or {}
+        key_features = memory_ctx.get("key_features", [])
+        entities = memory_ctx.get("entities", [])
 
-            system_prompt, user_prompt = loader.render(
-                "memory/business_rules_hierarchy",
-                {
-                    "project_name": project.name,
-                    "rules_text": rules_text,
-                    "key_features": features_text,
-                    "entities": entities_text
-                }
-            )
+        features_text = "\n".join([f"- {f}" for f in key_features]) if key_features else ""
+        entities_text = "\n".join([f"- {e}" for e in entities]) if entities else ""
 
-            response = await self.orchestrator.execute(
-                usage_type="memory",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=6000,
-                project_id=str(project.id)
-            )
+        system_prompt, user_prompt = loader.render(
+            "memory/business_rules_hierarchy",
+            {
+                "project_name": project.name,
+                "rules_text": rules_text,
+                "key_features": features_text,
+                "entities": entities_text
+            }
+        )
 
-            content = response.get("content", "")
+        # PROMPT #264 - Retry logic with 2 attempts
+        max_retries = 2
+        for attempt in range(max_retries):
+            try:
+                response = await asyncio.wait_for(
+                    self.orchestrator.execute(
+                        usage_type="memory",
+                        messages=[{"role": "user", "content": user_prompt}],
+                        system_prompt=system_prompt,
+                        max_tokens=6000,
+                        project_id=str(project.id)
+                    ),
+                    timeout=120
+                )
 
-            # Parse JSON response
-            import json
-            json_start = content.find("{")
-            json_end = content.rfind("}") + 1
-            if json_start >= 0 and json_end > json_start:
-                parsed = json.loads(content[json_start:json_end])
-                hierarchy = parsed.get("hierarchy", [])
-                if hierarchy and isinstance(hierarchy, list):
-                    logger.info(f"AI classified rules into {len(hierarchy)} domain groups")
-                    return hierarchy
+                content = response.get("content", "")
 
-            logger.warning("AI response did not contain valid hierarchy")
-            return None
+                # Parse JSON response
+                json_start = content.find("{")
+                json_end = content.rfind("}") + 1
+                if json_start >= 0 and json_end > json_start:
+                    parsed = json.loads(content[json_start:json_end])
+                    hierarchy = parsed.get("hierarchy", [])
+                    if hierarchy and isinstance(hierarchy, list):
+                        logger.info(f"AI classified rules into {len(hierarchy)} domain groups (attempt {attempt + 1})")
+                        return hierarchy
 
-        except Exception as e:
-            logger.error(f"Business rules hierarchy classification failed: {e}")
-            return None
+                logger.warning(f"AI response did not contain valid hierarchy (attempt {attempt + 1}/{max_retries})")
+
+            except json.JSONDecodeError as e:
+                logger.warning(f"JSON parse error in hierarchy classification (attempt {attempt + 1}/{max_retries}): {e}")
+            except asyncio.TimeoutError:
+                logger.warning(f"Hierarchy classification timed out after 120s (attempt {attempt + 1}/{max_retries})")
+            except Exception as e:
+                logger.error(f"Hierarchy classification failed (attempt {attempt + 1}/{max_retries}): {e}")
+                logger.error(traceback.format_exc())
+
+        logger.warning(f"Hierarchy classification failed after {max_retries} attempts, will use flat fallback")
+        return None
 
     def _create_hierarchy_cards(
         self,
@@ -1614,8 +1629,22 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             logger.info(f"   - Business Goals: {len(epic.interview_insights.get('business_goals', []))} items")
             logger.info(f"   - Technical Constraints: {len(epic.interview_insights.get('technical_constraints', []))} items")
 
-        # PROMPT #127 - Removed auto-generation of draft stories.
-        # Children are now generated on-demand via "Generate Stories" button.
+        # PROMPT #264 - Re-enable auto-generation of draft children after activation
+        # (Previously disabled by PROMPT #127)
+        children_count = 0
+        try:
+            if epic.item_type == ItemType.EPIC:
+                children = await self._generate_draft_stories(epic, project, count=10)
+                children_count = len(children)
+            elif epic.item_type == ItemType.STORY:
+                children = await self._generate_draft_tasks(epic, project, count=8)
+                children_count = len(children)
+            elif epic.item_type == ItemType.TASK:
+                children = await self._generate_draft_subtasks(epic, project, count=5)
+                children_count = len(children)
+            logger.info(f"✅ Auto-generated {children_count} draft children for {epic.title}")
+        except Exception as e:
+            logger.warning(f"⚠️ Auto-generation of children failed (non-blocking): {e}")
 
         # PROMPT #162 - Index activated card in RAG for semantic search
         try:
@@ -1646,7 +1675,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             "story_points": epic.story_points,
             "priority": epic.priority.value if epic.priority else "medium",
             "activated": True,
-            "children_generated": 0
+            "children_generated": children_count
         }
 
     async def generate_children(self, parent_id: UUID, count: int = 10) -> Dict:
@@ -5042,15 +5071,28 @@ Retorne APENAS o JSON, sem explicações."""
             # Still allow business rule cards to be regenerated if missing
             result["skipped_epics"] = True
 
-        # Step 1: Generate auto-context from memory scan (if no context exists)
+        # Step 1: Generate rich context from memory scan (if no context exists)
+        # PROMPT #264 - Use rich context (4 AI calls: architecture, business domain,
+        # features, consolidation) instead of basic deterministic auto-context
         if not project.context_semantic:
             try:
-                auto_context = await self._generate_auto_context_from_memory(project)
+                rich_context = await self.generate_rich_context_from_memory(
+                    project_id=project_id,
+                    progress_callback=None,
+                    ai_timeout=120
+                )
                 result["context_auto_generated"] = True
-                logger.info(f"✅ Auto-generated context for project {project.name}")
+                logger.info(f"✅ Rich context generated for project {project.name}")
             except Exception as e:
-                logger.warning(f"⚠️ Failed to auto-generate context: {e}")
-                # Continue anyway - we can still generate cards
+                logger.warning(f"⚠️ Rich context failed, falling back to auto-context: {e}")
+                # Fallback to basic deterministic context
+                try:
+                    auto_context = await self._generate_auto_context_from_memory(project)
+                    result["context_auto_generated"] = True
+                    logger.info(f"✅ Auto-generated context (fallback) for project {project.name}")
+                except Exception as e2:
+                    logger.warning(f"⚠️ Auto-context also failed: {e2}")
+                    # Continue anyway - we can still generate cards
 
         # Step 2: Generate business rule cards (closed)
         try:
