@@ -300,11 +300,24 @@ async def generate_wiki_from_context(
 
     db.commit()
 
+    # PROMPT #270 - Auto-trigger AI enrichment for individual rule pages
+    rule_page_count = len([p for p in rule_pages if p and p.slug.startswith("regra-")])
+    enrichment_job_id = None
+    if rule_page_count > 0:
+        try:
+            enrichment_job_id = await _trigger_rule_enrichment_job(db, project_id, rule_page_count)
+        except Exception as e:
+            logger.warning(f"Failed to trigger rule enrichment: {e}")
+
     total_pages = len([p for p in created_pages if p])
-    return {
+    result = {
         "detail": f"{total_pages} wiki pages generated",
         "pages": [p.slug for p in created_pages if p],
     }
+    if enrichment_job_id:
+        result["enrichment_job_id"] = str(enrichment_job_id)
+        result["detail"] += f". Enrichment started for {rule_page_count} rules."
+    return result
 
 
 @router.post("/{project_id}/wiki", response_model=WikiPageResponse, status_code=201)
@@ -1087,6 +1100,256 @@ def _build_business_rules_wiki_pages(
         domain_order += 1
 
     return created_pages
+
+
+async def _trigger_rule_enrichment_job(
+    db: Session, project_id: UUID, rule_count: int
+) -> Optional[UUID]:
+    """
+    PROMPT #270 - Helper to create and submit a rule enrichment background job.
+    Returns the job_id or None if failed.
+    """
+    from app.models.async_job import JobType
+    from app.services.job_manager import JobManager
+    from app.services.job_executor import PriorityJobExecutor
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.WIKI_RULE_ENRICHMENT,
+        input_data={
+            "project_id": str(project_id),
+            "rule_count": rule_count,
+        },
+        project_id=project_id,
+        notification_title=f"Enriquecimento de {rule_count} regras wiki",
+        deep_link=f"/projects/{project_id}/knowledge",
+    )
+    db.commit()
+
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _enrich_rules_background,
+        job.id,
+        project_id,
+    )
+    logger.info(f"Wiki rule enrichment job {job.id} submitted for {rule_count} rules")
+    return job.id
+
+
+@router.post("/{project_id}/wiki/enrich-rules")
+async def enrich_business_rule_pages(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #270 - Trigger AI enrichment of individual business rule wiki pages.
+    Creates a background job that enriches each rule page with rich dissertative content.
+    Returns job_id for polling progress.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    # Count rule pages that need enrichment (source=ai_generated, slug starts with regra-)
+    from sqlalchemy import text as sql_text
+    count_result = db.execute(sql_text("""
+        SELECT COUNT(*) FROM wiki_pages
+        WHERE project_id = :pid
+        AND slug LIKE 'regra-%%'
+        AND source = 'ai_generated'
+    """), {"pid": str(project_id)})
+    rule_count = count_result.scalar() or 0
+
+    if rule_count == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No business rule pages found. Run generate-from-context first."
+        )
+
+    job_id = await _trigger_rule_enrichment_job(db, project_id, rule_count)
+
+    return {
+        "detail": f"Enrichment started for {rule_count} rule pages",
+        "job_id": str(job_id),
+        "rule_count": rule_count,
+    }
+
+
+async def _enrich_rules_background(
+    job_id: UUID,
+    project_id: UUID,
+):
+    """
+    PROMPT #270 - Background task to enrich individual business rule wiki pages.
+    Makes one AI call per rule page with rich prompt context.
+    """
+    import asyncio
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.services.ai_orchestrator import AIOrchestrator
+    from app.prompts.loader import PromptLoader
+    from sqlalchemy import text as sql_text
+
+    db = SessionLocal()
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+
+        # Get project info
+        project = db.query(Project).filter(Project.id == project_id).first()
+        project_name = project.name if project else ""
+        project_context = (project.context_human or "")[:1000] if project else ""
+
+        # Get all rule pages that need enrichment
+        rule_pages = (
+            db.query(WikiPage)
+            .filter(
+                WikiPage.project_id == project_id,
+                WikiPage.slug.like("regra-%"),
+                WikiPage.source == "ai_generated",
+            )
+            .all()
+        )
+
+        total = len(rule_pages)
+        if total == 0:
+            job_manager.complete_job(job_id, {"enriched": 0, "total": 0})
+            return
+
+        job_manager.update_progress(job_id, 5.0, f"Preparando {total} regras para enriquecimento...")
+
+        # Build a map of domain pages to get related rules per domain
+        domain_rules_map: dict = {}
+        for page in rule_pages:
+            # Find parent domain page
+            if page.parent_id:
+                parent_slug = db.execute(sql_text(
+                    "SELECT slug FROM wiki_pages WHERE id = :pid"
+                ), {"pid": str(page.parent_id)}).scalar()
+                if parent_slug and parent_slug not in domain_rules_map:
+                    # Get sibling rules (same domain, max 10 for context)
+                    siblings = (
+                        db.query(WikiPage)
+                        .filter(
+                            WikiPage.parent_id == page.parent_id,
+                            WikiPage.slug.like("regra-%"),
+                            WikiPage.id != page.id,
+                        )
+                        .limit(10)
+                        .all()
+                    )
+                    domain_rules_map[parent_slug] = [
+                        s.title for s in siblings
+                    ]
+
+        loader = PromptLoader()
+        orchestrator = AIOrchestrator(db)
+        enriched_count = 0
+        failed_count = 0
+
+        for i, page in enumerate(rule_pages):
+            # Check cancellation
+            if job_manager.is_cancelled(job_id):
+                job_manager.update_progress(
+                    job_id, (i / total) * 100,
+                    f"Cancelado. {enriched_count} regras enriquecidas de {i}."
+                )
+                break
+
+            progress = 5.0 + (i / total) * 90.0
+            job_manager.update_progress(
+                job_id, progress,
+                f"Enriquecendo regra {i + 1}/{total}: {page.title[:60]}..."
+            )
+
+            try:
+                # Extract domain and source from current content
+                domain_name = "Geral"
+                source_file = ""
+                for line in page.content.split("\n"):
+                    if line.startswith("**Dominio:**"):
+                        domain_name = line.replace("**Dominio:**", "").strip()
+                    elif line.startswith("**Arquivo Fonte:**"):
+                        source_file = line.replace("**Arquivo Fonte:**", "").strip().strip("`")
+
+                # Get original rule content (from Descricao section)
+                rule_content = page.title
+                desc_marker = "### Descricao"
+                if desc_marker in page.content:
+                    parts = page.content.split(desc_marker, 1)
+                    if len(parts) > 1:
+                        desc_text = parts[1].split("---")[0].strip()
+                        if desc_text:
+                            rule_content = desc_text
+
+                # Get related rules from same domain
+                parent_slug = ""
+                if page.parent_id:
+                    parent_slug = db.execute(sql_text(
+                        "SELECT slug FROM wiki_pages WHERE id = :pid"
+                    ), {"pid": str(page.parent_id)}).scalar() or ""
+                related = domain_rules_map.get(parent_slug, [])
+                related_text = "\n".join(f"- {r}" for r in related[:8]) if related else ""
+
+                # Render prompt
+                template_vars = {
+                    "rule_content": rule_content,
+                    "domain_name": domain_name,
+                    "source_file": source_file,
+                    "project_name": project_name,
+                    "related_rules": related_text,
+                    "project_context": project_context,
+                }
+                sys_prompt, usr_prompt = loader.render(
+                    "context/wiki_rule_enrichment", template_vars
+                )
+
+                # Call AI
+                response = await orchestrator.execute(
+                    usage_type="memory",
+                    messages=[{"role": "user", "content": usr_prompt}],
+                    system_prompt=sys_prompt,
+                    max_tokens=2000,
+                    project_id=str(project_id),
+                    metadata={"type": "wiki_rule_enrichment", "rule_slug": page.slug},
+                )
+
+                enriched_content = response.get("content", "")
+                if enriched_content and len(enriched_content) > 100:
+                    page.content = enriched_content
+                    page.source = "enrichment"
+                    db.commit()
+                    enriched_count += 1
+                else:
+                    failed_count += 1
+                    logger.warning(f"Rule enrichment too short for {page.slug}")
+
+            except Exception as e:
+                failed_count += 1
+                logger.error(f"Failed to enrich rule {page.slug}: {e}")
+
+            # Small delay to avoid rate limiting
+            await asyncio.sleep(0.5)
+
+        job_manager.complete_job(job_id, {
+            "enriched": enriched_count,
+            "failed": failed_count,
+            "total": total,
+        })
+        logger.info(
+            f"Wiki rule enrichment complete for project {project_id}: "
+            f"{enriched_count}/{total} enriched, {failed_count} failed"
+        )
+
+    except Exception as e:
+        logger.error(f"Wiki rule enrichment job {job_id} failed: {e}")
+        try:
+            JobManager(db).fail_job(job_id, str(e))
+        except Exception:
+            pass
+    finally:
+        db.close()
 
 
 def _parse_wiki_sections(markdown: str) -> Dict[str, Tuple[str, str]]:

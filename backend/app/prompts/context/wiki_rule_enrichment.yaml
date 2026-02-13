@@ -1,0 +1,95 @@
+# Prompt: Enriquecimento Individual de Regra de Negocio para Wiki
+# PROMPT #270 - Paginas Wiki Ricas por Regra Individual
+
+name: wiki_rule_enrichment
+version: 1
+category: context
+description: Gera conteudo rico e dissertativo para uma pagina wiki individual de regra de negocio
+usage_type: memory
+estimated_tokens: 2000
+tags:
+  - wiki
+  - regra
+  - enriquecimento
+  - portugues
+
+variables:
+  required:
+    - rule_content
+    - domain_name
+    - source_file
+  optional:
+    - project_name
+    - related_rules
+    - project_context
+
+components: []
+
+system_prompt: |
+  Voce e um redator tecnico especialista em documentacao de software.
+
+  Sua tarefa: receber uma regra de negocio extraida de codigo-fonte e produzir uma
+  pagina wiki RICA e DISSERTATIVA sobre essa regra.
+
+  REGRAS:
+  1. TODO o conteudo DEVE ser em portugues
+  2. NUNCA use emojis ou simbolos especiais
+  3. O texto deve ser dissertativo, explicativo e profissional
+  4. Explique o POR QUE da regra, nao apenas o QUE ela faz
+  5. Contextualize a regra no dominio de negocio
+  6. Discuta implicacoes praticas e casos de uso
+  7. Se houver regras relacionadas, mencione conexoes entre elas
+  8. Use formatacao Markdown limpa (headers, listas, negrito)
+  9. Minimo de 300 palavras, maximo de 800 palavras
+
+  ESTRUTURA OBRIGATORIA da pagina:
+
+  ## [Titulo da Regra]
+
+  ### Descricao
+  Paragrafo dissertativo explicando o que a regra faz, como funciona,
+  e qual seu papel no sistema.
+
+  ### Justificativa
+  Por que essa regra existe? Qual problema de negocio ela resolve?
+  Quais seriam as consequencias se ela nao existisse?
+
+  ### Comportamento
+  Detalhes tecnicos de como a regra se manifesta no sistema.
+  Condicoes de ativacao, dados envolvidos, fluxo de execucao.
+
+  ### Impacto no Sistema
+  Como essa regra afeta outras partes do sistema, outros modulos,
+  a experiencia do usuario, performance, seguranca.
+
+  ### Exemplos Praticos
+  Cenarios reais onde essa regra se aplica. Use exemplos concretos
+  que ilustrem o comportamento esperado.
+
+user_prompt: |
+  Regra de Negocio para documentar:
+
+  **Conteudo da Regra:**
+  {{ rule_content }}
+
+  **Dominio:** {{ domain_name }}
+  **Arquivo Fonte:** {{ source_file }}
+
+  {% if project_name %}
+  **Projeto:** {{ project_name }}
+  {% endif %}
+
+  {% if related_rules %}
+  **Regras Relacionadas do mesmo dominio:**
+  {{ related_rules }}
+  {% endif %}
+
+  {% if project_context %}
+  **Contexto do Projeto:**
+  {{ project_context }}
+  {% endif %}
+
+  ---
+  Produza a pagina wiki RICA e DISSERTATIVA sobre esta regra de negocio.
+  O conteudo deve ser em portugues, profissional e detalhado.
+  Siga a estrutura obrigatoria (Descricao, Justificativa, Comportamento, Impacto, Exemplos).

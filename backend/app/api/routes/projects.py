@@ -1110,6 +1110,15 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                 logger.info(f"Wiki: {len(rule_pages)} business rule pages for project {project_id}")
 
             db.commit()
+
+            # PROMPT #270 - Auto-trigger AI enrichment for individual rule pages
+            rule_page_count = len([p for p in rule_pages if p and p.slug.startswith("regra-")])
+            if rule_page_count > 0:
+                try:
+                    from app.api.routes.wiki import _trigger_rule_enrichment_job
+                    await _trigger_rule_enrichment_job(db, project_id, rule_page_count)
+                except Exception as e:
+                    logger.warning(f"Failed to trigger rule enrichment: {e}")
             logger.info(f"Wiki: {len(sections) or 1} pages from enriched content for project {project_id}")
         except Exception as e:
             logger.warning(f"Failed to parse wiki sections: {e}")

@@ -68,6 +68,9 @@ class JobType(str, enum.Enum):
     # PROMPT #218: Continuous RAG Evolution - periodic codebase re-scan
     RAG_CONTINUOUS_SCAN = "rag_continuous_scan"
 
+    # PROMPT #270: Enrich individual business rule wiki pages with AI
+    WIKI_RULE_ENRICHMENT = "wiki_rule_enrichment"
+
 
 def _load_job_priorities() -> dict:
     """PROMPT #256 - Load job priorities from contract YAML."""
@@ -107,6 +110,7 @@ def _load_job_priorities() -> dict:
             JobType.BATCH_EXECUTION: JobPriority.LOW,
             JobType.PROJECT_PROVISIONING: JobPriority.LOW,
             JobType.RAG_CONTINUOUS_SCAN: JobPriority.LOW,
+            JobType.WIKI_RULE_ENRICHMENT: JobPriority.LOW,
         }
 
 
