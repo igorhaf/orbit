@@ -20,14 +20,58 @@ Architecture:
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict
 from uuid import UUID
 
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+
+def _get_resilient_session(max_retries: int = 3, delay: float = 5.0):
+    """
+    Create a DB session with retry logic for transient connection failures.
+    Waits between retries to give PostgreSQL time to recover.
+    PROMPT #251
+    """
+    from sqlalchemy import text as sql_text
+    from app.database import SessionLocal
+    for attempt in range(1, max_retries + 1):
+        try:
+            db = SessionLocal()
+            # Force a lightweight query to verify the connection is alive
+            db.execute(sql_text("SELECT 1"))
+            return db
+        except OperationalError:
+            try:
+                db.close()
+            except Exception:
+                pass
+            if attempt < max_retries:
+                logger.warning(f"DB connection failed (attempt {attempt}/{max_retries}), retrying in {delay}s...")
+                time.sleep(delay)
+            else:
+                logger.error(f"DB connection failed after {max_retries} attempts")
+                raise
+
+
+def _safe_db_call(db, fn, *args, **kwargs):
+    """
+    Execute a DB operation with automatic rollback on connection errors.
+    Prevents a single failed query from poisoning the entire session.
+    """
+    try:
+        return fn(*args, **kwargs)
+    except OperationalError:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        raise
 
 # Cooldown between cycles (seconds)
 CYCLE_COOLDOWN = 60
@@ -52,12 +96,12 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
     7. Sleep then re-queue self
 
     Runs at LOW priority, yielding to higher-priority jobs between cycles.
+    PROMPT #251 - Resilient DB connection with retry on transient failures.
     """
-    from app.database import SessionLocal
     from app.models.project import Project
     from app.services.job_manager import JobManager
 
-    db = SessionLocal()
+    db = _get_resilient_session()
     try:
         jm = JobManager(db)
         jm.start_job(job_id)
@@ -182,10 +226,16 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             pass
         # Re-queue even on failure (with longer cooldown)
         await asyncio.sleep(ERROR_COOLDOWN)
+        # Use a fresh session for re-queuing since the original may be dead
+        requeue_db = None
         try:
-            submit_watchdog_cycle(db, project_id)
+            requeue_db = _get_resilient_session()
+            submit_watchdog_cycle(requeue_db, project_id)
         except Exception:
-            pass
+            logger.warning(f"Failed to re-queue watchdog for {project_id} (DB unavailable)")
+        finally:
+            if requeue_db:
+                requeue_db.close()
     finally:
         db.close()
 
@@ -205,12 +255,13 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
     - When idle (no new rules): enriches existing stub cards
     - Short cooldown (5s) between batches
     - Runs at NORMAL priority (higher than watchdog's LOW)
+
+    PROMPT #251 - Resilient DB connection with retry on transient failures.
     """
-    from app.database import SessionLocal
     from app.models.project import Project
     from app.services.job_manager import JobManager
 
-    db = SessionLocal()
+    db = _get_resilient_session()
     try:
         jm = JobManager(db)
         jm.start_job(job_id)
@@ -300,10 +351,16 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             pass
         # Re-queue even on failure
         await asyncio.sleep(ERROR_COOLDOWN)
+        # Use a fresh session for re-queuing since the original may be dead
+        requeue_db = None
         try:
-            submit_batch_processing_cycle(db, project_id, batch_size=batch_size)
+            requeue_db = _get_resilient_session()
+            submit_batch_processing_cycle(requeue_db, project_id, batch_size=batch_size)
         except Exception:
-            pass
+            logger.warning(f"Failed to re-queue batch processing for {project_id} (DB unavailable)")
+        finally:
+            if requeue_db:
+                requeue_db.close()
     finally:
         db.close()
 
@@ -598,13 +655,13 @@ async def bootstrap_watchdog():
     """
     On startup, ensure every active project has appropriate cycle queued.
     PROMPT #245: Projects with pending files resume batch processing.
+    PROMPT #251: Uses resilient session with retry on startup.
     Called once from main.py lifespan.
     """
-    from app.database import get_db as get_db_gen
     from app.models.project import Project
     from app.models.rag_file_state import RAGFileState, FileProcessingStatus
 
-    db = next(get_db_gen())
+    db = _get_resilient_session(max_retries=5, delay=10.0)
     try:
         projects = db.query(Project).filter(
             Project.code_path.isnot(None),
