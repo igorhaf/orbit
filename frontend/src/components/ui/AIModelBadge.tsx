@@ -2,14 +2,17 @@
  * AIModelBadge Component
  * PROMPT #127 - Displays AI model icon with tooltip showing details
  * PROMPT #150 - Tooltip positioned above icon with smart positioning to avoid cutoff
+ * PROMPT #247 - Click to open modal showing the prompt that generated the content
  *
  * Shows an icon representing the AI type, and on hover displays
  * a tooltip with detailed information about the model.
+ * When promptText is provided, clicking opens a modal with the full prompt.
  */
 
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { Dialog } from './Dialog';
 import { IconBrain, IconSearch, IconWrench, IconCpu, IconPuzzle, IconCog, IconChart, IconBlocks, IconSparkle, IconBolt, IconBeaker, IconGlobe, IconDot, IconCheckCircle } from '@/components/icons'; // PROMPT #188
 
 interface Props {
@@ -22,6 +25,7 @@ interface Props {
   cached?: boolean;
   decorative?: boolean;
   className?: string;
+  promptText?: string | null;
 }
 
 // Friendly labels for usage types
@@ -128,10 +132,13 @@ export function AIModelBadge({
   cached,
   decorative = false,
   className = '',
+  promptText,
 }: Props) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [showPromptModal, setShowPromptModal] = useState(false);
   const [tooltipPosition, setTooltipPosition] = useState({ top: 0, left: 0, arrowLeft: '50%' });
   const iconRef = useRef<HTMLSpanElement>(null);
+  const hasPrompt = !!promptText;
 
   // PROMPT #210 - Parse "provider/model_id" format (e.g. "anthropic/claude-3-5-sonnet-20241022")
   let parsedModel = model;
@@ -216,10 +223,17 @@ export function AIModelBadge({
     <div className={`relative inline-block ${className}`}>
       <span
         ref={iconRef}
-        className="cursor-help hover:scale-110 transition-transform inline-flex items-center text-gray-600"
+        className={`${hasPrompt ? 'cursor-pointer' : 'cursor-help'} hover:scale-110 transition-transform inline-flex items-center text-gray-600`}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        title={displayName}
+        onClick={(e) => {
+          if (hasPrompt) {
+            e.stopPropagation();
+            setShowTooltip(false);
+            setShowPromptModal(true);
+          }
+        }}
+        title={hasPrompt ? 'Click to view prompt' : displayName}
       >
         {renderIconByKey(iconKey, 'w-4 h-4')}
         {cached && <span className="ml-0.5"><IconDot className="w-2 h-2 text-green-500" /></span>}
@@ -331,6 +345,29 @@ export function AIModelBadge({
             )}
           </div>
         </div>
+      )}
+
+      {/* PROMPT #247 - Prompt text modal */}
+      {showPromptModal && promptText && (
+        <Dialog
+          open={showPromptModal}
+          onClose={() => setShowPromptModal(false)}
+          title="Prompt"
+          description={`${displayName} - ${USAGE_TYPE_LABELS[usage_type || ''] || usage_type || 'AI'}`}
+          size="lg"
+        >
+          <div className="relative">
+            <button
+              onClick={() => navigator.clipboard.writeText(promptText)}
+              className="absolute top-2 right-2 px-2 py-1 text-xs text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            >
+              Copy
+            </button>
+            <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-sm text-gray-800 whitespace-pre-wrap max-h-[60vh] overflow-y-auto font-mono leading-relaxed">
+              {promptText}
+            </pre>
+          </div>
+        </Dialog>
       )}
     </div>
   );
