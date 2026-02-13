@@ -920,13 +920,14 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
         return False
 
     # --- 1. Get business rules from RAG ---
+    # PROMPT #266 - Increased from LIMIT 50 to 500 for wiki enrichment
     from sqlalchemy import text as sql_text
     result = db.execute(sql_text("""
         SELECT content FROM rag_documents
         WHERE project_id = :pid
         AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
         ORDER BY created_at DESC
-        LIMIT 50
+        LIMIT 500
     """), {"pid": str(project_id)})
     rules = [row[0] for row in result.fetchall()]
 
@@ -1055,6 +1056,26 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             # Fallback: if parsing produced no sections, create single overview page
             if not sections:
                 _upsert_wiki_page(db, project_id, "visao-geral", "Visao Geral", enriched, 0, "enrichment")
+
+            # PROMPT #266 - Create comprehensive rules page directly from ALL RAG rules.
+            # The AI enrichment compresses rules to fit token limits, so we create a
+            # separate page with the full uncompressed list of all extracted rules.
+            if rules:
+                rules_md_parts = [
+                    "## Regras de Negocio - Catalogo Completo\n",
+                    f"Total de regras extraidas do codebase: **{len(rules)}**\n",
+                ]
+                for i, rule in enumerate(rules, 1):
+                    # Truncate very long rules to keep page manageable
+                    rule_text = rule[:500] if len(rule) > 500 else rule
+                    rules_md_parts.append(f"{i}. {rule_text}")
+                rules_md = "\n".join(rules_md_parts)
+                _upsert_wiki_page(
+                    db, project_id, "regras-de-negocio",
+                    "Regras de Negocio", rules_md,
+                    2, "ai_generated"
+                )
+                logger.info(f"Wiki: rules page with {len(rules)} rules for project {project_id}")
 
             db.commit()
             logger.info(f"Wiki: {len(sections) or 1} pages from enriched content for project {project_id}")

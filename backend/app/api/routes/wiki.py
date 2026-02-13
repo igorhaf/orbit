@@ -160,10 +160,40 @@ async def generate_wiki_from_context(
             stack_content, 1, "ai_generated"
         ))
 
-    # 3. Regras de Negocio - from initial_memory_context
+    # 3. Regras de Negocio - from RAG (complete) + initial_memory_context (fallback)
+    # PROMPT #266 - Fetch ALL rules from RAG for a comprehensive wiki page
+    from sqlalchemy import text as sql_text
+    rag_result = db.execute(sql_text("""
+        SELECT content FROM rag_documents
+        WHERE project_id = :pid
+        AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
+        ORDER BY created_at DESC
+        LIMIT 500
+    """), {"pid": str(project_id)})
+    rag_rules = [row[0] for row in rag_result.fetchall()]
+
+    # Combine RAG rules + initial_memory_context rules (deduplicated)
     business_rules = imc.get("business_rules", [])
-    if business_rules:
-        rules_content = _build_rules_page(business_rules)
+    all_rules = rag_rules if rag_rules else business_rules
+    if not all_rules and business_rules:
+        all_rules = business_rules
+
+    if all_rules:
+        rules_parts = [
+            "## Regras de Negocio - Catalogo Completo\n",
+            f"Total de regras extraidas do codebase: **{len(all_rules)}**\n",
+        ]
+        for i, rule in enumerate(all_rules, 1):
+            if isinstance(rule, dict):
+                title = rule.get("title", rule.get("rule", f"Regra {i}"))
+                desc = rule.get("description", "")
+                rules_parts.append(f"### {i}. {title}\n")
+                if desc:
+                    rules_parts.append(f"{desc}\n")
+            else:
+                rule_text = rule[:500] if len(rule) > 500 else rule
+                rules_parts.append(f"{i}. {rule_text}")
+        rules_content = "\n".join(rules_parts)
         created_pages.append(_upsert_wiki_page(
             db, project_id, "regras-de-negocio", "Regras de Negocio",
             rules_content, 2, "ai_generated"

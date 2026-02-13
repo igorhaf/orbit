@@ -1616,11 +1616,12 @@ class CodebaseMemoryService:
         # PROMPT #165 - Validate and improve title
         final_title = self._validate_title(best_title, self.current_folder_name, stack_info) if best_title else self._generate_fallback_title(stack_info, self.current_folder_name)
 
+        # PROMPT #266 - Increased limits to avoid losing extracted data
         return {
             "suggested_title": final_title,
-            "business_rules": all_rules[:15],
-            "key_features": all_features[:10],
-            "entities": all_entities[:10],
+            "business_rules": all_rules[:200],
+            "key_features": all_features[:50],
+            "entities": all_entities[:50],
             "interview_context": f"Este projeto foi analisado em múltiplas fases. Foram encontradas {len(all_rules)} regras de negócio e {len(all_features)} funcionalidades."
         }
 
