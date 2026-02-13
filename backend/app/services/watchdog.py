@@ -216,7 +216,8 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
         try:
             card_result = await _auto_discover_cards(db, project_id)
             if card_result.get("created", 0) > 0:
-                logger.info(f"Auto-discovered {card_result['created']} cards for '{project_name}'")
+                epics_msg = f" ({card_result.get('epics_created', 0)} epics)" if card_result.get('epics_created', 0) > 0 else ""
+                logger.info(f"Auto-discovered {card_result['created']} cards{epics_msg} for '{project_name}'")
         except Exception as e:
             logger.warning(f"Auto card discovery failed (non-blocking): {e}")
 
@@ -362,7 +363,8 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             try:
                 card_result = await _auto_discover_cards(db, project_id, max_cards=15)
                 if card_result.get("created", 0) > 0:
-                    logger.info(f"Auto-discovered {card_result['created']} cards for '{project_name}'")
+                    epics_msg = f" ({card_result.get('epics_created', 0)} epics)" if card_result.get('epics_created', 0) > 0 else ""
+                    logger.info(f"Auto-discovered {card_result['created']} cards{epics_msg} for '{project_name}'")
             except Exception as e:
                 logger.warning(f"Auto card discovery failed (non-blocking): {e}")
 
@@ -542,10 +544,218 @@ def submit_watchdog_cycle(db: Session, project_id: UUID):
     logger.debug(f"Watchdog cycle queued for project {project_id} (job {job.id})")
 
 
+def _classify_rule_domain(source_file: str):
+    """
+    PROMPT #271 - Classify a source file into a business domain.
+    Returns (domain_name, domain_slug).
+    Reuses the same domain map from wiki.py for consistency.
+    """
+    _DOMAIN_MAP = [
+        ("Aluno/", "Aluno", "aluno"), ("aluno/", "Aluno", "aluno"),
+        ("Aulas/", "Aulas", "aulas"), ("aulas/", "Aulas", "aulas"),
+        ("Auth/", "Autenticacao", "autenticacao"), ("auth/", "Autenticacao", "autenticacao"),
+        ("Categorias/", "Categorias", "categorias"), ("categorias/", "Categorias", "categorias"),
+        ("Cursos/", "Cursos", "cursos"), ("cursos/", "Cursos", "cursos"),
+        ("Instrutor/", "Instrutor", "instrutor"), ("instrutor/", "Instrutor", "instrutor"),
+        ("Instrutores", "Instrutor", "instrutor"), ("instrutores/", "Instrutor", "instrutor"),
+        ("Trilhas/", "Trilhas", "trilhas"), ("trilhas/", "Trilhas", "trilhas"),
+        ("Planos", "Planos", "planos"), ("planos/", "Planos", "planos"),
+        ("avaliacoes/", "Avaliacoes", "avaliacoes"), ("Avaliacoes/", "Avaliacoes", "avaliacoes"),
+        ("Review", "Avaliacoes", "avaliacoes"),
+        ("certificado", "Certificados", "certificados"), ("Certificado", "Certificados", "certificados"),
+        ("Certificate", "Certificados", "certificados"),
+        ("mensagens/", "Mensagens", "mensagens"),
+        ("notificacoes/", "Notificacoes", "notificacoes"), ("Notification", "Notificacoes", "notificacoes"),
+        ("checkout", "Pagamentos", "pagamentos"),
+        ("Enrollment", "Inscricoes", "inscricoes"), ("inscricao", "Inscricoes", "inscricoes"),
+        ("inscricoes", "Inscricoes", "inscricoes"),
+        ("ajuda/", "Ajuda", "ajuda"),
+        ("Models/", "Modelos", "modelos"), ("Observers/", "Modelos", "modelos"),
+        ("Policies/", "Modelos", "modelos"),
+        ("Requests/", "Validacao", "validacao"),
+        ("config/", "Configuracao", "configuracao"), ("bootstrap/", "Configuracao", "configuracao"),
+        ("docker-", "Configuracao", "configuracao"), ("composer.", "Configuracao", "configuracao"),
+        ("package.", "Configuracao", "configuracao"),
+        ("routes/", "Rotas", "rotas"),
+    ]
+    if not source_file:
+        return ("Geral", "geral")
+    for fragment, name, slug in _DOMAIN_MAP:
+        if fragment in source_file:
+            return (name, slug)
+    return ("Geral", "geral")
+
+
+def _find_existing_domain_epic(db, project_id: UUID, domain_name: str):
+    """
+    PROMPT #271 - Find an existing Epic for a business domain.
+    Searches by label 'domain-epic' and title similarity.
+    Returns Task or None.
+    """
+    from app.models.task import Task, ItemType
+
+    # Search by label and domain name in title
+    epics = db.query(Task).filter(
+        Task.project_id == project_id,
+        Task.item_type == ItemType.EPIC,
+        Task.labels.contains(["domain-epic"]),
+    ).all()
+
+    domain_lower = domain_name.lower()
+    for epic in epics:
+        if epic.title and domain_lower in epic.title.lower():
+            return epic
+
+    return None
+
+
+async def _create_domain_epic_with_ai(db, project_id: UUID, domain_name: str, domain_rules: list) -> "Task":
+    """
+    PROMPT #271 - Generate an Epic for a business domain using AI.
+    Uses epic_from_rules.yaml prompt to create rich Epic content.
+    Falls back to simple Epic creation if AI fails.
+    """
+    from app.models.task import Task, ItemType, TaskStatus, PriorityLevel
+    import json
+
+    rules_text = "\n\n".join([f"- {r['content']}" for r in domain_rules])
+    rule_count = len(domain_rules)
+
+    # Try AI generation
+    epic_title = f"Gestao de {domain_name}"
+    epic_description = rules_text
+    epic_acceptance = []
+
+    try:
+        from app.prompts.loader import PromptLoader
+        from app.services.ai_orchestrator import AIOrchestrator
+
+        loader = PromptLoader()
+
+        # Get project context if available
+        from app.models.project import Project
+        project = db.query(Project).filter(Project.id == project_id).first()
+        project_name = project.name if project else ""
+        project_context = project.context_human if project and hasattr(project, 'context_human') else ""
+
+        template_vars = {
+            "domain_name": domain_name,
+            "rules_text": rules_text,
+            "rule_count": str(rule_count),
+            "project_name": project_name,
+            "project_context": project_context or "",
+        }
+
+        sys_prompt, usr_prompt = loader.render("backlog/epic_from_rules", template_vars)
+
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=[{"role": "user", "content": usr_prompt}],
+            system_prompt=sys_prompt,
+            max_tokens=4000,
+            project_id=str(project_id),
+            metadata={"type": "epic_from_rules", "domain": domain_name},
+        )
+
+        ai_text = response.get("content", "") if isinstance(response, dict) else str(response)
+
+        # Parse JSON from AI response
+        try:
+            # Clean markdown fences if present
+            clean = ai_text.strip()
+            if clean.startswith("```"):
+                clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
+                if clean.endswith("```"):
+                    clean = clean[:-3]
+                clean = clean.strip()
+
+            parsed = json.loads(clean)
+            epic_title = parsed.get("title", epic_title)
+            epic_description = parsed.get("description_markdown", rules_text)
+            raw_criteria = parsed.get("acceptance_criteria", [])
+            # Convert to [{text, completed}] format expected by Task model
+            epic_acceptance = [
+                {"text": c, "completed": False} if isinstance(c, str) else c
+                for c in raw_criteria
+            ]
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning(f"Failed to parse AI Epic response for domain '{domain_name}': {e}")
+            # Fallback: use AI text as description if it's substantial
+            if len(ai_text) > 100:
+                epic_description = ai_text
+
+    except Exception as e:
+        logger.warning(f"AI Epic generation failed for domain '{domain_name}': {e}")
+
+    new_epic = Task(
+        project_id=project_id,
+        title=epic_title,
+        description=epic_description,
+        item_type=ItemType.EPIC,
+        status=TaskStatus.BACKLOG,
+        priority=PriorityLevel.MEDIUM,
+        labels=["suggested", "auto-discovered", "domain-epic"],
+        workflow_state="draft",
+        reporter="watchdog",
+        acceptance_criteria=epic_acceptance,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(new_epic)
+    db.flush()  # Get the ID without committing
+    logger.info(f"Created domain Epic '{epic_title}' for project {project_id}")
+    return new_epic
+
+
+def _create_story_from_rule(db, project_id: UUID, epic_id, rule_content: str, domain_name: str, source_file: str = "") -> "Task":
+    """
+    PROMPT #271 - Create a Story card from a business rule, linked to its domain Epic.
+    Story content focuses on contextual business rules (the rule itself + domain context).
+    """
+    from app.models.task import Task, ItemType, TaskStatus, PriorityLevel
+
+    # Create title from rule content (first sentence, max 100 chars)
+    title = rule_content.split(".")[0].strip()
+    if len(title) > 100:
+        title = title[:97] + "..."
+    if not title or len(title) < 10:
+        title = rule_content[:100]
+
+    # Build contextual description with domain and source info
+    description_parts = [
+        f"## Regra de Negocio\n\n{rule_content}",
+        f"\n\n## Dominio\n\n{domain_name}",
+    ]
+    if source_file:
+        description_parts.append(f"\n\n## Arquivo Fonte\n\n`{source_file}`")
+
+    description = "".join(description_parts)
+
+    new_story = Task(
+        project_id=project_id,
+        title=title,
+        description=description,
+        item_type=ItemType.STORY,
+        status=TaskStatus.BACKLOG,
+        priority=PriorityLevel.LOW,
+        parent_id=epic_id,
+        labels=["suggested", "auto-discovered"],
+        workflow_state="draft",
+        reporter="watchdog",
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+    db.add(new_story)
+    return new_story
+
+
 async def _auto_discover_cards(db: Session, project_id: UUID, max_cards: int = 0) -> Dict:
     """
-    Check for new business rules in RAG that don't have corresponding cards.
-    Creates suggested story cards for genuinely new discoveries.
+    PROMPT #271 - Check for new business rules in RAG and create hierarchical cards.
+
+    Creates Epics per domain, with Stories as children. Respects hierarchy:
+    Epic (domain) > Story (rule) > Task (activated later) > Subtask (activated later)
 
     Uses SimilarityDetector (384-dim embeddings, threshold 0.90) to avoid duplicates.
 
@@ -553,51 +763,54 @@ async def _auto_discover_cards(db: Session, project_id: UUID, max_cards: int = 0
         max_cards: Override MAX_CARDS_PER_CYCLE. 0 = use default.
     """
     from sqlalchemy import text as sql_text
+    from collections import defaultdict
     from app.models.task import Task, ItemType, TaskStatus, PriorityLevel
 
-    # Get recent business rules from RAG (last 24 hours)
+    # Get recent business rules from RAG (last 24 hours) WITH source_file for domain classification
     result = db.execute(sql_text("""
-        SELECT content FROM rag_documents
+        SELECT content, COALESCE(metadata->>'source_file', '') as source_file
+        FROM rag_documents
         WHERE project_id = :pid
         AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
         AND created_at > NOW() - INTERVAL '24 hours'
         ORDER BY created_at DESC
         LIMIT 20
     """), {"pid": str(project_id)})
-    recent_rules = [row[0] for row in result.fetchall()]
+    recent_rules = [{"content": row[0], "source_file": row[1]} for row in result.fetchall()]
 
     if not recent_rules:
-        return {"checked": 0, "created": 0}
+        return {"checked": 0, "created": 0, "epics_created": 0}
 
     # Get all existing card titles + descriptions for similarity check
     existing_tasks = db.query(Task).filter(
         Task.project_id == project_id,
     ).all()
 
-    # Build text corpus for existing cards
     existing_texts = []
     for t in existing_tasks:
         text = f"{t.title or ''}\n{t.description or ''}"
         existing_texts.append(text)
 
-    created_cards = []
-    created_texts = []
-
     try:
         from app.services.similarity_detector import calculate_semantic_similarity
     except ImportError:
         logger.warning("SimilarityDetector not available, skipping card discovery")
-        return {"checked": len(recent_rules), "created": 0}
+        return {"checked": len(recent_rules), "created": 0, "epics_created": 0}
 
-    for rule_content in recent_rules:
+    # Step 1: Filter out duplicate rules (against existing cards + within cycle)
+    new_rules = []
+    created_texts = []
+    effective_max = max_cards if max_cards > 0 else MAX_CARDS_PER_CYCLE
+
+    for rule in recent_rules:
+        rule_content = rule["content"]
         if not rule_content or len(rule_content) < 30:
             continue
 
-        effective_max = max_cards if max_cards > 0 else MAX_CARDS_PER_CYCLE
-        if len(created_cards) >= effective_max:
+        if len(new_rules) >= effective_max:
             break
 
-        # Check against all existing cards
+        # Check against existing cards
         is_duplicate = False
         for existing_text in existing_texts:
             if not existing_text.strip():
@@ -613,7 +826,7 @@ async def _auto_discover_cards(db: Session, project_id: UUID, max_cards: int = 0
         if is_duplicate:
             continue
 
-        # Also check against cards we just created in this cycle
+        # Check against rules we already accepted this cycle
         for created_text in created_texts:
             try:
                 similarity = calculate_semantic_similarity(rule_content, created_text)
@@ -626,38 +839,67 @@ async def _auto_discover_cards(db: Session, project_id: UUID, max_cards: int = 0
         if is_duplicate:
             continue
 
-        # Create a title from the rule content (first sentence, max 100 chars)
-        title = rule_content.split(".")[0].strip()
-        if len(title) > 100:
-            title = title[:97] + "..."
-        if not title or len(title) < 10:
-            title = rule_content[:100]
-
-        new_task = Task(
-            project_id=project_id,
-            title=title,
-            description=rule_content,
-            item_type=ItemType.STORY,
-            status=TaskStatus.BACKLOG,
-            priority=PriorityLevel.LOW,
-            labels=["suggested", "auto-discovered"],
-            workflow_state="draft",
-            reporter="watchdog",
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
-        )
-        db.add(new_task)
-        created_cards.append(title)
+        new_rules.append(rule)
         created_texts.append(rule_content)
-        # Add to existing corpus for next iteration
         existing_texts.append(rule_content)
 
-    if created_cards:
+    if not new_rules:
+        return {"checked": len(recent_rules), "created": 0, "epics_created": 0}
+
+    # Step 2: Classify rules by domain
+    domains = defaultdict(list)
+    for rule in new_rules:
+        domain_name, domain_slug = _classify_rule_domain(rule["source_file"])
+        domains[domain_name].append(rule)
+
+    # Step 3: For each domain, find or create Epic, then create Stories as children
+    created_cards = []
+    epics_created = 0
+
+    for domain_name, domain_rules in domains.items():
+        # Find existing Epic for this domain
+        epic = _find_existing_domain_epic(db, project_id, domain_name)
+
+        if not epic:
+            # Create Epic with AI
+            try:
+                epic = await _create_domain_epic_with_ai(db, project_id, domain_name, domain_rules)
+                epics_created += 1
+            except Exception as e:
+                logger.warning(f"Failed to create Epic for domain '{domain_name}': {e}")
+                # Fallback: create simple Epic without AI
+                epic = Task(
+                    project_id=project_id,
+                    title=f"Gestao de {domain_name}",
+                    description=f"Epic do dominio {domain_name} com {len(domain_rules)} regras de negocio.",
+                    item_type=ItemType.EPIC,
+                    status=TaskStatus.BACKLOG,
+                    priority=PriorityLevel.MEDIUM,
+                    labels=["suggested", "auto-discovered", "domain-epic"],
+                    workflow_state="draft",
+                    reporter="watchdog",
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                db.add(epic)
+                db.flush()
+                epics_created += 1
+
+        # Create Stories as children of the Epic
+        for rule in domain_rules:
+            story = _create_story_from_rule(
+                db, project_id, epic.id,
+                rule["content"], domain_name, rule["source_file"]
+            )
+            created_cards.append(story.title)
+
+    if created_cards or epics_created > 0:
         db.commit()
 
     return {
         "checked": len(recent_rules),
         "created": len(created_cards),
+        "epics_created": epics_created,
         "cards": created_cards,
     }
 

@@ -50,10 +50,18 @@ system_prompt: |
   4. Estime story points para cada Task (1-3, Fibonacci)
   5. Mantenha a prioridade da Story
 
+  **GRADIENTE DE CONTEUDO - NIVEL TASK (Balanceado Funcional + Tecnico):**
+  A Task e o nivel de EQUILIBRIO entre funcional e tecnico na hierarquia de cards.
+  - Descreva O QUE precisa ser construido (perspectiva funcional)
+  - Indique COMO sera construido em linhas gerais (perspectiva tecnica)
+  - Mencione componentes, endpoints, modulos envolvidos sem detalhar codigo
+  - Equilibre linguagem de negocio com linguagem tecnica
+  - NAO seja puramente tecnico (isso e para Subtask) nem puramente funcional (isso e para Story)
+
   IMPORTANTE:
   - Uma Task é um passo concreto de implementação (o que precisa ser construído)
   - Seja ESPECÍFICO: use identificadores como "Implementar E10 (CRUD de N1)" não genérico "Criar backend"
-  - Foque em O QUE precisa ser feito (funcional), não COMO (detalhes de framework vêm na execução)
+  - Foque em O QUE precisa ser feito (funcional) com indicacoes de COMO (tecnico)
   - Tasks devem ter critérios de aceitação claros (resultados testáveis)
   - Use identificadores semânticos em TODO o texto (títulos podem ser mais descritivos, mas descriptions devem usar identificadores)
   - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS

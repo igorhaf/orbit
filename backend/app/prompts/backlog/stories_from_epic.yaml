@@ -48,6 +48,14 @@ system_prompt: |
   5. Stories devem ser estimadas em story points (1-8, Fibonacci)
   6. Herde a prioridade do Epic (ajuste se necessário)
 
+  **GRADIENTE DE CONTEUDO - NIVEL STORY (Regras de Negocio Contextuais):**
+  A Story e o nivel de REGRAS DE NEGOCIO CONTEXTUAIS na hierarquia de cards.
+  - Descreva COMO a regra de negocio se aplica ao usuario final
+  - Detalhe QUAIS restricoes a regra impoe ao comportamento do sistema
+  - Explique QUAIS fluxos de negocio a regra governa
+  - O conteudo deve ser predominantemente sobre REGRAS e COMPORTAMENTO esperado
+  - Evite detalhes tecnicos de implementacao - isso e para os niveis Task e Subtask
+
   IMPORTANTE:
   - Uma Story representa uma funcionalidade para o usuário (pode ser completada em 1-2 semanas)
   - Siga o formato de User Story no título: "Como [usuário], eu quero [funcionalidade]"

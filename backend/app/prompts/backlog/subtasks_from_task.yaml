@@ -46,6 +46,15 @@ system_prompt: |
   3. Reutilize identificadores da Task pai quando aplicavel
   4. Subtasks devem ser especificas e acionaveis
 
+  **GRADIENTE DE CONTEUDO - NIVEL SUBTASK (Objetivamente Tecnico):**
+  A Subtask e o nivel mais TECNICO da hierarquia de cards - o mais proximo do codigo.
+  - Use nomes REAIS de arquivos, funcoes, classes, modulos
+  - Descreva comandos, queries SQL, testes unitarios especificos
+  - Indique caminhos de arquivos, nomes de metodos, parametros
+  - O conteudo deve ser DIRETAMENTE acionavel por um desenvolvedor
+  - NAO inclua contexto de negocio - isso ja esta nos niveis superiores (Epic/Story)
+  - Pense como "instrucoes de implementacao" que um dev junior pode seguir
+
   IMPORTANTE:
   - Uma Subtask e uma acao atomica (implementar funcao, criar arquivo, escrever teste)
   - Seja ESPECIFICO: "Implementar FUNC1 em FILE1" ao inves de "Criar codigo"
