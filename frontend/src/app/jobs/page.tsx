@@ -87,6 +87,57 @@ interface Project {
   name: string;
 }
 
+// PROMPT #259 - Format job result into human-readable summary
+function formatJobResult(result: any): string | null {
+  if (!result || typeof result !== 'object') return null;
+
+  const parts: string[] = [];
+
+  // Children generation
+  if (result.children_generated !== undefined) {
+    parts.push(`${result.children_generated} ${result.child_type || 'items'} created`);
+  }
+
+  // Watchdog / batch results
+  if (result.cards_created !== undefined && result.cards_created > 0) {
+    parts.push(`${result.cards_created} cards created`);
+  }
+  if (result.cards_enriched !== undefined && result.cards_enriched > 0) {
+    parts.push(`${result.cards_enriched} cards enriched`);
+  }
+  if (result.rules_extracted !== undefined && result.rules_extracted > 0) {
+    parts.push(`${result.rules_extracted} rules extracted`);
+  }
+  if (result.batch_processed !== undefined && result.batch_processed > 0) {
+    parts.push(`${result.batch_processed} files processed`);
+  }
+  if (result.rag_scan !== undefined && result.rag_scan > 0) {
+    parts.push(`${result.rag_scan} files scanned`);
+  }
+  if (result.git_commits !== undefined && result.git_commits > 0) {
+    parts.push(`${result.git_commits} commits synced`);
+  }
+  if (result.wiki_enriched === true) {
+    parts.push('wiki updated');
+  }
+  if (result.pending_remaining !== undefined && result.pending_remaining > 0) {
+    parts.push(`${result.pending_remaining} pending`);
+  }
+
+  // Memory scan / card generation
+  if (result.business_rule_cards !== undefined) {
+    const count = Array.isArray(result.business_rule_cards) ? result.business_rule_cards.length : 0;
+    if (count > 0) parts.push(`${count} rule cards`);
+  }
+
+  // Skipped
+  if (result.skipped && result.reason) {
+    return result.reason;
+  }
+
+  return parts.length > 0 ? parts.join(' | ') : null;
+}
+
 export default function JobsPage() {
   // State
   const [jobs, setJobs] = useState<JobResponse[]>([]);
@@ -953,6 +1004,15 @@ export default function JobsPage() {
                                       {job.error}
                                     </p>
                                   )}
+                                  {/* PROMPT #259 - Show result summary for completed jobs */}
+                                  {job.status === 'completed' && job.result && (() => {
+                                    const summary = formatJobResult(job.result);
+                                    return summary ? (
+                                      <p className="text-xs text-green-600 truncate mt-0.5">
+                                        {summary}
+                                      </p>
+                                    ) : null;
+                                  })()}
                                 </div>
                               </td>
                               <td className="px-4 py-3">

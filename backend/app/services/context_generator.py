@@ -2906,11 +2906,10 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         count: int = 15
     ) -> List[Task]:
         """
-        PROMPT #102 - Generate draft stories for an epic.
-        PROMPT #127 - Now accepts count parameter for user-defined quantity.
+        PROMPT #257 - Generate stories with FULL CONTENT using stories_from_epic.yaml.
 
-        1. First: Generate list of story TITLES
-        2. Then: Create lightweight drafts (title only, content on approval)
+        Uses the existing rich YAML prompt to generate complete Stories
+        with description, semantic_map, acceptance_criteria, and story_points.
 
         Args:
             epic: The activated epic
@@ -2918,93 +2917,87 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
             count: Number of stories to generate (default 15)
 
         Returns:
-            List of created Story tasks with FULL content
+            List of created Story tasks with full content
         """
-        logger.info(f"📝 Generating stories with FULL EPIC-LEVEL content for: {epic.title}")
+        logger.info(f"Generating {count} stories with full content for: {epic.title}")
 
         # Extract epic's semantic map for context
         epic_semantic_map = {}
         if epic.interview_insights and isinstance(epic.interview_insights, dict):
             epic_semantic_map = epic.interview_insights.get("semantic_map", {})
 
-        # ============================================================
-        # STEP 1: Generate only TITLES (15-20 story titles)
-        # ============================================================
-        titles_system_prompt = f"""Você é um Product Owner especialista em decomposição de Epics.
-
-TAREFA: Decomponha o Epic em {count} User Stories. Retorne APENAS os TÍTULOS.
-
-FORMATO OBRIGATÓRIO de cada título:
-"Como [tipo de usuário], eu quero [funcionalidade específica], para [benefício]"
-
-**REGRAS:**
-- Cada Story deve cobrir uma funcionalidade DISTINTA e ESPECÍFICA
-- Stories devem ser independentes quando possível
-- Cubra TODOS os aspectos do Epic: CRUD, validações, integrações, UI, relatórios
-- Inclua Stories para: configuração, listagem, criação, edição, exclusão, busca, filtros, relatórios, integrações, notificações
-
-Retorne APENAS um array JSON com os títulos:
-["título 1", "título 2", ..., "título N"]
-
-NÃO inclua nenhuma explicação, apenas o array JSON."""
-
         semantic_map_text = ""
         if epic_semantic_map:
-            semantic_map_text = "\n\nMAPA SEMÂNTICO DO EPIC:\n"
+            semantic_map_text = "\nMAPA SEMANTICO DO EPIC:\n"
             semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
 
-        titles_user_prompt = f"""Decomponha este Epic em {count} User Stories.
-
-## EPIC
-**Título:** {epic.title}
-**Descrição:** {epic.description or 'Não especificada'}
-**Especificação:** {(epic.generated_prompt or '')[:2000]}
-{semantic_map_text}
-
-## CONTEXTO DO PROJETO
-**Nome:** {project.name}
-**Contexto:** {(project.context_human or project.context_semantic or 'Não disponível')[:2000]}
-
-Retorne APENAS o array JSON com {count} títulos de Stories no formato User Story."""
+        # PROMPT #257 - Fetch business rules from RAG for context injection
+        business_rules_text = ""
+        try:
+            rag_service = RAGService(self.db)
+            rules = rag_service.get_business_rules(project_id=project.id, top_k=20)
+            if rules:
+                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=6000)
+        except Exception as e:
+            logger.warning(f"Could not fetch business rules for stories: {e}")
 
         try:
-            orchestrator = AIOrchestrator(self.db)
+            # PROMPT #257 - Use PromptLoader with stories_from_epic.yaml
+            from app.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
 
-            # Get titles first
-            titles_response = await orchestrator.execute(
-                usage_type="prompt_generation",
-                messages=[{"role": "user", "content": titles_user_prompt}],
-                system_prompt=titles_system_prompt,
-                max_tokens=2000,
-                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
-                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
+            system_prompt, user_prompt = loader.render(
+                "backlog/stories_from_epic",
+                {
+                    "epic_title": epic.title,
+                    "epic_description": (epic.description or "Nao especificada")[:5000],
+                    "epic_story_points": epic.story_points or 13,
+                    "epic_priority": epic.priority.value if epic.priority else "medium",
+                    "epic_acceptance_criteria": "\n".join(epic.acceptance_criteria or []),
+                    "semantic_map_text": semantic_map_text,
+                    "epic_interview_insights": json.dumps(epic.interview_insights, ensure_ascii=False) if epic.interview_insights else "",
+                    "business_rules_text": business_rules_text,
+                    "rag_context": "",
+                }
             )
 
-            titles_content = titles_response.get("content", "")
-            story_titles = self._parse_json_response(titles_content)
+            # Append count instruction to user prompt
+            user_prompt += f"\n\nGere exatamente {count} Stories como array JSON."
 
-            if not story_titles or not isinstance(story_titles, list):
-                logger.warning("AI did not return valid titles array, using fallback titles")
-                story_titles = self._generate_fallback_story_titles(epic)
+            orchestrator = AIOrchestrator(self.db)
+            response = await orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=8000,
+                enable_rag=True,
+                project_id=str(project.id)
+            )
 
-            story_titles = story_titles[:count]
-            logger.info(f"📋 Generated {len(story_titles)} story titles for epic: {epic.title}")
+            response_content = response.get("content", "")
+            stories_data = self._parse_json_response(response_content)
 
-            # ============================================================
-            # STEP 2: Create SIMPLE drafts (title only) - PROMPT #107
-            # Full content is generated ONLY when user approves the item
-            # PROMPT #162: Check for duplicates before creating
-            # ============================================================
+            if not stories_data or not isinstance(stories_data, list):
+                logger.warning("AI did not return valid stories array, falling back to title-only")
+                return await self._generate_draft_stories_fallback(epic, project, count)
+
+            stories_data = stories_data[:count]
+            logger.info(f"Generated {len(stories_data)} complete story objects for epic: {epic.title}")
+
+            # Create Story tasks with full content
             created_stories = []
             skipped_count = 0
-            rag_service = RAGService(self.db)
+            rag_svc = RAGService(self.db)
 
-            for i, title in enumerate(story_titles):
+            for i, story_data in enumerate(stories_data):
                 try:
-                    story_title = title if isinstance(title, str) else f"Story {i+1}"
+                    if isinstance(story_data, str):
+                        story_data = {"title": story_data}
 
-                    # PROMPT #162 - Check for similar cards (auto-skip silencioso)
-                    similar_cards = rag_service.find_similar_cards(
+                    story_title = story_data.get("title", f"Story {i+1}")
+
+                    # PROMPT #162 - Check for similar cards (auto-skip)
+                    similar_cards = rag_svc.find_similar_cards(
                         title=story_title,
                         description=None,
                         project_id=epic.project_id,
@@ -3013,75 +3006,101 @@ Retorne APENAS o array JSON com {count} títulos de Stories no formato User Stor
                         top_k=1
                     )
                     if similar_cards:
-                        logger.info(f"⏭️ Skipping similar story: '{story_title[:50]}...' (similar to '{similar_cards[0].get('title', 'unknown')[:50]}...' - {similar_cards[0].get('similarity', 0):.0%})")
+                        logger.info(f"Skipping similar story: '{story_title[:50]}...'")
                         skipped_count += 1
                         continue
 
-                    # Create simple draft story with just title and placeholder description
-                    # Full content will be generated when user activates/approves this story
+                    # Extract content from AI response
+                    description = story_data.get("description_markdown", story_data.get("description", ""))
+                    generated_prompt = story_data.get("description_markdown", "")
+                    acceptance_criteria = story_data.get("acceptance_criteria", [])
+                    story_points = story_data.get("story_points", 5)
+                    priority_str = story_data.get("priority", "medium").lower()
+                    story_semantic_map = story_data.get("semantic_map", {})
+
+                    # Map priority string to enum
+                    priority_map = {
+                        "critical": PriorityLevel.CRITICAL,
+                        "high": PriorityLevel.HIGH,
+                        "medium": PriorityLevel.MEDIUM,
+                        "low": PriorityLevel.LOW,
+                        "trivial": PriorityLevel.TRIVIAL,
+                    }
+                    priority = priority_map.get(priority_str, PriorityLevel.MEDIUM)
+
                     story = Task(
                         project_id=epic.project_id,
                         parent_id=epic.id,
                         item_type=ItemType.STORY,
                         title=story_title,
-                        description="Conteúdo será gerado ao aprovar.",  # Simple placeholder
-                        generated_prompt="",  # Empty until approved
-                        acceptance_criteria=[],
-                        story_points=5,
-                        priority=PriorityLevel.MEDIUM,
+                        description=description or f"Story derivada do Epic: {epic.title}",
+                        generated_prompt=generated_prompt,
+                        acceptance_criteria=acceptance_criteria,
+                        story_points=story_points if isinstance(story_points, int) else 5,
+                        priority=priority,
                         labels=["suggested"],
                         workflow_state="draft",
                         status=TaskStatus.BACKLOG,
                         order=i,
                         reporter="system",
-                        interview_insights={"derived_from_epic": str(epic.id)},
+                        interview_insights={
+                            "derived_from_epic": str(epic.id),
+                            "semantic_map": story_semantic_map,
+                        },
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow()
                     )
                     self.db.add(story)
                     created_stories.append(story)
-                    logger.info(f"📝 Created draft story {i+1}/{len(story_titles)}: {story_title[:50]}...")
+                    logger.info(f"Created story {i+1}/{len(stories_data)}: {story_title[:50]}...")
 
                 except Exception as story_error:
-                    logger.error(f"❌ Error creating draft story '{title}': {str(story_error)}")
+                    logger.error(f"Error creating story '{story_data}': {str(story_error)}")
 
             if skipped_count > 0:
-                logger.info(f"⏭️ Skipped {skipped_count} duplicate stories")
+                logger.info(f"Skipped {skipped_count} duplicate stories")
 
             self.db.commit()
-            logger.info(f"✅ Created {len(created_stories)} story DRAFTS (lightweight, content on approval)")
+            logger.info(f"Created {len(created_stories)} stories with full content")
             return created_stories
 
         except Exception as e:
-            logger.error(f"❌ Error generating draft stories: {str(e)}")
+            logger.error(f"Error generating stories: {str(e)}")
             import traceback
             traceback.print_exc()
+            return await self._generate_draft_stories_fallback(epic, project, count)
 
-            # Fallback: create basic stories with titles only
-            fallback_titles = self._generate_fallback_story_titles(epic)
-            created_stories = []
-            for i, title in enumerate(fallback_titles[:5]):
-                story = Task(
-                    project_id=epic.project_id,
-                    parent_id=epic.id,
-                    item_type=ItemType.STORY,
-                    title=title,
-                    description="Conteúdo será gerado ao aprovar.",
-                    generated_prompt="",
-                    acceptance_criteria=[],
-                    story_points=5,
-                    priority=PriorityLevel.MEDIUM,
-                    labels=["suggested"],
-                    workflow_state="draft",
-                    status=TaskStatus.BACKLOG,
-                    order=i,
-                    interview_insights={"derived_from_epic": str(epic.id)}
-                )
-                self.db.add(story)
-                created_stories.append(story)
+    async def _generate_draft_stories_fallback(
+        self,
+        epic: Task,
+        project: Project,
+        count: int = 15
+    ) -> List[Task]:
+        """Fallback: create stories with basic titles when AI fails."""
+        fallback_titles = self._generate_fallback_story_titles(epic)
+        created_stories = []
+        for i, title in enumerate(fallback_titles[:min(5, count)]):
+            story = Task(
+                project_id=epic.project_id,
+                parent_id=epic.id,
+                item_type=ItemType.STORY,
+                title=title,
+                description=f"Story derivada do Epic: {epic.title}",
+                generated_prompt="",
+                acceptance_criteria=[],
+                story_points=5,
+                priority=PriorityLevel.MEDIUM,
+                labels=["suggested"],
+                workflow_state="draft",
+                status=TaskStatus.BACKLOG,
+                order=i,
+                interview_insights={"derived_from_epic": str(epic.id)}
+            )
+            self.db.add(story)
+            created_stories.append(story)
 
-            self.db.commit()
-            return created_stories
+        self.db.commit()
+        return created_stories
 
     def _generate_fallback_story_titles(self, epic: Task) -> List[str]:
         """Generate fallback story titles when AI fails."""
@@ -3132,8 +3151,7 @@ Retorne APENAS o array JSON com {count} títulos de Stories no formato User Stor
         count: int = 8
     ) -> List[Task]:
         """
-        PROMPT #102 - Generate draft tasks for an activated story.
-        PROMPT #127 - Now accepts count parameter for user-defined quantity.
+        PROMPT #257 - Generate tasks with FULL CONTENT using tasks_from_story.yaml.
 
         Args:
             story: The activated story
@@ -3141,9 +3159,9 @@ Retorne APENAS o array JSON com {count} títulos de Stories no formato User Stor
             count: Number of tasks to generate (default 8)
 
         Returns:
-            List of created draft Task items
+            List of created Task items with full content
         """
-        logger.info(f"📝 Generating DETAILED draft tasks for story: {story.title}")
+        logger.info(f"Generating {count} tasks with full content for story: {story.title}")
 
         # Get parent epic and story semantic maps for context
         parent_epic = None
@@ -3158,91 +3176,77 @@ Retorne APENAS o array JSON com {count} títulos de Stories no formato User Stor
         if story.interview_insights:
             story_semantic_map = story.interview_insights.get("semantic_map", {})
 
-        # ============================================================
-        # STEP 1: Generate only TITLES (5-8 task titles)
-        # ============================================================
-        titles_system_prompt = f"""Você é um Tech Lead especialista em decomposição de User Stories.
-
-TAREFA: Decomponha a User Story em {count} Tasks técnicas. Retorne APENAS os TÍTULOS.
-
-FORMATO: Cada título deve descrever uma tarefa técnica específica e implementável.
-
-**TIPOS DE TASKS A INCLUIR:**
-- Modelagem de dados (criar/modificar models, migrations)
-- Implementação de API (endpoints, controllers)
-- Implementação de UI (componentes, páginas)
-- Validações e regras de negócio
-- Integrações (serviços externos, outros módulos)
-- Testes (unitários, integração)
-- Configurações e setup
-
-Retorne APENAS um array JSON com os títulos:
-["título 1", "título 2", ..., "título N"]
-
-NÃO inclua nenhuma explicação, apenas o array JSON."""
-
         combined_semantic_map = {**epic_semantic_map, **story_semantic_map}
         semantic_map_text = ""
         if combined_semantic_map:
-            semantic_map_text = "\n\nMAPA SEMÂNTICO DO EPIC/STORY:\n"
+            semantic_map_text = "\nMAPA SEMANTICO DO EPIC/STORY:\n"
             semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
 
-        epic_context = ""
-        if parent_epic:
-            epic_context = f"\n## EPIC PAI\n**Título:** {parent_epic.title}\n**Descrição:** {(parent_epic.description or 'N/A')[:500]}\n"
-
-        titles_user_prompt = f"""Decomponha esta User Story em {count} Tasks técnicas.
-
-## STORY
-**Título:** {story.title}
-**Descrição:** {story.description or 'Não especificada'}
-**Especificação:** {(story.generated_prompt or '')[:1500]}
-{epic_context}
-{semantic_map_text}
-
-## CONTEXTO DO PROJETO
-{(project.context_human or project.context_semantic or 'Não disponível')[:1500]}
-
-Retorne APENAS o array JSON com {count} títulos de Tasks técnicas."""
+        # PROMPT #257 - Fetch business rules from RAG
+        business_rules_text = ""
+        try:
+            rag_service = RAGService(self.db)
+            rules = rag_service.get_business_rules(project_id=project.id, top_k=20)
+            if rules:
+                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=6000)
+        except Exception as e:
+            logger.warning(f"Could not fetch business rules for tasks: {e}")
 
         try:
-            orchestrator = AIOrchestrator(self.db)
+            # PROMPT #257 - Use PromptLoader with tasks_from_story.yaml
+            from app.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
 
-            # Get titles first
-            titles_response = await orchestrator.execute(
-                usage_type="prompt_generation",
-                messages=[{"role": "user", "content": titles_user_prompt}],
-                system_prompt=titles_system_prompt,
-                max_tokens=1500,
-                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
-                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
+            system_prompt, user_prompt = loader.render(
+                "backlog/tasks_from_story",
+                {
+                    "story_title": story.title,
+                    "story_description": (story.description or "Nao especificada")[:5000],
+                    "story_story_points": story.story_points or 8,
+                    "story_priority": story.priority.value if story.priority else "medium",
+                    "story_acceptance_criteria": "\n".join(story.acceptance_criteria or []),
+                    "semantic_map_text": semantic_map_text,
+                    "business_rules_text": business_rules_text,
+                    "rag_context": "",
+                }
             )
 
-            titles_content = titles_response.get("content", "")
-            task_titles = self._parse_json_response(titles_content)
+            user_prompt += f"\n\nGere exatamente {count} Tasks como array JSON."
 
-            if not task_titles or not isinstance(task_titles, list):
-                logger.warning("AI did not return valid task titles array, using fallback titles")
-                task_titles = self._generate_fallback_task_titles(story)
+            orchestrator = AIOrchestrator(self.db)
+            response = await orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=6000,
+                enable_rag=True,
+                project_id=str(project.id)
+            )
 
-            task_titles = task_titles[:count]
-            logger.info(f"📋 Generated {len(task_titles)} task titles for story: {story.title}")
+            response_content = response.get("content", "")
+            tasks_data = self._parse_json_response(response_content)
 
-            # ============================================================
-            # STEP 2: Create SIMPLE drafts (title only) - PROMPT #107
-            # Full content is generated ONLY when user approves the item
-            # PROMPT #162: Check for duplicates before creating
-            # ============================================================
+            if not tasks_data or not isinstance(tasks_data, list):
+                logger.warning("AI did not return valid tasks array, falling back to title-only")
+                return self._generate_draft_tasks_fallback(story)
+
+            tasks_data = tasks_data[:count]
+            logger.info(f"Generated {len(tasks_data)} complete task objects for story: {story.title}")
+
+            # Create Task objects with full content
             created_tasks = []
             skipped_count = 0
-            rag_service = RAGService(self.db)
+            rag_svc = RAGService(self.db)
 
-            for i, title in enumerate(task_titles):
+            for i, task_data in enumerate(tasks_data):
                 try:
-                    task_title = title if isinstance(title, str) else f"Task {i+1}"
+                    if isinstance(task_data, str):
+                        task_data = {"title": task_data}
 
-                    # PROMPT #162 - Check for similar cards (auto-skip silencioso)
-                    similar_cards = rag_service.find_similar_cards(
+                    task_title = task_data.get("title", f"Task {i+1}")
+
+                    # PROMPT #162 - Check for similar cards
+                    similar_cards = rag_svc.find_similar_cards(
                         title=task_title,
                         description=None,
                         project_id=story.project_id,
@@ -3251,50 +3255,93 @@ Retorne APENAS o array JSON com {count} títulos de Tasks técnicas."""
                         top_k=1
                     )
                     if similar_cards:
-                        logger.info(f"⏭️ Skipping similar task: '{task_title[:50]}...' (similar to '{similar_cards[0].get('title', 'unknown')[:50]}...' - {similar_cards[0].get('similarity', 0):.0%})")
+                        logger.info(f"Skipping similar task: '{task_title[:50]}...'")
                         skipped_count += 1
                         continue
 
-                    # Create simple draft task with just title and placeholder description
-                    # Full content will be generated when user activates/approves this task
+                    description = task_data.get("description_markdown", task_data.get("description", ""))
+                    generated_prompt = task_data.get("description_markdown", "")
+                    acceptance_criteria = task_data.get("acceptance_criteria", [])
+                    story_points = task_data.get("story_points", 3)
+                    priority_str = task_data.get("priority", "medium").lower()
+                    task_semantic_map = task_data.get("semantic_map", {})
+
+                    priority_map = {
+                        "critical": PriorityLevel.CRITICAL,
+                        "high": PriorityLevel.HIGH,
+                        "medium": PriorityLevel.MEDIUM,
+                        "low": PriorityLevel.LOW,
+                        "trivial": PriorityLevel.TRIVIAL,
+                    }
+                    priority = priority_map.get(priority_str, story.priority or PriorityLevel.MEDIUM)
+
                     task = Task(
                         project_id=story.project_id,
                         parent_id=story.id,
                         item_type=ItemType.TASK,
                         title=task_title,
-                        description="Conteúdo será gerado ao aprovar.",  # Simple placeholder
-                        generated_prompt="",  # Empty until approved
-                        acceptance_criteria=[],
-                        story_points=3,
-                        priority=story.priority or PriorityLevel.MEDIUM,
+                        description=description or f"Task derivada da Story: {story.title}",
+                        generated_prompt=generated_prompt,
+                        acceptance_criteria=acceptance_criteria,
+                        story_points=story_points if isinstance(story_points, int) else 3,
+                        priority=priority,
                         labels=["suggested"],
                         workflow_state="draft",
                         status=TaskStatus.BACKLOG,
                         order=i,
                         reporter="system",
-                        interview_insights={"derived_from_story": str(story.id)},
+                        interview_insights={
+                            "derived_from_story": str(story.id),
+                            "semantic_map": task_semantic_map,
+                        },
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow()
                     )
                     self.db.add(task)
                     created_tasks.append(task)
-                    logger.info(f"📝 Created draft task {i+1}/{len(task_titles)}: {task_title[:50]}...")
+                    logger.info(f"Created task {i+1}/{len(tasks_data)}: {task_title[:50]}...")
 
                 except Exception as task_error:
-                    logger.error(f"❌ Error creating draft task '{title}': {str(task_error)}")
+                    logger.error(f"Error creating task '{task_data}': {str(task_error)}")
 
             if skipped_count > 0:
-                logger.info(f"⏭️ Skipped {skipped_count} duplicate tasks")
+                logger.info(f"Skipped {skipped_count} duplicate tasks")
 
             self.db.commit()
-            logger.info(f"✅ Created {len(created_tasks)} task DRAFTS (lightweight, content on approval)")
+            logger.info(f"Created {len(created_tasks)} tasks with full content")
             return created_tasks
 
         except Exception as e:
-            logger.error(f"❌ Error generating draft tasks: {str(e)}")
+            logger.error(f"Error generating tasks: {str(e)}")
             import traceback
             traceback.print_exc()
-            return []
+            return self._generate_draft_tasks_fallback(story)
+
+    def _generate_draft_tasks_fallback(self, story: Task) -> List[Task]:
+        """Fallback: create tasks with basic titles when AI fails."""
+        fallback_titles = self._generate_fallback_task_titles(story)
+        created_tasks = []
+        for i, title in enumerate(fallback_titles[:5]):
+            task = Task(
+                project_id=story.project_id,
+                parent_id=story.id,
+                item_type=ItemType.TASK,
+                title=title,
+                description=f"Task derivada da Story: {story.title}",
+                generated_prompt="",
+                acceptance_criteria=[],
+                story_points=3,
+                priority=story.priority or PriorityLevel.MEDIUM,
+                labels=["suggested"],
+                workflow_state="draft",
+                status=TaskStatus.BACKLOG,
+                order=i,
+                interview_insights={"derived_from_story": str(story.id)}
+            )
+            self.db.add(task)
+            created_tasks.append(task)
+        self.db.commit()
+        return created_tasks
 
     def _generate_fallback_task_titles(self, story: Task) -> List[str]:
         """Generate fallback task titles when AI fails."""
@@ -3316,8 +3363,7 @@ Retorne APENAS o array JSON com {count} títulos de Tasks técnicas."""
         count: int = 5
     ) -> List[Task]:
         """
-        PROMPT #102 - Generate draft subtasks for an activated task.
-        PROMPT #127 - Now accepts count parameter for user-defined quantity.
+        PROMPT #257 - Generate subtasks with FULL CONTENT using subtasks_from_task.yaml.
 
         Args:
             task: The activated task
@@ -3325,99 +3371,94 @@ Retorne APENAS o array JSON com {count} títulos de Tasks técnicas."""
             count: Number of subtasks to generate (default 5)
 
         Returns:
-            List of created draft Subtask items
+            List of created Subtask items with full content
         """
-        logger.info(f"📝 Generating DETAILED draft subtasks for task: {task.title}")
+        logger.info(f"Generating {count} subtasks with full content for task: {task.title}")
 
         # Get task semantic map for context
         task_semantic_map = {}
         if task.interview_insights:
             task_semantic_map = task.interview_insights.get("semantic_map", {})
 
-        # Get parent story and great-grandparent epic for full hierarchy context
+        # Get parent story and grandparent epic for hierarchy context
         parent_story = None
-        great_grandparent_epic = None
+        grandparent_epic = None
         if task.parent_id:
             parent_story = self.db.query(Task).filter(Task.id == task.parent_id).first()
             if parent_story and parent_story.parent_id:
-                great_grandparent_epic = self.db.query(Task).filter(Task.id == parent_story.parent_id).first()
-
-        # ============================================================
-        # STEP 1: Generate only TITLES (3-5 subtask titles)
-        # ============================================================
-        titles_system_prompt = f"""Você é um Desenvolvedor Sênior especialista em decomposição de Tasks.
-
-TAREFA: Decomponha a Task em {count} Subtasks atômicas. Retorne APENAS os TÍTULOS.
-
-FORMATO: Cada título deve descrever uma ação específica e implementável.
-
-**TIPOS DE SUBTASKS A INCLUIR:**
-- Implementação de função/método específico
-- Configuração de dependência/biblioteca
-- Criação/modificação de arquivo
-- Implementação de validação
-- Tratamento de erro específico
-- Escrita de teste
-- Refatoração de código
-
-Retorne APENAS um array JSON com os títulos:
-["título 1", "título 2", ..., "título N"]
-
-NÃO inclua nenhuma explicação, apenas o array JSON."""
+                grandparent_epic = self.db.query(Task).filter(Task.id == parent_story.parent_id).first()
 
         semantic_map_text = ""
         if task_semantic_map:
-            semantic_map_text = "\n\nMAPA SEMÂNTICO DA TASK:\n"
+            semantic_map_text = "\nMAPA SEMANTICO DA TASK:\n"
             semantic_map_text += json.dumps(task_semantic_map, indent=2, ensure_ascii=False)
 
-        titles_user_prompt = f"""Decomponha esta Task em {count} Subtasks atômicas.
-
-## TASK
-**Título:** {task.title}
-**Descrição:** {task.description or 'Não especificada'}
-**Especificação:** {(task.generated_prompt or '')[:1000]}
-{semantic_map_text}
-
-Retorne APENAS o array JSON com {count} títulos de Subtasks."""
+        # PROMPT #257 - Fetch business rules from RAG
+        business_rules_text = ""
+        try:
+            rag_service = RAGService(self.db)
+            rules = rag_service.get_business_rules(project_id=project.id, top_k=15)
+            if rules:
+                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=4000)
+        except Exception as e:
+            logger.warning(f"Could not fetch business rules for subtasks: {e}")
 
         try:
-            orchestrator = AIOrchestrator(self.db)
+            # PROMPT #257 - Use PromptLoader with subtasks_from_task.yaml
+            from app.prompts.loader import get_prompt_loader
+            loader = get_prompt_loader()
 
-            # Get titles first
-            titles_response = await orchestrator.execute(
-                usage_type="prompt_generation",
-                messages=[{"role": "user", "content": titles_user_prompt}],
-                system_prompt=titles_system_prompt,
-                max_tokens=1000,
-                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
-                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
+            system_prompt, user_prompt = loader.render(
+                "backlog/subtasks_from_task",
+                {
+                    "task_title": task.title,
+                    "task_description": (task.description or "Nao especificada")[:3000],
+                    "task_story_points": task.story_points or 3,
+                    "task_priority": task.priority.value if task.priority else "medium",
+                    "task_acceptance_criteria": "\n".join(task.acceptance_criteria or []),
+                    "semantic_map_text": semantic_map_text,
+                    "business_rules_text": business_rules_text,
+                    "parent_story_title": parent_story.title if parent_story else "",
+                    "parent_epic_title": grandparent_epic.title if grandparent_epic else "",
+                }
             )
 
-            titles_content = titles_response.get("content", "")
-            subtask_titles = self._parse_json_response(titles_content)
+            user_prompt += f"\n\nGere exatamente {count} Subtasks como array JSON."
 
-            if not subtask_titles or not isinstance(subtask_titles, list):
-                logger.warning("AI did not return valid subtask titles array, using fallback titles")
-                subtask_titles = self._generate_fallback_subtask_titles(task)
+            orchestrator = AIOrchestrator(self.db)
+            response = await orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=4000,
+                enable_rag=True,
+                project_id=str(project.id)
+            )
 
-            subtask_titles = subtask_titles[:count]
-            logger.info(f"📋 Generated {len(subtask_titles)} subtask titles for task: {task.title}")
+            response_content = response.get("content", "")
+            subtasks_data = self._parse_json_response(response_content)
 
-            # ============================================================
-            # STEP 2: Create SIMPLE drafts (title only) - PROMPT #107
-            # Full content is generated ONLY when user approves the item
-            # PROMPT #162: Check for duplicates before creating
-            # ============================================================
+            if not subtasks_data or not isinstance(subtasks_data, list):
+                logger.warning("AI did not return valid subtasks array, falling back to title-only")
+                return self._generate_draft_subtasks_fallback(task)
+
+            subtasks_data = subtasks_data[:count]
+            logger.info(f"Generated {len(subtasks_data)} complete subtask objects for task: {task.title}")
+
+            # Create Subtask objects with full content
             created_subtasks = []
             skipped_count = 0
-            rag_service = RAGService(self.db)
+            rag_svc = RAGService(self.db)
 
-            for i, title in enumerate(subtask_titles):
+            for i, st_data in enumerate(subtasks_data):
                 try:
-                    subtask_title = title if isinstance(title, str) else f"Subtask {i+1}"
+                    if isinstance(st_data, str):
+                        st_data = {"title": st_data}
 
-                    # PROMPT #162 - Check for similar cards (auto-skip silencioso)
-                    similar_cards = rag_service.find_similar_cards(
+                    subtask_title = st_data.get("title", f"Subtask {i+1}")
+
+                    # PROMPT #162 - Check for similar cards
+                    similar_cards = rag_svc.find_similar_cards(
                         title=subtask_title,
                         description=None,
                         project_id=task.project_id,
@@ -3426,50 +3467,93 @@ Retorne APENAS o array JSON com {count} títulos de Subtasks."""
                         top_k=1
                     )
                     if similar_cards:
-                        logger.info(f"⏭️ Skipping similar subtask: '{subtask_title[:50]}...' (similar to '{similar_cards[0].get('title', 'unknown')[:50]}...' - {similar_cards[0].get('similarity', 0):.0%})")
+                        logger.info(f"Skipping similar subtask: '{subtask_title[:50]}...'")
                         skipped_count += 1
                         continue
 
-                    # Create simple draft subtask with just title and placeholder description
-                    # Full content will be generated when user activates/approves this subtask
+                    description = st_data.get("description_markdown", st_data.get("description", ""))
+                    generated_prompt = st_data.get("description_markdown", "")
+                    acceptance_criteria = st_data.get("acceptance_criteria", [])
+                    story_points = st_data.get("story_points", 1)
+                    priority_str = st_data.get("priority", "medium").lower()
+                    st_semantic_map = st_data.get("semantic_map", {})
+
+                    priority_map = {
+                        "critical": PriorityLevel.CRITICAL,
+                        "high": PriorityLevel.HIGH,
+                        "medium": PriorityLevel.MEDIUM,
+                        "low": PriorityLevel.LOW,
+                        "trivial": PriorityLevel.TRIVIAL,
+                    }
+                    priority = priority_map.get(priority_str, task.priority or PriorityLevel.MEDIUM)
+
                     subtask = Task(
                         project_id=task.project_id,
                         parent_id=task.id,
                         item_type=ItemType.SUBTASK,
                         title=subtask_title,
-                        description="Conteúdo será gerado ao aprovar.",  # Simple placeholder
-                        generated_prompt="",  # Empty until approved
-                        acceptance_criteria=[],
-                        story_points=1,
-                        priority=task.priority or PriorityLevel.MEDIUM,
+                        description=description or f"Subtask derivada da Task: {task.title}",
+                        generated_prompt=generated_prompt,
+                        acceptance_criteria=acceptance_criteria,
+                        story_points=story_points if isinstance(story_points, int) else 1,
+                        priority=priority,
                         labels=["suggested"],
                         workflow_state="draft",
                         status=TaskStatus.BACKLOG,
                         order=i,
                         reporter="system",
-                        interview_insights={"derived_from_task": str(task.id)},
+                        interview_insights={
+                            "derived_from_task": str(task.id),
+                            "semantic_map": st_semantic_map,
+                        },
                         created_at=datetime.utcnow(),
                         updated_at=datetime.utcnow()
                     )
                     self.db.add(subtask)
                     created_subtasks.append(subtask)
-                    logger.info(f"📝 Created draft subtask {i+1}/{len(subtask_titles)}: {subtask_title[:50]}...")
+                    logger.info(f"Created subtask {i+1}/{len(subtasks_data)}: {subtask_title[:50]}...")
 
                 except Exception as subtask_error:
-                    logger.error(f"❌ Error creating draft subtask '{title}': {str(subtask_error)}")
+                    logger.error(f"Error creating subtask '{st_data}': {str(subtask_error)}")
 
             if skipped_count > 0:
-                logger.info(f"⏭️ Skipped {skipped_count} duplicate subtasks")
+                logger.info(f"Skipped {skipped_count} duplicate subtasks")
 
             self.db.commit()
-            logger.info(f"✅ Created {len(created_subtasks)} subtask DRAFTS (lightweight, content on approval)")
+            logger.info(f"Created {len(created_subtasks)} subtasks with full content")
             return created_subtasks
 
         except Exception as e:
-            logger.error(f"❌ Error generating draft subtasks: {str(e)}")
+            logger.error(f"Error generating subtasks: {str(e)}")
             import traceback
             traceback.print_exc()
-            return []
+            return self._generate_draft_subtasks_fallback(task)
+
+    def _generate_draft_subtasks_fallback(self, task: Task) -> List[Task]:
+        """Fallback: create subtasks with basic titles when AI fails."""
+        fallback_titles = self._generate_fallback_subtask_titles(task)
+        created_subtasks = []
+        for i, title in enumerate(fallback_titles[:3]):
+            subtask = Task(
+                project_id=task.project_id,
+                parent_id=task.id,
+                item_type=ItemType.SUBTASK,
+                title=title,
+                description=f"Subtask derivada da Task: {task.title}",
+                generated_prompt="",
+                acceptance_criteria=[],
+                story_points=1,
+                priority=task.priority or PriorityLevel.MEDIUM,
+                labels=["suggested"],
+                workflow_state="draft",
+                status=TaskStatus.BACKLOG,
+                order=i,
+                interview_insights={"derived_from_task": str(task.id)}
+            )
+            self.db.add(subtask)
+            created_subtasks.append(subtask)
+        self.db.commit()
+        return created_subtasks
 
     def _generate_fallback_subtask_titles(self, task: Task) -> List[str]:
         """Generate fallback subtask titles when AI fails."""

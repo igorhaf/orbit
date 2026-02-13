@@ -78,6 +78,14 @@ export default function ProjectDetailsPage() {
   const [isEnriching, setIsEnriching] = useState(false);
   const prevEnrichingRef = useRef(false);
 
+  // PROMPT #258 - Wiki stats for description overview
+  const [wikiStats, setWikiStats] = useState<{
+    business_rules_count: number;
+    interview_answers_count: number;
+    code_files_count: number;
+    total_documents: number;
+  } | null>(null);
+
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
   const [epicCount, setEpicCount] = useState(10);
@@ -136,6 +144,31 @@ export default function ProjectDetailsPage() {
       if (interval) clearInterval(interval);
     };
   }, [projectId, loadProjectData]);
+
+  // PROMPT #258 - Load wiki stats and auto-refresh description while enrichment active
+  useEffect(() => {
+    if (activeTab !== 'overview' || overviewSubTab !== 'description') return;
+
+    const loadWikiStats = async () => {
+      try {
+        const stats = await knowledgeApi.getFullStats(projectId);
+        setWikiStats(stats);
+      } catch {
+        // Ignore - stats are decorative
+      }
+    };
+
+    loadWikiStats();
+
+    // Auto-refresh description every 30s while enrichment or scan is active
+    if (isEnriching || project?.status === 'processing') {
+      const interval = setInterval(() => {
+        loadWikiStats();
+        loadProjectData();
+      }, 30000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, overviewSubTab, projectId, isEnriching, project?.status, loadProjectData]);
 
   // PROMPT #249 - Auto-refresh while project is processing (pipeline running)
   useEffect(() => {
@@ -1026,6 +1059,27 @@ export default function ProjectDetailsPage() {
 
             {/* Sub-Tab: Project Description */}
             {overviewSubTab === 'description' && (
+              <>
+              {/* PROMPT #258 - Wiki stats bar */}
+              {wikiStats && wikiStats.total_documents > 0 && (
+                <div className="flex items-center gap-4 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+                  <span className="font-medium text-gray-700">Wiki Knowledge:</span>
+                  <span>{wikiStats.business_rules_count} rules extracted</span>
+                  <span className="text-gray-300">|</span>
+                  <span>{wikiStats.interview_answers_count} interview answers</span>
+                  <span className="text-gray-300">|</span>
+                  <span>{wikiStats.code_files_count} files scanned</span>
+                  {isEnriching && (
+                    <>
+                      <span className="text-gray-300">|</span>
+                      <span className="flex items-center gap-1 text-blue-600">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600" />
+                        Enriching...
+                      </span>
+                    </>
+                  )}
+                </div>
+              )}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Project Description</CardTitle>
@@ -1091,6 +1145,7 @@ export default function ProjectDetailsPage() {
                   )}
                 </CardContent>
               </Card>
+              </>
             )}
 
             {/* Sub-Tab: Project Context */}

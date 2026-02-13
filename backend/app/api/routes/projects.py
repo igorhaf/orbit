@@ -883,6 +883,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
     """
     PROMPT #239 - Living Wiki: enrich project description from RAG findings.
     PROMPT #252 - Removed context_locked guard. Description evolves continuously.
+    PROMPT #258 - Enriched with interview answers, scan summary, features.
     context_semantic and context_human remain immutable (managed by epic flow).
     Returns True if enrichment actually happened, False otherwise.
     """
@@ -890,7 +891,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
     if not project:
         return False
 
-    # Get business rules from RAG
+    # --- 1. Get business rules from RAG ---
     from sqlalchemy import text as sql_text
     result = db.execute(sql_text("""
         SELECT content FROM rag_documents
@@ -901,36 +902,102 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
     """), {"pid": str(project_id)})
     rules = [row[0] for row in result.fetchall()]
 
-    if not rules:
-        logger.info(f"No RAG rules for {project_id}, skipping wiki enrichment")
+    # --- 2. Get interview answers from RAG ---
+    interview_result = db.execute(sql_text("""
+        SELECT content FROM rag_documents
+        WHERE project_id = :pid
+        AND (metadata->>'content_type' = 'interview_answer' OR metadata->>'type' = 'interview_answer')
+        ORDER BY created_at DESC
+        LIMIT 30
+    """), {"pid": str(project_id)})
+    interview_answers = [row[0] for row in interview_result.fetchall()]
+
+    # --- 3. Extract scan_summary and features from initial_memory_context ---
+    scan_summary = ""
+    existing_features = ""
+    stack_info = ""
+    if project.initial_memory_context and isinstance(project.initial_memory_context, dict):
+        mem = project.initial_memory_context
+
+        # Stack info
+        si = mem.get("stack_info", {})
+        if si and isinstance(si, dict):
+            parts = []
+            if si.get("languages"):
+                parts.append(f"Linguagens: {', '.join(si['languages']) if isinstance(si['languages'], list) else si['languages']}")
+            if si.get("frameworks"):
+                parts.append(f"Frameworks: {', '.join(si['frameworks']) if isinstance(si['frameworks'], list) else si['frameworks']}")
+            if si.get("databases"):
+                parts.append(f"Bancos: {', '.join(si['databases']) if isinstance(si['databases'], list) else si['databases']}")
+            stack_info = "\n".join(parts) if parts else str(si)
+        elif si:
+            stack_info = str(si)
+
+        # Scan summary
+        ss = mem.get("scan_summary", {})
+        if ss and isinstance(ss, dict):
+            parts = []
+            if ss.get("total_files"):
+                parts.append(f"Total de arquivos: {ss['total_files']}")
+            if ss.get("code_files"):
+                parts.append(f"Arquivos de codigo: {ss['code_files']}")
+            langs = ss.get("languages", {})
+            if langs and isinstance(langs, dict):
+                lang_str = ", ".join(f"{k} ({v})" for k, v in sorted(langs.items(), key=lambda x: -x[1])[:8])
+                parts.append(f"Linguagens detectadas: {lang_str}")
+            scan_summary = "\n".join(parts) if parts else str(ss)
+        elif ss:
+            scan_summary = str(ss)
+
+        # Features
+        feats = mem.get("key_features", [])
+        if feats and isinstance(feats, list):
+            existing_features = "\n".join(f"- {f}" for f in feats[:30])
+
+    # --- 4. Check if we have ANY data to enrich ---
+    has_rules = bool(rules)
+    has_interviews = bool(interview_answers)
+    has_scan = bool(scan_summary)
+    has_features = bool(existing_features)
+
+    if not has_rules and not has_interviews and not has_scan and not has_features:
+        logger.info(f"No RAG data for {project_id}, skipping wiki enrichment")
         return False
 
-    # Use AI to enrich the description
+    logger.info(
+        f"Wiki enrichment data for {project_id}: "
+        f"{len(rules)} rules, {len(interview_answers)} interview answers, "
+        f"scan={'yes' if has_scan else 'no'}, features={'yes' if has_features else 'no'}"
+    )
+
+    # --- 5. Render prompt with all available data ---
     from app.services.ai_orchestrator import AIOrchestrator
     from app.prompts.loader import PromptLoader
 
     loader = PromptLoader()
     try:
-        sys_prompt, usr_prompt = loader.render(
-            "context/wiki_enrichment",
-            {
-                "project_name": project.name or "",
-                "current_description": project.description or "",
-                "current_context": project.context_human or "",
-                "new_rules": "\n".join(f"- {r}" for r in rules),
-                "stack_info": str(project.initial_memory_context.get("stack_info", {})) if project.initial_memory_context else "",
-            },
-        )
+        template_vars = {
+            "project_name": project.name or "",
+            "current_description": project.description or "",
+            "current_context": project.context_human or "",
+            "new_rules": "\n".join(f"- {r}" for r in rules) if rules else "",
+            "stack_info": stack_info,
+            "interview_context": "\n".join(f"- {a}" for a in interview_answers) if interview_answers else "",
+            "scan_summary": scan_summary,
+            "existing_features": existing_features,
+        }
+        sys_prompt, usr_prompt = loader.render("context/wiki_enrichment", template_vars)
     except Exception as e:
         logger.warning(f"Wiki enrichment prompt not found: {e}")
         return False
 
+    # --- 6. Call AI to enrich ---
     orchestrator = AIOrchestrator(db)
     response = await orchestrator.execute(
         usage_type="memory",
         messages=[{"role": "user", "content": usr_prompt}],
         system_prompt=sys_prompt,
-        max_tokens=4000,
+        max_tokens=6000,
         project_id=str(project_id),
         metadata={"type": "wiki_enrichment"},
     )

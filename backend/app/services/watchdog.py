@@ -90,7 +90,8 @@ def _safe_db_call(db, fn, *args, **kwargs):
         raise
 
 # Cooldown between cycles (seconds)
-CYCLE_COOLDOWN = 60
+CYCLE_COOLDOWN = 60          # When there's active work
+IDLE_COOLDOWN = 300           # PROMPT #259 - 5 min when no work detected
 ERROR_COOLDOWN = 120
 # PROMPT #245 - Aggressive cooldown for batch processing
 BATCH_COOLDOWN = 5
@@ -247,8 +248,21 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
 
         logger.info(f"Watchdog cycle completed for '{project_name}'")
 
-        # Cooldown then re-queue
-        await asyncio.sleep(CYCLE_COOLDOWN)
+        # PROMPT #259 - Conditional cooldown: check if there's pending work
+        has_work = False
+        try:
+            from app.models.rag_file_state import RAGFileState, FileProcessingStatus
+            pending_files = db.query(RAGFileState).filter(
+                RAGFileState.project_id == project_id,
+                RAGFileState.status == FileProcessingStatus.PENDING,
+            ).count()
+            has_work = pending_files > 0 or card_result.get("created", 0) > 0 or enriched_cards > 0
+        except Exception:
+            pass
+
+        cooldown = CYCLE_COOLDOWN if has_work else IDLE_COOLDOWN
+        logger.info(f"Watchdog cooldown for '{project_name}': {cooldown}s ({'active' if has_work else 'idle'})")
+        await asyncio.sleep(cooldown)
         submit_watchdog_cycle(db, project_id)
 
     except Exception as e:
@@ -707,10 +721,9 @@ async def bootstrap_watchdog():
 
     db = _get_resilient_session(max_retries=5, delay=10.0)
     try:
-        # PROMPT #255 - On startup, ALL running jobs are zombies (threads died with restart).
-        # Mark them as failed so they don't block new submissions.
+        # PROMPT #259 - Clean up ALL zombie running jobs on startup (any type).
+        # On restart, ALL running jobs are zombies (threads died with process).
         zombie_jobs = db.query(AsyncJob).filter(
-            AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
             AsyncJob.status == JobStatus.RUNNING,
         ).all()
         if zombie_jobs:
@@ -718,12 +731,11 @@ async def bootstrap_watchdog():
                 job.status = JobStatus.FAILED
                 job.result = {"error": "Zombie job cleaned up on restart"}
             db.commit()
-            logger.info(f"Cleaned up {len(zombie_jobs)} zombie running jobs on restart")
+            logger.info(f"Cleaned up {len(zombie_jobs)} zombie running jobs on restart (all types)")
 
-        # PROMPT #252 - Clean up stale pending jobs (>30 min old)
+        # PROMPT #259 - Clean up ALL stale pending jobs (>30 min, any type)
         stale_cutoff = datetime.utcnow() - timedelta(minutes=30)
         stale_jobs = db.query(AsyncJob).filter(
-            AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
             AsyncJob.status == JobStatus.PENDING,
             AsyncJob.created_at < stale_cutoff,
         ).all()
@@ -732,7 +744,7 @@ async def bootstrap_watchdog():
                 job.status = JobStatus.FAILED
                 job.result = {"error": "Stale job cleaned up by bootstrap"}
             db.commit()
-            logger.info(f"Cleaned up {len(stale_jobs)} stale pending jobs")
+            logger.info(f"Cleaned up {len(stale_jobs)} stale pending jobs (all types)")
 
         # PROMPT #255 - Re-submit orphaned pending jobs to in-memory executor.
         # After restart, DB jobs may be 'pending' but not in the executor's in-memory queue.

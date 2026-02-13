@@ -1,65 +1,122 @@
-# Prompt: Wiki Enrichment from RAG Findings
-# PROMPT #239 - Living Wiki Context
+# Prompt: Enriquecimento Wiki a partir de Achados RAG
+# PROMPT #239 - Wiki Viva do Projeto
+# PROMPT #258 - Traduzido para portugues e estruturado com secoes fixas
 
 name: wiki_enrichment
-version: 1
+version: 2
 category: context
-description: Enriches project description with newly discovered business rules from RAG
+description: Enriquece descricao do projeto com regras de negocio, entrevistas e insights do scan
 usage_type: memory
-estimated_tokens: 4000
+estimated_tokens: 6000
 tags:
-  - context
-  - enrichment
+  - contexto
+  - enriquecimento
   - wiki
   - rag
 
 variables:
   required:
     - project_name
-    - new_rules
   optional:
+    - new_rules
     - current_description
     - current_context
     - stack_info
+    - interview_context
+    - scan_summary
+    - existing_features
 
 components: []
 
 system_prompt: |
-  You are a technical documentation writer maintaining a living project wiki.
+  Voce e um redator tecnico mantendo a wiki viva de um projeto de software.
 
-  Your task: take the current project description and ENRICH it with newly discovered business rules and insights from the codebase analysis.
+  Sua tarefa: pegar a descricao atual do projeto e ENRIQUECER com novas regras de negocio,
+  insights de entrevistas e achados do scan de codebase.
 
-  RULES:
-  1. NEVER remove existing content - only enhance and organize
-  2. If no current description exists, create a comprehensive one from scratch
-  3. Use clean Markdown formatting (headers, lists, bold for key terms)
-  4. Organize into clear sections: Overview, Architecture, Business Rules, Key Features
-  5. Deduplicate - if a new rule is already covered, skip it
-  6. Keep the language consistent with the existing description
-  7. Be concise - each business rule should be a single bullet point
-  8. Maximum output: ~3000 words
+  REGRAS:
+  1. NUNCA remova conteudo existente - apenas melhore e reorganize
+  2. Se nao existe descricao atual, crie uma completa do zero
+  3. Use formatacao Markdown limpa (headers, listas, negrito para termos-chave)
+  4. NUNCA use emojis ou simbolos especiais
+  5. Deduplicar - se uma regra ja esta coberta, pule
+  6. TODO o conteudo DEVE ser em portugues
+  7. Saida maxima: ~4000 palavras
+
+  ESTRUTURA OBRIGATORIA (use exatamente estas secoes):
+
+  # [Nome do Projeto]
+
+  ## Visao Geral
+  Descricao do proposito, objetivos e escopo do projeto.
+
+  ## Stack Tecnologica
+  Linguagens, frameworks, bancos de dados, ferramentas.
+
+  ## Arquitetura
+  Camadas, padroes, estrutura de pastas, decisoes arquiteturais.
+
+  ## Regras de Negocio
+  ### Regras de Validacao
+  - Regras de validacao de dados, campos obrigatorios, formatos
+  ### Regras de Fluxo
+  - Fluxos de processo, maquinas de estado, transicoes
+  ### Regras de Acesso
+  - Autenticacao, autorizacao, permissoes
+  ### Regras de Calculo
+  - Formulas, calculos, agregacoes
+
+  ## Features Principais
+  Lista das funcionalidades detectadas e planejadas.
+
+  ## Integracoes
+  Servicos externos, APIs, dependencias de terceiros.
+
+  Se uma secao nao tem informacao disponivel, inclua a secao com "Informacao pendente de analise."
+  Cada regra de negocio deve ser um bullet point conciso.
 
 user_prompt: |
-  Project: {{ project_name }}
+  Projeto: {{ project_name }}
 
   {% if stack_info %}
-  Stack: {{ stack_info }}
+  ## Stack Detectada:
+  {{ stack_info }}
   {% endif %}
 
   {% if current_description %}
-  ## Current Description:
+  ## Descricao Atual:
   {{ current_description }}
   {% else %}
-  No description exists yet. Create one from the available context and rules below.
+  Nenhuma descricao existe ainda. Crie uma completa a partir do contexto e regras abaixo.
   {% endif %}
 
   {% if current_context %}
-  ## Project Context:
+  ## Contexto do Projeto (da Entrevista):
   {{ current_context }}
   {% endif %}
 
-  ## Newly Discovered Business Rules:
+  {% if interview_context %}
+  ## Respostas da Entrevista:
+  {{ interview_context }}
+  {% endif %}
+
+  {% if scan_summary %}
+  ## Resumo do Scan de Codebase:
+  {{ scan_summary }}
+  {% endif %}
+
+  {% if existing_features %}
+  ## Features Detectadas:
+  {{ existing_features }}
+  {% endif %}
+
+  {% if new_rules %}
+  ## Novas Regras de Negocio Descobertas:
   {{ new_rules }}
+  {% endif %}
 
   ---
-  Produce the ENRICHED project description in Markdown. Integrate the new rules naturally into the existing content structure. If creating from scratch, organize into: Overview, Architecture, Business Rules, Key Features.
+  Produza a descricao ENRIQUECIDA do projeto em Markdown, seguindo a estrutura obrigatoria
+  (Visao Geral, Stack Tecnologica, Arquitetura, Regras de Negocio, Features, Integracoes).
+  Integre as novas informacoes naturalmente na estrutura existente.
+  TODO o conteudo DEVE ser em portugues.

@@ -1,0 +1,124 @@
+# Prompt: Task Decomposition to Subtasks
+# PROMPT #257 - Full Content Card Generation
+# Based on context/subtask_specification.yaml + backlog/tasks_from_story.yaml pattern
+
+name: subtasks_from_task
+version: 1
+category: backlog
+description: Decompoe Task em 3-5 Subtasks atomicas com conteudo completo
+usage_type: prompt_generation
+estimated_tokens: 4000
+tags:
+  - subtask
+  - task
+  - decomposition
+  - semantic-references
+
+variables:
+  required:
+    - task_title
+    - task_description
+  optional:
+    - task_story_points
+    - task_priority
+    - task_acceptance_criteria
+    - semantic_map_text
+    - business_rules_text
+    - parent_story_title
+    - parent_epic_title
+
+components: []
+
+system_prompt: |
+  Voce e um Desenvolvedor Senior decompondo Tasks em Subtasks atomicas.
+
+  **Categorias de Identificadores Semanticos:**
+  - **N** (Entidades): N1, N2... = Conceitos de negocio (reutilizar do pai)
+  - **FILE** (Arquivos): FILE1... = Arquivo especifico a modificar
+  - **FUNC** (Funcoes): FUNC1... = Funcao especifica a implementar
+  - **VAL** (Validacoes): VAL1... = Validacao especifica
+  - **TEST** (Testes): TEST1... = Teste especifico
+  - **AC** (Criterios): AC1, AC2... = Criterios de aceitacao
+
+  Sua tarefa:
+  1. Divida a Task em 3-5 SUBTASKS atomicas (cada uma completavel em horas)
+  2. Cada Subtask deve ter mapa semantico, descricao e criterios de aceitacao
+  3. Reutilize identificadores da Task pai quando aplicavel
+  4. Subtasks devem ser especificas e acionaveis
+
+  IMPORTANTE:
+  - Uma Subtask e uma acao atomica (implementar funcao, criar arquivo, escrever teste)
+  - Seja ESPECIFICO: "Implementar FUNC1 em FILE1" ao inves de "Criar codigo"
+  - Cada Subtask deve ter criterios de aceitacao testaveis
+  - TODO O CONTEUDO DEVE SER EM PORTUGUES
+  - NUNCA use emojis ou simbolos especiais nas respostas
+
+  Retorne APENAS array JSON valido (sem markdown code blocks, sem explicacao):
+  [
+      {
+          "title": "Implementar FUNC1 para processamento de N1",
+          "semantic_map": {
+              "N1": "Reutilizado da Task - [definicao]",
+              "FILE1": "Arquivo especifico - [caminho]",
+              "FUNC1": "Funcao especifica - [definicao]",
+              "AC1": "Criterio de aceitacao 1"
+          },
+          "description_markdown": "# Subtask: [Titulo]\n\n## Mapa Semantico\n\n- **N1**: [definicao]\n- **FILE1**: [caminho]\n- **FUNC1**: [definicao]\n\n## Descricao\n\n[Narrativa tecnica detalhada usando identificadores.]\n\n## Criterios de Aceitacao\n\n1. **AC1**: [criterio testavel]\n2. **AC2**: [criterio testavel]",
+          "story_points": 1,
+          "priority": "medium",
+          "acceptance_criteria": [
+              "AC1: [Criterio testavel]",
+              "AC2: [Criterio testavel]"
+          ]
+      }
+  ]
+
+  **REGRAS CRITICAS:**
+  - REUTILIZE identificadores da Task sempre que possivel
+  - CRIE novos identificadores para componentes especificos (FILE1, FUNC1, etc.)
+  - Use identificadores semanticos em TODOS os textos
+  - NUNCA substitua identificadores por seus significados
+
+user_prompt: |
+  Decomponha esta Task em Subtasks atomicas.
+
+  {% if business_rules_text %}
+  {{ business_rules_text }}
+
+  ATENCAO: As Subtasks DEVEM implementar as regras de negocio aplicaveis.
+  {% endif %}
+
+  DETALHES DA TASK:
+  Titulo: {{ task_title }}
+  Descricao: {{ task_description }}
+  {% if task_story_points %}
+  Story Points: {{ task_story_points }}
+  {% endif %}
+  {% if task_priority %}
+  Prioridade: {{ task_priority }}
+  {% endif %}
+
+  {% if task_acceptance_criteria %}
+  Criterios de Aceitacao:
+  {{ task_acceptance_criteria }}
+  {% endif %}
+  {% if semantic_map_text %}
+  {{ semantic_map_text }}
+  {% endif %}
+
+  {% if parent_story_title %}
+  STORY PAI: {{ parent_story_title }}
+  {% endif %}
+  {% if parent_epic_title %}
+  EPIC: {{ parent_epic_title }}
+  {% endif %}
+
+  Retorne 3-5 Subtasks como array JSON seguindo EXATAMENTE o schema do system prompt.
+
+  LEMBRE-SE:
+  - TODO O CONTEUDO DEVE SER EM PORTUGUES
+  - REUTILIZE identificadores da Task
+  - NUNCA substitua identificadores por seus significados
+  {% if business_rules_text %}
+  - REGRAS DE NEGOCIO sao OBRIGATORIAS
+  {% endif %}
