@@ -1056,26 +1056,7 @@ export default function ProjectDetailsPage() {
             {/* Sub-Tab: Project Description */}
             {overviewSubTab === 'description' && (
               <>
-              {/* PROMPT #258 - Wiki stats bar */}
-              {wikiStats && wikiStats.total_documents > 0 && (
-                <div className="flex items-center gap-4 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
-                  <span className="font-medium text-gray-700">Wiki Knowledge:</span>
-                  <span>{wikiStats.business_rules_count} rules extracted</span>
-                  <span className="text-gray-300">|</span>
-                  <span>{wikiStats.interview_answers_count} interview answers</span>
-                  <span className="text-gray-300">|</span>
-                  <span>{wikiStats.code_files_count} files scanned</span>
-                  {isEnriching && (
-                    <>
-                      <span className="text-gray-300">|</span>
-                      <span className="flex items-center gap-1 text-blue-600">
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600" />
-                        Enriching...
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
+              {/* PROMPT #272 - Wiki stats moved to Wiki tab */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Project Description</CardTitle>

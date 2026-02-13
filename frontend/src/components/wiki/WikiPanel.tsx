@@ -10,7 +10,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { Card, Button } from '@/components/ui';
-import { wikiApi } from '@/lib/api';
+import { wikiApi, knowledgeApi, ragApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import ReactMarkdown from 'react-markdown';
 
@@ -64,6 +64,15 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
   const [newPage, setNewPage] = useState({ title: '', content: '' });
   const [creating, setCreating] = useState(false);
 
+  // Wiki Knowledge stats
+  const [wikiStats, setWikiStats] = useState<{
+    business_rules_count: number;
+    interview_answers_count: number;
+    code_files_count: number;
+    total_documents: number;
+  } | null>(null);
+  const [isEnriching, setIsEnriching] = useState(false);
+
   const loadTree = useCallback(async () => {
     setLoading(true);
     try {
@@ -79,6 +88,30 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
   useEffect(() => {
     loadTree();
   }, [loadTree]);
+
+  // Load wiki knowledge stats + enrichment status
+  useEffect(() => {
+    const loadStats = async () => {
+      try {
+        const [stats, enrichStatus] = await Promise.all([
+          knowledgeApi.getFullStats(projectId),
+          ragApi.enrichmentStatus(projectId),
+        ]);
+        setWikiStats(stats);
+        setIsEnriching(enrichStatus.is_enriching);
+      } catch {
+        // Stats are decorative, ignore errors
+      }
+    };
+
+    loadStats();
+
+    // Auto-refresh while enriching
+    if (isEnriching) {
+      const interval = setInterval(loadStats, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [projectId, isEnriching]);
 
   // Load page content when slug changes
   useEffect(() => {
@@ -292,10 +325,37 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     );
   }
 
+  // Render stats bar (reused in both empty and main views)
+  function renderStatsBar() {
+    if (!wikiStats || wikiStats.total_documents === 0) return null;
+    return (
+      <div className="flex items-center gap-4 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
+        <span className="font-medium text-gray-700">Wiki Knowledge:</span>
+        <span>{wikiStats.business_rules_count} rules extracted</span>
+        <span className="text-gray-300">|</span>
+        <span>{wikiStats.interview_answers_count} interview answers</span>
+        <span className="text-gray-300">|</span>
+        <span>{wikiStats.code_files_count} files scanned</span>
+        {isEnriching && (
+          <>
+            <span className="text-gray-300">|</span>
+            <span className="flex items-center gap-1 text-blue-600">
+              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600" />
+              Enriching...
+            </span>
+          </>
+        )}
+      </div>
+    );
+  }
+
   // Main wiki view with sidebar + content
   return (
     <div className="space-y-4">
       {NotificationComponent}
+
+      {/* Wiki Knowledge stats bar */}
+      {renderStatsBar()}
 
       {/* Header with actions */}
       <div className="flex items-center justify-between">
