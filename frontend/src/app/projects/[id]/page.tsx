@@ -137,6 +137,26 @@ export default function ProjectDetailsPage() {
     };
   }, [projectId, loadProjectData]);
 
+  // PROMPT #249 - Auto-refresh while project is processing (pipeline running)
+  useEffect(() => {
+    if (!project || project.status !== 'processing') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await projectsApi.get(projectId);
+        const data = res.data || res;
+        setProject(data);
+        if (data.status !== 'processing') {
+          loadProjectData();
+        }
+      } catch {
+        // Ignore errors
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [project?.status, projectId, loadProjectData]);
+
   // PROMPT #155 - Listen for incremental epic batch creation events
   useEffect(() => {
     const handleEpicsBatch = (event: CustomEvent) => {

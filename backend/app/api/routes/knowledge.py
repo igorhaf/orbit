@@ -249,7 +249,7 @@ async def get_all_projects_rag_stats(
                 COUNT(*) as total_documents,
                 COUNT(*) FILTER (WHERE metadata->>'content_type' = 'code_file' OR metadata->>'type' = 'code_file') as code_files,
                 COUNT(*) FILTER (WHERE metadata->>'content_type' = 'card' OR metadata->>'type' = 'card') as cards,
-                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'business_rule') as business_rules,
+                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule') as business_rules,
                 COUNT(*) FILTER (WHERE metadata->>'content_type' = 'interview_answer' OR metadata->>'type' = 'interview_answer') as interview_answers,
                 COUNT(*) FILTER (WHERE metadata->>'content_type' = 'project_context') as project_context,
                 COUNT(*) FILTER (WHERE metadata->>'content_type' = 'document') as documents
@@ -443,7 +443,7 @@ async def list_business_rules(
         # Query RAG documents directly for business rules
         where_clauses = [
             "project_id = :project_id",
-            "metadata->>'content_type' = 'business_rule'"
+            "(metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')"
         ]
         params = {"project_id": str(project_id), "limit": limit}
 
@@ -873,7 +873,7 @@ async def get_full_knowledge_stats(
                 COUNT(*) as count
             FROM rag_documents
             WHERE project_id = :project_id
-                AND metadata->>'content_type' = 'business_rule'
+                AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
             GROUP BY metadata->>'category'
         """)
         category_results = db.execute(category_query, {"project_id": str(project_id)}).fetchall()

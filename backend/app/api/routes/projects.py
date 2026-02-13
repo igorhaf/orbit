@@ -898,7 +898,7 @@ async def _enrich_context_from_rag(db, project_id: UUID):
     result = db.execute(sql_text("""
         SELECT content FROM rag_documents
         WHERE project_id = :pid
-        AND metadata->>'content_type' = 'business_rule'
+        AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
         ORDER BY created_at DESC
         LIMIT 50
     """), {"pid": str(project_id)})

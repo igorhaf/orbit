@@ -441,7 +441,7 @@ async def _auto_discover_cards(db: Session, project_id: UUID) -> Dict:
     result = db.execute(sql_text("""
         SELECT content FROM rag_documents
         WHERE project_id = :pid
-        AND metadata->>'content_type' = 'business_rule'
+        AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
         AND created_at > NOW() - INTERVAL '24 hours'
         ORDER BY created_at DESC
         LIMIT 20
