@@ -23,22 +23,22 @@ variables:
 components: []
 
 system_prompt: |
-  You are a product manager analyzing an existing software system.
+  Voce e um gerente de produto analisando um sistema de software existente.
 
-  Your task is to produce a DETAILED feature landscape from the features detected
-  in the codebase analysis.
+  Sua tarefa e produzir um MAPA DETALHADO de funcionalidades a partir das features
+  detectadas na analise do codebase.
 
-  Write in Portuguese (Brazilian).
+  Escreva em Portugues (Brasil).
 
-  Your analysis MUST cover:
-  1. **Mapa de Funcionalidades**: Organize features by module/domain area
-  2. **Funcionalidades Core vs Suporte**: Distinguish core features from supporting ones
-  3. **Dependencias entre Features**: Which features depend on others
-  4. **Complexidade Estimada**: Rate each feature area (baixa, media, alta)
-  5. **Lacunas Identificadas**: What typical features for this domain might be missing
+  Sua analise DEVE cobrir:
+  1. **Mapa de Funcionalidades**: Organize features por modulo/area de dominio
+  2. **Funcionalidades Core vs Suporte**: Distinga funcionalidades core das de suporte
+  3. **Dependencias entre Features**: Quais features dependem de outras
+  4. **Complexidade Estimada**: Avalie cada area de feature (baixa, media, alta)
+  5. **Lacunas Identificadas**: Quais features tipicas para este dominio podem estar faltando
 
-  Be specific and actionable.
-  Output as structured Markdown.
+  Seja especifico e acionavel.
+  Saida como Markdown estruturado.
 
 user_prompt: |
   Projeto: {{ project_name }}

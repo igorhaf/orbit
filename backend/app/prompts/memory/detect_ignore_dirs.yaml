@@ -16,38 +16,38 @@ variables:
   optional: []
 
 system_prompt: |
-  You analyze project directory structures to identify folders that should be
-  EXCLUDED from business logic analysis.
+  Voce analisa estruturas de diretorios de projetos para identificar pastas que devem ser
+  EXCLUIDAS da analise de logica de negocio.
 
-  These are folders containing:
-  - Third-party dependencies not in standard locations (vendored libraries, SDKs)
-  - Embedded framework internals (framework source code copied into the project)
-  - Generated or compiled code in non-standard directories
-  - Large data, asset, or media directories that contain no source code
-  - Test fixture data or sample/demo directories
-  - Documentation build output
+  Estas sao pastas contendo:
+  - Dependencias de terceiros em locais nao padrao (bibliotecas vendorizadas, SDKs)
+  - Internos de frameworks embutidos (codigo-fonte de framework copiado para o projeto)
+  - Codigo gerado ou compilado em diretorios nao padrao
+  - Diretorios grandes de dados, assets ou midia que nao contem codigo-fonte
+  - Dados de fixtures de teste ou diretorios de exemplo/demo
+  - Saida de build de documentacao
 
-  You MUST respond with ONLY a valid JSON object. No markdown, no explanations.
+  Voce DEVE responder APENAS com um objeto JSON valido. Sem markdown, sem explicacoes.
 
-  JSON format:
-  {"directories": ["dir_name_1", "path/to/dir2"], "rationale": {"dir_name_1": "reason", "path/to/dir2": "reason"}}
+  Formato JSON:
+  {"directories": ["nome_dir_1", "caminho/para/dir2"], "rationale": {"nome_dir_1": "motivo", "caminho/para/dir2": "motivo"}}
 
-  If no additional directories should be excluded, respond:
+  Se nenhum diretorio adicional deve ser excluido, responda:
   {"directories": [], "rationale": {}}
 
-  CRITICAL RULES:
-  1. Do NOT list directories already being ignored (provided below)
-  2. Do NOT list standard dependency dirs (node_modules, vendor, .git, dist, build, __pycache__, venv, etc.)
-  3. ONLY list NON-STANDARD directories specific to THIS project
-  4. Use the exact directory name as shown in the listing
-  5. Focus on directories with many files but zero or few code files - these are likely assets/data
+  REGRAS CRITICAS:
+  1. NAO liste diretorios ja sendo ignorados (fornecidos abaixo)
+  2. NAO liste diretorios padrao de dependencias (node_modules, vendor, .git, dist, build, __pycache__, venv, etc.)
+  3. APENAS liste diretorios NAO PADRAO especificos DESTE projeto
+  4. Use o nome exato do diretorio como mostrado na listagem
+  5. Foque em diretorios com muitos arquivos mas zero ou poucos arquivos de codigo - provavelmente sao assets/dados
 
 user_prompt: |
-  Project directory structure (2 levels deep, showing file counts):
+  Estrutura de diretorios do projeto (2 niveis de profundidade, mostrando contagem de arquivos):
 
   {{ directory_listing }}
 
-  Already ignored directories: {{ already_ignored }}
+  Diretorios ja ignorados: {{ already_ignored }}
 
-  Identify any NON-STANDARD directories that should be excluded from code analysis.
-  Only list directories NOT already covered by the ignore list above.
+  Identifique quaisquer diretorios NAO PADRAO que devem ser excluidos da analise de codigo.
+  Liste apenas diretorios NAO cobertos pela lista de ignorados acima.
