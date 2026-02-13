@@ -1050,6 +1050,16 @@ export const jobsApi = {
       method: 'POST',
     }),
 
+  // PROMPT #243 - Executor pause/resume
+  pauseExecutor: () =>
+    request<{ paused: boolean; message: string }>('/api/v1/jobs/executor/pause', { method: 'PATCH' }),
+
+  resumeExecutor: () =>
+    request<{ paused: boolean; message: string }>('/api/v1/jobs/executor/resume', { method: 'PATCH' }),
+
+  executorStatus: () =>
+    request<{ paused: boolean; queue_size: number; active_jobs: number }>('/api/v1/jobs/executor/status'),
+
   // PROMPT #108 - Poll until job completes
   // Returns the job result when completed, throws error when failed
   poll: async (

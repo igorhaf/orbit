@@ -791,7 +791,15 @@ async def _process_project_pipeline(
         project.updated_at = datetime.utcnow()
         db.commit()
 
-        # === Step B: Finalize (80-95%) ===
+        # PROMPT #243 - Enrich wiki immediately after initial scan
+        job_manager.update_progress(job_id, 82.0, "Enriching project wiki from scan findings...")
+        try:
+            await _enrich_context_from_rag(db, project_id)
+            logger.info(f"Initial wiki enrichment done for project {project_id}")
+        except Exception as e:
+            logger.warning(f"Initial wiki enrichment failed (non-blocking): {e}")
+
+        # === Step B: Finalize (85-95%) ===
         job_manager.update_progress(job_id, 85.0, "Finalizando projeto...")
 
         project.status = ProjectStatus.active

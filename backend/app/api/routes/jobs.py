@@ -243,6 +243,49 @@ async def list_job_statuses():
     return [{"value": js.value, "label": js.value.title()} for js in JobStatus]
 
 
+@router.patch("/executor/pause")
+async def pause_executor():
+    """
+    PROMPT #243 - Pause the job executor.
+    Running jobs finish naturally, but no new jobs will start.
+    """
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    executor.pause()
+    return {"paused": True, "message": "Job executor paused"}
+
+
+@router.patch("/executor/resume")
+async def resume_executor():
+    """
+    PROMPT #243 - Resume the job executor.
+    Queued jobs will start processing again.
+    """
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    executor.resume()
+    return {"paused": False, "message": "Job executor resumed"}
+
+
+@router.get("/executor/status")
+async def get_executor_status(db: Session = Depends(get_db)):
+    """
+    PROMPT #243 - Get current executor status.
+    """
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+
+    active_count = db.query(func.count(AsyncJob.id)).filter(
+        AsyncJob.status == JobStatus.RUNNING
+    ).scalar() or 0
+
+    return {
+        "paused": executor.is_paused,
+        "queue_size": executor.queue_size,
+        "active_jobs": active_count,
+    }
+
+
 @router.get("/active")
 async def list_active_jobs(
     db: Session = Depends(get_db)

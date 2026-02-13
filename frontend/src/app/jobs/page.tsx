@@ -118,6 +118,10 @@ export default function JobsPage() {
   // View mode
   const [viewMode, setViewMode] = useState<'list' | 'stats'>('list');
 
+  // PROMPT #243 - Executor pause/resume state
+  const [isPaused, setIsPaused] = useState(false);
+  const [togglingPause, setTogglingPause] = useState(false);
+
   // PROMPT #145 - Confirm dialog state for cleanup
   const [cleanupConfirm, setCleanupConfirm] = useState<{
     open: boolean;
@@ -181,6 +185,37 @@ export default function JobsPage() {
     };
     loadFilterOptions();
   }, []);
+
+  // PROMPT #243 - Fetch executor status on mount
+  useEffect(() => {
+    const loadExecutorStatus = async () => {
+      try {
+        const status = await jobsApi.executorStatus();
+        setIsPaused(status.paused);
+      } catch (error) {
+        console.error('Error fetching executor status:', error);
+      }
+    };
+    loadExecutorStatus();
+  }, []);
+
+  // PROMPT #243 - Toggle pause/resume
+  const handleTogglePause = async () => {
+    setTogglingPause(true);
+    try {
+      if (isPaused) {
+        await jobsApi.resumeExecutor();
+        setIsPaused(false);
+      } else {
+        await jobsApi.pauseExecutor();
+        setIsPaused(true);
+      }
+    } catch (error) {
+      console.error('Error toggling executor pause:', error);
+    } finally {
+      setTogglingPause(false);
+    }
+  };
 
   // Fetch projects
   useEffect(() => {
@@ -503,6 +538,26 @@ export default function JobsPage() {
                 <BarChart3 className="w-4 h-4" />
               </button>
             </div>
+
+            {/* PROMPT #243 - Pause/Resume Queue */}
+            <Button
+              variant={isPaused ? 'default' : 'outline'}
+              onClick={handleTogglePause}
+              disabled={togglingPause}
+              className={isPaused ? 'bg-red-600 hover:bg-red-700 text-white' : ''}
+            >
+              {isPaused ? (
+                <>
+                  <PlayCircle className="w-4 h-4 mr-2" />
+                  Resume Queue
+                </>
+              ) : (
+                <>
+                  <PauseCircle className="w-4 h-4 mr-2" />
+                  Pause Queue
+                </>
+              )}
+            </Button>
 
             {/* Refresh */}
             <Button

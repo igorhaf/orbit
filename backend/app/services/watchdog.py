@@ -106,13 +106,22 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             logger.warning(f"Pattern discovery failed (non-blocking): {e}")
 
         # --- Step 4: Wiki enrichment ---
-        jm.update_progress(job_id, 70.0, "Enriching project wiki...")
-        try:
-            from app.api.routes.projects import _enrich_context_from_rag
-            await _enrich_context_from_rag(db, project_id)
-            logger.info(f"Wiki enrichment done for '{project_name}'")
-        except Exception as e:
-            logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
+        # PROMPT #243 - Skip if already enriched in RAG scan (run_full_cycle)
+        already_enriched = False
+        if isinstance(rag_result, dict):
+            already_enriched = rag_result.get("wiki_enriched", False)
+
+        if already_enriched:
+            jm.update_progress(job_id, 70.0, "Wiki already enriched from new discoveries")
+            logger.info(f"Wiki enrichment skipped for '{project_name}' (already done in RAG scan)")
+        else:
+            jm.update_progress(job_id, 70.0, "Enriching project wiki...")
+            try:
+                from app.api.routes.projects import _enrich_context_from_rag
+                await _enrich_context_from_rag(db, project_id)
+                logger.info(f"Wiki enrichment done for '{project_name}'")
+            except Exception as e:
+                logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
 
         # --- Step 5: Auto-discover cards ---
         jm.update_progress(job_id, 85.0, "Checking for new discoveries...")

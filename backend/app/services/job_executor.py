@@ -47,6 +47,10 @@ class PriorityJobExecutor:
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._workers_started = False
         self._counter = 0  # Tiebreaker for equal priorities (FIFO within same priority)
+        # PROMPT #243 - Pause/Resume support
+        self._paused = False
+        self._pause_event = asyncio.Event()
+        self._pause_event.set()  # Start unpaused (set = running)
 
     @classmethod
     def get_instance(cls, max_concurrent: int = 3) -> "PriorityJobExecutor":
@@ -76,6 +80,26 @@ class PriorityJobExecutor:
         if not self._workers_started:
             self._start_workers()
 
+    def pause(self) -> None:
+        """Pause the executor. Running jobs finish, but no new jobs start."""
+        self._paused = True
+        self._pause_event.clear()
+        logger.info("Job executor PAUSED - no new jobs will start")
+
+    def resume(self) -> None:
+        """Resume the executor. Queued jobs start processing again."""
+        self._paused = False
+        self._pause_event.set()
+        logger.info("Job executor RESUMED - jobs will start processing")
+
+    @property
+    def is_paused(self) -> bool:
+        return self._paused
+
+    @property
+    def queue_size(self) -> int:
+        return self._queue.qsize()
+
     def _start_workers(self) -> None:
         """Start worker coroutines that consume from the priority queue."""
         self._workers_started = True
@@ -102,6 +126,8 @@ class PriorityJobExecutor:
         """Worker loop: dequeue jobs and execute them in separate threads."""
         while True:
             try:
+                # PROMPT #243 - Wait if paused (blocks here until resumed)
+                await self._pause_event.wait()
                 neg_priority, counter, coro_func, args, kwargs = await self._queue.get()
                 priority = -neg_priority
 
