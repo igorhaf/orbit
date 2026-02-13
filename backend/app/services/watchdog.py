@@ -94,8 +94,21 @@ CYCLE_COOLDOWN = 60
 ERROR_COOLDOWN = 120
 # PROMPT #245 - Aggressive cooldown for batch processing
 BATCH_COOLDOWN = 5
-# Max auto-discovered cards per cycle
-MAX_CARDS_PER_CYCLE = 5
+
+
+def _load_generation_counts():
+    """PROMPT #256 - Load generation counts from contract YAML."""
+    try:
+        from app.contracts import get_contract_loader
+        data = get_contract_loader().load_data("business/generation_counts")
+        return data.get("max_cards_per_cycle", 5)
+    except Exception as e:
+        logger.warning(f"Failed to load generation_counts contract, using inline fallback: {e}")
+        return 5
+
+
+# Max auto-discovered cards per cycle (loaded from contract)
+MAX_CARDS_PER_CYCLE = _load_generation_counts()
 
 
 async def watchdog_cycle(job_id: UUID, project_id: UUID):

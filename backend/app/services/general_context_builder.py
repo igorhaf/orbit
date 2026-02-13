@@ -19,33 +19,36 @@ from typing import Dict, List, Optional, Tuple
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Tier-based limits
+# PROMPT #256 - Tier-based limits loaded from contract
 # ---------------------------------------------------------------------------
 
-# Max messages to keep per tier (pairs of user+assistant)
-MESSAGE_LIMITS = {
-    "simple": 2,      # last user + assistant
-    "moderate": 6,     # 3 turns
-    "complex": 12,     # 6 turns
-}
 
-# System prompt char limits per tier
-SYSTEM_PROMPT_LIMITS = {
-    "simple": 500,
-    "moderate": 2000,
-    "complex": 0,      # 0 = unlimited
-}
+def _load_context_limits():
+    """PROMPT #256 - Load context limits from contract YAML."""
+    try:
+        from app.contracts import get_contract_loader
+        data = get_contract_loader().load_data("execution/context_limits")
 
-# Code block truncation limits (chars)
-CODE_BLOCK_LIMITS = {
-    "simple": 500,
-    "moderate": 2000,
-    "complex": 0,       # 0 = unlimited
-}
+        return (
+            data.get("message_limits", {}),
+            data.get("system_prompt_limits", {}),
+            data.get("code_block_limits", {}),
+            data.get("code_truncate_head", 15),
+            data.get("code_truncate_tail", 10),
+        )
+    except Exception as e:
+        logger.warning(f"Failed to load context_limits contract, using inline fallback: {e}")
+        return (
+            {"simple": 2, "moderate": 6, "complex": 12},
+            {"simple": 500, "moderate": 2000, "complex": 0},
+            {"simple": 500, "moderate": 2000, "complex": 0},
+            15,
+            10,
+        )
 
-# Lines to keep at head/tail when truncating code blocks
-CODE_TRUNCATE_HEAD = 15
-CODE_TRUNCATE_TAIL = 10
+
+# Load once at module level (cached by ContractLoader)
+MESSAGE_LIMITS, SYSTEM_PROMPT_LIMITS, CODE_BLOCK_LIMITS, CODE_TRUNCATE_HEAD, CODE_TRUNCATE_TAIL = _load_context_limits()
 
 CODE_BLOCK_PATTERN = re.compile(r"(```\w*\n)([\s\S]*?)(```)")
 DUPLICATE_LINE_PATTERN = re.compile(r"^(.+)$(?=.*^\1$)", re.MULTILINE)

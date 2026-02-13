@@ -1,0 +1,117 @@
+# Business Contract: Workflow State Machines
+# PROMPT #256 - Externalize Hardcoded Contracts
+#
+# Source: backend/app/services/workflow_validator.py (lines 23-101)
+# Defines valid states and transitions for each item type.
+
+name: workflow_states
+version: 1
+domain: business
+category: business
+description: Workflow state machines for all item types (Epic, Story, Task, Bug, Subtask)
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-13"
+  change_log:
+    - version: 1
+      date: "2026-02-13"
+      author: "Claude"
+      changes: "Externalized from workflow_validator.py hardcoded dicts"
+
+tags:
+  - business-rule
+  - workflow
+  - state-machine
+  - transitions
+
+data:
+  workflows:
+    epic:
+      - backlog
+      - planning
+      - in_progress
+      - review
+      - done
+    story:
+      - backlog
+      - ready
+      - in_progress
+      - review
+      - validation
+      - done
+    task:
+      - backlog
+      - todo
+      - in_progress
+      - code_review
+      - testing
+      - done
+    bug:
+      - new
+      - confirmed
+      - in_progress
+      - fixed
+      - verified
+      - closed
+    subtask:
+      - todo
+      - in_progress
+      - done
+
+  transitions:
+    epic:
+      backlog: [planning]
+      planning: [backlog, in_progress]
+      in_progress: [planning, review, done]
+      review: [in_progress, done]
+      done: []
+    story:
+      backlog: [ready]
+      ready: [backlog, in_progress]
+      in_progress: [ready, review]
+      review: [in_progress, validation, done]
+      validation: [review, done]
+      done: []
+    task:
+      backlog: [todo]
+      todo: [backlog, in_progress]
+      in_progress: [todo, code_review]
+      code_review: [in_progress, testing, done]
+      testing: [code_review, in_progress, done]
+      done: []
+    bug:
+      new: [confirmed, closed]
+      confirmed: [new, in_progress, closed]
+      in_progress: [confirmed, fixed]
+      fixed: [in_progress, verified, closed]
+      verified: [fixed, closed]
+      closed: []
+    subtask:
+      todo: [in_progress]
+      in_progress: [todo, done]
+      done: []
+
+rules:
+  constraints:
+    - id: C1
+      description: "Terminal states have no outgoing transitions"
+      applies_to: [done, closed]
+      condition: "transitions[state] == []"
+    - id: C2
+      description: "All item types must have at least one terminal state"
+      applies_to: [epic, story, task, bug, subtask]
+      condition: "exists state where transitions[state] == []"
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false

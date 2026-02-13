@@ -239,6 +239,8 @@ class ContractLoader:
                 'discovery': 'memory',
                 'backlog': 'generation',
                 'context': 'generation',
+                'execution': 'business',
+                'validation': 'business',
             }
             domain = data.get('domain', domain_map.get(inferred_domain, 'generation'))
 
@@ -278,6 +280,7 @@ class ContractLoader:
                 user_prompt=data.get('user_prompt', ''),
                 validators=data.get('validators', []),
                 execution=execution,
+                data=data.get('data', {}),
                 raw_content=content
             )
 
@@ -293,6 +296,21 @@ class ContractLoader:
         except Exception as e:
             logger.error(f"Error loading contract {contract_name}: {e}")
             raise ContractNotFoundError(contract_name)
+
+    def load_data(self, contract_name: str) -> Dict[str, Any]:
+        """
+        PROMPT #256 - Load structured data from a data-only contract.
+        Returns the 'data' section of the contract YAML.
+        Useful for business rules, thresholds, configs that aren't AI prompts.
+
+        Args:
+            contract_name: Contract identifier (e.g., "business/workflow_states")
+
+        Returns:
+            Dict with the contract's data payload
+        """
+        contract = self.load(contract_name)
+        return contract.data
 
     def _render_template(self, template_str: str, variables: Dict[str, Any]) -> str:
         """Render a Jinja2 template string with variables."""

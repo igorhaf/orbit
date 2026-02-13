@@ -1,0 +1,72 @@
+# Execution Contract: Token Budgets
+# PROMPT #256 - Externalize Hardcoded Contracts
+#
+# Source: backend/app/services/task_execution/budget_manager.py (lines 47-78)
+# Token budget allocation based on story points and item type.
+
+name: token_budgets
+version: 1
+domain: business
+category: execution
+description: Token budget allocation per story points and item type
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-13"
+  change_log:
+    - version: 1
+      date: "2026-02-13"
+      author: "Claude"
+      changes: "Externalized from budget_manager.py hardcoded dicts"
+
+tags:
+  - execution
+  - tokens
+  - budget
+  - cost
+
+data:
+  # Default base budget when no other criteria match
+  default_budget: 2500
+
+  # Story Points → Token budget (Fibonacci scale)
+  story_point_budgets:
+    1: 2000
+    2: 2000
+    3: 2500
+    5: 3000
+    8: 4000
+    13: 5000
+    21: 6000
+
+  # Item Type → Token budget
+  type_budgets:
+    subtask: 1500
+    task: 2500
+    bug: 2000
+    story: 4000
+    epic: 6000
+
+  # Budget uses max(story_point_budget, type_budget, default_budget)
+
+rules:
+  constraints:
+    - id: C1
+      description: "Budget is always the maximum of story_point and type_budget"
+      condition: "budget = max(story_point_budget, type_budget, default_budget)"
+    - id: C2
+      description: "Story points use closest Fibonacci number"
+      condition: "closest = min(fibonacci_keys, key=lambda x: abs(x - story_points))"
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false

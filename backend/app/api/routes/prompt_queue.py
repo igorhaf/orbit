@@ -31,43 +31,49 @@ router = APIRouter()
 
 
 # ============================================================================
-# Scoring constants
+# PROMPT #256 - Scoring constants loaded from contracts/business/queue_scoring.yaml
 # ============================================================================
 
-# Hierarchy score: epics first, then stories, then tasks, then subtasks
-HIERARCHY_SCORES = {
-    ItemType.EPIC: 100,
-    ItemType.STORY: 75,
-    ItemType.TASK: 50,
-    ItemType.SUBTASK: 25,
-    ItemType.BUG: 60,
-}
+def _load_queue_scoring():
+    """Load scoring data from contract YAML."""
+    try:
+        from app.contracts import get_contract_loader
+        data = get_contract_loader().load_data("business/queue_scoring")
 
-# Priority score: higher = more urgent
-PRIORITY_SCORES = {
-    PriorityLevel.CRITICAL: 100,
-    PriorityLevel.HIGH: 80,
-    PriorityLevel.MEDIUM: 50,
-    PriorityLevel.LOW: 25,
-    PriorityLevel.TRIVIAL: 10,
-}
+        # Map string keys to enums for hierarchy scores
+        _type_map = {"epic": ItemType.EPIC, "story": ItemType.STORY, "task": ItemType.TASK, "subtask": ItemType.SUBTASK, "bug": ItemType.BUG}
+        h_scores = {_type_map[k]: v for k, v in data.get("hierarchy_scores", {}).items() if k in _type_map}
+
+        # Map string keys to enums for priority scores
+        _prio_map = {"critical": PriorityLevel.CRITICAL, "high": PriorityLevel.HIGH, "medium": PriorityLevel.MEDIUM, "low": PriorityLevel.LOW, "trivial": PriorityLevel.TRIVIAL}
+        p_scores = {_prio_map[k]: v for k, v in data.get("priority_scores", {}).items() if k in _prio_map}
+
+        return h_scores, p_scores, data.get("strategy_weights", {}), data.get("max_age_days", 100), data.get("dependency_penalty_per_dep", 20)
+    except Exception as e:
+        logger.warning(f"Failed to load queue_scoring contract: {e}")
+        h = {ItemType.EPIC: 100, ItemType.STORY: 75, ItemType.TASK: 50, ItemType.SUBTASK: 25, ItemType.BUG: 60}
+        p = {PriorityLevel.CRITICAL: 100, PriorityLevel.HIGH: 80, PriorityLevel.MEDIUM: 50, PriorityLevel.LOW: 25, PriorityLevel.TRIVIAL: 10}
+        w = {
+            "balanced": {"hierarchy": 0.35, "priority": 0.30, "age": 0.10, "dependency": 0.25},
+            "hierarchy_first": {"hierarchy": 0.60, "priority": 0.20, "age": 0.05, "dependency": 0.15},
+            "priority_first": {"hierarchy": 0.15, "priority": 0.60, "age": 0.10, "dependency": 0.15},
+            "age_first": {"hierarchy": 0.20, "priority": 0.20, "age": 0.45, "dependency": 0.15},
+            "dependency_first": {"hierarchy": 0.15, "priority": 0.20, "age": 0.05, "dependency": 0.60},
+        }
+        return h, p, w, 100, 20
+
+
+HIERARCHY_SCORES, PRIORITY_SCORES, _STRATEGY_WEIGHTS, _MAX_AGE_DAYS, _DEP_PENALTY = _load_queue_scoring()
 
 
 def _compute_scores(task: Task) -> dict:
     """Compute scoring factors for a task."""
-    # Hierarchy score
     hierarchy = HIERARCHY_SCORES.get(task.item_type, 50)
-
-    # Priority score
     priority = PRIORITY_SCORES.get(task.priority, 50)
-
-    # Age score: older cards get higher score (days since creation, capped at 100)
     age_days = (datetime.utcnow() - task.created_at).days if task.created_at else 0
-    age = min(age_days, 100)
-
-    # Dependency score: cards with more dependents should be executed first
+    age = min(age_days, _MAX_AGE_DAYS)
     depends_on = task.depends_on or []
-    dependency = max(0, 100 - len(depends_on) * 20)  # Fewer deps = higher score
+    dependency = max(0, 100 - len(depends_on) * _DEP_PENALTY)
 
     return {
         "hierarchy_score": hierarchy,
@@ -79,20 +85,12 @@ def _compute_scores(task: Task) -> dict:
 
 def _compute_total_score(item: PromptQueue, strategy: str = "balanced") -> float:
     """Compute total score based on strategy weights."""
-    weights = {
-        "balanced": {"hierarchy": 0.35, "priority": 0.30, "age": 0.10, "dependency": 0.25},
-        "hierarchy_first": {"hierarchy": 0.60, "priority": 0.20, "age": 0.05, "dependency": 0.15},
-        "priority_first": {"hierarchy": 0.15, "priority": 0.60, "age": 0.10, "dependency": 0.15},
-        "age_first": {"hierarchy": 0.20, "priority": 0.20, "age": 0.45, "dependency": 0.15},
-        "dependency_first": {"hierarchy": 0.15, "priority": 0.20, "age": 0.05, "dependency": 0.60},
-    }
-
-    w = weights.get(strategy, weights["balanced"])
+    w = _STRATEGY_WEIGHTS.get(strategy, _STRATEGY_WEIGHTS.get("balanced", {}))
     return (
-        item.hierarchy_score * w["hierarchy"] +
-        item.priority_score * w["priority"] +
-        item.age_score * w["age"] +
-        item.dependency_score * w["dependency"]
+        item.hierarchy_score * w.get("hierarchy", 0.35) +
+        item.priority_score * w.get("priority", 0.30) +
+        item.age_score * w.get("age", 0.10) +
+        item.dependency_score * w.get("dependency", 0.25)
     )
 
 

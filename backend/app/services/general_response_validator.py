@@ -20,51 +20,66 @@ from typing import Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Error patterns that indicate a bad response
+# PROMPT #256 - Response validation rules loaded from contract
 # ---------------------------------------------------------------------------
 
-ERROR_PATTERNS = [
-    re.compile(r"rate\s+limit\s+(?:exceeded|reached|error)", re.IGNORECASE),
-    re.compile(r"(?:internal\s+)?server\s+error", re.IGNORECASE),
-    re.compile(r"API\s+(?:key|token)\s+(?:invalid|expired|missing)", re.IGNORECASE),
-    re.compile(r"quota\s+(?:exceeded|exhausted)", re.IGNORECASE),
-    re.compile(r"(?:connection|timeout)\s+(?:error|refused|timed\s+out)", re.IGNORECASE),
-    re.compile(r"HTTPError|HTTPException|status_code\s*[:=]\s*[45]\d\d", re.IGNORECASE),
-]
 
-REFUSAL_PATTERNS = [
-    re.compile(r"^I(?:'m| am) (?:sorry|unable|not able)", re.IGNORECASE),
-    re.compile(r"^(?:Desculpe|Nao posso|Nao consigo|Infelizmente)", re.IGNORECASE),
-    re.compile(r"I (?:cannot|can't|am unable to) (?:help|assist|provide|generate|create)", re.IGNORECASE),
-]
+def _load_response_rules():
+    """PROMPT #256 - Load response validation rules from contract YAML."""
+    try:
+        from app.contracts import get_contract_loader
+        data = get_contract_loader().load_data("validation/response_rules")
 
-# Portuguese common words for language detection
-PT_MARKERS = {
-    "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
-    "para", "por", "com", "sem", "sobre", "entre", "depois", "antes",
-    "que", "uma", "um", "seu", "sua", "seus", "suas", "este", "esta",
-    "esse", "essa", "isso", "isto", "aquilo",
-}
+        error_patterns = [
+            re.compile(p, re.IGNORECASE) for p in data.get("error_patterns", [])
+        ]
+        refusal_patterns = [
+            re.compile(p, re.IGNORECASE) for p in data.get("refusal_patterns", [])
+        ]
+        pt_markers = set(data.get("pt_markers", []))
+        en_markers = set(data.get("en_markers", []))
+        min_chars = data.get("min_response_chars", {})
+        max_chars = data.get("max_response_chars", {})
 
-EN_MARKERS = {
-    "the", "is", "are", "was", "were", "have", "has", "had", "will",
-    "would", "could", "should", "can", "may", "might", "this", "that",
-    "these", "those", "with", "from", "into", "upon", "about",
-    "between", "through", "during", "before", "after",
-}
+        return error_patterns, refusal_patterns, pt_markers, en_markers, min_chars, max_chars
+    except Exception as e:
+        logger.warning(f"Failed to load response_rules contract, using inline fallback: {e}")
+        return _fallback_response_rules()
 
-# Proportionality thresholds (chars)
-MIN_RESPONSE_CHARS = {
-    "simple": 10,
-    "moderate": 30,
-    "complex": 50,
-}
 
-MAX_RESPONSE_CHARS = {
-    "simple": 2000,
-    "moderate": 8000,
-    "complex": 0,      # unlimited
-}
+def _fallback_response_rules():
+    error_patterns = [
+        re.compile(r"rate\s+limit\s+(?:exceeded|reached|error)", re.IGNORECASE),
+        re.compile(r"(?:internal\s+)?server\s+error", re.IGNORECASE),
+        re.compile(r"API\s+(?:key|token)\s+(?:invalid|expired|missing)", re.IGNORECASE),
+        re.compile(r"quota\s+(?:exceeded|exhausted)", re.IGNORECASE),
+        re.compile(r"(?:connection|timeout)\s+(?:error|refused|timed\s+out)", re.IGNORECASE),
+        re.compile(r"HTTPError|HTTPException|status_code\s*[:=]\s*[45]\d\d", re.IGNORECASE),
+    ]
+    refusal_patterns = [
+        re.compile(r"^I(?:'m| am) (?:sorry|unable|not able)", re.IGNORECASE),
+        re.compile(r"^(?:Desculpe|Nao posso|Nao consigo|Infelizmente)", re.IGNORECASE),
+        re.compile(r"I (?:cannot|can't|am unable to) (?:help|assist|provide|generate|create)", re.IGNORECASE),
+    ]
+    pt_markers = {
+        "de", "da", "do", "das", "dos", "em", "no", "na", "nos", "nas",
+        "para", "por", "com", "sem", "sobre", "entre", "depois", "antes",
+        "que", "uma", "um", "seu", "sua", "seus", "suas", "este", "esta",
+        "esse", "essa", "isso", "isto", "aquilo",
+    }
+    en_markers = {
+        "the", "is", "are", "was", "were", "have", "has", "had", "will",
+        "would", "could", "should", "can", "may", "might", "this", "that",
+        "these", "those", "with", "from", "into", "upon", "about",
+        "between", "through", "during", "before", "after",
+    }
+    min_chars = {"simple": 10, "moderate": 30, "complex": 50}
+    max_chars = {"simple": 2000, "moderate": 8000, "complex": 0}
+    return error_patterns, refusal_patterns, pt_markers, en_markers, min_chars, max_chars
+
+
+# Load once at module level (cached by ContractLoader)
+ERROR_PATTERNS, REFUSAL_PATTERNS, PT_MARKERS, EN_MARKERS, MIN_RESPONSE_CHARS, MAX_RESPONSE_CHARS = _load_response_rules()
 
 
 def validate_response(

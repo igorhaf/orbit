@@ -23,6 +23,23 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _load_budget_data():
+    """PROMPT #256 - Load token budgets from contract YAML."""
+    try:
+        from app.contracts import get_contract_loader
+        return get_contract_loader().load_data("execution/token_budgets")
+    except Exception as e:
+        logger.warning(f"Failed to load token_budgets contract, using fallback: {e}")
+        return {
+            "default_budget": 2500,
+            "story_point_budgets": {1: 2000, 2: 2000, 3: 2500, 5: 3000, 8: 4000, 13: 5000, 21: 6000},
+            "type_budgets": {"subtask": 1500, "task": 2500, "bug": 2000, "story": 4000, "epic": 6000},
+        }
+
+
+_BUDGET_DATA = _load_budget_data()
+
+
 class BudgetManager:
     """
     Manages token budgets for task execution.
@@ -32,6 +49,7 @@ class BudgetManager:
     - Budget tracking and overage detection
     - System comment creation on budget exceeded
     - Cost monitoring and warnings
+    PROMPT #256 - Budgets loaded from contracts/execution/token_budgets.yaml
     """
 
     def __init__(self, db: Session):
@@ -40,8 +58,7 @@ class BudgetManager:
     def calculate_token_budget(self, task: Task) -> int:
         """
         Calculate token budget based on task complexity.
-
-        JIRA Transformation - Phase 2
+        PROMPT #256 - Reads from contracts/execution/token_budgets.yaml
 
         Budget calculation:
         - Story Points: 1-3=2000, 5=3000, 8=4000, 13=5000, 21=6000
@@ -54,28 +71,20 @@ class BudgetManager:
         Returns:
             Token budget (int)
         """
-        budget = 2500  # Default base budget
+        budget = _BUDGET_DATA.get("default_budget", 2500)
 
         # Budget from story points
         if task.story_points:
-            story_point_budgets = {
-                1: 2000, 2: 2000, 3: 2500,
-                5: 3000, 8: 4000, 13: 5000, 21: 6000
-            }
-            # Find closest Fibonacci
-            closest = min(story_point_budgets.keys(), key=lambda x: abs(x - task.story_points))
-            budget = max(budget, story_point_budgets[closest])
+            story_point_budgets = {int(k): v for k, v in _BUDGET_DATA.get("story_point_budgets", {}).items()}
+            if story_point_budgets:
+                closest = min(story_point_budgets.keys(), key=lambda x: abs(x - task.story_points))
+                budget = max(budget, story_point_budgets[closest])
 
         # Budget from item type
         if task.item_type:
-            type_budgets = {
-                ItemType.SUBTASK: 1500,
-                ItemType.TASK: 2500,
-                ItemType.BUG: 2000,
-                ItemType.STORY: 4000,
-                ItemType.EPIC: 6000
-            }
-            budget = max(budget, type_budgets.get(task.item_type, 2500))
+            type_map = {"subtask": ItemType.SUBTASK, "task": ItemType.TASK, "bug": ItemType.BUG, "story": ItemType.STORY, "epic": ItemType.EPIC}
+            type_budgets = {type_map[k]: v for k, v in _BUDGET_DATA.get("type_budgets", {}).items() if k in type_map}
+            budget = max(budget, type_budgets.get(task.item_type, _BUDGET_DATA.get("default_budget", 2500)))
 
         logger.info(
             f"💰 Calculated budget: {budget} tokens "

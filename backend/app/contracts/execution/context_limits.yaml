@@ -1,0 +1,74 @@
+# Execution Contract: Context Optimization Limits
+# PROMPT #256 - Externalize Hardcoded Contracts
+#
+# Source: backend/app/services/general_context_builder.py (lines 26-48)
+# Tier-based limits for context optimization before AI calls.
+
+name: context_limits
+version: 1
+domain: business
+category: execution
+description: Tier-based limits for message history, system prompt, and code blocks
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-13"
+  change_log:
+    - version: 1
+      date: "2026-02-13"
+      author: "Claude"
+      changes: "Externalized from general_context_builder.py hardcoded dicts"
+
+tags:
+  - execution
+  - context
+  - optimization
+  - tokens
+
+data:
+  # Max messages to keep per complexity tier (user+assistant pairs)
+  # 0 = unlimited
+  message_limits:
+    simple: 2
+    moderate: 6
+    complex: 12
+
+  # System prompt character limits per tier
+  # 0 = unlimited
+  system_prompt_limits:
+    simple: 500
+    moderate: 2000
+    complex: 0
+
+  # Code block truncation limits (chars)
+  # 0 = unlimited
+  code_block_limits:
+    simple: 500
+    moderate: 2000
+    complex: 0
+
+  # Lines to keep at head/tail when truncating code blocks
+  code_truncate_head: 15
+  code_truncate_tail: 10
+
+rules:
+  constraints:
+    - id: C1
+      description: "Simple tier has strictest limits"
+      condition: "simple.limits < moderate.limits < complex.limits"
+    - id: C2
+      description: "Complex tier allows unlimited for most resources"
+      condition: "complex.system_prompt == 0 AND complex.code_block == 0"
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false

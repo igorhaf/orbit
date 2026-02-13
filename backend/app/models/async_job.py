@@ -69,35 +69,49 @@ class JobType(str, enum.Enum):
     RAG_CONTINUOUS_SCAN = "rag_continuous_scan"
 
 
-# Default priority per job type
-JOB_TYPE_DEFAULT_PRIORITY: dict[JobType, int] = {
-    # CRITICAL - user actively waiting in chat
-    JobType.INTERVIEW_QUESTION: JobPriority.CRITICAL,
-    JobType.INTERVIEW_MESSAGE: JobPriority.CRITICAL,
-    # HIGH - user in wizard, waiting for result
-    JobType.CONTEXT_GENERATION: JobPriority.HIGH,
-    JobType.PROJECT_TITLE: JobPriority.HIGH,
-    # NORMAL - user triggered, can wait
-    JobType.MEMORY_SCAN: JobPriority.NORMAL,
-    JobType.COMMIT_GENERATION: JobPriority.NORMAL,
-    JobType.TASK_EXECUTION: JobPriority.NORMAL,
-    JobType.SUGGESTED_EPICS: JobPriority.NORMAL,
-    JobType.CARDS_FROM_MEMORY: JobPriority.NORMAL,
-    # LOW - background generation
-    JobType.CHILDREN_GENERATION: JobPriority.LOW,
-    JobType.EPIC_ACTIVATION: JobPriority.LOW,
-    JobType.STORY_ACTIVATION: JobPriority.LOW,
-    JobType.TASK_ACTIVATION: JobPriority.LOW,
-    JobType.SUBTASK_ACTIVATION: JobPriority.LOW,
-    JobType.BACKLOG_GENERATION: JobPriority.LOW,
-    JobType.TASK_GENERATION: JobPriority.LOW,
-    JobType.BATCH_EXECUTION: JobPriority.LOW,
-    JobType.PROJECT_PROVISIONING: JobPriority.LOW,
-    # HIGH - user waiting for project creation
-    JobType.PROJECT_PIPELINE: JobPriority.HIGH,
-    # LOW - background continuous RAG scan (PROMPT #218)
-    JobType.RAG_CONTINUOUS_SCAN: JobPriority.LOW,
-}
+def _load_job_priorities() -> dict:
+    """PROMPT #256 - Load job priorities from contract YAML."""
+    try:
+        from app.contracts import get_contract_loader
+        data = get_contract_loader().load_data("business/job_priorities")
+        priorities_raw = data.get("priorities", {})
+        # Map string job type names to JobType enum → int priority
+        result = {}
+        for job_name, priority_val in priorities_raw.items():
+            try:
+                jt = JobType(job_name)
+                result[jt] = int(priority_val)
+            except (ValueError, KeyError):
+                pass
+        return result
+    except Exception:
+        # Fallback to inline defaults
+        return {
+            JobType.INTERVIEW_QUESTION: JobPriority.CRITICAL,
+            JobType.INTERVIEW_MESSAGE: JobPriority.CRITICAL,
+            JobType.CONTEXT_GENERATION: JobPriority.HIGH,
+            JobType.PROJECT_TITLE: JobPriority.HIGH,
+            JobType.PROJECT_PIPELINE: JobPriority.HIGH,
+            JobType.MEMORY_SCAN: JobPriority.NORMAL,
+            JobType.COMMIT_GENERATION: JobPriority.NORMAL,
+            JobType.TASK_EXECUTION: JobPriority.NORMAL,
+            JobType.SUGGESTED_EPICS: JobPriority.NORMAL,
+            JobType.CARDS_FROM_MEMORY: JobPriority.NORMAL,
+            JobType.CHILDREN_GENERATION: JobPriority.LOW,
+            JobType.EPIC_ACTIVATION: JobPriority.LOW,
+            JobType.STORY_ACTIVATION: JobPriority.LOW,
+            JobType.TASK_ACTIVATION: JobPriority.LOW,
+            JobType.SUBTASK_ACTIVATION: JobPriority.LOW,
+            JobType.BACKLOG_GENERATION: JobPriority.LOW,
+            JobType.TASK_GENERATION: JobPriority.LOW,
+            JobType.BATCH_EXECUTION: JobPriority.LOW,
+            JobType.PROJECT_PROVISIONING: JobPriority.LOW,
+            JobType.RAG_CONTINUOUS_SCAN: JobPriority.LOW,
+        }
+
+
+# PROMPT #256 - Loaded from contracts/business/job_priorities.yaml
+JOB_TYPE_DEFAULT_PRIORITY: dict[JobType, int] = _load_job_priorities()
 
 
 class AsyncJob(Base):

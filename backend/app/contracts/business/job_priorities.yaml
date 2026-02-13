@@ -1,0 +1,84 @@
+# Business Contract: Job Priority Matrix
+# PROMPT #256 - Externalize Hardcoded Contracts
+#
+# Source: backend/app/models/async_job.py (lines 72-100)
+# Maps job types to default priority levels for the PriorityJobExecutor queue.
+
+name: job_priorities
+version: 1
+domain: business
+category: business
+description: Default priority levels for each async job type
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-13"
+  change_log:
+    - version: 1
+      date: "2026-02-13"
+      author: "Claude"
+      changes: "Externalized from async_job.py JOB_TYPE_DEFAULT_PRIORITY"
+
+tags:
+  - business-rule
+  - job-queue
+  - priority
+
+data:
+  # Priority levels (lower number = lower priority, higher = more urgent)
+  priority_levels:
+    CRITICAL: 10
+    HIGH: 7
+    NORMAL: 5
+    LOW: 3
+
+  # Default priority per job type
+  priorities:
+    # CRITICAL - user actively waiting in chat
+    interview_question: 10
+    interview_message: 10
+    # HIGH - user in wizard, waiting for result
+    context_generation: 7
+    project_title: 7
+    project_pipeline: 7
+    # NORMAL - user triggered, can wait
+    memory_scan: 5
+    commit_generation: 5
+    task_execution: 5
+    suggested_epics: 5
+    cards_from_memory: 5
+    # LOW - background generation
+    children_generation: 3
+    epic_activation: 3
+    story_activation: 3
+    task_activation: 3
+    subtask_activation: 3
+    backlog_generation: 3
+    task_generation: 3
+    batch_execution: 3
+    project_provisioning: 3
+    rag_continuous_scan: 3
+
+rules:
+  constraints:
+    - id: C1
+      description: "Interactive jobs (user waiting) must be CRITICAL or HIGH"
+      applies_to: [interview_question, interview_message, context_generation]
+      condition: "priority >= 7"
+    - id: C2
+      description: "Background jobs must be LOW"
+      applies_to: [rag_continuous_scan, backlog_generation]
+      condition: "priority <= 3"
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false

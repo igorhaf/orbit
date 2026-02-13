@@ -1,0 +1,98 @@
+# Business Contract: Prompt Queue Scoring
+# PROMPT #256 - Externalize Hardcoded Contracts
+#
+# Source: backend/app/api/routes/prompt_queue.py (lines 38-96)
+# Scoring system for ordering prompts in the execution queue.
+
+name: queue_scoring
+version: 1
+domain: business
+category: business
+description: Scoring weights and strategies for prompt queue ordering
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-13"
+  change_log:
+    - version: 1
+      date: "2026-02-13"
+      author: "Claude"
+      changes: "Externalized from prompt_queue.py hardcoded scoring dicts"
+
+tags:
+  - business-rule
+  - queue
+  - scoring
+  - priority
+
+data:
+  # Score by item type in hierarchy (epics first)
+  hierarchy_scores:
+    epic: 100
+    story: 75
+    task: 50
+    subtask: 25
+    bug: 60
+
+  # Score by priority level (higher = more urgent)
+  priority_scores:
+    critical: 100
+    high: 80
+    medium: 50
+    low: 25
+    trivial: 10
+
+  # Strategy weights for total score computation
+  # Each strategy adjusts how much weight each factor gets (must sum to ~1.0)
+  strategy_weights:
+    balanced:
+      hierarchy: 0.35
+      priority: 0.30
+      age: 0.10
+      dependency: 0.25
+    hierarchy_first:
+      hierarchy: 0.60
+      priority: 0.20
+      age: 0.05
+      dependency: 0.15
+    priority_first:
+      hierarchy: 0.15
+      priority: 0.60
+      age: 0.10
+      dependency: 0.15
+    age_first:
+      hierarchy: 0.20
+      priority: 0.20
+      age: 0.45
+      dependency: 0.15
+    dependency_first:
+      hierarchy: 0.15
+      priority: 0.20
+      age: 0.05
+      dependency: 0.60
+
+  # Age score caps
+  max_age_days: 100
+
+  # Dependency score formula: max(0, 100 - num_deps * penalty)
+  dependency_penalty_per_dep: 20
+
+rules:
+  constraints:
+    - id: C1
+      description: "All strategy weights must sum to approximately 1.0"
+      applies_to: [balanced, hierarchy_first, priority_first, age_first, dependency_first]
+      condition: "sum(weights) ~= 1.0"
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false

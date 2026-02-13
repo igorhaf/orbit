@@ -1,0 +1,71 @@
+# Business Contract: Card Generation Counts
+# PROMPT #256 - Externalize Hardcoded Contracts
+#
+# Sources: context_generator.py, watchdog.py, card_hierarchy.yaml
+# How many children are generated at each hierarchy level on activation.
+
+name: generation_counts
+version: 1
+domain: business
+category: business
+description: Default generation counts for card hierarchy levels
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-13"
+  change_log:
+    - version: 1
+      date: "2026-02-13"
+      author: "Claude"
+      changes: "Externalized from context_generator.py and watchdog.py"
+
+tags:
+  - business-rule
+  - generation
+  - hierarchy
+  - counts
+
+data:
+  # Default children count per parent type (used in draft generation)
+  default_children_count:
+    epic: 15       # Epic generates 15-20 Stories
+    story: 8       # Story generates 5-8 Tasks
+    task: 5        # Task generates 3-5 Subtasks
+
+  # Ranges (for documentation and prompt instructions)
+  children_range:
+    epic:
+      min: 15
+      max: 20
+    story:
+      min: 5
+      max: 8
+    task:
+      min: 3
+      max: 5
+
+  # Watchdog auto-discovery limits
+  max_cards_per_cycle: 5
+
+  # Auto-enrich stub cards per cycle (when idle)
+  max_enrich_per_cycle: 2
+
+rules:
+  constraints:
+    - id: C1
+      description: "Subtask is leaf node - no children generated"
+      applies_to: [subtask]
+      condition: "children_count == 0"
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false

@@ -1,0 +1,69 @@
+# Execution Contract: Similarity Thresholds
+# PROMPT #256 - Externalize Hardcoded Contracts
+#
+# Sources: ai_orchestrator.py, similarity_detector.py, context_generator.py,
+#          continuous_rag_service.py, interview_handlers.py, backlog_generator.py
+# Semantic similarity thresholds for different operations.
+
+name: similarity_thresholds
+version: 1
+domain: business
+category: execution
+description: Similarity thresholds for deduplication, caching, and relevance scoring
+usage_type: business_rule
+
+governance:
+  status: active
+  owner: "ORBIT Core Team"
+  effective_date: "2026-02-13"
+  change_log:
+    - version: 1
+      date: "2026-02-13"
+      author: "Claude"
+      changes: "Externalized from 9+ files with hardcoded similarity thresholds"
+
+tags:
+  - execution
+  - similarity
+  - threshold
+  - deduplication
+
+data:
+  thresholds:
+    # Cache: exact semantic match (ai_orchestrator.py)
+    exact_match_cache: 0.95
+
+    # Modification detection: >90% = modify existing (similarity_detector.py)
+    modification_detection: 0.90
+
+    # Card deduplication: avoid creating duplicate cards (context_generator.py, watchdog.py)
+    card_deduplication: 0.85
+
+    # RAG relevance: minimum relevance for RAG results (continuous_rag_service.py)
+    rag_relevance: 0.85
+
+    # Backlog/interview deduplication (backlog_generator.py, interview_handlers.py)
+    backlog_deduplication: 0.60
+
+    # General memory/search (codebase_memory.py)
+    memory_search: 0.50
+
+    # No filtering - get all results (interview_handlers.py)
+    no_filter: 0.0
+
+rules:
+  constraints:
+    - id: C1
+      description: "Higher thresholds = stricter matching"
+      condition: "exact_match_cache > modification_detection > card_deduplication > backlog_deduplication > memory_search"
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: ""
+user_prompt: ""
+
+execution:
+  estimated_tokens: 0
+  cache_enabled: false

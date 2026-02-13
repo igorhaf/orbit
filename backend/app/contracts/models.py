@@ -157,6 +157,10 @@ class Contract(BaseModel):
     # Execution config
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
 
+    # Structured data (for data-only contracts like business rules, thresholds, configs)
+    # PROMPT #256 - Arbitrary structured data that isn't prompts
+    data: Dict[str, Any] = Field(default_factory=dict, description="Structured data payload")
+
     # Raw content
     raw_content: Optional[str] = Field(default=None, description="Original YAML content")
 

@@ -2,6 +2,7 @@
 WorkflowValidator
 Validates status transitions for different item types
 JIRA Transformation - Phase 2
+PROMPT #256 - Workflows loaded from contracts/business/workflow_states.yaml
 """
 
 from typing import Dict, List, Optional
@@ -16,89 +17,68 @@ from app.models.status_transition import StatusTransition
 logger = logging.getLogger(__name__)
 
 
+def _load_workflow_data():
+    """PROMPT #256 - Load workflow states and transitions from contract YAML."""
+    try:
+        from app.contracts import get_contract_loader
+        data = get_contract_loader().load_data("business/workflow_states")
+
+        # Convert string keys to ItemType enum
+        type_map = {
+            "epic": ItemType.EPIC,
+            "story": ItemType.STORY,
+            "task": ItemType.TASK,
+            "bug": ItemType.BUG,
+            "subtask": ItemType.SUBTASK,
+        }
+
+        workflows = {}
+        for key, states in data.get("workflows", {}).items():
+            if key in type_map:
+                workflows[type_map[key]] = states
+
+        transitions = {}
+        for key, trans in data.get("transitions", {}).items():
+            if key in type_map:
+                transitions[type_map[key]] = trans
+
+        return workflows, transitions
+    except Exception as e:
+        logger.warning(f"Failed to load workflow contract, using inline fallback: {e}")
+        # Fallback to inline defaults if contract loading fails
+        return _fallback_workflows(), _fallback_transitions()
+
+
+def _fallback_workflows():
+    return {
+        ItemType.EPIC: ["backlog", "planning", "in_progress", "review", "done"],
+        ItemType.STORY: ["backlog", "ready", "in_progress", "review", "validation", "done"],
+        ItemType.TASK: ["backlog", "todo", "in_progress", "code_review", "testing", "done"],
+        ItemType.BUG: ["new", "confirmed", "in_progress", "fixed", "verified", "closed"],
+        ItemType.SUBTASK: ["todo", "in_progress", "done"],
+    }
+
+
+def _fallback_transitions():
+    return {
+        ItemType.EPIC: {"backlog": ["planning"], "planning": ["backlog", "in_progress"], "in_progress": ["planning", "review", "done"], "review": ["in_progress", "done"], "done": []},
+        ItemType.STORY: {"backlog": ["ready"], "ready": ["backlog", "in_progress"], "in_progress": ["ready", "review"], "review": ["in_progress", "validation", "done"], "validation": ["review", "done"], "done": []},
+        ItemType.TASK: {"backlog": ["todo"], "todo": ["backlog", "in_progress"], "in_progress": ["todo", "code_review"], "code_review": ["in_progress", "testing", "done"], "testing": ["code_review", "in_progress", "done"], "done": []},
+        ItemType.BUG: {"new": ["confirmed", "closed"], "confirmed": ["new", "in_progress", "closed"], "in_progress": ["confirmed", "fixed"], "fixed": ["in_progress", "verified", "closed"], "verified": ["fixed", "closed"], "closed": []},
+        ItemType.SUBTASK: {"todo": ["in_progress"], "in_progress": ["todo", "done"], "done": []},
+    }
+
+
+# Load once at module level (cached by ContractLoader)
+_WORKFLOWS, _VALID_TRANSITIONS = _load_workflow_data()
+
+
 class WorkflowValidator:
     """Service for validating and enforcing workflow rules"""
 
-    # Workflow definitions (4 hardcoded workflows)
-    WORKFLOWS: Dict[ItemType, List[str]] = {
-        ItemType.EPIC: [
-            "backlog",
-            "planning",
-            "in_progress",
-            "review",
-            "done"
-        ],
-        ItemType.STORY: [
-            "backlog",
-            "ready",
-            "in_progress",
-            "review",
-            "validation",
-            "done"
-        ],
-        ItemType.TASK: [
-            "backlog",
-            "todo",
-            "in_progress",
-            "code_review",
-            "testing",
-            "done"
-        ],
-        ItemType.BUG: [
-            "new",
-            "confirmed",
-            "in_progress",
-            "fixed",
-            "verified",
-            "closed"
-        ],
-        ItemType.SUBTASK: [
-            "todo",
-            "in_progress",
-            "done"
-        ]
-    }
-
-    # Valid transitions (from_status → [to_status, ...])
-    # This defines the state machine for each workflow
-    VALID_TRANSITIONS: Dict[ItemType, Dict[str, List[str]]] = {
-        ItemType.EPIC: {
-            "backlog": ["planning"],
-            "planning": ["backlog", "in_progress"],
-            "in_progress": ["planning", "review", "done"],
-            "review": ["in_progress", "done"],
-            "done": []  # Terminal state
-        },
-        ItemType.STORY: {
-            "backlog": ["ready"],
-            "ready": ["backlog", "in_progress"],
-            "in_progress": ["ready", "review"],
-            "review": ["in_progress", "validation", "done"],
-            "validation": ["review", "done"],
-            "done": []  # Terminal state
-        },
-        ItemType.TASK: {
-            "backlog": ["todo"],
-            "todo": ["backlog", "in_progress"],
-            "in_progress": ["todo", "code_review"],
-            "code_review": ["in_progress", "testing", "done"],
-            "testing": ["code_review", "in_progress", "done"],
-            "done": []  # Terminal state
-        },
-        ItemType.BUG: {
-            "new": ["confirmed", "closed"],
-            "confirmed": ["new", "in_progress", "closed"],
-            "in_progress": ["confirmed", "fixed"],
-            "fixed": ["in_progress", "verified", "closed"],
-            "verified": ["fixed", "closed"],
-            "closed": []  # Terminal state
-        },
-        ItemType.SUBTASK: {
-            "todo": ["in_progress"],
-            "in_progress": ["todo", "done"],
-            "done": []  # Terminal state
-        }
-    }
+    # PROMPT #256 - Loaded from contracts/business/workflow_states.yaml
+    WORKFLOWS: Dict[ItemType, List[str]] = _WORKFLOWS
+    VALID_TRANSITIONS: Dict[ItemType, Dict[str, List[str]]] = _VALID_TRANSITIONS
 
     def __init__(self, db: Session):
         self.db = db
