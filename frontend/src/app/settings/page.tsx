@@ -1,22 +1,55 @@
 /**
  * Settings Page
  * Manage system-wide settings and default AI models
+ *
+ * PROMPT #246 - Professional redesign with tabbed layout and visual hierarchy
  */
 
 'use client';
 
 import React, { useEffect, useState } from 'react';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Label } from '@/components/ui/Label';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { settingsApi, aiModelsApi } from '@/lib/api';
 import { SystemSettings, AIModel, AIModelUsageType } from '@/lib/types';
-import { Settings as SettingsIcon, Save, Plus, Trash2, RefreshCw } from 'lucide-react';
+import {
+  Settings as SettingsIcon,
+  Save,
+  Plus,
+  Trash2,
+  RefreshCw,
+  Bot,
+  ListOrdered,
+  Sliders,
+  CheckCircle2,
+  AlertTriangle,
+  Cpu,
+  MessageSquare,
+  GitCommit,
+  Zap,
+  Search,
+  Layers,
+  Globe,
+} from 'lucide-react';
 import { useNotification } from '@/hooks';
+
+const MODEL_CONFIGS = [
+  { key: 'interview', label: 'Interviews', usageType: AIModelUsageType.INTERVIEW, icon: MessageSquare, color: 'text-blue-600 bg-blue-50', description: 'Context and card-focused interview questions' },
+  { key: 'prompt_generation', label: 'Prompt Generation', usageType: AIModelUsageType.PROMPT_GENERATION, icon: Zap, color: 'text-purple-600 bg-purple-50', description: 'Generating prompts and card content' },
+  { key: 'commit_generation', label: 'Commit Generation', usageType: AIModelUsageType.COMMIT_GENERATION, icon: GitCommit, color: 'text-green-600 bg-green-50', description: 'Git commit message generation' },
+  { key: 'task_execution', label: 'Task Execution', usageType: AIModelUsageType.TASK_EXECUTION, icon: Cpu, color: 'text-orange-600 bg-orange-50', description: 'Executing task prompts and code generation' },
+  { key: 'pattern_discovery', label: 'Pattern Discovery', usageType: AIModelUsageType.PATTERN_DISCOVERY, icon: Search, color: 'text-cyan-600 bg-cyan-50', description: 'AI-powered code pattern and specs discovery' },
+  { key: 'queue_orchestration', label: 'Queue Orchestration', usageType: AIModelUsageType.QUEUE_ORCHESTRATION, icon: Layers, color: 'text-pink-600 bg-pink-50', description: 'Prompt execution from the orchestration queue' },
+  { key: 'general', label: 'General', usageType: AIModelUsageType.GENERAL, icon: Globe, color: 'text-gray-600 bg-gray-100', description: 'Fallback model for all other operations' },
+];
+
+type TabId = 'models' | 'queue' | 'general';
 
 export default function SettingsPage() {
   const { showError, showWarning, NotificationComponent } = useNotification();
@@ -28,13 +61,13 @@ export default function SettingsPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [settingToDelete, setSettingToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabId>('models');
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
-  // Form state for new setting
   const [newKey, setNewKey] = useState('');
   const [newValue, setNewValue] = useState('');
   const [newDescription, setNewDescription] = useState('');
 
-  // Default models state
   const [defaultModels, setDefaultModels] = useState<Record<string, string>>({
     interview: '',
     prompt_generation: '',
@@ -45,7 +78,6 @@ export default function SettingsPage() {
     general: '',
   });
 
-  // PROMPT #215 - Queue settings state
   const [queueSettings, setQueueSettings] = useState({
     queue_auto_sort_strategy: 'balanced',
     queue_max_concurrent: '1',
@@ -56,20 +88,24 @@ export default function SettingsPage() {
     loadData();
   }, []);
 
+  useEffect(() => {
+    if (saveSuccess) {
+      const timer = setTimeout(() => setSaveSuccess(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveSuccess]);
+
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Load all settings
       const settingsData = await settingsApi.list();
       setSettings(Array.isArray(settingsData) ? settingsData : settingsData.data || []);
 
-      // Load all AI models
       const modelsData = await aiModelsApi.list();
       const modelsList = Array.isArray(modelsData) ? modelsData : modelsData.data || [];
       setModels(modelsList);
 
-      // Extract default models from settings
       const allSettings = Array.isArray(settingsData) ? settingsData : settingsData.data || [];
       const defaultModelSettings = allSettings
         .filter((s: SystemSettings) => s.key.startsWith('default_model_'));
@@ -81,7 +117,6 @@ export default function SettingsPage() {
       });
       setDefaultModels(prev => ({ ...prev, ...defaults }));
 
-      // PROMPT #215 - Extract queue settings
       const queueKeys = ['queue_auto_sort_strategy', 'queue_max_concurrent', 'queue_auto_populate'];
       const queueDefaults: Record<string, string> = {};
       allSettings
@@ -90,7 +125,7 @@ export default function SettingsPage() {
       setQueueSettings(prev => ({ ...prev, ...queueDefaults }));
     } catch (err: unknown) {
       console.error('Failed to load settings:', err);
-      setError(err.message || 'Failed to load settings');
+      setError((err as Error).message || 'Failed to load settings');
     } finally {
       setLoading(false);
     }
@@ -108,17 +143,9 @@ export default function SettingsPage() {
       setNewValue('');
       setNewDescription('');
       await loadData();
+      setSaveSuccess('Setting added');
     } catch (err: any) {
       showError(`Failed to add setting: ${err.message}`);
-    }
-  };
-
-  const handleUpdateSetting = async (key: string, value: string, description?: string) => {
-    try {
-      await settingsApi.set(key, value, description);
-      await loadData();
-    } catch (err: any) {
-      showError(`Failed to update setting: ${err.message}`);
     }
   };
 
@@ -147,13 +174,13 @@ export default function SettingsPage() {
     setSaving(true);
     try {
       const updates: Record<string, any> = {};
-      // Always include all usage types, even empty values (for "No default model")
       Object.entries(defaultModels).forEach(([usageType, modelId]) => {
         updates[`default_model_${usageType}`] = modelId || '';
       });
 
       await settingsApi.bulk(updates);
       await loadData();
+      setSaveSuccess('Default models saved');
     } catch (err: any) {
       showError(`Failed to save default models: ${err.message}`);
     } finally {
@@ -165,13 +192,13 @@ export default function SettingsPage() {
     return models.filter(m => m.usage_type === usageType && m.is_active);
   };
 
-  // PROMPT #215 - Save queue settings
   const [savingQueue, setSavingQueue] = useState(false);
   const handleSaveQueueSettings = async () => {
     setSavingQueue(true);
     try {
       await settingsApi.bulk(queueSettings);
       await loadData();
+      setSaveSuccess('Queue settings saved');
     } catch (err: any) {
       showError(`Failed to save queue settings: ${err.message}`);
     } finally {
@@ -179,8 +206,25 @@ export default function SettingsPage() {
     }
   };
 
-  // Filter out default_model_ and queue_ settings from general settings list
   const generalSettings = settings.filter(s => !s.key.startsWith('default_model_') && !s.key.startsWith('queue_'));
+  const configuredModels = Object.values(defaultModels).filter(v => v && v.length > 0).length;
+
+  const tabs = [
+    { id: 'models' as TabId, label: 'AI Models', icon: Bot, count: `${configuredModels}/7` },
+    { id: 'queue' as TabId, label: 'Queue', icon: ListOrdered },
+    { id: 'general' as TabId, label: 'Advanced', icon: Sliders, count: generalSettings.length > 0 ? String(generalSettings.length) : undefined },
+  ];
+
+  if (loading) {
+    return (
+      <Layout>
+        <Breadcrumbs />
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
@@ -188,14 +232,14 @@ export default function SettingsPage() {
       <div className="space-y-6 max-w-5xl">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-gray-100 rounded-lg">
-              <SettingsIcon className="w-6 h-6 text-gray-600" />
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl shadow-sm">
+              <SettingsIcon className="w-7 h-7 text-gray-700" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-              <p className="text-gray-600 mt-1">
-                Configure system-wide preferences and defaults
+              <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                System configuration and default preferences
               </p>
             </div>
           </div>
@@ -203,338 +247,315 @@ export default function SettingsPage() {
             variant="outline"
             onClick={loadData}
             disabled={loading}
+            className="gap-2"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
         </div>
 
-        {/* Error State */}
-        {error && (
-          <Card className="bg-red-50 border-red-200">
-            <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <div className="text-red-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
-                <div>
-                  <h3 className="font-semibold text-red-900 mb-1">Error</h3>
-                  <p className="text-sm text-red-800">{error}</p>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadData}
-                    className="mt-3"
-                  >
-                    Try Again
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* Success Toast */}
+        {saveSuccess && (
+          <div className="flex items-center gap-2 px-4 py-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+            <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
+            {saveSuccess}
+          </div>
         )}
 
-        {/* Default AI Models */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Default AI Models</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600 mb-4">
-              Configure which AI models to use for each operation type by default.
-            </p>
-
-            <div className="space-y-3">
-              {/* Interview */}
-              <div>
-                <Label htmlFor="model-interview">Interviews</Label>
-                <Select
-                  id="model-interview"
-                  value={defaultModels.interview || ''}
-                  onChange={(e) => setDefaultModels({ ...defaultModels, interview: e.target.value })}
-                  options={[
-                    { value: '', label: 'No default model' },
-                    ...getModelsForUsageType(AIModelUsageType.INTERVIEW).map(m => ({
-                      value: m.id,
-                      label: m.name,
-                    })),
-                  ]}
-                  className="mt-1"
-                />
-              </div>
-
-              {/* Prompt Generation */}
-              <div>
-                <Label htmlFor="model-prompt">Prompt Generation</Label>
-                <Select
-                  id="model-prompt"
-                  value={defaultModels.prompt_generation || ''}
-                  onChange={(e) => setDefaultModels({ ...defaultModels, prompt_generation: e.target.value })}
-                  options={[
-                    { value: '', label: 'No default model' },
-                    ...getModelsForUsageType(AIModelUsageType.PROMPT_GENERATION).map(m => ({
-                      value: m.id,
-                      label: m.name,
-                    })),
-                  ]}
-                  className="mt-1"
-                />
-              </div>
-
-              {/* Commit Generation */}
-              <div>
-                <Label htmlFor="model-commit">Commit Generation</Label>
-                <Select
-                  id="model-commit"
-                  value={defaultModels.commit_generation || ''}
-                  onChange={(e) => setDefaultModels({ ...defaultModels, commit_generation: e.target.value })}
-                  options={[
-                    { value: '', label: 'No default model' },
-                    ...getModelsForUsageType(AIModelUsageType.COMMIT_GENERATION).map(m => ({
-                      value: m.id,
-                      label: m.name,
-                    })),
-                  ]}
-                  className="mt-1"
-                />
-              </div>
-
-              {/* Task Execution */}
-              <div>
-                <Label htmlFor="model-task">Task Execution</Label>
-                <Select
-                  id="model-task"
-                  value={defaultModels.task_execution || ''}
-                  onChange={(e) => setDefaultModels({ ...defaultModels, task_execution: e.target.value })}
-                  options={[
-                    { value: '', label: 'No default model' },
-                    ...getModelsForUsageType(AIModelUsageType.TASK_EXECUTION).map(m => ({
-                      value: m.id,
-                      label: m.name,
-                    })),
-                  ]}
-                  className="mt-1"
-                />
-              </div>
-
-              {/* Pattern Discovery */}
-              <div>
-                <Label htmlFor="model-pattern">Pattern Discovery</Label>
-                <Select
-                  id="model-pattern"
-                  value={defaultModels.pattern_discovery || ''}
-                  onChange={(e) => setDefaultModels({ ...defaultModels, pattern_discovery: e.target.value })}
-                  options={[
-                    { value: '', label: 'No default model' },
-                    ...getModelsForUsageType(AIModelUsageType.PATTERN_DISCOVERY).map(m => ({
-                      value: m.id,
-                      label: m.name,
-                    })),
-                  ]}
-                  className="mt-1"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Used for AI-powered code pattern discovery (specs generation)
-                </p>
-              </div>
-
-              {/* PROMPT #215 - Queue Orchestration */}
-              <div>
-                <Label htmlFor="model-queue">Queue Orchestration</Label>
-                <Select
-                  id="model-queue"
-                  value={defaultModels.queue_orchestration || ''}
-                  onChange={(e) => setDefaultModels({ ...defaultModels, queue_orchestration: e.target.value })}
-                  options={[
-                    { value: '', label: 'No default model' },
-                    ...getModelsForUsageType(AIModelUsageType.QUEUE_ORCHESTRATION).map(m => ({
-                      value: m.id,
-                      label: m.name,
-                    })),
-                  ]}
-                  className="mt-1"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Used for prompt execution from the orchestration queue
-                </p>
-              </div>
-
-              {/* General */}
-              <div>
-                <Label htmlFor="model-general">General</Label>
-                <Select
-                  id="model-general"
-                  value={defaultModels.general || ''}
-                  onChange={(e) => setDefaultModels({ ...defaultModels, general: e.target.value })}
-                  options={[
-                    { value: '', label: 'No default model' },
-                    ...getModelsForUsageType(AIModelUsageType.GENERAL).map(m => ({
-                      value: m.id,
-                      label: m.name,
-                    })),
-                  ]}
-                  className="mt-1"
-                />
-              </div>
+        {/* Error State */}
+        {error && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-red-50 border border-red-200 rounded-lg">
+            <AlertTriangle className="w-5 h-5 text-red-600 flex-shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-900">{error}</p>
             </div>
+            <Button variant="outline" size="sm" onClick={loadData}>
+              Retry
+            </Button>
+          </div>
+        )}
 
-            <div className="pt-4 flex justify-end">
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200">
+          <nav className="flex gap-1">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`
+                    flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors
+                    ${isActive
+                      ? 'border-blue-600 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }
+                  `}
+                >
+                  <Icon className="w-4 h-4" />
+                  {tab.label}
+                  {tab.count && (
+                    <span className={`
+                      text-xs px-1.5 py-0.5 rounded-full
+                      ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}
+                    `}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Tab: AI Models */}
+        {activeTab === 'models' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                Select which AI model handles each operation type. Models must be configured and active in the AI Models page.
+              </p>
               <Button onClick={handleSaveDefaultModels} disabled={saving}>
                 <Save className="w-4 h-4 mr-2" />
-                {saving ? 'Saving...' : 'Save Default Models'}
+                {saving ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* PROMPT #215 - Prompt Queue Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Prompt Queue</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600 mb-4">
-              Configure prompt orchestration queue behavior for execution ordering.
-            </p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {MODEL_CONFIGS.map((config) => {
+                const Icon = config.icon;
+                const [iconColor, iconBg] = config.color.split(' ');
+                const availableModels = getModelsForUsageType(config.usageType);
+                const isConfigured = !!defaultModels[config.key];
 
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="queue-strategy">Auto-Sort Strategy</Label>
-                <Select
-                  id="queue-strategy"
-                  value={queueSettings.queue_auto_sort_strategy}
-                  onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_sort_strategy: e.target.value })}
-                  options={[
-                    { value: 'balanced', label: 'Balanced (35% hierarchy, 30% priority, 25% dependency, 10% age)' },
-                    { value: 'hierarchy_first', label: 'Hierarchy First (epics > stories > tasks > subtasks)' },
-                    { value: 'priority_first', label: 'Priority First (critical > high > medium > low)' },
-                    { value: 'dependency_first', label: 'Dependency First (resolve dependencies first)' },
-                    { value: 'age_first', label: 'Age First (oldest cards first)' },
-                  ]}
-                  className="mt-1"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Determines how cards are automatically ordered in the execution queue
-                </p>
-              </div>
-
-              <div>
-                <Label htmlFor="queue-concurrent">Max Concurrent Executions</Label>
-                <Select
-                  id="queue-concurrent"
-                  value={queueSettings.queue_max_concurrent}
-                  onChange={(e) => setQueueSettings({ ...queueSettings, queue_max_concurrent: e.target.value })}
-                  options={[
-                    { value: '1', label: '1 (Sequential - recommended)' },
-                    { value: '2', label: '2' },
-                    { value: '3', label: '3' },
-                    { value: '5', label: '5' },
-                  ]}
-                  className="mt-1"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  How many prompts can execute simultaneously from the queue
-                </p>
-              </div>
-
-              <div>
-                <Label htmlFor="queue-auto-populate">Auto-Populate Queue</Label>
-                <Select
-                  id="queue-auto-populate"
-                  value={queueSettings.queue_auto_populate}
-                  onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_populate: e.target.value })}
-                  options={[
-                    { value: 'true', label: 'Enabled - auto-add activated cards to queue' },
-                    { value: 'false', label: 'Disabled - manually add cards to queue' },
-                  ]}
-                  className="mt-1"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  When enabled, cards are automatically added to the queue when activated
-                </p>
-              </div>
+                return (
+                  <div
+                    key={config.key}
+                    className={`
+                      relative p-4 rounded-lg border transition-colors
+                      ${isConfigured ? 'border-gray-200 bg-white' : 'border-dashed border-gray-300 bg-gray-50'}
+                    `}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-lg ${iconBg} flex-shrink-0`}>
+                        <Icon className={`w-4 h-4 ${iconColor}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm font-medium text-gray-900">{config.label}</span>
+                          {isConfigured && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Configured" />
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 mb-3">{config.description}</p>
+                        <Select
+                          id={`model-${config.key}`}
+                          value={defaultModels[config.key] || ''}
+                          onChange={(e) => setDefaultModels({ ...defaultModels, [config.key]: e.target.value })}
+                          options={[
+                            { value: '', label: availableModels.length === 0 ? 'No models available' : 'No default model' },
+                            ...availableModels.map(m => ({
+                              value: m.id,
+                              label: m.name,
+                            })),
+                          ]}
+                          className="text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="pt-4 flex justify-end">
+            {!defaultModels.general && (
+              <div className="flex items-center gap-3 px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
+                <p className="text-sm text-yellow-800">
+                  The <strong>General</strong> model acts as a fallback for all operations. It is recommended to configure it.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab: Queue Settings */}
+        {activeTab === 'queue' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                Control how the prompt orchestration queue processes and orders execution.
+              </p>
               <Button onClick={handleSaveQueueSettings} disabled={savingQueue}>
                 <Save className="w-4 h-4 mr-2" />
-                {savingQueue ? 'Saving...' : 'Save Queue Settings'}
+                {savingQueue ? 'Saving...' : 'Save Changes'}
               </Button>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* General Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle>General Settings</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600 mb-4">
-              Custom key-value configuration for system-wide settings.
+            <div className="grid grid-cols-1 gap-4">
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-4">
+                    <div className="p-2 bg-blue-50 rounded-lg flex-shrink-0">
+                      <ListOrdered className="w-4 h-4 text-blue-600" />
+                    </div>
+                    <div className="flex-1">
+                      <Label htmlFor="queue-strategy" className="text-sm font-medium text-gray-900">Auto-Sort Strategy</Label>
+                      <p className="text-xs text-gray-500 mt-0.5 mb-2">Determines how cards are automatically ordered in the execution queue</p>
+                      <Select
+                        id="queue-strategy"
+                        value={queueSettings.queue_auto_sort_strategy}
+                        onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_sort_strategy: e.target.value })}
+                        options={[
+                          { value: 'balanced', label: 'Balanced (35% hierarchy, 30% priority, 25% dependency, 10% age)' },
+                          { value: 'hierarchy_first', label: 'Hierarchy First (epics > stories > tasks > subtasks)' },
+                          { value: 'priority_first', label: 'Priority First (critical > high > medium > low)' },
+                          { value: 'dependency_first', label: 'Dependency First (resolve dependencies first)' },
+                          { value: 'age_first', label: 'Age First (oldest cards first)' },
+                        ]}
+                      />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-orange-50 rounded-lg flex-shrink-0">
+                        <Cpu className="w-4 h-4 text-orange-600" />
+                      </div>
+                      <div className="flex-1">
+                        <Label htmlFor="queue-concurrent" className="text-sm font-medium text-gray-900">Max Concurrent</Label>
+                        <p className="text-xs text-gray-500 mt-0.5 mb-2">Simultaneous prompt executions</p>
+                        <Select
+                          id="queue-concurrent"
+                          value={queueSettings.queue_max_concurrent}
+                          onChange={(e) => setQueueSettings({ ...queueSettings, queue_max_concurrent: e.target.value })}
+                          options={[
+                            { value: '1', label: '1 (Sequential)' },
+                            { value: '2', label: '2' },
+                            { value: '3', label: '3' },
+                            { value: '5', label: '5' },
+                          ]}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="flex items-start gap-4">
+                      <div className="p-2 bg-green-50 rounded-lg flex-shrink-0">
+                        <Zap className="w-4 h-4 text-green-600" />
+                      </div>
+                      <div className="flex-1">
+                        <Label htmlFor="queue-auto-populate" className="text-sm font-medium text-gray-900">Auto-Populate</Label>
+                        <p className="text-xs text-gray-500 mt-0.5 mb-2">Add cards to queue on activation</p>
+                        <Select
+                          id="queue-auto-populate"
+                          value={queueSettings.queue_auto_populate}
+                          onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_populate: e.target.value })}
+                          options={[
+                            { value: 'true', label: 'Enabled' },
+                            { value: 'false', label: 'Disabled' },
+                          ]}
+                        />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Advanced / General Settings */}
+        {activeTab === 'general' && (
+          <div className="space-y-4">
+            <p className="text-sm text-gray-500">
+              Custom key-value pairs for advanced system configuration.
             </p>
 
-            {/* Add New Setting */}
-            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-3">
-              <h4 className="font-semibold text-sm text-gray-900">Add New Setting</h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <Input
-                  placeholder="Key (e.g., max_upload_size)"
-                  value={newKey}
-                  onChange={(e) => setNewKey(e.target.value)}
-                />
-                <Input
-                  placeholder="Value"
-                  value={newValue}
-                  onChange={(e) => setNewValue(e.target.value)}
-                />
-                <Input
-                  placeholder="Description (optional)"
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                />
-              </div>
-              <Button onClick={handleAddSetting} size="sm">
-                <Plus className="w-4 h-4 mr-2" />
-                Add Setting
-              </Button>
-            </div>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Plus className="w-4 h-4 text-gray-500" />
+                  <span className="text-sm font-medium text-gray-900">Add Setting</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label htmlFor="new-key" className="text-xs text-gray-500 mb-1">Key</Label>
+                    <Input
+                      id="new-key"
+                      placeholder="e.g., max_upload_size"
+                      value={newKey}
+                      onChange={(e) => setNewKey(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="new-value" className="text-xs text-gray-500 mb-1">Value</Label>
+                    <Input
+                      id="new-value"
+                      placeholder="Value"
+                      value={newValue}
+                      onChange={(e) => setNewValue(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="new-desc" className="text-xs text-gray-500 mb-1">Description</Label>
+                    <Input
+                      id="new-desc"
+                      placeholder="Optional description"
+                      value={newDescription}
+                      onChange={(e) => setNewDescription(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <Button onClick={handleAddSetting} size="sm">
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
 
-            {/* Settings List */}
             {generalSettings.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <p>No custom settings configured</p>
+              <div className="text-center py-16 text-gray-400">
+                <Sliders className="w-10 h-10 mx-auto mb-3 opacity-50" />
+                <p className="text-sm">No custom settings configured</p>
+                <p className="text-xs mt-1">Add a setting above to get started</p>
               </div>
             ) : (
               <div className="space-y-2">
                 {generalSettings.map((setting) => (
                   <div
                     key={setting.id}
-                    className="p-3 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
+                    className="group flex items-center justify-between gap-4 p-4 bg-white border border-gray-200 rounded-lg hover:border-gray-300 transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <code className="text-sm font-semibold text-gray-900">
-                            {setting.key}
-                          </code>
-                          <Badge variant="default" className="text-xs">
-                            {typeof setting.value}
-                          </Badge>
-                        </div>
-                        <div className="text-sm text-gray-700 font-mono mb-1">
-                          {String(setting.value)}
-                        </div>
-                        {setting.description && (
-                          <p className="text-xs text-gray-500">{setting.description}</p>
-                        )}
-                        <p className="text-xs text-gray-400 mt-1">
-                          Updated {new Date(setting.updated_at).toLocaleString()}
-                        </p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <code className="text-sm font-semibold text-gray-900">{setting.key}</code>
+                        <Badge variant="default" className="text-xs">{typeof setting.value}</Badge>
                       </div>
+                      <div className="text-sm text-gray-600 font-mono truncate">{String(setting.value)}</div>
+                      {setting.description && (
+                        <p className="text-xs text-gray-400 mt-1">{setting.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-gray-400 hidden sm:block whitespace-nowrap">
+                        {new Date(setting.updated_at).toLocaleDateString()}
+                      </span>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDeleteSetting(setting.key)}
-                        className="text-red-600 hover:text-red-700"
+                        className="text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -543,49 +564,21 @@ export default function SettingsPage() {
                 ))}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        )}
       </div>
 
-      {/* Delete Confirmation Dialog */}
-      {showDeleteDialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Setting?</h3>
-            <p className="text-sm text-gray-600 mb-4">Are you sure you want to delete this setting?</p>
-
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <div className="flex items-start gap-3">
-                <div className="text-red-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
-                <div>
-                  <h4 className="font-semibold text-red-900 mb-1">Warning: This action cannot be undone!</h4>
-                  <p className="text-sm text-red-800">
-                    Setting "{settingToDelete}" will be permanently deleted.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => setShowDeleteDialog(false)}
-                disabled={isDeleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                onClick={confirmDeleteSetting}
-                disabled={isDeleting}
-              >
-                {isDeleting ? 'Deleting...' : 'Yes, Delete Setting'}
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={showDeleteDialog}
+        onClose={() => setShowDeleteDialog(false)}
+        onConfirm={confirmDeleteSetting}
+        title="Delete Setting"
+        message={`Are you sure you want to delete "${settingToDelete}"? This action cannot be undone.`}
+        type="danger"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        isLoading={isDeleting}
+      />
 
       {NotificationComponent}
     </Layout>
