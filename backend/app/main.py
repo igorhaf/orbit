@@ -41,6 +41,7 @@ from app.api.routes import (
     ai_flow,  # PROMPT #122 - AI Flow Fallback Chains
     prompt_queue,  # PROMPT #215 - Prompt Orchestration Priority Queue
     continuous_rag,  # PROMPT #218 - Continuous RAG Evolution
+    wiki,  # PROMPT #261 - Multi-page Wiki System
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -393,6 +394,13 @@ app.include_router(
     continuous_rag.router,
     prefix=f"{API_V1_PREFIX}/projects",
     tags=["Continuous RAG"]
+)
+
+# Wiki (PROMPT #261 - Multi-page Wiki System)
+app.include_router(
+    wiki.router,
+    prefix=f"{API_V1_PREFIX}/projects",
+    tags=["Wiki"]
 )
 
 

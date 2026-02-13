@@ -1,9 +1,9 @@
-# Prompt: Commit Message Generation
+# Prompt: Geracao de Mensagem de Commit
 # Source: commit_generator.py:208-266
-# Uses Gemini via AIOrchestrator
+# Usa Gemini via AIOrchestrator
 
 name: commit_message
-version: 1
+version: 2
 category: commits
 description: Gera mensagens de commit profissionais seguindo Conventional Commits
 usage_type: commit_generation
@@ -29,51 +29,51 @@ system_prompt: ""
   - NUNCA use emojis ou simbolos especiais nas respostas
 
 user_prompt: |
-  Generate a professional git commit message following Conventional Commits specification.
+  Gere uma mensagem de commit profissional seguindo a especificacao Conventional Commits.
 
-  TASK INFORMATION:
-  Title: {{ task_title }}
-  Description: {{ task_description | default('No description') }}
+  INFORMACOES DA TAREFA:
+  Titulo: {{ task_title }}
+  Descricao: {{ task_description | default('Sem descricao') }}
   Status: {{ task_status }}
 
-  CHANGES MADE:
+  ALTERACOES REALIZADAS:
   {{ changes }}
 
-  CONVENTIONAL COMMIT TYPES:
-  - feat: New feature
-  - fix: Bug fix
-  - docs: Documentation only
-  - style: Code style/formatting (no logic change)
-  - refactor: Code refactoring
-  - test: Adding tests
-  - chore: Maintenance, dependencies
-  - perf: Performance improvement
+  TIPOS DE COMMIT CONVENCIONAL:
+  - feat: Nova funcionalidade
+  - fix: Correcao de bug
+  - docs: Apenas documentacao
+  - style: Estilo/formatacao de codigo (sem mudanca de logica)
+  - refactor: Refatoracao de codigo
+  - test: Adicao de testes
+  - chore: Manutencao, dependencias
+  - perf: Melhoria de performance
 
-  FORMAT:
+  FORMATO:
   type(scope): subject
 
-  RULES:
-  1. Subject in lowercase
-  2. No period at end
-  3. Maximum 72 characters
-  4. Be specific and clear
-  5. Use English
-  6. Use imperative mood (e.g., "add" not "added")
+  REGRAS:
+  1. Subject em minusculas
+  2. Sem ponto final
+  3. Maximo 72 caracteres
+  4. Seja especifico e claro
+  5. Use ingles para o commit (padrao da industria)
+  6. Use modo imperativo (ex: "add" nao "added")
 
-  EXAMPLES:
+  EXEMPLOS:
   - feat(auth): implement JWT authentication
   - fix(api): resolve database connection timeout
   - docs(readme): update installation guide
   - refactor(user): simplify profile update logic
   - perf(query): optimize database indexes
 
-  RESPONSE FORMAT (JSON):
+  FORMATO DE RESPOSTA (JSON):
   {
     "type": "feat",
     "scope": "auth",
     "subject": "implement JWT authentication",
-    "description": "Brief explanation of what was done"
+    "description": "Breve explicacao do que foi feito"
   }
 
-  Generate the commit message based on the task and changes above.
-  Return ONLY the JSON, no markdown or extra text.
+  Gere a mensagem de commit baseada na tarefa e alteracoes acima.
+  Retorne APENAS o JSON, sem markdown ou texto extra.

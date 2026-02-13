@@ -49,6 +49,7 @@ export const Breadcrumbs: React.FC = () => {
     'generate': 'Generate',
     'analyze': 'Analyze',
     'consistency': 'Consistency Check',
+    'wiki': 'Wiki',
     'execute': 'Execute',
     'models': 'Models',
   };

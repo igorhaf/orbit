@@ -1,7 +1,7 @@
 name: pattern_discovery
-version: 2
+version: 3
 category: discovery
-description: AI prompt for discovering repeating code patterns in a codebase
+description: Prompt de IA para descobrir padroes repetitivos de codigo em um codebase
 usage_type: prompt_generation
 estimated_tokens: 600
 tags:
@@ -9,7 +9,7 @@ tags:
   - patterns
   - codebase
   - analysis
-  - english
+  - portuguese
 components: []
 
 variables:
@@ -27,39 +27,39 @@ system_prompt: ""
   - NUNCA use emojis ou simbolos especiais nas respostas
 
 user_prompt: |
-  You are analyzing a codebase to discover repeating code patterns.
+  Voce esta analisando um codebase para descobrir padroes repetitivos de codigo.
 
-  I'm showing you {{ sampled_files_count }} sample files from a group of {{ file_count }} similar files.
+  Estou mostrando {{ sampled_files_count }} arquivos de amostra de um grupo de {{ file_count }} arquivos similares.
 
-  Group Info:
-  - Extension: {{ extension }}
-  - Estimated Category: {{ estimated_category }}
-  - Total Files: {{ file_count }}
+  Informacoes do Grupo:
+  - Extensao: {{ extension }}
+  - Categoria Estimada: {{ estimated_category }}
+  - Total de Arquivos: {{ file_count }}
 
-  Sample Files:
+  Arquivos de Amostra:
   {{ files_text }}
 
-  Your Task:
-  1. Determine if there's a **meaningful repeating pattern** across these files
-  2. If yes, extract a **template** with {{Placeholders}} for variable parts
-  3. Suggest a **category** and **name** for this pattern
-  4. Rate your **confidence** (0.0 to 1.0)
+  Sua Tarefa:
+  1. Determine se existe um **padrao repetitivo significativo** entre esses arquivos
+  2. Se sim, extraia um **template** com {{Placeholders}} para as partes variaveis
+  3. Sugira uma **categoria** e um **nome** para esse padrao
+  4. Avalie sua **confianca** (0.0 a 1.0)
 
-  Respond with JSON ONLY (no markdown blocks):
+  Responda APENAS com JSON (sem blocos markdown):
   {
     "pattern_found": true/false,
-    "category": "suggested category (e.g., 'api', 'model', 'service', 'component')",
-    "name": "suggested name (e.g., 'fastapi_router', 'react_component', 'sqlalchemy_model')",
-    "spec_type": "specific type (e.g., 'rest_api', 'database_model', 'ui_component')",
-    "title": "Human-readable title",
-    "description": "What this pattern represents (2-3 sentences)",
-    "template": "Code template with {{Placeholders}} for variable parts",
-    "language": "programming language",
+    "category": "categoria sugerida (ex: 'api', 'model', 'service', 'component')",
+    "name": "nome sugerido (ex: 'fastapi_router', 'react_component', 'sqlalchemy_model')",
+    "spec_type": "tipo especifico (ex: 'rest_api', 'database_model', 'ui_component')",
+    "title": "Titulo legivel por humanos",
+    "description": "O que este padrao representa (2-3 frases)",
+    "template": "Template de codigo com {{Placeholders}} para partes variaveis",
+    "language": "linguagem de programacao",
     "confidence": 0.0-1.0,
-    "reasoning": "Why you identified this pattern (or why not)",
-    "key_characteristics": ["list", "of", "key", "features"]
+    "reasoning": "Por que voce identificou este padrao (ou por que nao)",
+    "key_characteristics": ["lista", "de", "caracteristicas", "principais"]
   }
 
-  If no meaningful pattern exists (files are too different), set pattern_found: false.
+  Se nenhum padrao significativo existir (arquivos sao muito diferentes), defina pattern_found: false.
 
-  IMPORTANT: Return ONLY valid JSON, no markdown code blocks.
+  IMPORTANTE: Retorne APENAS JSON valido, sem blocos de codigo markdown.

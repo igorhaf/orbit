@@ -21,6 +21,7 @@ from . import (
     console,  # PROMPT #168 - Real-time Console Logs
     prompt_queue,  # PROMPT #215 - Prompt Orchestration Priority Queue
     continuous_rag,  # PROMPT #218 - Continuous RAG Evolution
+    wiki,  # PROMPT #261 - Multi-page Wiki System
 )
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     "console",  # PROMPT #168 - Real-time Console Logs
     "prompt_queue",  # PROMPT #215 - Prompt Orchestration Priority Queue
     "continuous_rag",  # PROMPT #218 - Continuous RAG Evolution
+    "wiki",  # PROMPT #261 - Multi-page Wiki System
 ]
