@@ -1,14 +1,15 @@
-# Execution Contract: Context Optimization Limits
-# PROMPT #256 - Externalize Hardcoded Contracts
+# Contrato de Execucao: Limites de Otimizacao de Contexto
+# PROMPT #256 - Externalizar Contratos Hardcoded
 #
-# Source: backend/app/services/general_context_builder.py (lines 26-48)
-# Tier-based limits for context optimization before AI calls.
+# Fonte: backend/app/services/general_context_builder.py (linhas 26-48)
+# Limites por nivel de complexidade para otimizacao de contexto antes de chamadas de IA.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
 
 name: context_limits
 version: 1
 domain: business
 category: execution
-description: Tier-based limits for message history, system prompt, and code blocks
+description: Limites por nivel de complexidade para historico de mensagens, system prompt e blocos de codigo
 usage_type: business_rule
 
 governance:
@@ -19,47 +20,47 @@ governance:
     - version: 1
       date: "2026-02-13"
       author: "Claude"
-      changes: "Externalized from general_context_builder.py hardcoded dicts"
+      changes: "Externalizado do general_context_builder.py - dicts hardcoded de limites"
 
 tags:
-  - execution
-  - context
-  - optimization
+  - execucao
+  - contexto
+  - otimizacao
   - tokens
 
 data:
-  # Max messages to keep per complexity tier (user+assistant pairs)
-  # 0 = unlimited
+  # Maximo de mensagens a manter por nivel de complexidade (pares usuario+assistente)
+  # 0 = ilimitado
   message_limits:
     simple: 2
     moderate: 6
     complex: 12
 
-  # System prompt character limits per tier
-  # 0 = unlimited
+  # Limites de caracteres do system prompt por nivel
+  # 0 = ilimitado
   system_prompt_limits:
     simple: 500
     moderate: 2000
     complex: 0
 
-  # Code block truncation limits (chars)
-  # 0 = unlimited
+  # Limites de truncamento de blocos de codigo (caracteres)
+  # 0 = ilimitado
   code_block_limits:
     simple: 500
     moderate: 2000
     complex: 0
 
-  # Lines to keep at head/tail when truncating code blocks
+  # Linhas a manter no inicio/fim ao truncar blocos de codigo
   code_truncate_head: 15
   code_truncate_tail: 10
 
 rules:
   constraints:
     - id: C1
-      description: "Simple tier has strictest limits"
+      description: "Nivel simples tem os limites mais restritivos"
       condition: "simple.limits < moderate.limits < complex.limits"
     - id: C2
-      description: "Complex tier allows unlimited for most resources"
+      description: "Nivel complexo permite ilimitado para a maioria dos recursos"
       condition: "complex.system_prompt == 0 AND complex.code_block == 0"
 
 variables:

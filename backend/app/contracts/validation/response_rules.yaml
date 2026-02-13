@@ -1,14 +1,15 @@
-# Validation Contract: Response Quality Rules
-# PROMPT #256 - Externalize Hardcoded Contracts
+# Contrato de Validacao: Regras de Qualidade de Resposta
+# PROMPT #256 - Externalizar Contratos Hardcoded
 #
-# Source: backend/app/services/general_response_validator.py (lines 26-67)
-# Zero-AI-call post-process validator patterns and thresholds.
+# Fonte: backend/app/services/general_response_validator.py (linhas 26-67)
+# Validador pos-processamento sem chamadas de IA - padroes e limiares.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
 
 name: response_rules
 version: 1
 domain: business
 category: validation
-description: Response validation patterns, thresholds, and language markers
+description: Padroes de validacao de resposta, limiares e marcadores de idioma
 usage_type: business_rule
 
 governance:
@@ -19,16 +20,16 @@ governance:
     - version: 1
       date: "2026-02-13"
       author: "Claude"
-      changes: "Externalized from general_response_validator.py hardcoded patterns"
+      changes: "Externalizado do general_response_validator.py - padroes hardcoded"
 
 tags:
-  - validation
-  - response
-  - error-detection
-  - quality
+  - validacao
+  - resposta
+  - deteccao-de-erros
+  - qualidade
 
 data:
-  # Regex patterns indicating API/server errors in response
+  # Padroes regex indicando erros de API/servidor na resposta
   error_patterns:
     - "rate\\s+limit\\s+(?:exceeded|reached|error)"
     - "(?:internal\\s+)?server\\s+error"
@@ -37,25 +38,25 @@ data:
     - "(?:connection|timeout)\\s+(?:error|refused|timed\\s+out)"
     - "HTTPError|HTTPException|status_code\\s*[:=]\\s*[45]\\d\\d"
 
-  # Regex patterns indicating AI refusal
+  # Padroes regex indicando recusa da IA
   refusal_patterns:
     - "^I(?:'m| am) (?:sorry|unable|not able)"
     - "^(?:Desculpe|Nao posso|Nao consigo|Infelizmente)"
     - "I (?:cannot|can't|am unable to) (?:help|assist|provide|generate|create)"
 
-  # Min response characters by complexity tier
+  # Minimo de caracteres na resposta por nivel de complexidade
   min_response_chars:
     simple: 10
     moderate: 30
     complex: 50
 
-  # Max response characters by complexity tier (0 = unlimited)
+  # Maximo de caracteres na resposta por nivel de complexidade (0 = ilimitado)
   max_response_chars:
     simple: 2000
     moderate: 8000
     complex: 0
 
-  # Portuguese language markers for language detection
+  # Marcadores de idioma portugues para deteccao de lingua
   pt_markers:
     - de
     - da
@@ -90,7 +91,7 @@ data:
     - isto
     - aquilo
 
-  # English language markers
+  # Marcadores de idioma ingles
   en_markers:
     - the
     - is
@@ -125,10 +126,10 @@ data:
 rules:
   constraints:
     - id: C1
-      description: "All patterns are case-insensitive regex"
+      description: "Todos os padroes usam regex case-insensitive"
       condition: "re.IGNORECASE applied to all patterns"
     - id: C2
-      description: "Refusal patterns check start of response only"
+      description: "Padroes de recusa verificam apenas o inicio da resposta"
       condition: "pattern starts with ^ anchor"
 
 variables:

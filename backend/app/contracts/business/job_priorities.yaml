@@ -1,14 +1,15 @@
-# Business Contract: Job Priority Matrix
-# PROMPT #256 - Externalize Hardcoded Contracts
+# Contrato de Negocio: Matriz de Prioridade de Jobs
+# PROMPT #256 - Externalizar Contratos Hardcoded
 #
-# Source: backend/app/models/async_job.py (lines 72-100)
-# Maps job types to default priority levels for the PriorityJobExecutor queue.
+# Fonte: backend/app/models/async_job.py (linhas 72-100)
+# Mapeia tipos de job para niveis de prioridade padrao na fila do PriorityJobExecutor.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
 
 name: job_priorities
 version: 1
 domain: business
 category: business
-description: Default priority levels for each async job type
+description: Niveis de prioridade padrao para cada tipo de job assincrono
 usage_type: business_rule
 
 governance:
@@ -19,37 +20,37 @@ governance:
     - version: 1
       date: "2026-02-13"
       author: "Claude"
-      changes: "Externalized from async_job.py JOB_TYPE_DEFAULT_PRIORITY"
+      changes: "Externalizado do async_job.py - JOB_TYPE_DEFAULT_PRIORITY hardcoded"
 
 tags:
-  - business-rule
-  - job-queue
-  - priority
+  - regra-de-negocio
+  - fila-de-jobs
+  - prioridade
 
 data:
-  # Priority levels (lower number = lower priority, higher = more urgent)
+  # Niveis de prioridade (numero menor = menor prioridade, maior = mais urgente)
   priority_levels:
     CRITICAL: 10
     HIGH: 7
     NORMAL: 5
     LOW: 3
 
-  # Default priority per job type
+  # Prioridade padrao por tipo de job
   priorities:
-    # CRITICAL - user actively waiting in chat
+    # CRITICO - usuario aguardando ativamente no chat
     interview_question: 10
     interview_message: 10
-    # HIGH - user in wizard, waiting for result
+    # ALTO - usuario no wizard, aguardando resultado
     context_generation: 7
     project_title: 7
     project_pipeline: 7
-    # NORMAL - user triggered, can wait
+    # NORMAL - usuario disparou, pode aguardar
     memory_scan: 5
     commit_generation: 5
     task_execution: 5
     suggested_epics: 5
     cards_from_memory: 5
-    # LOW - background generation
+    # BAIXO - geracao em segundo plano
     children_generation: 3
     epic_activation: 3
     story_activation: 3
@@ -64,11 +65,11 @@ data:
 rules:
   constraints:
     - id: C1
-      description: "Interactive jobs (user waiting) must be CRITICAL or HIGH"
+      description: "Jobs interativos (usuario aguardando) devem ser CRITICO ou ALTO"
       applies_to: [interview_question, interview_message, context_generation]
       condition: "priority >= 7"
     - id: C2
-      description: "Background jobs must be LOW"
+      description: "Jobs de segundo plano devem ser BAIXO"
       applies_to: [rag_continuous_scan, backlog_generation]
       condition: "priority <= 3"
 

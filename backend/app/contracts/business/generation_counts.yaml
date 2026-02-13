@@ -1,14 +1,15 @@
-# Business Contract: Card Generation Counts
-# PROMPT #256 - Externalize Hardcoded Contracts
+# Contrato de Negocio: Contagens de Geracao de Cards
+# PROMPT #256 - Externalizar Contratos Hardcoded
 #
-# Sources: context_generator.py, watchdog.py, card_hierarchy.yaml
-# How many children are generated at each hierarchy level on activation.
+# Fontes: context_generator.py, watchdog.py, card_hierarchy.yaml
+# Quantos filhos sao gerados em cada nivel da hierarquia ao ativar um card.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
 
 name: generation_counts
 version: 1
 domain: business
 category: business
-description: Default generation counts for card hierarchy levels
+description: Contagens padrao de geracao para cada nivel da hierarquia de cards
 usage_type: business_rule
 
 governance:
@@ -19,22 +20,22 @@ governance:
     - version: 1
       date: "2026-02-13"
       author: "Claude"
-      changes: "Externalized from context_generator.py and watchdog.py"
+      changes: "Externalizado do context_generator.py e watchdog.py"
 
 tags:
-  - business-rule
-  - generation
-  - hierarchy
-  - counts
+  - regra-de-negocio
+  - geracao
+  - hierarquia
+  - contagens
 
 data:
-  # Default children count per parent type (used in draft generation)
+  # Contagem padrao de filhos por tipo de pai (usado na geracao de drafts)
   default_children_count:
-    epic: 15       # Epic generates 15-20 Stories
-    story: 8       # Story generates 5-8 Tasks
-    task: 5        # Task generates 3-5 Subtasks
+    epic: 15       # Epic gera 15-20 Stories
+    story: 8       # Story gera 5-8 Tasks
+    task: 5        # Task gera 3-5 Subtasks
 
-  # Ranges (for documentation and prompt instructions)
+  # Faixas de geracao (para documentacao e instrucoes de prompt)
   children_range:
     epic:
       min: 15
@@ -46,16 +47,16 @@ data:
       min: 3
       max: 5
 
-  # Watchdog auto-discovery limits
+  # Limites de auto-descoberta do Watchdog
   max_cards_per_cycle: 5
 
-  # Auto-enrich stub cards per cycle (when idle)
+  # Cards stub auto-enriquecidos por ciclo (quando ocioso)
   max_enrich_per_cycle: 2
 
 rules:
   constraints:
     - id: C1
-      description: "Subtask is leaf node - no children generated"
+      description: "Subtask e no folha - nenhum filho e gerado"
       applies_to: [subtask]
       condition: "children_count == 0"
 

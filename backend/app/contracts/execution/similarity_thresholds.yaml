@@ -1,15 +1,16 @@
-# Execution Contract: Similarity Thresholds
-# PROMPT #256 - Externalize Hardcoded Contracts
+# Contrato de Execucao: Limiares de Similaridade
+# PROMPT #256 - Externalizar Contratos Hardcoded
 #
-# Sources: ai_orchestrator.py, similarity_detector.py, context_generator.py,
+# Fontes: ai_orchestrator.py, similarity_detector.py, context_generator.py,
 #          continuous_rag_service.py, interview_handlers.py, backlog_generator.py
-# Semantic similarity thresholds for different operations.
+# Limiares de similaridade semantica para diferentes operacoes.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
 
 name: similarity_thresholds
 version: 1
 domain: business
 category: execution
-description: Similarity thresholds for deduplication, caching, and relevance scoring
+description: Limiares de similaridade para deduplicacao, cache e pontuacao de relevancia
 usage_type: business_rule
 
 governance:
@@ -20,41 +21,41 @@ governance:
     - version: 1
       date: "2026-02-13"
       author: "Claude"
-      changes: "Externalized from 9+ files with hardcoded similarity thresholds"
+      changes: "Externalizado de 9+ arquivos com limiares de similaridade hardcoded"
 
 tags:
-  - execution
-  - similarity
-  - threshold
-  - deduplication
+  - execucao
+  - similaridade
+  - limiar
+  - deduplicacao
 
 data:
   thresholds:
-    # Cache: exact semantic match (ai_orchestrator.py)
+    # Cache: correspondencia semantica exata (ai_orchestrator.py)
     exact_match_cache: 0.95
 
-    # Modification detection: >90% = modify existing (similarity_detector.py)
+    # Deteccao de modificacao: >90% = modificar existente (similarity_detector.py)
     modification_detection: 0.90
 
-    # Card deduplication: avoid creating duplicate cards (context_generator.py, watchdog.py)
+    # Deduplicacao de cards: evitar criar cards duplicados (context_generator.py, watchdog.py)
     card_deduplication: 0.85
 
-    # RAG relevance: minimum relevance for RAG results (continuous_rag_service.py)
+    # Relevancia RAG: relevancia minima para resultados RAG (continuous_rag_service.py)
     rag_relevance: 0.85
 
-    # Backlog/interview deduplication (backlog_generator.py, interview_handlers.py)
+    # Deduplicacao de backlog/entrevista (backlog_generator.py, interview_handlers.py)
     backlog_deduplication: 0.60
 
-    # General memory/search (codebase_memory.py)
+    # Busca geral em memoria (codebase_memory.py)
     memory_search: 0.50
 
-    # No filtering - get all results (interview_handlers.py)
+    # Sem filtragem - obter todos os resultados (interview_handlers.py)
     no_filter: 0.0
 
 rules:
   constraints:
     - id: C1
-      description: "Higher thresholds = stricter matching"
+      description: "Limiares mais altos = correspondencia mais rigorosa"
       condition: "exact_match_cache > modification_detection > card_deduplication > backlog_deduplication > memory_search"
 
 variables:
