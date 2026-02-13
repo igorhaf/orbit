@@ -1,6 +1,7 @@
 /**
  * Sidebar Component
- * Side navigation menu
+ * Side navigation menu with collapsible support
+ * PROMPT #250 - Added collapse/expand toggle button
  */
 
 'use client';
@@ -14,7 +15,12 @@ interface NavItem {
   name: string;
   href: string;
   icon: React.ReactNode;
-  external?: boolean;  // Indicates if link opens in new tab
+  external?: boolean;
+}
+
+interface SidebarProps {
+  collapsed?: boolean;
+  onToggle?: () => void;
 }
 
 const navigation: NavItem[] = [
@@ -22,7 +28,7 @@ const navigation: NavItem[] = [
     name: 'Dashboard',
     href: '/',
     icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -36,7 +42,7 @@ const navigation: NavItem[] = [
     name: 'Projects',
     href: '/projects',
     icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -50,7 +56,7 @@ const navigation: NavItem[] = [
     name: 'Prompts',
     href: '/prompts',
     icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -64,7 +70,7 @@ const navigation: NavItem[] = [
     name: 'AI Models',
     href: '/ai-models',
     icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -78,7 +84,7 @@ const navigation: NavItem[] = [
     name: 'AI Flow',
     href: '/ai-flow',
     icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -92,7 +98,7 @@ const navigation: NavItem[] = [
     name: 'Contracts',
     href: '/contracts',
     icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -106,7 +112,7 @@ const navigation: NavItem[] = [
     name: 'RAG Analytics',
     href: '/rag',
     icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -120,7 +126,7 @@ const navigation: NavItem[] = [
     name: 'Job Queue',
     href: '/jobs',
     icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -134,7 +140,7 @@ const navigation: NavItem[] = [
     name: 'Console',
     href: '/console',
     icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -146,12 +152,13 @@ const navigation: NavItem[] = [
   },
 ];
 
-export const Sidebar: React.FC = () => {
+export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onToggle }) => {
   const pathname = usePathname();
 
   const renderNavItem = (item: NavItem, isActive: boolean) => {
-    const className = clsx(
-      'flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
+    const itemClass = clsx(
+      'flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors',
+      collapsed ? 'justify-center' : 'space-x-3',
       isActive
         ? 'bg-gray-800 text-white'
         : 'text-gray-300 hover:bg-gray-800 hover:text-white'
@@ -160,8 +167,8 @@ export const Sidebar: React.FC = () => {
     const content = (
       <>
         {item.icon}
-        <span>{item.name}</span>
-        {item.external && (
+        {!collapsed && <span>{item.name}</span>}
+        {!collapsed && item.external && (
           <svg className="w-3 h-3 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               strokeLinecap="round"
@@ -181,7 +188,8 @@ export const Sidebar: React.FC = () => {
           href={item.href}
           target="_blank"
           rel="noopener noreferrer"
-          className={className}
+          className={itemClass}
+          title={collapsed ? item.name : undefined}
         >
           {content}
         </a>
@@ -189,15 +197,20 @@ export const Sidebar: React.FC = () => {
     }
 
     return (
-      <Link key={item.name} href={item.href} className={className}>
+      <Link key={item.name} href={item.href} className={itemClass} title={collapsed ? item.name : undefined}>
         {content}
       </Link>
     );
   };
 
   return (
-    <aside className="fixed inset-y-0 left-0 bg-gray-900 w-[180px] pt-[45px] overflow-y-auto">
-      <nav className="px-3 py-4">
+    <aside
+      className={clsx(
+        'fixed inset-y-0 left-0 bg-gray-900 pt-[45px] overflow-y-auto transition-all duration-200',
+        collapsed ? 'w-[56px]' : 'w-[180px]'
+      )}
+    >
+      <nav className="px-2 py-4">
         <div className="space-y-1">
           {navigation.map((item) => {
             const isActive = pathname === item.href;
@@ -212,10 +225,14 @@ export const Sidebar: React.FC = () => {
         <div className="space-y-1">
           <Link
             href="/settings"
-            className="flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors"
+            className={clsx(
+              'flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors',
+              collapsed ? 'justify-center' : 'space-x-3'
+            )}
+            title={collapsed ? 'Settings' : undefined}
           >
             <svg
-              className="w-5 h-5"
+              className="w-5 h-5 flex-shrink-0"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -233,8 +250,38 @@ export const Sidebar: React.FC = () => {
                 d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
               />
             </svg>
-            <span>Settings</span>
+            {!collapsed && <span>Settings</span>}
           </Link>
+        </div>
+
+        {/* Divider */}
+        <div className="my-4 border-t border-gray-700"></div>
+
+        {/* Collapse toggle */}
+        <div className="space-y-1">
+          <button
+            onClick={onToggle}
+            className={clsx(
+              'flex items-center w-full px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-800 hover:text-white transition-colors',
+              collapsed ? 'justify-center' : 'space-x-3'
+            )}
+            title={collapsed ? 'Expand menu' : 'Collapse menu'}
+          >
+            <svg
+              className={clsx('w-5 h-5 flex-shrink-0 transition-transform duration-200', collapsed && 'rotate-180')}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
+              />
+            </svg>
+            {!collapsed && <span>Collapse</span>}
+          </button>
         </div>
       </nav>
     </aside>
