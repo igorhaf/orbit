@@ -80,6 +80,16 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // PROMPT #254 - Editable title state
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState(item.title || '');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+  const [isGeneratingTitle, setIsGeneratingTitle] = useState(false);
+  const titleInputRef = useRef<HTMLInputElement>(null);
+
+  // PROMPT #254 - AI content generation state
+  const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+
   // Check if item is a suggested/draft item
   const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
 
@@ -151,6 +161,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     setEditedDescription(item.description || '');
     setIsEditingDescription(false);
   }, [item.id, item.description]);
+
+  // PROMPT #254 - Sync edited title when item changes
+  useEffect(() => {
+    setEditedTitle(item.title || '');
+    setIsEditingTitle(false);
+  }, [item.id, item.title]);
 
   // PROMPT #131 - Switch to interview tab when initialInterviewId is set
   useEffect(() => {
@@ -445,6 +461,96 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     setIsEditingDescription(false);
   };
 
+  // PROMPT #254 - Inline title editing handlers
+  const handleTitleClick = () => {
+    setIsEditingTitle(true);
+    setEditedTitle(item.title || '');
+    setTimeout(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }, 0);
+  };
+
+  const handleSaveTitle = async () => {
+    const trimmed = editedTitle.trim();
+    if (!trimmed || trimmed === item.title) {
+      setIsEditingTitle(false);
+      setEditedTitle(item.title || '');
+      return;
+    }
+
+    setIsSavingTitle(true);
+    try {
+      await tasksApi.update(item.id, { title: trimmed });
+      setIsEditingTitle(false);
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      console.error('Failed to save title:', error);
+      showError(`Failed to save title: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
+  const handleCancelTitleEdit = () => {
+    setEditedTitle(item.title || '');
+    setIsEditingTitle(false);
+  };
+
+  const handleSuggestTitle = async () => {
+    const currentTitle = editedTitle.trim() || item.title;
+    if (!currentTitle) return;
+    if (isGeneratingTitle) return;
+
+    setIsGeneratingTitle(true);
+    try {
+      const response = await tasksApi.suggestTitle({
+        user_input: currentTitle,
+        item_type: item.item_type,
+        project_id: item.project_id,
+        parent_id: item.parent_id || undefined,
+      });
+      if (response.suggested_title) {
+        setEditedTitle(response.suggested_title);
+        if (!isEditingTitle) {
+          setIsEditingTitle(true);
+        }
+      }
+    } catch (error: any) {
+      console.error('Failed to suggest title:', error);
+      showError('AI suggestion failed. Try again.');
+    } finally {
+      setIsGeneratingTitle(false);
+      titleInputRef.current?.focus();
+    }
+  };
+
+  // PROMPT #254 - AI content generation handler
+  const handleGenerateContent = async () => {
+    if (isGeneratingContent) return;
+
+    setIsGeneratingContent(true);
+    try {
+      const response = await tasksApi.generateContent({
+        task_id: item.id,
+        project_id: item.project_id,
+      });
+      if (response.description) {
+        setEditedDescription(response.description);
+        setIsEditingDescription(true);
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 0);
+      }
+      if (onUpdate) onUpdate();
+    } catch (error: any) {
+      console.error('Failed to generate content:', error);
+      showError(`AI content generation failed: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsGeneratingContent(false);
+    }
+  };
+
   // PROMPT #218 - Acceptance Criteria handlers
   const handleAddCriterion = async () => {
     if (!newCriterion.trim()) return;
@@ -653,8 +759,71 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </span>
               )}
             </div>
+            {/* PROMPT #254 - Editable title with AI suggest button */}
             <div className="flex items-center gap-3">
-              <h2 className="text-2xl font-bold text-gray-900">{item.title}</h2>
+              {isEditingTitle ? (
+                <div className="flex items-center gap-2 flex-1" data-title-edit>
+                  <input
+                    ref={titleInputRef}
+                    type="text"
+                    value={editedTitle}
+                    onChange={(e) => setEditedTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleSaveTitle();
+                      }
+                      if (e.key === 'Escape') {
+                        e.preventDefault();
+                        handleCancelTitleEdit();
+                      }
+                    }}
+                    onBlur={(e) => {
+                      if (isSavingTitle || isGeneratingTitle) return;
+                      const relatedTarget = e.relatedTarget as HTMLElement | null;
+                      if (relatedTarget?.closest('[data-title-edit]')) return;
+                      setTimeout(() => {
+                        if (isSavingTitle || isGeneratingTitle) return;
+                        handleSaveTitle();
+                      }, 200);
+                    }}
+                    className="flex-1 px-3 py-1.5 text-2xl font-bold text-gray-900 border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    disabled={isSavingTitle}
+                  />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleSuggestTitle();
+                    }}
+                    disabled={!editedTitle.trim() || isGeneratingTitle}
+                    title="Suggest a better title with AI"
+                    className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isGeneratingTitle ? (
+                      <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                      </svg>
+                    )}
+                    <span>AI</span>
+                  </button>
+                  <span className="text-xs text-gray-400 whitespace-nowrap">Enter to save, Esc to cancel</span>
+                </div>
+              ) : (
+                <h2
+                  className="text-2xl font-bold text-gray-900 cursor-pointer hover:bg-gray-100 rounded px-1 -mx-1 transition-colors"
+                  onClick={handleTitleClick}
+                  title="Click to edit title"
+                >
+                  {item.title}
+                </h2>
+              )}
               <span className="text-sm text-gray-400">{item.id}</span>
             </div>
 
@@ -760,9 +929,31 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   <div ref={descriptionEditorRef}>
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-semibold text-gray-900">Description</h3>
-                      {!isEditingDescription && (
-                        <span className="text-xs text-gray-400">Double-click to edit</span>
-                      )}
+                      <div className="flex items-center gap-2">
+                        {/* PROMPT #254 - AI content generation button */}
+                        <button
+                          type="button"
+                          onClick={handleGenerateContent}
+                          disabled={isGeneratingContent}
+                          title="Generate rich description with AI"
+                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          {isGeneratingContent ? (
+                            <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                            </svg>
+                          ) : (
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+                            </svg>
+                          )}
+                          <span>{isGeneratingContent ? 'Generating...' : 'AI'}</span>
+                        </button>
+                        {!isEditingDescription && (
+                          <span className="text-xs text-gray-400">Double-click to edit</span>
+                        )}
+                      </div>
                     </div>
 
                     {isEditingDescription ? (
