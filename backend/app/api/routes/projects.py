@@ -1077,6 +1077,30 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                 )
                 logger.info(f"Wiki: rules page with {len(rules)} rules for project {project_id}")
 
+            # PROMPT #267 - Generate wiki pages from ALL RAG data types
+            from app.api.routes.wiki import (
+                _build_architecture_patterns_page,
+                _build_code_conventions_page,
+                _build_ui_components_page,
+                _build_code_structure_page,
+                _build_git_history_page,
+            )
+            page_builders = [
+                ("padroes-arquitetura", "Padroes de Arquitetura", _build_architecture_patterns_page, 6),
+                ("convencoes-codigo", "Convencoes de Codigo", _build_code_conventions_page, 7),
+                ("componentes-interface", "Componentes e Interface", _build_ui_components_page, 8),
+                ("estrutura-codigo", "Estrutura de Codigo", _build_code_structure_page, 9),
+                ("historico-desenvolvimento", "Historico de Desenvolvimento", _build_git_history_page, 10),
+            ]
+            rag_pages_count = 0
+            for slug, title, builder, order in page_builders:
+                content = builder(db, project_id)
+                if content:
+                    _upsert_wiki_page(db, project_id, slug, title, content, order, "ai_generated")
+                    rag_pages_count += 1
+            if rag_pages_count:
+                logger.info(f"Wiki: {rag_pages_count} RAG data pages for project {project_id}")
+
             db.commit()
             logger.info(f"Wiki: {len(sections) or 1} pages from enriched content for project {project_id}")
         except Exception as e:

@@ -233,6 +233,47 @@ async def generate_wiki_from_context(
             scan_content, 5, "ai_generated"
         ))
 
+    # PROMPT #267 - Generate wiki pages from ALL RAG data types
+    # 7. Padroes de Arquitetura - from RAG discovered patterns (architecture)
+    arch_content = _build_architecture_patterns_page(db, project_id)
+    if arch_content:
+        created_pages.append(_upsert_wiki_page(
+            db, project_id, "padroes-arquitetura", "Padroes de Arquitetura",
+            arch_content, 6, "ai_generated"
+        ))
+
+    # 8. Convencoes de Codigo - from RAG discovered patterns (naming/class/import)
+    conv_content = _build_code_conventions_page(db, project_id)
+    if conv_content:
+        created_pages.append(_upsert_wiki_page(
+            db, project_id, "convencoes-codigo", "Convencoes de Codigo",
+            conv_content, 7, "ai_generated"
+        ))
+
+    # 9. Componentes e Interface - from RAG discovered patterns (UI)
+    ui_content = _build_ui_components_page(db, project_id)
+    if ui_content:
+        created_pages.append(_upsert_wiki_page(
+            db, project_id, "componentes-interface", "Componentes e Interface",
+            ui_content, 8, "ai_generated"
+        ))
+
+    # 10. Estrutura de Codigo - aggregated from RAG code files
+    struct_content = _build_code_structure_page(db, project_id)
+    if struct_content:
+        created_pages.append(_upsert_wiki_page(
+            db, project_id, "estrutura-codigo", "Estrutura de Codigo",
+            struct_content, 9, "ai_generated"
+        ))
+
+    # 11. Historico de Desenvolvimento - from RAG git commits
+    git_content = _build_git_history_page(db, project_id)
+    if git_content:
+        created_pages.append(_upsert_wiki_page(
+            db, project_id, "historico-desenvolvimento", "Historico de Desenvolvimento",
+            git_content, 10, "ai_generated"
+        ))
+
     # PROMPT #265 - Parse enriched project.description into separate wiki pages
     # If the description contains ## sections (from AI enrichment), each section
     # becomes its own wiki page (Arquitetura, Integracoes, etc.)
@@ -531,6 +572,227 @@ def _build_scan_page(scan_summary: dict) -> str:
         lines.append(f"- **Linguagens:** {', '.join(str(l) for l in languages)}")
 
     lines.append("")
+    return "\n".join(lines)
+
+
+def _build_architecture_patterns_page(db, project_id: UUID) -> Optional[str]:
+    """
+    PROMPT #267 - Build wiki page from RAG architecture patterns.
+    Fetches layered_architecture, hub-spoke graphs, REST APIs, paired imports.
+    """
+    from sqlalchemy import text as sql_text
+    result = db.execute(sql_text("""
+        SELECT content, metadata FROM rag_documents
+        WHERE project_id = :pid
+        AND COALESCE(metadata->>'content_type', metadata->>'type') = 'discovered_pattern'
+        AND metadata->>'spec_type' IN (
+            'layered_architecture', 'graph_hub_spoke', 'rest_api',
+            'graph_paired_imports', 'configuration_file'
+        )
+        ORDER BY metadata->>'spec_type', (metadata->>'occurrences')::int DESC NULLS LAST
+        LIMIT 100
+    """), {"pid": str(project_id)})
+    rows = result.fetchall()
+    if not rows:
+        return None
+
+    lines = [
+        "## Padroes de Arquitetura\n",
+        f"Total de padroes arquiteturais descobertos: **{len(rows)}**\n",
+    ]
+    current_spec = None
+    for row in rows:
+        content = row[0]
+        meta = row[1] if row[1] else {}
+        spec_type = meta.get("spec_type", "unknown")
+        category = meta.get("category", "")
+
+        if spec_type != current_spec:
+            current_spec = spec_type
+            spec_label = spec_type.replace("_", " ").title()
+            lines.append(f"\n### {spec_label}\n")
+
+        # Extract meaningful content (first 600 chars)
+        content_text = content[:600] if len(content) > 600 else content
+        if category:
+            lines.append(f"**{category}:**")
+        lines.append(f"{content_text}\n")
+
+    return "\n".join(lines)
+
+
+def _build_code_conventions_page(db, project_id: UUID) -> Optional[str]:
+    """
+    PROMPT #267 - Build wiki page from RAG code convention patterns.
+    Fetches naming conventions, class hierarchies, import patterns, function signatures.
+    """
+    from sqlalchemy import text as sql_text
+    result = db.execute(sql_text("""
+        SELECT content, metadata FROM rag_documents
+        WHERE project_id = :pid
+        AND COALESCE(metadata->>'content_type', metadata->>'type') = 'discovered_pattern'
+        AND metadata->>'spec_type' IN (
+            'naming_convention', 'class_hierarchy', 'import_pattern',
+            'function_signature', 'decorator_pattern'
+        )
+        ORDER BY metadata->>'category', metadata->>'spec_type',
+                 (metadata->>'occurrences')::int DESC NULLS LAST
+        LIMIT 200
+    """), {"pid": str(project_id)})
+    rows = result.fetchall()
+    if not rows:
+        return None
+
+    lines = [
+        "## Convencoes de Codigo\n",
+        f"Total de convencoes descobertas: **{len(rows)}**\n",
+    ]
+    current_category = None
+    for row in rows:
+        content = row[0]
+        meta = row[1] if row[1] else {}
+        category = meta.get("category", "geral")
+        spec_type = meta.get("spec_type", "")
+        occurrences = meta.get("occurrences", "")
+
+        if category != current_category:
+            current_category = category
+            lines.append(f"\n### {category.title()}\n")
+
+        spec_label = spec_type.replace("_", " ").title()
+        occ_text = f" ({occurrences} ocorrencias)" if occurrences else ""
+        lines.append(f"**{spec_label}{occ_text}:**")
+        content_text = content[:500] if len(content) > 500 else content
+        lines.append(f"{content_text}\n")
+
+    return "\n".join(lines)
+
+
+def _build_ui_components_page(db, project_id: UUID) -> Optional[str]:
+    """
+    PROMPT #267 - Build wiki page from RAG UI component/blueprint patterns.
+    """
+    from sqlalchemy import text as sql_text
+    result = db.execute(sql_text("""
+        SELECT content, metadata FROM rag_documents
+        WHERE project_id = :pid
+        AND COALESCE(metadata->>'content_type', metadata->>'type') = 'discovered_pattern'
+        AND metadata->>'spec_type' IN (
+            'ui_component', 'ui_blueprint', 'ui_component_documentation',
+            'css_configuration', 'css_template', 'stylesheet',
+            'documentation_blueprint', 'markdown_documentation'
+        )
+        ORDER BY metadata->>'spec_type', (metadata->>'occurrences')::int DESC NULLS LAST
+        LIMIT 50
+    """), {"pid": str(project_id)})
+    rows = result.fetchall()
+    if not rows:
+        return None
+
+    lines = [
+        "## Componentes e Interface\n",
+        f"Total de padroes de UI descobertos: **{len(rows)}**\n",
+    ]
+    for i, row in enumerate(rows, 1):
+        content = row[0]
+        meta = row[1] if row[1] else {}
+        spec_type = meta.get("spec_type", "")
+        name = meta.get("name", f"Componente {i}")
+
+        spec_label = spec_type.replace("_", " ").title()
+        lines.append(f"### {i}. {name} ({spec_label})\n")
+        content_text = content[:800] if len(content) > 800 else content
+        lines.append(f"{content_text}\n")
+
+    return "\n".join(lines)
+
+
+def _build_code_structure_page(db, project_id: UUID) -> Optional[str]:
+    """
+    PROMPT #267 - Build wiki page aggregating code files by language and directory.
+    """
+    from sqlalchemy import text as sql_text
+    result = db.execute(sql_text("""
+        SELECT
+            metadata->>'language' as lang,
+            metadata->>'file_path' as fpath
+        FROM rag_documents
+        WHERE project_id = :pid
+        AND COALESCE(metadata->>'content_type', metadata->>'type') = 'code_file'
+        ORDER BY metadata->>'language', metadata->>'file_path'
+    """), {"pid": str(project_id)})
+    rows = result.fetchall()
+    if not rows:
+        return None
+
+    # Group by language, then by directory
+    from collections import defaultdict
+    lang_dirs: dict = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        lang = row[0] or "unknown"
+        fpath = row[1] or "unknown"
+        # Extract directory from path
+        parts = fpath.rsplit("/", 1)
+        directory = parts[0] if len(parts) > 1 else "/"
+        filename = parts[-1]
+        lang_dirs[lang][directory].append(filename)
+
+    total_files = len(rows)
+    total_langs = len(lang_dirs)
+
+    lines = [
+        "## Estrutura de Codigo\n",
+        f"Total de arquivos indexados: **{total_files}** em **{total_langs}** linguagens\n",
+    ]
+
+    for lang, dirs in sorted(lang_dirs.items(), key=lambda x: -sum(len(v) for v in x[1].values())):
+        file_count = sum(len(v) for v in dirs.values())
+        lines.append(f"\n### {lang.upper()} ({file_count} arquivos)\n")
+
+        for directory, files in sorted(dirs.items()):
+            # Show directory with file count
+            dir_display = directory.split("/projects/")[-1] if "/projects/" in directory else directory
+            lines.append(f"**{dir_display}/** ({len(files)} arquivos)")
+            # List files (max 20 per directory to avoid huge pages)
+            for f in sorted(files)[:20]:
+                lines.append(f"- {f}")
+            if len(files) > 20:
+                lines.append(f"- ... e mais {len(files) - 20} arquivos")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
+def _build_git_history_page(db, project_id: UUID) -> Optional[str]:
+    """
+    PROMPT #267 - Build wiki page from RAG git commits.
+    """
+    from sqlalchemy import text as sql_text
+    result = db.execute(sql_text("""
+        SELECT content, metadata FROM rag_documents
+        WHERE project_id = :pid
+        AND COALESCE(metadata->>'content_type', metadata->>'type') = 'git_commit'
+        ORDER BY metadata->>'synced_at' DESC
+        LIMIT 50
+    """), {"pid": str(project_id)})
+    rows = result.fetchall()
+    if not rows:
+        return None
+
+    lines = [
+        "## Historico de Desenvolvimento\n",
+        f"Total de commits analisados: **{len(rows)}**\n",
+    ]
+    for i, row in enumerate(rows, 1):
+        content = row[0]
+        meta = row[1] if row[1] else {}
+        short_hash = meta.get("short_hash", "")
+
+        # First line of content is the commit message
+        first_line = content.split("\n")[0] if content else "Sem mensagem"
+        hash_text = f" `{short_hash}`" if short_hash else ""
+        lines.append(f"{i}.{hash_text} {first_line}")
+
     return "\n".join(lines)
 
 
