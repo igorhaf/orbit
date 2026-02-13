@@ -526,21 +526,27 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   };
 
   // PROMPT #254 - AI content generation handler
+  // Reuses the existing activate pipeline (ContextGeneratorService)
   const handleGenerateContent = async () => {
     if (isGeneratingContent) return;
 
     setIsGeneratingContent(true);
     try {
-      const response = await tasksApi.generateContent({
-        task_id: item.id,
-        project_id: item.project_id,
-      });
-      if (response.description) {
-        setEditedDescription(response.description);
-        setIsEditingDescription(true);
-        setTimeout(() => {
-          textareaRef.current?.focus();
-        }, 0);
+      const result = await tasksApi.activateSuggestedEpic(item.id);
+
+      if (result.job_id) {
+        const jobType = item.item_type === 'epic' ? 'epic_activation' :
+                        item.item_type === 'story' ? 'story_activation' :
+                        item.item_type === 'task' ? 'task_activation' : 'subtask_activation';
+        addJob(
+          result.job_id,
+          jobType,
+          `Gerando conteudo: ${item.title.substring(0, 30)}...`,
+          item.title,
+          false,
+          item.id
+        );
+        showSuccess('Geracao de conteudo iniciada! Acompanhe o progresso no sininho de notificacoes.');
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
@@ -930,15 +936,15 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                     <div className="flex items-center justify-between mb-2">
                       <h3 className="text-sm font-semibold text-gray-900">Description</h3>
                       <div className="flex items-center gap-2">
-                        {/* PROMPT #254 - AI content generation button */}
+                        {/* PROMPT #254 - AI content generation button (reuses activate pipeline) */}
                         <button
                           type="button"
                           onClick={handleGenerateContent}
-                          disabled={isGeneratingContent}
+                          disabled={isGeneratingContent || isApproving}
                           title="Generate rich description with AI"
                           className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          {isGeneratingContent ? (
+                          {(isGeneratingContent || isApproving) ? (
                             <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
                               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -948,7 +954,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                             </svg>
                           )}
-                          <span>{isGeneratingContent ? 'Generating...' : 'AI'}</span>
+                          <span>{(isGeneratingContent || isApproving) ? 'Gerando...' : 'AI'}</span>
                         </button>
                         {!isEditingDescription && (
                           <span className="text-xs text-gray-400">Double-click to edit</span>

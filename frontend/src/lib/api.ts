@@ -365,17 +365,6 @@ export const tasksApi = {
       body: JSON.stringify(data),
     }),
 
-  // PROMPT #254 - AI content generation
-  generateContent: (data: {
-    task_id: string;
-    project_id: string;
-  }) =>
-    request<{ description: string; generated_prompt?: string }>('/api/v1/tasks/generate-content', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    }),
-
   // PROMPT #108 - Execute single task (returns job_id)
   execute: (taskId: string, maxAttempts: number = 3) =>
     request<{
