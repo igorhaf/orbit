@@ -811,8 +811,34 @@ async def _process_project_pipeline(
         except Exception as e:
             logger.warning(f"Initial wiki enrichment failed (non-blocking): {e}")
 
-        # === Step B: Finalize (85-95%) ===
-        job_manager.update_progress(job_id, 85.0, "Finalizando projeto...")
+        # === Step B: Generate initial cards from business rules (PROMPT #260) ===
+        job_manager.update_progress(job_id, 85.0, "Generating initial cards from business rules...")
+        try:
+            has_rules = bool(
+                project.initial_memory_context
+                and isinstance(project.initial_memory_context, dict)
+                and project.initial_memory_context.get("business_rules")
+            )
+            if has_rules:
+                logger.info(f"Triggering card generation for project {project_id}")
+                cards_job = job_manager.create_job(
+                    job_type=JobType.CARDS_FROM_MEMORY,
+                    input_data={"project_id": str(project_id)},
+                    project_id=project_id,
+                    deep_link=f"/projects/{project_id}",
+                    notification_title=f"Gerando cards para '{project.name if project else 'projeto'}'..."
+                )
+                from app.services.job_executor import PriorityJobExecutor as CardExec
+                card_executor = CardExec.get_instance()
+                await card_executor.submit(cards_job.priority, _process_cards_from_memory_async, cards_job.id, project_id)
+                logger.info(f"Card generation job {cards_job.id} submitted for project {project_id}")
+            else:
+                logger.info(f"No business rules found for {project_id}, skipping initial card generation")
+        except Exception as e:
+            logger.warning(f"Card generation trigger failed (non-blocking): {e}")
+
+        # === Step C: Finalize (90-95%) ===
+        job_manager.update_progress(job_id, 92.0, "Finalizando projeto...")
 
         project.status = ProjectStatus.active
         project.updated_at = datetime.utcnow()
@@ -842,7 +868,9 @@ async def _process_project_pipeline(
                 logger.info(f"Watchdog started for project {project_id} (deep scan)")
             else:
                 from app.services.watchdog import submit_batch_processing_cycle
-                batch_size = {"quick": 30, "normal": 100}.get(scan_depth, 30)
+                # PROMPT #260 - Reduced batch sizes: quick=15, normal=30
+                # Previous values (30/100) were too aggressive and flooded the queue
+                batch_size = {"quick": 15, "normal": 30}.get(scan_depth, 20)
                 submit_batch_processing_cycle(db, project_id, batch_size=batch_size)
                 logger.info(f"Batch processing started for project {project_id} (batch_size={batch_size})")
         except Exception as e:

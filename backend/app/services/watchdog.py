@@ -351,11 +351,12 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
                 logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
 
         # --- Step 3: Create cards from new business rules ---
+        # PROMPT #260 - Batch mode uses higher card limit (15) for faster initial coverage
         card_result = {}
         if rules_extracted > 0:
             jm.update_progress(job_id, 70.0, "Creating cards from new discoveries...")
             try:
-                card_result = await _auto_discover_cards(db, project_id)
+                card_result = await _auto_discover_cards(db, project_id, max_cards=15)
                 if card_result.get("created", 0) > 0:
                     logger.info(f"Auto-discovered {card_result['created']} cards for '{project_name}'")
             except Exception as e:
@@ -537,12 +538,15 @@ def submit_watchdog_cycle(db: Session, project_id: UUID):
     logger.debug(f"Watchdog cycle queued for project {project_id} (job {job.id})")
 
 
-async def _auto_discover_cards(db: Session, project_id: UUID) -> Dict:
+async def _auto_discover_cards(db: Session, project_id: UUID, max_cards: int = 0) -> Dict:
     """
     Check for new business rules in RAG that don't have corresponding cards.
     Creates suggested story cards for genuinely new discoveries.
 
     Uses SimilarityDetector (384-dim embeddings, threshold 0.90) to avoid duplicates.
+
+    Args:
+        max_cards: Override MAX_CARDS_PER_CYCLE. 0 = use default.
     """
     from sqlalchemy import text as sql_text
     from app.models.task import Task, ItemType, TaskStatus, PriorityLevel
@@ -585,7 +589,8 @@ async def _auto_discover_cards(db: Session, project_id: UUID) -> Dict:
         if not rule_content or len(rule_content) < 30:
             continue
 
-        if len(created_cards) >= MAX_CARDS_PER_CYCLE:
+        effective_max = max_cards if max_cards > 0 else MAX_CARDS_PER_CYCLE
+        if len(created_cards) >= effective_max:
             break
 
         # Check against all existing cards
@@ -800,7 +805,8 @@ async def bootstrap_watchdog():
 
                 if pending_count > 0:
                     # Still processing initial files - use batch mode
-                    batch_size = {"quick": 30, "normal": 100}.get(project.scan_depth, 30)
+                    # PROMPT #260 - Reduced batch sizes to avoid flooding
+                    batch_size = {"quick": 15, "normal": 30}.get(project.scan_depth, 20)
                     submit_batch_processing_cycle(db, project.id, batch_size=batch_size)
                     logger.info(f"Batch processing resumed for {project.name} ({pending_count} pending)")
                 else:
