@@ -1003,7 +1003,7 @@ def _build_business_rules_wiki_pages(
         rules = domains[domain_name]
         domain_slug = rules[0]["domain_slug"]
         index_lines.append(
-            f"- **[{domain_name}](regras-{domain_slug})** ({len(rules)} regras)"
+            f"- **[{domain_name}](wiki:regras-{domain_slug})** ({len(rules)} regras)"
         )
 
     index_page = _upsert_wiki_page(
@@ -1046,7 +1046,7 @@ def _build_business_rules_wiki_pages(
                 if not title or len(title) < 5:
                     title = rule["content"][:120]
                 rule_slug = f"regra-{rule['rule_hash']}"
-                domain_lines.append(f"- [{title}]({rule_slug})")
+                domain_lines.append(f"- [{title}](wiki:{rule_slug})")
 
         domain_page = _upsert_wiki_page(
             db, project_id, page_slug,

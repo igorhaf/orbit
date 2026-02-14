@@ -516,8 +516,14 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                     <ReactMarkdown
                       components={{
                         a: ({ href, children, ...props }) => {
+                          // Internal wiki links: wiki:slug or plain slug (no protocol)
+                          let targetSlug: string | null = null;
                           if (href && href.startsWith('wiki:')) {
-                            const targetSlug = href.replace('wiki:', '');
+                            targetSlug = href.replace('wiki:', '');
+                          } else if (href && !href.startsWith('http') && !href.startsWith('mailto:') && !href.startsWith('/') && !href.startsWith('#')) {
+                            targetSlug = href;
+                          }
+                          if (targetSlug) {
                             return (
                               <a
                                 href="#"
