@@ -1111,6 +1111,13 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
 
             db.commit()
 
+            # PROMPT #274 - Apply semantic hypertext linking
+            try:
+                from app.api.routes.wiki import _apply_semantic_links_to_project
+                _apply_semantic_links_to_project(db, project_id)
+            except Exception as e:
+                logger.warning(f"Failed to apply semantic links: {e}")
+
             # PROMPT #270 - Auto-trigger AI enrichment for individual rule pages
             rule_page_count = len([p for p in rule_pages if p and p.slug.startswith("regra-")])
             if rule_page_count > 0:

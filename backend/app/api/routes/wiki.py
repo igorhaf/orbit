@@ -366,7 +366,11 @@ async def create_wiki_page(
     db.commit()
     db.refresh(page)
 
+    # PROMPT #274 - Re-apply semantic links (new page title may appear in other pages)
+    _apply_semantic_links_to_project(db, project_id)
+
     logger.info(f"Wiki page created: {page.title} ({page.slug}) for project {project_id}")
+    db.refresh(page)
     return page
 
 
@@ -413,6 +417,11 @@ async def update_wiki_page(
         page.order_index = data.order_index
 
     db.commit()
+
+    # PROMPT #274 - Re-apply semantic links (edited content or title change)
+    if data.content is not None or data.title is not None:
+        _apply_semantic_links_to_project(db, project_id)
+
     db.refresh(page)
 
     logger.info(f"Wiki page updated: {page.title} ({page.slug})")
@@ -436,6 +445,9 @@ async def delete_wiki_page(
 
     db.delete(page)
     db.commit()
+
+    # PROMPT #274 - Clean up orphan links pointing to deleted page
+    _apply_semantic_links_to_project(db, project_id)
 
     logger.info(f"Wiki page deleted: {page.title} ({slug})")
     return {"detail": "Wiki page deleted", "slug": slug}
@@ -1386,29 +1398,51 @@ def _add_semantic_links_to_content(
     terms_map: Dict[str, str],
     exclude_slug: str,
     max_links: int = 10,
+    valid_slugs: Optional[set] = None,
 ) -> str:
     """
     Scan markdown content and add wiki:slug links for mentions of other page titles.
     Like Wikipedia: first occurrence of each term becomes a link, rest stay as plain text.
+
+    Idempotent: detects existing wiki links and skips terms already linked.
+    Cleans up orphan links whose target page no longer exists.
 
     Args:
         content: Markdown content to process
         terms_map: {title_lower: slug} mapping of all wiki pages
         exclude_slug: Slug of current page (avoid self-links)
         max_links: Maximum number of links to add per page
+        valid_slugs: Set of all valid slugs (for orphan link cleanup)
     """
     if not content or not terms_map:
         return content
 
+    # Step 1: Remove orphan wiki links (target page deleted or renamed)
+    if valid_slugs is not None:
+        def _clean_orphan(m: re.Match) -> str:
+            slug = m.group(2)
+            if slug in valid_slugs:
+                return m.group(0)  # keep valid link
+            return m.group(1)  # revert to plain text
+
+        content = re.sub(
+            r'\[([^\]]+)\]\(wiki:([a-z0-9_-]+)\)',
+            _clean_orphan,
+            content,
+        )
+
+    # Step 2: Collect slugs already linked in the content (avoid duplicates)
+    existing_link_slugs: set = set()
+    for m in re.finditer(r'\]\(wiki:([a-z0-9_-]+)\)', content):
+        existing_link_slugs.add(m.group(1))
+
     # Sort terms by length (longest first) to avoid partial matches
     sorted_terms = sorted(terms_map.keys(), key=len, reverse=True)
 
-    # Pre-process: identify protected zones (existing links, headings, code blocks)
-    # We'll work line by line to handle headings and inline code
     lines = content.split("\n")
     result_lines = []
     links_added = 0
-    linked_slugs: set = set()
+    linked_slugs: set = set(existing_link_slugs)  # start with already-linked
     in_code_block = False
 
     for line in lines:
@@ -1418,12 +1452,11 @@ def _add_semantic_links_to_content(
             result_lines.append(line)
             continue
 
-        # Skip code blocks, headings, and lines that are already links
+        # Skip code blocks and headings
         if in_code_block or line.strip().startswith("#"):
             result_lines.append(line)
             continue
 
-        # Process this line: try to add links for each term
         if links_added >= max_links:
             result_lines.append(line)
             continue
@@ -1434,32 +1467,51 @@ def _add_semantic_links_to_content(
 
             slug = terms_map[term]
 
-            # Skip self-links and already-linked terms
+            # Skip self-links and terms whose slug is already linked
             if slug == exclude_slug or slug in linked_slugs:
                 continue
 
-            # Case-insensitive word boundary match, but avoid matching inside
-            # existing markdown links [text](url) or inline code `text`
-            # Build pattern that matches the term but not inside [...] or (...)
+            # Match term NOT inside existing markdown links or inline code.
+            # Use a two-step approach: first strip existing link spans,
+            # then search for the term in the remaining text.
+            # Simple approach: search and verify match is not inside [...](...) span
             pattern = re.compile(
-                r'(?<!\[)'           # not preceded by [
-                r'(?<!\]\()'         # not preceded by ](
-                r'(?<!`)'            # not preceded by `
-                r'\b(' + re.escape(term) + r')\b'
-                r'(?!\])'            # not followed by ]
-                r'(?!\))'            # not followed by )
-                r'(?!`)',            # not followed by `
+                r'\b(' + re.escape(term) + r')\b',
                 re.IGNORECASE,
             )
 
-            match = pattern.search(line)
-            if match:
-                # Replace only the first occurrence
+            # Find all matches and check each is not inside an existing link
+            for match in pattern.finditer(line):
+                start, end = match.start(), match.end()
+                # Check if this match falls inside a markdown link [text](url)
+                # by looking for enclosing [ before and ]( after
+                before = line[:start]
+                after = line[end:]
+
+                # Inside link text: [...HERE...](...) - preceded by [ with no ] between
+                in_link_text = (
+                    '[' in before
+                    and '](' not in before[before.rfind('['):]
+                )
+                # Inside link url: [...](...HERE...)
+                in_link_url = (
+                    '](' in before
+                    and ')' not in before[before.rfind('](') + 2:]
+                )
+                # Inside inline code: `HERE`
+                backtick_count = before.count('`')
+                in_inline_code = backtick_count % 2 == 1
+
+                if in_link_text or in_link_url or in_inline_code:
+                    continue  # skip this match, try next
+
+                # Valid match found - replace it
                 matched_text = match.group(1)
                 replacement = f"[{matched_text}](wiki:{slug})"
-                line = line[:match.start()] + replacement + line[match.end():]
+                line = line[:start] + replacement + line[end:]
                 links_added += 1
                 linked_slugs.add(slug)
+                break  # only first valid occurrence per term
 
         result_lines.append(line)
 
@@ -1484,7 +1536,9 @@ def _apply_semantic_links_to_project(db: Session, project_id: UUID) -> int:
 
     # Build terms map from page titles (skip very short titles)
     terms_map: Dict[str, str] = {}
+    valid_slugs: set = set()
     for page in pages:
+        valid_slugs.add(page.slug)
         title = page.title.strip()
         if len(title) >= 4:
             terms_map[title.lower()] = page.slug
@@ -1499,6 +1553,7 @@ def _apply_semantic_links_to_project(db: Session, project_id: UUID) -> int:
             terms_map,
             exclude_slug=page.slug,
             max_links=10,
+            valid_slugs=valid_slugs,
         )
         if new_content != page.content:
             page.content = new_content
