@@ -853,14 +853,14 @@ async def get_full_knowledge_stats(
         """)
         total = db.execute(total_query, {"project_id": str(project_id)}).fetchone()[0]
 
-        # Count by content_type
+        # Count by content_type (check both metadata.content_type and metadata.type)
         type_query = text("""
             SELECT
-                COALESCE(metadata->>'content_type', 'unknown') as content_type,
+                COALESCE(metadata->>'content_type', metadata->>'type', 'unknown') as content_type,
                 COUNT(*) as count
             FROM rag_documents
             WHERE project_id = :project_id
-            GROUP BY metadata->>'content_type'
+            GROUP BY COALESCE(metadata->>'content_type', metadata->>'type', 'unknown')
         """)
         type_results = db.execute(type_query, {"project_id": str(project_id)}).fetchall()
 
