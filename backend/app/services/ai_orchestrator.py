@@ -1424,6 +1424,7 @@ class AIOrchestrator:
 
         try:
             # PROMPT #217 - Try streaming first, fall back to non-streaming on error
+            _streamed_ok = True  # PROMPT #276 - Track if streaming succeeded to avoid duplicate console log
             try:
                 if provider == "anthropic":
                     result = await self._execute_anthropic_streaming(
@@ -1471,6 +1472,7 @@ class AIOrchestrator:
 
             except Exception as stream_err:
                 # Fallback to non-streaming if streaming fails
+                _streamed_ok = False
                 logger.warning(f"⚠️ Streaming failed, falling back to non-streaming: {stream_err}")
                 if provider == "anthropic":
                     result = await self._execute_anthropic(
@@ -1505,18 +1507,20 @@ class AIOrchestrator:
             result["db_model_name"] = model_config["db_model_name"]
             result["rag_enhanced"] = rag_context_injected  # PROMPT #83
 
-            # PROMPT #168 - Console logging for AI response
-            response_content = result.get("content", "")
-            execution_time_ms_console = int((time.time() - start_time) * 1000)
-            asyncio.create_task(console.log_ai_response(
-                model=f"{provider}/{model_name}",
-                response_preview=response_content[:300] if response_content else "No response",
-                full_response=response_content[:10000] if response_content else None,
-                tokens_used=result.get("usage", {}).get("total_tokens"),
-                duration_ms=execution_time_ms_console,
-                project_id=project_id if project_id else None,
-                cache_hit=False
-            ))
+            # PROMPT #168/#276 - Console logging for AI response
+            # Only log here if streaming failed (fallback path), to avoid duplicate with streaming completion log
+            if not _streamed_ok:
+                response_content = result.get("content", "")
+                execution_time_ms_console = int((time.time() - start_time) * 1000)
+                asyncio.create_task(console.log_ai_response(
+                    model=f"{provider}/{model_name}",
+                    response_preview=response_content[:300] if response_content else "No response",
+                    full_response=response_content[:10000] if response_content else None,
+                    tokens_used=result.get("usage", {}).get("total_tokens"),
+                    duration_ms=execution_time_ms_console,
+                    project_id=project_id if project_id else None,
+                    cache_hit=False
+                ))
 
             # PROMPT #54 - Log successful execution to database
             # PROMPT #89 - Include RAG metrics

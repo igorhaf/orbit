@@ -59,8 +59,15 @@ system_prompt: |
   - Uma Subtask e uma acao atomica (implementar funcao, criar arquivo, escrever teste)
   - Seja ESPECIFICO: "Implementar FUNC1 em FILE1" ao inves de "Criar codigo"
   - Cada Subtask deve ter criterios de aceitacao testaveis
-  - TODO O CONTEUDO DEVE SER EM PORTUGUES
+  - TODO O CONTEUDO DEVE SER EM PORTUGUES - titulos, descricoes, criterios, TUDO em portugues. NUNCA escreva em ingles.
   - NUNCA use emojis ou simbolos especiais nas respostas
+
+  **LIMITES OBRIGATORIOS:**
+  - O semantic_map deve ter NO MAXIMO 8 identificadores por subtask. Seja conciso.
+  - A description_markdown deve ter NO MAXIMO 5 paragrafos. Seja direto e objetivo.
+  - NUNCA invente regras de negocio (RN). Use APENAS as regras fornecidas no contexto.
+  - Se nenhuma regra de negocio foi fornecida, NAO crie identificadores RN.
+  - Acceptance criteria: maximo 3-4 por subtask. Cada um deve ser TESTAVEL.
 
   Retorne APENAS array JSON valido (sem markdown code blocks, sem explicacao):
   [

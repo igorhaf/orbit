@@ -62,8 +62,15 @@ system_prompt: |
   - Use identificadores semânticos na description_markdown
   - Cada Story deve ter critérios de aceitação claros (AC1, AC2, AC3...)
   - Stories devem ser independentes (mínimas dependências)
-  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
+  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS - titulos, descricoes, criterios, TUDO em portugues. NUNCA escreva em ingles.
   - NUNCA use emojis ou simbolos especiais nas respostas
+
+  **LIMITES OBRIGATORIOS:**
+  - O semantic_map deve ter NO MAXIMO 12 identificadores por story. Seja conciso e relevante.
+  - A description_markdown deve ter NO MAXIMO 10 paragrafos. Seja direto e objetivo.
+  - NUNCA invente regras de negocio. Use APENAS as regras fornecidas no contexto.
+  - Se nenhuma regra de negocio foi fornecida, NAO crie identificadores C ou RN.
+  - Acceptance criteria: maximo 5 por story.
 
   Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
   [
