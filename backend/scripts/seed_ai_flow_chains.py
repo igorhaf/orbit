@@ -1,22 +1,20 @@
 """
-Seed AI Flow Chains - PROMPT #220
+Seed AI Flow Chains - Preset: Custo Minimo (Ollama-first)
 Configure all Ollama models with top_p/top_k and create optimal AI Flow chains
 for all 8 usage types with performance utility nodes.
 
-Strategy per operation:
-- interview:           Gemma3 12B (quality) → Qwen3 14B (speed) → Claude Haiku
-- prompt_generation:   Qwen3 14B (verbose, creative) → Gemma3 12B → GPT-4 Turbo
-- task_execution:      Qwen3 14B (fast tok/s) → Gemma3 12B → Claude Haiku
-- commit_generation:   Gemma3 12B (concise output) → Qwen3 14B → Gemini Flash
-- pattern_discovery:   DeepSeek-R1 14B (reasoning) → Gemma3 12B → Gemini 2.0 Flash
-- memory:              Gemma3 12B (best rules, fast) → Qwen3 14B → DeepSeek-R1
-- queue_orchestration: Qwen3 14B (fastest tok/s) → Gemma3 12B → Phi-4
-- general:             Gemma3 12B (best overall) → Qwen3 14B → DeepSeek-R1
+Preset: CUSTO MINIMO - Prioriza modelos locais (Ollama) para zero custo de API.
+Modelos cloud ficam como fallback final apenas se necessario.
 
-Utility nodes per chain:
-- Cache: exact match, 24h TTL (instant response on cache hit)
-- Timeout: 300s GPU (prevents hanging)
-- Validator: JSON validation (ensures valid output)
+Strategy per operation (cost-optimized):
+- interview:           Gemma3 12B → Qwen3 14B
+- prompt_generation:   Qwen3 14B → Gemma3 12B
+- task_execution:      Qwen3 14B → Gemma3 12B
+- commit_generation:   Gemma3 12B → Qwen3 14B
+- pattern_discovery:   DeepSeek-R1 14B → Gemma3 12B
+- memory:              Gemma3 12B → Qwen3 14B → DeepSeek-R1 14B
+- queue_orchestration: Qwen3 14B → Gemma3 12B → Phi-4 14B
+- general:             Gemma3 12B → Qwen3 14B → DeepSeek-R1 14B
 
 Usage:
     docker exec -w /app orbit-backend python scripts/seed_ai_flow_chains.py
@@ -103,57 +101,52 @@ OLLAMA_MODEL_CONFIGS = {
 # Ollama models first (free, local), cloud models as fallback
 # ============================================================================
 CHAIN_STRATEGY = {
-    # Interview: needs quality rule understanding + good Portuguese
-    # Gemma3 (best quality, 9 rules, 5 entities) → Qwen3 (fast) → Claude Haiku (cloud fallback)
+    # Interview: quality rule understanding + good Portuguese
+    # Gemma3 (best quality) → Qwen3 (fast fallback)
     "interview": [
         ("gemma3:12b", None),
         ("qwen3:14b", None),
-        (None, "Claude Haiku"),
     ],
-    # Prompt generation: needs creativity + verbose output
-    # Qwen3 (most verbose, 1279 tokens output) → Gemma3 → GPT-4 Turbo (cloud)
+    # Prompt generation: creativity + verbose output
+    # Qwen3 (most verbose, 1279 tokens) → Gemma3 (quality fallback)
     "prompt_generation": [
         ("qwen3:14b", None),
         ("gemma3:12b", None),
-        (None, "GPT-4 Turbo"),
     ],
-    # Task execution: needs speed + code understanding
-    # Qwen3 (31.9 tok/s fastest) → Gemma3 (25 tok/s) → Claude Haiku (cloud)
+    # Task execution: speed + code understanding
+    # Qwen3 (31.9 tok/s fastest) → Gemma3 (25 tok/s)
     "task_execution": [
         ("qwen3:14b", None),
         ("gemma3:12b", None),
-        (None, "Claude Haiku"),
     ],
-    # Commit generation: needs concise output
-    # Gemma3 (concise 737 tokens) → Qwen3 → Gemini Flash (cloud, cheap)
+    # Commit generation: concise output
+    # Gemma3 (concise 737 tokens) → Qwen3
     "commit_generation": [
         ("gemma3:12b", None),
         ("qwen3:14b", None),
-        (None, "Gemini 1.5 Flash"),
     ],
-    # Pattern discovery: needs reasoning + deep analysis
-    # DeepSeek-R1 (chain of thought reasoning) → Gemma3 → Gemini 2.0 Flash (cloud)
+    # Pattern discovery: reasoning + deep analysis
+    # DeepSeek-R1 (chain of thought) → Gemma3
     "pattern_discovery": [
         ("deepseek-r1:14b", None),
         ("gemma3:12b", None),
-        (None, "Gemini 2.0 Flash"),
     ],
-    # Memory / Continuous RAG: needs quality extraction (benchmark winner)
-    # Gemma3 (9 rules, 25 tok/s, best quality) → Qwen3 → DeepSeek-R1
+    # Memory / Continuous RAG: quality extraction
+    # Gemma3 (best rules) → Qwen3 → DeepSeek-R1
     "memory": [
         ("gemma3:12b", None),
         ("qwen3:14b", None),
         ("deepseek-r1:14b", None),
     ],
-    # Queue orchestration: needs speed for batch processing
-    # Qwen3 (fastest tok/s) → Gemma3 → Phi-4 (good quality backup)
+    # Queue orchestration: speed for batch processing
+    # Qwen3 (fastest) → Gemma3 → Phi-4 (quality backup)
     "queue_orchestration": [
         ("qwen3:14b", None),
         ("gemma3:12b", None),
         ("phi4:14b", None),
     ],
-    # General fallback: best overall balance
-    # Gemma3 (best overall in benchmark) → Qwen3 → DeepSeek-R1
+    # General: best overall balance
+    # Gemma3 (best overall) → Qwen3 → DeepSeek-R1
     "general": [
         ("gemma3:12b", None),
         ("qwen3:14b", None),
@@ -596,8 +589,139 @@ def _build_utility_nodes(usage_key: str) -> list:
     return configs.get(usage_key, configs["general"])
 
 
+# ============================================================================
+# Exact node positions from user-arranged layout (Custo Minimo preset)
+# "fixed" = non-model nodes (start, error, response, utility nodes)
+# "models" = ordered list of positions for chain models [0]=first, [1]=second, etc.
+# ============================================================================
+CHAIN_POSITIONS = {
+    "interview": {
+        "fixed": {
+            "start": {"x": 0, "y": -120},
+            "error": {"x": 1420, "y": -40},
+            "response": {"x": 1800, "y": 220},
+            "cache-1707000001": {"x": 100, "y": 20},
+            "timeout-1707000002": {"x": 360, "y": 0},
+            "validator-1707000003": {"x": 1320, "y": 100},
+            "retry-1707000004": {"x": 1600, "y": 100},
+        },
+        "models": [
+            {"x": 640, "y": -40},   # Gemma3
+            {"x": 1000, "y": -40},  # Qwen3
+        ],
+    },
+    "prompt_generation": {
+        "fixed": {
+            "start": {"x": 40, "y": -120},
+            "error": {"x": 1580, "y": 20},
+            "response": {"x": 1640, "y": 360},
+            "cache-1707100001": {"x": 170, "y": -20},
+            "timeout-1707100002": {"x": 420, "y": -20},
+            "validator-1707100003": {"x": 1440, "y": 260},
+        },
+        "models": [
+            {"x": 700, "y": 20},    # Qwen3
+            {"x": 1080, "y": 20},   # Gemma3
+        ],
+    },
+    "task_execution": {
+        "fixed": {
+            "start": {"x": -20, "y": -180},
+            "error": {"x": 1680, "y": -40},
+            "response": {"x": 1840, "y": 340},
+            "cache-1707200001": {"x": 170, "y": -20},
+            "rate_limiter-1707200002": {"x": 420, "y": -20},
+            "timeout-1707200003": {"x": 670, "y": -20},
+            "validator-1707200004": {"x": 1580, "y": 240},
+        },
+        "models": [
+            {"x": 920, "y": 120},   # Qwen3
+            {"x": 1220, "y": -40},  # Gemma3
+        ],
+    },
+    "commit_generation": {
+        "fixed": {
+            "start": {"x": 0, "y": -120},
+            "error": {"x": 1520, "y": -20},
+            "response": {"x": 1680, "y": 280},
+            "cache-1707300001": {"x": 170, "y": -20},
+            "timeout-1707300002": {"x": 420, "y": -20},
+            "cost_guard-1707300003": {"x": 1380, "y": 240},
+        },
+        "models": [
+            {"x": 680, "y": -60},   # Gemma3
+            {"x": 1040, "y": 80},   # Qwen3
+        ],
+    },
+    "pattern_discovery": {
+        "fixed": {
+            "start": {"x": 50, "y": 150},
+            "error": {"x": 1500, "y": -60},
+            "response": {"x": 1880, "y": 360},
+            "cache-1707400001": {"x": 170, "y": -20},
+            "timeout-1707400002": {"x": 420, "y": -20},
+            "validator-1707400003": {"x": 1400, "y": 100},
+            "retry-1707400004": {"x": 1680, "y": 240},
+        },
+        "models": [
+            {"x": 700, "y": -40},   # DeepSeek-R1
+            {"x": 1040, "y": 0},    # Gemma3
+        ],
+    },
+    "memory": {
+        "fixed": {
+            "start": {"x": 50, "y": 150},
+            "error": {"x": 2240, "y": 20},
+            "response": {"x": 2560, "y": 340},
+            "cache-1707500001": {"x": 170, "y": -20},
+            "rag_context-1707500002": {"x": 420, "y": -20},
+            "timeout-1707500003": {"x": 670, "y": -20},
+            "validator-1707500004": {"x": 1940, "y": 240},
+            "retry-1707500005": {"x": 2200, "y": 340},
+        },
+        "models": [
+            {"x": 960, "y": 0},     # Gemma3
+            {"x": 1310, "y": 130},   # Qwen3
+            {"x": 1610, "y": 130},   # DeepSeek-R1
+        ],
+    },
+    "queue_orchestration": {
+        "fixed": {
+            "start": {"x": 50, "y": 150},
+            "error": {"x": 1250, "y": 150},
+            "cache-1707600001": {"x": 170, "y": -20},
+            "rate_limiter-1707600002": {"x": 420, "y": -20},
+            "timeout-1707600003": {"x": 670, "y": -20},
+            "validator-1707600004": {"x": 170, "y": 320},
+        },
+        "models": [
+            {"x": 350, "y": 150},   # Qwen3
+            {"x": 650, "y": 150},   # Gemma3
+            {"x": 950, "y": 150},   # Phi-4
+        ],
+    },
+    "general": {
+        "fixed": {
+            "start": {"x": 50, "y": 150},
+            "error": {"x": 2020, "y": 60},
+            "response": {"x": 2720, "y": 480},
+            "cache-1707700001": {"x": 170, "y": -20},
+            "timeout-1707700002": {"x": 420, "y": -20},
+            "validator-1707700003": {"x": 1900, "y": 260},
+            "retry-1707700004": {"x": 2180, "y": 320},
+            "cost_guard-1707700005": {"x": 2480, "y": 360},
+        },
+        "models": [
+            {"x": 780, "y": 130},   # Gemma3
+            {"x": 1080, "y": 130},  # Qwen3
+            {"x": 1460, "y": 120},  # DeepSeek-R1
+        ],
+    },
+}
+
+
 def seed_ai_flow_chains():
-    logger.info("Starting AI Flow Chains seed (PROMPT #220)...")
+    logger.info("Starting AI Flow Chains seed (Custo Minimo preset)...")
 
     engine = create_engine(settings.database_url)
     SessionLocal = sessionmaker(bind=engine)
@@ -701,12 +825,16 @@ def seed_ai_flow_chains():
                 logger.warning(f"  Skipping {usage_key}: no models resolved")
                 continue
 
-            # Calculate node positions for visual diagram
-            # Frontend constants: START_X=50, SPACING_X=300, Y=150
-            positions = {"start": {"x": 50, "y": 150}}
+            # Use manually-arranged node positions (Custo Minimo preset)
+            layout = CHAIN_POSITIONS.get(usage_key, {})
+            positions = dict(layout.get("fixed", {}))
+            # Map model positions by chain index → model-{uuid}
+            model_positions = layout.get("models", [])
             for i, mid in enumerate(chain_ids):
-                positions[mid] = {"x": 50 + 300 * (i + 1), "y": 150}
-            positions["error"] = {"x": 50 + 300 * (len(chain_ids) + 1), "y": 150}
+                if i < len(model_positions):
+                    positions[f"model-{mid}"] = model_positions[i]
+                else:
+                    positions[f"model-{mid}"] = {"x": 700 + 300 * i, "y": 0}
 
             # Build utility nodes for this operation
             utility_nodes = _build_utility_nodes(usage_key)
