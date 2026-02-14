@@ -102,34 +102,22 @@ export default function WikiIndexPage() {
     }
   };
 
-  // Flatten tree for sidebar display
-  const flattenTree = (items: WikiTreeItem[]): WikiTreeItem[] => {
-    const result: WikiTreeItem[] = [];
-    for (const item of items) {
-      result.push(item);
-      if (item.children && item.children.length > 0) {
-        result.push(...flattenTree(item.children));
-      }
-    }
-    return result;
-  };
-
-  const allPages = flattenTree(tree);
-
-  const renderTreeItem = (item: WikiTreeItem) => (
+  const renderTreeItem = (item: WikiTreeItem, depth: number = 0) => (
     <div key={item.id}>
       <button
         onClick={() => router.push(`/projects/${projectId}/wiki/${item.slug}`)}
-        className="w-full text-left px-3 py-2 rounded-lg hover:bg-blue-50 hover:text-blue-700 transition-colors text-sm flex items-center gap-2"
+        className={`w-full text-left px-3 py-2 rounded-lg hover:bg-blue-50 hover:text-blue-700 transition-colors text-sm flex items-center gap-2`}
+        style={{ paddingLeft: `${12 + depth * 16}px` }}
       >
         <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
-        <span>{item.title}</span>
+        <span className="truncate">{item.title}</span>
         {item.source === 'ai_generated' && (
           <span className="text-xs text-purple-500 ml-auto flex-shrink-0">AI</span>
         )}
       </button>
+      {item.children && item.children.map((child) => renderTreeItem(child, depth + 1))}
     </div>
   );
 
@@ -213,6 +201,9 @@ export default function WikiIndexPage() {
                     <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">Manual</span>
                   )}
                 </div>
+                {page.children && page.children.length > 0 && (
+                  <p className="text-xs text-gray-400">{page.children.length} sub-paginas</p>
+                )}
               </Card>
             ))}
           </div>
@@ -223,7 +214,7 @@ export default function WikiIndexPage() {
           <Card className="p-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider">Indice</h2>
             <div className="space-y-0.5">
-              {allPages.map((item) => renderTreeItem(item))}
+              {tree.map((item) => renderTreeItem(item))}
             </div>
           </Card>
         )}
