@@ -488,6 +488,7 @@ def _upsert_wiki_page(
     content: str,
     order_index: int,
     source: str,
+    parent_id: UUID = None,
 ) -> WikiPage:
     """Create or update a wiki page by slug.
     Preserves enriched content: if a page was already enriched (source='enrichment'),
@@ -504,6 +505,9 @@ def _upsert_wiki_page(
         # Only overwrite content if the page hasn't been enriched yet
         if existing.source != "enrichment":
             existing.content = content
+        # Always fix parent_id if provided (prevents orphan pages)
+        if parent_id is not None:
+            existing.parent_id = parent_id
         return existing
 
     page = WikiPage(
@@ -513,6 +517,7 @@ def _upsert_wiki_page(
         content=content,
         order_index=order_index,
         source=source,
+        parent_id=parent_id,
     )
     db.add(page)
     return page
@@ -1074,10 +1079,9 @@ def _build_business_rules_wiki_pages(
         db, project_id, "regras-indice",
         "Regras de Negocio - Indice",
         "\n".join(index_lines),
-        20, "ai_generated"
+        20, "ai_generated",
+        parent_id=parent_id,
     )
-    if parent_id and index_page:
-        index_page.parent_id = parent_id
     created_pages.append(index_page)
 
     # --- Per-domain pages + individual rule pages ---
@@ -1116,10 +1120,9 @@ def _build_business_rules_wiki_pages(
             db, project_id, page_slug,
             f"Regras de Negocio - {domain_name}",
             "\n".join(domain_lines),
-            domain_order, "ai_generated"
+            domain_order, "ai_generated",
+            parent_id=index_page.id if index_page else None,
         )
-        if index_page and domain_page:
-            domain_page.parent_id = index_page.id
         created_pages.append(domain_page)
 
         # Individual rule pages
@@ -1154,10 +1157,9 @@ def _build_business_rules_wiki_pages(
             rule_page = _upsert_wiki_page(
                 db, project_id, rule_slug,
                 title, rule_content,
-                rule_order, "ai_generated"
+                rule_order, "ai_generated",
+                parent_id=domain_page.id if domain_page else None,
             )
-            if domain_page and rule_page:
-                rule_page.parent_id = domain_page.id
             created_pages.append(rule_page)
             rule_order += 1
 
