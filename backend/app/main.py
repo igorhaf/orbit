@@ -42,6 +42,7 @@ from app.api.routes import (
     prompt_queue,  # PROMPT #215 - Prompt Orchestration Priority Queue
     continuous_rag,  # PROMPT #218 - Continuous RAG Evolution
     wiki,  # PROMPT #261 - Multi-page Wiki System
+    project_chats,  # PROMPT #282 - RAG Chat Sessions
 )
 from app.api import websocket
 from app.api.exceptions import (
@@ -401,6 +402,13 @@ app.include_router(
     wiki.router,
     prefix=f"{API_V1_PREFIX}/projects",
     tags=["Wiki"]
+)
+
+# Project Chats (PROMPT #282 - RAG Chat Sessions)
+app.include_router(
+    project_chats.router,
+    prefix=f"{API_V1_PREFIX}/projects",
+    tags=["Project Chats"]
 )
 
 

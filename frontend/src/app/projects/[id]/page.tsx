@@ -20,11 +20,12 @@ import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Int
 import { ProjectSpecsList } from '@/components/specs';  // PROMPT #197 - Specs tab
 import PromptQueuePanel from '@/components/backlog/PromptQueuePanel';  // PROMPT #215 - Prompt Queue
 import WikiPanel from '@/components/wiki/WikiPanel';  // PROMPT #272 - Wiki as project tab
+import { ProjectChatPanel } from '@/components/chat/ProjectChatPanel';  // PROMPT #282 - RAG Chat
 import { projectsApi, tasksApi, ragApi, knowledgeApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
 
-type Tab = 'overview' | 'backlog' | 'kanban' | 'queue' | 'wiki' | 'interview' | 'specs' | 'commits' | 'rag' | 'analytics' | 'consistency';  // PROMPT #273 - Grouped tabs with icons
+type Tab = 'overview' | 'backlog' | 'kanban' | 'queue' | 'wiki' | 'chat' | 'specs' | 'commits' | 'rag' | 'analytics' | 'consistency';  // PROMPT #282 - Replaced interview with chat
 type OverviewSubTab = 'description' | 'statistics';
 
 export default function ProjectDetailsPage() {
@@ -523,7 +524,7 @@ export default function ProjectDetailsPage() {
               {
                 tabs: [
                   { id: 'wiki', label: 'Wiki', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg> },
-                  ...(!project?.context_locked ? [{ id: 'interview', label: 'Interview', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg> }] : []),
+                  { id: 'chat', label: 'Chat', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg> },
                   { id: 'specs', label: 'Specs', icon: <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> },
                 ],
               },
@@ -541,10 +542,6 @@ export default function ProjectDetailsPage() {
                   <button
                     key={tab.id}
                     onClick={() => {
-                      if (tab.id === 'interview') {
-                        router.push(`/projects/${projectId}/setup-context`);
-                        return;
-                      }
                       if (tab.id === 'consistency') {
                         router.push(`/projects/${projectId}/consistency`);
                         return;
@@ -671,6 +668,13 @@ export default function ProjectDetailsPage() {
         {activeTab === 'wiki' && (
           <div>
             <WikiPanel projectId={projectId} />
+          </div>
+        )}
+
+        {/* PROMPT #282 - RAG Chat Tab */}
+        {activeTab === 'chat' && (
+          <div>
+            <ProjectChatPanel projectId={projectId} />
           </div>
         )}
 

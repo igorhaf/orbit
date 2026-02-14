@@ -173,6 +173,13 @@ class Project(Base):
         lazy="selectin"
     )
 
+    chats = relationship(
+        "ProjectChat",
+        back_populates="project",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+
     @property
     def stack(self) -> dict:
         """

@@ -27,6 +27,7 @@ from app.models.discovery_queue import DiscoveryQueue, DiscoveryQueueStatus  # P
 from app.models.ai_flow_chain import AIFlowChain  # PROMPT #122 - AI Flow Fallback Chains
 from app.models.prompt_queue import PromptQueue, QueueItemStatus  # PROMPT #215 - Prompt Orchestration Queue
 from app.models.wiki_page import WikiPage  # PROMPT #261 - Multi-page Wiki System
+from app.models.project_chat import ProjectChat  # PROMPT #282 - RAG Chat Sessions
 
 __all__ = [
     # Models
@@ -67,4 +68,5 @@ __all__ = [
     "PromptQueue",  # PROMPT #215 - Prompt Orchestration Queue
     "QueueItemStatus",  # PROMPT #215
     "WikiPage",  # PROMPT #261 - Multi-page Wiki System
+    "ProjectChat",  # PROMPT #282 - RAG Chat Sessions
 ]

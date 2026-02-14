@@ -1529,3 +1529,35 @@ export const wikiApi = {
       method: 'POST',
     }),
 };
+
+// PROMPT #282 - Project Chat API (RAG-based knowledge chat)
+export const projectChatsApi = {
+  list: (projectId: string) =>
+    request<any[]>(`/api/v1/projects/${projectId}/chats`),
+
+  create: (projectId: string, data?: { title?: string }) =>
+    request<any>(`/api/v1/projects/${projectId}/chats`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    }),
+
+  get: (projectId: string, chatId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/chats/${chatId}`),
+
+  delete: (projectId: string, chatId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/chats/${chatId}`, {
+      method: 'DELETE',
+    }),
+
+  updateTitle: (projectId: string, chatId: string, title: string) =>
+    request<any>(`/api/v1/projects/${projectId}/chats/${chatId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    }),
+
+  sendMessage: (projectId: string, chatId: string, content: string) =>
+    request<any>(`/api/v1/projects/${projectId}/chats/${chatId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+};
