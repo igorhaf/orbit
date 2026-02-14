@@ -86,22 +86,28 @@ export default function ProjectDetailsPage() {
   const loadProjectData = useCallback(async () => {
     console.log('📋 Loading project data for ID:', projectId);
     try {
-      const [projectRes, tasksRes] = await Promise.all([
+      // PROMPT #277 - Use Promise.allSettled to prevent tasks failure from blocking project load
+      const [projectResult, tasksResult] = await Promise.allSettled([
         projectsApi.get(projectId),
         tasksApi.list({ project_id: projectId }),
       ]);
 
-      console.log('✅ Project response:', projectRes);
-      console.log('✅ Tasks response:', tasksRes);
+      if (projectResult.status === 'fulfilled') {
+        const projectData = projectResult.value.data || projectResult.value;
+        setProject(projectData);
+      } else {
+        console.error('❌ Failed to load project:', projectResult.reason);
+      }
 
-      // Handle both response formats (direct data or wrapped in .data)
-      const projectData = projectRes.data || projectRes;
-      const tasksData = tasksRes.data || tasksRes;
-
-      setProject(projectData);
-      setTasks(Array.isArray(tasksData) ? tasksData : []);
+      if (tasksResult.status === 'fulfilled') {
+        const tasksData = tasksResult.value.data || tasksResult.value;
+        setTasks(Array.isArray(tasksData) ? tasksData : []);
+      } else {
+        console.error('❌ Failed to load tasks:', tasksResult.reason);
+        setTasks([]);
+      }
     } catch (error) {
-      console.error('❌ Failed to load project:', error);
+      console.error('❌ Failed to load project data:', error);
     } finally {
       setLoading(false);
     }
