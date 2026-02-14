@@ -579,28 +579,23 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                 )}
               </Card>
 
-              {/* Auto-list sub-pages when current page has children */}
+              {/* Auto-list child pages as wiki-style links */}
               {(() => {
                 const treeItem = selectedSlug ? findTreeItem(tree, selectedSlug) : null;
                 if (!treeItem || !treeItem.children || treeItem.children.length === 0) return null;
                 return (
-                  <Card className="p-5 mt-4">
-                    <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-3">Sub-paginas</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {treeItem.children.map((child) => (
+                  <ul className="mt-6 space-y-1 list-disc pl-5">
+                    {treeItem.children.map((child) => (
+                      <li key={child.id}>
                         <button
-                          key={child.id}
                           onClick={() => { setEditing(false); setSelectedSlug(child.slug); }}
-                          className="text-left px-3 py-2 rounded-lg hover:bg-blue-50 text-sm text-blue-600 hover:text-blue-800 transition-colors border border-gray-100 hover:border-blue-200"
+                          className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
                         >
                           {child.title}
-                          {child.children && child.children.length > 0 && (
-                            <span className="text-xs text-gray-400 ml-1">({child.children.length})</span>
-                          )}
                         </button>
-                      ))}
-                    </div>
-                  </Card>
+                      </li>
+                    ))}
+                  </ul>
                 );
               })()}
             </div>
