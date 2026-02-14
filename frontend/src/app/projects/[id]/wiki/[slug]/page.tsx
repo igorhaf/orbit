@@ -327,9 +327,10 @@ export default function WikiPageView() {
                 >
                   {page.content}
                 </ReactMarkdown>
-                {/* Child page links inside the content, like Wikipedia */}
+                {/* Child page links only for root pages */}
                 {(() => {
-                  const treeItem = findTreeItem(tree, slug);
+                  // Only show auto-links for root-level pages. Sub-pages manage their own links in content.
+                  const treeItem = tree.find(t => t.slug === slug);
                   if (!treeItem || !treeItem.children || treeItem.children.length === 0) return null;
                   return (
                     <ul className="mt-8 space-y-1 list-disc pl-5">

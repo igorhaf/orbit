@@ -575,9 +575,10 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                     >
                       {selectedPage.content}
                     </ReactMarkdown>
-                    {/* Child page links inside the content, like Wikipedia */}
+                    {/* Child page links only for root pages (sidebar items) */}
                     {(() => {
-                      const treeItem = selectedSlug ? findTreeItem(tree, selectedSlug) : null;
+                      // Only show auto-links for root-level pages. Sub-pages manage their own links in content.
+                      const treeItem = selectedSlug ? tree.find(t => t.slug === selectedSlug) : null;
                       if (!treeItem || !treeItem.children || treeItem.children.length === 0) return null;
                       return (
                         <ul className="mt-8 space-y-1 list-disc pl-5">
