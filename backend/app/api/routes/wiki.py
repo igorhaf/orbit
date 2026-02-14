@@ -300,6 +300,9 @@ async def generate_wiki_from_context(
 
     db.commit()
 
+    # PROMPT #274 - Apply semantic hypertext linking (Wikipedia-style)
+    linked_count = _apply_semantic_links_to_project(db, project_id)
+
     # PROMPT #270 - Auto-trigger AI enrichment for individual rule pages
     rule_page_count = len([p for p in rule_pages if p and p.slug.startswith("regra-")])
     enrichment_job_id = None
@@ -311,13 +314,30 @@ async def generate_wiki_from_context(
 
     total_pages = len([p for p in created_pages if p])
     result = {
-        "detail": f"{total_pages} wiki pages generated",
+        "detail": f"{total_pages} wiki pages generated ({linked_count} pages with semantic links)",
         "pages": [p.slug for p in created_pages if p],
     }
     if enrichment_job_id:
         result["enrichment_job_id"] = str(enrichment_job_id)
         result["detail"] += f". Enrichment started for {rule_page_count} rules."
     return result
+
+
+@router.post("/{project_id}/wiki/relink")
+async def relink_wiki_pages(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #274 - Re-apply semantic hypertext linking to all wiki pages.
+    Useful after editing pages or adding new ones.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    linked_count = _apply_semantic_links_to_project(db, project_id)
+    return {"detail": f"{linked_count} pages updated with semantic links"}
 
 
 @router.post("/{project_id}/wiki", response_model=WikiPageResponse, status_code=201)
@@ -1332,14 +1352,19 @@ async def _enrich_rules_background(
             # Small delay to avoid rate limiting
             await asyncio.sleep(0.5)
 
+        # PROMPT #274 - Re-apply semantic links after enrichment
+        linked_count = _apply_semantic_links_to_project(db, project_id)
+
         job_manager.complete_job(job_id, {
             "enriched": enriched_count,
             "failed": failed_count,
             "total": total,
+            "semantic_links": linked_count,
         })
         logger.info(
             f"Wiki rule enrichment complete for project {project_id}: "
-            f"{enriched_count}/{total} enriched, {failed_count} failed"
+            f"{enriched_count}/{total} enriched, {failed_count} failed, "
+            f"{linked_count} pages with semantic links"
         )
 
     except Exception as e:
@@ -1350,6 +1375,143 @@ async def _enrich_rules_background(
             pass
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# PROMPT #274 - Hypertext Linking Semantico (estilo Wikipedia)
+# ---------------------------------------------------------------------------
+
+def _add_semantic_links_to_content(
+    content: str,
+    terms_map: Dict[str, str],
+    exclude_slug: str,
+    max_links: int = 10,
+) -> str:
+    """
+    Scan markdown content and add wiki:slug links for mentions of other page titles.
+    Like Wikipedia: first occurrence of each term becomes a link, rest stay as plain text.
+
+    Args:
+        content: Markdown content to process
+        terms_map: {title_lower: slug} mapping of all wiki pages
+        exclude_slug: Slug of current page (avoid self-links)
+        max_links: Maximum number of links to add per page
+    """
+    if not content or not terms_map:
+        return content
+
+    # Sort terms by length (longest first) to avoid partial matches
+    sorted_terms = sorted(terms_map.keys(), key=len, reverse=True)
+
+    # Pre-process: identify protected zones (existing links, headings, code blocks)
+    # We'll work line by line to handle headings and inline code
+    lines = content.split("\n")
+    result_lines = []
+    links_added = 0
+    linked_slugs: set = set()
+    in_code_block = False
+
+    for line in lines:
+        # Toggle code block state
+        if line.strip().startswith("```"):
+            in_code_block = not in_code_block
+            result_lines.append(line)
+            continue
+
+        # Skip code blocks, headings, and lines that are already links
+        if in_code_block or line.strip().startswith("#"):
+            result_lines.append(line)
+            continue
+
+        # Process this line: try to add links for each term
+        if links_added >= max_links:
+            result_lines.append(line)
+            continue
+
+        for term in sorted_terms:
+            if links_added >= max_links:
+                break
+
+            slug = terms_map[term]
+
+            # Skip self-links and already-linked terms
+            if slug == exclude_slug or slug in linked_slugs:
+                continue
+
+            # Case-insensitive word boundary match, but avoid matching inside
+            # existing markdown links [text](url) or inline code `text`
+            # Build pattern that matches the term but not inside [...] or (...)
+            pattern = re.compile(
+                r'(?<!\[)'           # not preceded by [
+                r'(?<!\]\()'         # not preceded by ](
+                r'(?<!`)'            # not preceded by `
+                r'\b(' + re.escape(term) + r')\b'
+                r'(?!\])'            # not followed by ]
+                r'(?!\))'            # not followed by )
+                r'(?!`)',            # not followed by `
+                re.IGNORECASE,
+            )
+
+            match = pattern.search(line)
+            if match:
+                # Replace only the first occurrence
+                matched_text = match.group(1)
+                replacement = f"[{matched_text}](wiki:{slug})"
+                line = line[:match.start()] + replacement + line[match.end():]
+                links_added += 1
+                linked_slugs.add(slug)
+
+        result_lines.append(line)
+
+    return "\n".join(result_lines)
+
+
+def _apply_semantic_links_to_project(db: Session, project_id: UUID) -> int:
+    """
+    Apply semantic hypertext linking to all wiki pages of a project.
+    Scans each page's content for mentions of other page titles and adds wiki links.
+
+    Returns number of pages modified.
+    """
+    pages = (
+        db.query(WikiPage)
+        .filter(WikiPage.project_id == project_id)
+        .all()
+    )
+
+    if not pages:
+        return 0
+
+    # Build terms map from page titles (skip very short titles)
+    terms_map: Dict[str, str] = {}
+    for page in pages:
+        title = page.title.strip()
+        if len(title) >= 4:
+            terms_map[title.lower()] = page.slug
+
+    if not terms_map:
+        return 0
+
+    modified_count = 0
+    for page in pages:
+        new_content = _add_semantic_links_to_content(
+            page.content,
+            terms_map,
+            exclude_slug=page.slug,
+            max_links=10,
+        )
+        if new_content != page.content:
+            page.content = new_content
+            modified_count += 1
+
+    if modified_count > 0:
+        db.commit()
+        logger.info(
+            f"Semantic linking: {modified_count}/{len(pages)} pages "
+            f"updated for project {project_id}"
+        )
+
+    return modified_count
 
 
 def _parse_wiki_sections(markdown: str) -> Dict[str, Tuple[str, str]]:
