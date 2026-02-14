@@ -1377,29 +1377,31 @@ async def _enrich_rules_background(
 
         job_manager.update_progress(job_id, 5.0, f"Preparing {total} rules for enrichment...")
 
-        # Build a map of domain pages to get related rules per domain
+        # PROMPT #288 - Batch-load all parent pages in ONE query (fixes N+1)
+        parent_ids = set(p.parent_id for p in rule_pages if p.parent_id)
+        parent_map: dict = {}  # id -> (slug, title)
+        if parent_ids:
+            parent_rows = (
+                db.query(WikiPage.id, WikiPage.slug, WikiPage.title)
+                .filter(WikiPage.id.in_(parent_ids))
+                .all()
+            )
+            parent_map = {row[0]: (row[1], row[2]) for row in parent_rows}
+
+        # Build domain_rules_map from parent info (batch siblings per parent)
         domain_rules_map: dict = {}
-        for page in rule_pages:
-            # Find parent domain page
-            if page.parent_id:
-                parent_slug = db.execute(sql_text(
-                    "SELECT slug FROM wiki_pages WHERE id = :pid"
-                ), {"pid": str(page.parent_id)}).scalar()
-                if parent_slug and parent_slug not in domain_rules_map:
-                    # Get sibling rules (same domain, max 10 for context)
-                    siblings = (
-                        db.query(WikiPage)
-                        .filter(
-                            WikiPage.parent_id == page.parent_id,
-                            WikiPage.slug.like("regra-%"),
-                            WikiPage.id != page.id,
-                        )
-                        .limit(10)
-                        .all()
+        for parent_id, (parent_slug, parent_title) in parent_map.items():
+            if parent_slug not in domain_rules_map:
+                siblings = (
+                    db.query(WikiPage.title)
+                    .filter(
+                        WikiPage.parent_id == parent_id,
+                        WikiPage.slug.like("regra-%"),
                     )
-                    domain_rules_map[parent_slug] = [
-                        s.title for s in siblings
-                    ]
+                    .limit(10)
+                    .all()
+                )
+                domain_rules_map[parent_slug] = [s[0] for s in siblings]
 
         loader = PromptLoader()
         orchestrator = AIOrchestrator(db)
@@ -1432,17 +1434,18 @@ async def _enrich_rules_background(
                 if page.source == "ai_generated":
                     # Original template format - parse markers
                     for line in page.content.split("\n"):
-                        if line.startswith("**Dominio:**"):
-                            domain_name = line.replace("**Dominio:**", "").strip()
-                        elif line.startswith("**Arquivo Fonte:**"):
-                            source_file = line.replace("**Arquivo Fonte:**", "").strip().strip("`")
-                    desc_marker = "### Descricao"
-                    if desc_marker in page.content:
-                        parts = page.content.split(desc_marker, 1)
-                        if len(parts) > 1:
-                            desc_text = parts[1].split("---")[0].strip()
-                            if desc_text:
-                                rule_content = desc_text
+                        if line.startswith("**Dominio:**") or line.startswith("**Domain:**"):
+                            domain_name = line.replace("**Dominio:**", "").replace("**Domain:**", "").strip()
+                        elif line.startswith("**Arquivo Fonte:**") or line.startswith("**Source File:**"):
+                            source_file = line.replace("**Arquivo Fonte:**", "").replace("**Source File:**", "").strip().strip("`")
+                    for desc_marker in ("### Description", "### Descricao"):
+                        if desc_marker in page.content:
+                            parts = page.content.split(desc_marker, 1)
+                            if len(parts) > 1:
+                                desc_text = parts[1].split("---")[0].strip()
+                                if desc_text:
+                                    rule_content = desc_text
+                            break
                 else:
                     # Already enriched - try to get original from RAG using slug hash
                     rule_hash = page.slug.replace("regra-", "")
@@ -1463,20 +1466,18 @@ async def _enrich_rules_background(
                         # Fallback: use existing enriched content as context
                         rule_content = page.content
 
-                    # Get domain from parent page slug
-                    if page.parent_id:
-                        parent = db.execute(sql_text(
-                            "SELECT slug, title FROM wiki_pages WHERE id = :pid"
-                        ), {"pid": str(page.parent_id)}).fetchone()
-                        if parent and parent[1]:
-                            domain_name = parent[1].replace("Regras de Negocio - ", "")
+                    # PROMPT #288 - Use pre-loaded parent_map instead of per-rule query
+                    if page.parent_id and page.parent_id in parent_map:
+                        _, parent_title = parent_map[page.parent_id]
+                        if parent_title:
+                            domain_name = (parent_title
+                                .replace("Business Rules - ", "")
+                                .replace("Regras de Negocio - ", ""))
 
-                # Get related rules from same domain
+                # PROMPT #288 - Use pre-loaded parent_map for related rules lookup
                 parent_slug = ""
-                if page.parent_id:
-                    parent_slug = db.execute(sql_text(
-                        "SELECT slug FROM wiki_pages WHERE id = :pid"
-                    ), {"pid": str(page.parent_id)}).scalar() or ""
+                if page.parent_id and page.parent_id in parent_map:
+                    parent_slug = parent_map[page.parent_id][0]
                 related = domain_rules_map.get(parent_slug, [])
                 related_text = "\n".join(f"- {r}" for r in related[:8]) if related else ""
 
@@ -1493,14 +1494,15 @@ async def _enrich_rules_background(
                     "context/wiki_rule_enrichment", template_vars
                 )
 
-                # Call AI
+                # Call AI - PROMPT #288: reduced from 2000 to 1000 tokens
                 response = await orchestrator.execute(
                     usage_type="memory",
                     messages=[{"role": "user", "content": usr_prompt}],
                     system_prompt=sys_prompt,
-                    max_tokens=2000,
+                    max_tokens=1000,  # PROMPT #288 - Reduced for performance
                     project_id=str(project_id),
-                    metadata={"type": "wiki_rule_enrichment", "rule_slug": page.slug},
+                    metadata={"type": "wiki_rule_enrichment", "rule_slug": page.slug,
+                              "skip_context_build": True},
                 )
 
                 enriched_content = response.get("content", "")
@@ -1517,8 +1519,8 @@ async def _enrich_rules_background(
                 failed_count += 1
                 logger.error(f"Failed to enrich rule {page.slug}: {e}")
 
-            # Small delay to avoid rate limiting
-            await asyncio.sleep(0.5)
+            # PROMPT #288 - Reduced from 0.5s to 0.1s (rate limiter handles throttling)
+            await asyncio.sleep(0.1)
 
         # PROMPT #274 - Re-apply semantic links after enrichment
         linked_count = _apply_semantic_links_to_project(db, project_id)

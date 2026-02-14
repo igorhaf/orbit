@@ -16,6 +16,13 @@ from app.api.websocket import broadcast_chain_event  # PROMPT #124 - Chain anima
 
 from app.models.ai_model import AIModel, AIModelUsageType
 from app.models.ai_flow_chain import AIFlowChain  # PROMPT #122 - AI Flow Fallback Chains
+
+# PROMPT #288 - In-memory cache for model configs and chains (avoids 5-7 DB queries per execute())
+_model_config_cache: Dict = {}
+_model_config_cache_ts: float = 0
+_chain_config_cache: Dict = {}
+_chain_config_cache_ts: float = 0
+_MODEL_CACHE_TTL = 60  # seconds - models rarely change
 from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
 from app.models.prompt import Prompt  # PROMPT #58 - Prompt Audit Logging
 from app.models.task import Task, ItemType, PriorityLevel  # JIRA Transformation - Multi-dimensional model selection
@@ -273,22 +280,31 @@ class AIOrchestrator:
     def _get_chain_models(self, usage_type: UsageType) -> Optional[List[Dict]]:
         """
         PROMPT #122 - Get ordered list of model configs from AIFlowChain.
+        PROMPT #288 - Cached for 60s to avoid 5-7 DB queries per execute().
         Returns None if no chain exists or chain is inactive/empty.
         """
+        global _chain_config_cache, _chain_config_cache_ts
+
+        now = time.time()
+        cache_key = usage_type
+
+        # Check in-memory cache
+        if now - _chain_config_cache_ts < _MODEL_CACHE_TTL and cache_key in _chain_config_cache:
+            return _chain_config_cache[cache_key]
+
         chain = self.db.query(AIFlowChain).filter(
             AIFlowChain.usage_type == usage_type,
             AIFlowChain.is_active == True
         ).first()
 
         if not chain or not chain.chain:
+            _chain_config_cache[cache_key] = None
+            _chain_config_cache_ts = now
             return None
 
         model_configs = []
         for model_id in chain.chain:
-            db_model = self.db.query(AIModel).filter(
-                AIModel.id == model_id,
-                AIModel.is_active == True
-            ).first()
+            db_model = self._get_cached_model(model_id)
 
             if db_model and db_model.provider.lower() in self.clients:
                 provider = db_model.provider.lower()
@@ -317,7 +333,28 @@ class AIOrchestrator:
                     f"{'not found or inactive' if not db_model else 'provider not initialized'}"
                 )
 
-        return model_configs if model_configs else None
+        result = model_configs if model_configs else None
+        _chain_config_cache[cache_key] = result
+        _chain_config_cache_ts = now
+        return result
+
+    def _get_cached_model(self, model_id) -> Optional[AIModel]:
+        """PROMPT #288 - Get AI model with in-memory caching (60s TTL)."""
+        global _model_config_cache, _model_config_cache_ts
+
+        now = time.time()
+        model_id_str = str(model_id)
+
+        if now - _model_config_cache_ts < _MODEL_CACHE_TTL and model_id_str in _model_config_cache:
+            return _model_config_cache[model_id_str]
+
+        # Refresh full cache if expired
+        if now - _model_config_cache_ts >= _MODEL_CACHE_TTL:
+            models = self.db.query(AIModel).filter(AIModel.is_active == True).all()
+            _model_config_cache = {str(m.id): m for m in models}
+            _model_config_cache_ts = now
+
+        return _model_config_cache.get(model_id_str)
 
     def _get_chain_utility_nodes(self, usage_type: UsageType) -> List[Dict]:
         """
@@ -449,11 +486,16 @@ class AIOrchestrator:
             return 0.0
         return len(query_words & content_words) / len(query_words)
 
+    # PROMPT #288 - Cache for choose_model results
+    _choose_model_cache: Dict[str, Dict] = {}
+    _choose_model_cache_ts: float = 0
+
     def choose_model(self, usage_type: UsageType) -> Dict[str, any]:
         """
         Escolhe modelo dinamicamente do banco baseado no usage_type
         PROMPT #51 - Dynamic AI Model Integration
         PROMPT #122 - AI Flow chain check added
+        PROMPT #288 - Cached for 60s to avoid redundant DB queries
 
         Args:
             usage_type: Tipo de uso (prompt_generation, task_execution, etc)
@@ -464,13 +506,22 @@ class AIOrchestrator:
         Raises:
             ValueError: Se nenhum modelo estiver disponível para o usage_type
         """
+        now = time.time()
+        if (now - self._choose_model_cache_ts < _MODEL_CACHE_TTL
+                and usage_type in self._choose_model_cache):
+            return self._choose_model_cache[usage_type]
+
         # 1. Buscar modelo ativo do banco com o usage_type específico
-        # Note: Chain check moved to execute() (PROMPT #123) for full fallback support
-        # Order by updated_at DESC para pegar o modelo mais recentemente editado
         db_model = self.db.query(AIModel).filter(
             AIModel.usage_type == usage_type,
             AIModel.is_active == True
         ).order_by(AIModel.updated_at.desc()).first()
+
+        def _cache_and_return(result: Dict) -> Dict:
+            """Store result in cache and return."""
+            self._choose_model_cache[usage_type] = result
+            self._choose_model_cache_ts = time.time()
+            return result
 
         if db_model:
             provider = db_model.provider.lower()
@@ -487,7 +538,7 @@ class AIOrchestrator:
                     f"for {usage_type} [max_tokens={max_tokens}, temp={temperature}]"
                 )
 
-                return {
+                return _cache_and_return({
                     "provider": provider,
                     "model": model_name if model_name else self._get_default_model(provider),
                     "max_tokens": max_tokens,
@@ -504,7 +555,7 @@ class AIOrchestrator:
                     "timeout_seconds": db_model.timeout_seconds,
                     # PROMPT #228 - Concurrency limit
                     "max_concurrent_requests": db_model.max_concurrent_requests,
-                }
+                })
             else:
                 logger.warning(
                     f"⚠️  Model '{db_model.name}' configured for {usage_type} but "
@@ -529,7 +580,7 @@ class AIOrchestrator:
                 f"🔄 Fallback to {fallback_model.name} ({provider}/{model_name}) for {usage_type}"
             )
 
-            return {
+            return _cache_and_return({
                 "provider": provider,
                 "model": model_name if model_name else self._get_default_model(provider),
                 "max_tokens": max_tokens,
@@ -546,17 +597,16 @@ class AIOrchestrator:
                 "timeout_seconds": fallback_model.timeout_seconds,
                 # PROMPT #228 - Concurrency limit
                 "max_concurrent_requests": fallback_model.max_concurrent_requests,
-            }
+            })
 
         # 3. Fallback: tentar diagrama 'general' (chain) se existir
-        # Este cenário cobre: sem modelo padrão → sem modelo general → diagrama general
         if usage_type != "general":
             general_chain = self._get_chain_models("general")
             if general_chain:
                 logger.info(
                     f"🔗 choose_model fallback: no settings model, using first model from general chain"
                 )
-                return general_chain[0]
+                return _cache_and_return(general_chain[0])
 
         # 4. Nenhum modelo disponível
         raise ValueError(
@@ -761,9 +811,13 @@ class AIOrchestrator:
             if general_chain_models and len(general_chain_models) > 0:
                 chains_to_try.append(("general", "general", general_chain_models))
 
+        # PROMPT #288 - Skip classification for deterministic/template prompts
+        # Callers pass metadata={"skip_context_build": True} to avoid wasted work
+        _skip_context = metadata.get("skip_context_build", False) if metadata else False
+
         # PROMPT #235 - General Operation Flow: classify + build context as universal fallback
         _general_classification = None
-        if not (metadata and metadata.get("query_classification")):
+        if not _skip_context and not (metadata and metadata.get("query_classification")):
             try:
                 from app.services.general_query_classifier import classify_general_query
                 _general_classification = classify_general_query(messages, system_prompt)
@@ -776,7 +830,7 @@ class AIOrchestrator:
         # PROMPT #235 - Apply dynamic context builder when general classifier ran
         _pre_built_messages = messages
         _pre_built_system = system_prompt
-        if _general_classification:
+        if _general_classification and not _skip_context:
             try:
                 from app.services.general_context_builder import build_context
                 _ctx_result = build_context(messages, system_prompt, _general_classification)

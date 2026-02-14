@@ -1164,9 +1164,9 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
         usage_type="memory",
         messages=[{"role": "user", "content": usr_prompt}],
         system_prompt=sys_prompt,
-        max_tokens=12000,
+        max_tokens=5000,  # PROMPT #288 - Reduced for performance
         project_id=str(project_id),
-        metadata={"type": "wiki_enrichment"},
+        metadata={"type": "wiki_enrichment", "skip_context_build": True},
     )
 
     enriched = response.get("content", "")

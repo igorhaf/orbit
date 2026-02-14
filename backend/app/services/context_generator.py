@@ -892,7 +892,7 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
             usage_type="prompt_generation",
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=8000,  # Increased from 4000 to avoid truncation
+            max_tokens=4000,  # PROMPT #288 - Reduced for performance
             enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
             project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             # Note: temperature is configured in the AI model settings in the database
@@ -1249,7 +1249,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         usage_type="memory",
                         messages=[{"role": "user", "content": user_prompt}],
                         system_prompt=system_prompt,
-                        max_tokens=6000,
+                        max_tokens=3000,  # PROMPT #288 - Reduced for performance
                         project_id=str(project.id)
                     ),
                     timeout=120
@@ -3013,7 +3013,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=8000,
+                max_tokens=4000,  # PROMPT #288 - Reduced for performance
                 enable_rag=True,
                 project_id=str(project.id)
             )
@@ -3262,7 +3262,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=6000,
+                max_tokens=3000,  # PROMPT #288 - Reduced for performance
                 enable_rag=True,
                 project_id=str(project.id)
             )
@@ -3956,7 +3956,7 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=6000,  # PROMPT #179 - Increased from 4000 to reduce truncation
+                max_tokens=3000,  # PROMPT #288 - Reduced for performance
                 enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
                 project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
@@ -4428,7 +4428,7 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=6000,  # PROMPT #179 - Increased from 4000 to reduce truncation
+                max_tokens=3000,  # PROMPT #288 - Reduced for performance
                 enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
                 project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
@@ -4918,7 +4918,7 @@ Retorne APENAS o JSON, sem explicações."""
                 usage_type="prompt_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=6000,  # PROMPT #179 - Increased from 4000 to reduce truncation
+                max_tokens=3000,  # PROMPT #288 - Reduced for performance
                 enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
                 project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
@@ -5767,7 +5767,7 @@ IMPORTANTE:
                     usage_type="memory",
                     messages=[{"role": "user", "content": usr_prompt}],
                     system_prompt=sys_prompt,
-                    max_tokens=4000,
+                    max_tokens=2500,  # PROMPT #288 - Reduced for performance
                     enable_rag=True,
                     project_id=str(project.id)
                 ),
@@ -5800,7 +5800,7 @@ IMPORTANTE:
                         usage_type="memory",
                         messages=[{"role": "user", "content": usr_prompt}],
                         system_prompt=sys_prompt,
-                        max_tokens=4000,
+                        max_tokens=2500,  # PROMPT #288 - Reduced for performance
                         enable_rag=True,
                         project_id=str(project.id)
                     ),
@@ -5836,7 +5836,7 @@ IMPORTANTE:
                         usage_type="memory",
                         messages=[{"role": "user", "content": usr_prompt}],
                         system_prompt=sys_prompt,
-                        max_tokens=4000,
+                        max_tokens=2500,  # PROMPT #288 - Reduced for performance
                         enable_rag=True,
                         project_id=str(project.id)
                     ),
@@ -5870,7 +5870,7 @@ IMPORTANTE:
                     usage_type="memory",
                     messages=[{"role": "user", "content": usr_prompt}],
                     system_prompt=sys_prompt,
-                    max_tokens=8000,
+                    max_tokens=4000,  # PROMPT #288 - Reduced for performance
                     enable_rag=True,
                     project_id=str(project.id)
                 ),

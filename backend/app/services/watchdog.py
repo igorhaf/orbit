@@ -669,7 +669,7 @@ async def _create_domain_epic_with_ai(db, project_id: UUID, domain_name: str, do
             usage_type="prompt_generation",
             messages=[{"role": "user", "content": usr_prompt}],
             system_prompt=sys_prompt,
-            max_tokens=4000,
+            max_tokens=2000,  # PROMPT #288 - Reduced for performance
             project_id=str(project_id),
             metadata={"type": "epic_from_rules", "domain": domain_name},
         )

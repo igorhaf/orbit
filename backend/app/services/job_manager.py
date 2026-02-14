@@ -155,6 +155,9 @@ class JobManager:
             "project_id": str(job.project_id) if job.project_id else None,
         })
 
+    # PROMPT #288 - Milestone thresholds for throttled progress updates
+    _PROGRESS_MILESTONES = {0, 10, 25, 50, 75, 90, 100}
+
     def update_progress(
         self,
         job_id: UUID,
@@ -163,6 +166,10 @@ class JobManager:
     ) -> None:
         """
         Update job progress.
+
+        PROMPT #288 - Throttled: only commits to DB + broadcasts WebSocket at
+        milestone percentages (0, 10, 25, 50, 75, 90, 100) to reduce DB spam.
+        In-memory progress is always updated for polling.
 
         Args:
             job_id: UUID of the job
@@ -174,27 +181,41 @@ class JobManager:
             logger.error(f"Job {job_id} not found")
             return
 
+        old_percent = job.progress_percent or 0
         job.progress_percent = progress_percent
         if progress_message:
             job.progress_message = progress_message
 
-        # PROMPT #286 - Insert log entry
-        self.db.add(JobLogEntry(
-            job_id=job_id, level="info",
-            message=progress_message or f"Progress: {progress_percent}%",
-            progress_percent=progress_percent,
-        ))
+        # PROMPT #288 - Only do expensive operations at milestones
+        # Check if we crossed a milestone boundary
+        is_milestone = False
+        for m in self._PROGRESS_MILESTONES:
+            if old_percent < m <= progress_percent:
+                is_milestone = True
+                break
 
-        self.db.commit()
-        logger.debug(f"Job {job_id} progress: {progress_percent}% - {progress_message}")
+        if is_milestone or progress_message != job.progress_message:
+            # PROMPT #286 - Insert log entry only at milestones
+            self.db.add(JobLogEntry(
+                job_id=job_id, level="info",
+                message=progress_message or f"Progress: {progress_percent}%",
+                progress_percent=progress_percent,
+            ))
 
-        # PROMPT #134 - Broadcast via WebSocket
-        _broadcast_job_event("job_progress", {
-            "job_id": str(job_id),
-            "job_type": job.job_type.value,
-            "progress_percent": progress_percent,
-            "progress_message": progress_message
-        })
+            self.db.commit()
+            logger.debug(f"Job {job_id} progress: {progress_percent}% - {progress_message}")
+
+            # PROMPT #134 - Broadcast via WebSocket only at milestones
+            _broadcast_job_event("job_progress", {
+                "job_id": str(job_id),
+                "job_type": job.job_type.value,
+                "progress_percent": progress_percent,
+                "progress_message": progress_message
+            })
+        else:
+            # Lightweight update: just flush progress to DB without full commit
+            self.db.flush()
+            logger.debug(f"Job {job_id} progress (throttled): {progress_percent}%")
 
     def complete_job(self, job_id: UUID, result: Dict[str, Any]) -> None:
         """

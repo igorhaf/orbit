@@ -46,7 +46,8 @@ class PriorityJobExecutor:
 
     _instance = None
 
-    def __init__(self, max_concurrent: int = 3):
+    def __init__(self, max_concurrent: int = 8):
+        # PROMPT #288 - Increased from 3 to 8 workers for better throughput
         # Regular queue for non-critical jobs
         self._queue: asyncio.PriorityQueue = asyncio.PriorityQueue()
         # Dedicated queue for CRITICAL jobs (interviews, chats)
@@ -67,7 +68,7 @@ class PriorityJobExecutor:
         self._critical_lock = asyncio.Lock()
 
     @classmethod
-    def get_instance(cls, max_concurrent: int = 3) -> "PriorityJobExecutor":
+    def get_instance(cls, max_concurrent: int = 8) -> "PriorityJobExecutor":
         """Get or create the singleton executor instance."""
         if cls._instance is None:
             cls._instance = cls(max_concurrent=max_concurrent)
