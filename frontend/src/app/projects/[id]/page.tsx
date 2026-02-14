@@ -470,7 +470,7 @@ export default function ProjectDetailsPage() {
                 <div>
                   <h4 className="font-medium text-amber-900">No Context Generated</h4>
                   <p className="text-sm text-amber-700">
-                    Use the Interview button to establish project context, or generate epics from the memory scan.
+                    Use the Chat tab to ask questions about your project, or generate epics from the memory scan.
                   </p>
                 </div>
               </div>
