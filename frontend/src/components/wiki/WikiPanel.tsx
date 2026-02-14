@@ -221,6 +221,20 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     }
   };
 
+  // Flatten tree: all pages (root + children) in a single flat list for sidebar
+  const flattenTree = (items: WikiTreeItem[]): WikiTreeItem[] => {
+    const result: WikiTreeItem[] = [];
+    for (const item of items) {
+      result.push(item);
+      if (item.children && item.children.length > 0) {
+        result.push(...flattenTree(item.children));
+      }
+    }
+    return result;
+  };
+
+  const allPages = flattenTree(tree);
+
   const renderSidebarItem = (item: WikiTreeItem) => {
     const isActive = item.slug === selectedSlug;
     return (
@@ -376,7 +390,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
           <Card className="p-3">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Paginas</h2>
             <div className="space-y-0.5">
-              {tree.map((item) => renderSidebarItem(item))}
+              {allPages.map((item) => renderSidebarItem(item))}
             </div>
           </Card>
         </div>

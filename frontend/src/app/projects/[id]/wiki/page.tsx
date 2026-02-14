@@ -102,6 +102,20 @@ export default function WikiIndexPage() {
     }
   };
 
+  // Flatten tree for sidebar display
+  const flattenTree = (items: WikiTreeItem[]): WikiTreeItem[] => {
+    const result: WikiTreeItem[] = [];
+    for (const item of items) {
+      result.push(item);
+      if (item.children && item.children.length > 0) {
+        result.push(...flattenTree(item.children));
+      }
+    }
+    return result;
+  };
+
+  const allPages = flattenTree(tree);
+
   const renderTreeItem = (item: WikiTreeItem) => (
     <div key={item.id}>
       <button
@@ -209,7 +223,7 @@ export default function WikiIndexPage() {
           <Card className="p-4">
             <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider">Indice</h2>
             <div className="space-y-0.5">
-              {tree.map((item) => renderTreeItem(item))}
+              {allPages.map((item) => renderTreeItem(item))}
             </div>
           </Card>
         )}
