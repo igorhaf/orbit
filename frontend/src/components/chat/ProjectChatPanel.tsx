@@ -3,12 +3,13 @@
  * PROMPT #282 - Replaces Interview tab with a ChatGPT-like interface
  *
  * Users ask questions about their project, AI answers using RAG knowledge base.
+ * Uses async job system for non-blocking AI calls.
  */
 
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { projectChatsApi } from '@/lib/api';
+import { projectChatsApi, jobsApi } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import ReactMarkdown from 'react-markdown';
 
@@ -41,6 +42,7 @@ export function ProjectChatPanel({ projectId }: Props) {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -90,7 +92,7 @@ export function ProjectChatPanel({ projectId }: Props) {
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeSession?.messages]);
+  }, [activeSession?.messages, sending]);
 
   // Create new chat
   const handleNewChat = async () => {
@@ -106,13 +108,14 @@ export function ProjectChatPanel({ projectId }: Props) {
     }
   };
 
-  // Send message
+  // Send message (async job pattern)
   const handleSend = async () => {
     if (!message.trim() || !activeSessionId || sending) return;
 
     const userMessage = message.trim();
     setMessage('');
     setSending(true);
+    setProgressMessage(null);
 
     // Optimistically add user message
     if (activeSession) {
@@ -128,30 +131,38 @@ export function ProjectChatPanel({ projectId }: Props) {
     }
 
     try {
+      // 1. Send message -> returns job_id (HTTP 202)
       const res = await projectChatsApi.sendMessage(projectId, activeSessionId, userMessage);
-      const aiResponse = res.data || res;
+      const jobData = res.data || res;
+      const jobId = jobData.job_id;
 
-      // Reload full session to get updated messages
+      if (!jobId) {
+        throw new Error('No job_id returned from server');
+      }
+
+      // 2. Poll for job completion with progress updates
+      await jobsApi.poll(
+        jobId,
+        (_percent: number, msg: string | null) => {
+          setProgressMessage(msg || 'Processing...');
+        },
+        1500,   // poll interval
+        300000  // 5 min timeout
+      );
+
+      // 3. Job completed - reload session to get AI response
       await loadSession(activeSessionId);
-      // Reload sessions list to update title/timestamp
       await loadSessions();
-    } catch (error) {
+
+    } catch (error: any) {
       console.error('Failed to send message:', error);
-      // Add error message
-      if (activeSession) {
-        const errorMsg: ChatMessage = {
-          role: 'assistant',
-          content: 'Error: Failed to get a response. Please try again.',
-          timestamp: new Date().toISOString(),
-          model: 'error',
-        };
-        setActiveSession({
-          ...activeSession,
-          messages: [...(activeSession.messages || []), errorMsg],
-        });
+      // Reload session to show current state (user message was already saved)
+      if (activeSessionId) {
+        await loadSession(activeSessionId);
       }
     } finally {
       setSending(false);
+      setProgressMessage(null);
       setTimeout(() => textareaRef.current?.focus(), 100);
     }
   };
@@ -299,7 +310,7 @@ export function ProjectChatPanel({ projectId }: Props) {
                         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                       </div>
-                      <span>Thinking...</span>
+                      <span>{progressMessage || 'Thinking...'}</span>
                     </div>
                   </div>
                 </div>

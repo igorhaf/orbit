@@ -4,6 +4,8 @@ PROMPT #282 - RAG Chat: Project Knowledge Chat Sessions
 
 Provides chat sessions where users ask questions about their project
 and get AI-powered answers based on the project's RAG knowledge base.
+
+Uses async job system (like all AI operations in ORBIT) for non-blocking UI.
 """
 
 import logging
@@ -11,13 +13,13 @@ from datetime import datetime, timezone
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.database import get_db
 from app.models.project import Project
 from app.models.project_chat import ProjectChat
-from app.prompts.loader import PromptLoader
 from app.schemas.project_chat import (
     ChatMessageResponse,
     ChatMessageSend,
@@ -26,8 +28,6 @@ from app.schemas.project_chat import (
     ProjectChatResponse,
     ProjectChatUpdate,
 )
-from app.services.ai_orchestrator import AIOrchestrator
-from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ async def delete_chat(project_id: UUID, chat_id: UUID, db: Session = Depends(get
 
 
 # ──────────────────────────────────────────────
-# Message Endpoint (core RAG chat logic)
+# Message Endpoint (async job - non-blocking)
 # ──────────────────────────────────────────────
 
 MAX_CONVERSATION_MESSAGES = 20  # Last N messages sent to AI for context
@@ -152,7 +152,7 @@ MAX_CONVERSATION_MESSAGES = 20  # Last N messages sent to AI for context
 
 @router.post(
     "/{project_id}/chats/{chat_id}/messages",
-    response_model=ChatMessageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def send_message(
     project_id: UUID,
@@ -161,15 +161,20 @@ async def send_message(
     db: Session = Depends(get_db),
 ):
     """
-    Send a user message and get an AI response based on RAG knowledge.
+    Send a user message and create a background job for AI response.
+
+    Returns HTTP 202 with job_id immediately. Frontend polls job status.
 
     Flow:
-    1. Store user message
-    2. Query RAG for relevant project knowledge
-    3. Build system prompt with RAG context
-    4. Call AIOrchestrator (usage_type=interview)
-    5. Store and return AI response
+    1. Store user message in chat
+    2. Create async job (CHAT_MESSAGE, CRITICAL priority)
+    3. Submit to PriorityJobExecutor
+    4. Return job_id for polling
     """
+    from app.models.async_job import JobType
+    from app.services.job_manager import JobManager
+    from app.services.job_executor import PriorityJobExecutor
+
     chat = (
         db.query(ProjectChat)
         .filter(ProjectChat.id == chat_id, ProjectChat.project_id == project_id)
@@ -185,75 +190,183 @@ async def send_message(
     user_content = data.content.strip()
     now = datetime.now(timezone.utc).isoformat()
 
-    # 1. Store user message
+    # 1. Store user message BEFORE creating async job
     messages = list(chat.messages or [])
     messages.append({"role": "user", "content": user_content, "timestamp": now})
-
-    # 2. Query RAG for relevant knowledge
-    rag_context = _build_rag_context(db, project_id, user_content)
-
-    # 3. Build system prompt from YAML
-    loader = PromptLoader()
-    system_prompt, _ = loader.render(
-        "context/rag_chat",
-        {
-            "project_name": project.name or "Project",
-            "rag_context": rag_context,
-            "project_description": project.description or "",
-            "user_message": user_content,
-        },
-    )
-
-    # 4. Build conversation messages (last N for context window)
-    ai_messages = _build_ai_messages(messages)
-
-    # 5. Call AIOrchestrator
-    orchestrator = AIOrchestrator(db)
-    try:
-        response = await orchestrator.execute(
-            usage_type="interview",
-            messages=ai_messages,
-            system_prompt=system_prompt,
-            max_tokens=2000,
-            project_id=project_id,
-        )
-
-        ai_content = response.get("content", "Desculpe, nao consegui processar sua pergunta.")
-        ai_model = response.get("model", "unknown")
-
-    except Exception as e:
-        logger.error(f"AI error in chat {chat_id}: {e}")
-        ai_content = "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente."
-        ai_model = "error"
-
-    # 6. Store AI response
-    ai_timestamp = datetime.now(timezone.utc).isoformat()
-    messages.append({
-        "role": "assistant",
-        "content": ai_content,
-        "timestamp": ai_timestamp,
-        "model": ai_model,
-    })
-
     chat.messages = messages
+    flag_modified(chat, "messages")  # CRITICAL for JSON column changes
 
-    # 7. Auto-generate title from first user message
+    # Auto-generate title from first user message
     if chat.title == "New Chat" and user_content:
         chat.title = user_content[:60].strip()
         if len(user_content) > 60:
             chat.title += "..."
 
+    db.flush()
     db.commit()
     db.refresh(chat)
 
-    logger.info(f"Chat {chat_id}: user asked, AI responded (model={ai_model})")
+    logger.info(f"Chat {chat_id}: user message stored, creating job...")
 
-    return ChatMessageResponse(
-        role="assistant",
-        content=ai_content,
-        timestamp=ai_timestamp,
-        model=ai_model,
+    # 2. Create async job
+    deep_link = f"/projects/{project_id}?tab=chat"
+    notification_title = f"Chat: {chat.title[:40]}"
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.CHAT_MESSAGE,
+        input_data={
+            "project_id": str(project_id),
+            "chat_id": str(chat_id),
+            "user_content": user_content,
+        },
+        project_id=project_id,
+        deep_link=deep_link,
+        notification_title=notification_title,
     )
+
+    logger.info(f"Created async job {job.id} for chat {chat_id} (priority={job.priority})")
+
+    # 3. Submit to priority queue
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_chat_message_async,
+        job.id,
+        project_id,
+        chat_id,
+        user_content,
+    )
+
+    # 4. Return immediately (HTTP 202)
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": f"Job created. Poll GET /api/v1/jobs/{job.id} for result.",
+        "deep_link": deep_link,
+        "notification_title": notification_title,
+    }
+
+
+# ──────────────────────────────────────────────
+# Background processing function
+# ──────────────────────────────────────────────
+
+async def _process_chat_message_async(
+    job_id: UUID,
+    project_id: UUID,
+    chat_id: UUID,
+    user_content: str,
+):
+    """
+    Background task: query RAG, call AI, store response.
+
+    Runs in PriorityJobExecutor thread with its own DB session.
+    """
+    from app.database import SessionLocal
+    from app.services.job_manager import JobManager
+    from app.services.ai_orchestrator import AIOrchestrator
+    from app.services.rag_service import RAGService
+    from app.prompts.loader import PromptLoader
+
+    db = SessionLocal()
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        job_manager.update_progress(job_id, 10.0, "Searching knowledge base...")
+
+        # Load chat and project
+        chat = db.query(ProjectChat).filter(ProjectChat.id == chat_id).first()
+        project = db.query(Project).filter(Project.id == project_id).first()
+
+        if not chat or not project:
+            job_manager.fail_job(job_id, "Chat or project not found")
+            return
+
+        # 1. Query RAG for relevant knowledge
+        rag_context = _build_rag_context(db, project_id, user_content)
+        job_manager.update_progress(job_id, 30.0, "Building context...")
+
+        # 2. Build system prompt from YAML
+        loader = PromptLoader()
+        system_prompt, _ = loader.render(
+            "context/rag_chat",
+            {
+                "project_name": project.name or "Project",
+                "rag_context": rag_context,
+                "project_description": project.description or "",
+                "user_message": user_content,
+            },
+        )
+
+        # 3. Build conversation messages (last N for context window)
+        messages = list(chat.messages or [])
+        ai_messages = _build_ai_messages(messages)
+
+        job_manager.update_progress(job_id, 50.0, "Calling AI...")
+
+        # 4. Call AIOrchestrator
+        orchestrator = AIOrchestrator(db)
+        try:
+            response = await orchestrator.execute(
+                usage_type="interview",
+                messages=ai_messages,
+                system_prompt=system_prompt,
+                max_tokens=2000,
+                project_id=project_id,
+            )
+
+            ai_content = response.get("content", "Desculpe, nao consegui processar sua pergunta.")
+            ai_model = response.get("model", "unknown")
+
+        except Exception as e:
+            logger.error(f"AI error in chat {chat_id}: {e}")
+            ai_content = "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente."
+            ai_model = "error"
+
+        job_manager.update_progress(job_id, 80.0, "Saving response...")
+
+        # 5. Store AI response - re-query chat to avoid stale session
+        ai_timestamp = datetime.now(timezone.utc).isoformat()
+
+        # Re-fetch chat from DB (session may have expired during AI call)
+        db.expire_all()
+        chat = db.query(ProjectChat).filter(ProjectChat.id == chat_id).first()
+        if not chat:
+            job_manager.fail_job(job_id, "Chat not found after AI call")
+            return
+
+        current_messages = list(chat.messages or [])
+        current_messages.append({
+            "role": "assistant",
+            "content": ai_content,
+            "timestamp": ai_timestamp,
+            "model": ai_model,
+        })
+
+        chat.messages = current_messages
+        flag_modified(chat, "messages")
+        db.commit()
+
+        logger.info(f"Chat {chat_id}: AI responded (model={ai_model})")
+
+        # 6. Complete job with result
+        job_manager.complete_job(job_id, {
+            "role": "assistant",
+            "content": ai_content,
+            "timestamp": ai_timestamp,
+            "model": ai_model,
+        })
+
+    except Exception as e:
+        logger.error(f"Chat message job {job_id} failed: {e}", exc_info=True)
+        try:
+            db.rollback()
+            job_manager.fail_job(job_id, str(e)[:500])
+        except Exception as inner_e:
+            logger.error(f"Failed to mark job {job_id} as failed: {inner_e}")
+    finally:
+        db.close()
 
 
 # ──────────────────────────────────────────────
@@ -262,6 +375,8 @@ async def send_message(
 
 def _build_rag_context(db: Session, project_id: UUID, query: str) -> str:
     """Query RAG and build context string for the AI."""
+    from app.services.rag_service import RAGService
+
     rag_service = RAGService(db)
 
     # Search all RAG document types for this project

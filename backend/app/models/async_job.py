@@ -71,6 +71,9 @@ class JobType(str, enum.Enum):
     # PROMPT #270: Enrich individual business rule wiki pages with AI
     WIKI_RULE_ENRICHMENT = "wiki_rule_enrichment"
 
+    # PROMPT #282: RAG Chat message (user asks, AI answers from RAG)
+    CHAT_MESSAGE = "chat_message"
+
 
 def _load_job_priorities() -> dict:
     """PROMPT #256 - Load job priorities from contract YAML."""
@@ -92,6 +95,7 @@ def _load_job_priorities() -> dict:
         return {
             JobType.INTERVIEW_QUESTION: JobPriority.CRITICAL,
             JobType.INTERVIEW_MESSAGE: JobPriority.CRITICAL,
+            JobType.CHAT_MESSAGE: JobPriority.CRITICAL,
             JobType.CONTEXT_GENERATION: JobPriority.HIGH,
             JobType.PROJECT_TITLE: JobPriority.HIGH,
             JobType.PROJECT_PIPELINE: JobPriority.HIGH,

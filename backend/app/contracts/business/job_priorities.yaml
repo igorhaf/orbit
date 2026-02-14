@@ -40,6 +40,7 @@ data:
     # CRITICO - usuario aguardando ativamente no chat
     interview_question: 10
     interview_message: 10
+    chat_message: 10
     # ALTO - usuario no wizard, aguardando resultado
     context_generation: 7
     project_title: 7

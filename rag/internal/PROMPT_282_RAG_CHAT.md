@@ -51,14 +51,18 @@ Schemas: ProjectChatCreate, ProjectChatUpdate, ProjectChatResponse, ProjectChatL
 - `PATCH /projects/{id}/chats/{chat_id}` - Update title
 - `POST /projects/{id}/chats/{chat_id}/messages` - **Send message (core)**
 
-**Send message flow:**
-1. Store user message in chat.messages JSON
-2. Query RAG: `rag_service.retrieve(query, project_id, top_k=15, threshold=0.4)`
-3. Get business rules: `rag_service.get_business_rules(project_id, query, top_k=10)`
-4. Build system prompt from YAML with RAG context
-5. Build conversation history (last 20 messages)
-6. Call `AIOrchestrator.execute(usage_type="interview")`
-7. Store AI response and auto-generate title from first question
+**Send message flow (async job pattern):**
+1. Store user message in chat.messages JSON (committed to DB before job)
+2. Create async job (CHAT_MESSAGE type, CRITICAL priority=10)
+3. Submit to PriorityJobExecutor
+4. Return HTTP 202 with job_id immediately
+5. Background task: Query RAG (retrieve + get_business_rules)
+6. Build system prompt from YAML with RAG context
+7. Build conversation history (last 20 messages)
+8. Call `AIOrchestrator.execute(usage_type="interview")`
+9. Re-fetch chat from DB (session may expire during AI call)
+10. Store AI response and auto-generate title from first question
+11. Complete job with result
 
 ### 5. YAML Prompt
 **File:** `backend/app/prompts/context/rag_chat.yaml`
@@ -70,9 +74,11 @@ System prompt in Portuguese instructing AI to answer based only on provided proj
 
 Split-panel layout:
 - **Left sidebar** (w-64): New Chat button, sessions list with delete, active highlighting
-- **Right area**: Message thread with user/assistant bubbles, Markdown rendering, typing indicator, Ctrl+Enter to send
+- **Right area**: Message thread with user/assistant bubbles, Markdown rendering, typing indicator with progress messages, Enter to send / Shift+Enter for newline
 - Empty state with helpful message
 - Optimistic UI: user message shown immediately before AI responds
+- Job polling via `jobsApi.poll()` with real-time progress display
+- Auto-selects most recent session on load
 
 ### 7. Project Page Tab Replacement
 **File:** `frontend/src/app/projects/[id]/page.tsx`
@@ -93,18 +99,21 @@ Added `projectChatsApi` with: list, create, get, delete, updateTitle, sendMessag
 
 1. **`backend/app/models/project_chat.py`** - SQLAlchemy model
 2. **`backend/app/schemas/project_chat.py`** - Pydantic schemas
-3. **`backend/app/api/routes/project_chats.py`** - API routes + RAG chat logic
+3. **`backend/app/api/routes/project_chats.py`** - API routes + async job RAG chat logic
 4. **`backend/app/prompts/context/rag_chat.yaml`** - YAML prompt
-5. **`backend/alembic/versions/20260214_create_project_chats.py`** - Migration
-6. **`frontend/src/components/chat/ProjectChatPanel.tsx`** - Chat UI component
+5. **`backend/alembic/versions/20260214_create_project_chats.py`** - Migration (project_chats table)
+6. **`backend/alembic/versions/20260214_add_chat_message_jobtype.py`** - Migration (chat_message enum)
+7. **`frontend/src/components/chat/ProjectChatPanel.tsx`** - Chat UI component
 
 ## Files Modified
 
 1. **`backend/app/models/__init__.py`** - Added ProjectChat import
 2. **`backend/app/models/project.py`** - Added chats relationship
-3. **`backend/app/main.py`** - Registered project_chats router
-4. **`frontend/src/app/projects/[id]/page.tsx`** - Replaced Interview tab with Chat
-5. **`frontend/src/lib/api.ts`** - Added projectChatsApi
+3. **`backend/app/models/async_job.py`** - Added CHAT_MESSAGE job type + CRITICAL priority
+4. **`backend/app/contracts/business/job_priorities.yaml`** - Added chat_message: 10
+5. **`backend/app/main.py`** - Registered project_chats router
+6. **`frontend/src/app/projects/[id]/page.tsx`** - Replaced Interview tab with Chat
+7. **`frontend/src/lib/api.ts`** - Added projectChatsApi
 
 ---
 
@@ -117,6 +126,11 @@ OK  Python syntax: project_chats.py (routes)
 OK  Database: project_chats table created
 OK  Tab: Interview replaced with Chat (always visible)
 OK  Chat: inline rendering in project page
+OK  Async job: CHAT_MESSAGE created with CRITICAL priority (10)
+OK  Job polling: progress updates (10% → 30% → 50% → 80% → 100%)
+OK  AI response: RAG-powered answer stored in chat.messages
+OK  Title: auto-generated from first user message
+OK  Session persistence: re-query chat after AI call prevents stale session
 ```
 
 ---
@@ -132,7 +146,10 @@ Last 20 messages are sent to the AI for context. This provides continuity in mul
 ### 3. Title Auto-Generation
 Session title auto-generated from the first user message (first 60 chars). This avoids requiring users to name sessions manually.
 
-### 4. Setup-context Not Deleted
+### 4. Async Job Pattern
+Chat uses the standard ORBIT async job pattern (like all AI operations). The `send_message` endpoint returns HTTP 202 immediately with a job_id. The background task runs in `PriorityJobExecutor` with its own DB session. Critical fix: must `db.expire_all()` and re-query the chat after the AI call to avoid stale session errors.
+
+### 5. Setup-context Not Deleted
 The setup-context page file remains in the filesystem but is no longer linked from the project tab. It can be removed in a future cleanup if desired.
 
 ---
@@ -143,6 +160,9 @@ The setup-context page file remains in the filesystem but is no longer linked fr
 - Chat tab replaces Interview tab (always visible, no conditional)
 - Multiple chat sessions per project with persistence
 - AI answers based on RAG knowledge (all document types + business rules)
+- Async job system integration (CHAT_MESSAGE, CRITICAL priority)
+- Job visible in Jobs page with progress updates
 - Clean ChatGPT-like UI with sidebar and message bubbles
 - Markdown rendering for AI responses
+- Enter to send, Shift+Enter for newline
 - Card interviews remain completely unchanged
