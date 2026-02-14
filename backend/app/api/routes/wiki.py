@@ -462,7 +462,10 @@ def _upsert_wiki_page(
     order_index: int,
     source: str,
 ) -> WikiPage:
-    """Create or update a wiki page by slug."""
+    """Create or update a wiki page by slug.
+    Preserves enriched content: if a page was already enriched (source='enrichment'),
+    only updates title and order - content is kept to avoid losing rich AI-generated text.
+    """
     existing = (
         db.query(WikiPage)
         .filter(and_(WikiPage.project_id == project_id, WikiPage.slug == slug))
@@ -470,8 +473,10 @@ def _upsert_wiki_page(
     )
     if existing:
         existing.title = title
-        existing.content = content
         existing.order_index = order_index
+        # Only overwrite content if the page hasn't been enriched yet
+        if existing.source != "enrichment":
+            existing.content = content
         return existing
 
     page = WikiPage(
