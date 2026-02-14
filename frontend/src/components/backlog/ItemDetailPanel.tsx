@@ -1826,7 +1826,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                     <p className="text-sm text-gray-500 italic">No acceptance criteria defined</p>
                   ) : (
                     <ul className="space-y-2">
-                      {item.acceptance_criteria.map((criterion, idx) => (
+                      {item.acceptance_criteria.map((criterion, idx) => {
+                        // Normalize: criterion can be string or {text, completed} object
+                        const criterionText = typeof criterion === 'string' ? criterion : (criterion as any)?.text || JSON.stringify(criterion);
+                        return (
                         <li key={idx} className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 group">
                           {editingCriterionIdx === idx ? (
                             /* Editing mode */
@@ -1867,13 +1870,13 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               <span className="mt-0.5 text-gray-400 text-xs font-mono">{idx + 1}.</span>
                               <span
                                 className="flex-1 text-sm text-gray-900 cursor-pointer"
-                                onDoubleClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterion); }}
+                                onDoubleClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterionText); }}
                                 title="Double-click to edit"
                               >
-                                {criterion}
+                                {criterionText}
                               </span>
                               <button
-                                onClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterion); }}
+                                onClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterionText); }}
                                 className="p-1 text-gray-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
                                 title="Edit"
                               >
@@ -1893,7 +1896,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                             </>
                           )}
                         </li>
-                      ))}
+                      );})}
                     </ul>
                   )}
                 </div>

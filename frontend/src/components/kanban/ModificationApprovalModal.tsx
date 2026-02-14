@@ -164,7 +164,7 @@ export function ModificationApprovalModal({
                     <ul className="space-y-1">
                       {task.acceptance_criteria.map((criterion, idx) => (
                         <li key={idx} className="text-sm text-gray-700 line-through">
-                          • {criterion}
+                          • {typeof criterion === 'string' ? criterion : (criterion as any)?.text || JSON.stringify(criterion)}
                         </li>
                       ))}
                     </ul>
@@ -179,7 +179,7 @@ export function ModificationApprovalModal({
                   <ul className="space-y-1">
                     {modification.acceptance_criteria.map((criterion, idx) => (
                       <li key={idx} className="text-sm text-green-800 font-semibold">
-                        • {criterion}
+                        • {typeof criterion === 'string' ? criterion : (criterion as any)?.text || JSON.stringify(criterion)}
                       </li>
                     ))}
                   </ul>

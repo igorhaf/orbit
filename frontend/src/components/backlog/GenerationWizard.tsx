@@ -379,7 +379,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                               {epicSuggestion.acceptance_criteria.map((criterion, idx) => (
                                 <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
                                   <span className="text-blue-600 mt-0.5">✓</span>
-                                  {criterion}
+                                  {typeof criterion === 'string' ? criterion : (criterion as any)?.text || JSON.stringify(criterion)}
                                 </li>
                               ))}
                             </ul>

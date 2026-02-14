@@ -7,7 +7,7 @@ JIRA Transformation - Phase 2: Extended with 28+ new fields
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from uuid import UUID
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.task import (
     TaskStatus,
@@ -58,6 +58,22 @@ class TaskBase(BaseModel):
     token_budget: Optional[int] = Field(None, ge=100, description="Token budget for execution")
     acceptance_criteria: List[str] = Field(default_factory=list, description="Acceptance criteria")
     generation_context: Dict[str, Any] = Field(default_factory=dict, description="AI generation context")
+
+    @field_validator('acceptance_criteria', mode='before')
+    @classmethod
+    def normalize_acceptance_criteria(cls, v):
+        """Normalize {text, completed} objects to plain strings."""
+        if not v:
+            return []
+        result = []
+        for item in v:
+            if isinstance(item, str):
+                result.append(item)
+            elif isinstance(item, dict) and 'text' in item:
+                result.append(item['text'])
+            else:
+                result.append(str(item))
+        return result
 
     # Interview Traceability
     interview_question_ids: List[int] = Field(default_factory=list, description="Interview question indexes")

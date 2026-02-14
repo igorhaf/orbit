@@ -310,7 +310,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
             <ul className="list-disc list-inside space-y-1">
               {task.acceptance_criteria.map((criterion, idx) => (
                 <li key={idx} className="text-sm text-gray-600">
-                  {criterion}
+                  {typeof criterion === 'string' ? criterion : (criterion as any)?.text || JSON.stringify(criterion)}
                 </li>
               ))}
             </ul>
