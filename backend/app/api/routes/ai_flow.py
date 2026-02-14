@@ -396,6 +396,14 @@ MODEL_QUALITY_TIERS = {
     "gemini-1.5-pro": 75, "gemini-pro": 75, "command-r-plus": 75,
     "haiku": 50, "claude-haiku": 50, "gemini-1.5-flash": 50, "gemini-flash": 50,
     "gpt-3.5": 40, "command-r": 40, "command-light": 30,
+    # PROMPT #289 - Ollama local model quality tiers
+    "deepseek-r1:14b": 88, "deepseek-r1": 85,
+    "qwen2.5-coder:14b": 86, "qwen2.5-coder": 82,
+    "qwen3:14b": 85, "qwen3:8b": 70, "qwen3": 75,
+    "gemma3:12b": 82, "gemma3": 78,
+    "phi4:14b": 75, "phi4": 72,
+    "codestral:22b": 80, "codestral": 78,
+    "qwen2.5:32b": 83, "qwen2.5:14b": 78, "qwen2.5": 75,
 }
 
 
@@ -561,6 +569,41 @@ TEMPLATE_UTILITY_NODES = {
             "position": None,
         },
     ],
+    # PROMPT #289 - Nave profile: maximum quality, local-only, unlimited time
+    "nave": [
+        {
+            "id": "rag_context-tmpl-nave-1",
+            "type": "rag_context",
+            "label": "RAG Context",
+            "enabled": True,
+            "config": {"max_results": 5, "similarity_threshold": 0.7, "include_metadata": True},
+            "position": None,
+        },
+        {
+            "id": "timeout-tmpl-nave-1",
+            "type": "timeout",
+            "label": "Timeout",
+            "enabled": True,
+            "config": {"timeout_seconds": 600},
+            "position": None,
+        },
+        {
+            "id": "validator-tmpl-nave-1",
+            "type": "validator",
+            "label": "Validator",
+            "enabled": True,
+            "config": {"validation_type": "not_empty", "schema": {}, "max_length": 0, "required_keywords": [], "retry_on_fail": True},
+            "position": None,
+        },
+        {
+            "id": "retry-tmpl-nave-1",
+            "type": "retry",
+            "label": "Retry",
+            "enabled": True,
+            "config": {"max_retries": 3, "backoff_base_ms": 3000, "backoff_multiplier": 2.0, "retry_on": ["timeout", "server_error"]},
+            "position": None,
+        },
+    ],
     "high_quality": [
         {
             "id": "rag_context-tmpl-1",
@@ -646,6 +689,25 @@ async def get_chain_templates(
             utility_nodes=TEMPLATE_UTILITY_NODES["high_quality"],
         ),
     ]
+
+    # PROMPT #289 - Template 4: Nave — Maximum quality, local-only, unlimited time
+    ollama_models = [m for m in models if m.provider == "ollama"]
+    if ollama_models:
+        nave_sorted = sorted(
+            ollama_models,
+            key=lambda m: _get_quality_tier(m.config.get("model_id", m.name)),
+            reverse=True,
+        )
+        templates.append(
+            ChainTemplate(
+                id="nave",
+                name="Nave (Maximum Quality)",
+                description="Maximum quality, local Ollama only, unlimited time, zero cost",
+                chain=[str(m.id) for m in nave_sorted],
+                models=[model_info(m) for m in nave_sorted],
+                utility_nodes=TEMPLATE_UTILITY_NODES["nave"],
+            )
+        )
 
     return ChainTemplatesResponse(templates=templates)
 

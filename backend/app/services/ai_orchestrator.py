@@ -326,6 +326,10 @@ class AIOrchestrator:
                     "timeout_seconds": db_model.timeout_seconds,
                     # PROMPT #228 - Concurrency limit
                     "max_concurrent_requests": db_model.max_concurrent_requests,
+                    # PROMPT #289 - Ollama context/batch/keep_alive from model config
+                    "context_length": db_model.config.get("context_length"),
+                    "num_batch": db_model.config.get("num_batch"),
+                    "keep_alive": db_model.config.get("keep_alive"),
                 })
             else:
                 logger.warning(
@@ -555,6 +559,10 @@ class AIOrchestrator:
                     "timeout_seconds": db_model.timeout_seconds,
                     # PROMPT #228 - Concurrency limit
                     "max_concurrent_requests": db_model.max_concurrent_requests,
+                    # PROMPT #289 - Ollama context/batch/keep_alive from model config
+                    "context_length": db_model.config.get("context_length"),
+                    "num_batch": db_model.config.get("num_batch"),
+                    "keep_alive": db_model.config.get("keep_alive"),
                 })
             else:
                 logger.warning(
@@ -597,6 +605,10 @@ class AIOrchestrator:
                 "timeout_seconds": fallback_model.timeout_seconds,
                 # PROMPT #228 - Concurrency limit
                 "max_concurrent_requests": fallback_model.max_concurrent_requests,
+                # PROMPT #289 - Ollama context/batch/keep_alive from model config
+                "context_length": fallback_model.config.get("context_length"),
+                "num_batch": fallback_model.config.get("num_batch"),
+                "keep_alive": fallback_model.config.get("keep_alive"),
             })
 
         # 3. Fallback: tentar diagrama 'general' (chain) se existir
@@ -1242,6 +1254,10 @@ class AIOrchestrator:
         # PROMPT #221 - Sampling parameters for Ollama
         _top_p = model_config.get("top_p")
         _top_k = model_config.get("top_k")
+        # PROMPT #289 - Ollama context/batch/keep_alive from model config
+        _num_ctx = model_config.get("context_length")
+        _num_batch = model_config.get("num_batch")
+        _keep_alive = model_config.get("keep_alive")
 
         # PROMPT #205 - If utility pre-process wasn't done yet (no chain path), do it now
         if _utility_nodes and not _utility_pre_done:
@@ -1502,7 +1518,8 @@ class AIOrchestrator:
                     result = await self._execute_ollama_streaming(
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
                         stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout, top_p=_top_p, top_k=_top_k
+                        timeout_seconds=_resolved_timeout, top_p=_top_p, top_k=_top_k,
+                        num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive
                     )
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(
@@ -1546,7 +1563,8 @@ class AIOrchestrator:
                 elif provider == "ollama":
                     result = await self._execute_ollama(
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout, top_p=_top_p, top_k=_top_k
+                        timeout_seconds=_resolved_timeout, top_p=_top_p, top_k=_top_k,
+                        num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive
                     )
                 elif provider == "cohere":
                     result = await self._execute_cohere(
@@ -1728,7 +1746,8 @@ class AIOrchestrator:
                         elif provider == "ollama":
                             result = await self._execute_ollama(
                                 model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                                top_p=_top_p, top_k=_top_k
+                                top_p=_top_p, top_k=_top_k,
+                                num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive
                             )
                         elif provider == "cohere":
                             result = await self._execute_cohere(
@@ -1939,6 +1958,10 @@ class AIOrchestrator:
         # PROMPT #221 - Sampling parameters (primarily for Ollama)
         top_p = model_config.get("top_p")
         top_k = model_config.get("top_k")
+        # PROMPT #289 - Ollama context/batch/keep_alive from model config
+        _num_ctx = model_config.get("context_length")
+        _num_batch = model_config.get("num_batch")
+        _keep_alive = model_config.get("keep_alive")
 
         # PROMPT #206 - Apply utility node overrides
         if overrides:
@@ -2030,7 +2053,7 @@ class AIOrchestrator:
                 elif provider == "google":
                     result = await self._execute_google_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "ollama":
-                    result = await self._execute_ollama_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k)
+                    result = await self._execute_ollama_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k, num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive)
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 else:
@@ -2052,7 +2075,7 @@ class AIOrchestrator:
                 elif provider == "google":
                     result = await self._execute_google(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "ollama":
-                    result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k)
+                    result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k, num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive)
                 elif provider == "cohere":
                     result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 else:
@@ -2288,6 +2311,9 @@ class AIOrchestrator:
         timeout_seconds: Optional[float] = None,
         top_p: Optional[float] = None,
         top_k: Optional[int] = None,
+        num_ctx: Optional[int] = None,
+        num_batch: Optional[int] = None,
+        keep_alive: Optional[str] = None,
     ) -> Dict:
         """
         Executa com Ollama local LLM usando configurações do banco
@@ -2317,12 +2343,13 @@ class AIOrchestrator:
         # PROMPT #221 - Build options with optional top_p/top_k
         # PROMPT #224 - Add num_ctx to limit context window
         # PROMPT #229 - Ollama GPU optimization: num_gpu layers, keep_alive
+        # PROMPT #289 - Read num_ctx/num_batch/keep_alive from model config instead of hardcoding
         options = {
             "num_predict": max_tokens,
             "temperature": temperature,
-            "num_ctx": 4096,
+            "num_ctx": num_ctx or 4096,
             "num_gpu": 99,  # PROMPT #229 - Offload all layers to GPU for max throughput
-            "num_batch": 512,  # PROMPT #229 - Batch size for prompt eval (higher = faster, more VRAM)
+            "num_batch": num_batch or 512,  # PROMPT #229 - Batch size for prompt eval
         }
         if top_p is not None:
             options["top_p"] = top_p
@@ -2334,7 +2361,7 @@ class AIOrchestrator:
             "messages": ollama_messages,
             "stream": False,
             "options": options,
-            "keep_alive": "5m",  # PROMPT #229 - Keep model loaded for 5 min (prevents cold-start)
+            "keep_alive": keep_alive or "5m",  # PROMPT #289 - Configurable keep_alive
         }
 
         logger.info(f"🦙 Calling Ollama: {url} with model {model} (options={options})")
@@ -2750,6 +2777,9 @@ class AIOrchestrator:
         timeout_seconds: Optional[float] = None,
         top_p: Optional[float] = None,
         top_k: Optional[int] = None,
+        num_ctx: Optional[int] = None,
+        num_batch: Optional[int] = None,
+        keep_alive: Optional[str] = None,
     ) -> Dict:
         """Ollama streaming using stream=True (NDJSON response)
         PROMPT #221 - Added top_p/top_k and streaming timeout
@@ -2766,12 +2796,13 @@ class AIOrchestrator:
         # PROMPT #221 - Build options with optional top_p/top_k
         # PROMPT #224 - Add num_ctx to limit context window (saves memory, speeds up inference)
         # PROMPT #229 - Ollama GPU optimization: num_gpu layers, batch size
+        # PROMPT #289 - Read num_ctx/num_batch/keep_alive from model config instead of hardcoding
         options = {
             "num_predict": max_tokens,
             "temperature": temperature,
-            "num_ctx": 4096,  # Limit context window (default is model max, wastes RAM)
+            "num_ctx": num_ctx or 4096,
             "num_gpu": 99,  # PROMPT #229 - Offload all layers to GPU
-            "num_batch": 512,  # PROMPT #229 - Batch size for prompt eval
+            "num_batch": num_batch or 512,  # PROMPT #229 - Batch size for prompt eval
         }
         if top_p is not None:
             options["top_p"] = top_p
@@ -2784,7 +2815,7 @@ class AIOrchestrator:
             "messages": ollama_messages,
             "stream": True,
             "options": options,
-            "keep_alive": "5m",  # PROMPT #229 - Keep model loaded
+            "keep_alive": keep_alive or "5m",  # PROMPT #289 - Configurable keep_alive
         }
 
         effective_timeout = timeout_seconds or 300.0

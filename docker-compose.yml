@@ -137,6 +137,12 @@ services:
       - ./data/ollama:/root/.ollama
     environment:
       - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-3}
+      - OLLAMA_FLASH_ATTENTION=${OLLAMA_FLASH_ATTENTION:-0}
+      - OLLAMA_KV_CACHE_TYPE=${OLLAMA_KV_CACHE_TYPE:-f16}
+      # Nave Profile (Maximum Quality) - set in .env:
+      #   OLLAMA_NUM_PARALLEL=1        # All GPU for one request
+      #   OLLAMA_FLASH_ATTENTION=1     # Faster attention, no quality loss
+      #   OLLAMA_KV_CACHE_TYPE=q8_0    # 50% less VRAM for KV cache
     networks:
       - orbit-network
     # ==========================================================================
