@@ -69,6 +69,9 @@ system_prompt: |
   - Se vir validate/calculate/permission nas funções, descreva a regra por trás
   - Responda APENAS em JSON válido
 
+  IDIOMA OBRIGATORIO: TODO o conteudo DEVE ser em portugues brasileiro.
+  Titulo, regras, features, entidades - TUDO em portugues. NUNCA escreva em ingles.
+
 user_prompt: |
   ## FASE: {{ phase_name }}
   ## PROJETO: {{ folder_name }}
@@ -90,3 +93,4 @@ user_prompt: |
   TAREFA: Analise o mapa de símbolos acima e extraia regras de negócio, entidades e funcionalidades.
   Sugira um título baseado no DOMÍNIO (não na tecnologia).
   Responda em JSON válido.
+  IDIOMA OBRIGATORIO: TODO o conteudo DEVE ser em portugues brasileiro. Titulo, regras, features - TUDO em portugues. NUNCA escreva em ingles.

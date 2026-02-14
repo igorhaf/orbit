@@ -1927,7 +1927,7 @@ Em NO MÁXIMO 4 linhas, responda:
 
         stack_name = stack_info.get("detected_stack", "desconhecida")
 
-        system_prompt = "Você é um arquiteto de software. Responda APENAS em JSON válido, sem markdown."
+        system_prompt = "Você é um arquiteto de software. Responda APENAS em JSON válido, sem markdown. IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro. Titulo, regras, features - TUDO em portugues. NUNCA escreva em ingles."
 
         user_prompt = f"""Pasta do projeto: {self.current_folder_name}
 Stack: {stack_name}
@@ -1950,7 +1950,9 @@ Baseado APENAS nessas análises, responda em JSON:
   "key_features": ["Feature 1", "Feature 2", "Feature 3"],
   "entities": ["Entidade 1", "Entidade 2"],
   "interview_context": "Uma frase descrevendo o propósito do sistema"
-}}"""
+}}
+
+IDIOMA OBRIGATORIO: TODO o conteudo DEVE ser em portugues brasileiro. Titulo, regras, features, entidades - TUDO em portugues. NUNCA escreva em ingles."""
 
         try:
             response = await self.orchestrator.execute(
