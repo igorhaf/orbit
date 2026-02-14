@@ -193,7 +193,7 @@ export default function WikiIndexPage() {
                     <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">AI</span>
                   )}
                   {page.source === 'enrichment' && (
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Enriquecido</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Updated</span>
                   )}
                   {page.source === 'manual' && (
                     <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">Manual</span>
