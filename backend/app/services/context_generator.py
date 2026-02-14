@@ -1138,6 +1138,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         """
         PROMPT #120 - Generate closed cards for verified business rules.
         PROMPT #193 - Hierarchical structure: Epic > Story > Task > Subtask.
+        PROMPT #285 - Duplicate protection: skips if business_rule cards already exist.
 
         Uses AI to classify business rules into a proper hierarchy grouped
         by business domain. Each level of the tree maps to an item_type:
@@ -1169,6 +1170,20 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         business_rules = project.initial_memory_context.get("business_rules", [])
         if not business_rules:
             logger.info(f"Project {project_id} has no business rules in memory context")
+            return []
+
+        # PROMPT #285 - Duplicate protection: check if business_rule cards already exist
+        existing_br_cards = self.db.query(Task).filter(
+            Task.project_id == project_id,
+            Task.labels.contains(["business_rule"]),
+            Task.workflow_state == "closed"
+        ).count()
+
+        if existing_br_cards > 0:
+            logger.info(
+                f"Project {project_id} already has {existing_br_cards} business_rule cards, "
+                f"skipping to avoid duplicates"
+            )
             return []
 
         logger.info(f"Generating {len(business_rules)} business rule cards for project {project.name}")

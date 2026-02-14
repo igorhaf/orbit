@@ -55,6 +55,62 @@ def _get_max_patterns(db: Session) -> int:
     return int(setting.value)
 
 
+def _merge_memory_context(existing: dict, new_scan: dict) -> dict:
+    """
+    PROMPT #285 - Smart merge of memory context to prevent data loss on re-scan.
+
+    Strategy:
+    - List fields (business_rules, key_features, entities): union with dedup
+    - Scalar fields (suggested_title, scan_summary, stack_info): new scan wins
+      (these are factual observations that improve with each scan)
+    - Preserves any keys from existing that new scan doesn't produce
+
+    This ensures manually-added rules are never lost during re-scan.
+    """
+    if not existing:
+        return new_scan
+    if not new_scan:
+        return existing
+
+    merged = dict(existing)
+
+    # List fields: merge with case-insensitive dedup
+    list_fields = ["business_rules", "key_features", "entities"]
+    for field in list_fields:
+        old_items = existing.get(field, [])
+        new_items = new_scan.get(field, [])
+        if not isinstance(old_items, list):
+            old_items = []
+        if not isinstance(new_items, list):
+            new_items = []
+
+        # Case-insensitive dedup using lowercase set
+        seen = set()
+        merged_list = []
+        for item in new_items + old_items:
+            key = str(item).strip().lower()
+            if key and key not in seen:
+                seen.add(key)
+                merged_list.append(item)
+        merged[field] = merged_list
+
+    # Scalar/dict fields: new scan wins (more recent data)
+    scalar_fields = [
+        "suggested_title", "scan_summary", "stack_info",
+        "interview_context", "detected_stack"
+    ]
+    for field in scalar_fields:
+        if field in new_scan:
+            merged[field] = new_scan[field]
+
+    # Any other keys from new scan that aren't in merged yet
+    for key, value in new_scan.items():
+        if key not in merged:
+            merged[key] = value
+
+    return merged
+
+
 def _effective_max_patterns(db: Session, project_id) -> int:
     """Calculate effective max patterns considering the 50 specs cap."""
     max_patterns = _get_max_patterns(db)
@@ -241,6 +297,21 @@ async def scan_codebase_memory(
             detail=f"Code path is not a directory: {code_path}"
         )
 
+    # PROMPT #285 - Concurrent scan guard: reject if scan already running for this project
+    if project_id:
+        from app.models.async_job import AsyncJob, JobStatus
+        running_scan = db.query(AsyncJob).filter(
+            AsyncJob.project_id == project_id,
+            AsyncJob.job_type == JobType.MEMORY_SCAN,
+            AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+        ).first()
+        if running_scan:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A scan is already in progress for this project (job {running_scan.id}). "
+                       f"Wait for it to complete before starting a new scan."
+            )
+
     # PROMPT #133 - Create background job for memory scan
     job_manager = JobManager(db)
 
@@ -323,27 +394,35 @@ async def _process_memory_scan_async(
         )
 
         # PROMPT #284 - Write scan result back to project.initial_memory_context
-        # (Previously missing: re-scan completed but never updated the project record)
+        # PROMPT #285 - Merge with existing data instead of blind overwrite
         if project_id:
             project = db.query(Project).filter(Project.id == project_id).first()
             if project:
+                # PROMPT #285 - Protect project name: only update if still default folder name
                 suggested_title = result.get("suggested_title")
                 if suggested_title and suggested_title != project.name:
-                    # Only update name if it still matches the folder-based default
                     folder_based_name = folder_name.replace("-", " ").replace("_", " ").title()
                     if project.name == folder_based_name:
                         project.name = suggested_title
-                        logger.info(f"📝 Updated project name to: {suggested_title}")
+                        logger.info(f"Updated project name to: {suggested_title}")
+                    else:
+                        logger.info(
+                            f"Keeping user-modified project name '{project.name}' "
+                            f"(scan suggested '{suggested_title}')"
+                        )
 
-                project.initial_memory_context = result
+                # PROMPT #285 - Smart merge: preserve existing data, add new findings
+                existing_ctx = project.initial_memory_context or {}
+                merged_ctx = _merge_memory_context(existing_ctx, result)
+                project.initial_memory_context = merged_ctx
                 project.initial_scan_complete = True
                 project.scan_depth = scan_depth
                 project.updated_at = datetime.utcnow()
                 db.commit()
                 logger.info(
-                    f"📝 Updated initial_memory_context: "
-                    f"rules={len(result.get('business_rules', []))}, "
-                    f"features={len(result.get('key_features', []))}"
+                    f"Updated initial_memory_context (merged): "
+                    f"rules={len(merged_ctx.get('business_rules', []))}, "
+                    f"features={len(merged_ctx.get('key_features', []))}"
                 )
 
                 # PROMPT #284 - Enrich wiki from updated RAG data (like quick-create does)
@@ -1107,17 +1186,35 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
         project.description = enriched
 
         # PROMPT #281 - Sync project name from wiki enrichment title
-        # The wiki enrichment generates "# Project Title" as the first line.
-        # Use this as the canonical project name to avoid English/Portuguese mismatch
-        # between project.name (from memory scan, may be English) and description (Portuguese).
+        # PROMPT #285 - Only update name if it appears to be auto-generated (not user-edited).
+        # Auto-generated names: folder-based ("My Project"), or scan-suggested titles.
+        # If the user manually edited the name, we preserve it.
         try:
             first_line = enriched.strip().split("\n")[0].strip()
             if first_line.startswith("# "):
                 wiki_title = first_line[2:].strip()
                 if wiki_title and len(wiki_title) > 3:
                     old_name = project.name
-                    project.name = wiki_title
-                    logger.info(f"Project name synced from wiki: '{old_name}' -> '{wiki_title}'")
+                    # Check if current name looks auto-generated
+                    code_path = project.code_path or ""
+                    folder_name = Path(code_path).name if code_path else ""
+                    auto_names = set()
+                    if folder_name:
+                        auto_names.add(folder_name.replace("-", " ").replace("_", " ").title())
+                        auto_names.add(folder_name)
+                    # Also consider scan-suggested title as auto-generated
+                    mem = project.initial_memory_context or {}
+                    if mem.get("suggested_title"):
+                        auto_names.add(mem["suggested_title"])
+
+                    if old_name in auto_names or not old_name:
+                        project.name = wiki_title
+                        logger.info(f"Project name synced from wiki: '{old_name}' -> '{wiki_title}'")
+                    else:
+                        logger.info(
+                            f"Keeping user-set project name '{old_name}' "
+                            f"(wiki suggested '{wiki_title}')"
+                        )
         except Exception as e:
             logger.warning(f"Failed to extract title from wiki enrichment: {e}")
 

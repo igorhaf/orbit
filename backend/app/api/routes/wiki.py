@@ -494,8 +494,13 @@ def _upsert_wiki_page(
     parent_id: UUID = None,
 ) -> WikiPage:
     """Create or update a wiki page by slug.
-    Preserves enriched content: if a page was already enriched (source='enrichment'),
-    only updates title and order - content is kept to avoid losing rich AI-generated text.
+
+    PROMPT #285 - Protected sources: pages that were manually edited or enriched
+    are NEVER overwritten by automated re-scan. This prevents data loss when:
+    - User manually edits a wiki page (source='manual')
+    - AI enrichment has already generated rich content (source='enrichment')
+
+    Only pages with source='ai_generated' are safe to overwrite.
     """
     existing = (
         db.query(WikiPage)
@@ -503,11 +508,21 @@ def _upsert_wiki_page(
         .first()
     )
     if existing:
+        # PROMPT #285 - Protected sources: never overwrite user-edited or enriched pages
+        protected_sources = {"manual", "enrichment"}
+        if existing.source in protected_sources:
+            logger.debug(
+                f"Wiki page '{slug}' is protected (source={existing.source}), "
+                f"skipping content overwrite"
+            )
+            # Still update parent_id to fix hierarchy
+            if parent_id is not None:
+                existing.parent_id = parent_id
+            return existing
+
         existing.title = title
         existing.order_index = order_index
-        # Only overwrite content if the page hasn't been enriched yet
-        if existing.source != "enrichment":
-            existing.content = content
+        existing.content = content
         # Always fix parent_id if provided (prevents orphan pages)
         if parent_id is not None:
             existing.parent_id = parent_id
