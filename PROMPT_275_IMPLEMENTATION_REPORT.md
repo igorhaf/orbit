@@ -1,11 +1,11 @@
-# PROMPT #275 - Re-enrichment de Regras Wiki e Botao Manual
-## Suporte a re-enriquecimento completo de paginas wiki de regras de negocio
+# PROMPT #275 - Auto-enrichment de Regras Wiki
+## Enriquecimento automatico de paginas wiki de regras de negocio
 
 **Date:** 2026-02-13
 **Status:** COMPLETED
 **Priority:** HIGH
 **Type:** Feature Enhancement
-**Impact:** Todas as paginas de regras wiki podem ser (re)enriquecidas com conteudo rico e dissertativo
+**Impact:** Todas as paginas de regras wiki sao automaticamente enriquecidas com conteudo rico e dissertativo
 
 ---
 
@@ -13,30 +13,35 @@
 
 O usuario identificou que nem todas as paginas de regras de negocio na wiki tinham conteudo rico e detalhado (com secoes Descricao, Justificativa, Comportamento, Impacto, Exemplos). Algumas paginas permaneciam com o conteudo basico de template (apenas a regra bruta extraida do codigo).
 
-**Root Cause:** O pipeline de enrichment so processava paginas com `source='ai_generated'`. Apos a primeira execucao, todas as paginas passavam para `source='enrichment'`, e qualquer re-execucao nao encontrava paginas para processar. Paginas que falharam durante o enrichment (rate limiting, erros de API) ficavam como `ai_generated` mas so seriam reprocessadas se o endpoint fosse chamado novamente - e nao havia botao no frontend para isso.
+**Root Cause:** O pipeline de enrichment so processava paginas com `source='ai_generated'`. Apos a primeira execucao, todas as paginas passavam para `source='enrichment'`, e qualquer re-execucao nao encontrava paginas para processar. Paginas que falharam durante o enrichment (rate limiting, erros de API) ficavam como `ai_generated` e nao eram automaticamente reprocessadas.
 
 **Key Requirements:**
-1. Permitir re-enrichment de TODAS as paginas de regras (incluindo ja enriquecidas)
-2. Parametro `force` para controlar se enriquece apenas novas ou todas
+1. Enriquecimento automatico: detectar paginas nao enriquecidas e processar automaticamente
+2. Permitir re-enrichment de TODAS as paginas via parametro `force`
 3. Para re-enrichment, buscar conteudo original da regra no RAG (via hash do slug)
-4. Botao "Enriquecer Regras" no frontend da wiki
-5. API methods no frontend para enrichRules e relink
+4. Nao disparar jobs duplicados (verificar se ja existe job em andamento)
+5. API methods no frontend para enrichRules e relink (uso programatico)
 
 ---
 
 ## What Was Implemented
 
-### 1. Backend: Suporte a force re-enrichment
+### 1. Auto-enrichment no `get_wiki_tree()`
+
+Quando o endpoint `/wiki/tree` e chamado (ao acessar a wiki), ele verifica automaticamente se existem paginas de regras com `source='ai_generated'` (nao enriquecidas). Se existirem E nao houver job de enrichment ja em andamento (PENDING/RUNNING), dispara automaticamente o job de enrichment em background.
+
+Isso garante que:
+- Paginas que falharam no primeiro enrichment sao reprocessadas
+- Novas paginas criadas por scan/RAG sao enriquecidas sem intervencao
+- Nao ha duplicacao de jobs
+
+### 2. Backend: Suporte a force re-enrichment
 
 **Endpoint `/enrich-rules` atualizado:**
 - Novo parametro `force: bool = False`
 - Com `force=True`: conta e processa TODAS as paginas `regra-*` (independente do source)
 - Sem `force`: comportamento original (apenas `source='ai_generated'`)
-- Mensagem de erro informativa quando nao ha paginas (diferencia "todas ja enriquecidas" de "nenhuma encontrada")
-
-**Funcao `_trigger_rule_enrichment_job` atualizada:**
-- Repassa parametro `force` para o job de background
-- Armazena `force` no `input_data` do job
+- Mensagem de erro informativa quando nao ha paginas
 
 **Funcao `_enrich_rules_background` atualizada:**
 - Aceita parametro `force: bool = False`
@@ -47,18 +52,10 @@ O usuario identificou que nem todas as paginas de regras de negocio na wiki tinh
   - Fallback: usa conteudo existente como contexto se RAG nao encontrar
 - Para paginas nao enriquecidas: comportamento original (parse de markers do template)
 
-### 2. Frontend: Botao "Enriquecer Regras"
-
-**WikiPanel.tsx:**
-- Novo estado `enrichingRules` para controle de loading
-- Funcao `handleEnrichRules(force)` que chama `wikiApi.enrichRules()`
-- Botao "Enriquecer Regras" / "Enriquecendo..." no header de acoes
-
-**wiki/page.tsx (pagina standalone):**
-- Mesmo botao e handler adicionados
+### 3. Frontend: API methods
 
 **api.ts:**
-- `wikiApi.enrichRules(projectId, force)` - POST para `/enrich-rules?force=true`
+- `wikiApi.enrichRules(projectId, force)` - POST para `/enrich-rules`
 - `wikiApi.relink(projectId)` - POST para `/relink`
 
 ---
@@ -67,6 +64,7 @@ O usuario identificou que nem todas as paginas de regras de negocio na wiki tinh
 
 ### Modified:
 1. **backend/app/api/routes/wiki.py**
+   - Auto-enrichment no `get_wiki_tree()` com verificacao de job existente
    - Endpoint `enrich_business_rule_pages()` com parametro `force`
    - `_trigger_rule_enrichment_job()` com parametro `force`
    - `_enrich_rules_background()` com logica de re-enrichment via RAG lookup
@@ -74,37 +72,26 @@ O usuario identificou que nem todas as paginas de regras de negocio na wiki tinh
 2. **frontend/src/lib/api.ts**
    - `wikiApi.enrichRules()` e `wikiApi.relink()` adicionados
 
-3. **frontend/src/components/wiki/WikiPanel.tsx**
-   - Estado `enrichingRules`, handler `handleEnrichRules`, botao no header
-
-4. **frontend/src/app/projects/[id]/wiki/page.tsx**
-   - Estado `enrichingRules`, handler `handleEnrichRules`, botao no header
-
 ---
 
 ## Technical Details
 
-### Fluxo de Re-enrichment
+### Fluxo Automatico
 
 ```
-Usuario clica "Enriquecer Regras"
-  -> POST /wiki/enrich-rules?force=true
-  -> Conta TODAS as paginas regra-* (sem filtro de source)
-  -> Cria background job com force=true
-  -> _enrich_rules_background(job_id, project_id, force=True)
-    -> Para cada pagina:
-      -> Se source == "ai_generated":
-        -> Parse markers do template (Dominio, Arquivo Fonte, Descricao)
-      -> Se source != "ai_generated" (ja enriched):
-        -> Busca original no RAG: md5(content) LIKE hash_prefix%
-        -> Extrai domain do parent page title
-        -> Fallback: usa conteudo existente
-      -> Chama AI com wiki_rule_enrichment prompt
-      -> Substitui conteudo + source = "enrichment"
-    -> Re-aplica semantic links (PROMPT #274)
+Usuario acessa wiki -> GET /wiki/tree
+  -> Verifica paginas regra-* com source='ai_generated'
+  -> Se existem E nao ha job PENDING/RUNNING:
+    -> _trigger_rule_enrichment_job() automatico
+    -> _enrich_rules_background() em background
+      -> Para cada pagina nao enriquecida:
+        -> Parse markers do template
+        -> Chama AI com wiki_rule_enrichment prompt
+        -> Substitui conteudo + source = "enrichment"
+      -> Re-aplica semantic links (PROMPT #274)
 ```
 
-### RAG Lookup para Re-enrichment
+### RAG Lookup para Re-enrichment (force=true)
 
 O slug de cada pagina de regra contem o hash MD5 do conteudo original:
 - Slug: `regra-{md5[:8]}` (ex: `regra-a1b2c3d4`)
@@ -112,18 +99,30 @@ O slug de cada pagina de regra contem o hash MD5 do conteudo original:
 
 Isso permite recuperar o conteudo original da regra mesmo apos o enrichment ter substituido completamente o conteudo da pagina.
 
+### Protecao contra Jobs Duplicados
+
+```python
+existing_job = db.query(AsyncJob).filter(
+    AsyncJob.project_id == project_id,
+    AsyncJob.job_type == JobType.WIKI_RULE_ENRICHMENT,
+    AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+).first()
+if not existing_job:
+    await _trigger_rule_enrichment_job(...)
+```
+
 ---
 
 ## Status: COMPLETE
 
 **Key Achievements:**
-- Re-enrichment completo de todas as regras wiki com um clique
-- Parametro force para controlar escopo (novas vs todas)
+- Enrichment totalmente automatico ao acessar a wiki
+- Re-enrichment via force para melhorar conteudo existente
 - Recuperacao inteligente do conteudo original via RAG hash match
-- Botao acessivel no frontend para trigger manual
+- Protecao contra jobs duplicados
 - Compativel com pipeline existente e semantic linking
 
 **Impact:**
-- Todas as paginas de regras terao conteudo rico e detalhado
-- Paginas que falharam no primeiro enrichment podem ser reprocessadas
-- Melhorias no prompt de enrichment sao imediatamente aplicaveis a todas as paginas
+- Todas as paginas de regras terao conteudo rico e detalhado automaticamente
+- Paginas que falharam no primeiro enrichment sao reprocessadas sem intervencao
+- Melhorias no prompt de enrichment sao aplicaveis via re-enrichment

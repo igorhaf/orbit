@@ -123,6 +123,33 @@ async def get_wiki_tree(
             result.append(item)
         return result
 
+    # PROMPT #275 - Auto-trigger enrichment for unenriched rule pages
+    unenriched_rules = [
+        p for p in all_pages
+        if p.slug.startswith("regra-") and p.source == "ai_generated"
+    ]
+    if unenriched_rules:
+        # Check if there's already an enrichment job running/pending for this project
+        from app.models.async_job import AsyncJob, JobType, JobStatus
+        existing_job = (
+            db.query(AsyncJob)
+            .filter(
+                AsyncJob.project_id == project_id,
+                AsyncJob.job_type == JobType.WIKI_RULE_ENRICHMENT,
+                AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+            )
+            .first()
+        )
+        if not existing_job:
+            try:
+                await _trigger_rule_enrichment_job(db, project_id, len(unenriched_rules))
+                logger.info(
+                    f"Auto-triggered enrichment for {len(unenriched_rules)} "
+                    f"unenriched rule pages in project {project_id}"
+                )
+            except Exception as e:
+                logger.warning(f"Auto-enrichment trigger failed: {e}")
+
     return build_tree(None)
 
 

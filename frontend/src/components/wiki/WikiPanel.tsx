@@ -72,7 +72,6 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     total_documents: number;
   } | null>(null);
   const [isEnriching, setIsEnriching] = useState(false);
-  const [enrichingRules, setEnrichingRules] = useState(false);
 
   const loadTree = useCallback(async () => {
     setLoading(true);
@@ -150,18 +149,6 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       showError(error.message || 'Falha ao gerar wiki');
     } finally {
       setGenerating(false);
-    }
-  };
-
-  const handleEnrichRules = async (force: boolean = false) => {
-    setEnrichingRules(true);
-    try {
-      const res = await wikiApi.enrichRules(projectId, force);
-      showSuccess(res.detail || 'Enriquecimento iniciado em background');
-    } catch (error: any) {
-      showError(error.message || 'Falha ao iniciar enriquecimento');
-    } finally {
-      setEnrichingRules(false);
     }
   };
 
@@ -389,9 +376,6 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generating}>
             {generating ? 'Gerando...' : 'Gerar do Contexto'}
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleEnrichRules(true)} disabled={enrichingRules}>
-            {enrichingRules ? 'Enriquecendo...' : 'Enriquecer Regras'}
           </Button>
           <Button variant="primary" size="sm" onClick={() => setShowCreateDialog(true)}>
             Nova Pagina
