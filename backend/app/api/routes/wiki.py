@@ -1140,11 +1140,12 @@ def _build_business_rules_wiki_pages(
 
 
 async def _trigger_rule_enrichment_job(
-    db: Session, project_id: UUID, rule_count: int
+    db: Session, project_id: UUID, rule_count: int, force: bool = False
 ) -> Optional[UUID]:
     """
-    PROMPT #270 - Helper to create and submit a rule enrichment background job.
+    PROMPT #270/#275 - Helper to create and submit a rule enrichment background job.
     Returns the job_id or None if failed.
+    With force=True, re-enriches ALL rule pages including already-enriched ones.
     """
     from app.models.async_job import JobType
     from app.services.job_manager import JobManager
@@ -1156,6 +1157,7 @@ async def _trigger_rule_enrichment_job(
         input_data={
             "project_id": str(project_id),
             "rule_count": rule_count,
+            "force": force,
         },
         project_id=project_id,
         notification_title=f"Enriquecimento de {rule_count} regras wiki",
@@ -1169,45 +1171,62 @@ async def _trigger_rule_enrichment_job(
         _enrich_rules_background,
         job.id,
         project_id,
+        force,
     )
-    logger.info(f"Wiki rule enrichment job {job.id} submitted for {rule_count} rules")
+    logger.info(f"Wiki rule enrichment job {job.id} submitted for {rule_count} rules (force={force})")
     return job.id
 
 
 @router.post("/{project_id}/wiki/enrich-rules")
 async def enrich_business_rule_pages(
     project_id: UUID,
+    force: bool = False,
     db: Session = Depends(get_db),
 ):
     """
-    PROMPT #270 - Trigger AI enrichment of individual business rule wiki pages.
+    PROMPT #270/#275 - Trigger AI enrichment of individual business rule wiki pages.
     Creates a background job that enriches each rule page with rich dissertative content.
     Returns job_id for polling progress.
+
+    With force=True, re-enriches ALL rule pages including already-enriched ones.
+    Without force, only enriches pages with source='ai_generated' (not yet enriched).
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    # Count rule pages that need enrichment (source=ai_generated, slug starts with regra-)
     from sqlalchemy import text as sql_text
-    count_result = db.execute(sql_text("""
-        SELECT COUNT(*) FROM wiki_pages
-        WHERE project_id = :pid
-        AND slug LIKE 'regra-%%'
-        AND source = 'ai_generated'
-    """), {"pid": str(project_id)})
+
+    if force:
+        # PROMPT #275 - Count ALL rule pages (including already enriched)
+        count_result = db.execute(sql_text("""
+            SELECT COUNT(*) FROM wiki_pages
+            WHERE project_id = :pid
+            AND slug LIKE 'regra-%%'
+        """), {"pid": str(project_id)})
+    else:
+        # Original: only count unenriched pages
+        count_result = db.execute(sql_text("""
+            SELECT COUNT(*) FROM wiki_pages
+            WHERE project_id = :pid
+            AND slug LIKE 'regra-%%'
+            AND source = 'ai_generated'
+        """), {"pid": str(project_id)})
+
     rule_count = count_result.scalar() or 0
 
     if rule_count == 0:
-        raise HTTPException(
-            status_code=400,
-            detail="No business rule pages found. Run generate-from-context first."
+        detail = (
+            "All rule pages already enriched. Use force=true to re-enrich."
+            if not force
+            else "No business rule pages found. Run generate-from-context first."
         )
+        raise HTTPException(status_code=400, detail=detail)
 
-    job_id = await _trigger_rule_enrichment_job(db, project_id, rule_count)
+    job_id = await _trigger_rule_enrichment_job(db, project_id, rule_count, force=force)
 
     return {
-        "detail": f"Enrichment started for {rule_count} rule pages",
+        "detail": f"Enrichment started for {rule_count} rule pages" + (" (force re-enrich)" if force else ""),
         "job_id": str(job_id),
         "rule_count": rule_count,
     }
@@ -1216,10 +1235,12 @@ async def enrich_business_rule_pages(
 async def _enrich_rules_background(
     job_id: UUID,
     project_id: UUID,
+    force: bool = False,
 ):
     """
-    PROMPT #270 - Background task to enrich individual business rule wiki pages.
+    PROMPT #270/#275 - Background task to enrich individual business rule wiki pages.
     Makes one AI call per rule page with rich prompt context.
+    With force=True, re-enriches ALL rule pages including already-enriched ones.
     """
     import asyncio
     from app.database import SessionLocal
@@ -1238,16 +1259,14 @@ async def _enrich_rules_background(
         project_name = project.name if project else ""
         project_context = (project.context_human or "")[:1000] if project else ""
 
-        # Get all rule pages that need enrichment
-        rule_pages = (
-            db.query(WikiPage)
-            .filter(
-                WikiPage.project_id == project_id,
-                WikiPage.slug.like("regra-%"),
-                WikiPage.source == "ai_generated",
-            )
-            .all()
+        # PROMPT #275 - Get rule pages: all if force, only unenriched otherwise
+        query = db.query(WikiPage).filter(
+            WikiPage.project_id == project_id,
+            WikiPage.slug.like("regra-%"),
         )
+        if not force:
+            query = query.filter(WikiPage.source == "ai_generated")
+        rule_pages = query.all()
 
         total = len(rule_pages)
         if total == 0:
@@ -1301,24 +1320,54 @@ async def _enrich_rules_background(
             )
 
             try:
-                # Extract domain and source from current content
+                # PROMPT #275 - Extract domain, source, and rule content
+                # For unenriched pages: parse from template markers
+                # For already-enriched pages: look up original from RAG or use parent domain
                 domain_name = "Geral"
                 source_file = ""
-                for line in page.content.split("\n"):
-                    if line.startswith("**Dominio:**"):
-                        domain_name = line.replace("**Dominio:**", "").strip()
-                    elif line.startswith("**Arquivo Fonte:**"):
-                        source_file = line.replace("**Arquivo Fonte:**", "").strip().strip("`")
-
-                # Get original rule content (from Descricao section)
                 rule_content = page.title
-                desc_marker = "### Descricao"
-                if desc_marker in page.content:
-                    parts = page.content.split(desc_marker, 1)
-                    if len(parts) > 1:
-                        desc_text = parts[1].split("---")[0].strip()
-                        if desc_text:
-                            rule_content = desc_text
+
+                if page.source == "ai_generated":
+                    # Original template format - parse markers
+                    for line in page.content.split("\n"):
+                        if line.startswith("**Dominio:**"):
+                            domain_name = line.replace("**Dominio:**", "").strip()
+                        elif line.startswith("**Arquivo Fonte:**"):
+                            source_file = line.replace("**Arquivo Fonte:**", "").strip().strip("`")
+                    desc_marker = "### Descricao"
+                    if desc_marker in page.content:
+                        parts = page.content.split(desc_marker, 1)
+                        if len(parts) > 1:
+                            desc_text = parts[1].split("---")[0].strip()
+                            if desc_text:
+                                rule_content = desc_text
+                else:
+                    # Already enriched - try to get original from RAG using slug hash
+                    rule_hash = page.slug.replace("regra-", "")
+                    rag_result = db.execute(sql_text("""
+                        SELECT content, metadata->>'source_file' as source_file
+                        FROM rag_documents
+                        WHERE project_id = :pid
+                        AND (metadata->>'content_type' = 'business_rule'
+                             OR metadata->>'type' = 'business_rule')
+                        AND md5(content)::varchar LIKE :hash_prefix
+                        LIMIT 1
+                    """), {"pid": str(project_id), "hash_prefix": f"{rule_hash}%"})
+                    rag_row = rag_result.fetchone()
+                    if rag_row:
+                        rule_content = rag_row[0] or page.title
+                        source_file = rag_row[1] or ""
+                    else:
+                        # Fallback: use existing enriched content as context
+                        rule_content = page.content
+
+                    # Get domain from parent page slug
+                    if page.parent_id:
+                        parent = db.execute(sql_text(
+                            "SELECT slug, title FROM wiki_pages WHERE id = :pid"
+                        ), {"pid": str(page.parent_id)}).fetchone()
+                        if parent and parent[1]:
+                            domain_name = parent[1].replace("Regras de Negocio - ", "")
 
                 # Get related rules from same domain
                 parent_slug = ""

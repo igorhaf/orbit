@@ -35,6 +35,7 @@ export default function WikiIndexPage() {
   const [tree, setTree] = useState<WikiTreeItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [enrichingRules, setEnrichingRules] = useState(false);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newPage, setNewPage] = useState({ title: '', content: '' });
   const [creating, setCreating] = useState(false);
@@ -69,6 +70,18 @@ export default function WikiIndexPage() {
       showError(error.message || 'Falha ao gerar wiki');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleEnrichRules = async () => {
+    setEnrichingRules(true);
+    try {
+      const res = await wikiApi.enrichRules(projectId, true);
+      showSuccess(res.detail || 'Enriquecimento iniciado em background');
+    } catch (error: any) {
+      showError(error.message || 'Falha ao iniciar enriquecimento');
+    } finally {
+      setEnrichingRules(false);
     }
   };
 
@@ -150,6 +163,13 @@ export default function WikiIndexPage() {
               disabled={generating}
             >
               {generating ? 'Gerando...' : 'Gerar do Contexto'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleEnrichRules}
+              disabled={enrichingRules}
+            >
+              {enrichingRules ? 'Enriquecendo...' : 'Enriquecer Regras'}
             </Button>
             <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
               Nova Pagina

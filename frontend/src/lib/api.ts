@@ -1518,4 +1518,14 @@ export const wikiApi = {
     request<any>(`/api/v1/projects/${projectId}/wiki/generate-from-context`, {
       method: 'POST',
     }),
+
+  enrichRules: (projectId: string, force: boolean = false) =>
+    request<any>(`/api/v1/projects/${projectId}/wiki/enrich-rules?force=${force}`, {
+      method: 'POST',
+    }),
+
+  relink: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/wiki/relink`, {
+      method: 'POST',
+    }),
 };
