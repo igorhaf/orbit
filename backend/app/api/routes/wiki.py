@@ -207,14 +207,14 @@ async def generate_wiki_from_context(
 
     if all_rules:
         rules_parts = [
-            "## Catalogo de Referencia - Regras Brutas\n",
-            f"Total de regras extraidas do codebase: **{len(all_rules)}**\n",
-            "Estas sao as regras brutas extraidas automaticamente do codigo-fonte.",
-            "A pagina principal de Regras de Negocio contem a versao enriquecida e organizada.\n",
+            "## Reference Catalog - Raw Rules\n",
+            f"Total rules extracted from codebase: **{len(all_rules)}**\n",
+            "These are the raw rules automatically extracted from source code.",
+            "The main Business Rules page contains the enriched and organized version.\n",
         ]
         for i, rule in enumerate(all_rules, 1):
             if isinstance(rule, dict):
-                title = rule.get("title", rule.get("rule", f"Regra {i}"))
+                title = rule.get("title", rule.get("rule", f"Rule {i}"))
                 desc = rule.get("description", "")
                 rules_parts.append(f"### {i}. {title}\n")
                 if desc:
@@ -227,7 +227,7 @@ async def generate_wiki_from_context(
         regras_parent = next((p for p in created_pages if p and p.slug == "regras-de-negocio"), None)
         created_pages.append(_upsert_wiki_page(
             db, project_id, "regras-catalogo-bruto",
-            "Catalogo de Referencia - Regras Brutas",
+            "Reference Catalog - Raw Rules",
             rules_content, 12, "ai_generated",
             parent_id=regras_parent.id if regras_parent else None,
         ))
@@ -954,64 +954,69 @@ def _build_git_history_page(db, project_id: UUID) -> Optional[str]:
 # PROMPT #269 - Individual Business Rule Wiki Pages
 # =============================================================================
 
-# Domain classification map: path fragments → (domain_name, domain_slug)
-_DOMAIN_MAP = [
-    ("Aluno/",        "Aluno",         "aluno"),
-    ("aluno/",        "Aluno",         "aluno"),
-    ("Aulas/",        "Aulas",         "aulas"),
-    ("aulas/",        "Aulas",         "aulas"),
-    ("Auth/",         "Autenticacao",  "autenticacao"),
-    ("auth/",         "Autenticacao",  "autenticacao"),
-    ("Categorias/",   "Categorias",    "categorias"),
-    ("categorias/",   "Categorias",    "categorias"),
-    ("Cursos/",       "Cursos",        "cursos"),
-    ("cursos/",       "Cursos",        "cursos"),
-    ("Instrutor/",    "Instrutor",     "instrutor"),
-    ("instrutor/",    "Instrutor",     "instrutor"),
-    ("Instrutores",   "Instrutor",     "instrutor"),
-    ("instrutores/",  "Instrutor",     "instrutor"),
-    ("Trilhas/",      "Trilhas",       "trilhas"),
-    ("trilhas/",      "Trilhas",       "trilhas"),
-    ("Planos",        "Planos",        "planos"),
-    ("planos/",       "Planos",        "planos"),
-    ("avaliacoes/",   "Avaliacoes",    "avaliacoes"),
-    ("Avaliacoes/",   "Avaliacoes",    "avaliacoes"),
-    ("Review",        "Avaliacoes",    "avaliacoes"),
-    ("certificado",   "Certificados",  "certificados"),
-    ("Certificado",   "Certificados",  "certificados"),
-    ("Certificate",   "Certificados",  "certificados"),
-    ("mensagens/",    "Mensagens",     "mensagens"),
-    ("notificacoes/", "Notificacoes",  "notificacoes"),
-    ("Notification",  "Notificacoes",  "notificacoes"),
-    ("checkout",      "Pagamentos",    "pagamentos"),
-    ("Enrollment",    "Inscricoes",    "inscricoes"),
-    ("inscricao",     "Inscricoes",    "inscricoes"),
-    ("inscricoes",    "Inscricoes",    "inscricoes"),
-    ("ajuda/",        "Ajuda",         "ajuda"),
-    ("Models/",       "Modelos",       "modelos"),
-    ("Observers/",    "Modelos",       "modelos"),
-    ("Policies/",     "Modelos",       "modelos"),
-    ("Requests/",     "Validacao",     "validacao"),
-    ("config/",       "Configuracao",  "configuracao"),
-    ("bootstrap/",    "Configuracao",  "configuracao"),
-    ("docker-",       "Configuracao",  "configuracao"),
-    ("composer.",     "Configuracao",  "configuracao"),
-    ("package.",      "Configuracao",  "configuracao"),
-    ("routes/",       "Rotas",         "rotas"),
-]
+# PROMPT #287 - Generic domain classification
+# Directories to skip when extracting domain (framework/boilerplate dirs)
+_SKIP_DIRS = {
+    "app", "src", "lib", "backend", "frontend", "server", "client",
+    "api", "core", "common", "utils", "helpers", "shared", "base",
+    "internal", "pkg", "cmd", "main", "bin", "build", "dist",
+    "public", "static", "assets", "vendor", "node_modules",
+    "tests", "test", "spec", "__tests__", "__pycache__",
+    "migrations", "alembic", "database", "db", "sql",
+    "config", "configuration", "settings", "env",
+    "docs", "documentation", "scripts", "tools",
+    ".", "..", "",
+}
 
 
 def _classify_domain(source_file: str) -> Tuple[str, str]:
     """
-    PROMPT #269 - Classify a source file into a business domain.
+    PROMPT #287 - Classify a source file into a business domain.
+    Generic approach: extracts the most meaningful directory from the path.
+    Works with any project structure, not just specific hardcoded paths.
     Returns (domain_name, domain_slug).
     """
     if not source_file:
-        return ("Geral", "geral")
-    for fragment, name, slug in _DOMAIN_MAP:
-        if fragment in source_file:
-            return (name, slug)
-    return ("Geral", "geral")
+        return ("General", "general")
+
+    # Normalize: remove project root prefix if present
+    path = source_file
+    if "/projects/" in path:
+        path = path.split("/projects/", 1)[-1]
+        # Skip the project folder name itself
+        parts = path.split("/")
+        if len(parts) > 1:
+            parts = parts[1:]  # skip project folder
+        path = "/".join(parts)
+
+    # Split into directory parts (exclude filename)
+    parts = path.replace("\\", "/").split("/")
+    if len(parts) > 1:
+        parts = parts[:-1]  # remove filename
+    else:
+        # Single file with no directory → use filename without extension
+        name = parts[0].rsplit(".", 1)[0] if "." in parts[0] else parts[0]
+        if name:
+            slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+            return (name.replace("_", " ").replace("-", " ").title(), slug or "general")
+        return ("General", "general")
+
+    # Walk directory parts and find the first meaningful (non-boilerplate) dir
+    for part in parts:
+        clean = part.strip()
+        if clean.lower() not in _SKIP_DIRS and len(clean) > 1:
+            slug = re.sub(r"[^a-z0-9]+", "-", clean.lower()).strip("-")
+            name = clean.replace("_", " ").replace("-", " ").title()
+            return (name, slug or "general")
+
+    # Fallback: use last directory part
+    last = parts[-1].strip() if parts else ""
+    if last and len(last) > 1:
+        slug = re.sub(r"[^a-z0-9]+", "-", last.lower()).strip("-")
+        name = last.replace("_", " ").replace("-", " ").title()
+        return (name, slug or "general")
+
+    return ("General", "general")
 
 
 def _build_business_rules_wiki_pages(
@@ -1083,29 +1088,69 @@ def _build_business_rules_wiki_pages(
     if not parent_page:
         parent_page = _upsert_wiki_page(
             db, project_id, "regras-de-negocio",
-            "Regras de Negocio",
-            "## Regras de Negocio\n\nPagina principal de regras de negocio do projeto.\n",
+            "Business Rules",
+            "## Business Rules\n\nMain page for the project's business rules.\n",
             2, "ai_generated"
         )
         db.flush()
     parent_id = parent_page.id
 
-    # --- Index page ---
+    # --- Index page (PROMPT #287 - Enhanced) ---
+    total_rules = sum(len(rules) for rules in domains.values())
+    total_domains = len(domains)
+
+    # Build source files set for stats
+    all_source_files = set()
+    for rules in domains.values():
+        for rule in rules:
+            if rule["source_file"]:
+                all_source_files.add(rule["source_file"])
+
     index_lines = [
-        "## Regras de Negocio - Indice por Dominio\n",
-        f"Total de regras extraidas: **{len(rows)}** em **{len(domains)}** dominios\n",
-        "Clique em um dominio para ver todas as regras daquela area.\n",
+        "## Business Rules - Index by Domain\n",
+        f"Total rules extracted: **{total_rules}** across **{total_domains}** domains "
+        f"from **{len(all_source_files)}** source files.\n",
+        "Click a domain to see all rules in that area.\n",
+        "---\n",
+        "### Summary\n",
+        "| Domain | Rules | Source Files |",
+        "|--------|-------|--------------|",
     ]
     for domain_name in sorted(domains.keys()):
         rules = domains[domain_name]
         domain_slug = rules[0]["domain_slug"]
+        domain_files = set(r["source_file"] for r in rules if r["source_file"])
         index_lines.append(
-            f"- **[{domain_name}](wiki:regras-{domain_slug})** ({len(rules)} regras)"
+            f"| [{domain_name}](wiki:regras-{domain_slug}) | {len(rules)} | {len(domain_files)} |"
+        )
+    index_lines.append("")
+    index_lines.append("---\n")
+
+    # Add domain list with brief description
+    index_lines.append("### Domains\n")
+    for domain_name in sorted(domains.keys()):
+        rules = domains[domain_name]
+        domain_slug = rules[0]["domain_slug"]
+        # Show first 3 rule titles as preview
+        previews = []
+        for rule in rules[:3]:
+            title = rule["content"].split(".")[0].strip()
+            if len(title) > 80:
+                title = title[:77] + "..."
+            if title and len(title) >= 5:
+                previews.append(title)
+        preview_text = ""
+        if previews:
+            preview_text = " — " + "; ".join(previews)
+            if len(rules) > 3:
+                preview_text += f"; ... (+{len(rules) - 3} more)"
+        index_lines.append(
+            f"- **[{domain_name}](wiki:regras-{domain_slug})** ({len(rules)} rules){preview_text}"
         )
 
     index_page = _upsert_wiki_page(
         db, project_id, "regras-indice",
-        "Regras de Negocio - Indice",
+        "Business Rules - Index",
         "\n".join(index_lines),
         20, "ai_generated",
         parent_id=parent_id,
@@ -1121,8 +1166,8 @@ def _build_business_rules_wiki_pages(
 
         # Domain page with bullet list
         domain_lines = [
-            f"## Regras de Negocio - {domain_name}\n",
-            f"Total de regras neste dominio: **{len(rules)}**\n",
+            f"## Business Rules - {domain_name}\n",
+            f"Total rules in this domain: **{len(rules)}**\n",
         ]
 
         # Group by source file within domain
@@ -1146,7 +1191,7 @@ def _build_business_rules_wiki_pages(
 
         domain_page = _upsert_wiki_page(
             db, project_id, page_slug,
-            f"Regras de Negocio - {domain_name}",
+            f"Business Rules - {domain_name}",
             "\n".join(domain_lines),
             domain_order, "ai_generated",
             parent_id=index_page.id if index_page else None,
@@ -1169,17 +1214,17 @@ def _build_business_rules_wiki_pages(
 
             rule_content = (
                 f"## {title}\n\n"
-                f"**Dominio:** {domain_name}  \n"
-                f"**Arquivo Fonte:** `{source_display}`\n\n"
+                f"**Domain:** {domain_name}  \n"
+                f"**Source File:** `{source_display}`\n\n"
                 f"---\n\n"
-                f"### Descricao\n\n"
+                f"### Description\n\n"
                 f"{rule['content']}\n\n"
                 f"---\n\n"
-                f"### Contexto\n\n"
-                f"Regra de negocio extraida automaticamente do arquivo "
-                f"`{source_display}`, parte do modulo **{domain_name}** do projeto.\n\n"
-                f"Esta regra foi identificada durante a analise do codigo-fonte "
-                f"e representa um comportamento ou restricao implementada no sistema.\n"
+                f"### Context\n\n"
+                f"Business rule automatically extracted from file "
+                f"`{source_display}`, part of the **{domain_name}** module.\n\n"
+                f"This rule was identified during source code analysis "
+                f"and represents a behavior or constraint implemented in the system.\n"
             )
 
             rule_page = _upsert_wiki_page(

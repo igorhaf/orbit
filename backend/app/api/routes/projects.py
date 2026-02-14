@@ -1246,10 +1246,10 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             # This raw catalog is a supplementary reference with ALL extracted rules.
             if rules:
                 rules_md_parts = [
-                    "## Catalogo de Referencia - Regras Brutas\n",
-                    f"Total de regras extraidas do codebase: **{len(rules)}**\n",
-                    "Estas sao as regras brutas extraidas automaticamente do codigo-fonte.",
-                    "A pagina principal de Regras de Negocio contem a versao enriquecida e organizada.\n",
+                    "## Reference Catalog - Raw Rules\n",
+                    f"Total rules extracted from codebase: **{len(rules)}**\n",
+                    "These are the raw rules automatically extracted from source code.",
+                    "The main Business Rules page contains the enriched and organized version.\n",
                 ]
                 for i, rule in enumerate(rules, 1):
                     rule_text = rule[:500] if len(rule) > 500 else rule
@@ -1264,7 +1264,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                 )
                 _upsert_wiki_page(
                     db, project_id, "regras-catalogo-bruto",
-                    "Catalogo de Referencia - Regras Brutas", rules_md,
+                    "Reference Catalog - Raw Rules", rules_md,
                     12, "ai_generated",
                     parent_id=regras_parent.id if regras_parent else None,
                 )
