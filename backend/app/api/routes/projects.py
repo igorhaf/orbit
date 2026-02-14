@@ -346,6 +346,14 @@ async def _process_memory_scan_async(
                     f"features={len(result.get('key_features', []))}"
                 )
 
+                # PROMPT #284 - Enrich wiki from updated RAG data (like quick-create does)
+                job_manager.update_progress(job_id, 82.0, "Enriching project wiki from scan findings...")
+                try:
+                    await _enrich_context_from_rag(db, project_id)
+                    logger.info(f"Wiki enrichment done for project {project_id}")
+                except Exception as e:
+                    logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
+
                 # PROMPT #284 - Trigger card generation from business rules (like quick-create does)
                 job_manager.update_progress(job_id, 85.0, "Generating cards from business rules...")
                 try:
@@ -1151,7 +1159,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                     rules_md_parts.append(f"{i}. {rule_text}")
                 rules_md = "\n".join(rules_md_parts)
                 # PROMPT #277 - Set parent_id to regras-de-negocio to avoid appearing in sidebar
-                from app.models.wiki import WikiPage as WikiPageModel
+                from app.models.wiki_page import WikiPage as WikiPageModel
                 regras_parent = (
                     db.query(WikiPageModel)
                     .filter(WikiPageModel.project_id == project_id, WikiPageModel.slug == "regras-de-negocio")
@@ -2164,6 +2172,37 @@ async def toggle_spec_active(
         "title": spec.title,
         "is_active": spec.is_active
     }
+
+
+# ============================================================================
+# WIKI ENRICHMENT ENDPOINT - PROMPT #284
+# ============================================================================
+
+@router.post("/{project_id}/enrich-wiki")
+async def enrich_wiki(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #284 - Re-run wiki enrichment from RAG data.
+
+    Re-generates all wiki pages from current RAG data (business rules,
+    interview answers, scan summary, features). Useful after a re-scan
+    when RAG has new data that should be reflected in the wiki.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    try:
+        result = await _enrich_context_from_rag(db, project_id)
+        if result:
+            return {"status": "enriched", "message": "Wiki pages regenerated from RAG data"}
+        else:
+            return {"status": "skipped", "message": "No RAG data available for enrichment"}
+    except Exception as e:
+        logger.error(f"Wiki enrichment failed for {project_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Wiki enrichment failed: {str(e)[:200]}")
 
 
 # ============================================================================
