@@ -1831,6 +1831,15 @@ export default function AIFlowPage() {
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
   const edgeReconnectSuccessful = useRef(true);
   const nodesRef = useRef<Node[]>([]);
+  const [positionsChanged, setPositionsChanged] = useState(false);
+
+  // Wrap onNodesChange to detect position changes (drag)
+  const handleNodesChange = useCallback((changes: any[]) => {
+    onNodesChange(changes);
+    if (changes.some((c: any) => c.type === 'position' && c.dragging === false)) {
+      setPositionsChanged(true);
+    }
+  }, [onNodesChange]);
 
   // Keep ref in sync so getNodePositions always reads latest
   useEffect(() => {
@@ -1895,6 +1904,7 @@ export default function AIFlowPage() {
   useEffect(() => {
     setWorkingChain(currentChain?.chain || []);
     setWorkingUtilityNodes(currentChain?.utility_nodes || []);
+    setPositionsChanged(false);
     // PROMPT #226 - Load model overrides from node_positions
     const savedOverrides = (currentChain?.node_positions as any)?.__model_overrides;
     setModelOverrides(savedOverrides && typeof savedOverrides === 'object' ? savedOverrides : {});
@@ -2150,6 +2160,7 @@ export default function AIFlowPage() {
         } as any);
         showSuccess('Flow saved');
       }
+      setPositionsChanged(false);
       await loadData();
     } catch (error) {
       console.error('Failed to save chain:', error);
@@ -2192,7 +2203,7 @@ export default function AIFlowPage() {
   const workingUtilityStr = JSON.stringify(workingUtilityNodes);
   const savedOverridesStr = JSON.stringify((currentChain?.node_positions as any)?.__model_overrides || {});
   const workingOverridesStr = JSON.stringify(modelOverrides);
-  const hasUnsavedChanges = savedChainStr !== workingChainStr || savedUtilityStr !== workingUtilityStr || savedOverridesStr !== workingOverridesStr;
+  const hasUnsavedChanges = savedChainStr !== workingChainStr || savedUtilityStr !== workingUtilityStr || savedOverridesStr !== workingOverridesStr || positionsChanged;
 
   return (
     <Layout>
@@ -2264,7 +2275,7 @@ export default function AIFlowPage() {
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
-                onNodesChange={onNodesChange}
+                onNodesChange={handleNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 onReconnect={onReconnect}
