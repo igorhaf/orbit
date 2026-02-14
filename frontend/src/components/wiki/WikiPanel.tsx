@@ -221,7 +221,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     }
   };
 
-  const renderSidebarItem = (item: WikiTreeItem, depth: number = 0) => {
+  const renderSidebarItem = (item: WikiTreeItem) => {
     const isActive = item.slug === selectedSlug;
     return (
       <div key={item.id}>
@@ -235,11 +235,9 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
               ? 'bg-blue-100 text-blue-700 font-medium'
               : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
           }`}
-          style={{ paddingLeft: `${8 + depth * 14}px` }}
         >
           <span className="block">{item.title}</span>
         </button>
-        {item.children && item.children.map((child) => renderSidebarItem(child, depth + 1))}
       </div>
     );
   };
@@ -406,9 +404,6 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                       <span className="px-1.5 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">Manual</span>
                     )}
                   </div>
-                  {page.children && page.children.length > 0 && (
-                    <p className="text-xs text-gray-400">{page.children.length} sub-paginas</p>
-                  )}
                 </Card>
               ))}
             </div>
