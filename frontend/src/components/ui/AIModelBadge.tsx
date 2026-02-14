@@ -30,16 +30,16 @@ interface Props {
 
 // Friendly labels for usage types
 const USAGE_TYPE_LABELS: Record<string, string> = {
-  'interview': 'Entrevista',
-  'task_execution': 'Execução de Tarefas',
-  'prompt_generation': 'Geração de Prompts',
-  'commit_generation': 'Geração de Commits',
-  'memory': 'Memória (Scan)',
+  'interview': 'Interview',
+  'task_execution': 'Task Execution',
+  'prompt_generation': 'Prompt Generation',
+  'commit_generation': 'Commit Generation',
+  'memory': 'Memory (Scan)',
   'rag': 'RAG',
-  'general': 'Geral',
-  'context': 'Contexto',
+  'general': 'General',
+  'context': 'Context',
   'backlog': 'Backlog',
-  'discovery': 'Descoberta',
+  'discovery': 'Discovery',
 };
 
 // Map model IDs to friendly names
@@ -105,19 +105,19 @@ const renderIconByKey = (key: string, className: string = 'w-4 h-4'): React.Reac
 
 // Icon descriptions for tooltip
 const ICON_KEY_DESCRIPTIONS: Record<string, string> = {
-  'brain': 'Inteligência / Cognição',
-  'brain-search': 'IA Investigativa / RAG',
-  'wrench-cpu': 'IA Construtora / Geradora',
-  'brain-puzzle': 'Raciocínio Complexo',
-  'puzzle-cog': 'Engine Inteligente',
-  'brain-chart': 'IA Analítica',
-  'brain-blocks': 'Inteligência Arquitetada',
-  'bolt-cpu': 'Poder Computacional',
-  'globe-brain': 'Inteligência Distribuída',
-  'beaker-brain': 'Inteligência Emergente',
-  'blocks-cpu': 'Arquitetura + IA',
-  'cog': 'Processamento / Engine',
-  'sparkle': 'Predição / Visão de Futuro',
+  'brain': 'Intelligence / Cognition',
+  'brain-search': 'Investigative AI / RAG',
+  'wrench-cpu': 'Builder / Generator AI',
+  'brain-puzzle': 'Complex Reasoning',
+  'puzzle-cog': 'Smart Engine',
+  'brain-chart': 'Analytical AI',
+  'brain-blocks': 'Architected Intelligence',
+  'bolt-cpu': 'Computational Power',
+  'globe-brain': 'Distributed Intelligence',
+  'beaker-brain': 'Emergent Intelligence',
+  'blocks-cpu': 'Architecture + AI',
+  'cog': 'Processing / Engine',
+  'sparkle': 'Prediction / Future Vision',
 };
 
 const TOOLTIP_WIDTH = 256; // 16rem = 256px
@@ -328,7 +328,7 @@ export function AIModelBadge({
             {/* Latency */}
             {latency_ms !== undefined && (
               <div className="flex justify-between">
-                <span className="text-gray-400">Latência:</span>
+                <span className="text-gray-400">Latency:</span>
                 <span className="text-amber-400">{latency_ms}ms</span>
               </div>
             )}

@@ -100,7 +100,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           variant={confirmButtonVariant}
           disabled={isLoading}
         >
-          {isLoading ? 'Processando...' : confirmLabel}
+          {isLoading ? 'Processing...' : confirmLabel}
         </Button>
       </DialogFooter>
     </Dialog>

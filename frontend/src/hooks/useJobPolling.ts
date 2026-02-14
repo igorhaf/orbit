@@ -170,7 +170,7 @@ export function useJobPolling(
 
       // Add job to NotificationContext if not already tracked
       if (!trackedJob) {
-        addJob(jobId, data.job_type, data.notification_title || 'Processando...');
+        addJob(jobId, data.job_type, data.notification_title || 'Processing...');
       }
 
       setJob(data);

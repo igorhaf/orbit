@@ -142,7 +142,7 @@ function NewProjectContent() {
 
         // Track in notification bell
         const folderName = codePath.split('/').pop() || 'project';
-        addJob(data.job_id, 'project_pipeline', `Processando ${folderName}...`, `/projects/${data.project.id}`, true);
+        addJob(data.job_id, 'project_pipeline', `Processing ${folderName}...`, `/projects/${data.project.id}`, true);
       } else {
         const error = await response.json();
         setProcessing(false);

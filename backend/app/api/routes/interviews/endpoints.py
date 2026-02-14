@@ -922,7 +922,7 @@ async def generate_context_from_interview(
         project_id=interview.project_id,
         interview_id=interview_id,
         deep_link=deep_link,
-        notification_title=f"Gerando contexto para '{project_name}'..."
+        notification_title=f"Generating context for '{project_name}'..."
     )
 
     # Start background task via priority queue
@@ -982,7 +982,7 @@ async def _process_context_generation_async(
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
             epic_count = len(result.get("suggested_epics", []))
-            job.notification_title = f"✅ Contexto gerado para '{project_name}' - {epic_count} épicos sugeridos"
+            job.notification_title = f"✅ Context generated for '{project_name}' - {epic_count} suggested epics"
             db.commit()
 
         job_manager.complete_job(job_id, {
@@ -1004,7 +1004,7 @@ async def _process_context_generation_async(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"❌ Erro ao gerar contexto: {error_msg}"
+                job.notification_title = f"❌ Context generation error: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -2102,7 +2102,7 @@ async def send_message_async(
     else:
         deep_link = f"/projects/{interview.project_id}?interview={interview_id}"
 
-    notification_title = f"Gerando pergunta para '{task_title}'"
+    notification_title = f"Generating question for '{task_title}'"
 
     # Create async job with PROMPT #133 enhancements
     job_manager = JobManager(db)
@@ -2222,7 +2222,7 @@ async def _process_interview_message_async(
 
         # PROMPT #133 - Update notification_title for success
         if job:
-            job.notification_title = f"✅ Pergunta gerada para '{task_title}'"
+            job.notification_title = f"✅ Question generated for '{task_title}'"
             db.commit()
 
         # Complete job with result
@@ -2241,7 +2241,7 @@ async def _process_interview_message_async(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:100]  # Truncate long errors
-                job.notification_title = f"❌ Erro ao gerar pergunta: {error_msg}"
+                job.notification_title = f"❌ Question generation error: {error_msg}"
                 db.commit()
         except Exception:
             pass  # Don't fail the error handling

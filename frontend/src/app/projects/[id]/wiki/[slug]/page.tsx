@@ -211,10 +211,10 @@ export default function WikiPageView() {
               {editing ? (
                 <>
                   <Button variant="outline" onClick={() => { setEditing(false); setEditContent(page.content); setEditTitle(page.title); }} disabled={saving}>
-                    Cancelar
+                    Cancel
                   </Button>
                   <Button variant="primary" onClick={handleSave} disabled={saving}>
-                    {saving ? 'Salvando...' : 'Salvar'}
+                    {saving ? 'Saving...' : 'Save'}
                   </Button>
                 </>
               ) : (

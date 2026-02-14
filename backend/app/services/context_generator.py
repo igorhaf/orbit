@@ -5447,7 +5447,7 @@ IMPORTANTE:
             job_manager.update_progress(
                 job_id,
                 progress,
-                f"Gerando épicos (lote {batch_num}/{max_batches})..."
+                f"Generating epics (batch {batch_num}/{max_batches})..."
             )
 
             # Generate batch of epics
@@ -5751,7 +5751,7 @@ IMPORTANTE:
                 await progress_callback(percent, message)
 
         # --- Step 1: Architecture Analysis (40-55%) ---
-        await report_progress(40, "Analisando arquitetura...")
+        await report_progress(40, "Analyzing architecture...")
         architecture_analysis = ""
         try:
             sys_prompt, usr_prompt = loader.render(
@@ -5783,7 +5783,7 @@ IMPORTANTE:
             architecture_analysis = f"Analise arquitetural indisponivel: {str(e)}"
 
         # --- Step 2: Business Domain Analysis (55-70%) ---
-        await report_progress(55, "Analisando dominio de negocio...")
+        await report_progress(55, "Analyzing business domain...")
         business_domain_analysis = ""
         if business_rules:
             try:
@@ -5854,7 +5854,7 @@ IMPORTANTE:
             feature_landscape = "Nenhuma funcionalidade detectada no codebase."
 
         # --- Step 4: Consolidation (85-95%) ---
-        await report_progress(85, "Consolidando contexto...")
+        await report_progress(85, "Consolidating context...")
         try:
             sys_prompt, usr_prompt = loader.render(
                 "context/rich_context_consolidation",

@@ -129,7 +129,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         setEditTitle(pageData.title);
       } catch (error) {
         console.error('Failed to load wiki page:', error);
-        showError('Pagina nao encontrada');
+        showError('Page not found');
         setSelectedSlug(null);
       } finally {
         setLoadingPage(false);
@@ -146,7 +146,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       showSuccess(`${res.detail}`);
       loadTree();
     } catch (error: any) {
-      showError(error.message || 'Falha ao gerar wiki');
+      showError(error.message || 'Failed to generate wiki');
     } finally {
       setGenerating(false);
     }
@@ -154,7 +154,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
 
   const handleCreate = async () => {
     if (!newPage.title.trim()) {
-      showError('Titulo obrigatorio');
+      showError('Title is required');
       return;
     }
     setCreating(true);
@@ -168,15 +168,15 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       await wikiApi.create(projectId, {
         title: newPage.title,
         slug,
-        content: newPage.content || `## ${newPage.title}\n\nConteudo da pagina.`,
+        content: newPage.content || `## ${newPage.title}\n\nPage content.`,
         source: 'manual',
       });
-      showSuccess('Pagina criada');
+      showSuccess('Page created');
       setShowCreateDialog(false);
       setNewPage({ title: '', content: '' });
       loadTree();
     } catch (error: any) {
-      showError(error.message || 'Falha ao criar pagina');
+      showError(error.message || 'Failed to create page');
     } finally {
       setCreating(false);
     }
@@ -191,7 +191,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       if (editContent !== selectedPage.content) updates.content = editContent;
 
       await wikiApi.update(projectId, selectedSlug!, updates);
-      showSuccess('Pagina salva');
+      showSuccess('Page saved');
       setEditing(false);
       // Reload page and tree
       const pageData = await wikiApi.get(projectId, selectedSlug!);
@@ -200,7 +200,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       setEditTitle(pageData.title);
       loadTree();
     } catch (error: any) {
-      showError(error.message || 'Falha ao salvar');
+      showError(error.message || 'Failed to save');
     } finally {
       setSaving(false);
     }
@@ -208,16 +208,16 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
 
   const handleDelete = async () => {
     if (!selectedPage) return;
-    if (!confirm(`Deletar pagina "${selectedPage.title}"?`)) return;
+    if (!confirm(`Delete page "${selectedPage.title}"?`)) return;
 
     try {
       await wikiApi.delete(projectId, selectedSlug!);
-      showSuccess('Pagina deletada');
+      showSuccess('Page deleted');
       setSelectedSlug(null);
       setSelectedPage(null);
       loadTree();
     } catch (error: any) {
-      showError(error.message || 'Falha ao deletar');
+      showError(error.message || 'Failed to delete');
     }
   };
 
@@ -274,16 +274,16 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Wiki vazia</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Empty Wiki</h3>
           <p className="text-gray-500 mb-6 max-w-md mx-auto">
-            Crie paginas manualmente ou gere automaticamente a partir do contexto do projeto.
+            Create pages manually or generate automatically from project context.
           </p>
           <div className="flex items-center justify-center gap-3">
             <Button variant="outline" onClick={handleGenerate} disabled={generating}>
-              {generating ? 'Gerando...' : 'Gerar do Contexto'}
+              {generating ? 'Generating...' : 'Generate from Context'}
             </Button>
             <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
-              Nova Pagina
+              New Page
             </Button>
           </div>
         </Card>
@@ -298,25 +298,25 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
         <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
           <div className="p-6">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Nova Pagina Wiki</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">New Wiki Page</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Titulo</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
                 <input
                   type="text"
                   value={newPage.title}
                   onChange={(e) => setNewPage({ ...newPage, title: e.target.value })}
-                  placeholder="Ex: Arquitetura do Sistema"
+                  placeholder="E.g.: System Architecture"
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   autoFocus
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Conteudo inicial (Markdown)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Initial content (Markdown)</label>
                 <textarea
                   value={newPage.content}
                   onChange={(e) => setNewPage({ ...newPage, content: e.target.value })}
-                  placeholder="## Titulo&#10;&#10;Conteudo da pagina em Markdown..."
+                  placeholder="## Title&#10;&#10;Page content in Markdown..."
                   rows={5}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
                 />
@@ -324,10 +324,10 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
             </div>
             <div className="flex justify-end gap-3 mt-6">
               <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={creating}>
-                Cancelar
+                Cancel
               </Button>
               <Button variant="primary" onClick={handleCreate} disabled={creating || !newPage.title.trim()}>
-                {creating ? 'Criando...' : 'Criar Pagina'}
+                {creating ? 'Creating...' : 'Create Page'}
               </Button>
             </div>
           </div>
@@ -362,14 +362,14 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       {/* Header with actions */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-500">
-          {tree.length} pagina{tree.length !== 1 ? 's' : ''}
+          {tree.length} page{tree.length !== 1 ? 's' : ''}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generating}>
-            {generating ? 'Gerando...' : 'Gerar do Contexto'}
+            {generating ? 'Generating...' : 'Generate from Context'}
           </Button>
           <Button variant="primary" size="sm" onClick={() => setShowCreateDialog(true)}>
-            Nova Pagina
+            New Page
           </Button>
         </div>
       </div>
@@ -378,7 +378,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         {/* Sidebar tree */}
         <div className="w-72 flex-shrink-0">
           <Card className="p-3">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Paginas</h2>
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Pages</h2>
             <div className="space-y-0.5">
               {tree.map((item) => renderSidebarItem(item))}
             </div>
@@ -409,7 +409,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                     )}
                   </div>
                   {page.children && page.children.length > 0 && (
-                    <p className="text-xs text-gray-400">{page.children.length} sub-paginas</p>
+                    <p className="text-xs text-gray-400">{page.children.length} sub-pages</p>
                   )}
                 </Card>
               ))}
@@ -427,7 +427,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                   <button
                     onClick={() => { setSelectedSlug(null); setEditing(false); }}
                     className="text-gray-400 hover:text-gray-600"
-                    title="Voltar"
+                    title="Back"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -454,21 +454,21 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                   {editing ? (
                     <>
                       <Button variant="outline" size="sm" onClick={() => { setEditing(false); setEditContent(selectedPage.content); setEditTitle(selectedPage.title); }} disabled={saving}>
-                        Cancelar
+                        Cancel
                       </Button>
                       <Button variant="primary" size="sm" onClick={handleSave} disabled={saving}>
-                        {saving ? 'Salvando...' : 'Salvar'}
+                        {saving ? 'Saving...' : 'Save'}
                       </Button>
                     </>
                   ) : (
                     <>
                       <Button variant="outline" size="sm" onClick={() => setEditing(true)}>
-                        Editar
+                        Edit
                       </Button>
                       <button
                         onClick={handleDelete}
                         className="p-1.5 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors"
-                        title="Deletar pagina"
+                        title="Delete page"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -481,7 +481,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
 
               {/* Page metadata */}
               <div className="text-xs text-gray-400 mb-3 flex items-center gap-4">
-                <span>Atualizado em {new Date(selectedPage.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                <span>Updated {new Date(selectedPage.updated_at).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                 <span>/{selectedPage.slug}</span>
               </div>
 
@@ -493,7 +493,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                       value={editContent}
                       onChange={(e) => setEditContent(e.target.value)}
                       className="w-full min-h-[400px] p-4 border border-gray-200 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
-                      placeholder="Conteudo em Markdown..."
+                      placeholder="Markdown content..."
                     />
                     <div className="border-t pt-4">
                       <span className="text-xs font-medium text-gray-500 uppercase mb-2 block">Preview</span>

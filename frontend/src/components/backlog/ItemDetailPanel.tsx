@@ -358,12 +358,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         addJob(
           result.job_id,
           jobType,
-          `Ativando ${item.item_type}: ${item.title.substring(0, 30)}...`,
+          `Activating ${item.item_type}: ${item.title.substring(0, 30)}...`,
           item.title,
           false,
           item.id // task_id for persistent loading state
         );
-        showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
+        showSuccess('Activation started! Track progress in the notification bell.');
         return;
       } else {
         // Legacy flow (synchronous response)
@@ -411,12 +411,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         addJob(
           result.job_id,
           'children_generation',
-          `Gerando ${count} ${childType} para: ${item.title.substring(0, 30)}...`,
+          `Generating ${count} ${childType} for: ${item.title.substring(0, 30)}...`,
           item.title,
           false,
           item.id // PROMPT #176 - Track which task is generating children for persistent loading
         );
-        showSuccess(`Geração de ${count} ${childType} iniciada! Acompanhe no sininho.`);
+        showSuccess(`Generation of ${count} ${childType} started! Track progress in notifications.`);
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
@@ -541,12 +541,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         addJob(
           result.job_id,
           jobType,
-          `Gerando conteudo: ${item.title.substring(0, 30)}...`,
+          `Generating content: ${item.title.substring(0, 30)}...`,
           item.title,
           false,
           item.id
         );
-        showSuccess('Geracao de conteudo iniciada! Acompanhe o progresso no sininho de notificacoes.');
+        showSuccess('Content generation started! Track progress in notifications.');
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
@@ -846,7 +846,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   {isApproving ? (
                     <>
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Ativando...
+                      Activating...
                     </>
                   ) : (
                     <>
@@ -954,7 +954,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
                             </svg>
                           )}
-                          <span>{(isGeneratingContent || isApproving) ? 'Gerando...' : 'AI'}</span>
+                          <span>{(isGeneratingContent || isApproving) ? 'Generating...' : 'AI'}</span>
                         </button>
                         {!isEditingDescription && (
                           <span className="text-xs text-gray-400">Double-click to edit</span>
@@ -1300,7 +1300,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                             {isGeneratingChildren ? (
                               <>
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
-                                Gerando...
+                                Generating...
                               </>
                             ) : (
                               <>

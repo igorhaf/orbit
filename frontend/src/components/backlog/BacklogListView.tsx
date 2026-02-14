@@ -442,12 +442,12 @@ export default function BacklogListView({
         addJob(
           result.job_id,
           jobType,
-          `Ativando ${item.item_type}: ${item.title.substring(0, 30)}...`,
+          `Activating ${item.item_type}: ${item.title.substring(0, 30)}...`,
           item.title,
           false,
           item.id // task_id for persistent loading state
         );
-        showSuccess('Ativação iniciada! Acompanhe o progresso no sininho de notificações.');
+        showSuccess('Activation started! Track progress in the notification bell.');
         return;
       }
 
@@ -462,8 +462,8 @@ export default function BacklogListView({
   const handleRejectItem = (item: BacklogItem) => {
     setConfirmDialog({
       open: true,
-      title: 'Rejeitar Item',
-      message: `Tem certeza que deseja rejeitar e excluir "${item.title}"? Esta ação não pode ser desfeita.`,
+      title: 'Reject Item',
+      message: `Are you sure you want to reject and delete "${item.title}"? This action cannot be undone.`,
       type: 'danger',
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -489,8 +489,8 @@ export default function BacklogListView({
     const count = selectedIds.size;
     setConfirmDialog({
       open: true,
-      title: 'Excluir Itens',
-      message: `Tem certeza que deseja excluir ${count} item(s)? Esta ação não pode ser desfeita.`,
+      title: 'Delete Items',
+      message: `Are you sure you want to delete ${count} item(s)? This action cannot be undone.`,
       type: 'danger',
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -498,12 +498,12 @@ export default function BacklogListView({
         try {
           const deletePromises = Array.from(selectedIds).map(id => tasksApi.delete(id));
           await Promise.all(deletePromises);
-          showSuccess(`${count} item(s) excluído(s) com sucesso`);
+          showSuccess(`${count} item(s) deleted successfully`);
           onSelectionChange?.(new Set());
           fetchBacklog();
         } catch (error: any) {
           console.error('Failed to delete items:', error);
-          showError(`Erro ao excluir itens: ${error.message}`);
+          showError(`Error deleting items: ${error.message}`);
         } finally {
           setBulkActionLoading(null);
         }
@@ -704,19 +704,19 @@ export default function BacklogListView({
                 }}
                 disabled={isItemActivating(item.id) || rejectingId === item.id}
                 className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                title="Aprovar sugestão"
+                title="Approve suggestion"
               >
                 {isItemActivating(item.id) ? (
                   <>
                     <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
-                    <span>Ativando...</span>
+                    <span>Activating...</span>
                   </>
                 ) : (
                   <>
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span>Aprovar</span>
+                    <span>Approve</span>
                   </>
                 )}
               </button>
@@ -728,7 +728,7 @@ export default function BacklogListView({
                 }}
                 disabled={isItemActivating(item.id) || rejectingId === item.id}
                 className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded border border-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                title="Rejeitar sugestão"
+                title="Reject suggestion"
               >
                 {rejectingId === item.id ? (
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
@@ -737,7 +737,7 @@ export default function BacklogListView({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 )}
-                <span>Rejeitar</span>
+                <span>Reject</span>
               </button>
             </div>
           )}
@@ -1000,13 +1000,13 @@ export default function BacklogListView({
                 onClick={handleSelectAll}
                 className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded transition-colors"
               >
-                Selecionar Todos
+                Select All
               </button>
               <button
                 onClick={handleClearSelection}
                 className="px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
               >
-                Limpar Seleção
+                Clear Selection
               </button>
             </div>
           </div>
@@ -1152,8 +1152,8 @@ export default function BacklogListView({
         title={confirmDialog.title}
         message={confirmDialog.message}
         type={confirmDialog.type}
-        confirmLabel="Excluir"
-        cancelLabel="Cancelar"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
       />
     </Card>
   );

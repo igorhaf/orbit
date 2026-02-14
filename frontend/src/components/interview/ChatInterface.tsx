@@ -120,7 +120,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     if (isFallback) {
       console.log('⚠️ Fallback mode detected:', result?.usage?.error);
       setFallbackWarning({
-        message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
+        message: 'AI is temporarily unavailable. The system is using fallback responses.',
         error: result?.usage?.error
       });
     }
@@ -138,7 +138,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     setSendMessageJobId(null);
     setNotificationDialog({
       open: true,
-      title: 'Erro ao enviar mensagem',
+      title: 'Error sending message',
       message: formatErrorMessage(error),
       details: typeof error === 'string' ? undefined : JSON.stringify(error, null, 2),
       type: 'error'
@@ -187,12 +187,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota')) {
       setAiError({
         type: 'credits',
-        message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
+        message: 'AI credits exhausted. Please add credits to your AI account or configure a new API key.',
       });
     } else {
       setNotificationDialog({
         open: true,
-        title: 'Erro ao gerar prompts',
+        title: 'Error generating prompts',
         message: formatErrorMessage(error),
         type: 'error'
       });
@@ -404,12 +404,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       if (startData?.model === 'system/fallback' || startData?.message?.model === 'system/fallback') {
         console.log('⚠️ Fallback mode detected on start');
         setFallbackWarning({
-          message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
-          error: 'API não disponível no momento'
+          message: 'AI is temporarily unavailable. The system is using fallback responses.',
+          error: 'API currently unavailable'
         });
       }
 
-      // Recarregar para pegar mensagem inicial da IA
+      // Reload to get initial AI message
       console.log('🔄 Reloading interview to get AI response...');
       const response = await interviewsApi.get(interviewId);
       const data = response.data || response;
@@ -420,8 +420,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       const firstMessage = data?.conversation_data?.[0];
       if (firstMessage?.model === 'system/fallback') {
         setFallbackWarning({
-          message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
-          error: 'API não disponível no momento'
+          message: 'AI is temporarily unavailable. The system is using fallback responses.',
+          error: 'API currently unavailable'
         });
       }
 
@@ -526,7 +526,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota')) {
         setAiError({
           type: 'credits',
-          message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
+          message: 'AI credits exhausted. Please add credits to your AI account or configure a new API key.',
           provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
                    errorLower.includes('openai') ? 'OpenAI (GPT)' :
                    errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
@@ -534,7 +534,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       } else if (errorLower.includes('authentication') || errorLower.includes('api key') || errorLower.includes('invalid x-api-key') || errorLower.includes('unauthorized')) {
         setAiError({
           type: 'auth',
-          message: 'API key inválida ou expirada. Por favor, configure uma API key válida nas configurações.',
+          message: 'Invalid or expired API key. Please configure a valid API key in settings.',
           provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
                    errorLower.includes('openai') ? 'OpenAI (GPT)' :
                    errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
@@ -542,7 +542,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       } else if (errorLower.includes('rate limit')) {
         setAiError({
           type: 'rate_limit',
-          message: 'Limite de requisições excedido. Por favor, aguarde alguns minutos antes de tentar novamente.',
+          message: 'Rate limit exceeded. Please wait a few minutes before trying again.',
           provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
                    errorLower.includes('openai') ? 'OpenAI (GPT)' :
                    errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
@@ -551,7 +551,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         // Generic error - show error dialog instead of crude alert
         setNotificationDialog({
           open: true,
-          title: 'Erro',
+          title: 'Error',
           message: formatErrorMessage(errorDetail),
           details: typeof errorDetail === 'object' ? JSON.stringify(errorDetail, null, 2) : undefined,
           type: 'error'
@@ -618,7 +618,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota')) {
         setAiError({
           type: 'credits',
-          message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
+          message: 'AI credits exhausted. Please add credits to your AI account or configure a new API key.',
           provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
                    errorLower.includes('openai') ? 'OpenAI (GPT)' :
                    errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
@@ -626,7 +626,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       } else if (errorLower.includes('authentication') || errorLower.includes('api key') || errorLower.includes('invalid x-api-key') || errorLower.includes('unauthorized')) {
         setAiError({
           type: 'auth',
-          message: 'API key inválida ou expirada. Por favor, configure uma API key válida nas configurações.',
+          message: 'Invalid or expired API key. Please configure a valid API key in settings.',
           provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
                    errorLower.includes('openai') ? 'OpenAI (GPT)' :
                    errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
@@ -634,7 +634,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       } else if (errorLower.includes('rate limit')) {
         setAiError({
           type: 'rate_limit',
-          message: 'Limite de requisições excedido. Por favor, aguarde alguns minutos antes de tentar novamente.',
+          message: 'Rate limit exceeded. Please wait a few minutes before trying again.',
           provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
                    errorLower.includes('openai') ? 'OpenAI (GPT)' :
                    errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
@@ -643,7 +643,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         // Generic error - show error dialog instead of crude alert
         setNotificationDialog({
           open: true,
-          title: 'Erro',
+          title: 'Error',
           message: formatErrorMessage(errorDetail),
           details: typeof errorDetail === 'object' ? JSON.stringify(errorDetail, null, 2) : undefined,
           type: 'error'
@@ -772,12 +772,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
     setConfirmDialog({
       open: true,
-      title: isCardInference ? 'Completar e Atualizar Card' : 'Completar Entrevista',
+      title: isCardInference ? 'Complete and Update Card' : 'Complete Interview',
       message: isCardInference
-        ? 'Completar esta entrevista e atualizar o card com as informações coletadas?'
-        : 'Marcar esta entrevista como completa?',
+        ? 'Complete this interview and update the card with the collected information?'
+        : 'Mark this interview as complete?',
       type: 'info',
-      confirmLabel: isCardInference ? 'Completar e Atualizar' : 'Completar',
+      confirmLabel: isCardInference ? 'Complete and Update' : 'Complete',
       isLoading: false,
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, isLoading: true }));
@@ -803,7 +803,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
           setConfirmDialog(prev => ({ ...prev, open: false, isLoading: false }));
           setNotificationDialog({
             open: true,
-            title: 'Erro',
+            title: 'Error',
             message: 'Falha ao completar entrevista. Por favor, tente novamente.',
             type: 'error'
           });
@@ -855,7 +855,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
           setConfirmDialog(prev => ({ ...prev, open: false, isLoading: false }));
           setNotificationDialog({
             open: true,
-            title: 'Erro',
+            title: 'Error',
             message: 'Falha ao cancelar entrevista. Por favor, tente novamente.',
             type: 'error'
           });
@@ -1041,7 +1041,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                   <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  📝 Gerar Contexto
+                  Generate Context
                 </Button>
               )}
               {interviewMode !== 'context' && interviewMode !== 'card_focused' && (
@@ -1061,7 +1061,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                       <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      🎯 Gerar Épico
+                      Generate Epic
                     </>
                   )}
                 </Button>
@@ -1154,9 +1154,9 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                 aiError.type === 'auth' ? 'text-yellow-900' :
                 'text-orange-900'
               }`}>
-                {aiError.type === 'credits' ? '💳 Créditos Esgotados' :
-                 aiError.type === 'auth' ? '🔒 Erro de Autenticação' :
-                 '⚠️ Limite de Requisições'}
+                {aiError.type === 'credits' ? 'Credits Exhausted' :
+                 aiError.type === 'auth' ? 'Authentication Error' :
+                 'Rate Limit Exceeded'}
                 {aiError.provider && ` - ${aiError.provider}`}
               </h3>
               <p className={`text-sm ${
@@ -1211,8 +1211,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               />
             </svg>
-            <p className="text-base mb-1 font-medium">Iniciando IA...</p>
-            <p className="text-sm">O assistente vai te cumprimentar em instantes</p>
+            <p className="text-base mb-1 font-medium">Starting AI...</p>
+            <p className="text-sm">The assistant will greet you shortly</p>
           </div>
         ) : (
           <>
@@ -1331,12 +1331,12 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <span className="text-sm text-blue-800 font-medium">
-                  {selectedOptions.length} opção(ões) selecionada(s)
+                  {selectedOptions.length} option(s) selected
                 </span>
                 <button
                   onClick={() => setSelectedOptions([])}
                   className="ml-auto text-blue-600 hover:text-blue-800"
-                  title="Limpar seleção"
+                  title="Clear selection"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

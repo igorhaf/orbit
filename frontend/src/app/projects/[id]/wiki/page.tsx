@@ -149,7 +149,7 @@ export default function WikiIndexPage() {
               onClick={handleGenerate}
               disabled={generating}
             >
-              {generating ? 'Gerando...' : 'Gerar do Contexto'}
+              {generating ? 'Generating...' : 'Generate from Context'}
             </Button>
             <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
               Nova Pagina
@@ -171,7 +171,7 @@ export default function WikiIndexPage() {
             </p>
             <div className="flex items-center justify-center gap-3">
               <Button variant="outline" onClick={handleGenerate} disabled={generating}>
-                {generating ? 'Gerando...' : 'Gerar do Contexto'}
+                {generating ? 'Generating...' : 'Generate from Context'}
               </Button>
               <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
                 Nova Pagina

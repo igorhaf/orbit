@@ -1217,7 +1217,7 @@ async def _trigger_rule_enrichment_job(
             "force": force,
         },
         project_id=project_id,
-        notification_title=f"Enriquecimento de {rule_count} regras wiki",
+        notification_title=f"Enriching {rule_count} wiki rules",
         deep_link=f"/projects/{project_id}/knowledge",
     )
     db.commit()
@@ -1330,7 +1330,7 @@ async def _enrich_rules_background(
             job_manager.complete_job(job_id, {"enriched": 0, "total": 0})
             return
 
-        job_manager.update_progress(job_id, 5.0, f"Preparando {total} regras para enriquecimento...")
+        job_manager.update_progress(job_id, 5.0, f"Preparing {total} rules for enrichment...")
 
         # Build a map of domain pages to get related rules per domain
         domain_rules_map: dict = {}
@@ -1366,14 +1366,14 @@ async def _enrich_rules_background(
             if job_manager.is_cancelled(job_id):
                 job_manager.update_progress(
                     job_id, (i / total) * 100,
-                    f"Cancelado. {enriched_count} regras enriquecidas de {i}."
+                    f"Cancelled. {enriched_count} rules enriched out of {i}."
                 )
                 break
 
             progress = 5.0 + (i / total) * 90.0
             job_manager.update_progress(
                 job_id, progress,
-                f"Enriquecendo regra {i + 1}/{total}: {page.title[:60]}..."
+                f"Enriching rule {i + 1}/{total}: {page.title[:60]}..."
             )
 
             try:
