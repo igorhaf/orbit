@@ -98,7 +98,7 @@ Be specific and follow PHP best practices.
 
             response = self.anthropic_client.messages.create(
                 model="claude-3-haiku-20240307",
-                max_tokens=1500,  # PROMPT #288 - Reduced for performance
+                max_tokens=3000,
                 messages=[{
                     "role": "user",
                     "content": self.test_prompt
@@ -169,7 +169,7 @@ Be specific and follow PHP best practices.
                     "role": "user",
                     "content": self.test_prompt
                 }],
-                max_tokens=1500,  # PROMPT #288 - Reduced for performance
+                max_tokens=3000,
                 response_format={"type": "json_object"}  # Force JSON
             )
 

@@ -45,7 +45,7 @@ class SpecGenerator:
                 "role": "user",
                 "content": prompt
             }],
-            max_tokens=1500,  # PROMPT #288 - Reduced for performance
+            max_tokens=3000,
             project_id=project_id,
         )
 

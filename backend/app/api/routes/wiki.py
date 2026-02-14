@@ -1494,12 +1494,12 @@ async def _enrich_rules_background(
                     "context/wiki_rule_enrichment", template_vars
                 )
 
-                # Call AI - PROMPT #288: reduced from 2000 to 1000 tokens
+                # Call AI
                 response = await orchestrator.execute(
                     usage_type="memory",
                     messages=[{"role": "user", "content": usr_prompt}],
                     system_prompt=sys_prompt,
-                    max_tokens=1000,  # PROMPT #288 - Reduced for performance
+                    max_tokens=2000,
                     project_id=str(project_id),
                     metadata={"type": "wiki_rule_enrichment", "rule_slug": page.slug,
                               "skip_context_build": True},
