@@ -223,10 +223,13 @@ async def generate_wiki_from_context(
                 rule_text = rule[:500] if len(rule) > 500 else rule
                 rules_parts.append(f"{i}. {rule_text}")
         rules_content = "\n".join(rules_parts)
+        # PROMPT #277 - Set parent_id to regras-de-negocio to avoid appearing as root in sidebar
+        regras_parent = next((p for p in created_pages if p and p.slug == "regras-de-negocio"), None)
         created_pages.append(_upsert_wiki_page(
             db, project_id, "regras-catalogo-bruto",
             "Catalogo de Referencia - Regras Brutas",
-            rules_content, 12, "ai_generated"
+            rules_content, 12, "ai_generated",
+            parent_id=regras_parent.id if regras_parent else None,
         ))
 
     # 4. Features Principais - from initial_memory_context
@@ -1051,7 +1054,9 @@ def _build_business_rules_wiki_pages(
 
     created_pages: List[WikiPage] = []
 
-    # Find parent page (regras-de-negocio) if it exists
+    # PROMPT #277 - Find or CREATE parent page (regras-de-negocio)
+    # If it doesn't exist, create a stub so all rule pages have a parent
+    # and don't appear as root items in the sidebar
     parent_page = (
         db.query(WikiPage)
         .filter(
@@ -1060,7 +1065,15 @@ def _build_business_rules_wiki_pages(
         )
         .first()
     )
-    parent_id = parent_page.id if parent_page else None
+    if not parent_page:
+        parent_page = _upsert_wiki_page(
+            db, project_id, "regras-de-negocio",
+            "Regras de Negocio",
+            "## Regras de Negocio\n\nPagina principal de regras de negocio do projeto.\n",
+            2, "ai_generated"
+        )
+        db.flush()
+    parent_id = parent_page.id
 
     # --- Index page ---
     index_lines = [

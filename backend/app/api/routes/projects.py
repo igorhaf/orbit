@@ -1034,6 +1034,18 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
 
     enriched = response.get("content", "")
     if enriched and len(enriched) > 100:
+        # PROMPT #277 - Validate AI response before saving as description
+        # Reject hallucinated content (e.g., maze-generator.py code) that doesn't match expected structure
+        expected_sections = ["visao geral", "stack", "arquitetura", "regras", "features", "integracoes"]
+        enriched_lower = enriched.lower()
+        has_valid_section = any(s in enriched_lower for s in expected_sections)
+        if not has_valid_section:
+            logger.warning(
+                f"Wiki enrichment rejected for {project_id}: no valid sections found "
+                f"({len(enriched)} chars, first 200: {enriched[:200]})"
+            )
+            return False
+
         project.description = enriched
         project.updated_at = datetime.utcnow()
         db.commit()
@@ -1072,10 +1084,18 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                     rule_text = rule[:500] if len(rule) > 500 else rule
                     rules_md_parts.append(f"{i}. {rule_text}")
                 rules_md = "\n".join(rules_md_parts)
+                # PROMPT #277 - Set parent_id to regras-de-negocio to avoid appearing in sidebar
+                from app.models.wiki import WikiPage as WikiPageModel
+                regras_parent = (
+                    db.query(WikiPageModel)
+                    .filter(WikiPageModel.project_id == project_id, WikiPageModel.slug == "regras-de-negocio")
+                    .first()
+                )
                 _upsert_wiki_page(
                     db, project_id, "regras-catalogo-bruto",
                     "Catalogo de Referencia - Regras Brutas", rules_md,
-                    12, "ai_generated"
+                    12, "ai_generated",
+                    parent_id=regras_parent.id if regras_parent else None,
                 )
                 logger.info(f"Wiki: raw rules catalog with {len(rules)} rules for project {project_id}")
 

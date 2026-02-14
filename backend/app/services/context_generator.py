@@ -5918,7 +5918,14 @@ IMPORTANTE:
         # --- Save to project ---
         project.context_semantic = context_semantic
         project.context_human = context_human
-        project.description = context_human
+        # PROMPT #277 - Validate before saving as description
+        # Reject hallucinated content that doesn't match expected structure
+        expected_sections = ["visao geral", "stack", "arquitetura", "regras", "features", "dominio", "funcionalidade"]
+        ctx_lower = (context_human or "").lower()
+        if any(s in ctx_lower for s in expected_sections):
+            project.description = context_human
+        else:
+            logger.warning(f"Rich context rejected as description for {project.name}: no valid sections found")
         self.db.commit()
 
         # --- Store in RAG ---

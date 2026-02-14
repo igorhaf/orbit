@@ -49,3 +49,4 @@ user_prompt: |
   {{ scan_summary }}
 
   Gere uma análise arquitetural detalhada deste projeto.
+  IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro, mesmo que o codigo-fonte esteja em ingles.

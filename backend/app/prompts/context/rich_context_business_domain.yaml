@@ -55,3 +55,4 @@ user_prompt: |
   {% endif %}
 
   Gere uma analise detalhada do dominio de negocio deste projeto.
+  IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro, mesmo que as regras estejam em ingles.

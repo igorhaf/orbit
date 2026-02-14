@@ -65,3 +65,4 @@ user_prompt: |
 
   Consolide estas analises em um documento de contexto coeso e abrangente.
   Retorne como JSON com "context_semantic" e "context_human".
+  IDIOMA OBRIGATORIO: TODO o conteudo DEVE ser em portugues brasileiro. Titulos, descricoes, regras, features - TUDO em portugues. NUNCA escreva em ingles.

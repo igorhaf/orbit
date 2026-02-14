@@ -61,3 +61,4 @@ user_prompt: |
   {% endif %}
 
   Gere um mapa detalhado das funcionalidades deste projeto.
+  IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro, mesmo que as features estejam em ingles.

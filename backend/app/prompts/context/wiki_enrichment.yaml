@@ -121,4 +121,6 @@ user_prompt: |
   Produza a descricao ENRIQUECIDA do projeto em Markdown, seguindo a estrutura obrigatoria
   (Visao Geral, Stack Tecnologica, Arquitetura, Regras de Negocio, Features, Integracoes).
   Integre as novas informacoes naturalmente na estrutura existente.
-  TODO o conteudo DEVE ser em portugues.
+  IDIOMA OBRIGATORIO: TODO o conteudo DEVE ser em portugues brasileiro.
+  Mesmo que o codigo-fonte ou regras estejam em ingles, TRADUZA tudo para portugues.
+  NUNCA escreva titulos, regras ou descricoes em ingles.
