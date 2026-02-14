@@ -46,17 +46,22 @@ export function ProjectChatPanel({ projectId }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Load sessions list
-  const loadSessions = useCallback(async () => {
+  const loadSessions = useCallback(async (autoSelect = false) => {
     try {
       const res = await projectChatsApi.list(projectId);
       const data = res.data || res;
-      setSessions(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : [];
+      setSessions(list);
+      // Auto-select most recent session on initial load
+      if (autoSelect && list.length > 0 && !activeSessionId) {
+        setActiveSessionId(list[0].id);
+      }
     } catch (error) {
       console.error('Failed to load chat sessions:', error);
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, activeSessionId]);
 
   // Load a specific session with messages
   const loadSession = useCallback(async (chatId: string) => {
@@ -70,7 +75,7 @@ export function ProjectChatPanel({ projectId }: Props) {
   }, [projectId]);
 
   useEffect(() => {
-    loadSessions();
+    loadSessions(true);
   }, [loadSessions]);
 
   // Load session when selected
@@ -166,9 +171,9 @@ export function ProjectChatPanel({ projectId }: Props) {
     }
   };
 
-  // Handle Enter key (Ctrl+Enter or Cmd+Enter to send)
+  // Handle Enter to send, Shift+Enter for newline
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
@@ -311,7 +316,7 @@ export function ProjectChatPanel({ projectId }: Props) {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask about your project... (Ctrl+Enter to send)"
+                  placeholder="Ask about your project... (Shift+Enter for new line)"
                   className="flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows={2}
                   disabled={sending}
