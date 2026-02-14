@@ -102,7 +102,7 @@ export default function WikiIndexPage() {
     }
   };
 
-  const renderTreeItem = (item: WikiTreeItem, depth: number = 0) => (
+  const renderTreeItem = (item: WikiTreeItem, depth: number = 0, maxDepth: number = 1) => (
     <div key={item.id}>
       <button
         onClick={() => router.push(`/projects/${projectId}/wiki/${item.slug}`)}
@@ -117,7 +117,7 @@ export default function WikiIndexPage() {
           <span className="text-xs text-purple-500 ml-auto flex-shrink-0">AI</span>
         )}
       </button>
-      {item.children && item.children.map((child) => renderTreeItem(child, depth + 1))}
+      {depth < maxDepth && item.children && item.children.map((child) => renderTreeItem(child, depth + 1, maxDepth))}
     </div>
   );
 
