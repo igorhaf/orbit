@@ -12,9 +12,9 @@ Strategy per operation (cost-optimized):
 - task_execution:      Qwen3 14B → Gemma3 12B
 - commit_generation:   Gemma3 12B → Qwen3 14B
 - pattern_discovery:   DeepSeek-R1 14B → Gemma3 12B
-- memory:              Gemma3 12B → Qwen3 14B → DeepSeek-R1 14B
+- memory:              Qwen3 14B → Gemma3 12B → DeepSeek-R1 14B
 - queue_orchestration: Qwen3 14B → Gemma3 12B → Phi-4 14B
-- general:             Gemma3 12B → Qwen3 14B → DeepSeek-R1 14B
+- general:             Qwen3 14B → Gemma3 12B → DeepSeek-R1 14B
 
 Usage:
     docker exec -w /app orbit-backend python scripts/seed_ai_flow_chains.py
@@ -131,11 +131,11 @@ CHAIN_STRATEGY = {
         ("deepseek-r1:14b", None),
         ("gemma3:12b", None),
     ],
-    # Memory / Continuous RAG: quality extraction
-    # Gemma3 (best rules) → Qwen3 → DeepSeek-R1
+    # Memory / Continuous RAG: verbose extraction in Portuguese
+    # Qwen3 (most verbose 1279 tokens, best Portuguese) → Gemma3 → DeepSeek-R1
     "memory": [
-        ("gemma3:12b", None),
         ("qwen3:14b", None),
+        ("gemma3:12b", None),
         ("deepseek-r1:14b", None),
     ],
     # Queue orchestration: speed for batch processing
@@ -145,11 +145,11 @@ CHAIN_STRATEGY = {
         ("gemma3:12b", None),
         ("phi4:14b", None),
     ],
-    # General: best overall balance
-    # Gemma3 (best overall) → Qwen3 → DeepSeek-R1
+    # General: verbose output with good Portuguese
+    # Qwen3 (best Portuguese, most verbose) → Gemma3 → DeepSeek-R1
     "general": [
-        ("gemma3:12b", None),
         ("qwen3:14b", None),
+        ("gemma3:12b", None),
         ("deepseek-r1:14b", None),
     ],
 }
