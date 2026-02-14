@@ -347,15 +347,6 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         <span>{wikiStats.interview_answers_count} interview answers</span>
         <span className="text-gray-300">|</span>
         <span>{wikiStats.code_files_count} files scanned</span>
-        {isEnriching && (
-          <>
-            <span className="text-gray-300">|</span>
-            <span className="flex items-center gap-1 text-blue-600">
-              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600" />
-              Enriching...
-            </span>
-          </>
-        )}
       </div>
     );
   }
