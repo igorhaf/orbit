@@ -426,6 +426,7 @@ def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int
     """
     PROMPT #245 - Submit a batch processing cycle.
     PROMPT #252: Cleans up stale jobs (>30min) before checking.
+    PROMPT #279: Checks if project still exists before submitting.
     Uses NORMAL priority (higher than watchdog's LOW) because initial
     ingestion is more important than maintenance scanning.
     """
@@ -433,6 +434,13 @@ def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int
     from app.models.async_job import AsyncJob, JobStatus, JobType, JobPriority
     from app.services.job_manager import JobManager
     from app.services.job_executor import PriorityJobExecutor
+    from app.models.project import Project
+
+    # PROMPT #279 - Don't submit if project was deleted
+    project_exists = db.query(Project).filter(Project.id == project_id).first()
+    if not project_exists:
+        logger.info(f"Project {project_id} no longer exists, skipping batch processing submit")
+        return
 
     # PROMPT #252 - Clean up stale jobs before checking for duplicates
     stale_cutoff = datetime.utcnow() - timedelta(minutes=30)
@@ -492,12 +500,20 @@ def submit_watchdog_cycle(db: Session, project_id: UUID):
     Submit a new watchdog cycle for a project.
     Checks for existing pending/running jobs to avoid duplicates.
     PROMPT #252: Cleans up stale jobs (>30min) before checking.
+    PROMPT #279: Checks if project still exists before submitting.
     Creates a silent (no notification) LOW priority job.
     """
     from datetime import timedelta
     from app.models.async_job import AsyncJob, JobStatus, JobType, JobPriority
     from app.services.job_manager import JobManager
     from app.services.job_executor import PriorityJobExecutor
+    from app.models.project import Project
+
+    # PROMPT #279 - Don't submit if project was deleted
+    project_exists = db.query(Project).filter(Project.id == project_id).first()
+    if not project_exists:
+        logger.info(f"Project {project_id} no longer exists, skipping watchdog submit")
+        return
 
     # PROMPT #252 - Clean up stale jobs before checking for duplicates
     stale_cutoff = datetime.utcnow() - timedelta(minutes=30)

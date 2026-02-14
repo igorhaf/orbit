@@ -1406,44 +1406,91 @@ async def delete_project(
     db: Session = Depends(get_db)
 ):
     """
-    Delete a project.
+    Delete a project with full cascade cleanup.
 
     - **project_id**: UUID of the project to delete
 
-    Note: This will cascade delete all related interviews, prompts, and tasks.
-    Also deletes the project folder from backend/projects/
-
-    PROMPT #97: Also cleans up interview questions from RAG.
+    PROMPT #279: Complete cascade delete:
+    1. Cancel/delete all async_jobs (stops watchdog, batch processing, etc.)
+    2. Delete ALL RAG documents for the project
+    3. Delete project_analyses linked to the project
+    4. Delete prompt_templates linked to the project
+    5. Delete project folder from disk
+    6. Delete the project (SQLAlchemy CASCADE handles interviews, tasks, wiki, etc.)
     """
-    # PROMPT #97 - Delete interview questions from RAG
+    project_id = project.id
+    project_name = project.name or str(project_id)[:8]
+    logger.info(f"Deleting project '{project_name}' ({project_id}) - full cascade cleanup")
+
+    # Step 1: Cancel and delete ALL async_jobs for this project
+    try:
+        # Mark running/pending jobs as cancelled so they won't re-queue
+        active_jobs = db.query(AsyncJob).filter(
+            AsyncJob.project_id == project_id,
+            AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+        ).all()
+        for job in active_jobs:
+            job.status = JobStatus.FAILED
+            job.error = "Project deleted"
+            job.result = {"cancelled": True, "reason": "project_deleted"}
+        if active_jobs:
+            db.flush()
+            logger.info(f"Cancelled {len(active_jobs)} active jobs for project {project_id}")
+
+        # Delete ALL jobs for this project (completed, failed, etc.)
+        deleted_jobs = db.query(AsyncJob).filter(
+            AsyncJob.project_id == project_id
+        ).delete(synchronize_session='fetch')
+        logger.info(f"Deleted {deleted_jobs} total async_jobs for project {project_id}")
+    except Exception as e:
+        logger.warning(f"Failed to cleanup async_jobs: {e}")
+
+    # Step 2: Delete ALL RAG documents for this project
     try:
         rag_service = RAGService(db)
-        deleted_count = rag_service.delete_by_filter({
-            "type": "interview_question",
-            "project_id": str(project.id)
-        })
-        logger.info(f"✅ Deleted {deleted_count} interview questions from RAG for project {project.id}")
+        deleted_rag = rag_service.delete_by_project(project_id)
+        logger.info(f"Deleted {deleted_rag} RAG documents for project {project_id}")
     except Exception as e:
-        logger.warning(f"⚠️ Failed to delete interview questions from RAG: {e}")
-        # Don't fail the request if RAG cleanup fails
+        logger.warning(f"Failed to delete RAG documents: {e}")
 
-    # Delete project folder
+    # Step 3: Delete project_analyses linked to this project
+    try:
+        from app.models.project_analysis import ProjectAnalysis
+        deleted_analyses = db.query(ProjectAnalysis).filter(
+            ProjectAnalysis.project_id == project_id
+        ).delete(synchronize_session='fetch')
+        if deleted_analyses:
+            logger.info(f"Deleted {deleted_analyses} project_analyses for project {project_id}")
+    except Exception as e:
+        logger.warning(f"Failed to delete project_analyses: {e}")
+
+    # Step 4: Delete prompt_templates linked to this project
+    try:
+        from app.models.prompt_template import PromptTemplate
+        deleted_templates = db.query(PromptTemplate).filter(
+            PromptTemplate.project_id == project_id
+        ).delete(synchronize_session='fetch')
+        if deleted_templates:
+            logger.info(f"Deleted {deleted_templates} prompt_templates for project {project_id}")
+    except Exception as e:
+        logger.warning(f"Failed to delete prompt_templates: {e}")
+
+    # Step 5: Delete project folder from disk
     try:
         import shutil
-        # Use stored folder path from database
         if project.project_folder:
             projects_dir = Path("/projects")
             project_path = projects_dir / project.project_folder
-
             if project_path.exists():
                 shutil.rmtree(project_path)
-                logger.info(f"✅ Deleted project folder: {project_path}")
+                logger.info(f"Deleted project folder: {project_path}")
     except Exception as e:
         logger.warning(f"Failed to delete project folder: {e}")
-        # Don't fail the request if folder deletion fails
 
+    # Step 6: Delete the project (CASCADE handles interviews, tasks, wiki, specs, etc.)
     db.delete(project)
     db.commit()
+    logger.info(f"Project '{project_name}' ({project_id}) fully deleted")
     return None
 
 
