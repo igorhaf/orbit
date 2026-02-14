@@ -1853,8 +1853,9 @@ class CodebaseMemoryService:
         """
         PROMPT #167 - Analyze a single file with a tiny prompt.
         PROMPT #230 - Uses symbol extraction instead of raw code.
+        PROMPT #284 - Returns structured JSON with extracted rules and features.
 
-        The prompt is intentionally very small and simple to work with local models.
+        Returns dict with filename, analysis, business_rules, features, entities.
         """
         # PROMPT #230 - Extract symbols instead of sending raw code
         try:
@@ -1863,27 +1864,35 @@ class CodebaseMemoryService:
         except Exception:
             symbol_text = content[:1500]
 
-        system_prompt = "Você é um analista de código. Responda de forma MUITO CURTA e DIRETA."
+        system_prompt = "Voce e um analista de codigo. Responda APENAS em JSON valido, sem markdown. IDIOMA: portugues brasileiro."
 
         user_prompt = f"""Arquivo: {filename}
 
 {symbol_text}
 
-Em NO MÁXIMO 4 linhas, responda:
-1. O que este arquivo FAZ? (1 frase)
-2. Qual a principal REGRA DE NEGÓCIO? (1 frase, ou "Nenhuma" se não houver)
-3. Qual a principal ENTIDADE/DADO? (1 palavra, ou "Nenhum")
-4. Se encontrar <title>XXX</title> ou domínio .gov.br/.com.br, escreva: "SISTEMA: XXX" ou "DOMÍNIO: xxx.gov.br\""""
+Analise este arquivo e responda em JSON:
+{{
+  "purpose": "O que este arquivo faz (1 frase)",
+  "business_rules": ["regra1", "regra2"],
+  "features": ["funcionalidade1"],
+  "entities": ["entidade1"],
+  "system_hint": ""
+}}
+
+REGRAS:
+- business_rules: validacoes, restricoes, calculos, permissoes, fluxos de negocio encontrados. Liste TODAS que encontrar. Se nenhuma, lista vazia.
+- features: funcionalidades que o arquivo implementa (ex: "autenticacao JWT", "upload de arquivos")
+- entities: modelos/tabelas/dados principais (ex: "Usuario", "Pedido", "Produto")
+- system_hint: se encontrar <title>XXX</title> ou dominio .gov.br/.com.br, escreva aqui
+- TUDO em portugues brasileiro"""
 
         try:
-            # PROMPT #168 - Add timeout for individual file analysis (5 min max)
-            # This prevents a single slow file from blocking the entire scan
             response = await asyncio.wait_for(
                 self.orchestrator.execute(
                     usage_type="memory",
                     messages=[{"role": "user", "content": user_prompt}],
                     system_prompt=system_prompt,
-                    max_tokens=200,  # Muito pequeno - forçar resposta curta
+                    max_tokens=400,
                     project_id=project_id,
                     metadata={
                         "phase": f"chain_file_{file_num}",
@@ -1891,19 +1900,39 @@ Em NO MÁXIMO 4 linhas, responda:
                         "filename": filename
                     }
                 ),
-                timeout=300.0  # 5 min timeout per file
+                timeout=300.0
             )
 
             text = response.get("content", "").strip()
-            if text:
+            if not text:
+                return None
+
+            # Try to parse JSON response
+            from app.services.utility_node_executor import UtilityNodeExecutor
+            parsed = UtilityNodeExecutor._try_parse_json(text, auto_repair=True)
+
+            if parsed and isinstance(parsed, dict):
                 return {
                     "filename": filename,
-                    "analysis": text
+                    "analysis": parsed.get("purpose", text),
+                    "business_rules": parsed.get("business_rules", []),
+                    "features": parsed.get("features", []),
+                    "entities": parsed.get("entities", []),
+                    "system_hint": parsed.get("system_hint", "")
                 }
-            return None
+
+            # Fallback: treat as plain text analysis
+            return {
+                "filename": filename,
+                "analysis": text,
+                "business_rules": [],
+                "features": [],
+                "entities": [],
+                "system_hint": ""
+            }
 
         except asyncio.TimeoutError:
-            logger.warning(f"⏱️ Timeout analyzing {filename} (>5min), skipping...")
+            logger.warning(f"Timeout analyzing {filename} (>5min), skipping...")
             return None
         except Exception as e:
             logger.warning(f"Chain analyze failed for {filename}: {e}")
@@ -1917,80 +1946,183 @@ Em NO MÁXIMO 4 linhas, responda:
     ) -> Dict:
         """
         PROMPT #167 - Consolidate file insights into final result.
-
-        Uses a small prompt that just asks for a summary based on the file analyses.
+        PROMPT #284 - Aggregates structured rules/features from each file first,
+        then uses AI to deduplicate, organize, and generate title + context.
         """
-        # Format insights as a simple list
-        insights_text = ""
-        for insight in file_insights[:10]:  # Max 10 insights
-            insights_text += f"- {insight['filename']}: {insight['analysis']}\n"
+        # PROMPT #284 - Aggregate rules, features, entities from all file insights
+        all_rules = []
+        all_features = []
+        all_entities = []
+        system_hints = []
+        summaries = []
+
+        for insight in file_insights:
+            # Collect structured data from each file
+            for rule in insight.get("business_rules", []):
+                if rule and isinstance(rule, str) and rule.lower() not in ("nenhuma", "nenhum", "none", "n/a", ""):
+                    all_rules.append(rule)
+            for feat in insight.get("features", []):
+                if feat and isinstance(feat, str) and feat.lower() not in ("nenhuma", "nenhum", "none", "n/a", ""):
+                    all_features.append(feat)
+            for ent in insight.get("entities", []):
+                if ent and isinstance(ent, str) and ent.lower() not in ("nenhuma", "nenhum", "none", "n/a", ""):
+                    all_entities.append(ent)
+            hint = insight.get("system_hint", "")
+            if hint and hint.lower() not in ("", "nenhum", "nenhuma", "none"):
+                system_hints.append(hint)
+            summaries.append(f"- {insight['filename']}: {insight.get('analysis', '')}")
+
+        # Deduplicate (case-insensitive)
+        seen_rules = set()
+        unique_rules = []
+        for r in all_rules:
+            key = r.lower().strip()
+            if key not in seen_rules:
+                seen_rules.add(key)
+                unique_rules.append(r)
+
+        seen_features = set()
+        unique_features = []
+        for f in all_features:
+            key = f.lower().strip()
+            if key not in seen_features:
+                seen_features.add(key)
+                unique_features.append(f)
+
+        seen_entities = set()
+        unique_entities = []
+        for e in all_entities:
+            key = e.lower().strip()
+            if key not in seen_entities:
+                seen_entities.add(key)
+                unique_entities.append(e)
+
+        logger.info(
+            f"Chain aggregation: {len(unique_rules)} rules, "
+            f"{len(unique_features)} features, {len(unique_entities)} entities "
+            f"from {len(file_insights)} files"
+        )
 
         stack_name = stack_info.get("detected_stack", "desconhecida")
 
-        system_prompt = "Você é um arquiteto de software. Responda APENAS em JSON válido, sem markdown. IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro. Titulo, regras, features - TUDO em portugues. NUNCA escreva em ingles."
+        # Build context for consolidation prompt
+        rules_text = "\n".join([f"  - {r}" for r in unique_rules[:30]]) if unique_rules else "  Nenhuma regra encontrada"
+        features_text = "\n".join([f"  - {f}" for f in unique_features[:20]]) if unique_features else "  Nenhuma feature encontrada"
+        entities_text = ", ".join(unique_entities[:15]) if unique_entities else "Nenhuma"
+        hints_text = "\n".join([f"  - {h}" for h in system_hints]) if system_hints else ""
+        summaries_text = "\n".join(summaries[:15])
+
+        system_prompt = "Voce e um arquiteto de software. Responda APENAS em JSON valido, sem markdown. IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro."
 
         user_prompt = f"""Pasta do projeto: {self.current_folder_name}
 Stack: {stack_name}
 
-Resumo dos arquivos analisados:
-{insights_text}
+REGRAS DE NEGOCIO EXTRAIDAS DOS ARQUIVOS:
+{rules_text}
 
-INSTRUÇÕES CRÍTICAS PARA O TÍTULO:
-1. Se vir <title>XXX</title> em algum arquivo, use "XXX" como base do título
-2. Se vir ".gov.br" ou ".pe.gov.br", o sistema é do Governo de Pernambuco
-3. Se vir "SEI" = Sistema Eletrônico de Informações (governo)
-4. Se vir "LDAP", é um sistema de gestão de usuários/autenticação
-5. Combine: nome do sistema + propósito + organização
-6. Use 5-8 palavras, NUNCA apenas "Sistema de X" com 3 palavras
+FUNCIONALIDADES ENCONTRADAS:
+{features_text}
 
-Baseado APENAS nessas análises, responda em JSON:
+ENTIDADES: {entities_text}
+
+RESUMO DOS ARQUIVOS:
+{summaries_text}
+{f"DICAS DE SISTEMA: {chr(10).join(system_hints)}" if hints_text else ""}
+
+Com base nessas informacoes REAIS extraidas do codigo, gere o JSON final:
 {{
-  "suggested_title": "Título COMPLETO. Ex: 'SEI Contas - Gestão LDAP do Governo de Pernambuco'",
-  "business_rules": ["Regra 1", "Regra 2", "Regra 3"],
-  "key_features": ["Feature 1", "Feature 2", "Feature 3"],
-  "entities": ["Entidade 1", "Entidade 2"],
-  "interview_context": "Uma frase descrevendo o propósito do sistema"
+  "suggested_title": "Titulo descritivo do sistema (5-8 palavras)",
+  "business_rules": ["lista COMPLETA de regras de negocio - inclua TODAS as regras acima + adicione se encontrar mais"],
+  "key_features": ["lista COMPLETA de funcionalidades - inclua TODAS acima + adicione se encontrar mais"],
+  "entities": ["lista de entidades/modelos principais"],
+  "interview_context": "Paragrafo de 100-200 palavras descrevendo o proposito, stack, funcionalidades e regras principais do sistema"
 }}
 
-IDIOMA OBRIGATORIO: TODO o conteudo DEVE ser em portugues brasileiro. Titulo, regras, features, entidades - TUDO em portugues. NUNCA escreva em ingles."""
+INSTRUCOES:
+1. MANTENHA todas as regras e features ja extraidas - NAO descarte nenhuma
+2. Se possivel, adicione mais regras inferidas dos resumos dos arquivos
+3. interview_context deve ser um texto RICO e DETALHADO, nao apenas 1 frase
+4. Titulo deve refletir o dominio do negocio, NAO a tecnologia
+5. TUDO em portugues brasileiro"""
 
         try:
             response = await self.orchestrator.execute(
                 usage_type="memory",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=500,
+                max_tokens=2000,
                 project_id=project_id,
                 metadata={
                     "phase": "chain_consolidation",
                     "scan_type": "chain_prompting",
-                    "files_analyzed": len(file_insights)
+                    "files_analyzed": len(file_insights),
+                    "rules_pre_aggregated": len(unique_rules),
+                    "features_pre_aggregated": len(unique_features)
                 }
             )
 
             content = response.get("content", "{}")
 
-            # PROMPT #230 - Use robust JSON autocorrection
             from app.services.utility_node_executor import UtilityNodeExecutor
             result = UtilityNodeExecutor._try_parse_json(content.strip(), auto_repair=True)
             if not result or not isinstance(result, dict):
                 result = {}
 
+            # Ensure we don't lose pre-aggregated data if AI returned less
+            ai_rules = result.get("business_rules", [])
+            ai_features = result.get("key_features", [])
+            ai_entities = result.get("entities", [])
+
+            # Merge: AI result + pre-aggregated (deduplicated)
+            if len(ai_rules) < len(unique_rules):
+                merged_rules = list(ai_rules)
+                existing_lower = {r.lower().strip() for r in merged_rules}
+                for r in unique_rules:
+                    if r.lower().strip() not in existing_lower:
+                        merged_rules.append(r)
+                        existing_lower.add(r.lower().strip())
+                result["business_rules"] = merged_rules
+
+            if len(ai_features) < len(unique_features):
+                merged_features = list(ai_features)
+                existing_lower = {f.lower().strip() for f in merged_features}
+                for f in unique_features:
+                    if f.lower().strip() not in existing_lower:
+                        merged_features.append(f)
+                        existing_lower.add(f.lower().strip())
+                result["key_features"] = merged_features
+
+            if len(ai_entities) < len(unique_entities):
+                merged_entities = list(ai_entities)
+                existing_lower = {e.lower().strip() for e in merged_entities}
+                for e in unique_entities:
+                    if e.lower().strip() not in existing_lower:
+                        merged_entities.append(e)
+                        existing_lower.add(e.lower().strip())
+                result["entities"] = merged_entities
+
             # Validate title
             title = result.get("suggested_title", "")
             result["suggested_title"] = self._validate_title(title, self.current_folder_name, stack_info)
 
-            logger.info(f"✅ Chain Prompting complete - Title: {result.get('suggested_title')}")
+            logger.info(
+                f"Chain Prompting complete - Title: {result.get('suggested_title')}, "
+                f"Rules: {len(result.get('business_rules', []))}, "
+                f"Features: {len(result.get('key_features', []))}"
+            )
             return result
 
         except Exception as e:
             logger.error(f"Chain consolidation failed: {e}")
+            # Fallback: use pre-aggregated data directly
             return {
                 "suggested_title": self._generate_fallback_title(stack_info, self.current_folder_name),
-                "business_rules": [insight.get("analysis", "")[:100] for insight in file_insights[:5]],
-                "key_features": [],
-                "entities": [],
-                "interview_context": f"Sistema {stack_name} com {len(file_insights)} arquivos analisados."
+                "business_rules": unique_rules[:20],
+                "key_features": unique_features[:15],
+                "entities": unique_entities[:10],
+                "interview_context": f"Sistema {stack_name} com {len(file_insights)} arquivos analisados. "
+                    f"Regras identificadas: {', '.join(unique_rules[:5])}. "
+                    f"Funcionalidades: {', '.join(unique_features[:5])}."
             }
 
     # =========================================================================

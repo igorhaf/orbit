@@ -322,6 +322,56 @@ async def _process_memory_scan_async(
             progress_callback=progress_callback
         )
 
+        # PROMPT #284 - Write scan result back to project.initial_memory_context
+        # (Previously missing: re-scan completed but never updated the project record)
+        if project_id:
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if project:
+                suggested_title = result.get("suggested_title")
+                if suggested_title and suggested_title != project.name:
+                    # Only update name if it still matches the folder-based default
+                    folder_based_name = folder_name.replace("-", " ").replace("_", " ").title()
+                    if project.name == folder_based_name:
+                        project.name = suggested_title
+                        logger.info(f"📝 Updated project name to: {suggested_title}")
+
+                project.initial_memory_context = result
+                project.initial_scan_complete = True
+                project.scan_depth = scan_depth
+                project.updated_at = datetime.utcnow()
+                db.commit()
+                logger.info(
+                    f"📝 Updated initial_memory_context: "
+                    f"rules={len(result.get('business_rules', []))}, "
+                    f"features={len(result.get('key_features', []))}"
+                )
+
+                # PROMPT #284 - Trigger card generation from business rules (like quick-create does)
+                job_manager.update_progress(job_id, 85.0, "Generating cards from business rules...")
+                try:
+                    has_rules = bool(
+                        result.get("business_rules")
+                        and isinstance(result.get("business_rules"), list)
+                        and len(result.get("business_rules", [])) > 0
+                    )
+                    if has_rules:
+                        logger.info(f"Triggering card generation for project {project_id}")
+                        cards_job = job_manager.create_job(
+                            job_type=JobType.CARDS_FROM_MEMORY,
+                            input_data={"project_id": str(project_id)},
+                            project_id=project_id,
+                            deep_link=f"/projects/{project_id}",
+                            notification_title=f"Gerando cards para '{project.name}'..."
+                        )
+                        from app.services.job_executor import PriorityJobExecutor as CardExec
+                        card_executor = CardExec.get_instance()
+                        await card_executor.submit(cards_job.priority, _process_cards_from_memory_async, cards_job.id, project_id)
+                        logger.info(f"Card generation job {cards_job.id} submitted for project {project_id}")
+                    else:
+                        logger.info(f"No business rules found for {project_id}, skipping card generation")
+                except Exception as e:
+                    logger.warning(f"Card generation trigger failed (non-blocking): {e}")
+
         # PROMPT #202 - Discover specs and sync to RAG after memory scan
         if project_id:
             effective_max = _effective_max_patterns(db, project_id)
