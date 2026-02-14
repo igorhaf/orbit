@@ -1047,6 +1047,22 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             return False
 
         project.description = enriched
+
+        # PROMPT #281 - Sync project name from wiki enrichment title
+        # The wiki enrichment generates "# Project Title" as the first line.
+        # Use this as the canonical project name to avoid English/Portuguese mismatch
+        # between project.name (from memory scan, may be English) and description (Portuguese).
+        try:
+            first_line = enriched.strip().split("\n")[0].strip()
+            if first_line.startswith("# "):
+                wiki_title = first_line[2:].strip()
+                if wiki_title and len(wiki_title) > 3:
+                    old_name = project.name
+                    project.name = wiki_title
+                    logger.info(f"Project name synced from wiki: '{old_name}' -> '{wiki_title}'")
+        except Exception as e:
+            logger.warning(f"Failed to extract title from wiki enrichment: {e}")
+
         project.updated_at = datetime.utcnow()
         db.commit()
         logger.info(f"Wiki enriched for project {project_id} ({len(enriched)} chars)")

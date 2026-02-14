@@ -498,7 +498,7 @@ export default function ProjectDetailsPage() {
             <div className="flex items-center gap-2">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500" />
               <span className="text-sm text-gray-600">
-                Watchdog ativo — descobrindo e atualizando conhecimento do projeto continuamente
+                Watchdog active — continuously discovering and updating project knowledge
               </span>
             </div>
           </div>
@@ -1180,13 +1180,13 @@ export default function ProjectDetailsPage() {
       <Dialog
         open={showEpicCountDialog}
         onClose={() => setShowEpicCountDialog(false)}
-        title="Gerar Epicos"
-        description="Escolha quantos epicos deseja gerar para este projeto."
+        title="Generate Epics"
+        description="Choose how many epics you want to generate for this project."
         size="sm"
       >
         <div className="py-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Quantidade de Epicos
+            Number of Epics
           </label>
           <input
             type="number"
@@ -1203,7 +1203,7 @@ export default function ProjectDetailsPage() {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowEpicCountDialog(false)}>
-            Cancelar
+            Cancel
           </Button>
           <Button
             variant="primary"
@@ -1219,18 +1219,18 @@ export default function ProjectDetailsPage() {
                 if (res.ok) {
                   const data = await res.json();
                   if (data.job_id) {
-                    showSuccess(`Geracao de ${epicCount} epicos iniciada em background. Acompanhe na pagina Jobs.`, 'Epicos');
+                    showSuccess(`Generation of ${epicCount} epics started in background. Check Jobs page for progress.`, 'Epics');
                   }
                 } else {
                   const err = await res.json();
-                  showError(err.detail || 'Falha ao gerar epicos');
+                  showError(err.detail || 'Failed to generate epics');
                 }
               } catch (e) {
-                showError('Falha ao iniciar geracao de epicos');
+                showError('Failed to start epic generation');
               }
             }}
           >
-            Gerar
+            Generate
           </Button>
         </DialogFooter>
       </Dialog>
