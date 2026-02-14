@@ -221,9 +221,8 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     }
   };
 
-  // maxDepth=1: sidebar shows root pages (depth 0) and their direct children (depth 1) only.
-  // Deeper sub-pages (individual rules etc.) are accessible via content links inside their parent page.
-  const renderSidebarItem = (item: WikiTreeItem, depth: number = 0, maxDepth: number = 1) => {
+  // Sidebar shows only root pages. Sub-pages are accessible via links inside parent page content.
+  const renderSidebarItem = (item: WikiTreeItem) => {
     const isActive = item.slug === selectedSlug;
     return (
       <div key={item.id}>
@@ -237,11 +236,9 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
               ? 'bg-blue-100 text-blue-700 font-medium'
               : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
           }`}
-          style={{ paddingLeft: `${8 + depth * 14}px` }}
         >
           <span className="truncate block">{item.title}</span>
         </button>
-        {depth < maxDepth && item.children && item.children.map((child) => renderSidebarItem(child, depth + 1, maxDepth))}
       </div>
     );
   };
