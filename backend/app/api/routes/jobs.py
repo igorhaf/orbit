@@ -363,6 +363,42 @@ async def get_job_status(
     return job.to_dict()
 
 
+# PROMPT #286 - Job log entries endpoint
+@router.get("/{job_id}/logs")
+async def get_job_logs(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+    limit: int = Query(500, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+):
+    """
+    Get historical log entries for a specific job.
+    Returns log entries ordered by timestamp ascending.
+    """
+    from app.models.job_log_entry import JobLogEntry
+
+    job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} not found"
+        )
+
+    total = db.query(func.count(JobLogEntry.id)).filter(
+        JobLogEntry.job_id == job_id
+    ).scalar() or 0
+
+    entries = db.query(JobLogEntry).filter(
+        JobLogEntry.job_id == job_id
+    ).order_by(JobLogEntry.timestamp.asc()).offset(offset).limit(limit).all()
+
+    return {
+        "job_id": str(job_id),
+        "logs": [entry.to_dict() for entry in entries],
+        "total": total,
+    }
+
+
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job(
     job_id: UUID,

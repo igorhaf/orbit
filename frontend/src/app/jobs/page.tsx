@@ -40,6 +40,7 @@ import {
   List,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ExternalLink,
   Wifi,
   WifiOff,
@@ -178,6 +179,22 @@ export default function JobsPage() {
     open: boolean;
     days: number;
   }>({ open: false, days: 0 });
+
+  // PROMPT #286 - Expandable job detail with log viewer
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
+  const [jobLogs, setJobLogs] = useState<Record<string, Array<{ id: string; timestamp: string; level: string; message: string; progress_percent: number | null }>>>({});
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  // PROMPT #286 - Auto-scroll log area when new entries arrive for running jobs
+  useEffect(() => {
+    if (expandedJobId && logEndRef.current) {
+      const expandedJob = jobs.find(j => j.id === expandedJobId);
+      if (expandedJob?.status === 'running') {
+        logEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      }
+    }
+  }, [jobLogs, expandedJobId, jobs]);
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
   const WS_URL = API_BASE.replace('http', 'ws');
@@ -433,6 +450,31 @@ export default function JobsPage() {
         return prevJobs;
       });
 
+      // PROMPT #286 - Capture log entries from WebSocket for expanded job
+      if (data.job_id) {
+        setExpandedJobId(currentExpanded => {
+          if (currentExpanded === data.job_id) {
+            const newEntry = {
+              id: `ws-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              timestamp: new Date().toISOString(),
+              level: event === 'job_completed' ? 'success' : event === 'job_failed' ? 'error' : event === 'job_cancelled' ? 'warning' : 'info',
+              message: event === 'job_progress' ? (data.progress_message || `Progress: ${data.progress_percent}%`)
+                : event === 'job_completed' ? 'Job completed successfully'
+                : event === 'job_failed' ? (data.error || 'Job failed')
+                : event === 'job_cancelled' ? 'Job cancelled by user'
+                : event === 'job_started' ? 'Job started'
+                : data.progress_message || 'Processing...',
+              progress_percent: data.progress_percent ?? null,
+            };
+            setJobLogs(prev => ({
+              ...prev,
+              [data.job_id]: [...(prev[data.job_id] || []), newEntry],
+            }));
+          }
+          return currentExpanded;
+        });
+      }
+
       // Also update stats count immediately for status changes
       if (['job_started', 'job_completed', 'job_failed', 'job_cancelled'].includes(event)) {
         setStats((prevStats) => {
@@ -532,11 +574,32 @@ export default function JobsPage() {
     return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
   };
 
+  // PROMPT #286 - Toggle expanded job detail with log fetching
+  const handleToggleExpand = async (jobId: string) => {
+    if (expandedJobId === jobId) {
+      setExpandedJobId(null);
+      return;
+    }
+    setExpandedJobId(jobId);
+    if (!jobLogs[jobId]) {
+      setLoadingLogs(true);
+      try {
+        const res = await jobsApi.logs(jobId);
+        setJobLogs(prev => ({ ...prev, [jobId]: res.logs }));
+      } catch (error) {
+        console.error('Error fetching job logs:', error);
+        setJobLogs(prev => ({ ...prev, [jobId]: [] }));
+      } finally {
+        setLoadingLogs(false);
+      }
+    }
+  };
+
   // Format date
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return '-';
     const date = new Date(dateStr);
-    return date.toLocaleString('pt-BR', {
+    return date.toLocaleString('en-US', {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',
@@ -965,17 +1028,26 @@ export default function JobsPage() {
                                 1000
                               : null;
 
+                          const isExpanded = expandedJobId === job.id;
+
                           return (
-                            <tr key={job.id} className="hover:bg-gray-50">
+                            <React.Fragment key={job.id}>
+                            <tr
+                              className={`hover:bg-gray-50 cursor-pointer select-none ${isExpanded ? 'bg-gray-50' : ''}`}
+                              onClick={() => handleToggleExpand(job.id)}
+                            >
                               <td className="px-4 py-3">
-                                <span
-                                  className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
-                                    STATUS_COLORS[job.status]
-                                  }`}
-                                >
-                                  {STATUS_ICONS[job.status]}
-                                  {job.status}
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
+                                  <span
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                                      STATUS_COLORS[job.status]
+                                    }`}
+                                  >
+                                    {STATUS_ICONS[job.status]}
+                                    {job.status}
+                                  </span>
+                                </div>
                               </td>
                               <td className="px-4 py-3">
                                 {(() => {
@@ -1061,6 +1133,7 @@ export default function JobsPage() {
                                       href={job.deep_link}
                                       className="p-1.5 text-gray-400 hover:text-purple-600 rounded"
                                       title="Go to result"
+                                      onClick={(e) => e.stopPropagation()}
                                     >
                                       <ExternalLink className="w-4 h-4" />
                                     </Link>
@@ -1070,7 +1143,7 @@ export default function JobsPage() {
                                   {(job.status === 'pending' ||
                                     job.status === 'running') && (
                                     <button
-                                      onClick={() => handleCancelJob(job.id)}
+                                      onClick={(e) => { e.stopPropagation(); handleCancelJob(job.id); }}
                                       className="p-1.5 text-gray-400 hover:text-yellow-600 rounded"
                                       title="Cancel job"
                                     >
@@ -1083,7 +1156,7 @@ export default function JobsPage() {
                                     job.status === 'failed' ||
                                     job.status === 'cancelled') && (
                                     <button
-                                      onClick={() => handleDeleteJob(job.id)}
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteJob(job.id); }}
                                       className="p-1.5 text-gray-400 hover:text-red-600 rounded"
                                       title="Delete job"
                                     >
@@ -1093,6 +1166,83 @@ export default function JobsPage() {
                                 </div>
                               </td>
                             </tr>
+
+                            {/* PROMPT #286 - Expandable job detail with log viewer */}
+                            {isExpanded && (
+                              <tr>
+                                <td colSpan={8} className="p-0">
+                                  <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
+                                    {/* Job Detail Header */}
+                                    <div className="flex items-center justify-between mb-3">
+                                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                                        <span><strong>ID:</strong> {job.id.slice(0, 8)}...</span>
+                                        <span><strong>Type:</strong> {job.job_type.replace(/_/g, ' ')}</span>
+                                        {job.started_at && <span><strong>Started:</strong> {new Date(job.started_at).toLocaleTimeString()}</span>}
+                                        {job.completed_at && <span><strong>Finished:</strong> {new Date(job.completed_at).toLocaleTimeString()}</span>}
+                                        {duration !== null && <span><strong>Duration:</strong> {formatDuration(duration)}</span>}
+                                      </div>
+                                    </div>
+
+                                    {/* Log Area - Terminal Style */}
+                                    <div className="bg-gray-900 rounded-lg overflow-hidden">
+                                      <div className="px-3 py-1.5 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
+                                        <span className="text-xs text-gray-400 font-mono">Job Log</span>
+                                        {job.status === 'running' && (
+                                          <span className="flex items-center gap-1.5 text-xs text-green-400">
+                                            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
+                                            Live
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="p-3 max-h-80 overflow-y-auto font-mono text-xs space-y-0.5">
+                                        {loadingLogs ? (
+                                          <div className="text-gray-500 py-4 text-center">Loading logs...</div>
+                                        ) : (jobLogs[job.id] || []).length === 0 ? (
+                                          <div className="text-gray-500 py-4 text-center">No log entries available for this job</div>
+                                        ) : (
+                                          (jobLogs[job.id] || []).map((entry) => {
+                                            const ts = new Date(entry.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                            const levelColor = entry.level === 'success' ? 'text-green-400'
+                                              : entry.level === 'error' ? 'text-red-400'
+                                              : entry.level === 'warning' ? 'text-yellow-400'
+                                              : 'text-cyan-400';
+                                            const percentStr = entry.progress_percent !== null ? ` (${Math.round(entry.progress_percent)}%)` : '';
+                                            return (
+                                              <div key={entry.id} className="flex gap-2 leading-5">
+                                                <span className="text-gray-500 flex-shrink-0">[{ts}]</span>
+                                                <span className={`flex-shrink-0 w-16 uppercase ${levelColor}`}>[{entry.level}]</span>
+                                                <span className="text-gray-200">{entry.message}{percentStr}</span>
+                                              </div>
+                                            );
+                                          })
+                                        )}
+                                        <div ref={logEndRef} />
+                                      </div>
+                                    </div>
+
+                                    {/* Result Summary */}
+                                    {job.status === 'completed' && job.result && (() => {
+                                      const summary = formatJobResult(job.result);
+                                      return summary ? (
+                                        <div className="mt-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+                                          <span className="text-xs font-medium text-green-700">Result: </span>
+                                          <span className="text-xs text-green-600">{summary}</span>
+                                        </div>
+                                      ) : null;
+                                    })()}
+
+                                    {/* Error Detail */}
+                                    {job.status === 'failed' && job.error && (
+                                      <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
+                                        <span className="text-xs font-medium text-red-700">Error: </span>
+                                        <span className="text-xs text-red-600">{job.error}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            </React.Fragment>
                           );
                         })}
                       </tbody>

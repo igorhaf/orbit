@@ -17,6 +17,7 @@ import logging
 import asyncio
 
 from app.models.async_job import AsyncJob, JobStatus, JobType, JOB_TYPE_DEFAULT_PRIORITY, JobPriority
+from app.models.job_log_entry import JobLogEntry
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,9 @@ class JobManager:
         job.status = JobStatus.RUNNING
         job.started_at = datetime.utcnow()
 
+        # PROMPT #286 - Insert log entry
+        self.db.add(JobLogEntry(job_id=job_id, level="info", message="Job started", progress_percent=0))
+
         self.db.commit()
         logger.info(f"Started job {job_id}")
 
@@ -174,6 +178,13 @@ class JobManager:
         if progress_message:
             job.progress_message = progress_message
 
+        # PROMPT #286 - Insert log entry
+        self.db.add(JobLogEntry(
+            job_id=job_id, level="info",
+            message=progress_message or f"Progress: {progress_percent}%",
+            progress_percent=progress_percent,
+        ))
+
         self.db.commit()
         logger.debug(f"Job {job_id} progress: {progress_percent}% - {progress_message}")
 
@@ -202,6 +213,9 @@ class JobManager:
         job.result = result
         job.completed_at = datetime.utcnow()
         job.progress_percent = 100.0
+
+        # PROMPT #286 - Insert log entry
+        self.db.add(JobLogEntry(job_id=job_id, level="success", message="Job completed successfully", progress_percent=100.0))
 
         self.db.commit()
         logger.info(f"Completed job {job_id}")
@@ -235,6 +249,9 @@ class JobManager:
         job.status = JobStatus.FAILED
         job.error = error
         job.completed_at = datetime.utcnow()
+
+        # PROMPT #286 - Insert log entry
+        self.db.add(JobLogEntry(job_id=job_id, level="error", message=error))
 
         self.db.commit()
         logger.error(f"Failed job {job_id}: {error}")
@@ -288,6 +305,9 @@ class JobManager:
         job.status = JobStatus.CANCELLED
         job.completed_at = datetime.utcnow()
         job.error = "Job was cancelled by user"
+
+        # PROMPT #286 - Insert log entry
+        self.db.add(JobLogEntry(job_id=job_id, level="warning", message="Job cancelled by user"))
 
         self.db.commit()
         logger.info(f"Cancelled job {job_id}")

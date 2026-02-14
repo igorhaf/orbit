@@ -970,6 +970,10 @@ export const jobsApi = {
   get: (jobId: string) =>
     request<JobResponse>(`/api/v1/jobs/${jobId}`),
 
+  // PROMPT #286 - Job log entries for detail view
+  logs: (jobId: string) =>
+    request<{ job_id: string; logs: Array<{ id: string; job_id: string; timestamp: string; level: string; message: string; progress_percent: number | null }>; total: number }>(`/api/v1/jobs/${jobId}/logs`),
+
   delete: (jobId: string) =>
     request<void>(`/api/v1/jobs/${jobId}`, { method: 'DELETE' }),
 
