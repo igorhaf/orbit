@@ -10,7 +10,7 @@ from sqlalchemy.dialects.postgresql import UUID
 
 
 revision = 'prompt282_project_chats'
-down_revision = None
+down_revision = 'prompt270_wiki_enrich'
 branch_labels = None
 depends_on = None
 
