@@ -7,14 +7,14 @@ Preset: CUSTO MINIMO - Prioriza modelos locais (Ollama) para zero custo de API.
 Modelos cloud ficam como fallback final apenas se necessario.
 
 Strategy per operation (cost-optimized):
-- interview:           Gemma3 12B → Qwen3 14B
-- prompt_generation:   Qwen3 14B → Gemma3 12B
-- task_execution:      Qwen3 14B → Gemma3 12B
-- commit_generation:   Gemma3 12B → Qwen3 14B
+- interview:           Gemma3 12B → Qwen3 8B
+- prompt_generation:   Qwen3 8B → Gemma3 12B
+- task_execution:      Qwen3 8B → Gemma3 12B
+- commit_generation:   Gemma3 12B → Qwen3 8B
 - pattern_discovery:   DeepSeek-R1 14B → Gemma3 12B
-- memory:              Qwen3 14B → Gemma3 12B → DeepSeek-R1 14B
-- queue_orchestration: Qwen3 14B → Gemma3 12B → Phi-4 14B
-- general:             Qwen3 14B → Gemma3 12B → DeepSeek-R1 14B
+- memory:              Qwen3 8B → Gemma3 12B → DeepSeek-R1 14B
+- queue_orchestration: Qwen3 8B → Gemma3 12B → Phi-4 14B
+- general:             Qwen3 8B → Gemma3 12B → DeepSeek-R1 14B
 
 Usage:
     docker exec -w /app orbit-backend python scripts/seed_ai_flow_chains.py
@@ -50,7 +50,7 @@ OLLAMA_MODEL_CONFIGS = {
         "top_k": 40,
         "context_length": 128000,
     },
-    "qwen3:14b": {
+    "qwen3:8b": {
         "max_tokens": 32768,
         "temperature": 0.7,
         "top_p": 0.8,
@@ -105,25 +105,25 @@ CHAIN_STRATEGY = {
     # Gemma3 (best quality) → Qwen3 (fast fallback)
     "interview": [
         ("gemma3:12b", None),
-        ("qwen3:14b", None),
+        ("qwen3:8b", None),
     ],
     # Prompt generation: creativity + verbose output
     # Qwen3 (most verbose, 1279 tokens) → Gemma3 (quality fallback)
     "prompt_generation": [
-        ("qwen3:14b", None),
+        ("qwen3:8b", None),
         ("gemma3:12b", None),
     ],
     # Task execution: speed + code understanding
     # Qwen3 (31.9 tok/s fastest) → Gemma3 (25 tok/s)
     "task_execution": [
-        ("qwen3:14b", None),
+        ("qwen3:8b", None),
         ("gemma3:12b", None),
     ],
     # Commit generation: concise output
     # Gemma3 (concise 737 tokens) → Qwen3
     "commit_generation": [
         ("gemma3:12b", None),
-        ("qwen3:14b", None),
+        ("qwen3:8b", None),
     ],
     # Pattern discovery: reasoning + deep analysis
     # DeepSeek-R1 (chain of thought) → Gemma3
@@ -134,21 +134,21 @@ CHAIN_STRATEGY = {
     # Memory / Continuous RAG: verbose extraction in Portuguese
     # Qwen3 (most verbose 1279 tokens, best Portuguese) → Gemma3 → DeepSeek-R1
     "memory": [
-        ("qwen3:14b", None),
+        ("qwen3:8b", None),
         ("gemma3:12b", None),
         ("deepseek-r1:14b", None),
     ],
     # Queue orchestration: speed for batch processing
     # Qwen3 (fastest) → Gemma3 → Phi-4 (quality backup)
     "queue_orchestration": [
-        ("qwen3:14b", None),
+        ("qwen3:8b", None),
         ("gemma3:12b", None),
         ("phi4:14b", None),
     ],
     # General: verbose output with good Portuguese
     # Qwen3 (best Portuguese, most verbose) → Gemma3 → DeepSeek-R1
     "general": [
-        ("qwen3:14b", None),
+        ("qwen3:8b", None),
         ("gemma3:12b", None),
         ("deepseek-r1:14b", None),
     ],
