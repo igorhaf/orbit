@@ -575,29 +575,28 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                     >
                       {selectedPage.content}
                     </ReactMarkdown>
+                    {/* Child page links inside the content, like Wikipedia */}
+                    {(() => {
+                      const treeItem = selectedSlug ? findTreeItem(tree, selectedSlug) : null;
+                      if (!treeItem || !treeItem.children || treeItem.children.length === 0) return null;
+                      return (
+                        <ul className="mt-8 space-y-1 list-disc pl-5">
+                          {treeItem.children.map((child) => (
+                            <li key={child.id}>
+                              <button
+                                onClick={() => { setEditing(false); setSelectedSlug(child.slug); }}
+                                className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
+                              >
+                                {child.title}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    })()}
                   </div>
                 )}
               </Card>
-
-              {/* Auto-list child pages as wiki-style links */}
-              {(() => {
-                const treeItem = selectedSlug ? findTreeItem(tree, selectedSlug) : null;
-                if (!treeItem || !treeItem.children || treeItem.children.length === 0) return null;
-                return (
-                  <ul className="mt-6 space-y-1 list-disc pl-5">
-                    {treeItem.children.map((child) => (
-                      <li key={child.id}>
-                        <button
-                          onClick={() => { setEditing(false); setSelectedSlug(child.slug); }}
-                          className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
-                        >
-                          {child.title}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                );
-              })()}
             </div>
           ) : null}
         </div>

@@ -113,6 +113,17 @@ export default function WikiPageView() {
     }
   };
 
+  const findTreeItem = (items: WikiTreeItem[], targetSlug: string): WikiTreeItem | null => {
+    for (const item of items) {
+      if (item.slug === targetSlug) return item;
+      if (item.children) {
+        const found = findTreeItem(item.children, targetSlug);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+
   const renderSidebarItem = (item: WikiTreeItem, depth: number = 0) => {
     const isActive = item.slug === slug;
     return (
@@ -316,6 +327,25 @@ export default function WikiPageView() {
                 >
                   {page.content}
                 </ReactMarkdown>
+                {/* Child page links inside the content, like Wikipedia */}
+                {(() => {
+                  const treeItem = findTreeItem(tree, slug);
+                  if (!treeItem || !treeItem.children || treeItem.children.length === 0) return null;
+                  return (
+                    <ul className="mt-8 space-y-1 list-disc pl-5">
+                      {treeItem.children.map((child) => (
+                        <li key={child.id}>
+                          <button
+                            onClick={() => router.push(`/projects/${projectId}/wiki/${child.slug}`)}
+                            className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
+                          >
+                            {child.title}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  );
+                })()}
               </div>
             )}
           </Card>
