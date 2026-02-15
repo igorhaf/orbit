@@ -322,6 +322,66 @@ class CodebaseMemoryService:
         # PROMPT #223 - Instance-level ignore dirs (starts as copy of class-level)
         # AI-detected custom patterns are added here without contaminating the class set
         self._effective_ignore_dirs: Set[str] = set(self.IGNORE_DIRECTORIES)
+        self._effective_file_patterns: Set[str] = set(self.IGNORE_FILE_PATTERNS)
+
+    def _load_global_blocklist(self) -> Dict:
+        """Carrega a lista de bloqueio global do system_settings."""
+        from app.models.system_settings import SystemSettings
+        try:
+            setting = self.db.query(SystemSettings).filter(
+                SystemSettings.key == "global_blocklist"
+            ).first()
+            if setting and setting.value:
+                return setting.value
+        except Exception as e:
+            logger.warning(f"Falha ao carregar blocklist global: {e}")
+        return {"directories": [], "file_patterns": []}
+
+    def _save_blocklist_suggestions(self, new_dirs: List[str], rationale: Dict, project_name: str) -> None:
+        """Salva sugestoes de bloqueio detectadas pela IA."""
+        from app.models.system_settings import SystemSettings
+        try:
+            blocklist = self._load_global_blocklist()
+            blocked_dirs = set(blocklist.get("directories", []))
+            rejected_setting = self.db.query(SystemSettings).filter(
+                SystemSettings.key == "blocklist_rejected"
+            ).first()
+            rejected = set(rejected_setting.value) if rejected_setting and isinstance(rejected_setting.value, list) else set()
+
+            suggestions_setting = self.db.query(SystemSettings).filter(
+                SystemSettings.key == "blocklist_suggestions"
+            ).first()
+            existing_suggestions = []
+            if suggestions_setting and isinstance(suggestions_setting.value, list):
+                existing_suggestions = suggestions_setting.value
+            existing_paths = {s["path"] for s in existing_suggestions}
+
+            new_suggestions = []
+            for d in new_dirs:
+                if d not in blocked_dirs and d not in rejected and d not in existing_paths:
+                    new_suggestions.append({
+                        "path": d,
+                        "type": "directory",
+                        "source_project": project_name,
+                        "rationale": rationale.get(d, "Detectado pela IA como nao sendo codigo de negocio"),
+                    })
+
+            if new_suggestions:
+                all_suggestions = existing_suggestions + new_suggestions
+                if suggestions_setting:
+                    suggestions_setting.value = all_suggestions
+                    suggestions_setting.updated_at = __import__("datetime").datetime.utcnow()
+                else:
+                    self.db.add(SystemSettings(
+                        key="blocklist_suggestions",
+                        value=all_suggestions,
+                        description="Sugestoes pendentes para lista de bloqueio global",
+                        updated_at=__import__("datetime").datetime.utcnow(),
+                    ))
+                self.db.commit()
+                logger.info(f"💡 {len(new_suggestions)} novas sugestoes de bloqueio salvas de '{project_name}'")
+        except Exception as e:
+            logger.warning(f"Falha ao salvar sugestoes de bloqueio: {e}")
 
     def _load_gitignore_patterns(self, root_path: Path) -> Set[str]:
         """
@@ -397,8 +457,8 @@ class CodebaseMemoryService:
             if part in self._effective_ignore_dirs:
                 return True
 
-        # Check file patterns
-        for pattern in self.IGNORE_FILE_PATTERNS:
+        # Check file patterns (includes global blocklist patterns)
+        for pattern in self._effective_file_patterns:
             if fnmatch.fnmatch(name, pattern):
                 return True
 
@@ -621,7 +681,18 @@ class CodebaseMemoryService:
         self._gitignore_patterns = self._load_gitignore_patterns(path)
         # PROMPT #223 - Reset effective ignore dirs for this scan
         self._effective_ignore_dirs = set(self.IGNORE_DIRECTORIES)
-        logger.info(f"🚫 Ignoring {len(self._effective_ignore_dirs)} built-in dirs + {len(self._gitignore_patterns)} .gitignore patterns")
+        self._effective_file_patterns = set(self.IGNORE_FILE_PATTERNS)
+
+        # PROMPT #250 - Load global blocklist from system_settings
+        global_blocklist = self._load_global_blocklist()
+        gl_dirs = global_blocklist.get("directories", [])
+        gl_patterns = global_blocklist.get("file_patterns", [])
+        if gl_dirs:
+            self._effective_ignore_dirs.update(gl_dirs)
+        if gl_patterns:
+            self._effective_file_patterns.update(gl_patterns)
+
+        logger.info(f"🚫 Ignoring {len(self._effective_ignore_dirs)} dirs ({len(gl_dirs)} global) + {len(self._gitignore_patterns)} .gitignore patterns + {len(self._effective_file_patterns)} file patterns ({len(gl_patterns)} global)")
 
         # PROMPT #223 - AI pre-scan to detect non-standard directories to exclude
         if project_id:
@@ -645,6 +716,13 @@ class CodebaseMemoryService:
                             project_obj.custom_ignore_patterns = ai_ignores
                             self.db.commit()
                             logger.info(f"💾 Saved AI-detected ignore patterns to project")
+                        # PROMPT #250 - Save as global blocklist suggestions
+                        project_name = project_obj.name if project_obj else self.current_folder_name
+                        self._save_blocklist_suggestions(
+                            ai_ignores["directories"],
+                            ai_ignores.get("rationale", {}),
+                            project_name,
+                        )
             except Exception as e:
                 logger.warning(f"AI ignore detection skipped (non-blocking): {e}")
 

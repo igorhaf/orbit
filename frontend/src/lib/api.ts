@@ -884,6 +884,31 @@ export const settingsApi = {
 
   byPrefix: (prefix: string) =>
     request<any>(`/api/v1/settings/grouped/by-prefix?prefix=${encodeURIComponent(prefix)}`),
+
+  // PROMPT #250 - Global Blocklist
+  getBlocklist: () =>
+    request<{ directories: string[]; file_patterns: string[] }>('/api/v1/settings/blocklist'),
+
+  saveBlocklist: (data: { directories: string[]; file_patterns: string[] }) =>
+    request<{ directories: string[]; file_patterns: string[] }>('/api/v1/settings/blocklist', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  getBlocklistSuggestions: () =>
+    request<Array<{ path: string; type: string; source_project: string; rationale: string }>>('/api/v1/settings/blocklist/suggestions'),
+
+  approveBlocklistSuggestions: (items: Array<{ path: string; type: string }>) =>
+    request<{ blocklist: any; remaining_suggestions: number }>('/api/v1/settings/blocklist/suggestions/approve', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }),
+
+  rejectBlocklistSuggestions: (items: Array<{ path: string; type: string }>) =>
+    request<{ remaining_suggestions: number }>('/api/v1/settings/blocklist/suggestions/reject', {
+      method: 'POST',
+      body: JSON.stringify({ items }),
+    }),
 };
 
 // Project Analyzers API

@@ -170,11 +170,21 @@ class ContinuousRAGService:
 
         # PROMPT #223 - Reset effective ignore dirs and load project-specific custom ignores
         self._memory._effective_ignore_dirs = set(self._memory.IGNORE_DIRECTORIES)
+        self._memory._effective_file_patterns = set(self._memory.IGNORE_FILE_PATTERNS)
         if project.custom_ignore_patterns:
             custom_dirs = project.custom_ignore_patterns.get("directories", [])
             if custom_dirs:
                 self._memory._effective_ignore_dirs.update(custom_dirs)
                 logger.info(f"🤖 Loaded {len(custom_dirs)} project-specific ignore dirs: {custom_dirs}")
+
+        # PROMPT #250 - Load global blocklist
+        global_blocklist = self._memory._load_global_blocklist()
+        gl_dirs = global_blocklist.get("directories", [])
+        gl_patterns = global_blocklist.get("file_patterns", [])
+        if gl_dirs:
+            self._memory._effective_ignore_dirs.update(gl_dirs)
+        if gl_patterns:
+            self._memory._effective_file_patterns.update(gl_patterns)
 
         # Get existing file states from DB
         existing_states = {}

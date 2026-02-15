@@ -102,6 +102,25 @@ class CodebaseIndexer:
         """
         self.db = db
         self.rag = RAGService(db)
+        # PROMPT #250 - Load global blocklist
+        self._effective_ignore_dirs = set(self.IGNORE_DIRS)
+        self._effective_ignore_patterns = set(self.IGNORE_PATTERNS)
+        self._load_global_blocklist()
+
+    def _load_global_blocklist(self) -> None:
+        """PROMPT #250 - Carrega blocklist global do system_settings."""
+        from app.models.system_settings import SystemSettings
+        try:
+            setting = self.db.query(SystemSettings).filter(
+                SystemSettings.key == "global_blocklist"
+            ).first()
+            if setting and setting.value:
+                gl_dirs = setting.value.get("directories", [])
+                gl_patterns = setting.value.get("file_patterns", [])
+                self._effective_ignore_dirs.update(gl_dirs)
+                self._effective_ignore_patterns.update(gl_patterns)
+        except Exception:
+            pass
 
     async def index_project(
         self,
@@ -199,7 +218,7 @@ class CodebaseIndexer:
 
         for root, dirs, filenames in os.walk(directory):
             # Filter out ignored directories
-            dirs[:] = [d for d in dirs if d not in self.IGNORE_DIRS]
+            dirs[:] = [d for d in dirs if d not in self._effective_ignore_dirs]
 
             for filename in filenames:
                 file_path = Path(root) / filename
@@ -223,7 +242,7 @@ class CodebaseIndexer:
             True if file should be ignored
         """
         # Check ignore patterns
-        for pattern in self.IGNORE_PATTERNS:
+        for pattern in self._effective_ignore_patterns:
             if file_path.match(pattern):
                 return True
 
