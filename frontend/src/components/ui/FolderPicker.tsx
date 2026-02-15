@@ -5,7 +5,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Dialog, DialogFooter } from './Dialog';
 import { Button } from './Button';
 import { projectsApi } from '@/lib/api';
@@ -74,14 +74,36 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
     }
   }, [open, loadFolders]);
 
-  const handleFolderClick = (folder: Folder) => {
+  // Timer ref to distinguish single-click (select) from double-click (navigate)
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleFolderNavigate = (folder: Folder) => {
     // Navigate into folder
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
     loadFolders(folder.path);
     setSelectedPath(null);
   };
 
   const handleFolderSelect = (folder: Folder) => {
     setSelectedPath(folder.full_path);
+  };
+
+  const handleItemClick = (folder: Folder) => {
+    if (clickTimerRef.current) {
+      // Second click within 300ms = double-click → navigate
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      handleFolderNavigate(folder);
+    } else {
+      // First click → wait to see if double-click follows
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        handleFolderSelect(folder);
+      }, 300);
+    }
   };
 
   const handleGoUp = () => {
@@ -190,8 +212,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
                 className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors ${
                   selectedPath === folder.full_path ? 'bg-blue-50 border-l-4 border-blue-500' : ''
                 }`}
-                onClick={() => handleFolderSelect(folder)}
-                onDoubleClick={() => handleFolderClick(folder)}
+                onClick={() => handleItemClick(folder)}
               >
                 {/* Folder Icon */}
                 <div className={`flex-shrink-0 ${folder.is_project ? 'text-blue-500' : 'text-yellow-500'}`}>
@@ -223,7 +244,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleFolderClick(folder);
+                    handleFolderNavigate(folder);
                   }}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
                   title="Abrir pasta"
