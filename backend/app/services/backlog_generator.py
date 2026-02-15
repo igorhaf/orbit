@@ -681,7 +681,7 @@ LEMBRE-SE:
             stories_suggestions = json.loads(clean_json)
 
             if not isinstance(stories_suggestions, list):
-                raise ValueError("AI response is not a list")
+                raise ValueError("Resposta da IA nao e uma lista")
 
             # Add metadata and parent_id to each Story
             for story in stories_suggestions:
@@ -994,7 +994,7 @@ LEMBRE-SE:
             tasks_suggestions = json.loads(clean_json)
 
             if not isinstance(tasks_suggestions, list):
-                raise ValueError("AI response is not a list")
+                raise ValueError("Resposta da IA nao e uma lista")
 
             # Add metadata and parent_id to each Task
             for task in tasks_suggestions:

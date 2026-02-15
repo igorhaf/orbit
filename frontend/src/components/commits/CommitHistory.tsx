@@ -54,7 +54,7 @@ export function CommitHistory({ projectId }: Props) {
       setCommits(response.data);
     } catch (err: any) {
       console.error('Failed to load commits:', err);
-      setError('Failed to load commits');
+      setError('Falha ao carregar commits');
     } finally {
       setLoading(false);
     }

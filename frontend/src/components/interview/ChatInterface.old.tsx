@@ -71,7 +71,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     localStorage.removeItem(`sendMessageJob_${interviewId}`);
 
     setSendMessageJobId(null);
-    alert(`Failed to send message: ${error}`);
+    alert(`Falha ao enviar mensagem: ${error}`);
   }, [interviewId]);
 
   // PROMPT #65 - Poll job status for send message
@@ -118,7 +118,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         message: 'Créditos da IA esgotados. Por favor, adicione créditos na sua conta da IA ou configure uma nova API key.',
       });
     } else {
-      alert(`❌ Error generating prompts:\n\n${error}`);
+      alert(`❌ Erro ao gerar prompts:\n\n${error}`);
     }
   }, [interviewId]);
 
@@ -148,7 +148,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     // Display provisioning status card
     setProvisioningStatus({
       ...result,
-      projectName: interview?.project?.name || 'Your Project'
+      projectName: interview?.project?.name || 'Seu Projeto'
     });
 
     loadInterview();
@@ -161,7 +161,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     localStorage.removeItem(`provisioningJob_${interviewId}`);
 
     setProvisioningJobId(null);
-    alert(`❌ Error provisioning project:\n\n${error}`);
+    alert(`❌ Erro ao provisionar projeto:\n\n${error}`);
   }, [interviewId]);
 
   // PROMPT #65 - Poll job status for provisioning
@@ -428,7 +428,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
     } catch (error: any) {
       console.error('Failed to send message:', error);
-      const errorDetail = error.response?.data?.detail || error.message || 'Failed to send message';
+      const errorDetail = error.response?.data?.detail || error.message || 'Falha ao enviar mensagem';
 
       // Detect AI-specific errors (credits, authentication, etc.)
       const errorLower = errorDetail.toLowerCase();
@@ -459,7 +459,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         });
       } else {
         // Generic error - show alert
-        alert(`Error: ${errorDetail}`);
+        alert(`Erro: ${errorDetail}`);
       }
 
       setMessage(userMessage); // Restaurar mensagem em caso de erro
@@ -501,7 +501,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       await detectAndSaveStack(data);
     } catch (error: any) {
       console.error('Failed to send message:', error);
-      const errorDetail = error.response?.data?.detail || error.message || 'Failed to send message';
+      const errorDetail = error.response?.data?.detail || error.message || 'Falha ao enviar mensagem';
 
       // Detect AI-specific errors (credits, authentication, etc.)
       const errorLower = errorDetail.toLowerCase();
@@ -532,7 +532,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         });
       } else {
         // Generic error - show alert
-        alert(`Error: ${errorDetail}`);
+        alert(`Erro: ${errorDetail}`);
       }
     } finally {
       setSending(false);
@@ -712,7 +712,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       }, 100);
     } catch (error: any) {
       console.error('❌ Failed to create backlog generation job:', error);
-      const errorDetail = error.response?.data?.detail || error.message || 'Failed to start backlog generation.';
+      const errorDetail = error.response?.data?.detail || error.message || 'Falha ao iniciar geracao de backlog.';
       alert(`❌ Error:\n\n${errorDetail}`);
     }
   };
@@ -959,7 +959,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
             {provisioningStatus && (
               <ProvisioningStatusCard
                 provisioning={provisioningStatus}
-                projectName={provisioningStatus.projectName || interview?.project?.name || 'Your Project'}
+                projectName={provisioningStatus.projectName || interview?.project?.name || 'Seu Projeto'}
                 onClose={() => setProvisioningStatus(null)}
               />
             )}

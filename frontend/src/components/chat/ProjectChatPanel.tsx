@@ -137,14 +137,14 @@ export function ProjectChatPanel({ projectId }: Props) {
       const jobId = jobData.job_id;
 
       if (!jobId) {
-        throw new Error('No job_id returned from server');
+        throw new Error('Nenhum job_id retornado do servidor');
       }
 
       // 2. Poll for job completion with progress updates
       await jobsApi.poll(
         jobId,
         (_percent: number, msg: string | null) => {
-          setProgressMessage(msg || 'Processing...');
+          setProgressMessage(msg || 'Processando...');
         },
         1500,   // poll interval
         300000  // 5 min timeout
@@ -211,14 +211,14 @@ export function ProjectChatPanel({ projectId }: Props) {
             <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
             </svg>
-            New Chat
+            Novo Chat
           </Button>
         </div>
 
         <div className="flex-1 overflow-y-auto">
           {sessions.length === 0 ? (
             <div className="p-4 text-sm text-gray-400 text-center">
-              No conversations yet
+              Nenhuma conversa ainda
             </div>
           ) : (
             sessions.map((session) => (
@@ -235,7 +235,7 @@ export function ProjectChatPanel({ projectId }: Props) {
                     {session.title}
                   </p>
                   <p className="text-xs text-gray-400 mt-0.5">
-                    {session.message_count || 0} messages
+                    {session.message_count || 0} mensagens
                   </p>
                 </div>
 
@@ -246,13 +246,13 @@ export function ProjectChatPanel({ projectId }: Props) {
                       onClick={(e) => { e.stopPropagation(); handleDelete(session.id); }}
                       className="text-red-500 hover:text-red-700 text-xs font-medium"
                     >
-                      Yes
+                      Sim
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }}
                       className="text-gray-400 hover:text-gray-600 text-xs"
                     >
-                      No
+                      Nao
                     </button>
                   </div>
                 ) : (
@@ -280,8 +280,8 @@ export function ProjectChatPanel({ projectId }: Props) {
             <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
             </svg>
-            <p className="text-lg font-medium mb-1">Ask anything about your project</p>
-            <p className="text-sm">Start a new chat to query the project knowledge base</p>
+            <p className="text-lg font-medium mb-1">Pergunte qualquer coisa sobre seu projeto</p>
+            <p className="text-sm">Inicie um novo chat para consultar a base de conhecimento do projeto</p>
           </div>
         ) : (
           <>
@@ -292,7 +292,7 @@ export function ProjectChatPanel({ projectId }: Props) {
                   <svg className="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  <p className="text-sm">Ask a question about your project...</p>
+                  <p className="text-sm">Faca uma pergunta sobre seu projeto...</p>
                 </div>
               ) : (
                 activeSession.messages.map((msg, idx) => (
@@ -310,7 +310,7 @@ export function ProjectChatPanel({ projectId }: Props) {
                         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                       </div>
-                      <span>{progressMessage || 'Thinking...'}</span>
+                      <span>{progressMessage || 'Pensando...'}</span>
                     </div>
                   </div>
                 </div>
@@ -327,7 +327,7 @@ export function ProjectChatPanel({ projectId }: Props) {
                   value={message}
                   onChange={(e) => setMessage(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask about your project... (Shift+Enter for new line)"
+                  placeholder="Pergunte sobre seu projeto... (Shift+Enter para nova linha)"
                   className="flex-1 resize-none rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   rows={2}
                   disabled={sending}

@@ -233,7 +233,7 @@ export function AIModelBadge({
             setShowPromptModal(true);
           }
         }}
-        title={hasPrompt ? 'Click to view prompt' : displayName}
+        title={hasPrompt ? 'Clique para ver o prompt' : displayName}
       >
         {renderIconByKey(iconKey, 'w-4 h-4')}
         {cached && <span className="ml-0.5"><IconDot className="w-2 h-2 text-green-500" /></span>}

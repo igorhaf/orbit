@@ -239,7 +239,7 @@ Return ONLY the JSON object, no explanations."""
             end_idx = response_text.rfind("}") + 1
 
             if start_idx == -1 or end_idx == 0:
-                raise ValueError("No JSON found in response")
+                raise ValueError("Nenhum JSON encontrado na resposta")
 
             json_str = response_text[start_idx:end_idx]
             conventions = json.loads(json_str)

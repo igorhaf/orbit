@@ -125,7 +125,7 @@ export default function SettingsPage() {
       setQueueSettings(prev => ({ ...prev, ...queueDefaults }));
     } catch (err: unknown) {
       console.error('Failed to load settings:', err);
-      setError((err as Error).message || 'Failed to load settings');
+      setError((err as Error).message || 'Falha ao carregar configuracoes');
     } finally {
       setLoading(false);
     }
@@ -180,9 +180,9 @@ export default function SettingsPage() {
 
       await settingsApi.bulk(updates);
       await loadData();
-      setSaveSuccess('Default models saved');
+      setSaveSuccess('Modelos padrao salvos');
     } catch (err: any) {
-      showError(`Failed to save default models: ${err.message}`);
+      showError(`Falha ao salvar modelos padrao: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -198,9 +198,9 @@ export default function SettingsPage() {
     try {
       await settingsApi.bulk(queueSettings);
       await loadData();
-      setSaveSuccess('Queue settings saved');
+      setSaveSuccess('Configuracoes da fila salvas');
     } catch (err: any) {
-      showError(`Failed to save queue settings: ${err.message}`);
+      showError(`Falha ao salvar configuracoes da fila: ${err.message}`);
     } finally {
       setSavingQueue(false);
     }

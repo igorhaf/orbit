@@ -138,7 +138,7 @@ export function GitCommitsList({ projectId }: Props) {
   const loadRepoInfo = useCallback(async () => {
     try {
       const response = await fetch(`http://localhost:8000/api/v1/projects/${projectId}/git/info`);
-      if (!response.ok) throw new Error('Failed to load repository info');
+      if (!response.ok) throw new Error('Falha ao carregar informacoes do repositorio');
       const data: GitRepoInfo = await response.json();
       setRepoInfo(data);
       return data;
@@ -152,7 +152,7 @@ export function GitCommitsList({ projectId }: Props) {
   const loadBranches = useCallback(async () => {
     try {
       const response = await fetch(`http://localhost:8000/api/v1/projects/${projectId}/git/branches`);
-      if (!response.ok) throw new Error('Failed to load branches');
+      if (!response.ok) throw new Error('Falha ao carregar branches');
       const data: GitBranchesResponse = await response.json();
       setBranches(data.branches);
       if (!selectedBranch) {
@@ -193,7 +193,7 @@ export function GitCommitsList({ projectId }: Props) {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to load commits');
+        throw new Error(errorData.detail || 'Falha ao carregar commits');
       }
 
       const data: GitCommitsResponse = await response.json();
@@ -211,7 +211,7 @@ export function GitCommitsList({ projectId }: Props) {
       }
     } catch (err: any) {
       console.error('Failed to load commits:', err);
-      setError(err.message || 'Failed to load commits');
+      setError(err.message || 'Falha ao carregar commits');
     } finally {
       setLoading(false);
       setLoadingMore(false);
@@ -239,7 +239,7 @@ export function GitCommitsList({ projectId }: Props) {
       const response = await fetch(
         `http://localhost:8000/api/v1/projects/${projectId}/git/commits/${commitHash}/diff`
       );
-      if (!response.ok) throw new Error('Failed to load diff');
+      if (!response.ok) throw new Error('Falha ao carregar diff');
       const data: GitCommitDiff = await response.json();
       setInlineDiffData(prev => ({ ...prev, [commitHash]: data }));
       // Expand first 3 files by default
@@ -247,7 +247,7 @@ export function GitCommitsList({ projectId }: Props) {
       setExpandedFiles(initialExpanded);
     } catch (err) {
       console.error('Failed to load diff:', err);
-      setOperationResult({ success: false, message: 'Failed to load commit diff' });
+      setOperationResult({ success: false, message: 'Falha ao carregar diff do commit' });
       setExpandedCommit(null);
     } finally {
       setLoadingDiffFor(null);
@@ -262,7 +262,7 @@ export function GitCommitsList({ projectId }: Props) {
       const response = await fetch(
         `http://localhost:8000/api/v1/projects/${projectId}/git/commits/${commitHash}/diff`
       );
-      if (!response.ok) throw new Error('Failed to load diff');
+      if (!response.ok) throw new Error('Falha ao carregar diff');
       const data: GitCommitDiff = await response.json();
       setModalDiffData(data);
       // Expand first 3 files by default
@@ -270,7 +270,7 @@ export function GitCommitsList({ projectId }: Props) {
       setModalExpandedFiles(initialExpanded);
     } catch (err) {
       console.error('Failed to load diff:', err);
-      setOperationResult({ success: false, message: 'Failed to load commit diff' });
+      setOperationResult({ success: false, message: 'Falha ao carregar diff do commit' });
       setShowDiffModal(false);
     } finally {
       setLoadingModalDiff(false);

@@ -56,7 +56,7 @@ export function JobProgressBar({ percent, message, status }: Props) {
         {message ? (
           <p className="text-sm text-gray-700 font-medium flex-1">{message}</p>
         ) : (
-          <p className="text-sm text-gray-500 italic">Processing...</p>
+          <p className="text-sm text-gray-500 italic">Processando...</p>
         )}
         {!isIndeterminate && (
           <span className="text-sm font-semibold text-gray-900 ml-2">

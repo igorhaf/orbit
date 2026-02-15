@@ -167,7 +167,7 @@ export default function InlineCardCreator({
       }
     } catch (err) {
       console.error('Failed to suggest title:', err);
-      setError('AI suggestion failed. Try again.');
+      setError('Sugestao da IA falhou. Tente novamente.');
     } finally {
       setIsGenerating(false);
       inputRef.current?.focus();

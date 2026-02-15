@@ -217,7 +217,7 @@ class TaskHierarchyService:
         if new_parent_id:
             # Check for cycles
             if self.would_create_cycle(task_id, new_parent_id):
-                raise ValueError("Cannot move task: would create a cycle")
+                raise ValueError("Nao e possivel mover tarefa: criaria um ciclo")
 
             # Validate hierarchy rules if requested
             if validate_rules:

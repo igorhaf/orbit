@@ -29,7 +29,7 @@ export default function InterviewLegacyRedirectPage() {
         router.replace(`/projects/${interview.project_id}/interviews/${interviewId}`);
       } catch (err: any) {
         console.error('Failed to redirect interview:', err);
-        setError(err.message || 'Failed to load interview');
+        setError(err.message || 'Falha ao carregar entrevista');
       }
     };
 

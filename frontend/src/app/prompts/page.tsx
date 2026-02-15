@@ -31,7 +31,7 @@ export default function PromptsPage() {
       setPrompts(data);
     } catch (err: any) {
       console.error('Failed to load prompts:', err);
-      setError(err.message || 'Failed to load prompts');
+      setError(err.message || 'Falha ao carregar prompts');
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,7 @@ export default function PromptsPage() {
       await loadPrompts();
     } catch (err: any) {
       console.error('Failed to clear prompts:', err);
-      setError(err.message || 'Failed to clear prompts');
+      setError(err.message || 'Falha ao limpar prompts');
     } finally {
       setIsClearing(false);
     }

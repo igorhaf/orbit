@@ -110,7 +110,7 @@ export function FileUploader({
         {uploading ? (
           <div className="flex flex-col items-center">
             <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-            <p className="text-sm font-medium text-gray-700">Uploading...</p>
+            <p className="text-sm font-medium text-gray-700">Enviando...</p>
           </div>
         ) : (
           <>
@@ -128,10 +128,10 @@ export function FileUploader({
               />
             </svg>
             <p className="text-sm font-medium text-gray-700 mb-1">
-              Drag and drop your project here
+              Arraste e solte seu projeto aqui
             </p>
             <p className="text-xs text-gray-500 mb-4">
-              or click to browse files
+              ou clique para navegar nos arquivos
             </p>
             <Button
               variant="outline"
@@ -139,10 +139,10 @@ export function FileUploader({
               onClick={handleClick}
               type="button"
             >
-              Browse Files
+              Buscar Arquivos
             </Button>
             <p className="text-xs text-gray-400 mt-4">
-              Supported: {accept} (max {(maxSize / (1024 * 1024)).toFixed(0)}MB)
+              Suportado: {accept} (max {(maxSize / (1024 * 1024)).toFixed(0)}MB)
             </p>
           </>
         )}

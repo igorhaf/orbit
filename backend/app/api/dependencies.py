@@ -27,7 +27,7 @@ def get_project_or_404(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
     return project
 
@@ -41,7 +41,7 @@ def get_task_or_404(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found"
+            detail=f"Tarefa {task_id} nao encontrada"
         )
     return task
 
@@ -55,7 +55,7 @@ def get_interview_or_404(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
     return interview
 
@@ -69,7 +69,7 @@ def get_prompt_or_404(
     if not prompt:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Prompt {prompt_id} not found"
+            detail=f"Prompt {prompt_id} nao encontrado"
         )
     return prompt
 
@@ -83,7 +83,7 @@ def get_chat_session_or_404(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Chat session {session_id} not found"
+            detail=f"Sessao de chat {session_id} nao encontrada"
         )
     return session
 
@@ -97,7 +97,7 @@ def get_commit_or_404(
     if not commit:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Commit {commit_id} not found"
+            detail=f"Commit {commit_id} nao encontrado"
         )
     return commit
 
@@ -111,7 +111,7 @@ def get_ai_model_or_404(
     if not model:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"AI Model {model_id} not found"
+            detail=f"Modelo IA {model_id} nao encontrado"
         )
     return model
 
@@ -125,6 +125,6 @@ def get_setting_or_404(
     if not setting:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Setting '{setting_key}' not found"
+            detail=f"Configuracao '{setting_key}' nao encontrada"
         )
     return setting

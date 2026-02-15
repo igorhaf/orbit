@@ -198,7 +198,7 @@ class JobManager:
             # PROMPT #286 - Insert log entry only at milestones
             self.db.add(JobLogEntry(
                 job_id=job_id, level="info",
-                message=progress_message or f"Progress: {progress_percent}%",
+                message=progress_message or f"Progresso: {progress_percent}%",
                 progress_percent=progress_percent,
             ))
 

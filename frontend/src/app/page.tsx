@@ -112,7 +112,7 @@ export default function Home() {
       params.append('end_date', endDate.toISOString());
 
       const response = await fetch(`http://localhost:8000/api/v1/cost/analytics?${params}`);
-      if (!response.ok) throw new Error('Failed to fetch analytics');
+      if (!response.ok) throw new Error('Falha ao buscar analiticos');
 
       const data = await response.json();
       setAnalytics(data);
@@ -126,7 +126,7 @@ export default function Home() {
   const fetchCacheStats = async () => {
     try {
       const response = await fetch('http://localhost:8000/api/v1/cache/stats');
-      if (!response.ok) throw new Error('Failed to fetch cache stats');
+      if (!response.ok) throw new Error('Falha ao buscar estatisticas de cache');
 
       const data = await response.json();
       setCacheStats(data);

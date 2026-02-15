@@ -384,10 +384,10 @@ class PromptGenerator:
         ).first()
 
         if not interview:
-            raise ValueError(f"Interview {interview_id} not found")
+            raise ValueError(f"Entrevista {interview_id} nao encontrada")
 
         if not interview.conversation_data or len(interview.conversation_data) == 0:
-            raise ValueError("Interview has no conversation data")
+            raise ValueError("Entrevista nao possui dados de conversa")
 
         project_id = interview.project_id
         logger.info(f"📋 Interview found for project {project_id}")
@@ -651,7 +651,7 @@ Retorne APENAS o JSON válido, sem texto adicional antes ou depois."""
             # Validar estrutura básica
             for task in tasks:
                 if "title" not in task and "name" not in task:
-                    raise ValueError("Task missing required 'title' or 'name' field")
+                    raise ValueError("Tarefa sem campo obrigatorio 'title' ou 'name'")
                 if "description" not in task and "content" not in task:
                     task["description"] = task.get("name", task.get("title", ""))
                 if "type" not in task:
