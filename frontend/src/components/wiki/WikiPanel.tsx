@@ -505,8 +505,9 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                 ) : (
                   <div className="prose prose-sm max-w-none">
                     <ReactMarkdown
+                      urlTransform={(url) => url}
                       components={{
-                        a: ({ href, children, ...props }) => {
+                        a: ({ href, children, node, ...rest }) => {
                           // Internal wiki links: wiki:slug or plain slug (no protocol)
                           let targetSlug: string | null = null;
                           if (href && href.startsWith('wiki:')) {
@@ -516,21 +517,21 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                           }
                           if (targetSlug) {
                             return (
-                              <a
-                                href="#"
-                                className="text-blue-600 hover:text-blue-800 underline"
-                                onClick={(e) => {
-                                  e.preventDefault();
+                              <span
+                                role="link"
+                                tabIndex={0}
+                                className="text-blue-600 hover:text-blue-800 underline cursor-pointer"
+                                onClick={() => {
                                   setEditing(false);
                                   setSelectedSlug(targetSlug);
                                 }}
-                                {...props}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { setEditing(false); setSelectedSlug(targetSlug); } }}
                               >
                                 {children}
-                              </a>
+                              </span>
                             );
                           }
-                          return <a href={href} className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer" {...props}>{children}</a>;
+                          return <a href={href} className="text-blue-600 hover:text-blue-800 underline" target="_blank" rel="noopener noreferrer" {...rest}>{children}</a>;
                         },
                         h2: ({ children, ...props }) => (
                           <h2 className="text-xl font-bold text-gray-900 mt-6 mb-3 pb-2 border-b" {...props}>{children}</h2>

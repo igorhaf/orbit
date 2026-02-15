@@ -7,7 +7,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent, Button, Badge } from '@/components/ui';
 import {
@@ -51,7 +50,6 @@ const STATUS_CONFIG = {
 };
 
 export default function DiscoveryQueuePage() {
-  const router = useRouter();
   const { showError, NotificationComponent } = useNotification();
   const [items, setItems] = useState<DiscoveryQueueItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -332,9 +330,9 @@ export default function DiscoveryQueuePage() {
                             <Badge
                               variant={
                                 item.status === 'completed' ? 'success' :
-                                item.status === 'failed' ? 'destructive' :
+                                item.status === 'failed' ? 'danger' :
                                 item.status === 'processing' ? 'default' :
-                                'secondary'
+                                'info'
                               }
                             >
                               <StatusIcon className="w-3 h-3 mr-1" />

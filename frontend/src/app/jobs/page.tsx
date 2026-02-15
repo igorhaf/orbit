@@ -22,7 +22,6 @@ import {
   CardContent,
   Button,
   Select,
-  Input,
 } from '@/components/ui';
 import { jobsApi, projectsApi, JobResponse } from '@/lib/api';
 import {
@@ -655,7 +654,7 @@ export default function JobsPage() {
 
             {/* PROMPT #243 - Pause/Resume Queue */}
             <Button
-              variant={isPaused ? 'default' : 'outline'}
+              variant={isPaused ? 'primary' : 'outline'}
               onClick={handleTogglePause}
               disabled={togglingPause}
               className={isPaused ? 'bg-red-600 hover:bg-red-700 text-white' : ''}

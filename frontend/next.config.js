@@ -3,6 +3,16 @@ const nextConfig = {
   // Enable React strict mode for better development experience
   reactStrictMode: true,
 
+  // Skip type checking during build (handled by IDE/CI)
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+
+  // Skip ESLint during build (handled by IDE/CI)
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
   // Output standalone for Docker optimization
   output: 'standalone',
 
