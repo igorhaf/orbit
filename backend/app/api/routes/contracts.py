@@ -215,42 +215,42 @@ async def validate_contract(request: ContractValidateRequest) -> ValidationResul
     try:
         data = yaml.safe_load(request.content)
         if data is None:
-            errors.append("YAML content is empty")
+            errors.append("Conteudo YAML esta vazio")
             return ValidationResult(valid=False, errors=errors, warnings=warnings)
     except yaml.YAMLError as e:
-        errors.append(f"Invalid YAML syntax: {e}")
+        errors.append(f"Sintaxe YAML invalida: {e}")
         return ValidationResult(valid=False, errors=errors, warnings=warnings)
 
     # 2. Validate required fields
     required_fields = ['name', 'version', 'category']
     for field in required_fields:
         if field not in data:
-            errors.append(f"Missing required field: {field}")
+            errors.append(f"Campo obrigatorio ausente: {field}")
 
     # 3. Validate domain if present
     valid_domains = ['business', 'interview', 'generation', 'memory', 'component']
     if 'domain' in data and data['domain'] not in valid_domains:
-        warnings.append(f"Invalid domain '{data['domain']}'. Valid domains: {valid_domains}")
+        warnings.append(f"Dominio invalido '{data['domain']}'. Dominios validos: {valid_domains}")
 
     # 4. Validate governance status if present
     if 'governance' in data and 'status' in data['governance']:
         valid_statuses = ['draft', 'active', 'deprecated']
         if data['governance']['status'] not in valid_statuses:
-            warnings.append(f"Invalid status. Valid statuses: {valid_statuses}")
+            warnings.append(f"Status invalido. Status validos: {valid_statuses}")
 
     # 5. Validate variables structure
     if 'variables' in data:
         if 'required' in data['variables']:
             if not isinstance(data['variables']['required'], list):
-                errors.append("variables.required must be a list")
+                errors.append("variables.required deve ser uma lista")
         if 'optional' in data['variables']:
             if not isinstance(data['variables']['optional'], list):
-                errors.append("variables.optional must be a list")
+                errors.append("variables.optional deve ser uma lista")
 
     # 6. Check for prompts in non-component contracts
     if data.get('domain') != 'business' and data.get('domain') != 'component':
         if not data.get('system_prompt') and not data.get('user_prompt'):
-            warnings.append("Contract has no system_prompt or user_prompt defined")
+            warnings.append("Contrato nao possui system_prompt ou user_prompt definido")
 
     return ValidationResult(
         valid=len(errors) == 0,
@@ -270,7 +270,7 @@ async def create_contract(request: ContractCreateRequest) -> Dict[str, Any]:
         # Validate YAML first
         validation = await validate_contract(ContractValidateRequest(content=request.content))
         if not validation.valid:
-            raise HTTPException(status_code=400, detail=f"Invalid YAML: {validation.errors}")
+            raise HTTPException(status_code=400, detail=f"YAML invalido: {validation.errors}")
 
         # Build file path
         path = request.path
@@ -281,7 +281,7 @@ async def create_contract(request: ContractCreateRequest) -> Dict[str, Any]:
 
         # Check if file already exists
         if file_path.exists():
-            raise HTTPException(status_code=409, detail=f"Contract already exists: {request.path}")
+            raise HTTPException(status_code=409, detail=f"Contrato ja existe: {request.path}")
 
         # Create parent directories if needed
         file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -298,14 +298,14 @@ async def create_contract(request: ContractCreateRequest) -> Dict[str, Any]:
         return {
             "success": True,
             "path": request.path,
-            "message": "Contract created successfully"
+            "message": "Contrato criado com sucesso"
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error creating contract: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to create contract: {e}")
+        raise HTTPException(status_code=500, detail=f"Falha ao criar contrato: {e}")
 
 
 @router.get("/{path:path}")
@@ -331,7 +331,7 @@ async def get_contract(path: str) -> ContractResponse:
         )
 
     except ContractNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Contract not found: {path}")
+        raise HTTPException(status_code=404, detail=f"Contrato nao encontrado: {path}")
     except Exception as e:
         logger.error(f"Error loading contract {path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -348,7 +348,7 @@ async def update_contract(path: str, request: ContractUpdateRequest) -> Dict[str
         # Validate YAML first
         validation = await validate_contract(ContractValidateRequest(content=request.content))
         if not validation.valid:
-            raise HTTPException(status_code=400, detail=f"Invalid YAML: {validation.errors}")
+            raise HTTPException(status_code=400, detail=f"YAML invalido: {validation.errors}")
 
         # Get the file path
         if not path.endswith('.yaml'):
@@ -358,7 +358,7 @@ async def update_contract(path: str, request: ContractUpdateRequest) -> Dict[str
 
         # Check if file exists
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"Contract not found: {path}")
+            raise HTTPException(status_code=404, detail=f"Contrato nao encontrado: {path}")
 
         # Create backup if requested
         if request.create_backup:
@@ -381,14 +381,14 @@ async def update_contract(path: str, request: ContractUpdateRequest) -> Dict[str
         return {
             "success": True,
             "path": path,
-            "message": "Contract saved successfully"
+            "message": "Contrato salvo com sucesso"
         }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error updating contract {path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to save contract: {e}")
+        raise HTTPException(status_code=500, detail=f"Falha ao salvar contrato: {e}")
 
 
 @router.delete("/{path:path}")
@@ -410,7 +410,7 @@ async def delete_contract(
 
         # Check if file exists
         if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"Contract not found: {path}")
+            raise HTTPException(status_code=404, detail=f"Contrato nao encontrado: {path}")
 
         backup_path = None
 
@@ -435,7 +435,7 @@ async def delete_contract(
         return {
             "success": True,
             "path": path,
-            "message": "Contract deleted successfully",
+            "message": "Contrato excluido com sucesso",
             "backup_path": str(backup_path) if backup_path else None
         }
 
@@ -443,7 +443,7 @@ async def delete_contract(
         raise
     except Exception as e:
         logger.error(f"Error deleting contract {path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete contract: {e}")
+        raise HTTPException(status_code=500, detail=f"Falha ao excluir contrato: {e}")
 
 
 @router.get("/{path:path}/versions")
@@ -488,7 +488,7 @@ async def restore_contract_version(
         backup_file = backup_dir / filename
 
         if not backup_file.exists():
-            raise HTTPException(status_code=404, detail=f"Backup not found: {filename}")
+            raise HTTPException(status_code=404, detail=f"Backup nao encontrado: {filename}")
 
         # Get current file path
         if not path.endswith('.yaml'):
@@ -518,7 +518,7 @@ async def restore_contract_version(
             "success": True,
             "path": path,
             "restored_from": filename,
-            "message": "Contract restored successfully"
+            "message": "Contrato restaurado com sucesso"
         }
 
     except HTTPException:

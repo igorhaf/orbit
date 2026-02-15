@@ -54,7 +54,7 @@ export function TaskComments({ comments, onAddComment, onDeleteComment }: Props)
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-gray-900">Comments</h3>
+        <h3 className="font-semibold text-gray-900">Comentarios</h3>
         <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">
           {comments.length}
         </span>
@@ -77,8 +77,8 @@ export function TaskComments({ comments, onAddComment, onDeleteComment }: Props)
                 d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
               />
             </svg>
-            <p className="text-sm text-gray-400">No comments yet</p>
-            <p className="text-xs text-gray-400 mt-1">Be the first to comment!</p>
+            <p className="text-sm text-gray-400">Nenhum comentario ainda</p>
+            <p className="text-xs text-gray-400 mt-1">Seja o primeiro a comentar!</p>
           </div>
         ) : (
           comments.map((comment) => (
@@ -102,7 +102,7 @@ export function TaskComments({ comments, onAddComment, onDeleteComment }: Props)
                   <button
                     onClick={() => onDeleteComment(comment.id)}
                     className="text-red-500 opacity-0 group-hover:opacity-100 transition-opacity text-xs hover:text-red-700"
-                    title="Delete comment"
+                    title="Excluir comentario"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -129,13 +129,13 @@ export function TaskComments({ comments, onAddComment, onDeleteComment }: Props)
           value={newComment}
           onChange={(e) => setNewComment(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Write a comment... (Ctrl+Enter to post)"
+          placeholder="Escreva um comentario... (Ctrl+Enter para enviar)"
           rows={3}
           className="resize-none"
         />
         <div className="flex justify-between items-center">
           <p className="text-xs text-gray-500">
-            Tip: Press <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Ctrl+Enter</kbd> to post
+            Dica: Pressione <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Ctrl+Enter</kbd> para enviar
           </p>
           <Button
             onClick={handleAdd}
@@ -152,7 +152,7 @@ export function TaskComments({ comments, onAddComment, onDeleteComment }: Props)
                 d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
               />
             </svg>
-            Post Comment
+            Enviar Comentario
           </Button>
         </div>
       </div>

@@ -42,10 +42,10 @@ interface BoardData {
 const COLUMNS = [
   { id: 'blocked' as TaskStatus, title: 'Bloqueados', color: 'bg-red-100' }, // PROMPT #95 - First column
   { id: 'backlog' as TaskStatus, title: 'Backlog', color: 'bg-gray-100' },
-  { id: 'todo' as TaskStatus, title: 'To Do', color: 'bg-blue-100' },
-  { id: 'in_progress' as TaskStatus, title: 'In Progress', color: 'bg-yellow-100' },
-  { id: 'review' as TaskStatus, title: 'Review', color: 'bg-purple-100' },
-  { id: 'done' as TaskStatus, title: 'Done', color: 'bg-green-100' },
+  { id: 'todo' as TaskStatus, title: 'Para Fazer', color: 'bg-blue-100' },
+  { id: 'in_progress' as TaskStatus, title: 'Em Progresso', color: 'bg-yellow-100' },
+  { id: 'review' as TaskStatus, title: 'Revisao', color: 'bg-purple-100' },
+  { id: 'done' as TaskStatus, title: 'Concluido', color: 'bg-green-100' },
 ];
 
 export function KanbanBoard({ projectId }: Props) {
@@ -97,7 +97,7 @@ export function KanbanBoard({ projectId }: Props) {
       setBoard(boardData);
     } catch (err: any) {
       console.error('Failed to load board:', err);
-      setError(err.response?.data?.detail || 'Failed to load board');
+      setError(err.response?.data?.detail || 'Falha ao carregar quadro');
       setBoard(null); // Reset on error
     } finally {
       setLoading(false);
@@ -282,7 +282,7 @@ export function KanbanBoard({ projectId }: Props) {
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-3">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="text-gray-600">Loading board...</p>
+          <p className="text-gray-600">Carregando quadro...</p>
         </div>
       </div>
     );
@@ -298,7 +298,7 @@ export function KanbanBoard({ projectId }: Props) {
           {error}
         </div>
         <Button onClick={loadBoard} variant="primary">
-          Retry
+          Tentar Novamente
         </Button>
       </div>
     );
@@ -307,7 +307,7 @@ export function KanbanBoard({ projectId }: Props) {
   if (!board) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-gray-500">No tasks found</div>
+        <div className="text-gray-500">Nenhuma tarefa encontrada</div>
       </div>
     );
   }
@@ -318,9 +318,9 @@ export function KanbanBoard({ projectId }: Props) {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Kanban Board</h2>
+          <h2 className="text-2xl font-bold text-gray-900">Quadro Kanban</h2>
           <p className="text-sm text-gray-500 mt-1">
-            Drag and drop tasks to move them between columns
+            Arraste e solte tarefas para move-las entre colunas
           </p>
         </div>
 
@@ -333,7 +333,7 @@ export function KanbanBoard({ projectId }: Props) {
             </svg>
           }
         >
-          Add Task
+          Adicionar Tarefa
         </Button>
       </div>
 
@@ -377,8 +377,8 @@ export function KanbanBoard({ projectId }: Props) {
       <Dialog
         open={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        title="Create New Task"
-        description="Add a new task to your Kanban board"
+        title="Criar Nova Tarefa"
+        description="Adicione uma nova tarefa ao seu quadro Kanban"
       >
         <TaskForm
           projectId={projectId}

@@ -136,7 +136,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
       router.push(`/projects/${task.project_id}/interviews/${interview.id}`);
     } catch (error: any) {
       console.error('❌ Failed to create sub-interview:', error);
-      showError(`Failed to create sub-interview: ${error.message}`);
+      showError(`Falha ao criar sub-entrevista: ${error.message}`);
     } finally {
       setCreatingInterview(false);
     }
@@ -171,7 +171,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
       }
     } catch (error: any) {
       console.error('❌ Failed to accept subtasks:', error);
-      showError(`Failed to accept subtasks: ${error.message}`);
+      showError(`Falha ao aceitar subtarefas: ${error.message}`);
     } finally {
       setAcceptingSubtasks(false);
     }
@@ -194,7 +194,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         addJob(
           result.job_id,
           jobType,
-          `Activating ${task.item_type}: ${task.title.substring(0, 30)}...`,
+          `Ativando ${task.item_type}: ${task.title.substring(0, 30)}...`,
           task.title,
           false,
           task.id // task_id for persistent loading state
@@ -218,7 +218,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
       }
     } catch (error: any) {
       console.error('❌ Failed to activate item:', error);
-      showError(`Failed to activate item: ${error.message}`);
+      showError(`Falha ao ativar item: ${error.message}`);
     }
   };
 
@@ -239,7 +239,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
       }
     } catch (error: any) {
       console.error('❌ Failed to reject epic:', error);
-      showError(`Failed to reject epic: ${error.message}`);
+      showError(`Falha ao rejeitar epico: ${error.message}`);
     } finally {
       setRejectingEpic(false);
     }
@@ -446,7 +446,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
               {creatingInterview ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  <span>Creating...</span>
+                  <span>Criando...</span>
                 </>
               ) : (
                 <>

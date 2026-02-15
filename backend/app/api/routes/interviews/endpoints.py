@@ -167,7 +167,7 @@ async def create_interview(
     if not isinstance(interview_data.conversation_data, list):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="conversation_data must be an array of messages"
+            detail="conversation_data deve ser um array de mensagens"
         )
 
     # PROMPT #76 - Detect if this is the first interview (Meta Prompt mode)
@@ -176,7 +176,7 @@ async def create_interview(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {interview_data.project_id} not found"
+            detail=f"Projeto {interview_data.project_id} nao encontrado"
         )
 
     # PROMPT #97 - Hierarchical Interview Flow
@@ -218,7 +218,7 @@ async def create_interview(
         if not parent_task:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Parent task {parent_task_id} not found"
+                detail=f"Tarefa pai {parent_task_id} nao encontrada"
             )
 
         # PROMPT #98 - Check if card-focused mode is requested
@@ -298,7 +298,7 @@ async def update_interview(
         if not isinstance(update_data["conversation_data"], list):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="conversation_data must be an array of messages"
+                detail="conversation_data deve ser um array de mensagens"
             )
 
     for field, value in update_data.items():
@@ -473,7 +473,7 @@ async def generate_prompts_async(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Create async job
@@ -499,7 +499,7 @@ async def generate_prompts_async(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": "Backlog generation started. This may take 2-5 minutes. Poll GET /api/v1/jobs/{} for progress.".format(job.id)
+        "message": "Geracao de backlog iniciada. Isso pode levar 2-5 minutos. Consulte GET /api/v1/jobs/{} para o progresso.".format(job.id)
     }
 
 
@@ -534,7 +534,7 @@ async def _generate_backlog_async(
         generator = BacklogGeneratorService(db=db)
 
         # STEP 1: Generate Epic (0-30%)
-        job_manager.update_progress(job_id, 10.0, "Generating Epic from interview...")
+        job_manager.update_progress(job_id, 10.0, "Gerando Epic a partir da entrevista...")
         logger.info(f"🎯 Generating Epic from interview {interview_id}")
 
         epic_suggestion = await generator.generate_epic_from_interview(
@@ -568,10 +568,10 @@ async def _generate_backlog_async(
         db.refresh(epic)
 
         logger.info(f"✅ Created Epic: {epic.title}")
-        job_manager.update_progress(job_id, 30.0, f"Epic created: {epic.title}")
+        job_manager.update_progress(job_id, 30.0, f"Epic criado: {epic.title}")
 
         # STEP 2: Decompose to Stories (30-60%)
-        job_manager.update_progress(job_id, 35.0, "Decomposing Epic into Stories...")
+        job_manager.update_progress(job_id, 35.0, "Decompondo Epic em Stories...")
         logger.info(f"📋 Decomposing Epic {epic.id} into Stories")
 
         stories_suggestions = await generator.decompose_epic_to_stories(
@@ -606,14 +606,14 @@ async def _generate_backlog_async(
 
             # Update progress after each story
             progress = 35.0 + (i + 1) / len(stories_suggestions) * 25.0
-            job_manager.update_progress(job_id, progress, f"Created Story {i+1}/{len(stories_suggestions)}")
+            job_manager.update_progress(job_id, progress, f"Story {i+1}/{len(stories_suggestions)} criada")
 
         db.commit()
         for story in created_stories:
             db.refresh(story)
 
         logger.info(f"✅ Created {len(created_stories)} Stories")
-        job_manager.update_progress(job_id, 60.0, f"Created {len(created_stories)} Stories")
+        job_manager.update_progress(job_id, 60.0, f"{len(created_stories)} Stories criadas")
 
         # STEP 3: Decompose Stories to Tasks (60-100%)
         all_created_tasks = []
@@ -624,7 +624,7 @@ async def _generate_backlog_async(
             job_manager.update_progress(
                 job_id,
                 story_progress_start,
-                f"Decomposing Story {story_idx+1}/{total_stories} into Tasks..."
+                f"Decompondo Story {story_idx+1}/{total_stories} em Tasks..."
             )
 
             tasks_suggestions = await generator.decompose_story_to_tasks(
@@ -675,7 +675,7 @@ async def _generate_backlog_async(
             "stories_created": len(created_stories),
             "tasks_created": len(all_created_tasks),
             "total_items": total_items,
-            "message": f"Generated hierarchical backlog: 1 Epic → {len(created_stories)} Stories → {len(all_created_tasks)} Tasks!"
+            "message": f"Backlog hierarquico gerado: 1 Epic → {len(created_stories)} Stories → {len(all_created_tasks)} Tasks!"
         })
 
         logger.info(f"✅ Job {job_id} completed successfully")
@@ -726,15 +726,15 @@ async def generate_task_direct(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Validate task-focused mode
     if interview.interview_mode != "task_focused":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only task-focused interviews can generate direct tasks. "
-                   "This interview is in 'requirements' mode (use generate-prompts-async instead)."
+            detail="Apenas entrevistas focadas em tarefas podem gerar tarefas diretas. "
+                   "Esta entrevista esta no modo 'requirements' (use generate-prompts-async)."
         )
 
     # Create async job
@@ -761,7 +761,7 @@ async def generate_task_direct(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Task generation started. This may take 30-60 seconds. Poll GET /api/v1/jobs/{job.id} for progress."
+        "message": f"Geracao de tarefas iniciada. Isso pode levar 30-60 segundos. Consulte GET /api/v1/jobs/{job.id} para o progresso."
     }
 
 
@@ -798,7 +798,7 @@ async def _generate_task_direct_async(
         job_manager.update_progress(
             job_id=job_id,
             progress=10,
-            message="Loading interview..."
+            message="Carregando entrevista..."
         )
 
         # Load interview and project
@@ -806,13 +806,13 @@ async def _generate_task_direct_async(
         project = db.query(Project).filter(Project.id == project_id).first()
 
         if not interview or not project:
-            raise Exception("Interview or project not found")
+            raise Exception("Entrevista ou projeto nao encontrado")
 
         # Update progress: Analyzing conversation
         job_manager.update_progress(
             job_id=job_id,
             progress=30,
-            message=f"Analyzing interview (task type: {interview.task_type_selection})..."
+            message=f"Analisando entrevista (tipo de tarefa: {interview.task_type_selection})..."
         )
 
         # Generate task via BacklogGeneratorService
@@ -828,7 +828,7 @@ async def _generate_task_direct_async(
         job_manager.update_progress(
             job_id=job_id,
             progress=100,
-            message="Task created successfully!"
+            message="Tarefa criada com sucesso!"
         )
 
         # Complete job
@@ -892,15 +892,15 @@ async def generate_context_from_interview(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Validate interview mode
     if interview.interview_mode not in ["context", "meta_prompt"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot generate context from '{interview.interview_mode}' mode. "
-                   f"Only 'context' interviews support context generation."
+            detail=f"Nao e possivel gerar contexto a partir do modo '{interview.interview_mode}'. "
+                   f"Apenas entrevistas 'context' suportam geracao de contexto."
         )
 
     # Get project for notification
@@ -922,7 +922,7 @@ async def generate_context_from_interview(
         project_id=interview.project_id,
         interview_id=interview_id,
         deep_link=deep_link,
-        notification_title=f"Generating context for '{project_name}'..."
+        notification_title=f"Gerando contexto para '{project_name}'..."
     )
 
     # Start background task via priority queue
@@ -933,7 +933,7 @@ async def generate_context_from_interview(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": "Context generation started. You can navigate freely - a notification will appear when complete.",
+        "message": "Geracao de contexto iniciada. Voce pode navegar livremente - uma notificacao aparecera quando concluir.",
         "deep_link": deep_link,
         "notification_title": job.notification_title
     }
@@ -965,24 +965,24 @@ async def _process_context_generation_async(
         project = db.query(Project).filter(Project.id == project_id).first()
         project_name = project.name if project else "projeto"
 
-        job_manager.update_progress(job_id, 20.0, "Analyzing interview responses...")
+        job_manager.update_progress(job_id, 20.0, "Analisando respostas da entrevista...")
 
         context_service = ContextGeneratorService(db)
 
-        job_manager.update_progress(job_id, 50.0, "Generating semantic context...")
+        job_manager.update_progress(job_id, 50.0, "Gerando contexto semantico...")
 
         result = await context_service.generate_context_from_interview(
             interview_id=interview_id,
             project_id=project_id
         )
 
-        job_manager.update_progress(job_id, 80.0, "Generating suggested epics...")
+        job_manager.update_progress(job_id, 80.0, "Gerando epicos sugeridos...")
 
         # PROMPT #133 - Update notification_title for success
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
             epic_count = len(result.get("suggested_epics", []))
-            job.notification_title = f"✅ Context generated for '{project_name}' - {epic_count} suggested epics"
+            job.notification_title = f"✅ Contexto gerado para '{project_name}' - {epic_count} epicos sugeridos"
             db.commit()
 
         job_manager.complete_job(job_id, {
@@ -1004,7 +1004,7 @@ async def _process_context_generation_async(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"❌ Context generation error: {error_msg}"
+                job.notification_title = f"❌ Erro na geracao de contexto: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -1068,22 +1068,22 @@ async def generate_hierarchy_from_meta_prompt(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Validate interview mode (PROMPT #92/94 - Accept meta_prompt and orchestrator)
     if interview.interview_mode not in ["meta_prompt", "orchestrator"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot generate hierarchy from '{interview.interview_mode}' mode. "
-                   f"Only 'meta_prompt' and 'orchestrator' interviews support full hierarchy generation."
+            detail=f"Nao e possivel gerar hierarquia a partir do modo '{interview.interview_mode}'. "
+                   f"Apenas entrevistas 'meta_prompt' e 'orchestrator' suportam geracao completa de hierarquia."
         )
 
     # Validate interview is completed
     if interview.status != InterviewStatus.COMPLETED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Interview must be completed before generating hierarchy. Current status: {interview.status.value}"
+            detail=f"Entrevista deve ser concluida antes de gerar hierarquia. Status atual: {interview.status.value}"
         )
 
     # Create async job
@@ -1110,7 +1110,7 @@ async def generate_hierarchy_from_meta_prompt(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Hierarchy generation started from meta prompt. This may take 2-5 minutes. Poll GET /api/v1/jobs/{job.id} for progress."
+        "message": f"Geracao de hierarquia iniciada a partir do meta prompt. Isso pode levar 2-5 minutos. Consulte GET /api/v1/jobs/{job.id} para o progresso."
     }
 
 
@@ -1147,7 +1147,7 @@ async def _generate_hierarchy_from_meta_async(
         job_manager.update_progress(
             job_id=job_id,
             progress=10,
-            message="Loading meta prompt interview..."
+            message="Carregando entrevista do meta prompt..."
         )
 
         # Load interview and project
@@ -1155,13 +1155,13 @@ async def _generate_hierarchy_from_meta_async(
         project = db.query(Project).filter(Project.id == project_id).first()
 
         if not interview or not project:
-            raise Exception("Interview or project not found")
+            raise Exception("Entrevista ou projeto nao encontrado")
 
         # Update progress: Processing with AI
         job_manager.update_progress(
             job_id=job_id,
             progress=20,
-            message="Analyzing meta prompt responses and generating hierarchy with AI..."
+            message="Analisando respostas do meta prompt e gerando hierarquia com IA..."
         )
 
         # Generate hierarchy via MetaPromptProcessor
@@ -1177,7 +1177,7 @@ async def _generate_hierarchy_from_meta_async(
         job_manager.update_progress(
             job_id=job_id,
             progress=100,
-            message="Hierarchy created successfully!"
+            message="Hierarquia criada com sucesso!"
         )
 
         # Complete job with result
@@ -1189,7 +1189,7 @@ async def _generate_hierarchy_from_meta_async(
             "tasks_created": len(result["tasks"]),
             "subtasks_created": len(result["subtasks"]),
             "total_items": result["metadata"]["total_items"],
-            "message": f"Generated complete hierarchy: 1 Epic → {len(result['stories'])} Stories → {len(result['tasks'])} Tasks → {len(result['subtasks'])} Subtasks!"
+            "message": f"Hierarquia completa gerada: 1 Epic → {len(result['stories'])} Stories → {len(result['tasks'])} Tasks → {len(result['subtasks'])} Subtasks!"
         })
 
         logger.info(f"🎉 Meta prompt hierarchy generation completed for job {job_id}")
@@ -1233,14 +1233,14 @@ async def start_interview(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Verificar se já foi iniciada
     if interview.conversation_data and len(interview.conversation_data) > 0:
         return {
             "success": True,
-            "message": "Interview already started",
+            "message": "Entrevista ja iniciada",
             "conversation": interview.conversation_data
         }
 
@@ -1252,7 +1252,7 @@ async def start_interview(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
+            detail="Projeto nao encontrado"
         )
 
     # Inicializar conversa
@@ -1278,7 +1278,7 @@ async def start_interview(
     if not assistant_message:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to generate first question"
+            detail="Falha ao gerar primeira pergunta"
         )
 
     # Add Question 1 to conversation
@@ -1339,7 +1339,7 @@ async def save_interview_stack(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Buscar projeto
@@ -1348,7 +1348,7 @@ async def save_interview_stack(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
+            detail="Projeto nao encontrado"
         )
 
     # Salvar stack no projeto
@@ -1405,7 +1405,7 @@ async def save_interview_stack(
     # Return response with provisioning info
     response = {
         "success": True,
-        "message": f"Stack configuration saved: {stack_description}",
+        "message": f"Configuracao de stack salva: {stack_description}",
         "provisioning": {
             "attempted": True,
             "success": provisioning_result is not None and provisioning_result.get("success", False),
@@ -1457,7 +1457,7 @@ async def save_interview_stack_async(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Validate project exists
@@ -1465,7 +1465,7 @@ async def save_interview_stack_async(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
+            detail="Projeto nao encontrado"
         )
 
     # Save stack configuration immediately (synchronous, fast)
@@ -1513,7 +1513,7 @@ async def save_interview_stack_async(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Project provisioning started. This may take 1-5 minutes. Poll GET /api/v1/jobs/{job.id} for progress."
+        "message": f"Provisionamento do projeto iniciado. Isso pode levar 1-5 minutos. Consulte GET /api/v1/jobs/{job.id} para o progresso."
     }
 
 
@@ -1540,57 +1540,57 @@ async def _provision_project_async(
         # Get project
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            job_manager.fail_job(job_id, f"Project {project_id} not found")
+            job_manager.fail_job(job_id, f"Projeto {project_id} nao encontrado")
             return
 
         provisioning_service = ProvisioningService(db)
 
         # STEP 1: Validate stack (0-20%)
-        job_manager.update_progress(job_id, 10.0, "Validating stack configuration...")
+        job_manager.update_progress(job_id, 10.0, "Validando configuracao de stack...")
         logger.info(f"📋 Validating stack: {project.stack}")
 
         is_valid, error_msg = provisioning_service.validate_stack(project.stack)
         if not is_valid:
             logger.warning(f"Stack validation failed: {error_msg}")
-            job_manager.fail_job(job_id, f"Stack validation failed: {error_msg}")
+            job_manager.fail_job(job_id, f"Validacao de stack falhou: {error_msg}")
             return
 
-        job_manager.update_progress(job_id, 20.0, "Stack validated successfully")
+        job_manager.update_progress(job_id, 20.0, "Stack validada com sucesso")
 
         # STEP 2: Execute provisioning (20-90%)
-        job_manager.update_progress(job_id, 30.0, f"Creating project structure for {project.name}...")
+        job_manager.update_progress(job_id, 30.0, f"Criando estrutura do projeto para {project.name}...")
         logger.info(f"🏗️  Provisioning project {project.name}...")
 
         try:
             provisioning_result = provisioning_service.provision_project(project)
 
             if not provisioning_result or not provisioning_result.get("success"):
-                error = provisioning_result.get("error", "Unknown provisioning error") if provisioning_result else "Provisioning returned no result"
+                error = provisioning_result.get("error", "Erro desconhecido no provisionamento") if provisioning_result else "Provisionamento nao retornou resultado"
                 job_manager.fail_job(job_id, error)
                 return
 
-            job_manager.update_progress(job_id, 90.0, "Project created successfully")
+            job_manager.update_progress(job_id, 90.0, "Projeto criado com sucesso")
             logger.info(f"✅ Project provisioned at: {provisioning_result.get('project_path')}")
 
         except ValueError as e:
             logger.warning(f"Stack not supported: {str(e)}")
-            job_manager.fail_job(job_id, f"Stack combination not supported: {str(e)}")
+            job_manager.fail_job(job_id, f"Combinacao de stack nao suportada: {str(e)}")
             return
         except FileNotFoundError as e:
             logger.error(f"Provisioning script not found: {str(e)}")
-            job_manager.fail_job(job_id, f"Provisioning script not found: {str(e)}")
+            job_manager.fail_job(job_id, f"Script de provisionamento nao encontrado: {str(e)}")
             return
         except subprocess.TimeoutExpired:
             logger.error("Provisioning timed out after 5 minutes")
-            job_manager.fail_job(job_id, "Provisioning timed out after 5 minutes. The project may be partially created.")
+            job_manager.fail_job(job_id, "Provisionamento expirou apos 5 minutos. O projeto pode ter sido criado parcialmente.")
             return
         except subprocess.CalledProcessError as e:
             logger.error(f"Provisioning script failed: {e.stderr}")
-            job_manager.fail_job(job_id, f"Provisioning script failed: {e.stderr}")
+            job_manager.fail_job(job_id, f"Script de provisionamento falhou: {e.stderr}")
             return
 
         # STEP 3: Complete (90-100%)
-        job_manager.update_progress(job_id, 95.0, "Finalizing project setup...")
+        job_manager.update_progress(job_id, 95.0, "Finalizando configuracao do projeto...")
 
         # Complete job with result
         job_manager.complete_job(job_id, {
@@ -1600,14 +1600,14 @@ async def _provision_project_async(
             "credentials": provisioning_result.get("credentials", {}),
             "next_steps": provisioning_result.get("next_steps", []),
             "scripts_executed": provisioning_result.get("scripts_executed", []),
-            "message": f"Project '{project.name}' provisioned successfully!"
+            "message": f"Projeto '{project.name}' provisionado com sucesso!"
         })
 
         logger.info(f"✅ Provisioning job {job_id} completed successfully")
 
     except Exception as e:
         logger.error(f"❌ Provisioning job {job_id} failed: {str(e)}", exc_info=True)
-        job_manager.fail_job(job_id, f"Unexpected error: {str(e)}")
+        job_manager.fail_job(job_id, f"Erro inesperado: {str(e)}")
 
     finally:
         db.close()
@@ -1649,7 +1649,7 @@ async def send_message_to_interview(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Inicializar conversation_data se vazio
@@ -1810,7 +1810,7 @@ async def update_project_info(
         logger.error(f"Interview {interview_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview not found"
+            detail="Entrevista nao encontrada"
         )
 
     # Get associated project
@@ -1819,7 +1819,7 @@ async def update_project_info(
         logger.error(f"Project {interview.project_id} not found for interview {interview_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Associated project not found"
+            detail="Projeto associado nao encontrado"
         )
 
     # Update project fields if provided
@@ -1839,7 +1839,7 @@ async def update_project_info(
     if not updated_fields:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No valid title or description provided"
+            detail="Nenhum titulo ou descricao valido fornecido"
         )
 
     # Commit changes to database
@@ -1852,7 +1852,7 @@ async def update_project_info(
         logger.error(f"Failed to update project {project.id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update project information"
+            detail="Falha ao atualizar informacoes do projeto"
         )
 
     # Return success with updated data
@@ -1908,7 +1908,7 @@ async def provision_project(
         logger.error(f"Interview {interview_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview not found"
+            detail="Entrevista nao encontrada"
         )
 
     project = db.query(Project).filter(Project.id == interview.project_id).first()
@@ -1916,14 +1916,14 @@ async def provision_project(
         logger.error(f"Project {interview.project_id} not found for interview {interview_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Associated project not found"
+            detail="Projeto associado nao encontrado"
         )
 
     # Validate stack is configured
     if not project.stack:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Project stack not configured. Complete interview stack questions first (questions 3-6)."
+            detail="Stack do projeto nao configurada. Complete as perguntas de stack da entrevista primeiro (perguntas 3-6)."
         )
 
     logger.info(f"Provisioning project '{project.name}' with stack: {project.stack}")
@@ -1947,14 +1947,14 @@ async def provision_project(
             logger.warning(f"Provisioning failed for project {project.id}: {result.get('error')}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("error", "Provisioning failed")
+                detail=result.get("error", "Provisionamento falhou")
             )
 
         logger.info(f"✓ Successfully provisioned project '{project.name}' at {result['project_path']}")
 
         return {
             "success": True,
-            "message": f"Project '{project.name}' provisioned successfully",
+            "message": f"Projeto '{project.name}' provisionado com sucesso",
             "project_name": result["project_name"],
             "project_path": result["project_path"],
             "stack": result["stack"],
@@ -1974,14 +1974,14 @@ async def provision_project(
         logger.error(f"Provisioning script not found: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Provisioning script not found. Contact administrator."
+            detail="Script de provisionamento nao encontrado. Contate o administrador."
         )
 
     except Exception as e:
         logger.error(f"Unexpected error during provisioning: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Provisioning failed: {str(e)}"
+            detail=f"Provisionamento falhou: {str(e)}"
         )
 
 
@@ -2016,7 +2016,7 @@ async def send_message_async(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Initialize conversation_data if empty
@@ -2102,7 +2102,7 @@ async def send_message_async(
     else:
         deep_link = f"/projects/{interview.project_id}?interview={interview_id}"
 
-    notification_title = f"Generating question for '{task_title}'"
+    notification_title = f"Gerando pergunta para '{task_title}'"
 
     # Create async job with PROMPT #133 enhancements
     job_manager = JobManager(db)
@@ -2130,7 +2130,7 @@ async def send_message_async(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Job created successfully. Poll GET /api/v1/jobs/{job.id} for result.",
+        "message": f"Job criado com sucesso. Consulte GET /api/v1/jobs/{job.id} para o resultado.",
         "deep_link": deep_link,
         "notification_title": notification_title
     }
@@ -2177,7 +2177,7 @@ async def _process_interview_message_async(
         # Get interview
         interview = db.query(Interview).filter(Interview.id == interview_id).first()
         if not interview:
-            job_manager.fail_job(job_id, f"Interview {interview_id} not found")
+            job_manager.fail_job(job_id, f"Entrevista {interview_id} nao encontrada")
             return
 
         # Initialize conversation_data if empty
@@ -2190,7 +2190,7 @@ async def _process_interview_message_async(
         logger.info(f"User message already added by sync endpoint for interview {interview_id}")
 
         # Update progress: 30%
-        job_manager.update_progress(job_id, 30.0, "Processing message, calling AI...")
+        job_manager.update_progress(job_id, 30.0, "Processando mensagem, chamando IA...")
 
         # Get project for context
         project = db.query(Project).filter(Project.id == interview.project_id).first()
@@ -2202,7 +2202,7 @@ async def _process_interview_message_async(
         # ALL questions are now AI-generated and open-ended
         logger.info(f"🌟 ASYNC: Generating open-ended question (message_count={message_count})")
 
-        job_manager.update_progress(job_id, 40.0, "Generating open-ended question...")
+        job_manager.update_progress(job_id, 40.0, "Gerando pergunta aberta...")
 
         # Get parent task for hierarchical interviews
         parent_task = None
@@ -2218,11 +2218,11 @@ async def _process_interview_message_async(
             parent_task=parent_task
         )
 
-        job_manager.update_progress(job_id, 80.0, "Processing response...")
+        job_manager.update_progress(job_id, 80.0, "Processando resposta...")
 
         # PROMPT #133 - Update notification_title for success
         if job:
-            job.notification_title = f"✅ Question generated for '{task_title}'"
+            job.notification_title = f"✅ Pergunta gerada para '{task_title}'"
             db.commit()
 
         # Complete job with result
@@ -2241,7 +2241,7 @@ async def _process_interview_message_async(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:100]  # Truncate long errors
-                job.notification_title = f"❌ Question generation error: {error_msg}"
+                job.notification_title = f"❌ Erro na geracao de pergunta: {error_msg}"
                 db.commit()
         except Exception:
             pass  # Don't fail the error handling

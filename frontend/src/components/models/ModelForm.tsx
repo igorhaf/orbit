@@ -29,11 +29,11 @@ const PROVIDERS = [
 ];
 
 const USAGE_TYPES = [
-  { value: AIModelUsageType.INTERVIEW, label: 'Interviews' },
-  { value: AIModelUsageType.PROMPT_GENERATION, label: 'Prompt Generation' },
-  { value: AIModelUsageType.COMMIT_GENERATION, label: 'Commit Generation' },
-  { value: AIModelUsageType.TASK_EXECUTION, label: 'Task Execution' },
-  { value: AIModelUsageType.GENERAL, label: 'General' },
+  { value: AIModelUsageType.INTERVIEW, label: 'Entrevistas' },
+  { value: AIModelUsageType.PROMPT_GENERATION, label: 'Geracao de Prompts' },
+  { value: AIModelUsageType.COMMIT_GENERATION, label: 'Geracao de Commits' },
+  { value: AIModelUsageType.TASK_EXECUTION, label: 'Execucao de Tarefas' },
+  { value: AIModelUsageType.GENERAL, label: 'Geral' },
 ];
 
 export const ModelForm: React.FC<ModelFormProps> = ({
@@ -136,7 +136,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
   };
 
   const addConfigField = () => {
-    const key = prompt('Enter configuration key:');
+    const key = prompt('Insira a chave de configuracao:');
     if (key && !formData.config[key]) {
       updateConfigField(key, '');
     }
@@ -148,26 +148,26 @@ export const ModelForm: React.FC<ModelFormProps> = ({
         {/* Basic Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
+            <CardTitle>Informacoes Basicas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label htmlFor="name">Model Name *</Label>
+              <Label htmlFor="name">Nome do Modelo *</Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., Claude Sonnet 4.5"
+                placeholder="Ex: Claude Sonnet 4.5"
                 required
                 className="mt-1"
               />
               <p className="text-xs text-gray-500 mt-1">
-                A descriptive name for this model configuration
+                Um nome descritivo para esta configuracao de modelo
               </p>
             </div>
 
             <div>
-              <Label htmlFor="provider">Provider *</Label>
+              <Label htmlFor="provider">Provedor *</Label>
               <Select
                 id="provider"
                 value={formData.provider}
@@ -178,7 +178,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
             </div>
 
             <div>
-              <Label htmlFor="usage_type">Usage Type *</Label>
+              <Label htmlFor="usage_type">Tipo de Uso *</Label>
               <Select
                 id="usage_type"
                 value={formData.usage_type}
@@ -187,7 +187,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
                 className="mt-1"
               />
               <p className="text-xs text-gray-500 mt-1">
-                What this model will be used for
+                Para que este modelo sera usado
               </p>
             </div>
 
@@ -200,7 +200,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
                 className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
               />
               <Label htmlFor="is_active" className="cursor-pointer">
-                Active (model can be used)
+                Ativo (modelo pode ser usado)
               </Label>
             </div>
           </CardContent>
@@ -209,11 +209,11 @@ export const ModelForm: React.FC<ModelFormProps> = ({
         {/* API Key */}
         <Card>
           <CardHeader>
-            <CardTitle>API Key</CardTitle>
+            <CardTitle>Chave da API</CardTitle>
           </CardHeader>
           <CardContent>
             <Label htmlFor="api_key">
-              API Key {!model && '*'}
+              Chave da API {!model && '*'}
             </Label>
             {(() => {
               console.log('🎨 Rendering ApiKeyInput with value:', {
@@ -226,12 +226,12 @@ export const ModelForm: React.FC<ModelFormProps> = ({
             <ApiKeyInput
               value={formData.api_key}
               onChange={(value) => setFormData({ ...formData, api_key: value })}
-              placeholder={model ? 'API key is filled - edit to change...' : 'Enter API key...'}
+              placeholder={model ? 'Chave da API preenchida - edite para alterar...' : 'Insira a chave da API...'}
             />
             <p className="text-xs text-gray-500 mt-1">
               {model
-                ? 'The current API key is shown above. Edit to change it.'
-                : 'Your API key will be encrypted and stored securely'}
+                ? 'A chave da API atual e mostrada acima. Edite para alterar.'
+                : 'Sua chave da API sera criptografada e armazenada com seguranca'}
             </p>
           </CardContent>
         </Card>
@@ -240,21 +240,21 @@ export const ModelForm: React.FC<ModelFormProps> = ({
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Configuration (Optional)</CardTitle>
+              <CardTitle>Configuracao (Opcional)</CardTitle>
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 onClick={addConfigField}
               >
-                Add Field
+                Adicionar Campo
               </Button>
             </div>
           </CardHeader>
           <CardContent>
             {Object.keys(formData.config).length === 0 ? (
               <p className="text-sm text-gray-500">
-                No configuration fields. Click "Add Field" to add custom settings.
+                Sem campos de configuracao. Clique em "Adicionar Campo" para adicionar configuracoes personalizadas.
               </p>
             ) : (
               <div className="space-y-3">
@@ -265,7 +265,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
                       <Input
                         value={String(value)}
                         onChange={(e) => updateConfigField(key, e.target.value)}
-                        placeholder="Value"
+                        placeholder="Valor"
                       />
                     </div>
                     <Button
@@ -293,12 +293,12 @@ export const ModelForm: React.FC<ModelFormProps> = ({
               onClick={onCancel}
               disabled={submitting}
             >
-              Cancel
+              Cancelar
             </Button>
           )}
           <Button type="submit" disabled={submitting}>
             <Save className="w-4 h-4 mr-2" />
-            {submitting ? 'Saving...' : model ? 'Update Model' : 'Create Model'}
+            {submitting ? 'Salvando...' : model ? 'Atualizar Modelo' : 'Criar Modelo'}
           </Button>
         </div>
       </div>

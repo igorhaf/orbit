@@ -95,39 +95,39 @@ function formatJobResult(result: any): string | null {
 
   // Children generation
   if (result.children_generated !== undefined) {
-    parts.push(`${result.children_generated} ${result.child_type || 'items'} created`);
+    parts.push(`${result.children_generated} ${result.child_type || 'itens'} criados`);
   }
 
   // Watchdog / batch results
   if (result.cards_created !== undefined && result.cards_created > 0) {
-    parts.push(`${result.cards_created} cards created`);
+    parts.push(`${result.cards_created} cards criados`);
   }
   if (result.cards_enriched !== undefined && result.cards_enriched > 0) {
-    parts.push(`${result.cards_enriched} cards enriched`);
+    parts.push(`${result.cards_enriched} cards enriquecidos`);
   }
   if (result.rules_extracted !== undefined && result.rules_extracted > 0) {
-    parts.push(`${result.rules_extracted} rules extracted`);
+    parts.push(`${result.rules_extracted} regras extraidas`);
   }
   if (result.batch_processed !== undefined && result.batch_processed > 0) {
-    parts.push(`${result.batch_processed} files processed`);
+    parts.push(`${result.batch_processed} arquivos processados`);
   }
   if (result.rag_scan !== undefined && result.rag_scan > 0) {
-    parts.push(`${result.rag_scan} files scanned`);
+    parts.push(`${result.rag_scan} arquivos escaneados`);
   }
   if (result.git_commits !== undefined && result.git_commits > 0) {
-    parts.push(`${result.git_commits} commits synced`);
+    parts.push(`${result.git_commits} commits sincronizados`);
   }
   if (result.wiki_enriched === true) {
-    parts.push('wiki updated');
+    parts.push('wiki atualizada');
   }
   if (result.pending_remaining !== undefined && result.pending_remaining > 0) {
-    parts.push(`${result.pending_remaining} pending`);
+    parts.push(`${result.pending_remaining} pendentes`);
   }
 
   // Memory scan / card generation
   if (result.business_rule_cards !== undefined) {
     const count = Array.isArray(result.business_rule_cards) ? result.business_rule_cards.length : 0;
-    if (count > 0) parts.push(`${count} rule cards`);
+    if (count > 0) parts.push(`${count} cards de regras`);
   }
 
   // Skipped
@@ -457,12 +457,12 @@ export default function JobsPage() {
               id: `ws-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
               timestamp: new Date().toISOString(),
               level: event === 'job_completed' ? 'success' : event === 'job_failed' ? 'error' : event === 'job_cancelled' ? 'warning' : 'info',
-              message: event === 'job_progress' ? (data.progress_message || `Progress: ${data.progress_percent}%`)
-                : event === 'job_completed' ? 'Job completed successfully'
-                : event === 'job_failed' ? (data.error || 'Job failed')
-                : event === 'job_cancelled' ? 'Job cancelled by user'
-                : event === 'job_started' ? 'Job started'
-                : data.progress_message || 'Processing...',
+              message: event === 'job_progress' ? (data.progress_message || `Progresso: ${data.progress_percent}%`)
+                : event === 'job_completed' ? 'Job concluido com sucesso'
+                : event === 'job_failed' ? (data.error || 'Job falhou')
+                : event === 'job_cancelled' ? 'Job cancelado pelo usuario'
+                : event === 'job_started' ? 'Job iniciado'
+                : data.progress_message || 'Processando...',
               progress_percent: data.progress_percent ?? null,
             };
             setJobLogs(prev => ({
@@ -598,7 +598,7 @@ export default function JobsPage() {
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return '-';
     const date = new Date(dateStr);
-    return date.toLocaleString('en-US', {
+    return date.toLocaleString('pt-BR', {
       day: '2-digit',
       month: '2-digit',
       hour: '2-digit',
@@ -622,9 +622,9 @@ export default function JobsPage() {
               <Activity className="w-6 h-6 text-purple-600" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Job Queue</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Fila de Jobs</h1>
               <p className="text-gray-600 mt-1">
-                Monitor and manage background jobs in real-time
+                Monitore e gerencie jobs em segundo plano em tempo real
                 {isConnected && (
                   <span className="ml-2 inline-flex items-center gap-1 text-green-600">
                     <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
@@ -662,12 +662,12 @@ export default function JobsPage() {
               {isPaused ? (
                 <>
                   <PlayCircle className="w-4 h-4 mr-2" />
-                  Resume Queue
+                  Retomar Fila
                 </>
               ) : (
                 <>
                   <PauseCircle className="w-4 h-4 mr-2" />
-                  Pause Queue
+                  Pausar Fila
                 </>
               )}
             </Button>
@@ -688,33 +688,33 @@ export default function JobsPage() {
             <div className="relative group">
               <Button variant="outline">
                 <Trash2 className="w-4 h-4 mr-2" />
-                Cleanup
+                Limpeza
               </Button>
               <div className="absolute right-0 mt-1 w-48 bg-white border rounded-lg shadow-lg hidden group-hover:block z-10">
                 <button
                   onClick={() => handleCleanupClick(0)}
                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm font-medium text-red-600"
                 >
-                  Delete all finished
+                  Excluir todos finalizados
                 </button>
                 <div className="border-t my-1"></div>
                 <button
                   onClick={() => handleCleanupClick(1)}
                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
                 >
-                  Older than 1 day
+                  Mais de 1 dia
                 </button>
                 <button
                   onClick={() => handleCleanupClick(7)}
                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
                 >
-                  Older than 7 days
+                  Mais de 7 dias
                 </button>
                 <button
                   onClick={() => handleCleanupClick(30)}
                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm"
                 >
-                  Older than 30 days
+                  Mais de 30 dias
                 </button>
               </div>
             </div>
@@ -740,7 +740,7 @@ export default function JobsPage() {
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">Running</p>
+                    <p className="text-sm text-gray-500">Executando</p>
                     <p className="text-2xl font-bold text-blue-600">
                       {stats.by_status.running || 0}
                     </p>
@@ -754,7 +754,7 @@ export default function JobsPage() {
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">Pending</p>
+                    <p className="text-sm text-gray-500">Pendente</p>
                     <p className="text-2xl font-bold text-yellow-600">
                       {stats.by_status.pending || 0}
                     </p>
@@ -768,7 +768,7 @@ export default function JobsPage() {
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">Completed</p>
+                    <p className="text-sm text-gray-500">Concluido</p>
                     <p className="text-2xl font-bold text-green-600">
                       {stats.by_status.completed || 0}
                     </p>
@@ -782,7 +782,7 @@ export default function JobsPage() {
               <CardContent className="pt-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-500">Failed</p>
+                    <p className="text-sm text-gray-500">Falhou</p>
                     <p className="text-2xl font-bold text-red-600">
                       {stats.by_status.failed || 0}
                     </p>
@@ -807,7 +807,7 @@ export default function JobsPage() {
                     setOffset(0);
                   }}
                   options={[
-                    { value: '', label: 'All Statuses' },
+                    { value: '', label: 'Todos os Status' },
                     ...jobStatuses,
                   ]}
                 />
@@ -822,7 +822,7 @@ export default function JobsPage() {
                     setOffset(0);
                   }}
                   options={[
-                    { value: '', label: 'All Types' },
+                    { value: '', label: 'Todos os Tipos' },
                     ...jobTypes,
                   ]}
                 />
@@ -837,7 +837,7 @@ export default function JobsPage() {
                     setOffset(0);
                   }}
                   options={[
-                    { value: '', label: 'All Projects' },
+                    { value: '', label: 'Todos os Projetos' },
                     ...projects.map((p) => ({ value: p.id, label: p.name })),
                   ]}
                 />
@@ -854,7 +854,7 @@ export default function JobsPage() {
                     setOffset(0);
                   }}
                 >
-                  Clear Filters
+                  Limpar Filtros
                 </Button>
               )}
             </div>
@@ -867,7 +867,7 @@ export default function JobsPage() {
             {/* Jobs by Type */}
             <Card>
               <CardHeader>
-                <CardTitle>Jobs by Type (24h)</CardTitle>
+                <CardTitle>Jobs por Tipo (24h)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -898,24 +898,24 @@ export default function JobsPage() {
             {/* Performance Metrics */}
             <Card>
               <CardHeader>
-                <CardTitle>Performance Metrics</CardTitle>
+                <CardTitle>Metricas de Desempenho</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">Avg Duration</span>
+                    <span className="text-sm text-gray-600">Duracao Media</span>
                     <span className="font-medium">
                       {formatDuration(stats.avg_duration_seconds)}
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">Error Rate</span>
+                    <span className="text-sm text-gray-600">Taxa de Erro</span>
                     <span className={`font-medium ${stats.error_rate > 0.1 ? 'text-red-600' : 'text-green-600'}`}>
                       {(stats.error_rate * 100).toFixed(1)}%
                     </span>
                   </div>
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">Success Rate</span>
+                    <span className="text-sm text-gray-600">Taxa de Sucesso</span>
                     <span className="font-medium text-green-600">
                       {((1 - stats.error_rate) * 100).toFixed(1)}%
                     </span>
@@ -928,7 +928,7 @@ export default function JobsPage() {
             {stats.recent_errors.length > 0 && (
               <Card className="lg:col-span-2">
                 <CardHeader>
-                  <CardTitle className="text-red-600">Recent Errors</CardTitle>
+                  <CardTitle className="text-red-600">Erros Recentes</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-2">
@@ -965,7 +965,7 @@ export default function JobsPage() {
                 <div className="flex items-center justify-center h-64">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading jobs...</p>
+                    <p className="text-gray-600">Carregando jobs...</p>
                   </div>
                 </div>
               ) : jobs.length === 0 ? (
@@ -973,12 +973,12 @@ export default function JobsPage() {
                   <div className="text-center">
                     <Activity className="w-16 h-16 mx-auto text-gray-300 mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      No Jobs Found
+                      Nenhum Job Encontrado
                     </h3>
                     <p className="text-gray-600">
                       {statusFilter || typeFilter || projectFilter
-                        ? 'Try adjusting your filters'
-                        : 'No background jobs have been created yet'}
+                        ? 'Tente ajustar seus filtros'
+                        : 'Nenhum job em segundo plano foi criado ainda'}
                     </p>
                   </div>
                 </div>
@@ -993,25 +993,25 @@ export default function JobsPage() {
                             Status
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
-                            Priority
+                            Prioridade
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
-                            Type
+                            Tipo
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
-                            Title
+                            Titulo
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
-                            Progress
+                            Progresso
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
-                            Created
+                            Criado
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
-                            Duration
+                            Duracao
                           </th>
                           <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">
-                            Actions
+                            Acoes
                           </th>
                         </tr>
                       </thead>
@@ -1051,7 +1051,7 @@ export default function JobsPage() {
                               <td className="px-4 py-3">
                                 {(() => {
                                   const p = (job as any).priority ?? 5;
-                                  const label = p >= 10 ? 'Critical' : p >= 7 ? 'High' : p >= 5 ? 'Normal' : 'Low';
+                                  const label = p >= 10 ? 'Critico' : p >= 7 ? 'Alto' : p >= 5 ? 'Normal' : 'Baixo';
                                   const colors = p >= 10 ? 'bg-red-100 text-red-700 border-red-200' : p >= 7 ? 'bg-orange-100 text-orange-700 border-orange-200' : p >= 5 ? 'bg-blue-100 text-blue-700 border-blue-200' : 'bg-gray-100 text-gray-600 border-gray-200';
                                   return (
                                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${colors}`}>
@@ -1131,7 +1131,7 @@ export default function JobsPage() {
                                     <Link
                                       href={job.deep_link}
                                       className="p-1.5 text-gray-400 hover:text-purple-600 rounded"
-                                      title="Go to result"
+                                      title="Ir para resultado"
                                       onClick={(e) => e.stopPropagation()}
                                     >
                                       <ExternalLink className="w-4 h-4" />
@@ -1144,7 +1144,7 @@ export default function JobsPage() {
                                     <button
                                       onClick={(e) => { e.stopPropagation(); handleCancelJob(job.id); }}
                                       className="p-1.5 text-gray-400 hover:text-yellow-600 rounded"
-                                      title="Cancel job"
+                                      title="Cancelar job"
                                     >
                                       <PauseCircle className="w-4 h-4" />
                                     </button>
@@ -1157,7 +1157,7 @@ export default function JobsPage() {
                                     <button
                                       onClick={(e) => { e.stopPropagation(); handleDeleteJob(job.id); }}
                                       className="p-1.5 text-gray-400 hover:text-red-600 rounded"
-                                      title="Delete job"
+                                      title="Excluir job"
                                     >
                                       <Trash2 className="w-4 h-4" />
                                     </button>
@@ -1175,17 +1175,17 @@ export default function JobsPage() {
                                     <div className="flex items-center justify-between mb-3">
                                       <div className="flex items-center gap-4 text-xs text-gray-500">
                                         <span><strong>ID:</strong> {job.id.slice(0, 8)}...</span>
-                                        <span><strong>Type:</strong> {job.job_type.replace(/_/g, ' ')}</span>
-                                        {job.started_at && <span><strong>Started:</strong> {new Date(job.started_at).toLocaleTimeString()}</span>}
-                                        {job.completed_at && <span><strong>Finished:</strong> {new Date(job.completed_at).toLocaleTimeString()}</span>}
-                                        {duration !== null && <span><strong>Duration:</strong> {formatDuration(duration)}</span>}
+                                        <span><strong>Tipo:</strong> {job.job_type.replace(/_/g, ' ')}</span>
+                                        {job.started_at && <span><strong>Inicio:</strong> {new Date(job.started_at).toLocaleTimeString()}</span>}
+                                        {job.completed_at && <span><strong>Fim:</strong> {new Date(job.completed_at).toLocaleTimeString()}</span>}
+                                        {duration !== null && <span><strong>Duracao:</strong> {formatDuration(duration)}</span>}
                                       </div>
                                     </div>
 
                                     {/* Log Area - Terminal Style */}
                                     <div className="bg-gray-900 rounded-lg overflow-hidden">
                                       <div className="px-3 py-1.5 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
-                                        <span className="text-xs text-gray-400 font-mono">Job Log</span>
+                                        <span className="text-xs text-gray-400 font-mono">Log do Job</span>
                                         {job.status === 'running' && (
                                           <span className="flex items-center gap-1.5 text-xs text-green-400">
                                             <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
@@ -1195,12 +1195,12 @@ export default function JobsPage() {
                                       </div>
                                       <div className="p-3 max-h-80 overflow-y-auto font-mono text-xs space-y-0.5">
                                         {loadingLogs ? (
-                                          <div className="text-gray-500 py-4 text-center">Loading logs...</div>
+                                          <div className="text-gray-500 py-4 text-center">Carregando logs...</div>
                                         ) : (jobLogs[job.id] || []).length === 0 ? (
-                                          <div className="text-gray-500 py-4 text-center">No log entries available for this job</div>
+                                          <div className="text-gray-500 py-4 text-center">Nenhuma entrada de log disponivel para este job</div>
                                         ) : (
                                           (jobLogs[job.id] || []).map((entry) => {
-                                            const ts = new Date(entry.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                                            const ts = new Date(entry.timestamp).toLocaleTimeString('pt-BR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
                                             const levelColor = entry.level === 'success' ? 'text-green-400'
                                               : entry.level === 'error' ? 'text-red-400'
                                               : entry.level === 'warning' ? 'text-yellow-400'
@@ -1224,7 +1224,7 @@ export default function JobsPage() {
                                       const summary = formatJobResult(job.result);
                                       return summary ? (
                                         <div className="mt-3 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
-                                          <span className="text-xs font-medium text-green-700">Result: </span>
+                                          <span className="text-xs font-medium text-green-700">Resultado: </span>
                                           <span className="text-xs text-green-600">{summary}</span>
                                         </div>
                                       ) : null;
@@ -1233,7 +1233,7 @@ export default function JobsPage() {
                                     {/* Error Detail */}
                                     {job.status === 'failed' && job.error && (
                                       <div className="mt-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg">
-                                        <span className="text-xs font-medium text-red-700">Error: </span>
+                                        <span className="text-xs font-medium text-red-700">Erro: </span>
                                         <span className="text-xs text-red-600">{job.error}</span>
                                       </div>
                                     )}
@@ -1251,7 +1251,7 @@ export default function JobsPage() {
                   {/* Pagination */}
                   <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
                     <div className="text-sm text-gray-500">
-                      Showing {offset + 1} to {Math.min(offset + limit, total)} of{' '}
+                      Exibindo {offset + 1} a {Math.min(offset + limit, total)} de{' '}
                       {total} jobs
                     </div>
                     <div className="flex items-center gap-2">
@@ -1264,7 +1264,7 @@ export default function JobsPage() {
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
                       <span className="text-sm text-gray-600">
-                        Page {currentPage} of {totalPages}
+                        Pagina {currentPage} de {totalPages}
                       </span>
                       <Button
                         variant="outline"

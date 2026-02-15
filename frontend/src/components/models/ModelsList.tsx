@@ -19,16 +19,16 @@ interface ModelsListProps {
 }
 
 const USAGE_TYPES = [
-  { value: 'all', label: 'All Usage Types' },
-  { value: AIModelUsageType.INTERVIEW, label: 'Interviews' },
-  { value: AIModelUsageType.PROMPT_GENERATION, label: 'Prompt Generation' },
-  { value: AIModelUsageType.COMMIT_GENERATION, label: 'Commit Generation' },
-  { value: AIModelUsageType.TASK_EXECUTION, label: 'Task Execution' },
-  { value: AIModelUsageType.GENERAL, label: 'General' },
+  { value: 'all', label: 'Todos os Tipos de Uso' },
+  { value: AIModelUsageType.INTERVIEW, label: 'Entrevistas' },
+  { value: AIModelUsageType.PROMPT_GENERATION, label: 'Geracao de Prompts' },
+  { value: AIModelUsageType.COMMIT_GENERATION, label: 'Geracao de Commits' },
+  { value: AIModelUsageType.TASK_EXECUTION, label: 'Execucao de Tarefas' },
+  { value: AIModelUsageType.GENERAL, label: 'Geral' },
 ];
 
 const PROVIDERS = [
-  { value: 'all', label: 'All Providers' },
+  { value: 'all', label: 'Todos os Provedores' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'openai', label: 'OpenAI' },
   { value: 'google', label: 'Google' },
@@ -79,7 +79,7 @@ export const ModelsList: React.FC<ModelsListProps> = ({ models, loading = false 
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Search models..."
+                placeholder="Pesquisar modelos..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -111,9 +111,9 @@ export const ModelsList: React.FC<ModelsListProps> = ({ models, loading = false 
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
               options={[
-                { value: 'all', label: 'All Status' },
-                { value: 'active', label: 'Active' },
-                { value: 'inactive', label: 'Inactive' },
+                { value: 'all', label: 'Todos os Status' },
+                { value: 'active', label: 'Ativo' },
+                { value: 'inactive', label: 'Inativo' },
               ]}
             />
           </div>
@@ -124,15 +124,15 @@ export const ModelsList: React.FC<ModelsListProps> = ({ models, loading = false 
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-gray-400" />
             <span className="text-sm text-gray-600">
-              Showing {filteredModels.length} of {models.length} models
+              Exibindo {filteredModels.length} de {models.length} modelos
             </span>
           </div>
           <div className="flex gap-2">
             <Badge variant="success">
-              {models.filter(m => m.is_active).length} Active
+              {models.filter(m => m.is_active).length} Ativo
             </Badge>
             <Badge variant="default">
-              {models.filter(m => !m.is_active).length} Inactive
+              {models.filter(m => !m.is_active).length} Inativo
             </Badge>
           </div>
         </div>
@@ -145,12 +145,12 @@ export const ModelsList: React.FC<ModelsListProps> = ({ models, loading = false 
             <Search className="w-16 h-16 mx-auto" />
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No models found
+            Nenhum modelo encontrado
           </h3>
           <p className="text-gray-600">
             {searchTerm || filterProvider !== 'all' || filterUsageType !== 'all' || filterStatus !== 'all'
-              ? 'Try adjusting your filters'
-              : 'No AI models have been configured yet'}
+              ? 'Tente ajustar seus filtros'
+              : 'Nenhum modelo de IA foi configurado ainda'}
           </p>
         </div>
       ) : (

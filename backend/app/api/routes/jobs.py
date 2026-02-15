@@ -70,14 +70,14 @@ async def list_all_jobs(
             status_enum = JobStatus(status)
             query = query.filter(AsyncJob.status == status_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+            raise HTTPException(status_code=400, detail=f"Status invalido: {status}")
 
     if job_type:
         try:
             job_type_enum = JobType(job_type)
             query = query.filter(AsyncJob.job_type == job_type_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid job_type: {job_type}")
+            raise HTTPException(status_code=400, detail=f"Tipo de job invalido: {job_type}")
 
     if project_id:
         query = query.filter(AsyncJob.project_id == project_id)
@@ -252,7 +252,7 @@ async def pause_executor():
     from app.services.job_executor import PriorityJobExecutor
     executor = PriorityJobExecutor.get_instance()
     executor.pause()
-    return {"paused": True, "message": "Job executor paused"}
+    return {"paused": True, "message": "Executor de jobs pausado"}
 
 
 @router.patch("/executor/resume")
@@ -264,7 +264,7 @@ async def resume_executor():
     from app.services.job_executor import PriorityJobExecutor
     executor = PriorityJobExecutor.get_instance()
     executor.resume()
-    return {"paused": False, "message": "Job executor resumed"}
+    return {"paused": False, "message": "Executor de jobs retomado"}
 
 
 @router.get("/executor/status")
@@ -357,7 +357,7 @@ async def get_job_status(
         logger.error(f"Job {job_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} not found"
+            detail=f"Job {job_id} nao encontrado"
         )
 
     return job.to_dict()
@@ -381,7 +381,7 @@ async def get_job_logs(
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} not found"
+            detail=f"Job {job_id} nao encontrado"
         )
 
     total = db.query(func.count(JobLogEntry.id)).filter(
@@ -420,14 +420,14 @@ async def delete_job(
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} not found"
+            detail=f"Job {job_id} nao encontrado"
         )
 
     # Only allow deletion of completed/failed/cancelled jobs
     if job.status in (JobStatus.PENDING, JobStatus.RUNNING):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete a job that is still pending or running. Cancel it first if needed."
+            detail="Nao e possivel excluir um job que ainda esta pendente ou em execucao. Cancele primeiro se necessario."
         )
 
     db.delete(job)
@@ -452,7 +452,7 @@ async def cancel_job(
         {
             "id": "...",
             "status": "cancelled",
-            "message": "Job was cancelled successfully"
+            "message": "Job cancelado com sucesso"
         }
 
     Raises:
@@ -476,7 +476,7 @@ async def cancel_job(
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} not found"
+            detail=f"Job {job_id} nao encontrado"
         )
 
     # Attempt to cancel
@@ -486,7 +486,7 @@ async def cancel_job(
         # Job couldn't be cancelled (already completed/failed/cancelled)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Cannot cancel job with status '{job.status.value}'. Only pending or running jobs can be cancelled."
+            detail=f"Nao e possivel cancelar job com status '{job.status.value}'. Apenas jobs pendentes ou em execucao podem ser cancelados."
         )
 
     logger.info(f"Job {job_id} cancelled successfully")
@@ -494,7 +494,7 @@ async def cancel_job(
     return {
         "id": str(job_id),
         "status": "cancelled",
-        "message": "Job was cancelled successfully"
+        "message": "Job cancelado com sucesso"
     }
 
 
@@ -567,10 +567,10 @@ async def cleanup_old_jobs(
     if days == 0:
         # Delete ALL finished jobs regardless of age
         deleted_count = cleanup_service.cleanup_all_finished_jobs()
-        message = f"Successfully deleted {deleted_count} finished jobs"
+        message = f"{deleted_count} jobs finalizados excluidos com sucesso"
     else:
         deleted_count = cleanup_service.cleanup_old_jobs(days=days)
-        message = f"Successfully deleted {deleted_count} old jobs (older than {days} days)"
+        message = f"{deleted_count} jobs antigos excluidos com sucesso (mais de {days} dias)"
 
     logger.info(message)
 
@@ -607,7 +607,7 @@ async def bulk_delete_jobs(
     if not status and not job_type and not older_than_hours:
         raise HTTPException(
             status_code=400,
-            detail="At least one filter (status, job_type, or older_than_hours) must be provided"
+            detail="Pelo menos um filtro (status, job_type ou older_than_hours) deve ser fornecido"
         )
 
     query = db.query(AsyncJob)
@@ -619,17 +619,17 @@ async def bulk_delete_jobs(
         try:
             status_enum = JobStatus(status)
             if status_enum in [JobStatus.PENDING, JobStatus.RUNNING]:
-                raise HTTPException(status_code=400, detail="Cannot bulk delete pending or running jobs")
+                raise HTTPException(status_code=400, detail="Nao e possivel excluir em massa jobs pendentes ou em execucao")
             query = query.filter(AsyncJob.status == status_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+            raise HTTPException(status_code=400, detail=f"Status invalido: {status}")
 
     if job_type:
         try:
             job_type_enum = JobType(job_type)
             query = query.filter(AsyncJob.job_type == job_type_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Invalid job_type: {job_type}")
+            raise HTTPException(status_code=400, detail=f"Tipo de job invalido: {job_type}")
 
     if older_than_hours:
         cutoff = datetime.utcnow() - timedelta(hours=older_than_hours)
@@ -643,5 +643,5 @@ async def bulk_delete_jobs(
 
     return {
         "deleted_count": count,
-        "message": f"Successfully deleted {count} jobs"
+        "message": f"{count} jobs excluidos com sucesso"
     }
