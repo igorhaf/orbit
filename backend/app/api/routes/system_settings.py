@@ -5,6 +5,7 @@ CRUD operations for managing system-wide configuration settings.
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -252,6 +253,7 @@ def _save_blocklist(db: Session, data: Dict[str, Any]) -> None:
     if existing:
         existing.value = data
         existing.updated_at = datetime.utcnow()
+        flag_modified(existing, "value")
     else:
         db.add(SystemSettings(
             key=BLOCKLIST_KEY,
@@ -274,6 +276,7 @@ def _save_suggestions(db: Session, data: List[Dict[str, Any]]) -> None:
     if existing:
         existing.value = data
         existing.updated_at = datetime.utcnow()
+        flag_modified(existing, "value")
     else:
         db.add(SystemSettings(
             key=SUGGESTIONS_KEY,
@@ -296,6 +299,7 @@ def _save_rejected(db: Session, data: List[str]) -> None:
     if existing:
         existing.value = data
         existing.updated_at = datetime.utcnow()
+        flag_modified(existing, "value")
     else:
         db.add(SystemSettings(
             key=REJECTED_KEY,

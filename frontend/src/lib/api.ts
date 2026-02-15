@@ -45,7 +45,11 @@ async function request<T>(
 
       try {
         const errorData = await response.json();
-        errorMessage = errorData.detail || errorData.message || errorMessage;
+        if (Array.isArray(errorData.detail)) {
+          errorMessage = errorData.detail.map((d: any) => d.msg || String(d)).join('; ');
+        } else {
+          errorMessage = errorData.detail || errorData.message || errorMessage;
+        }
       } catch {
         // Se não conseguir parsear JSON, usa mensagem padrão
       }

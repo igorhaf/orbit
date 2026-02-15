@@ -247,7 +247,7 @@ export default function SettingsPage() {
       setBlocklist(result);
       setNewBlockDir('');
       setSaveSuccess('Pasta adicionada a lista de bloqueio');
-    } catch (err: any) { showError(`Falha ao salvar: ${err.message}`); }
+    } catch (err: any) { showError(`Falha ao salvar: ${err?.message || err?.detail || String(err)}`); }
     finally { setSavingBlocklist(false); }
   };
 
@@ -268,7 +268,7 @@ export default function SettingsPage() {
       const result = await settingsApi.saveBlocklist(updated);
       setBlocklist(result);
       setSaveSuccess(`${newDirs.length} ${newDirs.length === 1 ? 'pasta adicionada' : 'pastas adicionadas'} a lista de bloqueio`);
-    } catch (err: any) { showError(`Falha ao salvar: ${err.message}`); }
+    } catch (err: any) { showError(`Falha ao salvar: ${err?.message || err?.detail || String(err)}`); }
     finally { setSavingBlocklist(false); }
   };
 
@@ -283,7 +283,7 @@ export default function SettingsPage() {
       setBlocklist(result);
       setNewBlockPattern('');
       setSaveSuccess('Padrao adicionado a lista de bloqueio');
-    } catch (err: any) { showError(`Falha ao salvar: ${err.message}`); }
+    } catch (err: any) { showError(`Falha ao salvar: ${err?.message || err?.detail || String(err)}`); }
     finally { setSavingBlocklist(false); }
   };
 
@@ -293,7 +293,7 @@ export default function SettingsPage() {
       const result = await settingsApi.saveBlocklist(updated);
       setBlocklist(result);
       setSaveSuccess('Pasta removida');
-    } catch (err: any) { showError(`Falha ao remover: ${err.message}`); }
+    } catch (err: any) { showError(`Falha ao remover: ${err?.message || err?.detail || String(err)}`); }
   };
 
   const handleRemoveBlockPattern = async (pat: string) => {
@@ -302,7 +302,7 @@ export default function SettingsPage() {
       const result = await settingsApi.saveBlocklist(updated);
       setBlocklist(result);
       setSaveSuccess('Padrao removido');
-    } catch (err: any) { showError(`Falha ao remover: ${err.message}`); }
+    } catch (err: any) { showError(`Falha ao remover: ${err?.message || err?.detail || String(err)}`); }
   };
 
   const handleFilePickerSelectMultiple = async (fileNames: string[]) => {
@@ -314,7 +314,7 @@ export default function SettingsPage() {
       const result = await settingsApi.saveBlocklist(updated);
       setBlocklist(result);
       setSaveSuccess(`${newPats.length} ${newPats.length === 1 ? 'arquivo adicionado' : 'arquivos adicionados'} a lista de bloqueio`);
-    } catch (err: any) { showError(`Falha ao salvar: ${err.message}`); }
+    } catch (err: any) { showError(`Falha ao salvar: ${err?.message || err?.detail || String(err)}`); }
     finally { setSavingBlocklist(false); }
   };
 
