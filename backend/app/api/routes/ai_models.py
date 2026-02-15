@@ -76,7 +76,7 @@ async def create_ai_model(
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Model with name '{model_data.name}' already exists"
+            detail=f"Modelo com nome '{model_data.name}' ja existe"
         )
 
     # Create new model
@@ -136,7 +136,7 @@ async def update_ai_model(
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Model with name '{update_data['name']}' already exists"
+                detail=f"Modelo com nome '{update_data['name']}' ja existe"
             )
 
     # Special handling for api_key: if empty string, don't update (keep current value)
@@ -248,11 +248,11 @@ async def get_orchestration_status(
             "active_models": active_models,
             "strategies": strategies,
             "usage_types": {
-                "prompt_generation": "Uses best model for analyzing interviews and generating prompts",
-                "task_execution": "Uses best model for executing code and technical tasks",
-                "commit_generation": "Uses fast, cost-effective model for commit messages",
-                "interview": "Uses conversational model for technical interviews",
-                "general": "Uses cost-effective model for general queries"
+                "prompt_generation": "Usa o melhor modelo para analisar entrevistas e gerar prompts",
+                "task_execution": "Usa o melhor modelo para executar codigo e tarefas tecnicas",
+                "commit_generation": "Usa modelo rapido e economico para mensagens de commit",
+                "interview": "Usa modelo conversacional para entrevistas tecnicas",
+                "general": "Usa modelo economico para consultas gerais"
             }
         }
 
@@ -262,5 +262,5 @@ async def get_orchestration_status(
         logger.error(f"Error getting orchestration status: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get orchestration status: {str(e)}"
+            detail=f"Falha ao obter status de orquestracao: {str(e)}"
         )

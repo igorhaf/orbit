@@ -110,7 +110,7 @@ export function MessageBubble({
         {/* Role Badge with AI Model indicator */}
         <div className={`text-xs ${compact ? 'mb-1' : 'mb-1.5'} flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
           <Badge variant={isUser ? 'info' : 'default'} size="sm">
-            {isUser ? 'You' : 'AI Assistant'}
+            {isUser ? 'Voce' : 'Assistente IA'}
           </Badge>
           {/* PROMPT #128 - Show AI model icon for assistant messages */}
           {!isUser && <AIModelBadge model="interview" usage_type="interview" decorative />}
@@ -139,12 +139,12 @@ export function MessageBubble({
             }`}>
               {submitted && !readOnly && (
                 <div className={`${compact ? 'mb-2 p-1.5' : 'mb-3 p-2'} bg-green-100 border border-green-300 rounded text-xs text-green-800 font-medium`}>
-                  <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Response submitted</span>
+                  <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Resposta enviada</span>
                 </div>
               )}
               {!readOnly && (
                 <div className={`text-xs font-semibold text-gray-700 ${compact ? 'mb-2' : 'mb-3'}`}>
-                  {isSingleChoice ? <span className="inline-flex items-center gap-1"><IconPin className="w-3 h-3" /> Select one option:</span> : <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-3 h-3" /> Select one or more options:</span>}
+                  {isSingleChoice ? <span className="inline-flex items-center gap-1"><IconPin className="w-3 h-3" /> Selecione uma opcao:</span> : <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-3 h-3" /> Selecione uma ou mais opcoes:</span>}
                 </div>
               )}
               {effectiveOptions!.choices.map((option) => {
@@ -196,13 +196,13 @@ export function MessageBubble({
                     className={`w-full ${compact ? 'mt-2' : 'mt-4'}`}
                   >
                     {submitted ? (
-                      <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Submitted</span>
+                      <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Enviado</span>
                     ) : isSingleChoice ? (
-                      selectedOptions.length > 0 ? <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Submit Answer</span> : 'Select an option'
+                      selectedOptions.length > 0 ? <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Enviar Resposta</span> : 'Selecione uma opcao'
                     ) : (
                       selectedOptions.length > 0
-                        ? <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Submit Selected ({selectedOptions.length})</span>
-                        : 'Select at least one option'
+                        ? <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Enviar Selecionadas ({selectedOptions.length})</span>
+                        : 'Selecione pelo menos uma opcao'
                     )}
                   </Button>
 
@@ -214,7 +214,7 @@ export function MessageBubble({
                       </div>
                       <div className="relative flex justify-center">
                         <span className="bg-gray-50 px-4 py-1 text-xs font-medium text-gray-600 rounded-full border border-gray-300">
-                          or type your own answer below
+                          ou digite sua propria resposta abaixo
                         </span>
                       </div>
                     </div>
@@ -227,7 +227,7 @@ export function MessageBubble({
           {/* User's Selected Options Display */}
           {isUser && message.selected_options && message.selected_options.length > 0 && (
             <div className={`${compact ? 'mt-2 pt-2' : 'mt-3 pt-3'} border-t border-blue-400`}>
-              <div className="text-xs text-blue-100 mb-1">Selected options:</div>
+              <div className="text-xs text-blue-100 mb-1">Opcoes selecionadas:</div>
               <div className="flex flex-wrap gap-1">
                 {message.selected_options.map((optionId) => (
                   <Badge key={optionId} variant="default" size="sm" className="bg-blue-400 text-white">

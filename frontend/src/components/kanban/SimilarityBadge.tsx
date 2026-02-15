@@ -52,10 +52,10 @@ export function SimilarityBadge({ score, className = '' }: Props) {
   return (
     <Badge
       className={`${getBadgeColor()} font-semibold text-xs px-2 py-1 ${className}`}
-      title={`Similarity score: ${percentage}% - ${percentage >= 90 ? 'Modification detected' : 'Similar task found'}`}
+      title={`Pontuacao de similaridade: ${percentage}% - ${percentage >= 90 ? 'Modificacao detectada' : 'Tarefa similar encontrada'}`}
     >
       <span className="mr-1">{getIcon()}</span>
-      {percentage}% Similar
+      {percentage}% Semelhante
     </Badge>
   );
 }

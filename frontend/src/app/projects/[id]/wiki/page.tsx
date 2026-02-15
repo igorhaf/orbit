@@ -149,7 +149,7 @@ export default function WikiIndexPage() {
               onClick={handleGenerate}
               disabled={generating}
             >
-              {generating ? 'Generating...' : 'Generate from Context'}
+              {generating ? 'Gerando...' : 'Gerar a partir do Contexto'}
             </Button>
             <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
               Nova Pagina
@@ -171,7 +171,7 @@ export default function WikiIndexPage() {
             </p>
             <div className="flex items-center justify-center gap-3">
               <Button variant="outline" onClick={handleGenerate} disabled={generating}>
-                {generating ? 'Generating...' : 'Generate from Context'}
+                {generating ? 'Gerando...' : 'Gerar a partir do Contexto'}
               </Button>
               <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
                 Nova Pagina
@@ -193,7 +193,7 @@ export default function WikiIndexPage() {
                     <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">AI</span>
                   )}
                   {page.source === 'enrichment' && (
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Updated</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Atualizado</span>
                   )}
                   {page.source === 'manual' && (
                     <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">Manual</span>

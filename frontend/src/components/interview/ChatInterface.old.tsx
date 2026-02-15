@@ -314,7 +314,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         setNotFound(true);
       } else {
         // For other errors, show generic alert
-        alert('Failed to load interview');
+        alert('Falha ao carregar entrevista');
       }
     } finally {
       setLoading(false);
@@ -652,7 +652,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
   };
 
   const handleComplete = async () => {
-    if (!confirm('Mark this interview as completed?')) return;
+    if (!confirm('Marcar esta entrevista como concluida?')) return;
 
     try {
       await interviewsApi.updateStatus(interviewId, 'completed');
@@ -660,12 +660,12 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       onStatusChange?.();
     } catch (error) {
       console.error('Failed to complete interview:', error);
-      alert('Failed to complete interview. Please try again.');
+      alert('Falha ao concluir entrevista. Tente novamente.');
     }
   };
 
   const handleCancel = async () => {
-    if (!confirm('Cancel this interview?')) return;
+    if (!confirm('Cancelar esta entrevista?')) return;
 
     try {
       await interviewsApi.updateStatus(interviewId, 'cancelled');
@@ -673,7 +673,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       onStatusChange?.();
     } catch (error) {
       console.error('Failed to cancel interview:', error);
-      alert('Failed to cancel interview. Please try again.');
+      alert('Falha ao cancelar entrevista. Tente novamente.');
     }
   };
 
@@ -682,11 +682,11 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
     const hasMessages = interview.conversation_data && interview.conversation_data.length > 0;
     if (!hasMessages) {
-      alert('Cannot generate prompts from an empty interview. Please add some messages first.');
+      alert('Nao e possivel gerar prompts de uma entrevista vazia. Adicione algumas mensagens primeiro.');
       return;
     }
 
-    if (!confirm('Generate Backlog (Epic → Stories → Tasks) from this interview using AI?\n\nThis may take 2-5 minutes. You\'ll see real-time progress updates.')) {
+    if (!confirm('Gerar Backlog (Epic, Stories, Tasks) a partir desta entrevista usando IA?\n\nIsso pode levar 2-5 minutos. Voce vera atualizacoes de progresso em tempo real.')) {
       return;
     }
 
@@ -723,7 +723,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         <div className="flex flex-col items-center gap-3">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           <p className="text-gray-600">
-            {initializing ? 'Starting interview with AI...' : 'Loading interview...'}
+            {initializing ? 'Iniciando entrevista com IA...' : 'Carregando entrevista...'}
           </p>
         </div>
       </div>
@@ -749,12 +749,12 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               />
             </svg>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {notFound ? 'Interview Not Found' : 'Failed to Load Interview'}
+              {notFound ? 'Entrevista Nao Encontrada' : 'Falha ao Carregar Entrevista'}
             </h3>
             <p className="text-gray-600 mb-6">
               {notFound
-                ? 'The interview you are looking for does not exist or may have been deleted.'
-                : 'An unexpected error occurred while loading the interview.'}
+                ? 'A entrevista que voce procura nao existe ou pode ter sido excluida.'
+                : 'Ocorreu um erro inesperado ao carregar a entrevista.'}
             </p>
           </div>
 
@@ -766,7 +766,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
               </svg>
-              Go to Interviews
+              Ir para Entrevistas
             </Button>
             {!notFound && (
               <Button
@@ -776,7 +776,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                Try Again
+                Tentar Novamente
               </Button>
             )}
           </div>
@@ -792,7 +792,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       {/* Header */}
       <div className="border-b p-4 flex justify-between items-center bg-gray-50 rounded-t-lg">
         <div className="flex items-center gap-3">
-          <h2 className="text-xl font-bold text-gray-900">Interview Session</h2>
+          <h2 className="text-xl font-bold text-gray-900">Sessao de Entrevista</h2>
           <Badge
             variant={
               interview.status === 'active'
@@ -817,14 +817,14 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
             {isGeneratingPrompts ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
-                Generating...
+                Gerando...
               </>
             ) : (
               <>
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                🤖 Generate Backlog
+                Gerar Backlog
               </>
             )}
           </Button>
@@ -835,10 +835,10 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                 <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
-                Complete
+                Concluir
               </Button>
               <Button variant="danger" size="sm" onClick={handleCancel}>
-                Cancel
+                Cancelar
               </Button>
             </>
           )}
@@ -926,8 +926,8 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               />
             </svg>
-            <p className="text-lg mb-2 font-medium">Initializing AI...</p>
-            <p className="text-sm">The AI assistant will greet you shortly</p>
+            <p className="text-lg mb-2 font-medium">Inicializando IA...</p>
+            <p className="text-sm">O assistente de IA ira cumprimentar voce em breve</p>
           </div>
         ) : (
           <>
@@ -969,7 +969,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         {/* PROMPT #65 - Send Message Progress */}
         {isSendingMessage && sendMessageJob && (
           <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h4 className="text-sm font-semibold text-blue-900 mb-2">🤖 Processing your message...</h4>
+            <h4 className="text-sm font-semibold text-blue-900 mb-2">Processando sua mensagem...</h4>
             <JobProgressBar
               percent={sendMessageJob.progress_percent}
               message={sendMessageJob.progress_message}
@@ -981,14 +981,14 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         {/* PROMPT #65 - Backlog Generation Progress */}
         {isGeneratingPrompts && generatePromptsJob && (
           <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h4 className="text-sm font-semibold text-green-900 mb-2">⚡ Generating Backlog...</h4>
+            <h4 className="text-sm font-semibold text-green-900 mb-2">Gerando Backlog...</h4>
             <JobProgressBar
               percent={generatePromptsJob.progress_percent}
               message={generatePromptsJob.progress_message}
               status={generatePromptsJob.status}
             />
             <p className="text-xs text-green-700 mt-2">
-              This may take 2-5 minutes. You can continue working while we generate your Epic → Stories → Tasks.
+              Isso pode levar 2-5 minutos. Voce pode continuar trabalhando enquanto geramos seus Epic, Stories e Tasks.
             </p>
           </div>
         )}
@@ -996,14 +996,14 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         {/* PROMPT #65 - Provisioning Progress */}
         {isProvisioning && provisioningJob && (
           <div className="mb-4 p-4 bg-purple-50 border border-purple-200 rounded-lg">
-            <h4 className="text-sm font-semibold text-purple-900 mb-2">🏗️ Provisioning Project...</h4>
+            <h4 className="text-sm font-semibold text-purple-900 mb-2">Provisionando Projeto...</h4>
             <JobProgressBar
               percent={provisioningJob.progress_percent}
               message={provisioningJob.progress_message}
               status={provisioningJob.status}
             />
             <p className="text-xs text-purple-700 mt-2">
-              Creating project structure, installing dependencies, and configuring environment. This may take 1-3 minutes.
+              Criando estrutura do projeto, instalando dependencias e configurando ambiente. Isso pode levar 1-3 minutos.
             </p>
           </div>
         )}
@@ -1018,7 +1018,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                 </div>
-                <span className="text-sm text-gray-600 ml-2">AI is thinking...</span>
+                <span className="text-sm text-gray-600 ml-2">IA esta pensando...</span>
               </div>
             </div>
           </div>
@@ -1036,12 +1036,12 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
                 <span className="text-sm text-blue-800 font-medium">
-                  {selectedOptions.length} option{selectedOptions.length > 1 ? 's' : ''} selected
+                  {selectedOptions.length} {selectedOptions.length > 1 ? 'opcoes selecionadas' : 'opcao selecionada'}
                 </span>
                 <button
                   onClick={() => setSelectedOptions([])}
                   className="ml-auto text-blue-600 hover:text-blue-800"
-                  title="Clear selection"
+                  title="Limpar selecao"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1056,7 +1056,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={selectedOptions.length > 0 ? "Or type a custom response..." : "Type your response... (Shift+Enter for new line, Enter to send)"}
+                placeholder={selectedOptions.length > 0 ? "Ou digite uma resposta personalizada..." : "Digite sua resposta... (Shift+Enter para nova linha, Enter para enviar)"}
                 disabled={sending || isSendingMessage}
                 className="flex-1 border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 text-gray-900 bg-white min-h-[44px] max-h-[200px] overflow-y-auto"
                 rows={1}
@@ -1070,21 +1070,21 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               {(sending || isSendingMessage) ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Sending...
+                  Enviando...
                 </>
               ) : selectedOptions.length > 0 ? (
                 <>
                   <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  Send Selected ({selectedOptions.length})
+                  Enviar Selecionadas ({selectedOptions.length})
                 </>
               ) : (
                 <>
                   <svg className="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                   </svg>
-                  Send
+                  Enviar
                 </>
               )}
             </Button>
@@ -1093,7 +1093,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         ) : (
           <div className="text-center text-gray-400 py-4 bg-gray-100 rounded-lg">
             <p className="text-sm font-medium">
-              This interview is {interview.status}. Cannot send messages.
+              Esta entrevista esta {interview.status}. Nao e possivel enviar mensagens.
             </p>
           </div>
         )}

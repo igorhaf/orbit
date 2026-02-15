@@ -98,14 +98,14 @@ class FileProcessor:
 
         filename = file.filename
         if not filename:
-            raise HTTPException(status_code=400, detail="No filename provided")
+            raise HTTPException(status_code=400, detail="Nenhum nome de arquivo fornecido")
 
         # Check extension
         file_ext = self._get_file_extension(filename)
         if file_ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid file type. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+                detail=f"Tipo de arquivo invalido. Permitidos: {', '.join(ALLOWED_EXTENSIONS)}"
             )
 
         # Read file content for validation
@@ -116,18 +116,18 @@ class FileProcessor:
         if file_size > self.max_upload_bytes:
             raise HTTPException(
                 status_code=413,
-                detail=f"File too large. Max size: {settings.max_upload_size_mb}MB"
+                detail=f"Arquivo muito grande. Tamanho maximo: {settings.max_upload_size_mb}MB"
             )
 
         if file_size == 0:
-            raise HTTPException(status_code=400, detail="Empty file")
+            raise HTTPException(status_code=400, detail="Arquivo vazio")
 
         # Verify MIME type using magic bytes
         mime_type = magic.from_buffer(content, mime=True)
         if mime_type not in ALLOWED_MIME_TYPES:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid file type detected: {mime_type}"
+                detail=f"Tipo de arquivo invalido detectado: {mime_type}"
             )
 
         # Reset file position for later reading
@@ -174,7 +174,7 @@ class FileProcessor:
 
         except Exception as e:
             logger.error(f"Failed to save upload: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to save file: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Falha ao salvar arquivo: {str(e)}")
 
     async def extract_archive(
         self,
@@ -222,7 +222,7 @@ class FileProcessor:
                 shutil.rmtree(extract_path)
                 raise HTTPException(
                     status_code=413,
-                    detail=f"Extracted size exceeds limit ({settings.max_extraction_size_mb}MB)"
+                    detail=f"Tamanho extraido excede o limite ({settings.max_extraction_size_mb}MB)"
                 )
 
             logger.info(f"Extracted archive to {extract_path} ({total_size} bytes)")
@@ -234,7 +234,7 @@ class FileProcessor:
             logger.error(f"Failed to extract archive: {e}")
             if extract_path.exists():
                 shutil.rmtree(extract_path)
-            raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"Falha na extracao: {str(e)}")
 
     def _extract_zip(self, file_path: Path, extract_path: Path):
         """Extract ZIP archive with security checks"""
@@ -245,7 +245,7 @@ class FileProcessor:
                 if self._is_path_traversal(member):
                     raise HTTPException(
                         status_code=400,
-                        detail="Archive contains path traversal attempt"
+                        detail="Arquivo contem tentativa de travessia de caminho"
                     )
 
             # Extract all
@@ -262,7 +262,7 @@ class FileProcessor:
                 if self._is_path_traversal(member.name):
                     raise HTTPException(
                         status_code=400,
-                        detail="Archive contains path traversal attempt"
+                        detail="Arquivo contem tentativa de travessia de caminho"
                     )
 
             # Extract all

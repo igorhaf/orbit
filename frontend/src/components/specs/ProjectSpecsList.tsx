@@ -247,7 +247,7 @@ export function ProjectSpecsList({ projectId }: Props) {
       {/* Category and Framework */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Category *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Categoria *</label>
           <select
             className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
             value={formData.category}
@@ -260,7 +260,7 @@ export function ProjectSpecsList({ projectId }: Props) {
           </select>
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Framework Name *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Nome do Framework *</label>
           <Input
             placeholder="e.g., laravel, nextjs, postgresql"
             value={formData.name}
@@ -273,7 +273,7 @@ export function ProjectSpecsList({ projectId }: Props) {
       {/* Spec Type and Title */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Spec Type *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Tipo de Spec *</label>
           <Input
             placeholder="e.g., controller, model, page"
             value={formData.spec_type}
@@ -282,9 +282,9 @@ export function ProjectSpecsList({ projectId }: Props) {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Title *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Titulo *</label>
           <Input
-            placeholder="Human-readable title"
+            placeholder="Titulo legivel"
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             required
@@ -295,7 +295,7 @@ export function ProjectSpecsList({ projectId }: Props) {
       {/* Language and Version */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Programming Language</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Linguagem de Programacao</label>
           <Input
             placeholder="e.g., PHP, TypeScript, Python"
             value={formData.language}
@@ -303,7 +303,7 @@ export function ProjectSpecsList({ projectId }: Props) {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Framework Version</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Versao do Framework</label>
           <Input
             placeholder="e.g., 10.x, 14.x"
             value={formData.framework_version}
@@ -314,7 +314,7 @@ export function ProjectSpecsList({ projectId }: Props) {
 
       {/* Description */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Descricao</label>
         <textarea
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           rows={2}
@@ -326,7 +326,7 @@ export function ProjectSpecsList({ projectId }: Props) {
 
       {/* Content */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Specification Content *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Conteudo da Especificacao *</label>
         <textarea
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
           rows={8}
@@ -339,7 +339,7 @@ export function ProjectSpecsList({ projectId }: Props) {
 
       {/* File Extensions */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">File Extensions (comma-separated)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Extensoes de Arquivo (separadas por virgula)</label>
         <Input
           placeholder="e.g., .php, .tsx, .py"
           value={formData.file_extensions.join(', ')}
@@ -352,7 +352,7 @@ export function ProjectSpecsList({ projectId }: Props) {
 
       {/* Ignore Patterns */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Ignore Patterns (comma-separated)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Padroes para Ignorar (separados por virgula)</label>
         <Input
           placeholder="e.g., node_modules, vendor, .git"
           value={formData.ignore_patterns.join(', ')}
@@ -373,7 +373,7 @@ export function ProjectSpecsList({ projectId }: Props) {
           onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
         />
         <label htmlFor="spec-is-active" className="ml-2 text-sm text-gray-700">
-          Active (make this spec available in interviews)
+          Ativo (tornar esta spec disponivel em entrevistas)
         </label>
       </div>
     </>
@@ -402,7 +402,7 @@ export function ProjectSpecsList({ projectId }: Props) {
           </Button>
           <Button variant="primary" size="sm" onClick={handleOpenCreate}>
             <Plus className="w-4 h-4 mr-2" />
-            Add Spec
+            Adicionar Spec
           </Button>
         </div>
       </div>
@@ -411,7 +411,7 @@ export function ProjectSpecsList({ projectId }: Props) {
       <div className="flex flex-col md:flex-row gap-3">
         <div className="flex-1">
           <Input
-            placeholder="Search specs..."
+            placeholder="Buscar specs..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full"
@@ -422,7 +422,7 @@ export function ProjectSpecsList({ projectId }: Props) {
           value={filterCategory}
           onChange={(e) => setFilterCategory(e.target.value)}
         >
-          <option value="all">All Categories</option>
+          <option value="all">Todas as Categorias</option>
           {CATEGORIES.map(cat => (
             <option key={cat.value} value={cat.value}>{cat.label}</option>
           ))}
@@ -432,9 +432,9 @@ export function ProjectSpecsList({ projectId }: Props) {
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
         >
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
+          <option value="all">Todos os Status</option>
+          <option value="active">Ativo</option>
+          <option value="inactive">Inativo</option>
         </select>
         <Button variant="outline" onClick={loadSpecs} disabled={loading}>
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -450,7 +450,7 @@ export function ProjectSpecsList({ projectId }: Props) {
             }}
           >
             <X className="w-4 h-4 mr-1" />
-            Clear
+            Limpar
           </Button>
         )}
       </div>
@@ -460,35 +460,35 @@ export function ProjectSpecsList({ projectId }: Props) {
         <div className="flex items-center justify-center h-48">
           <div className="text-center">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600 mx-auto mb-3"></div>
-            <p className="text-gray-600 text-sm">Loading specs...</p>
+            <p className="text-gray-600 text-sm">Carregando specs...</p>
           </div>
         </div>
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Specifications ({filteredSpecs.length})</CardTitle>
+            <CardTitle>Especificacoes ({filteredSpecs.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {filteredSpecs.length === 0 ? (
               <div className="text-center py-12">
                 <FileCode className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No specs found for this project</p>
-                <p className="text-sm text-gray-400 mt-1">Use &quot;Discover Specs&quot; to auto-detect patterns or add specs manually</p>
+                <p className="text-gray-500">Nenhuma spec encontrada para este projeto</p>
+                <p className="text-sm text-gray-400 mt-1">Use &quot;Descobrir Specs&quot; para auto-detectar padroes ou adicione specs manualmente</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoria</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Framework</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Title</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Language</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Version</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usage</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Titulo</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Linguagem</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Versao</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Uso</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acoes</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -532,7 +532,7 @@ export function ProjectSpecsList({ projectId }: Props) {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <Badge variant={spec.is_active ? 'success' : 'default'}>
-                              {spec.is_active ? 'Active' : 'Inactive'}
+                              {spec.is_active ? 'Ativo' : 'Inativo'}
                             </Badge>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -565,12 +565,12 @@ export function ProjectSpecsList({ projectId }: Props) {
       {showCreateDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Create New Spec</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Criar Nova Spec</h2>
             <form onSubmit={handleCreate} className="space-y-6">
               {renderFormFields()}
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <Button type="button" variant="ghost" onClick={() => setShowCreateDialog(false)} disabled={isSubmitting}>
-                  Cancel
+                  Cancelar
                 </Button>
                 <Button type="submit" variant="primary" disabled={isSubmitting}>
                   {isSubmitting ? 'Criando...' : 'Criar Spec'}
@@ -585,12 +585,12 @@ export function ProjectSpecsList({ projectId }: Props) {
       {showEditDialog && selectedSpec && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Edit Spec</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Editar Spec</h2>
             <form onSubmit={handleUpdate} className="space-y-6">
               {renderFormFields()}
               <div className="flex justify-end gap-3 pt-4 border-t">
                 <Button type="button" variant="ghost" onClick={() => setShowEditDialog(false)} disabled={isSubmitting}>
-                  Cancel
+                  Cancelar
                 </Button>
                 <Button type="submit" variant="primary" disabled={isSubmitting}>
                   {isSubmitting ? 'Atualizando...' : 'Atualizar Spec'}
@@ -605,8 +605,8 @@ export function ProjectSpecsList({ projectId }: Props) {
       {showDeleteDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Spec?</h3>
-            <p className="text-sm text-gray-600 mb-4">Are you sure you want to delete this specification?</p>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Excluir Spec?</h3>
+            <p className="text-sm text-gray-600 mb-4">Tem certeza que deseja excluir esta especificacao?</p>
 
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
               <div className="flex items-start gap-3">
@@ -616,9 +616,9 @@ export function ProjectSpecsList({ projectId }: Props) {
                   </svg>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-red-900 mb-1">Warning: This action cannot be undone!</h4>
+                  <h4 className="font-semibold text-red-900 mb-1">Atencao: Esta acao nao pode ser desfeita!</h4>
                   <p className="text-sm text-red-800">
-                    Spec &quot;{specToDelete?.title}&quot; will be permanently deleted.
+                    Spec &quot;{specToDelete?.title}&quot; sera excluida permanentemente.
                   </p>
                 </div>
               </div>
@@ -626,7 +626,7 @@ export function ProjectSpecsList({ projectId }: Props) {
 
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={() => setShowDeleteDialog(false)} disabled={isDeleting}>
-                Cancel
+                Cancelar
               </Button>
               <Button variant="danger" onClick={confirmDelete} disabled={isDeleting}>
                 {isDeleting ? 'Excluindo...' : 'Sim, Excluir Spec'}

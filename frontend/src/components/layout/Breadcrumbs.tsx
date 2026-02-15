@@ -35,42 +35,42 @@ export const Breadcrumbs: React.FC = () => {
 
   // Custom labels for specific routes
   const routeLabels: Record<string, string> = {
-    'ai-models': 'AI Models',
-    'ai-executions': 'AI Executions',
-    'ai-config': 'AI Config',
-    'contracts': 'Contracts',
+    'ai-models': 'Modelos IA',
+    'ai-executions': 'Execucoes IA',
+    'ai-config': 'Config IA',
+    'contracts': 'Contratos',
     'prompts': 'Prompts',
-    'projects': 'Projects',
-    'interviews': 'Interviews',
-    'settings': 'Settings',
+    'projects': 'Projetos',
+    'interviews': 'Entrevistas',
+    'settings': 'Configuracoes',
     'debug': 'Debug',
-    'new': 'New',
-    'edit': 'Edit',
-    'generate': 'Generate',
-    'analyze': 'Analyze',
-    'consistency': 'Consistency Check',
+    'new': 'Novo',
+    'edit': 'Editar',
+    'generate': 'Gerar',
+    'analyze': 'Analisar',
+    'consistency': 'Verificacao de Consistencia',
     'wiki': 'Wiki',
-    'execute': 'Execute',
-    'models': 'Models',
+    'execute': 'Executar',
+    'models': 'Modelos',
   };
 
   // Labels for UUID segments based on parent context
   const getUUIDLabel = (parentSegment: string | undefined): string => {
-    if (!parentSegment) return 'Details';
+    if (!parentSegment) return 'Detalhes';
 
     switch (parentSegment) {
       case 'interviews':
-        return 'Interview';
+        return 'Entrevista';
       case 'projects':
-        return 'Project';
+        return 'Projeto';
       case 'tasks':
-        return 'Task';
+        return 'Tarefa';
       case 'prompts':
         return 'Prompt';
       case 'ai-models':
-        return 'Model';
+        return 'Modelo';
       default:
-        return 'Details';
+        return 'Detalhes';
     }
   };
 
@@ -78,7 +78,7 @@ export const Breadcrumbs: React.FC = () => {
   const pathSegments = pathname.split('/').filter(Boolean);
 
   const breadcrumbs: BreadcrumbItem[] = [
-    { name: 'Home', href: '/' },
+    { name: 'Inicio', href: '/' },
     ...pathSegments
       .map((segment, index) => {
         const href = '/' + pathSegments.slice(0, index + 1).join('/');

@@ -98,13 +98,13 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               {prompt.is_reusable && (
                 <Badge variant="success">
                   <Tag className="w-3 h-3 mr-1" />
-                  Reusable
+                  Reutilizavel
                 </Badge>
               )}
               {prompt.parent_id && (
                 <Badge variant="info">
                   <GitBranch className="w-3 h-3 mr-1" />
-                  Versioned
+                  Versionado
                 </Badge>
               )}
             </div>
@@ -121,7 +121,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                   disabled={saving}
                 >
                   <X className="w-4 h-4 mr-2" />
-                  Cancel
+                  Cancelar
                 </Button>
                 <Button onClick={handleSave} disabled={saving}>
                   <Save className="w-4 h-4 mr-2" />
@@ -129,7 +129,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                 </Button>
               </>
             ) : (
-              <Button onClick={() => setEditing(true)}>Edit</Button>
+              <Button onClick={() => setEditing(true)}>Editar</Button>
             )}
           </div>
         )}
@@ -138,31 +138,31 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       {/* Metadata */}
       <Card>
         <CardHeader>
-          <CardTitle>Metadata</CardTitle>
+          <CardTitle>Metadados</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
-              <span className="text-gray-600">Created:</span>
+              <span className="text-gray-600">Criado:</span>
               <span className="ml-2 font-medium">
                 {new Date(prompt.created_at).toLocaleString()}
               </span>
             </div>
             <div>
-              <span className="text-gray-600">Updated:</span>
+              <span className="text-gray-600">Atualizado:</span>
               <span className="ml-2 font-medium">
                 {new Date(prompt.updated_at).toLocaleString()}
               </span>
             </div>
             <div>
-              <span className="text-gray-600">Project ID:</span>
+              <span className="text-gray-600">ID do Projeto:</span>
               <code className="ml-2 text-xs bg-gray-100 px-2 py-1 rounded">
                 {prompt.project_id}
               </code>
             </div>
             {prompt.created_from_interview_id && (
               <div>
-                <span className="text-gray-600">From Interview:</span>
+                <span className="text-gray-600">Da Entrevista:</span>
                 <code className="ml-2 text-xs bg-blue-100 px-2 py-1 rounded text-blue-800">
                   {prompt.created_from_interview_id}
                 </code>
@@ -175,16 +175,16 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       {/* Type and Reusable Settings */}
       <Card>
         <CardHeader>
-          <CardTitle>Settings</CardTitle>
+          <CardTitle>Configuracoes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
-            <Label htmlFor="prompt-type">Type</Label>
+            <Label htmlFor="prompt-type">Tipo</Label>
             <Input
               id="prompt-type"
               value={type}
               onChange={(e) => setType(e.target.value)}
-              placeholder="e.g., Feature, Bug Fix, Refactoring"
+              placeholder="Ex: Feature, Bug Fix, Refatoracao"
               disabled={!editing}
               className="mt-1"
             />
@@ -200,7 +200,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
             <Label htmlFor="is-reusable" className="cursor-pointer">
-              Mark as reusable (can be used across multiple projects)
+              Marcar como reutilizavel (pode ser usado em varios projetos)
             </Label>
           </div>
         </CardContent>
@@ -209,7 +209,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       {/* Components */}
       <Card>
         <CardHeader>
-          <CardTitle>Components</CardTitle>
+          <CardTitle>Componentes</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {editing && (
@@ -218,17 +218,17 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                 value={componentInput}
                 onChange={(e) => setComponentInput(e.target.value)}
                 onKeyPress={handleComponentKeyPress}
-                placeholder="Add component (press Enter)"
+                placeholder="Adicione componente (pressione Enter)"
               />
               <Button onClick={addComponent} variant="outline">
-                Add
+                Adicionar
               </Button>
             </div>
           )}
 
           <div className="flex flex-wrap gap-2">
             {components.length === 0 ? (
-              <p className="text-sm text-gray-500">No components defined</p>
+              <p className="text-sm text-gray-500">Nenhum componente definido</p>
             ) : (
               components.map((component, idx) => (
                 <span
@@ -254,7 +254,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       {/* Content Editor */}
       <Card>
         <CardHeader>
-          <CardTitle>Content</CardTitle>
+          <CardTitle>Conteudo</CardTitle>
         </CardHeader>
         <CardContent>
           {editing ? (
@@ -272,7 +272,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
             </div>
           )}
           <div className="mt-2 text-xs text-gray-500">
-            {content.length} characters
+            {content.length} caracteres
           </div>
         </CardContent>
       </Card>

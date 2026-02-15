@@ -104,7 +104,7 @@ const DEFAULT_CONTRACT_YAML = `name: new_contract
 version: 1
 domain: generation
 category: generation
-description: "Contract description"
+description: "Descricao do contrato"
 usage_type: general
 
 governance:
@@ -114,18 +114,18 @@ governance:
   change_log:
     - version: 1
       date: "${new Date().toISOString().split('T')[0]}"
-      author: "Author"
-      changes: "Initial version"
+      author: "Autor"
+      changes: "Versao inicial"
 
 variables:
   required: []
   optional: []
 
 system_prompt: |
-  Your system prompt here...
+  Seu prompt de sistema aqui...
 
 user_prompt: |
-  Your user prompt here...
+  Seu prompt de usuario aqui...
 
 tags:
   - tag1
@@ -236,7 +236,7 @@ export default function ContractsPage() {
       console.error('Failed to load contract content:', error);
       setSelectedContract({
         ...contract,
-        content: '# Error loading YAML content'
+        content: '# Erro ao carregar conteudo YAML'
       });
     } finally {
       setLoadingYaml(false);
@@ -303,15 +303,15 @@ export default function ContractsPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to save');
+        throw new Error(error.detail || 'Falha ao salvar');
       }
 
       setSelectedContract({ ...selectedContract, content: editContent });
       setIsEditing(false);
-      setSaveResult({ success: true, message: 'Contract saved successfully' });
+      setSaveResult({ success: true, message: 'Contrato salvo com sucesso' });
       loadContracts();
     } catch (error: any) {
-      setSaveResult({ success: false, message: error.message || 'Failed to save contract' });
+      setSaveResult({ success: false, message: error.message || 'Falha ao salvar contrato' });
     } finally {
       setSaving(false);
     }
@@ -327,12 +327,12 @@ export default function ContractsPage() {
       );
 
       if (!response.ok) {
-        throw new Error('Failed to restore version');
+        throw new Error('Falha ao restaurar versao');
       }
 
       // Reload contract content
       handleRowClick(selectedContract);
-      setSaveResult({ success: true, message: `Restored from ${filename}` });
+      setSaveResult({ success: true, message: `Restaurado de ${filename}` });
     } catch (error: any) {
       setSaveResult({ success: false, message: error.message });
     }
@@ -353,7 +353,7 @@ export default function ContractsPage() {
       const data = await response.json();
       setValidation(data);
     } catch (error) {
-      setValidation({ valid: false, errors: ['Failed to validate'], warnings: [] });
+      setValidation({ valid: false, errors: ['Falha ao validar'], warnings: [] });
     } finally {
       setValidating(false);
     }
@@ -375,7 +375,7 @@ export default function ContractsPage() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.detail || 'Failed to create');
+        throw new Error(error.detail || 'Falha ao criar');
       }
 
       setShowCreateModal(false);
@@ -408,7 +408,7 @@ export default function ContractsPage() {
       );
 
       if (!response.ok) {
-        throw new Error('Failed to delete');
+        throw new Error('Falha ao excluir');
       }
 
       setShowDeleteModal(false);
@@ -532,7 +532,7 @@ export default function ContractsPage() {
                     : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
-                {cat === 'all' ? 'All' : cat}
+                {cat === 'all' ? 'Todos' : cat}
               </button>
             ))}
             {categories.length > 6 && (
@@ -541,7 +541,7 @@ export default function ContractsPage() {
                   onClick={() => setShowCategoryDropdown(!showCategoryDropdown)}
                   className="px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center gap-1"
                 >
-                  More <ChevronDown className="w-3 h-3" />
+                  Mais <ChevronDown className="w-3 h-3" />
                 </button>
                 {showCategoryDropdown && (
                   <div className="absolute top-full mt-1 bg-white border rounded-lg shadow-lg z-10 py-1 min-w-[120px]">
@@ -570,7 +570,7 @@ export default function ContractsPage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              Contracts ({filteredContracts.length})
+              Contratos ({filteredContracts.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -681,7 +681,7 @@ export default function ContractsPage() {
               <div className="flex-1">
                 <div className="flex items-center gap-3">
                   <h2 className="text-lg font-semibold text-gray-900">
-                    {selectedContract?.name || 'Loading...'}
+                    {selectedContract?.name || 'Carregando...'}
                   </h2>
                   {selectedContract && (
                     <>
@@ -843,7 +843,7 @@ export default function ContractsPage() {
                             <p className="font-medium text-gray-900">{version.filename}</p>
                             <p className="text-sm text-gray-500">
                               {new Date(version.created_at).toLocaleString()}
-                              {version.is_deleted && <span className="ml-2 text-red-500">(deleted)</span>}
+                              {version.is_deleted && <span className="ml-2 text-red-500">(excluido)</span>}
                             </p>
                           </div>
                           <Button

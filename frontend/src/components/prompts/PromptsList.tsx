@@ -96,7 +96,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                placeholder="Search prompts, responses, models..."
+                placeholder="Buscar prompts, respostas, modelos..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -111,10 +111,10 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
                 options={[
-                  { value: 'all', label: 'All Status' },
+                  { value: 'all', label: 'Todos os Status' },
                   ...uniqueStatuses.map(status => ({
                     value: status,
-                    label: status === 'success' ? 'Success' : 'Error',
+                    label: status === 'success' ? 'Sucesso' : 'Erro',
                   })),
                 ]}
               />
@@ -128,7 +128,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                 value={filterType}
                 onChange={(e) => setFilterType(e.target.value)}
                 options={[
-                  { value: 'all', label: 'All Types' },
+                  { value: 'all', label: 'Todos os Tipos' },
                   ...uniqueTypes.map(type => ({
                     value: type,
                     label: type,
@@ -144,18 +144,18 @@ export const PromptsList: React.FC<PromptsListProps> = ({
           <div className="flex items-center gap-2">
             <Filter className="w-4 h-4 text-gray-400" />
             <span className="text-sm text-gray-600">
-              Showing {filteredPrompts.length} of {prompts.length} prompts
+              Mostrando {filteredPrompts.length} de {prompts.length} prompts
             </span>
           </div>
           <div className="flex gap-2">
             <Badge variant="success">
-              {prompts.filter(p => p.status === 'success').length} Success
+              {prompts.filter(p => p.status === 'success').length} Sucesso
             </Badge>
             <Badge variant="error">
-              {prompts.filter(p => p.status === 'error').length} Errors
+              {prompts.filter(p => p.status === 'error').length} Erros
             </Badge>
             <Badge variant="info">
-              {uniqueTypes.length} Types
+              {uniqueTypes.length} Tipos
             </Badge>
           </div>
         </div>
@@ -168,7 +168,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
             <Search className="w-16 h-16 mx-auto" />
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">
-            No prompts found
+            Nenhum prompt encontrado
           </h3>
           <p className="text-gray-600">
             {searchTerm || filterStatus !== 'all' || filterType !== 'all'
@@ -187,22 +187,22 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                     Status
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Type
+                    Tipo
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Model
+                    Modelo
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Tokens
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Cost
+                    Custo
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Time
+                    Tempo
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Date
+                    Data
                   </th>
                 </tr>
               </thead>
@@ -233,12 +233,12 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                           {prompt.status === 'success' ? (
                             <Badge variant="success" className="flex items-center gap-1 w-fit">
                               <CheckCircle className="w-3 h-3" />
-                              Success
+                              Sucesso
                             </Badge>
                           ) : (
                             <Badge variant="error" className="flex items-center gap-1 w-fit">
                               <XCircle className="w-3 h-3" />
-                              Error
+                              Erro
                             </Badge>
                           )}
                         </td>
@@ -290,7 +290,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                               {prompt.system_prompt && (
                                 <div>
                                   <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                    System Prompt
+                                    Prompt do Sistema
                                   </h4>
                                   <div className="bg-white rounded-lg p-4 border border-gray-200">
                                     <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
@@ -303,7 +303,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                               {/* User Prompt / Input */}
                               <div>
                                 <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                  Input (User Prompt)
+                                  Entrada (Prompt do Usuario)
                                 </h4>
                                 <div className="bg-white rounded-lg p-4 border border-gray-200">
                                   <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
@@ -315,14 +315,14 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                               {/* Response / Output */}
                               <div>
                                 <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                  Output (AI Response)
+                                  Saida (Resposta da IA)
                                 </h4>
                                 <div className="bg-white rounded-lg p-4 border border-gray-200">
                                   {prompt.status === 'error' ? (
                                     <div className="text-red-700">
-                                      <p className="font-semibold mb-2">Error:</p>
+                                      <p className="font-semibold mb-2">Erro:</p>
                                       <pre className="text-sm whitespace-pre-wrap font-mono">
-                                        {prompt.error_message || 'Unknown error'}
+                                        {prompt.error_message || 'Erro desconhecido'}
                                       </pre>
                                     </div>
                                   ) : (
@@ -337,7 +337,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                               {prompt.execution_metadata && Object.keys(prompt.execution_metadata).length > 0 && (
                                 <div>
                                   <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                    Execution Metadata
+                                    Metadados de Execucao
                                   </h4>
                                   <div className="bg-white rounded-lg p-4 border border-gray-200">
                                     <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
@@ -350,25 +350,25 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                               {/* Stats Summary */}
                               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div className="bg-white rounded-lg p-3 border border-gray-200">
-                                  <div className="text-xs text-gray-500 mb-1">Input Tokens</div>
+                                  <div className="text-xs text-gray-500 mb-1">Tokens de Entrada</div>
                                   <div className="text-lg font-semibold text-gray-900">
                                     {(prompt.input_tokens || 0).toLocaleString()}
                                   </div>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border border-gray-200">
-                                  <div className="text-xs text-gray-500 mb-1">Output Tokens</div>
+                                  <div className="text-xs text-gray-500 mb-1">Tokens de Saida</div>
                                   <div className="text-lg font-semibold text-gray-900">
                                     {(prompt.output_tokens || 0).toLocaleString()}
                                   </div>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border border-gray-200">
-                                  <div className="text-xs text-gray-500 mb-1">Total Cost</div>
+                                  <div className="text-xs text-gray-500 mb-1">Custo Total</div>
                                   <div className="text-lg font-semibold text-gray-900">
                                     {formatCost(prompt.total_cost_usd)}
                                   </div>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border border-gray-200">
-                                  <div className="text-xs text-gray-500 mb-1">Execution Time</div>
+                                  <div className="text-xs text-gray-500 mb-1">Tempo de Execucao</div>
                                   <div className="text-lg font-semibold text-gray-900">
                                     {formatTime(prompt.execution_time_ms)}
                                   </div>

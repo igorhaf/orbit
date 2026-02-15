@@ -22,7 +22,7 @@ export const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
   value,
   onChange,
   preview,
-  placeholder = 'Enter API key...',
+  placeholder = 'Digite a chave API...',
   disabled = false,
 }) => {
   const [showKey, setShowKey] = useState(false);
@@ -58,7 +58,7 @@ export const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
               onClick={handleCopy}
               disabled={disabled}
               className="h-7 w-7 p-0"
-              title="Copy API key"
+              title="Copiar chave API"
             >
               {copied ? (
                 <Check className="w-3 h-3 text-green-600" />
@@ -73,7 +73,7 @@ export const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
               onClick={() => setShowKey(!showKey)}
               disabled={disabled}
               className="h-7 w-7 p-0"
-              title={showKey ? 'Hide API key' : 'Show API key'}
+              title={showKey ? 'Ocultar chave API' : 'Mostrar chave API'}
             >
               {showKey ? (
                 <EyeOff className="w-3 h-3" />

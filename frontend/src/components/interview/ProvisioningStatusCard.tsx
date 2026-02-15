@@ -48,16 +48,16 @@ export function ProvisioningStatusCard({ provisioning, projectName, onClose }: P
     if (!provisioning.credentials) return;
 
     const text = `
-Database Credentials for ${projectName}:
+Credenciais do Banco de Dados para ${projectName}:
 ================================
-Database: ${provisioning.credentials.database}
-Username: ${provisioning.credentials.username}
-Password: ${provisioning.credentials.password}
-Application Port: ${provisioning.credentials.application_port}
-Database Port: ${provisioning.credentials.database_port}
-Adminer Port: ${provisioning.credentials.adminer_port}
+Banco de Dados: ${provisioning.credentials.database}
+Usuario: ${provisioning.credentials.username}
+Senha: ${provisioning.credentials.password}
+Porta da Aplicacao: ${provisioning.credentials.application_port}
+Porta do Banco: ${provisioning.credentials.database_port}
+Porta do Adminer: ${provisioning.credentials.adminer_port}
 
-Next Steps:
+Proximos Passos:
 ${provisioning.next_steps?.join('\n')}
 `.trim();
 
@@ -75,12 +75,12 @@ ${provisioning.next_steps?.join('\n')}
           </div>
           <div className="ml-3 flex-1">
             <h3 className="text-sm font-medium text-yellow-800">
-              Provisioning Not Available
+              Provisionamento Nao Disponivel
             </h3>
             <div className="mt-2 text-sm text-yellow-700">
-              <p>{provisioning.error || 'Project provisioning is not available for this stack combination.'}</p>
+              <p>{provisioning.error || 'O provisionamento do projeto nao esta disponivel para esta combinacao de stack.'}</p>
               <p className="mt-2">
-                Stack saved successfully, but automatic provisioning could not be completed.
+                Stack salvo com sucesso, mas o provisionamento automatico nao pode ser concluido.
               </p>
             </div>
           </div>
@@ -96,7 +96,7 @@ ${provisioning.next_steps?.join('\n')}
         <button
           onClick={onClose}
           className="absolute top-2 right-2 text-green-600 hover:text-green-800 transition-colors"
-          aria-label="Close provisioning status"
+          aria-label="Fechar status de provisionamento"
         >
           <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -112,13 +112,13 @@ ${provisioning.next_steps?.join('\n')}
         </div>
         <div className="ml-3 flex-1 pr-6">
           <h3 className="text-sm font-medium text-green-800">
-            Project Provisioned Successfully!
+            Projeto Provisionado com Sucesso!
           </h3>
           <div className="mt-2 text-sm text-green-700">
-            <p>Your project <strong>{provisioning.project_name}</strong> has been automatically provisioned.</p>
+            <p>Seu projeto <strong>{provisioning.project_name}</strong> foi provisionado automaticamente.</p>
             {provisioning.script_used && (
               <p className="mt-1 text-xs text-green-600">
-                Used: {provisioning.script_used}
+                Usado: {provisioning.script_used}
               </p>
             )}
           </div>
@@ -135,14 +135,14 @@ ${provisioning.next_steps?.join('\n')}
                     <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
-                    Hide Credentials
+                    Ocultar Credenciais
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
-                    Show Database Credentials
+                    Mostrar Credenciais do Banco
                   </>
                 )}
               </button>
@@ -151,7 +151,7 @@ ${provisioning.next_steps?.join('\n')}
                 <div className="mt-3 bg-white border border-green-200 rounded-md p-3">
                   <div className="flex justify-between items-center mb-2">
                     <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                      Database Credentials
+                      Credenciais do Banco de Dados
                     </h4>
                     <button
                       onClick={copyAllCredentials}
@@ -162,14 +162,14 @@ ${provisioning.next_steps?.join('\n')}
                           <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
-                          Copied!
+                          Copiado!
                         </>
                       ) : (
                         <>
                           <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                           </svg>
-                          Copy All
+                          Copiar Tudo
                         </>
                       )}
                     </button>
@@ -177,28 +177,28 @@ ${provisioning.next_steps?.join('\n')}
 
                   <div className="space-y-2 text-xs font-mono">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Database:</span>
+                      <span className="text-gray-600">Banco de Dados:</span>
                       <span className="text-gray-900 font-semibold">{provisioning.credentials.database}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Username:</span>
+                      <span className="text-gray-600">Usuario:</span>
                       <span className="text-gray-900 font-semibold">{provisioning.credentials.username}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Password:</span>
+                      <span className="text-gray-600">Senha:</span>
                       <span className="text-gray-900 font-semibold">{provisioning.credentials.password}</span>
                     </div>
                     <div className="border-t border-gray-200 my-2"></div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">App Port:</span>
+                      <span className="text-gray-600">Porta da Aplicacao:</span>
                       <span className="text-gray-900">{provisioning.credentials.application_port}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">DB Port:</span>
+                      <span className="text-gray-600">Porta do Banco:</span>
                       <span className="text-gray-900">{provisioning.credentials.database_port}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Adminer Port:</span>
+                      <span className="text-gray-600">Porta do Adminer:</span>
                       <span className="text-gray-900">{provisioning.credentials.adminer_port}</span>
                     </div>
                   </div>
@@ -210,7 +210,7 @@ ${provisioning.next_steps?.join('\n')}
           {/* Next Steps */}
           {provisioning.next_steps && provisioning.next_steps.length > 0 && (
             <div className="mt-4">
-              <h4 className="text-sm font-medium text-green-800 mb-2">Next Steps:</h4>
+              <h4 className="text-sm font-medium text-green-800 mb-2">Proximos Passos:</h4>
               <div className="bg-white border border-green-200 rounded-md p-3">
                 <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700 font-mono">
                   {provisioning.next_steps.map((step, index) => (
@@ -224,7 +224,7 @@ ${provisioning.next_steps?.join('\n')}
           {/* Location */}
           {provisioning.project_path && (
             <div className="mt-3 text-xs text-green-600">
-              <strong>Location:</strong> <code className="bg-green-100 px-1 py-0.5 rounded">{provisioning.project_path}</code>
+              <strong>Localizacao:</strong> <code className="bg-green-100 px-1 py-0.5 rounded">{provisioning.project_path}</code>
             </div>
           )}
         </div>

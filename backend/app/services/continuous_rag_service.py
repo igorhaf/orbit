@@ -159,11 +159,11 @@ class ContinuousRAGService:
         """
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path:
-            return {"error": "Project not found or no code_path", "new_files": 0, "modified_files": 0, "deleted_files": 0}
+            return {"error": "Projeto nao encontrado ou sem code_path", "new_files": 0, "modified_files": 0, "deleted_files": 0}
 
         code_path = Path(project.code_path)
         if not code_path.exists():
-            return {"error": f"Code path not found: {code_path}", "new_files": 0, "modified_files": 0, "deleted_files": 0}
+            return {"error": f"Caminho do codigo nao encontrado: {code_path}", "new_files": 0, "modified_files": 0, "deleted_files": 0}
 
         # Load .gitignore patterns (reuse from CodebaseMemoryService)
         self._memory._gitignore_patterns = self._memory._load_gitignore_patterns(code_path)
@@ -461,7 +461,7 @@ class ContinuousRAGService:
                     "state_id": state.id,
                     "file_path": state.file_path,
                     "status": "error",
-                    "error": f"Extraction timed out after {PER_FILE_TIMEOUT}s",
+                    "error": f"Extracao expirou apos {PER_FILE_TIMEOUT}s",
                 }
 
         # Launch all tasks with controlled concurrency
@@ -503,7 +503,7 @@ class ContinuousRAGService:
 
             if result["status"] == "error":
                 state.status = FileProcessingStatus.FAILED
-                state.error_message = result.get("error", "Unknown error")
+                state.error_message = result.get("error", "Erro desconhecido")
                 self.db.commit()
                 errors += 1
                 logger.error(f"Failed to process {result.get('file_path')}: {result.get('error')}")
