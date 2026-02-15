@@ -41,25 +41,25 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
       if (job.status === 'completed') {
         const result = job.result;
         const message = [
-          'Code indexed successfully!',
+          'Codigo indexado com sucesso!',
           '',
-          `Files scanned: ${result?.files_scanned || 0}`,
-          `Files indexed: ${result?.files_indexed || 0}`,
-          `Files skipped: ${result?.files_skipped || 0}`,
-          `Total lines: ${result?.total_lines?.toLocaleString() || 0}`,
+          `Arquivos verificados: ${result?.files_scanned || 0}`,
+          `Arquivos indexados: ${result?.files_indexed || 0}`,
+          `Arquivos ignorados: ${result?.files_skipped || 0}`,
+          `Total de linhas: ${result?.total_lines?.toLocaleString() || 0}`,
           '',
-          'Languages:',
+          'Linguagens:',
           ...Object.entries(result?.languages || {}).map(([lang, count]) => `  - ${lang}: ${count}`)
         ].join('\n');
 
         showSuccess(message);
         onIndexComplete();
       } else if (job.status === 'failed') {
-        showError(`Failed to index code: ${job.message}`);
+        showError(`Falha ao indexar codigo: ${job.message}`);
       }
     } catch (error: any) {
       console.error('Failed to index code:', error);
-      showError('Failed to index code: ' + (error.message || 'Unknown error'));
+      showError('Falha ao indexar codigo: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsIndexing(false);
     }
@@ -74,7 +74,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
             <div className="p-2 bg-purple-100 rounded-lg">
               <Code className="w-5 h-5 text-purple-600" />
             </div>
-            <CardTitle>Code Indexing</CardTitle>
+            <CardTitle>Indexacao de Codigo</CardTitle>
           </div>
           <div className="flex gap-2">
             <Button
@@ -86,12 +86,12 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
               {isIndexing ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Indexing...
+                  Indexando...
                 </>
               ) : (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2" />
-                  Index Code
+                  Indexar Codigo
                 </>
               )}
             </Button>
@@ -101,7 +101,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
               variant="secondary"
               size="sm"
             >
-              Force Re-index
+              Forcar Re-indexacao
             </Button>
           </div>
         </div>
@@ -113,7 +113,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
               <div className="flex items-center gap-3">
                 <FileCode className="w-5 h-5 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-500">Total Documents</p>
+                  <p className="text-sm text-gray-500">Total de Documentos</p>
                   <p className="text-xl font-semibold">{stats.total_documents}</p>
                 </div>
               </div>
@@ -121,9 +121,9 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
               <div className="flex items-center gap-3">
                 <Code className="w-5 h-5 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-500">Avg Content Length</p>
+                  <p className="text-sm text-gray-500">Tamanho Medio do Conteudo</p>
                   <p className="text-xl font-semibold">
-                    {Math.round(stats.avg_content_length)} chars
+                    {Math.round(stats.avg_content_length)} caracteres
                   </p>
                 </div>
               </div>
@@ -131,7 +131,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
               <div className="flex items-center gap-3">
                 <Clock className="w-5 h-5 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-500">Document Types</p>
+                  <p className="text-sm text-gray-500">Tipos de Documento</p>
                   <div className="flex gap-1 mt-1 flex-wrap">
                     {stats.document_types.slice(0, 3).map(type => (
                       <Badge key={type} variant="outline" className="text-xs">
@@ -140,7 +140,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
                     ))}
                     {stats.document_types.length > 3 && (
                       <Badge variant="outline" className="text-xs">
-                        +{stats.document_types.length - 3} more
+                        +{stats.document_types.length - 3} mais
                       </Badge>
                     )}
                   </div>
@@ -151,15 +151,15 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
             {indexJob?.result && (
               <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-sm font-medium text-green-800">
-                  Last Indexing Results:
+                  Ultimos Resultados de Indexacao:
                 </p>
                 <div className="mt-2 text-sm text-green-700 space-y-1">
-                  <p>Files scanned: {indexJob.result.files_scanned}</p>
-                  <p>Files indexed: {indexJob.result.files_indexed}</p>
-                  <p>Files skipped: {indexJob.result.files_skipped}</p>
-                  <p>Total lines: {indexJob.result.total_lines?.toLocaleString()}</p>
+                  <p>Arquivos verificados: {indexJob.result.files_scanned}</p>
+                  <p>Arquivos indexados: {indexJob.result.files_indexed}</p>
+                  <p>Arquivos ignorados: {indexJob.result.files_skipped}</p>
+                  <p>Total de linhas: {indexJob.result.total_lines?.toLocaleString()}</p>
                   <div>
-                    <p className="font-medium mt-2">Languages:</p>
+                    <p className="font-medium mt-2">Linguagens:</p>
                     <div className="flex flex-wrap gap-2 mt-1">
                       {Object.entries(indexJob.result.languages).map(([lang, count]) => (
                         <Badge key={lang} className="bg-purple-100 text-purple-700">
@@ -175,8 +175,8 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
         ) : (
           <div className="text-center py-8 text-gray-500">
             <FileCode className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-            <p>No code indexed yet</p>
-            <p className="text-sm">Click "Index Code" to start</p>
+            <p>Nenhum codigo indexado ainda</p>
+            <p className="text-sm">Clique em "Indexar Codigo" para comecar</p>
           </div>
         )}
       </CardContent>

@@ -46,7 +46,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
       case 'uploaded':
         return (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-gray-700">File uploaded successfully. Waiting to start analysis...</p>
+            <p className="text-gray-700">Arquivo enviado com sucesso. Aguardando inicio da analise...</p>
           </div>
         );
       case 'analyzing':
@@ -54,19 +54,19 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div className="flex items-center gap-3">
               <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-blue-700 font-medium">Analyzing your project...</p>
+              <p className="text-blue-700 font-medium">Analisando seu projeto...</p>
             </div>
             <p className="text-sm text-blue-600 mt-2">
-              This may take a few minutes depending on project size.
+              Isso pode levar alguns minutos dependendo do tamanho do projeto.
             </p>
           </div>
         );
       case 'failed':
         return (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-700 font-medium">Analysis failed</p>
+            <p className="text-red-700 font-medium">Analise falhou</p>
             <p className="text-sm text-red-600 mt-1">
-              Please try uploading again or contact support if the issue persists.
+              Tente enviar novamente ou entre em contato com o suporte se o problema persistir.
             </p>
           </div>
         );
@@ -79,20 +79,20 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Analysis Status</CardTitle>
+          <CardTitle>Status da Analise</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
             <div>
-              <p className="text-sm text-gray-600">File:</p>
+              <p className="text-sm text-gray-600">Arquivo:</p>
               <p className="font-medium">{analysis.original_filename}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Size:</p>
+              <p className="text-sm text-gray-600">Tamanho:</p>
               <p className="font-medium">{formatBytes(analysis.file_size_bytes)}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Uploaded:</p>
+              <p className="text-sm text-gray-600">Enviado:</p>
               <p className="font-medium">{new Date(analysis.created_at).toLocaleString()}</p>
             </div>
             {renderStatusMessage()}
@@ -111,33 +111,33 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
             <div>
               <CardTitle className="text-xl">{analysis.original_filename}</CardTitle>
               <p className="text-sm text-gray-600 mt-1">
-                Analyzed on {analysis.completed_at && new Date(analysis.completed_at).toLocaleString()}
+                Analisado em {analysis.completed_at && new Date(analysis.completed_at).toLocaleString()}
               </p>
             </div>
             {!analysis.orchestrator_generated && (
               <Button variant="primary" onClick={onGenerateOrchestrator}>
-                Generate Orchestrator
+                Gerar Orquestrador
               </Button>
             )}
             {analysis.orchestrator_generated && (
-              <Badge variant="success">Orchestrator Generated</Badge>
+              <Badge variant="success">Orquestrador Gerado</Badge>
             )}
           </div>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <p className="text-sm text-gray-600">Detected Stack</p>
-              <p className="font-semibold text-lg mt-1">{analysis.detected_stack || 'Unknown'}</p>
+              <p className="text-sm text-gray-600">Stack Detectada</p>
+              <p className="font-semibold text-lg mt-1">{analysis.detected_stack || 'Desconhecido'}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Confidence</p>
+              <p className="text-sm text-gray-600">Confianca</p>
               <p className="font-semibold text-lg mt-1">
                 {analysis.confidence_score ? `${analysis.confidence_score}%` : 'N/A'}
               </p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">File Size</p>
+              <p className="text-sm text-gray-600">Tamanho do Arquivo</p>
               <p className="font-semibold text-lg mt-1">{formatBytes(analysis.file_size_bytes)}</p>
             </div>
           </div>
@@ -148,10 +148,10 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
       <div className="border-b border-gray-200">
         <nav className="flex gap-4">
           {[
-            { id: 'overview', label: 'Overview' },
-            { id: 'structure', label: 'File Structure' },
-            { id: 'conventions', label: 'Conventions' },
-            { id: 'patterns', label: 'Patterns' },
+            { id: 'overview', label: 'Visao Geral' },
+            { id: 'structure', label: 'Estrutura de Arquivos' },
+            { id: 'conventions', label: 'Convencoes' },
+            { id: 'patterns', label: 'Padroes' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -174,19 +174,19 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
           {activeTab === 'overview' && (
             <div className="space-y-6">
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Analysis Summary</h3>
+                <h3 className="font-semibold text-gray-900 mb-3">Resumo da Analise</h3>
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Stack:</span>
-                    <span className="font-medium">{analysis.detected_stack || 'Unknown'}</span>
+                    <span className="text-gray-600">Stack Detectada:</span>
+                    <span className="font-medium">{analysis.detected_stack || 'Desconhecido'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Confidence:</span>
+                    <span className="text-gray-600">Confianca:</span>
                     <span className="font-medium">{analysis.confidence_score || 0}%</span>
                   </div>
                   {analysis.orchestrator_key && (
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Orchestrator Key:</span>
+                      <span className="text-gray-600">Chave do Orquestrador:</span>
                       <span className="font-mono text-sm">{analysis.orchestrator_key}</span>
                     </div>
                   )}
@@ -195,7 +195,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
 
               {analysis.dependencies && (
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Dependencies</h3>
+                  <h3 className="font-semibold text-gray-900 mb-3">Dependencias</h3>
                   <div className="bg-gray-900 rounded-lg p-4 font-mono text-sm text-gray-100 overflow-auto max-h-64">
                     <pre>{JSON.stringify(analysis.dependencies, null, 2)}</pre>
                   </div>
@@ -206,20 +206,20 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
 
           {activeTab === 'structure' && (
             <div>
-              <h3 className="font-semibold text-gray-900 mb-3">File Structure</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Estrutura de Arquivos</h3>
               {analysis.file_structure ? (
                 <div className="bg-gray-900 rounded-lg p-4 font-mono text-sm text-gray-100 overflow-auto max-h-96">
                   <pre>{JSON.stringify(analysis.file_structure, null, 2)}</pre>
                 </div>
               ) : (
-                <p className="text-gray-500">No file structure data available</p>
+                <p className="text-gray-500">Nenhum dado de estrutura de arquivo disponivel</p>
               )}
             </div>
           )}
 
           {activeTab === 'conventions' && (
             <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Code Conventions</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Convencoes de Codigo</h3>
               {analysis.conventions ? (
                 <div className="space-y-4">
                   {Object.entries(analysis.conventions).map(([key, value]) => (
@@ -234,14 +234,14 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500">No conventions data available</p>
+                <p className="text-gray-500">Nenhum dado de convencoes disponivel</p>
               )}
             </div>
           )}
 
           {activeTab === 'patterns' && (
             <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Code Patterns</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Padroes de Codigo</h3>
               {analysis.patterns ? (
                 <div className="space-y-4">
                   {Object.entries(analysis.patterns).map(([key, value]) => (
@@ -256,7 +256,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500">No patterns data available</p>
+                <p className="text-gray-500">Nenhum dado de padroes disponivel</p>
               )}
             </div>
           )}

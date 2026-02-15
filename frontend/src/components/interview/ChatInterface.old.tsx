@@ -350,7 +350,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       });
 
       // PROMPT #56 - Enhanced error reporting
-      const errorMessage = error.response?.data?.detail || error.message || 'Unknown error';
+      const errorMessage = error.response?.data?.detail || error.message || 'Erro desconhecido';
       alert(
         `❌ Falha ao iniciar entrevista automaticamente:\n\n${errorMessage}\n\n` +
         `Você pode enviar uma mensagem manualmente para começar a conversa.`

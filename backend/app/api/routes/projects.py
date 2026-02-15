@@ -334,7 +334,7 @@ async def scan_codebase_memory(
         },
         project_id=project_id,
         deep_link=deep_link,
-        notification_title=f"Analyzing code in '{folder_name}' ({scan_depth})..."
+        notification_title=f"Analisando codigo em '{folder_name}' ({scan_depth})..."
     )
 
     # Start background task via priority queue
@@ -376,7 +376,7 @@ async def _process_memory_scan_async(
         # Get folder name for notification
         folder_name = Path(code_path).name
 
-        job_manager.update_progress(job_id, 10.0, f"Starting {scan_depth} scan...")
+        job_manager.update_progress(job_id, 10.0, f"Iniciando scan {scan_depth}...")
 
         memory_service = CodebaseMemoryService(db)
 
@@ -426,7 +426,7 @@ async def _process_memory_scan_async(
                 )
 
                 # PROMPT #284 - Enrich wiki from updated RAG data (like quick-create does)
-                job_manager.update_progress(job_id, 82.0, "Enriching project wiki from scan findings...")
+                job_manager.update_progress(job_id, 82.0, "Enriquecendo wiki do projeto a partir dos achados do scan...")
                 try:
                     await _enrich_context_from_rag(db, project_id)
                     logger.info(f"Wiki enrichment done for project {project_id}")
@@ -434,7 +434,7 @@ async def _process_memory_scan_async(
                     logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
 
                 # PROMPT #284 - Trigger card generation from business rules (like quick-create does)
-                job_manager.update_progress(job_id, 85.0, "Generating cards from business rules...")
+                job_manager.update_progress(job_id, 85.0, "Gerando cards a partir das regras de negocio...")
                 try:
                     has_rules = bool(
                         result.get("business_rules")
@@ -448,7 +448,7 @@ async def _process_memory_scan_async(
                             input_data={"project_id": str(project_id)},
                             project_id=project_id,
                             deep_link=f"/projects/{project_id}",
-                            notification_title=f"Generating cards for '{project.name}'..."
+                            notification_title=f"Gerando cards para '{project.name}'..."
                         )
                         from app.services.job_executor import PriorityJobExecutor as CardExec
                         card_executor = CardExec.get_instance()
@@ -463,7 +463,7 @@ async def _process_memory_scan_async(
         if project_id:
             effective_max = _effective_max_patterns(db, project_id)
             if effective_max > 0:
-                job_manager.update_progress(job_id, 90.0, "Discovering code patterns and generating specs...")
+                job_manager.update_progress(job_id, 90.0, "Descobrindo padroes de codigo e gerando specs...")
                 try:
                     discovery_service = PatternDiscoveryService(db)
                     discovered_patterns = await discovery_service.discover_patterns(
@@ -483,13 +483,13 @@ async def _process_memory_scan_async(
             else:
                 logger.info(f"📋 Project {project_id} already has {MAX_SPECS_PER_PROJECT} specs, skipping discovery")
 
-        job_manager.update_progress(job_id, 98.0, "Finalizing results...")
+        job_manager.update_progress(job_id, 98.0, "Finalizando resultados...")
 
         # PROMPT #133 - Update notification_title for success
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
             suggested_title = result.get("suggested_title", folder_name)
-            job.notification_title = f"✅ Analysis completed: '{suggested_title}'"
+            job.notification_title = f"✅ Analise concluida: '{suggested_title}'"
             db.commit()
 
         job_manager.complete_job(job_id, result)
@@ -503,7 +503,7 @@ async def _process_memory_scan_async(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"❌ Analysis error: {error_msg}"
+                job.notification_title = f"❌ Erro na analise: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -603,7 +603,7 @@ async def quick_create_project(
         },
         project_id=db_project.id,
         deep_link=deep_link,
-        notification_title=f"Analyzing '{folder_name}' ({scan_depth})..."
+        notification_title=f"Analisando '{folder_name}' ({scan_depth})..."
     )
 
     # Launch background task that will update project with results
@@ -650,11 +650,11 @@ async def _process_quick_create_scan(
 
         folder_name = Path(code_path).name
 
-        job_manager.update_progress(job_id, 10.0, "Scanning codebase structure...")
+        job_manager.update_progress(job_id, 10.0, "Escaneando estrutura de codigo...")
 
         memory_service = CodebaseMemoryService(db)
 
-        job_manager.update_progress(job_id, 30.0, "Analyzing code and extracting patterns...")
+        job_manager.update_progress(job_id, 30.0, "Analisando codigo e extraindo padroes...")
 
         # PROMPT #163 - Pass scan_depth for configurable analysis depth
         result = await memory_service.scan_and_memorize(
@@ -663,7 +663,7 @@ async def _process_quick_create_scan(
             scan_depth=scan_depth
         )
 
-        job_manager.update_progress(job_id, 80.0, "Updating project with findings...")
+        job_manager.update_progress(job_id, 80.0, "Atualizando projeto com achados...")
 
         # PROMPT #137 - Update project name with suggested title
         project = db.query(Project).filter(Project.id == project_id).first()
@@ -686,7 +686,7 @@ async def _process_quick_create_scan(
         # PROMPT #202 - Discover specs and sync to RAG after memory scan
         effective_max = _effective_max_patterns(db, project_id)
         if effective_max > 0:
-            job_manager.update_progress(job_id, 85.0, "Discovering code patterns and generating specs...")
+            job_manager.update_progress(job_id, 85.0, "Descobrindo padroes de codigo e gerando specs...")
             try:
                 discovery_service = PatternDiscoveryService(db)
                 discovered_patterns = await discovery_service.discover_patterns(
@@ -707,13 +707,13 @@ async def _process_quick_create_scan(
         else:
             logger.info(f"📋 Project {project_id} already has {MAX_SPECS_PER_PROJECT} specs, skipping discovery")
 
-        job_manager.update_progress(job_id, 95.0, "Finalizing...")
+        job_manager.update_progress(job_id, 95.0, "Finalizando...")
 
         # Update notification title for success
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
             final_title = project.name if project else folder_name
-            job.notification_title = f"✅ Project created: '{final_title}'"
+            job.notification_title = f"✅ Projeto criado: '{final_title}'"
             db.commit()
 
         job_manager.complete_job(job_id, result)
@@ -730,7 +730,7 @@ async def _process_quick_create_scan(
                 },
                 project_id=project_id,
                 deep_link=f"/projects/{project_id}/backlog",
-                notification_title=f"Generating cards for '{project.name if project else 'project'}'..."
+                notification_title=f"Gerando cards para '{project.name if project else 'projeto'}'..."
             )
             # Launch card generation in background via priority queue
             from app.services.job_executor import PriorityJobExecutor
@@ -748,7 +748,7 @@ async def _process_quick_create_scan(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"❌ Analysis error: {error_msg}"
+                job.notification_title = f"❌ Erro na analise: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -835,7 +835,7 @@ async def create_and_process_project(
         },
         project_id=db_project.id,
         deep_link=f"/projects/{db_project.id}",
-        notification_title=f"Processing '{folder_name}'..."
+        notification_title=f"Processando '{folder_name}'..."
     )
 
     # Launch pipeline in background
@@ -881,11 +881,11 @@ async def _process_project_pipeline(
         folder_name = Path(code_path).name
 
         # === Step A: Memory Scan (0-80%) ===
-        job_manager.update_progress(job_id, 5.0, "Starting codebase scan...")
+        job_manager.update_progress(job_id, 5.0, "Iniciando scan do codebase...")
 
         memory_service = CodebaseMemoryService(db)
 
-        job_manager.update_progress(job_id, 15.0, "Analyzing code structure...")
+        job_manager.update_progress(job_id, 15.0, "Analisando estrutura de codigo...")
 
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
@@ -893,7 +893,7 @@ async def _process_project_pipeline(
             scan_depth=scan_depth
         )
 
-        job_manager.update_progress(job_id, 70.0, "Scan completed. Saving results...")
+        job_manager.update_progress(job_id, 70.0, "Scan concluido. Salvando resultados...")
 
         # Update project with scan results
         project = db.query(Project).filter(Project.id == project_id).first()
@@ -919,9 +919,9 @@ async def _process_project_pipeline(
                     langs = scan_info.get("languages", {})
                     lang_str = ", ".join(f"{k} ({v})" for k, v in sorted(langs.items(), key=lambda x: -x[1])[:5]) if langs else "N/A"
                     summary = (
-                        f"Codebase with {scan_info.get('code_files', 0)} code files "
+                        f"Codebase com {scan_info.get('code_files', 0)} arquivos de codigo "
                         f"({scan_info.get('total_files', 0)} total). "
-                        f"Languages: {lang_str}."
+                        f"Linguagens: {lang_str}."
                     )
             if summary:
                 project.description = summary[:2000]
@@ -941,7 +941,7 @@ async def _process_project_pipeline(
                 logger.warning(f"Failed to register files for batch processing (non-blocking): {e}")
 
         # PROMPT #243 - Enrich wiki immediately after initial scan
-        job_manager.update_progress(job_id, 82.0, "Enriching project wiki from scan findings...")
+        job_manager.update_progress(job_id, 82.0, "Enriquecendo wiki do projeto a partir dos achados do scan...")
         try:
             await _enrich_context_from_rag(db, project_id)
             logger.info(f"Initial wiki enrichment done for project {project_id}")
@@ -949,7 +949,7 @@ async def _process_project_pipeline(
             logger.warning(f"Initial wiki enrichment failed (non-blocking): {e}")
 
         # === Step B: Generate initial cards from business rules (PROMPT #260) ===
-        job_manager.update_progress(job_id, 85.0, "Generating initial cards from business rules...")
+        job_manager.update_progress(job_id, 85.0, "Gerando cards iniciais a partir das regras de negocio...")
         try:
             has_rules = bool(
                 project.initial_memory_context
@@ -963,7 +963,7 @@ async def _process_project_pipeline(
                     input_data={"project_id": str(project_id)},
                     project_id=project_id,
                     deep_link=f"/projects/{project_id}",
-                    notification_title=f"Generating cards for '{project.name if project else 'project'}'..."
+                    notification_title=f"Gerando cards para '{project.name if project else 'projeto'}'..."
                 )
                 from app.services.job_executor import PriorityJobExecutor as CardExec
                 card_executor = CardExec.get_instance()
@@ -975,7 +975,7 @@ async def _process_project_pipeline(
             logger.warning(f"Card generation trigger failed (non-blocking): {e}")
 
         # === Step C: Finalize (90-95%) ===
-        job_manager.update_progress(job_id, 92.0, "Finalizing project...")
+        job_manager.update_progress(job_id, 92.0, "Finalizando projeto...")
 
         project.status = ProjectStatus.active
         project.updated_at = datetime.utcnow()
@@ -985,7 +985,7 @@ async def _process_project_pipeline(
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
             final_title = project.name if project else folder_name
-            job.notification_title = f"Project ready: '{final_title}'"
+            job.notification_title = f"Projeto pronto: '{final_title}'"
             db.commit()
 
         job_manager.complete_job(job_id, {
@@ -1030,7 +1030,7 @@ async def _process_project_pipeline(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"Pipeline error: {error_msg}"
+                job.notification_title = f"Erro de pipeline: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -1246,10 +1246,10 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             # This raw catalog is a supplementary reference with ALL extracted rules.
             if rules:
                 rules_md_parts = [
-                    "## Reference Catalog - Raw Rules\n",
-                    f"Total rules extracted from codebase: **{len(rules)}**\n",
-                    "These are the raw rules automatically extracted from source code.",
-                    "The main Business Rules page contains the enriched and organized version.\n",
+                    "## Catalogo de Referencia - Regras Brutas\n",
+                    f"Total de regras extraidas do codebase: **{len(rules)}**\n",
+                    "Estas sao as regras brutas extraidas automaticamente do codigo-fonte.",
+                    "A pagina principal de Regras de Negocio contem a versao enriquecida e organizada.\n",
                 ]
                 for i, rule in enumerate(rules, 1):
                     rule_text = rule[:500] if len(rule) > 500 else rule
@@ -1264,7 +1264,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                 )
                 _upsert_wiki_page(
                     db, project_id, "regras-catalogo-bruto",
-                    "Reference Catalog - Raw Rules", rules_md,
+                    "Catalogo de Referencia - Regras Brutas", rules_md,
                     12, "ai_generated",
                     parent_id=regras_parent.id if regras_parent else None,
                 )
@@ -1353,11 +1353,11 @@ async def _process_cards_from_memory_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Card generation started for project {project_id}")
 
-        job_manager.update_progress(job_id, 5.0, "Preparing card generation...")
+        job_manager.update_progress(job_id, 5.0, "Preparando geracao de cards...")
 
         context_service = ContextGeneratorService(db)
 
-        job_manager.update_progress(job_id, 10.0, "Generating business rule cards...")
+        job_manager.update_progress(job_id, 10.0, "Gerando cards de regras de negocio...")
 
         # Extract epic_count from job input_data (default: 10)
         job_obj = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
@@ -1373,7 +1373,7 @@ async def _process_cards_from_memory_async(
             epic_count=epic_count
         )
 
-        job_manager.update_progress(job_id, 95.0, "Finalizing...")
+        job_manager.update_progress(job_id, 95.0, "Finalizando...")
 
         # Update notification title with results
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
@@ -1382,11 +1382,11 @@ async def _process_cards_from_memory_async(
             epic_count = len(result.get("suggested_epics", []))
 
             if result.get("skipped"):
-                job.notification_title = f"ℹ️ Cards already exist for this project"
+                job.notification_title = f"ℹ️ Cards ja existem para este projeto"
             elif business_count > 0 or epic_count > 0:
-                job.notification_title = f"✅ {business_count} rules + {epic_count} epics generated"
+                job.notification_title = f"✅ {business_count} regras + {epic_count} epicos gerados"
             else:
-                job.notification_title = f"ℹ️ No cards generated (no rules/epics detected)"
+                job.notification_title = f"ℹ️ Nenhum card gerado (nenhuma regra/epico detectado)"
 
             db.commit()
 
@@ -1401,7 +1401,7 @@ async def _process_cards_from_memory_async(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"❌ Card generation error: {error_msg}"
+                job.notification_title = f"❌ Erro na geracao de cards: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -2379,7 +2379,7 @@ async def generate_cards_from_memory(
         },
         project_id=project_id,
         deep_link=f"/projects/{project_id}/backlog",
-        notification_title=f"Generating {epic_count} epics for '{project.name}'..."
+        notification_title=f"Gerando {epic_count} epicos para '{project.name}'..."
     )
 
     # Launch card generation in background via priority queue

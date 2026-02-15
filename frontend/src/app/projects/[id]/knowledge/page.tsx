@@ -107,7 +107,7 @@ export default function KnowledgePage() {
       setProject(res.data || res);
     } catch (error) {
       console.error('Failed to load project:', error);
-      showError('Failed to load project');
+      showError('Falha ao carregar projeto');
     }
   }, [projectId, showError]);
 
@@ -122,7 +122,7 @@ export default function KnowledgePage() {
       setRules(res);
     } catch (error) {
       console.error('Failed to load rules:', error);
-      showError('Failed to load business rules');
+      showError('Falha ao carregar regras de negocio');
     }
   }, [projectId, categoryFilter, sourceFilter, showError]);
 
@@ -133,7 +133,7 @@ export default function KnowledgePage() {
       setDocuments(res.documents);
     } catch (error) {
       console.error('Failed to load documents:', error);
-      showError('Failed to load documents');
+      showError('Falha ao carregar documentos');
     }
   }, [projectId, showError]);
 
@@ -165,20 +165,20 @@ export default function KnowledgePage() {
   // Add rule handler
   const handleAddRule = async () => {
     if (!newRule.title.trim() || !newRule.description.trim()) {
-      showError('Title and description are required');
+      showError('Titulo e descricao sao obrigatorios');
       return;
     }
 
     setSubmitting(true);
     try {
       await knowledgeApi.addRule(projectId, newRule);
-      showSuccess(`Rule "${newRule.title}" added successfully`);
+      showSuccess(`Regra "${newRule.title}" adicionada com sucesso`);
       setShowAddDialog(false);
       setNewRule({ title: '', description: '', category: 'validation' });
       loadRules();
       loadStats();
     } catch (error: any) {
-      showError(error.message || 'Failed to add rule');
+      showError(error.message || 'Falha ao adicionar regra');
     } finally {
       setSubmitting(false);
     }
@@ -186,15 +186,15 @@ export default function KnowledgePage() {
 
   // Delete rule handler
   const handleDeleteRule = async (ruleId: string, ruleTitle: string) => {
-    if (!confirm(`Delete rule "${ruleTitle}"?`)) return;
+    if (!confirm(`Deletar regra "${ruleTitle}"?`)) return;
 
     try {
       await knowledgeApi.deleteRule(projectId, ruleId);
-      showSuccess('Rule deleted');
+      showSuccess('Regra excluida');
       loadRules();
       loadStats();
     } catch (error: any) {
-      showError(error.message || 'Failed to delete rule');
+      showError(error.message || 'Falha ao excluir regra');
     }
   };
 
@@ -206,11 +206,11 @@ export default function KnowledgePage() {
     setUploading(true);
     try {
       const res = await knowledgeApi.uploadDocument(projectId, file);
-      showSuccess(`Document "${res.filename}" uploaded (${res.chunks_indexed} chunks indexed)`);
+      showSuccess(`Documento "${res.filename}" enviado (${res.chunks_indexed} chunks indexados)`);
       loadDocuments();
       loadStats();
     } catch (error: any) {
-      showError(error.message || 'Failed to upload document');
+      showError(error.message || 'Falha ao enviar documento');
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -221,15 +221,15 @@ export default function KnowledgePage() {
 
   // Delete document handler
   const handleDeleteDocument = async (filename: string) => {
-    if (!confirm(`Delete document "${filename}" and all its chunks?`)) return;
+    if (!confirm(`Deletar documento "${filename}" e todos os seus chunks?`)) return;
 
     try {
       const res = await knowledgeApi.deleteDocument(projectId, filename);
-      showSuccess(`Document deleted (${res.chunks_deleted} chunks removed)`);
+      showSuccess(`Documento excluido (${res.chunks_deleted} chunks removidos)`);
       loadDocuments();
       loadStats();
     } catch (error: any) {
-      showError(error.message || 'Failed to delete document');
+      showError(error.message || 'Falha ao excluir documento');
     }
   };
 
@@ -269,7 +269,7 @@ export default function KnowledgePage() {
               {uploading ? (
                 <>
                   <span className="animate-spin mr-2">...</span>
-                  Uploading...
+                  Enviando...
                 </>
               ) : (
                 <>
@@ -424,7 +424,7 @@ export default function KnowledgePage() {
                         </div>
                         <p className="text-sm text-gray-600">{rule.description}</p>
                         <p className="text-xs text-gray-400 mt-2">
-                          Added {new Date(rule.created_at).toLocaleDateString()}
+                          Adicionado em {new Date(rule.created_at).toLocaleDateString()}
                         </p>
                       </div>
                       <button
@@ -475,8 +475,8 @@ export default function KnowledgePage() {
                         <div>
                           <h3 className="font-medium text-gray-900">{doc.filename}</h3>
                           <p className="text-sm text-gray-500">
-                            {doc.chunks} chunks indexed
-                            {doc.uploaded_at && ` • Uploaded ${new Date(doc.uploaded_at).toLocaleDateString()}`}
+                            {doc.chunks} chunks indexados
+                            {doc.uploaded_at && ` • Enviado em ${new Date(doc.uploaded_at).toLocaleDateString()}`}
                           </p>
                         </div>
                       </div>

@@ -302,7 +302,7 @@ export function GitCommitsList({ projectId }: Props) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || 'Operation failed');
+        throw new Error(data.detail || 'Operacao falhou');
       }
 
       setOperationResult({ success: true, message: data.message });
@@ -314,7 +314,7 @@ export function GitCommitsList({ projectId }: Props) {
 
       return true;
     } catch (err: any) {
-      setOperationResult({ success: false, message: err.message || 'Operation failed' });
+      setOperationResult({ success: false, message: err.message || 'Operacao falhou' });
       return false;
     } finally {
       setOperationLoading(false);

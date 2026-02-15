@@ -168,7 +168,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       await wikiApi.create(projectId, {
         title: newPage.title,
         slug,
-        content: newPage.content || `## ${newPage.title}\n\nPage content.`,
+        content: newPage.content || `## ${newPage.title}\n\nConteudo da pagina.`,
         source: 'manual',
       });
       showSuccess('Pagina criada');
@@ -208,7 +208,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
 
   const handleDelete = async () => {
     if (!selectedPage) return;
-    if (!confirm(`Delete page "${selectedPage.title}"?`)) return;
+    if (!confirm(`Deletar pagina "${selectedPage.title}"?`)) return;
 
     try {
       await wikiApi.delete(projectId, selectedSlug!);
@@ -402,7 +402,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                       <span className="px-1.5 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">AI</span>
                     )}
                     {page.source === 'enrichment' && (
-                      <span className="px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Updated</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Atualizado</span>
                     )}
                     {page.source === 'manual' && (
                       <span className="px-1.5 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">Manual</span>
@@ -447,7 +447,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                     <span className="px-2 py-0.5 rounded-full text-xs bg-purple-100 text-purple-700">AI</span>
                   )}
                   {selectedPage.source === 'enrichment' && (
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Updated</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-green-100 text-green-700">Atualizado</span>
                   )}
                 </div>
                 <div className="flex items-center gap-2">

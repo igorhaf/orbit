@@ -46,7 +46,7 @@ const MODEL_CONFIGS = [
   { key: 'task_execution', label: 'Execucao de Tarefas', usageType: AIModelUsageType.TASK_EXECUTION, icon: Cpu, color: 'text-orange-600 bg-orange-50', description: 'Executando prompts de tarefas e geracao de codigo' },
   { key: 'pattern_discovery', label: 'Descoberta de Padroes', usageType: AIModelUsageType.PATTERN_DISCOVERY, icon: Search, color: 'text-cyan-600 bg-cyan-50', description: 'Descoberta de padroes de codigo e specs por IA' },
   { key: 'queue_orchestration', label: 'Orquestracao de Fila', usageType: AIModelUsageType.QUEUE_ORCHESTRATION, icon: Layers, color: 'text-pink-600 bg-pink-50', description: 'Execucao de prompts da fila de orquestracao' },
-  { key: 'general', label: 'General', usageType: AIModelUsageType.GENERAL, icon: Globe, color: 'text-gray-600 bg-gray-100', description: 'Modelo fallback para todas as outras operacoes' },
+  { key: 'general', label: 'Geral', usageType: AIModelUsageType.GENERAL, icon: Globe, color: 'text-gray-600 bg-gray-100', description: 'Modelo fallback para todas as outras operacoes' },
 ];
 
 type TabId = 'models' | 'queue' | 'general';
@@ -408,11 +408,11 @@ export default function SettingsPage() {
                         value={queueSettings.queue_auto_sort_strategy}
                         onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_sort_strategy: e.target.value })}
                         options={[
-                          { value: 'balanced', label: 'Balanced (35% hierarchy, 30% priority, 25% dependency, 10% age)' },
-                          { value: 'hierarchy_first', label: 'Hierarchy First (epics > stories > tasks > subtasks)' },
-                          { value: 'priority_first', label: 'Priority First (critical > high > medium > low)' },
-                          { value: 'dependency_first', label: 'Dependency First (resolve dependencies first)' },
-                          { value: 'age_first', label: 'Age First (oldest cards first)' },
+                          { value: 'balanced', label: 'Balanceado (35% hierarquia, 30% prioridade, 25% dependencia, 10% idade)' },
+                          { value: 'hierarchy_first', label: 'Hierarquia Primeiro (epics > stories > tasks > subtasks)' },
+                          { value: 'priority_first', label: 'Prioridade Primeiro (critico > alto > medio > baixo)' },
+                          { value: 'dependency_first', label: 'Dependencia Primeiro (resolver dependencias primeiro)' },
+                          { value: 'age_first', label: 'Idade Primeiro (cards mais antigos primeiro)' },
                         ]}
                       />
                     </div>
@@ -435,7 +435,7 @@ export default function SettingsPage() {
                           value={queueSettings.queue_max_concurrent}
                           onChange={(e) => setQueueSettings({ ...queueSettings, queue_max_concurrent: e.target.value })}
                           options={[
-                            { value: '1', label: '1 (Sequential)' },
+                            { value: '1', label: '1 (Sequencial)' },
                             { value: '2', label: '2' },
                             { value: '3', label: '3' },
                             { value: '5', label: '5' },

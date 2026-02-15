@@ -29,7 +29,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
   const isCurrentVersion = (versionId: string) => versionId === currentVersionId;
 
   const getVersionChangeSummary = (version: Prompt, previousVersion?: Prompt) => {
-    if (!previousVersion) return 'Initial version';
+    if (!previousVersion) return 'Versao inicial';
 
     const changes: string[] = [];
 
@@ -47,7 +47,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
     }
 
     return changes.length > 0
-      ? `Updated ${changes.join(', ')}`
+      ? `Atualizado ${changes.join(', ')}`
       : 'Nenhuma alteracao detectada';
   };
 
@@ -57,16 +57,16 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <GitBranch className="w-5 h-5 text-gray-600" />
-            <CardTitle>Version History</CardTitle>
+            <CardTitle>Historico de Versoes</CardTitle>
           </div>
-          <Badge variant="default">{sortedVersions.length} versions</Badge>
+          <Badge variant="default">{sortedVersions.length} versoes</Badge>
         </div>
       </CardHeader>
       <CardContent>
         {sortedVersions.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>No version history available</p>
+            <p>Nenhum historico de versao disponivel</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -89,15 +89,15 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
                       {/* Version Header */}
                       <div className="flex items-center gap-2 mb-2">
                         <span className="font-semibold text-gray-900">
-                          Version {version.version}
+                          Versao {version.version}
                         </span>
                         {isCurrent && (
-                          <Badge variant="success">Current</Badge>
+                          <Badge variant="success">Atual</Badge>
                         )}
                         {version.is_reusable && (
                           <Badge variant="info" className="text-xs">
                             <Tag className="w-3 h-3 mr-1" />
-                            Reusable
+                            Reutilizavel
                           </Badge>
                         )}
                       </div>
@@ -120,7 +120,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
                         )}
                         {version.components && version.components.length > 0 && (
                           <span className="text-purple-600">
-                            {version.components.length} component{version.components.length !== 1 ? 's' : ''}
+                            {version.components.length} componente{version.components.length !== 1 ? 's' : ''}
                           </span>
                         )}
                       </div>
@@ -141,7 +141,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
                         onClick={() => onVersionSelect(version)}
                       >
                         <Eye className="w-4 h-4 mr-1" />
-                        View
+                        Ver
                       </Button>
                     )}
                   </div>

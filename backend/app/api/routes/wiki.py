@@ -344,12 +344,12 @@ async def generate_wiki_from_context(
 
     total_pages = len([p for p in created_pages if p])
     result = {
-        "detail": f"{total_pages} wiki pages generated ({linked_count} pages with semantic links)",
+        "detail": f"{total_pages} paginas wiki geradas ({linked_count} paginas com links semanticos)",
         "pages": [p.slug for p in created_pages if p],
     }
     if enrichment_job_id:
         result["enrichment_job_id"] = str(enrichment_job_id)
-        result["detail"] += f". Enrichment started for {rule_page_count} rules."
+        result["detail"] += f". Enriquecimento iniciado para {rule_page_count} regras."
     return result
 
 
@@ -367,7 +367,7 @@ async def relink_wiki_pages(
         raise HTTPException(status_code=404, detail="Projeto nao encontrado")
 
     linked_count = _apply_semantic_links_to_project(db, project_id)
-    return {"detail": f"{linked_count} pages updated with semantic links"}
+    return {"detail": f"{linked_count} paginas atualizadas com links semanticos"}
 
 
 @router.post("/{project_id}/wiki", response_model=WikiPageResponse, status_code=201)
@@ -480,7 +480,7 @@ async def delete_wiki_page(
     _apply_semantic_links_to_project(db, project_id)
 
     logger.info(f"Wiki page deleted: {page.title} ({slug})")
-    return {"detail": "Wiki page deleted", "slug": slug}
+    return {"detail": "Pagina wiki excluida", "slug": slug}
 
 
 def _upsert_wiki_page(
@@ -1262,7 +1262,7 @@ async def _trigger_rule_enrichment_job(
             "force": force,
         },
         project_id=project_id,
-        notification_title=f"Enriching {rule_count} wiki rules",
+        notification_title=f"Enriquecendo {rule_count} regras wiki",
         deep_link=f"/projects/{project_id}/knowledge",
     )
     db.commit()
@@ -1319,16 +1319,16 @@ async def enrich_business_rule_pages(
 
     if rule_count == 0:
         detail = (
-            "All rule pages already enriched. Use force=true to re-enrich."
+            "Todas as paginas de regras ja foram enriquecidas. Use force=true para re-enriquecer."
             if not force
-            else "No business rule pages found. Run generate-from-context first."
+            else "Nenhuma pagina de regra de negocio encontrada. Execute generate-from-context primeiro."
         )
         raise HTTPException(status_code=400, detail=detail)
 
     job_id = await _trigger_rule_enrichment_job(db, project_id, rule_count, force=force)
 
     return {
-        "detail": f"Enrichment started for {rule_count} rule pages" + (" (force re-enrich)" if force else ""),
+        "detail": f"Enriquecimento iniciado para {rule_count} paginas de regras" + (" (re-enriquecimento forcado)" if force else ""),
         "job_id": str(job_id),
         "rule_count": rule_count,
     }
@@ -1375,7 +1375,7 @@ async def _enrich_rules_background(
             job_manager.complete_job(job_id, {"enriched": 0, "total": 0})
             return
 
-        job_manager.update_progress(job_id, 5.0, f"Preparing {total} rules for enrichment...")
+        job_manager.update_progress(job_id, 5.0, f"Preparando {total} regras para enriquecimento...")
 
         # PROMPT #288 - Batch-load all parent pages in ONE query (fixes N+1)
         parent_ids = set(p.parent_id for p in rule_pages if p.parent_id)
@@ -1420,7 +1420,7 @@ async def _enrich_rules_background(
             progress = 5.0 + (i / total) * 90.0
             job_manager.update_progress(
                 job_id, progress,
-                f"Enriching rule {i + 1}/{total}: {page.title[:60]}..."
+                f"Enriquecendo regra {i + 1}/{total}: {page.title[:60]}..."
             )
 
             try:

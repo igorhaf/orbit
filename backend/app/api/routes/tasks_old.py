@@ -1807,7 +1807,7 @@ async def activate_suggested_item(
         project_id=task.project_id,
         task_id=task_id,
         deep_link=f"/projects/{task.project_id}?task={task_id}",
-        notification_title=f"Activation completed: {task.title[:50]}"
+        notification_title=f"Ativacao concluida: {task.title[:50]}"
     )
 
     logger.info(f"Created activation job {job.id} for {task.item_type.value} {task_id}")
@@ -1885,7 +1885,7 @@ async def generate_children(
         project_id=task.project_id,
         task_id=task_id,  # PROMPT #181 - Required for persistent loading state via WebSocket
         deep_link=f"/projects/{task.project_id}?task={task_id}",
-        notification_title=f"Generation completed: {count} {child_type} for {task.title[:50]}"
+        notification_title=f"Geracao concluida: {count} {child_type} para {task.title[:50]}"
     )
 
     logger.info(f"Created children generation job {job.id}: {count} {child_type} for {task.item_type.value} {task_id}")

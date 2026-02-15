@@ -267,7 +267,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
             )}
           />
           <span className="text-sm text-gray-600">
-            {isConnected ? 'Connected' : 'Disconnected'}
+            {isConnected ? 'Conectado' : 'Desconectado'}
           </span>
         </div>
         <div className="flex gap-2">
@@ -285,7 +285,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
             variant="danger"
             size="sm"
           >
-            Stop
+            Parar
           </Button>
         </div>
       </div>
@@ -295,7 +295,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
         <div className="p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">
-              Execution Progress
+              Progresso da Execucao
             </span>
             <span className="text-sm font-bold text-gray-900">
               {metrics.progress.toFixed(1)}%
@@ -323,7 +323,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
             <div className="text-2xl font-bold text-gray-900">
               {metrics.totalTasks}
             </div>
-            <div className="text-xs text-gray-500 uppercase">Total Tasks</div>
+            <div className="text-xs text-gray-500 uppercase">Total de Tasks</div>
           </div>
         </Card>
         <Card>
@@ -331,7 +331,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
             <div className="text-2xl font-bold text-green-600">
               {metrics.completed}
             </div>
-            <div className="text-xs text-gray-500 uppercase">Completed</div>
+            <div className="text-xs text-gray-500 uppercase">Concluidas</div>
           </div>
         </Card>
         <Card>
@@ -339,7 +339,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
             <div className="text-2xl font-bold text-blue-600">
               ${metrics.totalCost.toFixed(4)}
             </div>
-            <div className="text-xs text-gray-500 uppercase">Total Cost</div>
+            <div className="text-xs text-gray-500 uppercase">Custo Total</div>
           </div>
         </Card>
         <Card>
@@ -347,7 +347,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
             <div className="text-2xl font-bold text-purple-600">
               {successRate}%
             </div>
-            <div className="text-xs text-gray-500 uppercase">Success Rate</div>
+            <div className="text-xs text-gray-500 uppercase">Taxa de Sucesso</div>
           </div>
         </Card>
       </div>
@@ -355,7 +355,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
       {/* Task List */}
       <Card>
         <div className="p-4">
-          <h3 className="text-lg font-semibold mb-3">Tasks</h3>
+          <h3 className="text-lg font-semibold mb-3">Tarefas</h3>
           <div className="space-y-2 max-h-64 overflow-y-auto">
             {Array.from(taskStates.values()).map((task) => (
               <div
@@ -381,10 +381,10 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
       {/* Execution Logs */}
       <Card>
         <div className="p-4">
-          <h3 className="text-lg font-semibold mb-3">Execution Logs</h3>
+          <h3 className="text-lg font-semibold mb-3">Logs de Execucao</h3>
           <div className="bg-gray-900 text-green-400 font-mono text-xs p-4 rounded-lg h-64 overflow-y-auto">
             {logs.length === 0 ? (
-              <div className="text-gray-500">No logs yet. Start execution to see live updates.</div>
+              <div className="text-gray-500">Sem logs ainda. Inicie a execucao para ver atualizacoes ao vivo.</div>
             ) : (
               <>
                 {logs.map((log, index) => (

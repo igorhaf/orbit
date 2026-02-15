@@ -442,7 +442,7 @@ export default function BacklogListView({
         addJob(
           result.job_id,
           jobType,
-          `Activating ${item.item_type}: ${item.title.substring(0, 30)}...`,
+          `Ativando ${item.item_type}: ${item.title.substring(0, 30)}...`,
           item.title,
           false,
           item.id // task_id for persistent loading state
@@ -454,7 +454,7 @@ export default function BacklogListView({
       fetchBacklog();
     } catch (error: any) {
       console.error('❌ Failed to activate item:', error);
-      showError(`Failed to activate item: ${error.message}`);
+      showError(`Falha ao ativar item: ${error.message}`);
     }
   };
 
@@ -474,7 +474,7 @@ export default function BacklogListView({
           fetchBacklog();
         } catch (error: any) {
           console.error('❌ Failed to reject item:', error);
-          showError(`Failed to reject item: ${error.message}`);
+          showError(`Falha ao rejeitar item: ${error.message}`);
         } finally {
           setRejectingId(null);
         }
@@ -498,12 +498,12 @@ export default function BacklogListView({
         try {
           const deletePromises = Array.from(selectedIds).map(id => tasksApi.delete(id));
           await Promise.all(deletePromises);
-          showSuccess(`${count} item(s) deleted successfully`);
+          showSuccess(`${count} item(ns) excluido(s) com sucesso`);
           onSelectionChange?.(new Set());
           fetchBacklog();
         } catch (error: any) {
           console.error('Failed to delete items:', error);
-          showError(`Error deleting items: ${error.message}`);
+          showError(`Erro ao deletar itens: ${error.message}`);
         } finally {
           setBulkActionLoading(null);
         }
@@ -921,16 +921,16 @@ export default function BacklogListView({
               {/* PROMPT #123 - Show filtered count vs total */}
               {filters?.search ? (
                 <>
-                  {filteredBacklog.length} of {backlog.length} item{backlog.length !== 1 ? 's' : ''}
+                  {filteredBacklog.length} de {backlog.length} iten{backlog.length !== 1 ? 's' : ''}
                 </>
               ) : (
                 <>
-                  {backlog.length} item{backlog.length !== 1 ? 's' : ''}
+                  {backlog.length} iten{backlog.length !== 1 ? 's' : ''}
                 </>
               )}
               {selectedIds.size > 0 && (
                 <span className="ml-2 text-blue-600 font-medium">
-                  ({selectedIds.size} selected)
+                  ({selectedIds.size} selecionado{selectedIds.size !== 1 ? 's' : ''})
                 </span>
               )}
             </div>

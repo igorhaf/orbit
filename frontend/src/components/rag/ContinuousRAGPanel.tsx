@@ -67,26 +67,26 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
     setIsScanning(true);
     try {
       const result = await ragApi.continuousScan(projectId);
-      showSuccess(`RAG scan started (Job: ${result.job_id})`);
+      showSuccess(`Verificacao RAG iniciada (Job: ${result.job_id})`);
       // Start polling
       setTimeout(loadStats, 2000);
     } catch (error: any) {
-      showError('Failed to start RAG scan: ' + (error.message || 'Unknown error'));
+      showError('Falha ao iniciar verificacao RAG: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsScanning(false);
     }
   };
 
   const handleReset = async () => {
-    if (!confirm('This will clear all file tracking state and continuous scan RAG documents. Continue?')) return;
+    if (!confirm('Isto ira limpar todo o estado de rastreamento de arquivos e documentos de RAG continuos. Continuar?')) return;
     setIsResetting(true);
     try {
       const result = await ragApi.continuousReset(projectId);
-      showSuccess(`Reset complete: ${result.files_cleared} files, ${result.rag_docs_removed} docs removed`);
+      showSuccess(`Reset concluido: ${result.files_cleared} arquivos, ${result.rag_docs_removed} docs removidos`);
       loadStats();
       onScanComplete?.();
     } catch (error: any) {
-      showError('Failed to reset: ' + (error.message || 'Unknown error'));
+      showError('Falha ao resetar: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsResetting(false);
     }
@@ -97,7 +97,7 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
       <Card>
         <CardContent className="py-8 text-center">
           <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400" />
-          <p className="text-sm text-gray-500 mt-2">Loading continuous RAG stats...</p>
+          <p className="text-sm text-gray-500 mt-2">Carregando estatisticas de RAG continuo...</p>
         </CardContent>
       </Card>
     );
@@ -119,9 +119,9 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
               <Database className="w-5 h-5 text-emerald-600" />
             </div>
             <div>
-              <CardTitle>Continuous RAG Evolution</CardTitle>
+              <CardTitle>Evolucao RAG Continua</CardTitle>
               <p className="text-xs text-gray-500 mt-0.5">
-                Auto-scans every 5 min via Redis scheduler
+                Verifica automaticamente a cada 5 min via Redis
               </p>
             </div>
           </div>
@@ -135,12 +135,12 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
               {isScanning || stats?.is_scanning ? (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Scanning...
+                  Verificando...
                 </>
               ) : (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2" />
-                  Scan Now
+                  Verificar Agora
                 </>
               )}
             </Button>
@@ -165,30 +165,30 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="bg-gray-50 rounded-lg p-3 text-center">
                 <div className="text-xl font-bold text-gray-700">{stats!.total_files_tracked}</div>
-                <div className="text-xs text-gray-500">Files Tracked</div>
+                <div className="text-xs text-gray-500">Arquivos Rastreados</div>
               </div>
               <div className="bg-emerald-50 rounded-lg p-3 text-center">
                 <div className="text-xl font-bold text-emerald-700">{completed}</div>
                 <div className="text-xs text-emerald-600 flex items-center justify-center gap-1">
-                  <CheckCircle className="w-3 h-3" /> Completed
+                  <CheckCircle className="w-3 h-3" /> Concluidos
                 </div>
               </div>
               <div className="bg-yellow-50 rounded-lg p-3 text-center">
                 <div className="text-xl font-bold text-yellow-700">{pending + processing}</div>
                 <div className="text-xs text-yellow-600 flex items-center justify-center gap-1">
-                  <Clock className="w-3 h-3" /> Pending
+                  <Clock className="w-3 h-3" /> Pendentes
                 </div>
               </div>
               <div className="bg-red-50 rounded-lg p-3 text-center">
                 <div className="text-xl font-bold text-red-700">{failed}</div>
                 <div className="text-xs text-red-600 flex items-center justify-center gap-1">
-                  <AlertCircle className="w-3 h-3" /> Failed
+                  <AlertCircle className="w-3 h-3" /> Falhou
                 </div>
               </div>
               <div className="bg-blue-50 rounded-lg p-3 text-center">
                 <div className="text-xl font-bold text-blue-700">{stats!.total_rules_extracted}</div>
                 <div className="text-xs text-blue-600 flex items-center justify-center gap-1">
-                  <FileText className="w-3 h-3" /> Rules
+                  <FileText className="w-3 h-3" /> Regras
                 </div>
               </div>
             </div>
@@ -196,7 +196,7 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
             {/* Coverage bar */}
             <div>
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-600">Coverage</span>
+                <span className="text-gray-600">Cobertura</span>
                 <span className="font-medium text-gray-900">{stats!.coverage_percent}%</span>
               </div>
               <div className="w-full bg-gray-200 rounded-full h-2">
@@ -210,7 +210,7 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
             {/* Last processed */}
             {stats!.last_processed_at && (
               <p className="text-xs text-gray-400">
-                Last processed: {new Date(stats!.last_processed_at).toLocaleString()}
+                Ultimo processamento: {new Date(stats!.last_processed_at).toLocaleString()}
               </p>
             )}
 
@@ -220,7 +220,7 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
                 <div className="flex items-center gap-2">
                   <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
                   <span className="text-sm font-medium text-blue-800">
-                    Scan in progress...
+                    Verificacao em andamento...
                   </span>
                   {stats!.active_job.progress_percent > 0 && (
                     <Badge variant="outline" className="ml-auto">
@@ -237,8 +237,8 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
         ) : (
           <div className="text-center py-8 text-gray-500">
             <Database className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-            <p>No continuous RAG data yet</p>
-            <p className="text-sm mt-1">Click "Scan Now" to start extracting business rules from your codebase</p>
+            <p>Nenhum dado de RAG continuo ainda</p>
+            <p className="text-sm mt-1">Clique em "Verificar Agora" para comecar a extrair regras de negocio do codigo</p>
           </div>
         )}
       </CardContent>

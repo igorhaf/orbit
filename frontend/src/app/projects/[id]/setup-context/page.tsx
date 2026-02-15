@@ -127,7 +127,7 @@ export default function SetupContextPage() {
   const handleContextJobError = (error: string) => {
     setGeneratingContext(false);
     setContextJobId(null);
-    showError('Failed to generate context. Please try again.');
+    showError('Falha ao gerar contexto. Tente novamente.');
   };
 
   // Poll context generation job
@@ -149,7 +149,7 @@ export default function SetupContextPage() {
       if (contextData.job_id) {
         setContextJobId(contextData.job_id);
         // PROMPT #140 - watching=true since user is on this page
-        addJob(contextData.job_id, 'context_generation', `Generating context for ${project?.name || 'project'}...`, undefined, true);
+        addJob(contextData.job_id, 'context_generation', `Gerando contexto para ${project?.name || 'projeto'}...`, undefined, true);
       } else if (contextData.success) {
         setContextHuman(contextData.context_human);
         setContextSemantic(contextData.context_semantic);

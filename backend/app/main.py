@@ -173,8 +173,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=500,
         content={
-            "detail": "Internal server error",
-            "message": str(exc) if settings.debug else "An error occurred"
+            "detail": "Erro interno do servidor",
+            "message": str(exc) if settings.debug else "Ocorreu um erro"
         }
     )
 
@@ -202,7 +202,7 @@ async def root():
     Returns basic API information
     """
     return {
-        "message": "Welcome to Orbit API",
+        "message": "Bem-vindo a API Orbit",
         "version": settings.version,
         "docs": "/docs",
         "health": "/health"

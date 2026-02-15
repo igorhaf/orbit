@@ -709,14 +709,14 @@ class CodebaseMemoryService:
 
         # Step 1: Detect technology stack
         logger.info("📊 Step 1: Detecting technology stack...")
-        await report_progress(15.0, "Detecting technology stack...")
+        await report_progress(15.0, "Detectando stack tecnologica...")
         stack_info = self.stack_detector.detect(path)
         result["stack_info"] = stack_info
         logger.info(f"   Detected stack: {stack_info.get('detected_stack', 'unknown')}")
 
         # Step 2: Scan and collect file information
         logger.info("📂 Step 2: Scanning codebase structure...")
-        await report_progress(20.0, "Scanning codebase structure...")
+        await report_progress(20.0, "Escaneando estrutura do codebase...")
         scan_data = await self._scan_codebase(path)
         result["scan_summary"] = {
             "total_files": scan_data["total_files"],
@@ -729,7 +729,7 @@ class CodebaseMemoryService:
         # Step 3: Index files in RAG (if project_id provided)
         if project_id:
             logger.info("💾 Step 3: Indexing files in RAG...")
-            await report_progress(30.0, "Indexing files in RAG...")
+            await report_progress(30.0, "Indexando arquivos no RAG...")
             try:
                 indexer = CodebaseIndexer(self.db)
                 # Create a temporary project reference for indexing
@@ -745,14 +745,14 @@ class CodebaseMemoryService:
         # Step 4: Extract representative code samples for AI analysis
         # PROMPT #163 - Use scan_depth config for limits
         logger.info("🔍 Step 4: Extracting code samples for analysis...")
-        await report_progress(40.0, "Extracting code samples...")
+        await report_progress(40.0, "Extraindo amostras de codigo...")
         code_samples = self._extract_code_samples(path, scan_data, config)
         logger.info(f"   Extracted {len(code_samples)} code samples")
 
         # Step 5: Use AI to analyze and extract insights
         # PROMPT #163 - Use multi-phase analysis for better results
         logger.info(f"🤖 Step 5: AI analysis ({scan_depth} mode)...")
-        await report_progress(50.0, f"AI analysis started ({scan_depth} mode)...")
+        await report_progress(50.0, f"Analise de IA iniciada (modo {scan_depth})...")
         ai_analysis = await self._ai_analyze_codebase_phased(
             code_samples=code_samples,
             stack_info=stack_info,
@@ -768,14 +768,14 @@ class CodebaseMemoryService:
         result["interview_context"] = ai_analysis.get("interview_context", "")
         result["phases_completed"] = ai_analysis.get("phases_completed", 1)
 
-        await report_progress(85.0, "Processing AI analysis results...")
+        await report_progress(85.0, "Processando resultados de analise de IA...")
 
         # Step 5.5: Extract and analyze git commit history (PROMPT #184)
         if scan_depth != "local":
             commits = self._extract_git_commits(path)
             if commits:
                 logger.info(f"📝 Step 5.5: Analyzing {len(commits)} git commits for business rules...")
-                await report_progress(87.0, f"Analyzing {len(commits)} git commits...")
+                await report_progress(87.0, f"Analisando {len(commits)} commits git...")
                 try:
                     git_rules = await self._analyze_git_commits(
                         commits, stack_info, project_id
@@ -793,11 +793,11 @@ class CodebaseMemoryService:
         # Step 6: Store business rules in RAG for future reference
         if project_id and result["business_rules"]:
             logger.info("💾 Step 6: Storing business rules in RAG...")
-            await report_progress(90.0, f"Storing {len(result['business_rules'])} business rules...")
+            await report_progress(90.0, f"Armazenando {len(result['business_rules'])} regras de negocio...")
             await self._store_business_rules(project_id, result["business_rules"])
             logger.info(f"   Stored {len(result['business_rules'])} business rules")
 
-        await report_progress(95.0, "Finalizing results...")
+        await report_progress(95.0, "Finalizando resultados...")
         logger.info("✅ Codebase memory scan complete!")
         return result
 

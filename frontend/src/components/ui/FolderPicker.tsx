@@ -37,7 +37,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
   open,
   onClose,
   onSelect,
-  title = 'Select Project Folder',
+  title = 'Selecionar Pasta do Projeto',
 }) => {
   const [currentPath, setCurrentPath] = useState('');
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -134,7 +134,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
           <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
           </svg>
-          Up
+          Acima
         </Button>
         <Button
           variant="outline"
@@ -145,7 +145,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
           <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
           </svg>
-          Root
+          Raiz
         </Button>
         {browseResult?.can_select && (
           <Button
@@ -154,7 +154,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
             onClick={handleSelectCurrent}
             className="ml-auto"
           >
-            Select This Folder
+            Selecionar Esta Pasta
           </Button>
         )}
       </div>
@@ -179,8 +179,8 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
             <svg className="w-12 h-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
             </svg>
-            <p>No subfolders found</p>
-            <p className="text-xs mt-1">You can select this folder as your project root</p>
+            <p>Nenhuma subpasta encontrada</p>
+            <p className="text-xs mt-1">Voce pode selecionar esta pasta como a raiz do seu projeto</p>
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">
@@ -212,7 +212,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
                     <span className="font-medium text-gray-900 truncate">{folder.name}</span>
                     {folder.is_project && (
                       <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full">
-                        Project
+                        Projeto
                       </span>
                     )}
                   </div>
@@ -245,7 +245,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            <span>Selected:</span>
+            <span>Selecionado:</span>
             <span className="font-mono font-medium truncate">{selectedPath}</span>
           </div>
         </div>
@@ -253,19 +253,19 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
 
       {/* Help Text */}
       <p className="mt-3 text-xs text-gray-500">
-        Single-click to select, double-click to navigate into folder
+        Clique uma vez para selecionar, clique duplo para navegar para dentro da pasta
       </p>
 
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>
-          Cancel
+          Cancelar
         </Button>
         <Button
           variant="primary"
           onClick={handleConfirm}
           disabled={!selectedPath}
         >
-          Select Folder
+          Selecionar Pasta
         </Button>
       </DialogFooter>
     </Dialog>

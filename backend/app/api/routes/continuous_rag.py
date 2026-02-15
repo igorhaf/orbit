@@ -60,7 +60,7 @@ async def trigger_rag_scan(
         job_type=JobType.RAG_CONTINUOUS_SCAN,
         input_data={"project_id": str(project_id), "manual": True},
         project_id=project_id,
-        notification_title=f"RAG Scan: {project.name or 'Project'}",
+        notification_title=f"Varredura RAG: {project.name or 'Projeto'}",
         deep_link=f"/projects/{project_id}",
     )
 

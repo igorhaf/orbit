@@ -43,9 +43,9 @@ export function IssuesList({ issues, onUpdateIssue }: Props) {
             d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
           />
         </svg>
-        <p className="text-lg font-medium text-gray-700">No issues found</p>
+        <p className="text-lg font-medium text-gray-700">Nenhum problema encontrado</p>
         <p className="text-sm text-gray-500 mt-2">
-          Your code is looking good! Run a new analysis to check for updates.
+          Seu codigo esta otimo! Execute uma nova analise para verificar atualizacoes.
         </p>
       </div>
     );
@@ -67,7 +67,7 @@ export function IssuesList({ issues, onUpdateIssue }: Props) {
         return (
           <div key={severity}>
             <h2 className="text-lg font-semibold text-gray-900 mb-3 capitalize">
-              {severity} Severity ({severityIssues.length})
+              Severidade {severity} ({severityIssues.length})
             </h2>
             <div className="space-y-3">
               {severityIssues.map((issue) => (
