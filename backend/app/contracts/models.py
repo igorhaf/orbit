@@ -226,7 +226,7 @@ class ContractNotFoundError(ContractError):
     """Raised when a contract file is not found."""
     def __init__(self, contract_name: str):
         self.contract_name = contract_name
-        super().__init__(f"Contract not found: '{contract_name}'")
+        super().__init__(f"Contrato nao encontrado: '{contract_name}'")
 
 
 class ContractRenderError(ContractError):
@@ -235,7 +235,7 @@ class ContractRenderError(ContractError):
         self.contract_name = contract_name
         self.reason = reason
         self.missing_vars = missing_vars or []
-        super().__init__(f"Failed to render contract '{contract_name}': {reason}")
+        super().__init__(f"Falha ao renderizar contrato '{contract_name}': {reason}")
 
 
 class ContractValidationError(ContractError):
@@ -243,7 +243,7 @@ class ContractValidationError(ContractError):
     def __init__(self, contract_name: str, errors: List[str]):
         self.contract_name = contract_name
         self.errors = errors
-        super().__init__(f"Contract validation failed for '{contract_name}': {', '.join(errors)}")
+        super().__init__(f"Validacao de contrato falhou para '{contract_name}': {', '.join(errors)}")
 
 
 class ComponentNotFoundError(ContractError):
@@ -251,4 +251,4 @@ class ComponentNotFoundError(ContractError):
     def __init__(self, component_name: str, contract_name: str):
         self.component_name = component_name
         self.contract_name = contract_name
-        super().__init__(f"Component '{component_name}' not found (referenced by '{contract_name}')")
+        super().__init__(f"Componente '{component_name}' nao encontrado (referenciado por '{contract_name}')")

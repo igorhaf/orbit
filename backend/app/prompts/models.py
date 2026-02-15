@@ -80,7 +80,7 @@ class PromptLoadError(Exception):
     def __init__(self, prompt_name: str, reason: str):
         self.prompt_name = prompt_name
         self.reason = reason
-        super().__init__(f"Failed to load prompt '{prompt_name}': {reason}")
+        super().__init__(f"Falha ao carregar prompt '{prompt_name}': {reason}")
 
 
 class PromptRenderError(Exception):
@@ -89,7 +89,7 @@ class PromptRenderError(Exception):
         self.prompt_name = prompt_name
         self.reason = reason
         self.missing_vars = missing_vars or []
-        super().__init__(f"Failed to render prompt '{prompt_name}': {reason}")
+        super().__init__(f"Falha ao renderizar prompt '{prompt_name}': {reason}")
 
 
 class PromptNotFoundError(PromptLoadError):

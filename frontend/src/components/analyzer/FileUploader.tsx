@@ -187,11 +187,11 @@ export function FileUploader({
             />
           </svg>
           <div className="text-xs text-blue-700">
-            <p className="font-semibold mb-1">Upload your existing project</p>
+            <p className="font-semibold mb-1">Envie seu projeto existente</p>
             <ul className="list-disc list-inside space-y-1">
-              <li>Compress your project as .zip or .tar.gz</li>
-              <li>Include source code, configs, and dependencies</li>
-              <li>We'll analyze structure, patterns, and conventions</li>
+              <li>Comprima seu projeto como .zip ou .tar.gz</li>
+              <li>Inclua codigo-fonte, configs e dependencias</li>
+              <li>Analisaremos estrutura, padroes e convencoes</li>
             </ul>
           </div>
         </div>

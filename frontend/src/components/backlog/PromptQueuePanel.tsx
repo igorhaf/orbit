@@ -217,16 +217,16 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
 
       {/* Sort controls */}
       <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg">
-        <span className="text-sm font-medium text-gray-700">Strategy:</span>
+        <span className="text-sm font-medium text-gray-700">Estrategia:</span>
         <Select
           value={sortStrategy}
           onChange={(e) => setSortStrategy(e.target.value)}
           options={[
-            { value: 'balanced', label: 'Balanced' },
-            { value: 'hierarchy_first', label: 'Hierarchy First' },
-            { value: 'priority_first', label: 'Priority First' },
-            { value: 'dependency_first', label: 'Dependency First' },
-            { value: 'age_first', label: 'Age First' },
+            { value: 'balanced', label: 'Balanceado' },
+            { value: 'hierarchy_first', label: 'Hierarquia Primeiro' },
+            { value: 'priority_first', label: 'Prioridade Primeiro' },
+            { value: 'dependency_first', label: 'Dependencia Primeiro' },
+            { value: 'age_first', label: 'Idade Primeiro' },
           ]}
           className="w-44"
         />
@@ -234,9 +234,9 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
           {sorting ? 'Ordenando...' : 'Auto-Ordenar'}
         </Button>
         <div className="ml-auto flex items-center gap-4 text-[10px] text-gray-500">
-          <span className="flex items-center gap-1">{getScoreBar(70, 100, 'bg-purple-400')} Hierarchy</span>
-          <span className="flex items-center gap-1">{getScoreBar(70, 100, 'bg-orange-400')} Priority</span>
-          <span className="flex items-center gap-1">{getScoreBar(70, 100, 'bg-blue-400')} Age</span>
+          <span className="flex items-center gap-1">{getScoreBar(70, 100, 'bg-purple-400')} Hierarquia</span>
+          <span className="flex items-center gap-1">{getScoreBar(70, 100, 'bg-orange-400')} Prioridade</span>
+          <span className="flex items-center gap-1">{getScoreBar(70, 100, 'bg-blue-400')} Idade</span>
           <span className="flex items-center gap-1">{getScoreBar(70, 100, 'bg-green-400')} Deps</span>
         </div>
       </div>

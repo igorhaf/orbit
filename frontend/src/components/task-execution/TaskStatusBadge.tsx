@@ -47,13 +47,13 @@ export const TaskStatusBadge: React.FC<TaskStatusBadgeProps> = ({
     },
     completed: {
       variant: 'success' as const,
-      label: 'Completed',
+      label: 'Concluido',
       icon: <IconCheckCircle className="w-3.5 h-3.5" />,
       animation: '',
     },
     failed: {
       variant: 'danger' as const,
-      label: 'Failed',
+      label: 'Falhou',
       icon: <IconXCircle className="w-3.5 h-3.5" />,
       animation: '',
     },
