@@ -17,6 +17,7 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FolderPicker } from '@/components/ui/FolderPicker';
+import { FilePicker } from '@/components/ui/FilePicker';
 import { settingsApi, aiModelsApi } from '@/lib/api';
 import { SystemSettings, AIModel, AIModelUsageType } from '@/lib/types';
 import {
@@ -44,6 +45,7 @@ import {
   X,
   Lightbulb,
   Folder,
+  FileSearch,
 } from 'lucide-react';
 import { useNotification } from '@/hooks';
 
@@ -99,6 +101,7 @@ export default function SettingsPage() {
   const [newBlockPattern, setNewBlockPattern] = useState('');
   const [savingBlocklist, setSavingBlocklist] = useState(false);
   const [showBlocklistFolderPicker, setShowBlocklistFolderPicker] = useState(false);
+  const [showBlocklistFilePicker, setShowBlocklistFilePicker] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -300,6 +303,19 @@ export default function SettingsPage() {
       setBlocklist(result);
       setSaveSuccess('Padrao removido');
     } catch (err: any) { showError(`Falha ao remover: ${err.message}`); }
+  };
+
+  const handleFilePickerSelectMultiple = async (fileNames: string[]) => {
+    const newPats = fileNames.filter(f => f && !blocklist.file_patterns.includes(f));
+    if (newPats.length === 0) { showWarning('Todos os arquivos ja estao na lista'); return; }
+    const updated = { ...blocklist, file_patterns: [...blocklist.file_patterns, ...newPats].sort() };
+    setSavingBlocklist(true);
+    try {
+      const result = await settingsApi.saveBlocklist(updated);
+      setBlocklist(result);
+      setSaveSuccess(`${newPats.length} ${newPats.length === 1 ? 'arquivo adicionado' : 'arquivos adicionados'} a lista de bloqueio`);
+    } catch (err: any) { showError(`Falha ao salvar: ${err.message}`); }
+    finally { setSavingBlocklist(false); }
   };
 
   const handleApproveSuggestion = async (suggestion: { path: string; type: string }) => {
@@ -831,7 +847,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                {/* Manual input */}
+                {/* Manual input + Browse */}
                 <div className="flex gap-2 mb-4">
                   <input
                     value={newBlockPattern}
@@ -840,6 +856,14 @@ export default function SettingsPage() {
                     placeholder="Padrao personalizado (ex: *.sqlite, *.env.*, *.old)..."
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
                   />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowBlocklistFilePicker(true)}
+                    title="Navegar e selecionar arquivos"
+                  >
+                    <FileSearch className="w-5 h-5" />
+                  </Button>
                   <Button onClick={() => handleAddBlockPattern()} disabled={savingBlocklist || !newBlockPattern.trim()}>
                     <Plus className="w-4 h-4 mr-1" />
                     Adicionar
@@ -879,6 +903,14 @@ export default function SettingsPage() {
                     </ul>
                   </div>
                 )}
+
+                <FilePicker
+                  open={showBlocklistFilePicker}
+                  onClose={() => setShowBlocklistFilePicker(false)}
+                  onSelect={(f) => handleAddBlockPattern(f)}
+                  onSelectMultiple={handleFilePickerSelectMultiple}
+                  title="Selecionar Arquivos para Bloquear"
+                />
               </CardContent>
             </Card>
           </div>

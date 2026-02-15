@@ -1,0 +1,348 @@
+/**
+ * FilePicker Component
+ * Browse and select files from mounted /projects directory
+ * Folders are for navigation only (double-click), files are selectable (Ctrl+click for multi)
+ */
+
+'use client';
+
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Dialog, DialogFooter } from './Dialog';
+import { Button } from './Button';
+import { projectsApi } from '@/lib/api';
+
+interface FileItem {
+  name: string;
+  path: string;
+  full_path: string;
+  extension: string;
+  size: number;
+}
+
+interface FolderItem {
+  name: string;
+  path: string;
+  full_path: string;
+}
+
+interface BrowseFilesResult {
+  current_path: string;
+  relative_path: string;
+  parent_path: string | null;
+  folders: FolderItem[];
+  files: FileItem[];
+  error?: string;
+}
+
+export interface FilePickerProps {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (fileName: string) => void;
+  onSelectMultiple?: (fileNames: string[]) => void;
+  title?: string;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+export const FilePicker: React.FC<FilePickerProps> = ({
+  open,
+  onClose,
+  onSelect,
+  onSelectMultiple,
+  title = 'Selecionar Arquivos',
+}) => {
+  const [currentPath, setCurrentPath] = useState('');
+  const [folders, setFolders] = useState<FolderItem[]>([]);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [browseResult, setBrowseResult] = useState<BrowseFilesResult | null>(null);
+
+  const loadContents = useCallback(async (path: string = '') => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await projectsApi.browseFiles(path);
+      const data = result.data || result;
+      setBrowseResult(data);
+      setFolders(data.folders || []);
+      setFiles(data.files || []);
+      setCurrentPath(data.current_path || '/projects');
+      if (data.error) {
+        setError(data.error);
+      }
+    } catch (err) {
+      console.error('Failed to load files:', err);
+      setError('Falha ao carregar arquivos. Verifique se a pasta de projetos esta montada.');
+      setFolders([]);
+      setFiles([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      loadContents('');
+      setSelectedFiles(new Set());
+    }
+  }, [open, loadContents]);
+
+  // Timer ref for double-click detection on folders
+  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleFolderNavigate = (folder: FolderItem) => {
+    if (clickTimerRef.current) {
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    loadContents(folder.path);
+    setSelectedFiles(new Set());
+  };
+
+  const handleFolderClick = (folder: FolderItem) => {
+    if (clickTimerRef.current) {
+      // Double-click → navigate
+      clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+      handleFolderNavigate(folder);
+    } else {
+      // First click → wait for double-click
+      clickTimerRef.current = setTimeout(() => {
+        clickTimerRef.current = null;
+        // Single click on folder does nothing (folders are not selectable)
+      }, 300);
+    }
+  };
+
+  const handleFileClick = (file: FileItem, e: React.MouseEvent) => {
+    const ctrlKey = e.ctrlKey || e.metaKey;
+    if (ctrlKey) {
+      // Ctrl+click: toggle in multi-selection
+      setSelectedFiles(prev => {
+        const next = new Set(prev);
+        if (next.has(file.name)) {
+          next.delete(file.name);
+        } else {
+          next.add(file.name);
+        }
+        return next;
+      });
+    } else {
+      // Normal click: replace selection
+      setSelectedFiles(new Set([file.name]));
+    }
+  };
+
+  const handleGoUp = () => {
+    if (browseResult?.parent_path !== null && browseResult?.parent_path !== undefined) {
+      loadContents(browseResult.parent_path);
+      setSelectedFiles(new Set());
+    }
+  };
+
+  const handleConfirm = () => {
+    if (selectedFiles.size === 0) return;
+    const arr = Array.from(selectedFiles);
+    if (onSelectMultiple) {
+      onSelectMultiple(arr);
+    } else {
+      arr.forEach(f => onSelect(f));
+    }
+    onClose();
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      title={title}
+      description="Navegue e selecione arquivos (Ctrl+clique para selecionar multiplos)"
+      size="lg"
+    >
+      {/* Breadcrumb / Current Path */}
+      <div className="mb-4 p-3 bg-gray-100 rounded-lg">
+        <div className="flex items-center gap-2 text-sm">
+          <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+          </svg>
+          <span className="font-mono text-gray-700 truncate">{currentPath}</span>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <div className="flex items-center gap-2 mb-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleGoUp}
+          disabled={browseResult?.parent_path === null || loading}
+        >
+          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 17l-5-5m0 0l5-5m-5 5h12" />
+          </svg>
+          Acima
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => loadContents('')}
+          disabled={loading}
+        >
+          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          Raiz
+        </Button>
+        {selectedFiles.size > 0 && (
+          <span className="ml-auto text-sm text-blue-600 font-medium">
+            {selectedFiles.size} {selectedFiles.size === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}
+          </span>
+        )}
+      </div>
+
+      {/* File List */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[400px] overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          </div>
+        ) : error ? (
+          <div className="p-4 text-center">
+            <div className="text-red-500 mb-2">
+              <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <p className="text-sm text-gray-600">{error}</p>
+          </div>
+        ) : folders.length === 0 && files.length === 0 ? (
+          <div className="p-8 text-center text-gray-500">
+            <svg className="w-12 h-12 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            <p>Nenhum conteudo encontrado</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {/* Folders first (for navigation only) */}
+            {folders.map((folder) => (
+              <li
+                key={`dir-${folder.path}`}
+                className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors"
+                onClick={() => handleFolderClick(folder)}
+              >
+                {/* Folder Icon */}
+                <div className="flex-shrink-0 text-yellow-500">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <span className="font-medium text-gray-900 truncate">{folder.name}</span>
+                </div>
+                {/* Navigate Arrow */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleFolderNavigate(folder);
+                  }}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
+                  title="Abrir pasta"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              </li>
+            ))}
+            {/* Files (selectable) */}
+            {files.map((file) => (
+              <li
+                key={`file-${file.path}`}
+                className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors ${
+                  selectedFiles.has(file.name) ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                }`}
+                onClick={(e) => handleFileClick(file, e)}
+              >
+                {/* File Icon */}
+                <div className="flex-shrink-0 text-gray-400">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-900 truncate">{file.name}</span>
+                    {file.extension && (
+                      <span className="px-1.5 py-0.5 text-xs bg-gray-100 text-gray-500 rounded font-mono">
+                        {file.extension}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400">{formatFileSize(file.size)}</p>
+                </div>
+                {/* Checkbox visual */}
+                <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                  selectedFiles.has(file.name)
+                    ? 'bg-blue-500 border-blue-500'
+                    : 'border-gray-300'
+                }`}>
+                  {selectedFiles.has(file.name) && (
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Selected Files Preview */}
+      {selectedFiles.size > 0 && (
+        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center gap-2 text-sm text-green-800 mb-1">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span>{selectedFiles.size} {selectedFiles.size === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}</span>
+          </div>
+          <div className="ml-6 flex flex-wrap gap-1.5">
+            {Array.from(selectedFiles).map(f => (
+              <span key={f} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono bg-green-100 text-green-700">
+                {f}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Help Text */}
+      <p className="mt-3 text-xs text-gray-500">
+        Clique duplo em pastas para navegar. Clique em arquivos para selecionar. Ctrl+clique para selecionar multiplos.
+      </p>
+
+      <DialogFooter>
+        <Button variant="ghost" onClick={onClose}>
+          Cancelar
+        </Button>
+        <Button
+          variant="primary"
+          onClick={handleConfirm}
+          disabled={selectedFiles.size === 0}
+        >
+          {selectedFiles.size > 1
+            ? `Selecionar ${selectedFiles.size} Arquivos`
+            : 'Selecionar Arquivo'}
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+};

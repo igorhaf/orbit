@@ -221,6 +221,97 @@ async def browse_folders(
     }
 
 
+@router.get("/browse-files")
+async def browse_files(
+    path: str = Query("", description="Relative path within /projects to browse")
+):
+    """
+    Browse files and folders within the mounted /projects directory.
+
+    Returns folders (for navigation) and files (for selection).
+    Path is relative to /projects (the mounted volume).
+    """
+    if not PROJECTS_BASE_PATH.exists():
+        return {
+            "current_path": "/projects",
+            "parent_path": None,
+            "folders": [],
+            "files": [],
+            "error": "Pasta de projetos nao montada"
+        }
+
+    if path:
+        clean_path = path.lstrip("/").replace("..", "")
+        full_path = PROJECTS_BASE_PATH / clean_path
+    else:
+        full_path = PROJECTS_BASE_PATH
+
+    try:
+        full_path = full_path.resolve()
+        if not str(full_path).startswith(str(PROJECTS_BASE_PATH.resolve())):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Caminho invalido: deve estar dentro de /projects"
+            )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Caminho invalido"
+        )
+
+    if not full_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Caminho nao encontrado: {path}"
+        )
+
+    if not full_path.is_dir():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Caminho nao e um diretorio"
+        )
+
+    folders = []
+    files = []
+    try:
+        for item in sorted(full_path.iterdir()):
+            if item.name.startswith("."):
+                continue
+            if item.is_dir():
+                folders.append({
+                    "name": item.name,
+                    "path": str(item.relative_to(PROJECTS_BASE_PATH)),
+                    "full_path": str(item),
+                })
+            elif item.is_file():
+                files.append({
+                    "name": item.name,
+                    "path": str(item.relative_to(PROJECTS_BASE_PATH)),
+                    "full_path": str(item),
+                    "extension": item.suffix,
+                    "size": item.stat().st_size,
+                })
+    except PermissionError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Permissao negada para ler diretorio"
+        )
+
+    if full_path == PROJECTS_BASE_PATH:
+        parent_path = None
+    else:
+        parent_rel = full_path.parent.relative_to(PROJECTS_BASE_PATH)
+        parent_path = str(parent_rel) if str(parent_rel) != "." else ""
+
+    return {
+        "current_path": str(full_path),
+        "relative_path": str(full_path.relative_to(PROJECTS_BASE_PATH)) if full_path != PROJECTS_BASE_PATH else "",
+        "parent_path": parent_path,
+        "folders": folders,
+        "files": files,
+    }
+
+
 def _sanitize_project_name(name: str) -> str:
     """
     Sanitize project name for filesystem usage.

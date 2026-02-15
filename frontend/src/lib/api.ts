@@ -158,6 +158,27 @@ export const projectsApi = {
       can_select: boolean;
       error?: string;
     }>(`/api/v1/projects/browse-folders?path=${encodeURIComponent(path)}`),
+
+  // Browse files for file picker
+  browseFiles: (path: string = '') =>
+    request<{
+      current_path: string;
+      relative_path: string;
+      parent_path: string | null;
+      folders: Array<{
+        name: string;
+        path: string;
+        full_path: string;
+      }>;
+      files: Array<{
+        name: string;
+        path: string;
+        full_path: string;
+        extension: string;
+        size: number;
+      }>;
+      error?: string;
+    }>(`/api/v1/projects/browse-files?path=${encodeURIComponent(path)}`),
 };
 
 // Tasks (Kanban) API
