@@ -47,16 +47,16 @@ class OrchestratorManager:
         ).first()
 
         if not analysis:
-            raise ValueError(f"Analysis not found: {analysis_id}")
+            raise ValueError(f"Analise nao encontrada: {analysis_id}")
 
         if not analysis.orchestrator_generated:
-            raise ValueError("Orchestrator not yet generated for this analysis")
+            raise ValueError("Orquestrador ainda nao gerado para esta analise")
 
         if not analysis.orchestrator_key:
-            raise ValueError("Orchestrator key missing")
+            raise ValueError("Chave do orquestrador ausente")
 
         if not analysis.orchestrator_code:
-            raise ValueError("Orchestrator code missing")
+            raise ValueError("Codigo do orquestrador ausente")
 
         # Get file path
         file_path = self.orchestrators_dir / f"{analysis.orchestrator_key}.py"
@@ -77,12 +77,12 @@ class OrchestratorManager:
             return {
                 "success": True,
                 "orchestrator_key": analysis.orchestrator_key,
-                "message": f"Orchestrator '{analysis.orchestrator_key}' registered successfully"
+                "message": f"Orquestrador '{analysis.orchestrator_key}' registrado com sucesso"
             }
 
         except Exception as e:
             logger.error(f"Failed to register orchestrator: {e}")
-            raise ValueError(f"Failed to register orchestrator: {str(e)}")
+            raise ValueError(f"Falha ao registrar orquestrador: {str(e)}")
 
     def _load_orchestrator_from_file(self, file_path: Path, orchestrator_key: str):
         """
@@ -99,7 +99,7 @@ class OrchestratorManager:
             )
 
             if not spec or not spec.loader:
-                raise ImportError(f"Failed to load spec from {file_path}")
+                raise ImportError(f"Falha ao carregar spec de {file_path}")
 
             module = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = module
@@ -116,7 +116,7 @@ class OrchestratorManager:
                     break
 
             if not orchestrator_class:
-                raise ImportError("No orchestrator class found in module")
+                raise ImportError("Nenhuma classe de orquestrador encontrada no modulo")
 
             # Register in registry
             OrchestratorRegistry.register(orchestrator_key, orchestrator_class)
@@ -202,9 +202,9 @@ class OrchestratorManager:
 
             return {
                 "success": True,
-                "message": f"Orchestrator '{orchestrator_key}' unregistered"
+                "message": f"Orquestrador '{orchestrator_key}' removido do registro"
             }
 
         except Exception as e:
             logger.error(f"Failed to unregister orchestrator: {e}")
-            raise ValueError(f"Failed to unregister: {str(e)}")
+            raise ValueError(f"Falha ao remover registro: {str(e)}")

@@ -557,7 +557,7 @@ async def execute_task(
     return ExecuteJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Task execution started. Poll GET /api/v1/jobs/{job.id} for progress."
+        message=f"Execucao de tarefa iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -625,7 +625,7 @@ async def execute_all_tasks(
     return ExecuteJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Batch execution started for {len(task_ids)} tasks. Poll GET /api/v1/jobs/{job.id} for progress."
+        message=f"Execucao em lote iniciada para {len(task_ids)} tarefas. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -1821,7 +1821,7 @@ async def activate_suggested_item(
     return ActivateJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Activation started for {task.item_type.value}. Poll GET /api/v1/jobs/{job.id} for progress."
+        message=f"Ativacao iniciada para {task.item_type.value}. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -1897,7 +1897,7 @@ async def generate_children(
     return ActivateJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Generating {count} {child_type}. Poll GET /api/v1/jobs/{job.id} for progress."
+        message=f"Gerando {count} {child_type}. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -2042,7 +2042,7 @@ async def _activate_item_async(
         else:
             result = await context_service.activate_suggested_epic(epic_id=task_id)
 
-        job_manager.update_progress(job_id, 90.0, "Activation complete!")
+        job_manager.update_progress(job_id, 90.0, "Ativacao concluida!")
 
         children_count = result.get('children_generated', 0)
         ancestors_activated = len(unactivated_ancestors)
@@ -2101,12 +2101,12 @@ async def _generate_children_async(
         if job_obj and job_obj.input_data:
             child_type = job_obj.input_data.get("child_type", "items")
 
-        job_manager.update_progress(job_id, 10.0, f"Generating {count} {child_type}...")
+        job_manager.update_progress(job_id, 10.0, f"Gerando {count} {child_type}...")
 
         context_service = ContextGeneratorService(db)
         result = await context_service.generate_children(parent_id=parent_id, count=count)
 
-        job_manager.update_progress(job_id, 90.0, "Generation complete!")
+        job_manager.update_progress(job_id, 90.0, "Geracao concluida!")
 
         children_count = result.get("children_generated", 0)
         logger.info(f"✅ Children generation job {job_id} completed: {children_count} {child_type}")
@@ -2143,7 +2143,7 @@ async def _execute_task_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Starting task execution job {job_id} for task {task_id}")
 
-        job_manager.update_progress(job_id, 10.0, "Loading task context...")
+        job_manager.update_progress(job_id, 10.0, "Carregando contexto da tarefa...")
 
         executor = TaskExecutor(db)
         result = await executor.execute_task(
@@ -2152,7 +2152,7 @@ async def _execute_task_async(
             max_attempts=max_attempts
         )
 
-        job_manager.update_progress(job_id, 90.0, "Execution complete!")
+        job_manager.update_progress(job_id, 90.0, "Execucao concluida!")
 
         logger.info(f"✅ Task execution job {job_id} completed for task {task_id}")
 
@@ -2189,7 +2189,7 @@ async def _execute_batch_async(
         total = len(task_ids)
         logger.info(f"🚀 Starting batch execution job {job_id} for {total} tasks")
 
-        job_manager.update_progress(job_id, 5.0, f"Starting batch execution of {total} tasks...")
+        job_manager.update_progress(job_id, 5.0, f"Iniciando execucao em lote de {total} tarefas...")
 
         executor = TaskExecutor(db)
 
@@ -2197,7 +2197,7 @@ async def _execute_batch_async(
         results = []
         for i, task_id in enumerate(task_ids):
             progress = 10 + (80 * i / total)
-            job_manager.update_progress(job_id, progress, f"Executing task {i+1}/{total}...")
+            job_manager.update_progress(job_id, progress, f"Executando tarefa {i+1}/{total}...")
 
             # Check if job was cancelled
             if job_manager.is_cancelled(job_id):
@@ -2215,7 +2215,7 @@ async def _execute_batch_async(
                 logger.error(f"Task {task_id} failed: {task_error}")
                 # Continue with other tasks even if one fails
 
-        job_manager.update_progress(job_id, 95.0, "Finalizing batch results...")
+        job_manager.update_progress(job_id, 95.0, "Finalizando resultados do lote...")
 
         succeeded = sum(1 for r in results if hasattr(r, 'validation_passed') and r.validation_passed)
         failed = len(results) - succeeded
@@ -2300,7 +2300,7 @@ async def run_card_inference(
     if not conversation_text.strip():
         return CardInferenceResponse(
             success=False,
-            message="Interview has no conversation data",
+            message="Entrevista nao possui dados de conversa",
             updated_fields=None
         )
 
@@ -2352,7 +2352,7 @@ Extraia informações relevantes para enriquecer este card."""
             logger.warning(f"Could not parse JSON from inference response: {response_text[:200]}")
             return CardInferenceResponse(
                 success=False,
-                message="Could not parse AI response",
+                message="Nao foi possivel interpretar a resposta da IA",
                 updated_fields=None
             )
 
@@ -2398,13 +2398,13 @@ Extraia informações relevantes para enriquecer este card."""
             logger.info(f"✅ Card inference completed for task {task_id}: {updated_fields}")
             return CardInferenceResponse(
                 success=True,
-                message=f"Card updated with {len(updated_fields)} fields",
+                message=f"Card atualizado com {len(updated_fields)} campos",
                 updated_fields=updated_fields
             )
         else:
             return CardInferenceResponse(
                 success=True,
-                message="No new information to add",
+                message="Nenhuma informacao nova para adicionar",
                 updated_fields={}
             )
 
@@ -2412,7 +2412,7 @@ Extraia informações relevantes para enriquecer este card."""
         logger.error(f"❌ Card inference failed for task {task_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Card inference failed: {str(e)}"
+            detail=f"Falha na inferencia de card: {str(e)}"
         )
 
 

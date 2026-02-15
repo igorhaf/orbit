@@ -78,7 +78,7 @@ async def create_chat(
 
     chat = ProjectChat(
         project_id=project_id,
-        title=data.title if data and data.title else "New Chat",
+        title=data.title if data and data.title else "Novo Chat",
         messages=[],
     )
     db.add(chat)
@@ -140,7 +140,7 @@ async def delete_chat(project_id: UUID, chat_id: UUID, db: Session = Depends(get
     db.commit()
 
     logger.info(f"Deleted chat session {chat_id}")
-    return {"detail": "Chat deleted"}
+    return {"detail": "Chat excluido com sucesso"}
 
 
 # ──────────────────────────────────────────────
@@ -197,7 +197,7 @@ async def send_message(
     flag_modified(chat, "messages")  # CRITICAL for JSON column changes
 
     # Auto-generate title from first user message
-    if chat.title == "New Chat" and user_content:
+    if chat.title in ("New Chat", "Novo Chat") and user_content:
         chat.title = user_content[:60].strip()
         if len(user_content) > 60:
             chat.title += "..."
@@ -242,7 +242,7 @@ async def send_message(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Job created. Poll GET /api/v1/jobs/{job.id} for result.",
+        "message": f"Job criada. Use GET /api/v1/jobs/{job.id} para obter resultado.",
         "deep_link": deep_link,
         "notification_title": notification_title,
     }
@@ -273,19 +273,19 @@ async def _process_chat_message_async(
     try:
         job_manager = JobManager(db)
         job_manager.start_job(job_id)
-        job_manager.update_progress(job_id, 10.0, "Searching knowledge base...")
+        job_manager.update_progress(job_id, 10.0, "Buscando na base de conhecimento...")
 
         # Load chat and project
         chat = db.query(ProjectChat).filter(ProjectChat.id == chat_id).first()
         project = db.query(Project).filter(Project.id == project_id).first()
 
         if not chat or not project:
-            job_manager.fail_job(job_id, "Chat or project not found")
+            job_manager.fail_job(job_id, "Chat ou projeto nao encontrado")
             return
 
         # 1. Query RAG for relevant knowledge
         rag_context = _build_rag_context(db, project_id, user_content)
-        job_manager.update_progress(job_id, 30.0, "Building context...")
+        job_manager.update_progress(job_id, 30.0, "Construindo contexto...")
 
         # 2. Build system prompt from YAML
         loader = PromptLoader()
@@ -303,7 +303,7 @@ async def _process_chat_message_async(
         messages = list(chat.messages or [])
         ai_messages = _build_ai_messages(messages)
 
-        job_manager.update_progress(job_id, 50.0, "Calling AI...")
+        job_manager.update_progress(job_id, 50.0, "Chamando IA...")
 
         # 4. Call AIOrchestrator
         orchestrator = AIOrchestrator(db)
@@ -324,7 +324,7 @@ async def _process_chat_message_async(
             ai_content = "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente."
             ai_model = "error"
 
-        job_manager.update_progress(job_id, 80.0, "Saving response...")
+        job_manager.update_progress(job_id, 80.0, "Salvando resposta...")
 
         # 5. Store AI response - re-query chat to avoid stale session
         ai_timestamp = datetime.now(timezone.utc).isoformat()
@@ -333,7 +333,7 @@ async def _process_chat_message_async(
         db.expire_all()
         chat = db.query(ProjectChat).filter(ProjectChat.id == chat_id).first()
         if not chat:
-            job_manager.fail_job(job_id, "Chat not found after AI call")
+            job_manager.fail_job(job_id, "Chat nao encontrado apos chamada de IA")
             return
 
         current_messages = list(chat.messages or [])

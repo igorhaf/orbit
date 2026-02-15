@@ -225,7 +225,7 @@ async def auto_generate_commit(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Chat session {chat_session_id} not found"
+            detail=f"Sessao de chat {chat_session_id} nao encontrada"
         )
 
     # Create job
@@ -251,7 +251,7 @@ async def auto_generate_commit(
     return CommitJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Commit generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+        message=f"Geracao de commit iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -286,7 +286,7 @@ async def generate_manual_commit(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found"
+            detail=f"Tarefa {task_id} nao encontrada"
         )
 
     # Create job
@@ -312,7 +312,7 @@ async def generate_manual_commit(
     return CommitJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Commit generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+        message=f"Geracao de commit iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -340,7 +340,7 @@ async def _generate_commit_auto_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Starting commit generation job {job_id} for chat session {chat_session_id}")
 
-        job_manager.update_progress(job_id, 10.0, "Analyzing chat session...")
+        job_manager.update_progress(job_id, 10.0, "Analisando sessao de chat...")
 
         generator = CommitGenerator()
         commit = await generator.generate_from_task_completion(
@@ -349,7 +349,7 @@ async def _generate_commit_auto_async(
             db=db
         )
 
-        job_manager.update_progress(job_id, 90.0, "Commit generated!")
+        job_manager.update_progress(job_id, 90.0, "Commit gerado!")
 
         logger.info(f"✅ Commit generation job {job_id} completed")
 
@@ -395,7 +395,7 @@ async def _generate_commit_manual_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Starting manual commit generation job {job_id} for task {task_id}")
 
-        job_manager.update_progress(job_id, 10.0, "Generating commit message...")
+        job_manager.update_progress(job_id, 10.0, "Gerando mensagem de commit...")
 
         generator = CommitGenerator()
         commit = await generator.generate_manual(
@@ -404,7 +404,7 @@ async def _generate_commit_manual_async(
             db=db
         )
 
-        job_manager.update_progress(job_id, 90.0, "Commit generated!")
+        job_manager.update_progress(job_id, 90.0, "Commit gerado!")
 
         logger.info(f"✅ Manual commit generation job {job_id} completed")
 

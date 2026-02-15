@@ -135,7 +135,7 @@ def run_git_command(code_path: str, args: List[str]) -> tuple[bool, str]:
         else:
             return False, result.stderr.strip()
     except subprocess.TimeoutExpired:
-        return False, "Git command timed out"
+        return False, "Comando Git expirou"
     except Exception as e:
         return False, str(e)
 
@@ -632,7 +632,7 @@ async def checkout_commit(
     if success:
         return GitOperationResponse(
             success=True,
-            message=f"Checked out to commit {request.commit_hash[:8]}",
+            message=f"Checkout realizado para o commit {request.commit_hash[:8]}",
             details={"commit": request.commit_hash, "state": "detached HEAD"}
         )
     else:
@@ -665,7 +665,7 @@ async def create_branch_from_commit(
     if success:
         return GitOperationResponse(
             success=True,
-            message=f"Created branch '{request.branch_name}' from {request.commit_hash[:8]}",
+            message=f"Branch '{request.branch_name}' criada a partir de {request.commit_hash[:8]}",
             details={"branch": request.branch_name, "from_commit": request.commit_hash}
         )
     else:
@@ -701,7 +701,7 @@ async def revert_commit(
         success, new_hash = run_git_command(code_path, ["rev-parse", "HEAD"])
         return GitOperationResponse(
             success=True,
-            message=f"Reverted commit {request.commit_hash[:8]}",
+            message=f"Commit {request.commit_hash[:8]} revertido",
             details={
                 "reverted_commit": request.commit_hash,
                 "new_commit": new_hash if success else None
@@ -741,7 +741,7 @@ async def cherry_pick_commit(
         success, new_hash = run_git_command(code_path, ["rev-parse", "HEAD"])
         return GitOperationResponse(
             success=True,
-            message=f"Cherry-picked commit {request.commit_hash[:8]}",
+            message=f"Cherry-pick do commit {request.commit_hash[:8]} realizado",
             details={
                 "cherry_picked_commit": request.commit_hash,
                 "new_commit": new_hash if success else None
@@ -787,7 +787,7 @@ async def reset_to_commit(
     if success:
         return GitOperationResponse(
             success=True,
-            message=f"Reset ({mode}) to commit {request.commit_hash[:8]}",
+            message=f"Reset ({mode}) para o commit {request.commit_hash[:8]} realizado",
             details={
                 "target_commit": request.commit_hash,
                 "mode": mode
@@ -812,7 +812,7 @@ async def stash_changes(
     if success:
         return GitOperationResponse(
             success=True,
-            message="Changes stashed successfully",
+            message="Alteracoes guardadas com sucesso",
             details={"output": output}
         )
     else:
@@ -834,7 +834,7 @@ async def stash_pop(
     if success:
         return GitOperationResponse(
             success=True,
-            message="Stash applied and dropped",
+            message="Stash aplicado e removido",
             details={"output": output}
         )
     else:

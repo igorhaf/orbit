@@ -179,7 +179,7 @@ class RateLimiterService:
         if max_requests is None or window_seconds is None:
             return {
                 "configured": False,
-                "message": "No rate limit configured"
+                "message": "Nenhum limite de taxa configurado"
             }
 
         try:

@@ -138,7 +138,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
 
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path or not project.initial_scan_complete:
-            jm.complete_job(job_id, {"skipped": True, "reason": "Project not ready"})
+            jm.complete_job(job_id, {"skipped": True, "reason": "Projeto nao esta pronto"})
             return  # Don't re-queue if project is gone or invalid
 
         code_path = project.code_path
@@ -146,7 +146,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
         logger.info(f"Watchdog cycle started for '{project_name}'")
 
         # --- Step 1: RAG file scan ---
-        jm.update_progress(job_id, 10.0, "Scanning files for changes...")
+        jm.update_progress(job_id, 10.0, "Escaneando arquivos por alteracoes...")
         rag_result = {}
         try:
             from app.services.continuous_rag_service import ContinuousRAGService
@@ -157,7 +157,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             logger.warning(f"RAG scan failed (non-blocking): {e}")
 
         # --- Step 2: Git commit sync ---
-        jm.update_progress(job_id, 30.0, "Syncing git commits...")
+        jm.update_progress(job_id, 30.0, "Sincronizando commits git...")
         git_result = {}
         try:
             from app.services.prompt_doc_rag_sync import GitCommitRAGSync
@@ -168,7 +168,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             logger.warning(f"Git sync failed (non-blocking): {e}")
 
         # --- Step 3: Pattern discovery + spec sync ---
-        jm.update_progress(job_id, 50.0, "Discovering code patterns...")
+        jm.update_progress(job_id, 50.0, "Descobrindo padroes de codigo...")
         try:
             from app.services.pattern_discovery import PatternDiscoveryService
             from app.api.routes.projects import _effective_max_patterns
@@ -196,10 +196,10 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             already_enriched = rag_result.get("wiki_enriched", False)
 
         if already_enriched:
-            jm.update_progress(job_id, 70.0, "Wiki already enriched with new findings")
+            jm.update_progress(job_id, 70.0, "Wiki ja enriquecida com novas descobertas")
             logger.info(f"Wiki enrichment skipped for '{project_name}' (already done in RAG scan)")
         else:
-            jm.update_progress(job_id, 70.0, "Enriching project wiki...")
+            jm.update_progress(job_id, 70.0, "Enriquecendo wiki do projeto...")
             try:
                 from app.api.routes.projects import _enrich_context_from_rag
                 enriched = await _enrich_context_from_rag(db, project_id)
@@ -211,7 +211,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
                 logger.warning(f"Wiki enrichment failed (non-blocking): {e}", exc_info=True)
 
         # --- Step 5: Auto-discover cards ---
-        jm.update_progress(job_id, 85.0, "Checking new findings...")
+        jm.update_progress(job_id, 85.0, "Verificando novas descobertas...")
         card_result = {}
         try:
             card_result = await _auto_discover_cards(db, project_id)
@@ -231,7 +231,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
                 rag_rules = processed.get("rules_extracted", 0)
 
         if new_cards == 0 and rag_rules == 0:
-            jm.update_progress(job_id, 92.0, "Enriching existing cards (idle mode)...")
+            jm.update_progress(job_id, 92.0, "Enriquecendo cards existentes (modo ocioso)...")
             try:
                 enriched_cards = await _auto_enrich_stub_cards(db, project_id, max_cards=1)
                 if enriched_cards > 0:
@@ -316,14 +316,14 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
 
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path or not project.initial_scan_complete:
-            jm.complete_job(job_id, {"skipped": True, "reason": "Project not ready"})
+            jm.complete_job(job_id, {"skipped": True, "reason": "Projeto nao esta pronto"})
             return
 
         project_name = project.name or str(project_id)[:8]
         logger.info(f"Batch processing cycle for '{project_name}' (batch_size={batch_size})")
 
         # --- Step 1: Process next batch of pending files ---
-        jm.update_progress(job_id, 10.0, f"Processing next batch ({batch_size} files max)...")
+        jm.update_progress(job_id, 10.0, f"Processando proximo lote ({batch_size} arquivos max)...")
         process_result = {}
         try:
             from app.services.continuous_rag_service import ContinuousRAGService
@@ -333,7 +333,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             remaining = process_result.get('pending_remaining', 0)
             rules = process_result.get('rules_extracted', 0)
             logger.info(f"Batch processed for '{project_name}': {actual} files, {rules} rules")
-            jm.update_progress(job_id, 30.0, f"Processed {actual} files, {remaining} remaining, {rules} rules extracted")
+            jm.update_progress(job_id, 30.0, f"{actual} arquivos processados, {remaining} restantes, {rules} regras extraidas")
         except Exception as e:
             logger.warning(f"Batch processing failed (non-blocking): {e}")
 
@@ -344,7 +344,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         # PROMPT #255 - Use boolean return from _enrich_context_from_rag (PROMPT #252 fix)
         wiki_enriched = False
         if rules_extracted > 0:
-            jm.update_progress(job_id, 50.0, f"Enriching wiki with {rules_extracted} new rules...")
+            jm.update_progress(job_id, 50.0, f"Enriquecendo wiki com {rules_extracted} novas regras...")
             try:
                 from app.api.routes.projects import _enrich_context_from_rag
                 wiki_enriched = await _enrich_context_from_rag(db, project_id)
@@ -359,7 +359,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         # PROMPT #260 - Batch mode uses higher card limit (15) for faster initial coverage
         card_result = {}
         if rules_extracted > 0:
-            jm.update_progress(job_id, 70.0, "Creating cards from new findings...")
+            jm.update_progress(job_id, 70.0, "Criando cards a partir de novas descobertas...")
             try:
                 card_result = await _auto_discover_cards(db, project_id, max_cards=15)
                 if card_result.get("created", 0) > 0:
@@ -371,7 +371,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         # --- Step 4: If idle (no new rules), enrich existing stub cards ---
         enriched_cards = 0
         if rules_extracted == 0 and card_result.get("created", 0) == 0:
-            jm.update_progress(job_id, 80.0, "Enriching existing cards...")
+            jm.update_progress(job_id, 80.0, "Enriquecendo cards existentes...")
             try:
                 enriched_cards = await _auto_enrich_stub_cards(db, project_id, max_cards=2)
                 if enriched_cards > 0:
@@ -453,7 +453,7 @@ def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int
     if stale_jobs:
         for job in stale_jobs:
             job.status = JobStatus.FAILED
-            job.result = {"error": "Stale job cleaned up"}
+            job.result = {"error": "Job obsoleta removida"}
         db.commit()
         logger.info(f"Cleaned up {len(stale_jobs)} stale batch jobs for project {project_id}")
 
@@ -526,7 +526,7 @@ def submit_watchdog_cycle(db: Session, project_id: UUID):
     if stale_jobs:
         for job in stale_jobs:
             job.status = JobStatus.FAILED
-            job.result = {"error": "Stale job cleaned up"}
+            job.result = {"error": "Job obsoleta removida"}
         db.commit()
         logger.info(f"Cleaned up {len(stale_jobs)} stale jobs for project {project_id}")
 
@@ -996,7 +996,7 @@ async def bootstrap_watchdog():
         if zombie_jobs:
             for job in zombie_jobs:
                 job.status = JobStatus.FAILED
-                job.result = {"error": "Zombie job cleaned up on restart"}
+                job.result = {"error": "Job zumbi removida ao reiniciar"}
             db.commit()
             logger.info(f"Cleaned up {len(zombie_jobs)} zombie running jobs on restart (all types)")
 
@@ -1009,7 +1009,7 @@ async def bootstrap_watchdog():
         if stale_jobs:
             for job in stale_jobs:
                 job.status = JobStatus.FAILED
-                job.result = {"error": "Stale job cleaned up by bootstrap"}
+                job.result = {"error": "Job obsoleta removida ao inicializar"}
             db.commit()
             logger.info(f"Cleaned up {len(stale_jobs)} stale pending jobs (all types)")
 

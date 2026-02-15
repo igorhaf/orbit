@@ -133,7 +133,7 @@ async def clear_console_logs():
 
     return {
         "success": True,
-        "message": "Console logs cleared"
+        "message": "Logs do console limpos com sucesso"
     }
 
 

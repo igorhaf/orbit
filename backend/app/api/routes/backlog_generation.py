@@ -89,7 +89,7 @@ async def generate_epic_from_interview(
     return BacklogJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Epic generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+        message=f"Geracao de epicos iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -144,7 +144,7 @@ async def generate_stories_from_epic(
     return BacklogJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Story generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+        message=f"Geracao de stories iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -199,7 +199,7 @@ async def generate_tasks_from_story(
     return BacklogJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Task generation started. Poll GET /api/v1/jobs/{job.id} for progress."
+        message=f"Geracao de tarefas iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -508,7 +508,7 @@ async def migrate_semantic_to_human_descriptions(
             "total_processed": total_processed,
             "updated": updated,
             "skipped": skipped,
-            "message": f"Successfully migrated {updated} cards to human-readable descriptions"
+            "message": f"{updated} cards migrados com sucesso para descricoes legiveis"
         }
 
     except Exception as e:
@@ -543,7 +543,7 @@ async def _generate_epic_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Starting Epic generation job {job_id} from interview {interview_id}")
 
-        job_manager.update_progress(job_id, 10.0, "Analyzing interview conversation...")
+        job_manager.update_progress(job_id, 10.0, "Analisando conversa da entrevista...")
 
         generator = BacklogGeneratorService(db)
         epic_suggestion = await generator.generate_epic_from_interview(
@@ -551,7 +551,7 @@ async def _generate_epic_async(
             project_id=project_id
         )
 
-        job_manager.update_progress(job_id, 90.0, "Epic generation complete!")
+        job_manager.update_progress(job_id, 90.0, "Geracao de epico concluida!")
 
         logger.info(f"✅ Epic generation job {job_id} completed")
 
@@ -589,7 +589,7 @@ async def _generate_stories_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Starting Story generation job {job_id} from Epic {epic_id}")
 
-        job_manager.update_progress(job_id, 10.0, "Decomposing Epic into Stories...")
+        job_manager.update_progress(job_id, 10.0, "Decompondo Epic em Stories...")
 
         generator = BacklogGeneratorService(db)
         stories_suggestions = await generator.decompose_epic_to_stories(
@@ -597,7 +597,7 @@ async def _generate_stories_async(
             project_id=project_id
         )
 
-        job_manager.update_progress(job_id, 90.0, f"Generated {len(stories_suggestions)} stories!")
+        job_manager.update_progress(job_id, 90.0, f"{len(stories_suggestions)} stories geradas!")
 
         logger.info(f"✅ Story generation job {job_id} completed with {len(stories_suggestions)} stories")
 
@@ -638,7 +638,7 @@ async def _generate_tasks_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Starting Task generation job {job_id} from Story {story_id}")
 
-        job_manager.update_progress(job_id, 10.0, "Decomposing Story into Tasks...")
+        job_manager.update_progress(job_id, 10.0, "Decompondo Story em Tasks...")
 
         generator = BacklogGeneratorService(db)
         tasks_suggestions = await generator.decompose_story_to_tasks(
@@ -646,7 +646,7 @@ async def _generate_tasks_async(
             project_id=project_id
         )
 
-        job_manager.update_progress(job_id, 90.0, f"Generated {len(tasks_suggestions)} tasks!")
+        job_manager.update_progress(job_id, 90.0, f"{len(tasks_suggestions)} tasks geradas!")
 
         logger.info(f"✅ Task generation job {job_id} completed with {len(tasks_suggestions)} tasks")
 

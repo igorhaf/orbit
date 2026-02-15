@@ -55,7 +55,7 @@ class CommitGenerator:
         # 1. Buscar task
         task = db.query(Task).filter(Task.id == UUID(task_id)).first()
         if not task:
-            raise ValueError(f"Task {task_id} not found")
+            raise ValueError(f"Tarefa {task_id} nao encontrada")
 
         # 2. Buscar chat session para extrair contexto
         session = db.query(ChatSession).filter(
@@ -63,7 +63,7 @@ class CommitGenerator:
         ).first()
 
         if not session or not session.messages:
-            raise ValueError("No conversation found for this task")
+            raise ValueError("Nenhuma conversa encontrada para esta tarefa")
 
         # 3. PROMPT #233 - Structured change summarization
         changes_summary = summarize_changes(session.messages, task.title)
@@ -158,7 +158,7 @@ class CommitGenerator:
         # Buscar task
         task = db.query(Task).filter(Task.id == UUID(task_id)).first()
         if not task:
-            raise ValueError(f"Task {task_id} not found")
+            raise ValueError(f"Tarefa {task_id} nao encontrada")
 
         # PROMPT #233 - Diff complexity analysis for model routing
         complexity = analyze_commit_complexity(
@@ -240,8 +240,8 @@ class CommitGenerator:
             # Fallback: criar commit genérico
             return {
                 "type": "chore",
-                "message": "chore: update task",
-                "description": "Task completed"
+                "message": "chore: atualizar tarefa",
+                "description": "Tarefa concluida"
             }
 
         # Construir mensagem completa
