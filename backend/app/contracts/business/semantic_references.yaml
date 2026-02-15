@@ -8,7 +8,7 @@ name: semantic_references
 version: 1
 domain: business
 category: business
-description: Semantic References Methodology for AI content generation
+description: Metodologia de Referencias Semanticas para geracao de conteudo por IA
 usage_type: business_rule
 
 governance:
@@ -19,70 +19,70 @@ governance:
     - version: 1
       date: "2026-02-04"
       author: "Claude"
-      changes: "Initial version documenting semantic references methodology"
+      changes: "Versao inicial documentando metodologia de referencias semanticas"
 
 semantic_map:
-  # Meta: This contract uses its own methodology to document itself
+  # Meta: Este contrato usa sua propria metodologia para se documentar
 
-  # Identifier Categories
-  N1: "Noun Identifier - Represents entities, objects, actors"
-  P1: "Process Identifier - Represents actions, flows, operations"
-  E1: "Endpoint Identifier - Represents API endpoints"
-  D1: "Data Identifier - Represents data structures, schemas"
-  S1: "Service Identifier - Represents external services, integrations"
-  C1: "Constraint Identifier - Represents business rules, validations"
-  AC1: "Acceptance Criteria Identifier - Represents verification conditions"
-  R1: "Requirement Identifier - Represents functional requirements"
-  F1: "Feature Identifier - Represents product features"
-  M1: "Module Identifier - Represents system modules"
+  # Categorias de Identificadores
+  N1: "Identificador Substantivo - Representa entidades, objetos, atores"
+  P1: "Identificador de Processo - Representa acoes, fluxos, operacoes"
+  E1: "Identificador de Endpoint - Representa endpoints de API"
+  D1: "Identificador de Dados - Representa estruturas de dados, schemas"
+  S1: "Identificador de Servico - Representa servicos externos, integracoes"
+  C1: "Identificador de Restricao - Representa regras de negocio, validacoes"
+  AC1: "Identificador de Criterio de Aceitacao - Representa condicoes de verificacao"
+  R1: "Identificador de Requisito - Representa requisitos funcionais"
+  F1: "Identificador de Feature - Representa funcionalidades do produto"
+  M1: "Identificador de Modulo - Representa modulos do sistema"
 
-  # Core Concepts
-  N2: "Semantic Map - Dictionary of identifier -> meaning"
-  N3: "Generated Prompt - AI output with semantic identifiers"
-  N4: "Human Description - Converted text with meanings"
+  # Conceitos Centrais
+  N2: "Mapa Semantico - Dicionario de identificador -> significado"
+  N3: "Prompt Gerado - Saida da IA com identificadores semanticos"
+  N4: "Descricao Humana - Texto convertido com significados"
 
-  # Processes
-  P2: "Identifier Assignment - AI assigns unique identifiers"
-  P3: "Semantic Conversion - Convert identifiers to human text"
-  P4: "Inheritance - Child cards inherit parent identifiers"
+  # Processos
+  P2: "Atribuicao de Identificadores - IA atribui identificadores unicos"
+  P3: "Conversao Semantica - Converter identificadores para texto humano"
+  P4: "Heranca - Cards filhos herdam identificadores do pai"
 
 rules:
   validations:
     - id: V1
-      description: "Identifiers must follow pattern: Letter + Number"
+      description: "Identificadores devem seguir padrao: Letra + Numero"
       expression: "identifier matches /^[A-Z]+[0-9]+$/"
       severity: error
 
     - id: V2
-      description: "Each identifier must have unique meaning within semantic_map"
+      description: "Cada identificador deve ter significado unico no mapa semantico"
       expression: "semantic_map.values().are_unique()"
       severity: error
 
     - id: V3
-      description: "Identifiers must be defined before use"
+      description: "Identificadores devem ser definidos antes do uso"
       expression: "used_identifiers.subset_of(semantic_map.keys())"
       severity: warning
 
   constraints:
     - id: C1
-      description: "Identifier categories are predefined"
+      description: "Categorias de identificadores sao predefinidas"
       applies_to: [N1, P1, E1, D1, S1, C1, AC1, R1, F1, M1]
-      condition: "Category letters: N, P, E, D, S, C, AC, R, F, M"
+      condition: "Letras de categoria: N, P, E, D, S, C, AC, R, F, M"
 
     - id: C2
-      description: "Identifiers are immutable once assigned"
+      description: "Identificadores sao imutaveis uma vez atribuidos"
       applies_to: [N2]
-      condition: "Once N1='User' is set, N1 always means 'User' in that context"
+      condition: "Uma vez que N1='Usuario' e definido, N1 sempre significa 'Usuario' naquele contexto"
 
     - id: C3
-      description: "Child cards reuse parent identifiers"
+      description: "Cards filhos reutilizam identificadores do pai"
       applies_to: [N2, P4]
-      condition: "Story uses Epic's N1, P1, etc. with same meanings"
+      condition: "Story usa N1, P1, etc. do Epic com mesmos significados"
 
     - id: C4
-      description: "New identifiers increment from parent's highest"
+      description: "Novos identificadores incrementam a partir do maior do pai"
       applies_to: [N2, P2]
-      condition: "If parent has N1-N5, child adds N6, N7..."
+      condition: "Se pai tem N1-N5, filho adiciona N6, N7..."
 
   access_control: []
 

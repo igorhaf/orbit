@@ -111,7 +111,7 @@ export default function RagPage() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Loading RAG statistics...</p>
+            <p className="text-gray-600">Carregando estatisticas RAG...</p>
           </div>
         </div>
       </Layout>
@@ -129,9 +129,9 @@ export default function RagPage() {
               <Database className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">RAG Analytics</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Analitico RAG</h1>
               <p className="text-gray-600 mt-1">
-                Knowledge base statistics for all projects
+                Estatisticas da base de conhecimento para todos os projetos
               </p>
             </div>
           </div>
@@ -141,7 +141,7 @@ export default function RagPage() {
             disabled={loading}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+            Atualizar
           </Button>
         </div>
 
@@ -151,8 +151,8 @@ export default function RagPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Layers className="w-5 h-5 text-indigo-600" />
-                Global Knowledge
-                <span className="text-sm font-normal text-gray-500 ml-2">(Shared across all projects)</span>
+                Conhecimento Global
+                <span className="text-sm font-normal text-gray-500 ml-2">(Compartilhado entre todos os projetos)</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -160,21 +160,21 @@ export default function RagPage() {
                 <div className="bg-indigo-50 rounded-lg p-4 text-center">
                   <Package className="w-6 h-6 text-indigo-600 mx-auto mb-2" />
                   <div className="text-2xl font-bold text-indigo-700">{projectsStats.global_only.total_documents}</div>
-                  <div className="text-xs text-indigo-600">Total Global Docs</div>
+                  <div className="text-xs text-indigo-600">Total Docs Globais</div>
                 </div>
                 <div className="bg-blue-50 rounded-lg p-4 text-center">
                   <FileCode className="w-6 h-6 text-blue-600 mx-auto mb-2" />
                   <div className="text-2xl font-bold text-blue-700">{projectsStats.global_only.framework_specs}</div>
-                  <div className="text-xs text-blue-600">Framework Specs</div>
+                  <div className="text-xs text-blue-600">Specs de Frameworks</div>
                 </div>
                 <div className="bg-purple-50 rounded-lg p-4 text-center">
                   <FileText className="w-6 h-6 text-purple-600 mx-auto mb-2" />
                   <div className="text-2xl font-bold text-purple-700">{projectsStats.global_only.prompt_docs}</div>
-                  <div className="text-xs text-purple-600">PROMPT Docs</div>
+                  <div className="text-xs text-purple-600">Docs PROMPT</div>
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-4 text-center">
-                Framework specifications and PROMPT documentation are shared knowledge available to all projects.
+                Especificacoes de frameworks e documentacao PROMPT sao conhecimento compartilhado disponivel para todos os projetos.
               </p>
             </CardContent>
           </Card>
@@ -185,9 +185,9 @@ export default function RagPage() {
           <Card>
             <CardContent className="py-12 text-center">
               <AlertCircle className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Projects Found</h3>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum Projeto Encontrado</h3>
               <p className="text-gray-600 mb-4">
-                Create a project to start building your knowledge base.
+                Crie um projeto para comecar a construir sua base de conhecimento.
               </p>
             </CardContent>
           </Card>
@@ -196,8 +196,8 @@ export default function RagPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FolderOpen className="w-5 h-5 text-blue-600" />
-                Projects RAG Comparison
-                <span className="text-sm font-normal text-gray-500 ml-2">({projectsStats.projects.length} projects)</span>
+                Comparacao RAG dos Projetos
+                <span className="text-sm font-normal text-gray-500 ml-2">({projectsStats.projects.length} projetos)</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -205,7 +205,7 @@ export default function RagPage() {
                 <table className="w-full">
                   <thead>
                     <tr className="border-b border-gray-200">
-                      <th className="text-left py-3 px-4 font-medium text-gray-700">Project</th>
+                      <th className="text-left py-3 px-4 font-medium text-gray-700">Projeto</th>
                       <th className="text-center py-3 px-2 font-medium text-gray-700">
                         <div className="flex flex-col items-center">
                           <Package className="w-4 h-4 text-purple-600 mb-1" />
@@ -215,7 +215,7 @@ export default function RagPage() {
                       <th className="text-center py-3 px-2 font-medium text-gray-700">
                         <div className="flex flex-col items-center">
                           <Code className="w-4 h-4 text-blue-600 mb-1" />
-                          <span className="text-xs">Code</span>
+                          <span className="text-xs">Codigo</span>
                         </div>
                       </th>
                       <th className="text-center py-3 px-2 font-medium text-gray-700">
@@ -227,13 +227,13 @@ export default function RagPage() {
                       <th className="text-center py-3 px-2 font-medium text-gray-700">
                         <div className="flex flex-col items-center">
                           <BookOpen className="w-4 h-4 text-orange-600 mb-1" />
-                          <span className="text-xs">Rules</span>
+                          <span className="text-xs">Regras</span>
                         </div>
                       </th>
                       <th className="text-center py-3 px-2 font-medium text-gray-700">
                         <div className="flex flex-col items-center">
                           <MessageSquare className="w-4 h-4 text-yellow-600 mb-1" />
-                          <span className="text-xs">Answers</span>
+                          <span className="text-xs">Respostas</span>
                         </div>
                       </th>
                       <th className="text-center py-3 px-2 font-medium text-gray-700">
@@ -242,7 +242,7 @@ export default function RagPage() {
                           <span className="text-xs">Docs</span>
                         </div>
                       </th>
-                      <th className="text-center py-3 px-2 font-medium text-gray-700">Actions</th>
+                      <th className="text-center py-3 px-2 font-medium text-gray-700">Acoes</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -292,14 +292,14 @@ export default function RagPage() {
                             <button
                               onClick={() => goToProjectRag(project.project_id)}
                               className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="View RAG Analytics"
+                              title="Ver Analitico RAG"
                             >
                               <Database className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => goToProjectKnowledge(project.project_id)}
                               className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                              title="Manage Knowledge Base"
+                              title="Gerenciar Base de Conhecimento"
                             >
                               <BookOpen className="w-4 h-4" />
                             </button>
@@ -310,7 +310,7 @@ export default function RagPage() {
                     {/* Totals Row */}
                     <tr className="bg-gray-50 font-semibold">
                       <td className="py-3 px-4 text-gray-900">
-                        TOTAL ({projectsStats.projects.length} projects)
+                        TOTAL ({projectsStats.projects.length} projetos)
                       </td>
                       <td className="text-center py-3 px-2 text-purple-700">
                         {projectsStats.totals.total_documents}
@@ -341,23 +341,23 @@ export default function RagPage() {
                 <div className="flex flex-wrap gap-4 text-xs text-gray-500">
                   <div className="flex items-center gap-1">
                     <Code className="w-3 h-3 text-blue-600" />
-                    <span>Code = Indexed code files</span>
+                    <span>Codigo = Arquivos de codigo indexados</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Tags className="w-3 h-3 text-green-600" />
-                    <span>Cards = Epics, Stories, Tasks, Subtasks</span>
+                    <span>Cards = Epicos, Stories, Tasks, Subtasks</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <BookOpen className="w-3 h-3 text-orange-600" />
-                    <span>Rules = Business rules</span>
+                    <span>Regras = Regras de negocio</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <MessageSquare className="w-3 h-3 text-yellow-600" />
-                    <span>Answers = Interview answers</span>
+                    <span>Respostas = Respostas de entrevista</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <FileText className="w-3 h-3 text-gray-600" />
-                    <span>Docs = Uploaded documents</span>
+                    <span>Docs = Documentos enviados</span>
                   </div>
                 </div>
               </div>
@@ -371,11 +371,11 @@ export default function RagPage() {
             <div className="flex items-start gap-3">
               <Database className="w-5 h-5 text-blue-600 mt-0.5" />
               <div>
-                <h4 className="font-medium text-blue-900">About RAG in ORBIT</h4>
+                <h4 className="font-medium text-blue-900">Sobre RAG no ORBIT</h4>
                 <p className="text-sm text-blue-700 mt-1">
-                  Each project has its own isolated RAG (Retrieval-Augmented Generation) knowledge base.
-                  ORBIT orchestrates these per-project RAGs to provide context-aware AI responses.
-                  Global knowledge (framework specs, PROMPT docs) is shared across all projects.
+                  Cada projeto tem sua propria base de conhecimento RAG (Retrieval-Augmented Generation) isolada.
+                  O ORBIT orquestra esses RAGs por projeto para fornecer respostas de IA com contexto.
+                  Conhecimento global (specs de frameworks, docs PROMPT) e compartilhado entre todos os projetos.
                 </p>
               </div>
             </div>

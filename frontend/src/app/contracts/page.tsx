@@ -457,19 +457,19 @@ export default function ContractsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Contracts</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Contratos</h1>
             <p className="mt-2 text-gray-600">
-              YAML contracts defining AI behavior and business rules
+              Contratos YAML que definem comportamento de IA e regras de negocio
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={loadContracts} disabled={loading}>
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+              Atualizar
             </Button>
             <Button onClick={() => setShowCreateModal(true)}>
               <Plus className="w-4 h-4 mr-2" />
-              New Contract
+              Novo Contrato
             </Button>
           </div>
         </div>
@@ -481,7 +481,7 @@ export default function ContractsPage() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <Input
               type="text"
-              placeholder="Search contracts..."
+              placeholder="Buscar contratos..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9"
@@ -490,7 +490,7 @@ export default function ContractsPage() {
 
           {/* Domain Filter */}
           <div className="flex items-center gap-2">
-            <span className="text-sm text-gray-500">Domain:</span>
+            <span className="text-sm text-gray-500">Dominio:</span>
             <select
               value={selectedDomain}
               onChange={(e) => setSelectedDomain(e.target.value)}
@@ -498,7 +498,7 @@ export default function ContractsPage() {
             >
               {DOMAINS.map((domain) => (
                 <option key={domain} value={domain}>
-                  {domain === 'all' ? 'All Domains' : domain}
+                  {domain === 'all' ? 'Todos os Dominios' : domain}
                 </option>
               ))}
             </select>
@@ -514,7 +514,7 @@ export default function ContractsPage() {
             >
               {STATUSES.map((status) => (
                 <option key={status} value={status}>
-                  {status === 'all' ? 'All Statuses' : status}
+                  {status === 'all' ? 'Todos os Status' : status}
                 </option>
               ))}
             </select>
@@ -583,8 +583,8 @@ export default function ContractsPage() {
                 <FileCode className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500">
                   {searchQuery || selectedCategory !== 'all' || selectedDomain !== 'all' || selectedStatus !== 'all'
-                    ? 'No contracts match your filters'
-                    : 'No contracts found'
+                    ? 'Nenhum contrato corresponde aos filtros'
+                    : 'Nenhum contrato encontrado'
                   }
                 </p>
               </div>
@@ -594,25 +594,25 @@ export default function ContractsPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Domain
+                        Dominio
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Category
+                        Categoria
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Name
+                        Nome
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Description
+                        Descricao
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Version
+                        Versao
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
+                        Acoes
                       </th>
                     </tr>
                   </thead>
@@ -657,7 +657,7 @@ export default function ContractsPage() {
                           <button
                             onClick={(e) => handleDeleteClick(contract, e)}
                             className="text-gray-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-colors"
-                            title="Delete contract"
+                            title="Excluir contrato"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -707,7 +707,7 @@ export default function ContractsPage() {
                     onClick={handleStartEdit}
                   >
                     <Edit2 className="w-4 h-4 mr-2" />
-                    Edit
+                    Editar
                   </Button>
                 )}
                 {isEditing && (
@@ -718,7 +718,7 @@ export default function ContractsPage() {
                       onClick={handleCancelEdit}
                       disabled={saving}
                     >
-                      Cancel
+                      Cancelar
                     </Button>
                     <Button
                       size="sm"
@@ -730,7 +730,7 @@ export default function ContractsPage() {
                       ) : (
                         <Save className="w-4 h-4 mr-2" />
                       )}
-                      Save
+                      Salvar
                     </Button>
                   </>
                 )}
@@ -755,7 +755,7 @@ export default function ContractsPage() {
                 }`}
               >
                 <Eye className="w-4 h-4 inline mr-2" />
-                Content
+                Conteudo
               </button>
               <button
                 onClick={() => handleTabChange('versions')}
@@ -766,7 +766,7 @@ export default function ContractsPage() {
                 }`}
               >
                 <History className="w-4 h-4 inline mr-2" />
-                Versions
+                Versoes
               </button>
               <button
                 onClick={() => handleTabChange('semantic')}
@@ -777,7 +777,7 @@ export default function ContractsPage() {
                 }`}
               >
                 <Map className="w-4 h-4 inline mr-2" />
-                Semantic Map
+                Mapa Semantico
               </button>
             </div>
 
@@ -830,7 +830,7 @@ export default function ContractsPage() {
                   ) : versions.length === 0 ? (
                     <div className="text-center py-12 text-gray-500">
                       <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>No backup versions available</p>
+                      <p>Nenhuma versao de backup disponivel</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -851,7 +851,7 @@ export default function ContractsPage() {
                             size="sm"
                             onClick={() => handleRestoreVersion(version.filename)}
                           >
-                            Restore
+                            Restaurar
                           </Button>
                         </div>
                       ))}
@@ -868,7 +868,7 @@ export default function ContractsPage() {
                       return (
                         <div className="text-center py-12 text-gray-500">
                           <Map className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                          <p>No semantic map defined in this contract</p>
+                          <p>Nenhum mapa semantico definido neste contrato</p>
                         </div>
                       );
                     }
@@ -882,16 +882,16 @@ export default function ContractsPage() {
                     });
 
                     const prefixLabels: Record<string, string> = {
-                      'N': 'Entities (N)',
-                      'P': 'Processes (P)',
-                      'E': 'Events (E)',
-                      'D': 'Data (D)',
-                      'S': 'States (S)',
-                      'C': 'Constraints (C)',
-                      'AC': 'Acceptance Criteria (AC)',
-                      'R': 'Roles (R)',
-                      'F': 'Functions (F)',
-                      'M': 'Modules (M)',
+                      'N': 'Entidades (N)',
+                      'P': 'Processos (P)',
+                      'E': 'Endpoints (E)',
+                      'D': 'Dados (D)',
+                      'S': 'Servicos (S)',
+                      'C': 'Restricoes (C)',
+                      'AC': 'Criterios de Aceitacao (AC)',
+                      'R': 'Requisitos (R)',
+                      'F': 'Funcionalidades (F)',
+                      'M': 'Modulos (M)',
                     };
 
                     return (
@@ -928,7 +928,7 @@ export default function ContractsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col mx-4">
             <div className="flex items-center justify-between px-6 py-4 border-b">
-              <h2 className="text-lg font-semibold text-gray-900">Create New Contract</h2>
+              <h2 className="text-lg font-semibold text-gray-900">Criar Novo Contrato</h2>
               <Button variant="ghost" size="sm" onClick={() => setShowCreateModal(false)}>
                 <X className="w-5 h-5" />
               </Button>
@@ -938,22 +938,22 @@ export default function ContractsPage() {
               {/* Path input */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contract Path
+                  Caminho do Contrato
                 </label>
                 <Input
-                  placeholder="category/contract_name (e.g., generation/my_prompt)"
+                  placeholder="categoria/nome_contrato (ex., generation/meu_prompt)"
                   value={newContractPath}
                   onChange={(e) => setNewContractPath(e.target.value)}
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Format: category/name (without .yaml extension)
+                  Formato: categoria/nome (sem extensao .yaml)
                 </p>
               </div>
 
               {/* YAML content */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contract YAML
+                  Contrato YAML
                 </label>
                 <textarea
                   value={newContractContent}
@@ -973,7 +973,7 @@ export default function ContractsPage() {
                       <AlertCircle className="w-5 h-5 text-red-600" />
                     )}
                     <span className={`font-medium ${validation.valid ? 'text-green-800' : 'text-red-800'}`}>
-                      {validation.valid ? 'Valid YAML' : 'Invalid YAML'}
+                      {validation.valid ? 'YAML Valido' : 'YAML Invalido'}
                     </span>
                   </div>
                   {validation.errors.length > 0 && (
@@ -992,18 +992,18 @@ export default function ContractsPage() {
 
             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t">
               <Button variant="ghost" onClick={() => setShowCreateModal(false)}>
-                Cancel
+                Cancelar
               </Button>
               <Button variant="outline" onClick={handleValidate} disabled={validating}>
                 {validating ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : null}
-                Validate
+                Validar
               </Button>
               <Button
                 onClick={handleCreate}
                 disabled={creating || !newContractPath.trim()}
               >
                 {creating ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
-                Create
+                Criar
               </Button>
             </div>
           </div>
@@ -1019,19 +1019,19 @@ export default function ContractsPage() {
                 <Trash2 className="w-5 h-5 text-red-600" />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-gray-900">Delete Contract</h3>
-                <p className="text-sm text-gray-500">This action cannot be undone</p>
+                <h3 className="text-lg font-semibold text-gray-900">Excluir Contrato</h3>
+                <p className="text-sm text-gray-500">Esta acao nao pode ser desfeita</p>
               </div>
             </div>
 
             <p className="text-gray-700 mb-6">
-              Are you sure you want to delete <strong>{contractToDelete.name}</strong>?
-              A backup will be created before deletion.
+              Tem certeza que deseja excluir <strong>{contractToDelete.name}</strong>?
+              Um backup sera criado antes da exclusao.
             </p>
 
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowDeleteModal(false)}>
-                Cancel
+                Cancelar
               </Button>
               <Button
                 className="bg-red-600 hover:bg-red-700 text-white"
@@ -1039,7 +1039,7 @@ export default function ContractsPage() {
                 disabled={deleting}
               >
                 {deleting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
-                Delete
+                Excluir
               </Button>
             </div>
           </div>

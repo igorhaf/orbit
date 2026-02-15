@@ -1,123 +1,123 @@
-# Contract Schema v1.0
-# PROMPT #164 - Contracts Architecture: Unification and Governance
+# Schema de Contratos v1.0
+# PROMPT #164 - Arquitetura de Contratos: Unificacao e Governanca
 #
-# This is the master schema definition for ORBIT contracts.
-# All contracts should follow this structure.
+# Esta e a definicao de schema mestre para contratos ORBIT.
+# Todos os contratos devem seguir esta estrutura.
 
 name: contract_schema
 version: 1
 domain: component
 category: schema
-description: Master schema definition for ORBIT contracts
+description: Definicao de schema mestre para contratos ORBIT
 
 # =============================================================================
-# CONTRACT SCHEMA SPECIFICATION
+# ESPECIFICACAO DO SCHEMA DE CONTRATOS
 # =============================================================================
 
 schema_version: "1.0"
 
 # -----------------------------------------------------------------------------
-# METADATA SECTION (Required)
+# SECAO DE METADADOS (Obrigatoria)
 # -----------------------------------------------------------------------------
-# name: string (required)
-#   - Unique identifier for the contract
-#   - Use snake_case
-#   - Example: "epic_from_interview", "project_creation"
+# name: string (obrigatorio)
+#   - Identificador unico do contrato
+#   - Usar snake_case
+#   - Exemplo: "epic_from_interview", "project_creation"
 #
-# version: integer (required)
-#   - Contract version number, starts at 1
-#   - Increment when making breaking changes
+# version: integer (obrigatorio)
+#   - Numero de versao do contrato, comeca em 1
+#   - Incrementar ao fazer mudancas incompativeis
 #
-# domain: string (required)
-#   - One of: business, interview, generation, memory, component
-#   - business: Core business rules and processes
-#   - interview: Interview flow definitions
-#   - generation: Content generation contracts
-#   - memory: Codebase analysis contracts
-#   - component: Reusable components
+# domain: string (obrigatorio)
+#   - Um de: business, interview, generation, memory, component
+#   - business: Regras e processos de negocio centrais
+#   - interview: Definicoes de fluxo de entrevista
+#   - generation: Contratos de geracao de conteudo
+#   - memory: Contratos de analise de codebase
+#   - component: Componentes reutilizaveis
 #
-# category: string (required)
-#   - Folder name where contract resides
-#   - Examples: business, generation, interviews, memory, commits, components
+# category: string (obrigatorio)
+#   - Nome da pasta onde o contrato reside
+#   - Exemplos: business, generation, interviews, memory, commits, components
 #
-# description: string (optional)
-#   - Human-readable description of the contract's purpose
+# description: string (opcional)
+#   - Descricao legivel do proposito do contrato
 #
-# usage_type: string (optional)
-#   - AI usage type for orchestrator routing
-#   - Examples: task_execution, interview, prompt_generation, memory, general
+# usage_type: string (opcional)
+#   - Tipo de uso de IA para roteamento do orquestrador
+#   - Exemplos: task_execution, interview, prompt_generation, memory, general
 
 # -----------------------------------------------------------------------------
-# GOVERNANCE SECTION (Optional)
+# SECAO DE GOVERNANCA (Opcional)
 # -----------------------------------------------------------------------------
 # governance:
 #   status: draft | active | deprecated
-#     - draft: Contract is being developed
-#     - active: Contract is in production use
-#     - deprecated: Contract is scheduled for removal
+#     - draft: Contrato em desenvolvimento
+#     - active: Contrato em uso em producao
+#     - deprecated: Contrato agendado para remocao
 #
 #   owner: string
-#     - Team or individual responsible for the contract
+#     - Equipe ou individuo responsavel pelo contrato
 #
-#   effective_date: string (ISO date)
-#     - When the contract became effective
+#   effective_date: string (data ISO)
+#     - Quando o contrato entrou em vigor
 #
-#   expires_at: string (ISO date) | null
-#     - Optional expiration date
+#   expires_at: string (data ISO) | null
+#     - Data de expiracao opcional
 #
 #   change_log: array
 #     - version: integer
-#       date: string (ISO date)
+#       date: string (data ISO)
 #       author: string
 #       changes: string
 
 # -----------------------------------------------------------------------------
-# SEMANTIC MAP SECTION (Optional, for PROMPT #83 methodology)
+# SECAO DE MAPA SEMANTICO (Opcional, para metodologia PROMPT #83)
 # -----------------------------------------------------------------------------
 # semantic_map:
-#   N1: "Primary entity description"
-#   N2: "Secondary entity description"
-#   P1: "Main process description"
-#   E1: "API endpoint description"
-#   D1: "Data structure description"
-#   S1: "Service description"
-#   C1: "Constraint description"
-#   AC1: "Acceptance criterion description"
+#   N1: "Descricao da entidade primaria"
+#   N2: "Descricao da entidade secundaria"
+#   P1: "Descricao do processo principal"
+#   E1: "Descricao do endpoint de API"
+#   D1: "Descricao da estrutura de dados"
+#   S1: "Descricao do servico"
+#   C1: "Descricao da restricao"
+#   AC1: "Descricao do criterio de aceitacao"
 #
-# Identifier Categories:
-#   N = Nouns (entities, objects)
-#   P = Processes (actions, flows)
+# Categorias de Identificadores:
+#   N = Substantivos (entidades, objetos)
+#   P = Processos (acoes, fluxos)
 #   E = Endpoints (APIs)
-#   D = Data (schemas, structures)
-#   S = Services (integrations)
-#   C = Constraints (business rules)
-#   AC = Acceptance Criteria (verification conditions)
-#   R = Requirements (functional requirements)
+#   D = Dados (schemas, estruturas)
+#   S = Servicos (integracoes)
+#   C = Restricoes (regras de negocio)
+#   AC = Criterios de Aceitacao (condicoes de verificacao)
+#   R = Requisitos (requisitos funcionais)
 
 # -----------------------------------------------------------------------------
-# RULES SECTION (Optional)
+# SECAO DE REGRAS (Opcional)
 # -----------------------------------------------------------------------------
 # rules:
 #   validations:
-#     - id: string (e.g., "V1")
+#     - id: string (ex., "V1")
 #       description: string
-#       expression: string (validation logic)
+#       expression: string (logica de validacao)
 #       severity: error | warning | info
 #
 #   constraints:
-#     - id: string (e.g., "C1")
+#     - id: string (ex., "C1")
 #       description: string
-#       applies_to: array of identifiers
+#       applies_to: array de identificadores
 #       condition: string
 #
 #   access_control:
-#     - id: string (e.g., "AC1")
+#     - id: string (ex., "AC1")
 #       description: string
-#       roles: array of role names
+#       roles: array de nomes de roles
 #       action: read | write | delete | execute
 
 # -----------------------------------------------------------------------------
-# VARIABLES SECTION (Required if prompts use variables)
+# SECAO DE VARIAVEIS (Obrigatoria se prompts usam variaveis)
 # -----------------------------------------------------------------------------
 # variables:
 #   required:
@@ -132,31 +132,31 @@ schema_version: "1.0"
 #       description: string
 
 # -----------------------------------------------------------------------------
-# COMPONENTS SECTION (Optional)
+# SECAO DE COMPONENTES (Opcional)
 # -----------------------------------------------------------------------------
 # components:
 #   - component_name
 #   - another_component
 #
-# Components are loaded from contracts/components/ folder
-# Reference in prompts using {{ components.component_name }}
+# Componentes sao carregados da pasta contracts/components/
+# Referencie em prompts usando {{ components.component_name }}
 
 # -----------------------------------------------------------------------------
-# PROMPTS SECTION (Required for generation contracts)
+# SECAO DE PROMPTS (Obrigatoria para contratos de geracao)
 # -----------------------------------------------------------------------------
 # system_prompt: |
-#   Multi-line Jinja2 template for system message.
-#   Can reference:
-#   - {{ variable_name }} - Variables from variables section
-#   - {{ components.component_name }} - Loaded component content
-#   - {{ semantic_map.N1 }} - Semantic map values
+#   Template Jinja2 multi-linha para mensagem de sistema.
+#   Pode referenciar:
+#   - {{ variable_name }} - Variaveis da secao variables
+#   - {{ components.component_name }} - Conteudo de componente carregado
+#   - {{ semantic_map.N1 }} - Valores do mapa semantico
 #
 # user_prompt: |
-#   Multi-line Jinja2 template for user message.
-#   Same variable references as system_prompt.
+#   Template Jinja2 multi-linha para mensagem do usuario.
+#   Mesmas referencias de variaveis que system_prompt.
 
 # -----------------------------------------------------------------------------
-# VALIDATORS SECTION (Optional)
+# SECAO DE VALIDADORES (Opcional)
 # -----------------------------------------------------------------------------
 # validators:
 #   - type: json_schema
@@ -169,10 +169,10 @@ schema_version: "1.0"
 #   - type: regex
 #     field: field_name
 #     pattern: "^[A-Z].*"
-#     message: "Field must start with uppercase"
+#     message: "Campo deve comecar com letra maiuscula"
 #
 #   - type: semantic_check
-#     rule: "All semantic identifiers must be defined in semantic_map"
+#     rule: "Todos os identificadores semanticos devem estar definidos no semantic_map"
 #
 #   - type: length
 #     field: field_name
@@ -183,38 +183,38 @@ schema_version: "1.0"
 #     required: [field1, field2]
 
 # -----------------------------------------------------------------------------
-# EXECUTION SECTION (Optional)
+# SECAO DE EXECUCAO (Opcional)
 # -----------------------------------------------------------------------------
 # execution:
 #   estimated_tokens: integer
-#     - Expected token usage for this contract
+#     - Uso esperado de tokens para este contrato
 #
 #   max_tokens: integer
-#     - Maximum tokens allowed (default: 4000)
+#     - Maximo de tokens permitido (padrao: 4000)
 #
 #   recommended_model: string
-#     - Suggested model (e.g., "claude-sonnet-4")
+#     - Modelo sugerido (ex., "claude-sonnet-4")
 #
 #   temperature: float
-#     - Model temperature (default: 0.7)
+#     - Temperatura do modelo (padrao: 0.7)
 #
 #   cache_enabled: boolean
-#     - Whether to cache responses (default: true)
+#     - Se deve cachear respostas (padrao: true)
 #
 #   cache_ttl: integer
-#     - Cache TTL in seconds (default: 86400 = 24h)
+#     - TTL do cache em segundos (padrao: 86400 = 24h)
 
 # -----------------------------------------------------------------------------
-# TAGS SECTION (Optional)
+# SECAO DE TAGS (Opcional)
 # -----------------------------------------------------------------------------
 # tags:
 #   - tag1
 #   - tag2
 #
-# Used for filtering and categorization
+# Usado para filtragem e categorizacao
 
 # =============================================================================
-# EXAMPLE CONTRACT
+# CONTRATO DE EXEMPLO
 # =============================================================================
 
 example:
@@ -222,7 +222,7 @@ example:
   version: 1
   domain: generation
   category: examples
-  description: Example contract showing all available fields
+  description: Contrato de exemplo mostrando todos os campos disponiveis
   usage_type: prompt_generation
 
   governance:
@@ -233,25 +233,25 @@ example:
       - version: 1
         date: "2026-02-04"
         author: "Claude"
-        changes: "Initial version"
+        changes: "Versao inicial"
 
   semantic_map:
-    N1: "User"
-    N2: "Project"
-    P1: "Creation process"
-    D1: "User data"
-    C1: "Email must be unique"
-    AC1: "User can create projects"
+    N1: "Usuario"
+    N2: "Projeto"
+    P1: "Processo de criacao"
+    D1: "Dados do usuario"
+    C1: "Email deve ser unico"
+    AC1: "Usuario pode criar projetos"
 
   rules:
     validations:
       - id: V1
-        description: "Email must be valid format"
+        description: "Email deve ter formato valido"
         expression: "N1.email matches email regex"
         severity: error
     constraints:
       - id: C1
-        description: "User must be authenticated"
+        description: "Usuario deve estar autenticado"
         applies_to: [N1]
         condition: "N1.is_authenticated == true"
 
@@ -259,24 +259,24 @@ example:
     required:
       - name: user_name
         type: string
-        description: "Name of the user"
+        description: "Nome do usuario"
     optional:
       - name: project_count
         type: number
         default: 0
-        description: "Number of existing projects"
+        description: "Numero de projetos existentes"
 
   components:
     - json_output_rules
 
   system_prompt: |
-    You are an assistant helping with {{ semantic_map.N2 }}.
+    Voce e um assistente ajudando com {{ semantic_map.N2 }}.
 
     {{ components.json_output_rules }}
 
   user_prompt: |
-    User: {{ user_name }}
-    Projects: {{ project_count | default(0) }}
+    Usuario: {{ user_name }}
+    Projetos: {{ project_count | default(0) }}
 
   validators:
     - type: json_schema
@@ -295,5 +295,5 @@ example:
     cache_ttl: 86400
 
   tags:
-    - example
-    - documentation
+    - exemplo
+    - documentacao

@@ -47,27 +47,27 @@ interface KnowledgeStats {
 type Category = 'validation' | 'workflow' | 'calculation' | 'permission' | 'integration';
 
 const CATEGORIES: { value: Category; label: string; description: string }[] = [
-  { value: 'validation', label: 'Validation', description: 'Email unique, CPF valid, min password' },
-  { value: 'workflow', label: 'Workflow', description: 'Approval flows, order processes' },
-  { value: 'calculation', label: 'Calculation', description: 'Discount limits, freight calculation' },
-  { value: 'permission', label: 'Permission', description: 'Admin only, owner access' },
-  { value: 'integration', label: 'Integration', description: 'External APIs, webhooks' },
+  { value: 'validation', label: 'Validacao', description: 'Email unico, CPF valido, senha minima' },
+  { value: 'workflow', label: 'Fluxo de Trabalho', description: 'Fluxos de aprovacao, processos de pedido' },
+  { value: 'calculation', label: 'Calculo', description: 'Limites de desconto, calculo de frete' },
+  { value: 'permission', label: 'Permissao', description: 'Apenas admin, acesso do proprietario' },
+  { value: 'integration', label: 'Integracao', description: 'APIs externas, webhooks' },
 ];
 
 const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   manual: { label: 'Manual', color: 'bg-blue-100 text-blue-800' },
-  code_scan: { label: 'Code Scan', color: 'bg-green-100 text-green-800' },
-  interview: { label: 'Interview', color: 'bg-purple-100 text-purple-800' },
-  document: { label: 'Document', color: 'bg-orange-100 text-orange-800' },
-  unknown: { label: 'Unknown', color: 'bg-gray-100 text-gray-800' },
+  code_scan: { label: 'Scan de Codigo', color: 'bg-green-100 text-green-800' },
+  interview: { label: 'Entrevista', color: 'bg-purple-100 text-purple-800' },
+  document: { label: 'Documento', color: 'bg-orange-100 text-orange-800' },
+  unknown: { label: 'Desconhecido', color: 'bg-gray-100 text-gray-800' },
 };
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
-  validation: { label: 'Validation', color: 'bg-red-100 text-red-800' },
-  workflow: { label: 'Workflow', color: 'bg-yellow-100 text-yellow-800' },
-  calculation: { label: 'Calculation', color: 'bg-cyan-100 text-cyan-800' },
-  permission: { label: 'Permission', color: 'bg-pink-100 text-pink-800' },
-  integration: { label: 'Integration', color: 'bg-indigo-100 text-indigo-800' },
+  validation: { label: 'Validacao', color: 'bg-red-100 text-red-800' },
+  workflow: { label: 'Fluxo de Trabalho', color: 'bg-yellow-100 text-yellow-800' },
+  calculation: { label: 'Calculo', color: 'bg-cyan-100 text-cyan-800' },
+  permission: { label: 'Permissao', color: 'bg-pink-100 text-pink-800' },
+  integration: { label: 'Integracao', color: 'bg-indigo-100 text-indigo-800' },
 };
 
 export default function KnowledgePage() {
@@ -254,9 +254,9 @@ export default function KnowledgePage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Knowledge Base</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Base de Conhecimento</h1>
             <p className="text-gray-500 mt-1">
-              Manage business rules and documents for AI context
+              Gerencie regras de negocio e documentos para contexto de IA
             </p>
           </div>
 
@@ -276,7 +276,7 @@ export default function KnowledgePage() {
                   <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
                   </svg>
-                  Upload Document
+                  Enviar Documento
                 </>
               )}
             </Button>
@@ -292,7 +292,7 @@ export default function KnowledgePage() {
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Add Rule
+              Adicionar Regra
             </Button>
           </div>
         </div>
@@ -302,23 +302,23 @@ export default function KnowledgePage() {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <Card className="p-4">
               <div className="text-2xl font-bold text-gray-900">{stats.total_documents}</div>
-              <div className="text-sm text-gray-500">Total Items</div>
+              <div className="text-sm text-gray-500">Total de Itens</div>
             </Card>
             <Card className="p-4">
               <div className="text-2xl font-bold text-blue-600">{stats.business_rules_count}</div>
-              <div className="text-sm text-gray-500">Business Rules</div>
+              <div className="text-sm text-gray-500">Regras de Negocio</div>
             </Card>
             <Card className="p-4">
               <div className="text-2xl font-bold text-purple-600">{stats.interview_answers_count}</div>
-              <div className="text-sm text-gray-500">Interview Answers</div>
+              <div className="text-sm text-gray-500">Respostas de Entrevista</div>
             </Card>
             <Card className="p-4">
               <div className="text-2xl font-bold text-green-600">{stats.code_files_count}</div>
-              <div className="text-sm text-gray-500">Code Files</div>
+              <div className="text-sm text-gray-500">Arquivos de Codigo</div>
             </Card>
             <Card className="p-4">
               <div className="text-2xl font-bold text-orange-600">{stats.documents_count}</div>
-              <div className="text-sm text-gray-500">Documents</div>
+              <div className="text-sm text-gray-500">Documentos</div>
             </Card>
           </div>
         )}
@@ -327,9 +327,9 @@ export default function KnowledgePage() {
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex space-x-8">
             {[
-              { id: 'rules', label: 'Business Rules', count: rules.length },
-              { id: 'documents', label: 'Documents', count: documents.length },
-              { id: 'stats', label: 'Statistics' },
+              { id: 'rules', label: 'Regras de Negocio', count: rules.length },
+              { id: 'documents', label: 'Documentos', count: documents.length },
+              { id: 'stats', label: 'Estatisticas' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -363,7 +363,7 @@ export default function KnowledgePage() {
                 onChange={(e) => setCategoryFilter(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">All Categories</option>
+                <option value="">Todas as Categorias</option>
                 {CATEGORIES.map((cat) => (
                   <option key={cat.value} value={cat.value}>{cat.label}</option>
                 ))}
@@ -374,11 +374,11 @@ export default function KnowledgePage() {
                 onChange={(e) => setSourceFilter(e.target.value)}
                 className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
-                <option value="">All Sources</option>
+                <option value="">Todas as Fontes</option>
                 <option value="manual">Manual</option>
-                <option value="code_scan">Code Scan</option>
-                <option value="interview">Interview</option>
-                <option value="document">Document</option>
+                <option value="code_scan">Scan de Codigo</option>
+                <option value="interview">Entrevista</option>
+                <option value="document">Documento</option>
               </select>
 
               {(categoryFilter || sourceFilter) && (
@@ -386,7 +386,7 @@ export default function KnowledgePage() {
                   onClick={() => { setCategoryFilter(''); setSourceFilter(''); }}
                   className="text-sm text-gray-500 hover:text-gray-700"
                 >
-                  Clear filters
+                  Limpar filtros
                 </button>
               )}
             </div>
@@ -399,12 +399,12 @@ export default function KnowledgePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No business rules yet</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma regra de negocio ainda</h3>
                 <p className="text-gray-500 mb-4">
-                  Add business rules manually or run a codebase scan to extract them automatically.
+                  Adicione regras de negocio manualmente ou execute um scan do codebase para extrair automaticamente.
                 </p>
                 <Button variant="primary" onClick={() => setShowAddDialog(true)}>
-                  Add First Rule
+                  Adicionar Primeira Regra
                 </Button>
               </Card>
             ) : (
@@ -430,7 +430,7 @@ export default function KnowledgePage() {
                       <button
                         onClick={() => handleDeleteRule(rule.id, rule.title)}
                         className="text-gray-400 hover:text-red-600 p-1"
-                        title="Delete rule"
+                        title="Excluir regra"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -453,12 +453,12 @@ export default function KnowledgePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No documents uploaded</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum documento enviado</h3>
                 <p className="text-gray-500 mb-4">
-                  Upload documentation files (MD, TXT, YAML) to add knowledge to the RAG.
+                  Envie arquivos de documentacao (MD, TXT, YAML) para adicionar conhecimento ao RAG.
                 </p>
                 <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                  Upload Document
+                  Enviar Documento
                 </Button>
               </Card>
             ) : (
@@ -483,7 +483,7 @@ export default function KnowledgePage() {
                       <button
                         onClick={() => handleDeleteDocument(doc.filename)}
                         className="text-gray-400 hover:text-red-600 p-1"
-                        title="Delete document"
+                        title="Excluir documento"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -502,11 +502,11 @@ export default function KnowledgePage() {
             {/* By Category */}
             <Card>
               <CardHeader>
-                <CardTitle>Rules by Category</CardTitle>
+                <CardTitle>Regras por Categoria</CardTitle>
               </CardHeader>
               <CardContent>
                 {Object.keys(stats.by_category).length === 0 ? (
-                  <p className="text-gray-500 text-sm">No business rules yet</p>
+                  <p className="text-gray-500 text-sm">Nenhuma regra de negocio ainda</p>
                 ) : (
                   <div className="space-y-3">
                     {Object.entries(stats.by_category).map(([category, count]) => (
@@ -527,11 +527,11 @@ export default function KnowledgePage() {
             {/* By Source */}
             <Card>
               <CardHeader>
-                <CardTitle>Knowledge by Source</CardTitle>
+                <CardTitle>Conhecimento por Fonte</CardTitle>
               </CardHeader>
               <CardContent>
                 {Object.keys(stats.by_source).length === 0 ? (
-                  <p className="text-gray-500 text-sm">No knowledge items yet</p>
+                  <p className="text-gray-500 text-sm">Nenhum item de conhecimento ainda</p>
                 ) : (
                   <div className="space-y-3">
                     {Object.entries(stats.by_source).map(([source, count]) => (
@@ -557,30 +557,30 @@ export default function KnowledgePage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Add Business Rule</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Adicionar Regra de Negocio</h2>
 
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Title
+                    Titulo
                   </label>
                   <input
                     type="text"
                     value={newRule.title}
                     onChange={(e) => setNewRule({ ...newRule, title: e.target.value })}
-                    placeholder="e.g., Email must be unique per tenant"
+                    placeholder="Ex.: Email deve ser unico por tenant"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Description
+                    Descricao
                   </label>
                   <textarea
                     value={newRule.description}
                     onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
-                    placeholder="Describe the business rule in detail..."
+                    placeholder="Descreva a regra de negocio em detalhe..."
                     rows={3}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
@@ -588,7 +588,7 @@ export default function KnowledgePage() {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Category
+                    Categoria
                   </label>
                   <select
                     value={newRule.category}
@@ -610,14 +610,14 @@ export default function KnowledgePage() {
                   onClick={() => setShowAddDialog(false)}
                   disabled={submitting}
                 >
-                  Cancel
+                  Cancelar
                 </Button>
                 <Button
                   variant="primary"
                   onClick={handleAddRule}
                   disabled={submitting || !newRule.title.trim() || !newRule.description.trim()}
                 >
-                  {submitting ? 'Adding...' : 'Add Rule'}
+                  {submitting ? 'Adicionando...' : 'Adicionar Regra'}
                 </Button>
               </div>
             </div>
