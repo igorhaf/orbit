@@ -45,13 +45,13 @@ export default function InterviewLegacyRedirectPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Interview Not Found</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Entrevista Nao Encontrada</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
             onClick={() => router.push('/projects')}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
-            Back to Projects
+            Voltar aos Projetos
           </button>
         </div>
       </Layout>

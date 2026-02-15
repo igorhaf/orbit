@@ -24,21 +24,21 @@ export default function TestDragPage() {
 
   return (
     <div className="p-8 max-w-md mx-auto">
-      <h1 className="text-2xl font-bold mb-2">Drag-and-Drop Test</h1>
+      <h1 className="text-2xl font-bold mb-2">Teste de Arrastar e Soltar</h1>
       <p className="text-gray-600 mb-6">
-        Try dragging the items below. Check the console (F12) for errors.
+        Tente arrastar os itens abaixo. Verifique o console (F12) para erros.
       </p>
 
       <div className="mb-4 p-4 bg-blue-50 rounded">
         <p className="text-sm">
-          <strong>Instructions:</strong>
+          <strong>Instrucoes:</strong>
         </p>
         <ol className="text-sm list-decimal list-inside space-y-1 mt-2">
-          <li>Hover over an item - cursor should change to "grab"</li>
-          <li>Click and hold - cursor should change to "grabbing"</li>
-          <li>Drag to a new position</li>
-          <li>Release - item should move</li>
-          <li>Check console for any errors</li>
+          <li>Passe o mouse sobre um item - cursor deve mudar para "grab"</li>
+          <li>Clique e segure - cursor deve mudar para "grabbing"</li>
+          <li>Arraste para uma nova posicao</li>
+          <li>Solte - o item deve mover</li>
+          <li>Verifique o console para erros</li>
         </ol>
       </div>
 
@@ -74,7 +74,7 @@ export default function TestDragPage() {
               {provided.placeholder}
 
               {items.length === 0 && (
-                <p className="text-gray-400 text-center py-8">No items</p>
+                <p className="text-gray-400 text-center py-8">Nenhum item</p>
               )}
             </div>
           )}
@@ -82,7 +82,7 @@ export default function TestDragPage() {
       </DragDropContext>
 
       <div className="mt-6 p-4 bg-yellow-50 rounded">
-        <p className="text-sm font-medium mb-2">Debugging Info:</p>
+        <p className="text-sm font-medium mb-2">Informacoes de Depuracao:</p>
         <ul className="text-xs space-y-1">
           <li>✓ DragDropContext: Initialized</li>
           <li>✓ Droppable: droppableId="test-droppable"</li>

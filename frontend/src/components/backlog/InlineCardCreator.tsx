@@ -218,7 +218,7 @@ export default function InlineCardCreator({
           {isSaving ? (
             <div className="flex items-center gap-2 text-sm text-gray-500">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
-              Creating...
+              Criando...
             </div>
           ) : (
             <div className="flex-1">
@@ -230,7 +230,7 @@ export default function InlineCardCreator({
                   onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={handleKeyDown}
                   onBlur={handleBlur}
-                  placeholder={`New ${label} title...`}
+                  placeholder={`Novo titulo de ${label}...`}
                   className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                 />
                 <div data-ai-suggest>
@@ -242,7 +242,7 @@ export default function InlineCardCreator({
                 </div>
               </div>
               <div className="flex items-center gap-3 mt-1">
-                <p className="text-xs text-gray-400">Enter to save, Esc to cancel</p>
+                <p className="text-xs text-gray-400">Enter para salvar, Esc para cancelar</p>
                 {error && <p className="text-xs text-red-500">{error}</p>}
               </div>
             </div>
@@ -263,7 +263,7 @@ export default function InlineCardCreator({
         {isSaving ? (
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600" />
-            Creating...
+            Criando...
           </div>
         ) : (
           <div className="flex-1">
@@ -275,7 +275,7 @@ export default function InlineCardCreator({
                 onChange={(e) => setTitle(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onBlur={handleBlur}
-                placeholder={`New ${label} title...`}
+                placeholder={`Novo titulo de ${label}...`}
                 className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
               />
               <div data-ai-suggest>
@@ -287,7 +287,7 @@ export default function InlineCardCreator({
               </div>
             </div>
             <div className="flex items-center gap-3 mt-1">
-              <p className="text-xs text-gray-400">Enter to save, Esc to cancel</p>
+              <p className="text-xs text-gray-400">Enter para salvar, Esc para cancelar</p>
               {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
           </div>

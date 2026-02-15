@@ -14,21 +14,21 @@ export default function TestDndPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold mb-4">Testing @hello-pangea/dnd Import</h1>
+      <h1 className="text-2xl font-bold mb-4">Testando importacao @hello-pangea/dnd</h1>
 
       <div className="space-y-4">
         <div className="bg-green-100 p-4 rounded">
-          <p className="font-medium">✅ Module Import Status:</p>
+          <p className="font-medium">Status de Importacao do Modulo:</p>
           <ul className="mt-2 space-y-1">
-            <li>DragDropContext: {DragDropContext ? '✅ Imported' : '❌ Failed'}</li>
-            <li>Droppable: {Droppable ? '✅ Imported' : '❌ Failed'}</li>
-            <li>Draggable: {Draggable ? '✅ Imported' : '❌ Failed'}</li>
+            <li>DragDropContext: {DragDropContext ? '✅ Importado' : '❌ Falhou'}</li>
+            <li>Droppable: {Droppable ? '✅ Importado' : '❌ Falhou'}</li>
+            <li>Draggable: {Draggable ? '✅ Importado' : '❌ Falhou'}</li>
           </ul>
         </div>
 
         <DragDropContext onDragEnd={handleDragEnd}>
           <div className="bg-blue-100 p-4 rounded">
-            <p className="font-medium mb-2">Simple Drag Test:</p>
+            <p className="font-medium mb-2">Teste Simples de Arraste:</p>
             <Droppable droppableId="test">
               {(provided) => (
                 <div
@@ -44,7 +44,7 @@ export default function TestDndPage() {
                         {...provided.dragHandleProps}
                         className="bg-gray-200 p-3 rounded cursor-grab"
                       >
-                        Drag me!
+                        Arraste-me!
                       </div>
                     )}
                   </Draggable>
@@ -56,11 +56,11 @@ export default function TestDndPage() {
         </DragDropContext>
 
         <div className="bg-yellow-100 p-4 rounded">
-          <p className="font-medium">Instructions:</p>
+          <p className="font-medium">Instrucoes:</p>
           <ol className="mt-2 space-y-1 list-decimal list-inside">
-            <li>If you see ✅ for all imports, the module is working!</li>
-            <li>Try dragging the "Drag me!" box above</li>
-            <li>If it works here, the Kanban should work too</li>
+            <li>Se voce ver ✅ para todas as importacoes, o modulo esta funcionando!</li>
+            <li>Tente arrastar a caixa "Arraste-me!" acima</li>
+            <li>Se funcionar aqui, o Kanban tambem deve funcionar</li>
           </ol>
         </div>
       </div>

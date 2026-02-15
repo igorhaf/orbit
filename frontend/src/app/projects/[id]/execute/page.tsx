@@ -76,10 +76,10 @@ export default function ExecutePage() {
                   d="M10 19l-7-7m0 0l7-7m-7 7h18"
                 />
               </svg>
-              Back to Project
+              Voltar ao Projeto
             </Button>
           </Link>
-          <h1 className="text-3xl font-bold text-gray-900">Execute Tasks</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Executar Tarefas</h1>
         </div>
 
         <ExecutionPanel
