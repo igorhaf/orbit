@@ -78,9 +78,9 @@ export function DroppableColumn({
           {tasks.length === 0 && (
             <div className="flex items-center justify-center text-gray-400 py-12 text-sm">
               {isOver ? (
-                <span className="text-blue-500 font-medium">Drop here</span>
+                <span className="text-blue-500 font-medium">Solte aqui</span>
               ) : (
-                <span>No tasks</span>
+                <span>Nenhuma tarefa</span>
               )}
             </div>
           )}

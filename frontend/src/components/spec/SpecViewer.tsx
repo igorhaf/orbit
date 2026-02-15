@@ -42,9 +42,9 @@ export function SpecViewer({ specification, onEdit, readOnly = false }: Props) {
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
               />
             </svg>
-            <p className="text-lg font-medium">No specification available</p>
+            <p className="text-lg font-medium">Nenhuma especificacao disponivel</p>
             <p className="text-sm mt-2">
-              Create a specification to define your project requirements
+              Crie uma especificacao para definir os requisitos do seu projeto
             </p>
           </div>
         </CardContent>
@@ -90,9 +90,9 @@ export function SpecViewer({ specification, onEdit, readOnly = false }: Props) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Project Specification</CardTitle>
+              <CardTitle>Especificacao do Projeto</CardTitle>
               <p className="text-sm text-gray-600 mt-1">
-                Last updated: {new Date(specification.updated_at).toLocaleString()}
+                Ultima atualizacao: {new Date(specification.updated_at).toLocaleString()}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -105,7 +105,7 @@ export function SpecViewer({ specification, onEdit, readOnly = false }: Props) {
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  Formatted
+                  Formatado
                 </button>
                 <button
                   onClick={() => setViewMode('raw')}
@@ -133,7 +133,7 @@ export function SpecViewer({ specification, onEdit, readOnly = false }: Props) {
                       d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
                     />
                   </svg>
-                  Edit
+                  Editar
                 </Button>
               )}
             </div>
@@ -224,7 +224,7 @@ export function SpecViewer({ specification, onEdit, readOnly = false }: Props) {
       {viewMode === 'formatted' && sections.length > 3 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Table of Contents</CardTitle>
+            <CardTitle className="text-base">Indice</CardTitle>
           </CardHeader>
           <CardContent>
             <nav className="space-y-1">

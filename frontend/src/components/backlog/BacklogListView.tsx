@@ -48,7 +48,7 @@ interface BacklogListViewProps {
   onFilterOptionsChange?: (options: FilterOptions) => void;
   // PROMPT #131 - Callback when interview is clicked (opens card with interview tab)
   onInterviewClick?: (item: BacklogItem, interviewId: string) => void;
-  // PROMPT #272 - Generate Epics callback (shown next to Add Epic)
+  // PROMPT #272 - Gerar Epics callback (shown next to Adicionar Epic)
   onGenerateEpics?: () => void;
 }
 
@@ -111,13 +111,13 @@ const getStatusBadge = (status: string) => {
   const statusLower = status.toLowerCase();
 
   if (statusLower === 'done' || statusLower === 'completed') {
-    return <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800 border border-green-200">Done</span>;
+    return <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800 border border-green-200">Concluido</span>;
   }
   if (statusLower === 'in_progress' || statusLower === 'in progress') {
-    return <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800 border border-blue-200">In Progress</span>;
+    return <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800 border border-blue-200">Em Progresso</span>;
   }
   if (statusLower === 'review') {
-    return <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-800 border border-purple-200">Review</span>;
+    return <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-800 border border-purple-200">Revisao</span>;
   }
   if (statusLower === 'backlog') {
     return <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-800 border border-gray-200">Backlog</span>;
@@ -136,7 +136,7 @@ export default function BacklogListView({
   selectedItemId,  // PROMPT #96
   onFilterOptionsChange,  // PROMPT #123
   onInterviewClick,  // PROMPT #131 - Interview click callback
-  onGenerateEpics,  // PROMPT #272 - Generate Epics callback
+  onGenerateEpics,  // PROMPT #272 - Gerar Epics callback
 }: BacklogListViewProps) {
   // PROMPT #131 - Removed router, now using onInterviewClick callback
   const [backlog, setBacklog] = useState<BacklogItem[]>([]);
@@ -462,8 +462,8 @@ export default function BacklogListView({
   const handleRejectItem = (item: BacklogItem) => {
     setConfirmDialog({
       open: true,
-      title: 'Reject Item',
-      message: `Are you sure you want to reject and delete "${item.title}"? This action cannot be undone.`,
+      title: 'Rejeitar Item',
+      message: `Tem certeza que deseja rejeitar e excluir "${item.title}"? Esta acao nao pode ser desfeita.`,
       type: 'danger',
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -489,8 +489,8 @@ export default function BacklogListView({
     const count = selectedIds.size;
     setConfirmDialog({
       open: true,
-      title: 'Delete Items',
-      message: `Are you sure you want to delete ${count} item(s)? This action cannot be undone.`,
+      title: 'Excluir Itens',
+      message: `Tem certeza que deseja excluir ${count} item(ns)? Esta acao nao pode ser desfeita.`,
       type: 'danger',
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -709,14 +709,14 @@ export default function BacklogListView({
                 {isItemActivating(item.id) ? (
                   <>
                     <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
-                    <span>Activating...</span>
+                    <span>Ativando...</span>
                   </>
                 ) : (
                   <>
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span>Approve</span>
+                    <span>Aprovar</span>
                   </>
                 )}
               </button>
@@ -737,7 +737,7 @@ export default function BacklogListView({
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 )}
-                <span>Reject</span>
+                <span>Rejeitar</span>
               </button>
             </div>
           )}
@@ -754,11 +754,11 @@ export default function BacklogListView({
           >
             <IconChat className="w-4 h-4" />
             <span className="text-sm font-medium text-blue-700">
-              {interview.interview_mode === 'context' ? 'Context Interview' :
-               interview.interview_mode === 'meta_prompt' ? 'Epic Interview' :
-               interview.interview_mode === 'card_focused' ? 'Card Interview' :
-               interview.interview_mode === 'task_focused' ? 'Task Interview' :
-               'Interview'}
+              {interview.interview_mode === 'context' ? 'Entrevista de Contexto' :
+               interview.interview_mode === 'meta_prompt' ? 'Entrevista de Epic' :
+               interview.interview_mode === 'card_focused' ? 'Entrevista de Card' :
+               interview.interview_mode === 'task_focused' ? 'Entrevista de Task' :
+               'Entrevista'}
             </span>
             <span className="text-xs text-gray-500">
               {interview.conversation_data?.length || 0} msgs
@@ -813,11 +813,11 @@ export default function BacklogListView({
               d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
             />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No backlog items</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhum item no backlog</h3>
           <p className="mt-1 text-sm text-gray-500">
-            Get started by creating Epics, Stories, or Tasks.
+            Comece criando Epics, Stories ou Tasks.
           </p>
-          {/* PROMPT #187 - Add Epic in empty state */}
+          {/* PROMPT #187 - Adicionar Epic in empty state */}
           {isAddingEpic ? (
             <div className="mt-4 max-w-md mx-auto">
               <InlineCardCreator
@@ -840,9 +840,9 @@ export default function BacklogListView({
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                 </svg>
-                Add Epic
+                Adicionar Epic
               </button>
-              {/* PROMPT #280 - Generate Epics button in empty state */}
+              {/* PROMPT #280 - Gerar Epics button in empty state */}
               {onGenerateEpics && (
                 <button
                   onClick={onGenerateEpics}
@@ -851,7 +851,7 @@ export default function BacklogListView({
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
-                  Generate Epics
+                  Gerar Epics
                 </button>
               )}
             </div>
@@ -879,9 +879,9 @@ export default function BacklogListView({
               d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
             />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No matching items</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhum item encontrado</h3>
           <p className="mt-1 text-sm text-gray-500">
-            No items match &quot;{filters.search}&quot;. Try adjusting your search.
+            Nenhum item corresponde a &quot;{filters.search}&quot;. Tente ajustar sua busca.
           </p>
         </CardContent>
       </Card>
@@ -894,7 +894,7 @@ export default function BacklogListView({
         <div className="flex items-center justify-between">
           <CardTitle>Backlog</CardTitle>
           <div className="flex items-center gap-4">
-            {/* PROMPT #187 - Add Epic button */}
+            {/* PROMPT #187 - Adicionar Epic button */}
             <button
               onClick={() => setIsAddingEpic(true)}
               disabled={isAddingEpic}
@@ -903,9 +903,9 @@ export default function BacklogListView({
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-              Add Epic
+              Adicionar Epic
             </button>
-            {/* PROMPT #272 - Generate Epics button (next to Add Epic) */}
+            {/* PROMPT #272 - Gerar Epics button (next to Adicionar Epic) */}
             {onGenerateEpics && (
               <button
                 onClick={onGenerateEpics}
@@ -914,7 +914,7 @@ export default function BacklogListView({
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                 </svg>
-                Generate Epics
+                Gerar Epics
               </button>
             )}
             <div className="text-sm text-gray-500">
@@ -970,14 +970,14 @@ export default function BacklogListView({
                       className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
                       title="Expandir todos os itens"
                     >
-                      Expand All
+                      Expandir Tudo
                     </button>
                     <button
                       onClick={collapseAll}
                       className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
                       title="Recolher todos os itens"
                     >
-                      Collapse All
+                      Recolher Tudo
                     </button>
                   </>
                 )}
@@ -1000,13 +1000,13 @@ export default function BacklogListView({
                 onClick={handleSelectAll}
                 className="px-2 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-100 rounded transition-colors"
               >
-                Select All
+                Selecionar Tudo
               </button>
               <button
                 onClick={handleClearSelection}
                 className="px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
               >
-                Clear Selection
+                Limpar Selecao
               </button>
             </div>
           </div>

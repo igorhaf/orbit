@@ -74,7 +74,7 @@ export default function SetupContextPage() {
       }
     } catch (error) {
       console.error('Failed to load project:', error);
-      showError('Failed to load project');
+      showError('Falha ao carregar projeto');
     } finally {
       setLoading(false);
     }
@@ -100,7 +100,7 @@ export default function SetupContextPage() {
         setInterviewId(createdInterview.id);
       } catch (error) {
         console.error('Failed to create interview:', error);
-        showError('Failed to start context interview');
+        showError('Falha ao iniciar entrevista de contexto');
       }
     };
 
@@ -120,7 +120,7 @@ export default function SetupContextPage() {
       }
       setStep('review');
     } else {
-      showError('Failed to generate context. Please try again.');
+      showError('Falha ao gerar contexto. Tente novamente.');
     }
   };
 
@@ -160,18 +160,18 @@ export default function SetupContextPage() {
         setGeneratingContext(false);
       } else {
         setGeneratingContext(false);
-        showError('Failed to generate context. Please try again.');
+        showError('Falha ao gerar contexto. Tente novamente.');
       }
     } catch (error) {
       console.error('Failed to generate context:', error);
       setGeneratingContext(false);
-      showError('Failed to generate context. Please try again.');
+      showError('Falha ao gerar contexto. Tente novamente.');
     }
   };
 
   const handleConfirm = () => {
     setStep('complete');
-    showSuccess('Context configured successfully!');
+    showSuccess('Contexto configurado com sucesso!');
     router.push(`/projects/${projectId}`);
   };
 
@@ -189,9 +189,9 @@ export default function SetupContextPage() {
     return (
       <Layout>
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Project Not Found</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Projeto Nao Encontrado</h2>
           <Button variant="primary" onClick={() => router.push('/projects')}>
-            Back to Projects
+            Voltar para Projetos
           </Button>
         </div>
       </Layout>
@@ -203,18 +203,18 @@ export default function SetupContextPage() {
       <Breadcrumbs />
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">
-          Configure Project Context
+          Configurar Contexto do Projeto
         </h1>
         <p className="text-gray-600 mb-8">
-          Complete the Context Interview for <strong>{project.name}</strong>
+          Complete a Entrevista de Contexto para <strong>{project.name}</strong>
         </p>
 
         {/* Progress Steps */}
         <div className="flex items-center justify-center mb-8">
           {[
-            { id: 'interview', label: '1. Interview' },
-            { id: 'review', label: '2. Review' },
-            { id: 'complete', label: '3. Complete' },
+            { id: 'interview', label: '1. Entrevista' },
+            { id: 'review', label: '2. Revisao' },
+            { id: 'complete', label: '3. Concluido' },
           ].map((s, i) => (
             <div key={s.id} className="flex items-center">
               <div
@@ -245,9 +245,9 @@ export default function SetupContextPage() {
             <CardHeader>
               <div className="flex justify-between items-start">
                 <div>
-                  <CardTitle>Context Interview</CardTitle>
+                  <CardTitle>Entrevista de Contexto</CardTitle>
                   <p className="text-sm text-gray-600 mt-1">
-                    Tell the AI about your project. This establishes the foundation for all future development.
+                    Conte a IA sobre seu projeto. Isso estabelece a base para todo o desenvolvimento futuro.
                   </p>
                 </div>
                 <Button
@@ -255,7 +255,7 @@ export default function SetupContextPage() {
                   onClick={() => router.push(`/projects/${projectId}`)}
                   className="text-gray-500"
                 >
-                  Cancel
+                  Cancelar
                 </Button>
               </div>
             </CardHeader>
@@ -263,8 +263,8 @@ export default function SetupContextPage() {
               {generatingContext ? (
                 <div className="flex flex-col items-center justify-center py-12">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                  <p className="text-gray-600">Generating project context...</p>
-                  <p className="text-sm text-gray-500 mt-1">This may take a moment</p>
+                  <p className="text-gray-600">Gerando contexto do projeto...</p>
+                  <p className="text-sm text-gray-500 mt-1">Isso pode levar um momento</p>
                 </div>
               ) : (
                 <ChatInterface
@@ -281,22 +281,22 @@ export default function SetupContextPage() {
         {step === 'review' && (
           <Card>
             <CardHeader>
-              <CardTitle>Review Context</CardTitle>
+              <CardTitle>Revisar Contexto</CardTitle>
               <p className="text-sm text-gray-600 mt-1">
-                Review the generated context for your project.
+                Revise o contexto gerado para seu projeto.
               </p>
             </CardHeader>
             <CardContent>
               <div className="space-y-6">
                 {/* Human-readable context */}
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Project Description</h4>
+                  <h4 className="font-semibold text-gray-900 mb-2">Descricao do Projeto</h4>
                   <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                     <div className="prose prose-sm max-w-none">
                       {contextHuman ? (
                         <ReactMarkdown>{contextHuman}</ReactMarkdown>
                       ) : (
-                        <p className="text-gray-500 italic">No context generated</p>
+                        <p className="text-gray-500 italic">Nenhum contexto gerado</p>
                       )}
                     </div>
                   </div>
@@ -306,7 +306,7 @@ export default function SetupContextPage() {
                 {suggestedEpics.length > 0 && (
                   <div>
                     <h4 className="font-semibold text-gray-900 mb-2">
-                      Suggested Epics ({suggestedEpics.length})
+                      Epicos Sugeridos ({suggestedEpics.length})
                     </h4>
                     <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                       <div className="grid gap-2">
@@ -333,21 +333,21 @@ export default function SetupContextPage() {
                     <svg className="w-4 h-4 transform group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
-                    View Semantic Context (for AI)
+                    Ver Contexto Semantico (para IA)
                   </summary>
                   <div className="mt-2 bg-gray-900 rounded-lg p-4 border border-gray-700">
                     <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">
-                      {contextSemantic || 'No semantic context generated'}
+                      {contextSemantic || 'Nenhum contexto semantico gerado'}
                     </pre>
                   </div>
                 </details>
 
                 <div className="flex justify-end gap-3 pt-4">
                   <Button variant="outline" onClick={() => setStep('interview')}>
-                    Back to Interview
+                    Voltar para Entrevista
                   </Button>
                   <Button variant="primary" onClick={handleConfirm}>
-                    Confirm & Go to Project
+                    Confirmar e Ir para o Projeto
                   </Button>
                 </div>
               </div>

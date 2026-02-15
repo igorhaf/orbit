@@ -40,7 +40,7 @@ export default function PromptDetailPage() {
       setPrompt(data);
     } catch (err: any) {
       console.error('Failed to load prompt:', err);
-      setError(err.message || 'Failed to load prompt');
+      setError(err.message || 'Falha ao carregar prompt');
     } finally {
       setLoading(false);
     }
@@ -82,7 +82,7 @@ export default function PromptDetailPage() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <Loader2 className="w-12 h-12 mx-auto mb-4 text-blue-600 animate-spin" />
-            <p className="text-gray-600">Loading prompt...</p>
+            <p className="text-gray-600">Carregando prompt...</p>
           </div>
         </div>
       </Layout>
@@ -98,15 +98,15 @@ export default function PromptDetailPage() {
             <div className="text-center py-8">
               <div className="text-red-600 mb-4"><svg className="w-10 h-10 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
               <h3 className="text-lg font-semibold text-red-900 mb-2">
-                Failed to Load Prompt
+                Falha ao Carregar Prompt
               </h3>
               <p className="text-red-800 mb-4">
-                {error || 'Prompt not found'}
+                {error || 'Prompt nao encontrado'}
               </p>
               <Link href="/prompts">
                 <Button variant="outline">
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Prompts
+                  Voltar para Prompts
                 </Button>
               </Link>
             </div>
@@ -124,7 +124,7 @@ export default function PromptDetailPage() {
         <Link href="/prompts">
           <Button variant="outline" size="sm">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Prompts
+            Voltar para Prompts
           </Button>
         </Link>
 
@@ -135,7 +135,7 @@ export default function PromptDetailPage() {
               variant="outline"
               onClick={() => setShowVersionHistory(!showVersionHistory)}
             >
-              {showVersionHistory ? 'Hide' : 'Show'} Version History ({versions.length})
+              {showVersionHistory ? 'Ocultar' : 'Mostrar'} Historico de Versoes ({versions.length})
             </Button>
           </div>
         )}
@@ -170,14 +170,14 @@ export default function PromptDetailPage() {
                 <div className="text-blue-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg></div>
                 <div>
                   <h3 className="font-semibold text-blue-900 mb-1">
-                    Generated from Interview
+                    Gerado a partir de Entrevista
                   </h3>
                   <p className="text-sm text-blue-800 mb-3">
-                    This prompt was automatically generated from an interview session.
+                    Este prompt foi gerado automaticamente a partir de uma sessao de entrevista.
                   </p>
                   <Link href={`/projects/${prompt.project_id}/interviews/${prompt.created_from_interview_id}`}>
                     <Button variant="outline" size="sm">
-                      View Interview
+                      Ver Entrevista
                     </Button>
                   </Link>
                 </div>

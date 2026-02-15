@@ -127,11 +127,11 @@ export function ExecutionPanel({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Task Execution</CardTitle>
+            <CardTitle>Execucao de Tarefas</CardTitle>
             <p className="text-sm text-gray-600 mt-1">
               {isExecuting
-                ? 'Executing tasks in real-time...'
-                : 'Ready to execute tasks'}
+                ? 'Executando tarefas em tempo real...'
+                : 'Pronto para executar tarefas'}
             </p>
           </div>
           <Button
@@ -180,13 +180,13 @@ export function ExecutionPanel({
       {/* Tasks Status */}
       <Card>
         <CardHeader>
-          <CardTitle>Tasks ({tasks.length})</CardTitle>
+          <CardTitle>Tarefas ({tasks.length})</CardTitle>
         </CardHeader>
         <CardContent>
           {tasks.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
-              <p>No tasks available for execution</p>
-              <p className="text-sm mt-2">Create tasks to get started</p>
+              <p>Nenhuma tarefa disponivel para execucao</p>
+              <p className="text-sm mt-2">Crie tarefas para comecar</p>
             </div>
           ) : (
             <div className="space-y-3">

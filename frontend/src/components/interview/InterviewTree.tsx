@@ -50,17 +50,17 @@ const getItemTypeIcon = (type?: ItemType | string): React.ReactNode => {
 const getInterviewModeLabel = (mode?: string) => {
   switch (mode) {
     case 'context':
-      return 'Context Interview';
+      return 'Entrevista de Contexto';
     case 'meta_prompt':
-      return 'Epic Interview';
+      return 'Entrevista de Epic';
     case 'card_focused':
-      return 'Card Interview';
+      return 'Entrevista de Card';
     case 'task_focused':
-      return 'Task Interview';
+      return 'Entrevista de Task';
     case 'orchestrator':
-      return 'Orchestrated Interview';
+      return 'Entrevista Orquestrada';
     default:
-      return 'Interview';
+      return 'Entrevista';
   }
 };
 
@@ -188,7 +188,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
           id: `interview-${interview.id}`,
           type: 'interview',
           title: getInterviewModeLabel(interview.interview_mode),
-          subtitle: `${interview.conversation_data?.length || 0} messages`,
+          subtitle: `${interview.conversation_data?.length || 0} mensagens`,
           icon: getInterviewModeIcon(interview.interview_mode),
           status: interview.status,
           interview,
@@ -222,8 +222,8 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
       nodes.push({
         id: `interview-${contextInterview.id}`,
         type: 'interview',
-        title: 'Context Interview',
-        subtitle: project?.context_locked ? 'Locked' : 'Draft',
+        title: 'Entrevista de Contexto',
+        subtitle: project?.context_locked ? 'Travado' : 'Rascunho',
         icon: <IconGlobe className="w-5 h-5" />,
         status: contextInterview.status,
         interview: contextInterview,
@@ -238,7 +238,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
         id: `interview-${interview.id}`,
         type: 'interview',
         title: getInterviewModeLabel(interview.interview_mode),
-        subtitle: `${interview.conversation_data?.length || 0} messages`,
+        subtitle: `${interview.conversation_data?.length || 0} mensagens`,
         icon: getInterviewModeIcon(interview.interview_mode),
         status: interview.status,
         interview,
@@ -511,7 +511,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-3">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="text-gray-600">Loading interview tree...</p>
+          <p className="text-gray-600">Carregando arvore de entrevistas...</p>
         </div>
       </div>
     );
@@ -528,10 +528,10 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4 text-sm text-gray-500">
           <span className="flex items-center gap-1">
-            <IconGlobe className="w-4 h-4" /> Context
+            <IconGlobe className="w-4 h-4" /> Contexto
           </span>
           <span className="flex items-center gap-1">
-            <IconChat className="w-4 h-4" /> Interview
+            <IconChat className="w-4 h-4" /> Entrevista
           </span>
           <span className="flex items-center gap-1">
             <IconTarget className="w-4 h-4" /> Epic
@@ -612,7 +612,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
             <div className="flex items-center justify-between px-6 py-4 border-b">
               <div className="flex items-center gap-3">
                 <IconGlobe className="w-6 h-6 text-blue-600" />
-                <h2 className="text-xl font-semibold text-gray-900">Context Interview</h2>
+                <h2 className="text-xl font-semibold text-gray-900">Entrevista de Contexto</h2>
               </div>
               <button
                 onClick={() => setShowContextModal(false)}

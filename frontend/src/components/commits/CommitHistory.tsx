@@ -65,7 +65,7 @@ export function CommitHistory({ projectId }: Props) {
       <Card className="p-6">
         <div className="flex items-center justify-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-          <span className="ml-3 text-gray-600">Loading commits...</span>
+          <span className="ml-3 text-gray-600">Carregando commits...</span>
         </div>
       </Card>
     );
@@ -96,8 +96,8 @@ export function CommitHistory({ projectId }: Props) {
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
           </svg>
-          <p className="text-lg font-medium">No commits yet</p>
-          <p className="text-sm">Complete a task to generate your first commit!</p>
+          <p className="text-lg font-medium">Nenhum commit ainda</p>
+          <p className="text-sm">Complete uma tarefa para gerar seu primeiro commit!</p>
         </div>
       </Card>
     );
@@ -106,7 +106,7 @@ export function CommitHistory({ projectId }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">Commit History</h3>
+        <h3 className="text-lg font-semibold text-gray-900">Historico de Commits</h3>
         <span className="text-sm text-gray-500">{commits.length} commits</span>
       </div>
 

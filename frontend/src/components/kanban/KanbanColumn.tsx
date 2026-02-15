@@ -74,7 +74,7 @@ export function KanbanColumn({
         {/* Empty state */}
         {tasks.length === 0 && (
           <div className="flex items-center justify-center text-gray-400 py-12 text-sm">
-            No tasks in {title}
+            Nenhuma tarefa em {title}
           </div>
         )}
       </div>

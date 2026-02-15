@@ -41,7 +41,7 @@ export default function EditModelPage() {
       setModel(data);
     } catch (err: any) {
       console.error('Failed to load model:', err);
-      setError(err.message || 'Failed to load model');
+      setError(err.message || 'Falha ao carregar modelo');
     } finally {
       setLoading(false);
     }
@@ -75,7 +75,7 @@ export default function EditModelPage() {
       router.push('/models');
     } catch (error: any) {
       console.error('Failed to delete model:', error);
-      showError(`Failed to delete model: ${error.message}`);
+      showError(`Falha ao excluir modelo: ${error.message}`);
       setDeleting(false);
     }
   };
@@ -91,7 +91,7 @@ export default function EditModelPage() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <Loader2 className="w-12 h-12 mx-auto mb-4 text-indigo-600 animate-spin" />
-            <p className="text-gray-600">Loading model...</p>
+            <p className="text-gray-600">Carregando modelo...</p>
           </div>
         </div>
       </Layout>
@@ -107,15 +107,15 @@ export default function EditModelPage() {
             <div className="text-center py-8">
               <div className="text-red-600 mb-4"><svg className="w-10 h-10 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
               <h3 className="text-lg font-semibold text-red-900 mb-2">
-                Failed to Load Model
+                Falha ao Carregar Modelo
               </h3>
               <p className="text-red-800 mb-4">
-                {error || 'Model not found'}
+                {error || 'Modelo nao encontrado'}
               </p>
               <Link href="/models">
                 <Button variant="outline">
                   <ArrowLeft className="w-4 h-4 mr-2" />
-                  Back to Models
+                  Voltar para Modelos
                 </Button>
               </Link>
             </div>
@@ -133,7 +133,7 @@ export default function EditModelPage() {
         <Link href="/models">
           <Button variant="outline" size="sm">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            Back to Models
+            Voltar para Modelos
           </Button>
         </Link>
 
@@ -147,13 +147,13 @@ export default function EditModelPage() {
               <div className="flex items-center gap-2">
                 <h1 className="text-3xl font-bold text-gray-900">{model.name}</h1>
                 {model.is_active ? (
-                  <Badge variant="success">Active</Badge>
+                  <Badge variant="success">Ativo</Badge>
                 ) : (
-                  <Badge variant="default">Inactive</Badge>
+                  <Badge variant="default">Inativo</Badge>
                 )}
               </div>
               <p className="text-gray-600 mt-1">
-                Edit AI model configuration
+                Editar configuracao do modelo IA
               </p>
             </div>
           </div>
@@ -164,7 +164,7 @@ export default function EditModelPage() {
             className="text-red-600 hover:text-red-700 hover:border-red-300"
           >
             <Trash2 className="w-4 h-4 mr-2" />
-            {deleting ? 'Deleting...' : 'Delete'}
+            {deleting ? 'Excluindo...' : 'Excluir'}
           </Button>
         </div>
 
@@ -175,12 +175,12 @@ export default function EditModelPage() {
               <div className="text-yellow-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
               <div className="flex-1">
                 <h3 className="font-semibold text-yellow-900 mb-1">
-                  Important Notes
+                  Notas Importantes
                 </h3>
                 <ul className="text-sm text-yellow-800 space-y-1 list-disc list-inside">
-                  <li>Changing the usage type may affect existing workflows</li>
-                  <li>Deactivating this model will prevent it from being used</li>
-                  <li>API key changes take effect immediately</li>
+                  <li>Alterar o tipo de uso pode afetar fluxos de trabalho existentes</li>
+                  <li>Desativar este modelo impedira que ele seja usado</li>
+                  <li>Alteracoes na chave API entram em vigor imediatamente</li>
                 </ul>
               </div>
             </div>
@@ -200,23 +200,23 @@ export default function EditModelPage() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg max-w-md w-full p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Delete Model
+              Excluir Modelo
             </h3>
             <p className="text-gray-600 mb-4">
-              Are you sure you want to delete "{model?.name}"? This action cannot be undone.
+              Tem certeza que deseja excluir &quot;{model?.name}&quot;? Esta acao nao pode ser desfeita.
             </p>
             <div className="flex justify-end gap-3">
               <Button
                 variant="outline"
                 onClick={() => setShowDeleteConfirm(false)}
               >
-                Cancel
+                Cancelar
               </Button>
               <Button
                 variant="danger"
                 onClick={handleDeleteConfirm}
               >
-                Delete
+                Excluir
               </Button>
             </div>
           </div>

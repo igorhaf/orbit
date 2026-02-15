@@ -82,31 +82,31 @@ export default function DebugPage() {
     <Layout>
       <Breadcrumbs />
       <div className="container mx-auto py-8 max-w-4xl">
-        <h1 className="text-3xl font-bold mb-2">ORBIT Debug Console</h1>
+        <h1 className="text-3xl font-bold mb-2">Console de Debug ORBIT</h1>
       <p className="text-gray-600 mb-8">
-        Use this page to diagnose connection issues between frontend and backend
+        Use esta pagina para diagnosticar problemas de conexao entre frontend e backend
       </p>
 
       {/* Configuration */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Current Configuration</CardTitle>
+          <CardTitle>Configuracao Atual</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex justify-between items-center">
-            <span className="text-gray-600">API URL:</span>
+            <span className="text-gray-600">URL da API:</span>
             <code className="bg-gray-100 px-3 py-1 rounded font-mono text-sm">
               {API_URL}
             </code>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-gray-600">Frontend URL:</span>
+            <span className="text-gray-600">URL do Frontend:</span>
             <code className="bg-gray-100 px-3 py-1 rounded font-mono text-sm">
               {typeof window !== 'undefined' ? window.location.origin : 'N/A'}
             </code>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-gray-600">Environment:</span>
+            <span className="text-gray-600">Ambiente:</span>
             <code className="bg-gray-100 px-3 py-1 rounded font-mono text-sm">
               {process.env.NODE_ENV}
             </code>
@@ -117,15 +117,15 @@ export default function DebugPage() {
       {/* Instructions */}
       <Card className="mb-6 border-blue-200 bg-blue-50">
         <CardHeader>
-          <CardTitle className="text-blue-900">Before Testing</CardTitle>
+          <CardTitle className="text-blue-900">Antes de Testar</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm text-blue-800">
-          <p className="font-semibold">Make sure backend is running:</p>
+          <p className="font-semibold">Certifique-se de que o backend esta rodando:</p>
           <code className="block bg-blue-100 px-3 py-2 rounded font-mono">
             cd backend && uvicorn app.main:app --reload
           </code>
           <p className="text-xs mt-2">
-            Backend should be running on http://localhost:8000
+            O backend deve estar rodando em http://localhost:8000
           </p>
         </CardContent>
       </Card>
@@ -133,7 +133,7 @@ export default function DebugPage() {
       {/* Tests */}
       <Card>
         <CardHeader>
-          <CardTitle>Connection Tests</CardTitle>
+          <CardTitle>Testes de Conexao</CardTitle>
         </CardHeader>
         <CardContent>
           <Button
@@ -145,10 +145,10 @@ export default function DebugPage() {
             {testing ? (
               <>
                 <div className="w-5 h-5 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Running Tests...
+                Executando Testes...
               </>
             ) : (
-              'Run All Tests'
+              'Executar Todos os Testes'
             )}
           </Button>
 
@@ -167,7 +167,7 @@ export default function DebugPage() {
                   d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                 />
               </svg>
-              <p>Click "Run All Tests" to start diagnostics</p>
+              <p>Clique em &quot;Executar Todos os Testes&quot; para iniciar diagnostico</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -236,7 +236,7 @@ export default function DebugPage() {
                       {result.details && (
                         <details className="text-xs">
                           <summary className="cursor-pointer text-gray-500 hover:text-gray-700">
-                            View Details
+                            Ver Detalhes
                           </summary>
                           <pre className="mt-2 p-2 bg-black/5 rounded overflow-auto">
                             {JSON.stringify(result.details, null, 2)}
@@ -254,7 +254,7 @@ export default function DebugPage() {
           {Object.keys(results).length > 0 && (
             <Card className="mt-6">
               <CardContent className="pt-6">
-                <h4 className="font-semibold mb-3">Diagnosis:</h4>
+                <h4 className="font-semibold mb-3">Diagnostico:</h4>
                 {Object.values(results).every((r: any) => r.status === 'pass') ? (
                   <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded">
                     <svg
@@ -271,10 +271,10 @@ export default function DebugPage() {
                       />
                     </svg>
                     <div>
-                      <p className="font-semibold text-green-900">All tests passed!</p>
+                      <p className="font-semibold text-green-900">Todos os testes passaram!</p>
                       <p className="text-sm text-green-700 mt-1">
-                        Backend is running and accessible. If you're still seeing
-                        loading issues, check browser console for errors.
+                        Backend esta rodando e acessivel. Se voce ainda esta vendo
+                        problemas de carregamento, verifique o console do navegador para erros.
                       </p>
                     </div>
                   </div>
@@ -294,17 +294,17 @@ export default function DebugPage() {
                       />
                     </svg>
                     <div>
-                      <p className="font-semibold text-red-900">Connection issues detected</p>
+                      <p className="font-semibold text-red-900">Problemas de conexao detectados</p>
                       <ul className="text-sm text-red-700 mt-2 space-y-1 list-disc list-inside">
                         {Object.values(results).some((r: any) =>
                           r.message.includes('fetch')
                         ) && (
-                          <li>Backend is not running or not accessible</li>
+                          <li>Backend nao esta rodando ou nao esta acessivel</li>
                         )}
                         {Object.values(results).some((r: any) =>
                           r.message.includes('CORS') || r.status === 'fail'
                         ) && (
-                          <li>CORS might be blocking requests</li>
+                          <li>CORS pode estar bloqueando as requisicoes</li>
                         )}
                       </ul>
                     </div>

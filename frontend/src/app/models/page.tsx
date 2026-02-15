@@ -28,7 +28,7 @@ export default function ModelsPage() {
       setModels(Array.isArray(data) ? data : data.data || []);
     } catch (err: any) {
       console.error('Failed to load models:', err);
-      setError(err.message || 'Failed to load AI models');
+      setError(err.message || 'Falha ao carregar modelos IA');
     } finally {
       setLoading(false);
     }
@@ -49,9 +49,9 @@ export default function ModelsPage() {
               <Cpu className="w-6 h-6 text-indigo-600" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">AI Models</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Modelos IA</h1>
               <p className="text-gray-600 mt-1">
-                Configure and manage AI model integrations
+                Configure e gerencie integracoes de modelos IA
               </p>
             </div>
           </div>
@@ -62,12 +62,12 @@ export default function ModelsPage() {
               disabled={loading}
             >
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
+              Atualizar
             </Button>
             <Link href="/models/new">
               <Button>
                 <Plus className="w-4 h-4 mr-2" />
-                Add Model
+                Adicionar Modelo
               </Button>
             </Link>
           </div>
@@ -82,12 +82,12 @@ export default function ModelsPage() {
               </div>
               <div className="flex-1">
                 <h3 className="font-semibold text-indigo-900 mb-1">
-                  About AI Models
+                  Sobre Modelos IA
                 </h3>
                 <p className="text-sm text-indigo-800">
-                  AI models are configured per usage type (interviews, prompt generation,
-                  task execution, etc.). Make sure to set different models for different
-                  purposes to optimize for cost and performance.
+                  Modelos IA sao configurados por tipo de uso (entrevistas, geracao de prompts,
+                  execucao de tarefas, etc.). Certifique-se de definir modelos diferentes para
+                  diferentes propositos para otimizar custo e performance.
                 </p>
               </div>
             </div>
@@ -101,7 +101,7 @@ export default function ModelsPage() {
               <div className="flex items-start gap-3">
                 <div className="text-red-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
                 <div>
-                  <h3 className="font-semibold text-red-900 mb-1">Error</h3>
+                  <h3 className="font-semibold text-red-900 mb-1">Erro</h3>
                   <p className="text-sm text-red-800">{error}</p>
                   <Button
                     variant="outline"
@@ -109,7 +109,7 @@ export default function ModelsPage() {
                     onClick={loadModels}
                     className="mt-3"
                   >
-                    Try Again
+                    Tentar Novamente
                   </Button>
                 </div>
               </div>
@@ -127,16 +127,16 @@ export default function ModelsPage() {
               <div className="text-center py-8">
                 <Cpu className="w-16 h-16 mx-auto mb-4 text-gray-300" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Get Started with AI Models
+                  Comece com Modelos IA
                 </h3>
                 <p className="text-gray-600 mb-4 max-w-md mx-auto">
-                  Add your first AI model to start using ORBIT's intelligent features.
-                  You can configure models from Anthropic, OpenAI, Google, or local Ollama.
+                  Adicione seu primeiro modelo IA para comecar a usar os recursos inteligentes do ORBIT.
+                  Voce pode configurar modelos do Anthropic, OpenAI, Google ou Ollama local.
                 </p>
                 <Link href="/models/new">
                   <Button>
                     <Plus className="w-4 h-4 mr-2" />
-                    Add Your First Model
+                    Adicionar Seu Primeiro Modelo
                   </Button>
                 </Link>
               </div>

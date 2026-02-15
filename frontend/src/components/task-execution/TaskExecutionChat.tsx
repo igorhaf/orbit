@@ -78,7 +78,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
   };
 
   const handleExecuteDirect = async () => {
-    if (!confirm('Execute this task with AI? The AI will analyze the task and prompt to provide a solution.')) {
+    if (!confirm('Executar esta tarefa com IA? A IA analisara a tarefa e o prompt para fornecer uma solucao.')) {
       return;
     }
 
@@ -103,7 +103,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
   };
 
   const handleApprove = async () => {
-    if (!confirm('Approve this task execution, generate commit, and mark as completed?')) return;
+    if (!confirm('Aprovar esta execucao, gerar commit e marcar como concluida?')) return;
 
     setExecuting(true);
     try {
@@ -133,7 +133,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-3">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="text-gray-600">Loading task execution...</p>
+          <p className="text-gray-600">Carregando execucao de tarefa...</p>
         </div>
       </div>
     );
@@ -142,7 +142,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
   if (!session || !task) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="text-gray-500">Failed to load task execution session</div>
+        <div className="text-gray-500">Falha ao carregar sessao de execucao de tarefa</div>
       </div>
     );
   }
@@ -155,7 +155,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
         <div className="flex justify-between items-start mb-3">
           <div className="flex-1">
             <h2 className="text-xl font-bold text-gray-900">{task.title}</h2>
-            <p className="text-sm text-gray-600 mt-1">{task.description || 'No description'}</p>
+            <p className="text-sm text-gray-600 mt-1">{task.description || 'Nenhuma descricao'}</p>
           </div>
           <button
             onClick={onClose}
@@ -186,7 +186,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
             {executing ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
-                Executing...
+                Executando...
               </>
             ) : (
               <>
@@ -194,7 +194,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Execute Task
+                Executar Tarefa
               </>
             )}
           </Button>
@@ -208,7 +208,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            Approve & Complete
+            Aprovar e Concluir
           </Button>
         </div>
       </div>
@@ -230,8 +230,8 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               />
             </svg>
-            <p className="text-lg mb-2 font-medium">No messages yet</p>
-            <p className="text-sm">Click "Execute Task" to start AI execution or send a message</p>
+            <p className="text-lg mb-2 font-medium">Nenhuma mensagem ainda</p>
+            <p className="text-sm">Clique em "Executar Tarefa" para iniciar a execucao com IA ou envie uma mensagem</p>
           </div>
         ) : (
           <>
@@ -257,7 +257,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
                   <div className={`max-w-[80%] ${isUser ? 'order-2' : 'order-1'}`}>
                     <div className={`text-xs font-semibold mb-1 ${isUser ? 'text-right' : 'text-left'}`}>
                       <Badge variant={isUser ? 'info' : 'default'} size="sm">
-                        {isUser ? 'You' : 'AI Assistant'}
+                        {isUser ? 'Voce' : 'Assistente IA'}
                       </Badge>
                     </div>
                     <div
@@ -273,7 +273,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
                       {/* PROMPT #127 - AI Model badge with tooltip */}
                       {!isUser && msg.model && (
                         <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
-                          <span className="text-[11px] text-gray-400">Powered by:</span>
+                          <span className="text-[11px] text-gray-400">Gerado por:</span>
                           <AIModelBadge model={msg.model} provider={msg.provider} />
                         </div>
                       )}
@@ -309,7 +309,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Send additional instructions or ask questions... (Shift+Enter for new line, Enter to send)"
+              placeholder="Envie instrucoes adicionais ou faca perguntas... (Shift+Enter para nova linha, Enter para enviar)"
               disabled={executing}
               className="w-full border border-gray-300 rounded-lg px-4 py-3 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100"
               rows={3}
@@ -317,7 +317,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
 
             <div className="flex justify-between items-center">
               <span className="text-xs text-gray-500">
-                Shift+Enter for new line, Enter to send
+                Shift+Enter para nova linha, Enter para enviar
               </span>
 
               <Button
@@ -333,7 +333,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
         ) : (
           <div className="text-center text-gray-400 py-4 bg-gray-100 rounded-lg">
             <p className="text-sm font-medium">
-              This session is {session.status}. Cannot send messages.
+              Esta sessao esta {session.status}. Nao e possivel enviar mensagens.
             </p>
           </div>
         )}

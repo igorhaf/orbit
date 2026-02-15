@@ -80,7 +80,7 @@ export function InterviewList({
 
   const getProjectName = (projectId: string): string => {
     const project = projects.find(p => p.id === projectId);
-    return project?.name || 'Unknown Project';
+    return project?.name || 'Projeto Desconhecido';
   };
 
   const handleCreate = async () => {
@@ -96,7 +96,7 @@ export function InterviewList({
     // Find the target project to check its context
     const targetProject = projectProp || projects.find(p => p.id === targetProjectId);
     if (targetProject && !targetProject.context_locked && !targetProject.context_human) {
-      showWarning('Please complete the Context Interview before creating Epics. Go to project page and click "Configure Context".');
+      showWarning('Complete a Entrevista de Contexto antes de criar Epics. Va para a pagina do projeto e clique em "Configurar Contexto".');
       setIsCreateOpen(false);
       return;
     }
@@ -162,7 +162,7 @@ export function InterviewList({
       <div className="flex items-center justify-center h-96">
         <div className="flex flex-col items-center gap-3">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-          <p className="text-gray-600">Loading interviews...</p>
+          <p className="text-gray-600">Carregando entrevistas...</p>
         </div>
       </div>
     );
@@ -175,9 +175,9 @@ export function InterviewList({
       {showHeader && (
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Interviews</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Entrevistas</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Conduct AI-powered interviews to gather requirements
+              Conduza entrevistas com IA para coletar requisitos
             </p>
           </div>
 
@@ -191,7 +191,7 @@ export function InterviewList({
                 </svg>
               }
             >
-              New Interview
+              Nova Entrevista
             </Button>
           )}
         </div>
@@ -209,7 +209,7 @@ export function InterviewList({
               </svg>
             }
           >
-            New Interview
+            Nova Entrevista
           </Button>
         </div>
       )}
@@ -217,7 +217,7 @@ export function InterviewList({
       {/* Status Filter */}
       <div className="flex items-center gap-3">
         <label htmlFor="status-filter" className="text-sm font-medium text-gray-700">
-          Filter by status:
+          Filtrar por status:
         </label>
         <select
           id="status-filter"
@@ -225,12 +225,12 @@ export function InterviewList({
           onChange={(e) => setStatusFilter(e.target.value)}
           className="block w-48 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
-          <option value="active">Open interviews</option>
-          <option value="completed">Completed interviews</option>
-          <option value="all">All interviews</option>
+          <option value="active">Entrevistas abertas</option>
+          <option value="completed">Entrevistas concluidas</option>
+          <option value="all">Todas as entrevistas</option>
         </select>
         <span className="text-sm text-gray-500">
-          ({filteredInterviews.length} {filteredInterviews.length === 1 ? 'interview' : 'interviews'})
+          ({filteredInterviews.length} {filteredInterviews.length === 1 ? 'entrevista' : 'entrevistas'})
         </span>
       </div>
 
@@ -253,22 +253,22 @@ export function InterviewList({
               />
             </svg>
             <h3 className="mt-2 text-sm font-medium text-gray-900">
-              {interviews.length === 0 ? 'No interviews' : `No ${statusFilter === 'all' ? '' : statusFilter} interviews`}
+              {interviews.length === 0 ? 'Nenhuma entrevista' : `Nenhuma entrevista ${statusFilter === 'all' ? '' : statusFilter}`}
             </h3>
             <p className="mt-1 text-sm text-gray-500">
               {interviews.length === 0
-                ? 'Get started by creating a new interview session.'
-                : `No interviews with status "${statusFilter}". Try changing the filter or create a new interview.`
+                ? 'Comece criando uma nova sessao de entrevista.'
+                : `Nenhuma entrevista com status "${statusFilter}". Tente mudar o filtro ou crie uma nova entrevista.`
               }
             </p>
             <div className="mt-6">
               {interviews.length === 0 ? (
                 <Button variant="primary" onClick={() => setIsCreateOpen(true)}>
-                  Create Your First Interview
+                  Criar Sua Primeira Entrevista
                 </Button>
               ) : (
                 <Button variant="outline" onClick={() => setStatusFilter('all')}>
-                  Show All Interviews
+                  Mostrar Todas as Entrevistas
                 </Button>
               )}
             </div>
@@ -290,7 +290,7 @@ export function InterviewList({
                       {interview.ai_model_used}
                     </span>
                     <span className="text-xs text-gray-400">
-                      {interview.conversation_data.length} messages
+                      {interview.conversation_data.length} mensagens
                     </span>
                   </div>
                 </CardHeader>

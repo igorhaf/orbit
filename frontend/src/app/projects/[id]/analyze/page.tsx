@@ -134,9 +134,9 @@ export default function AnalyzePage() {
       <Breadcrumbs />
       <div className="max-w-7xl mx-auto">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Project Analyzer</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Analisador de Projeto</h1>
           <p className="text-gray-600 mt-2">
-            Upload an existing project to analyze its structure, conventions, and patterns
+            Envie um projeto existente para analisar sua estrutura, convencoes e padroes
           </p>
         </div>
 
@@ -146,7 +146,7 @@ export default function AnalyzePage() {
             {/* File Uploader */}
             <Card>
               <CardHeader>
-                <CardTitle>Upload Project</CardTitle>
+                <CardTitle>Enviar Projeto</CardTitle>
               </CardHeader>
               <CardContent>
                 <FileUploader
@@ -161,15 +161,15 @@ export default function AnalyzePage() {
             {/* Analysis History */}
             <Card>
               <CardHeader>
-                <CardTitle>Analysis History</CardTitle>
+                <CardTitle>Historico de Analises</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
-                  <div className="text-center py-4 text-gray-500">Loading...</div>
+                  <div className="text-center py-4 text-gray-500">Carregando...</div>
                 ) : analyses.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    <p>No analyses yet</p>
-                    <p className="text-sm mt-1">Upload a project to get started</p>
+                    <p>Nenhuma analise ainda</p>
+                    <p className="text-sm mt-1">Envie um projeto para comecar</p>
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -226,9 +226,9 @@ export default function AnalyzePage() {
                         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                       />
                     </svg>
-                    <p className="text-lg font-medium">No analysis selected</p>
+                    <p className="text-lg font-medium">Nenhuma analise selecionada</p>
                     <p className="text-sm mt-2">
-                      Upload a project or select from history to view results
+                      Envie um projeto ou selecione do historico para ver resultados
                     </p>
                   </div>
                 </CardContent>

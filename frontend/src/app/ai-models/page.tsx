@@ -520,7 +520,7 @@ export default function AIModelsPage() {
               {/* Name */}
               <Input
                 label="Nome do Modelo"
-                placeholder="e.g., Claude Sonnet Interview"
+                placeholder="ex: Claude Sonnet Interview"
                 required
                 value={createFormData.name}
                 onChange={(e) =>
@@ -592,7 +592,7 @@ export default function AIModelsPage() {
               {/* Model ID */}
               <Input
                 label="ID do Modelo (opcional)"
-                placeholder="e.g., claude-sonnet-4-20250514"
+                placeholder="ex: claude-sonnet-4-20250514"
                 value={createFormData.config?.model || ''}
                 onChange={(e) =>
                   setCreateFormData({
@@ -647,7 +647,7 @@ export default function AIModelsPage() {
                     label="Max Requisicoes"
                     type="number"
                     min="1"
-                    placeholder="e.g., 3"
+                    placeholder="ex: 3"
                     value={createFormData.rate_limit_requests || ''}
                     onChange={(e) =>
                       setCreateFormData({
@@ -660,7 +660,7 @@ export default function AIModelsPage() {
                     label="Janela de Tempo (segundos)"
                     type="number"
                     min="1"
-                    placeholder="e.g., 60"
+                    placeholder="ex: 60"
                     value={createFormData.rate_limit_window_seconds || ''}
                     onChange={(e) =>
                       setCreateFormData({
@@ -682,7 +682,7 @@ export default function AIModelsPage() {
                   label="Timeout (segundos)"
                   type="number"
                   min="1"
-                  placeholder="e.g., 120"
+                  placeholder="ex: 120"
                   value={createFormData.timeout_seconds || ''}
                   onChange={(e) =>
                     setCreateFormData({
@@ -764,7 +764,7 @@ export default function AIModelsPage() {
               {/* Name */}
               <Input
                 label="Nome do Modelo"
-                placeholder="e.g., Claude Sonnet Interview"
+                placeholder="ex: Claude Sonnet Interview"
                 value={editFormData.name || ''}
                 onChange={(e) =>
                   setEditFormData({ ...editFormData, name: e.target.value })
@@ -832,7 +832,7 @@ export default function AIModelsPage() {
               {/* Model ID */}
               <Input
                 label="ID do Modelo"
-                placeholder="e.g., claude-sonnet-4-20250514"
+                placeholder="ex: claude-sonnet-4-20250514"
                 value={editFormData.config?.model || ''}
                 onChange={(e) =>
                   setEditFormData({
@@ -887,7 +887,7 @@ export default function AIModelsPage() {
                     label="Max Requisicoes"
                     type="number"
                     min="1"
-                    placeholder="e.g., 3"
+                    placeholder="ex: 3"
                     value={editFormData.rate_limit_requests || ''}
                     onChange={(e) =>
                       setEditFormData({
@@ -900,7 +900,7 @@ export default function AIModelsPage() {
                     label="Janela de Tempo (segundos)"
                     type="number"
                     min="1"
-                    placeholder="e.g., 60"
+                    placeholder="ex: 60"
                     value={editFormData.rate_limit_window_seconds || ''}
                     onChange={(e) =>
                       setEditFormData({
@@ -922,7 +922,7 @@ export default function AIModelsPage() {
                   label="Timeout (segundos)"
                   type="number"
                   min="1"
-                  placeholder="e.g., 120"
+                  placeholder="ex: 120"
                   value={editFormData.timeout_seconds || ''}
                   onChange={(e) =>
                     setEditFormData({

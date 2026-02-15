@@ -65,7 +65,7 @@ export default function ConsistencyPage() {
       await loadIssues();
     } catch (error) {
       console.error('Analysis failed:', error);
-      showError('Failed to analyze consistency. Please try again.');
+      showError('Falha ao analisar consistencia. Tente novamente.');
     } finally {
       setAnalyzing(false);
     }
@@ -112,9 +112,9 @@ export default function ConsistencyPage() {
         <div className="mb-8">
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Consistency Report</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Relatorio de Consistencia</h1>
               <p className="text-gray-600 mt-2">
-                Code quality and consistency issues detected in your project
+                Problemas de qualidade e consistencia de codigo detectados no seu projeto
               </p>
             </div>
             <Button
@@ -122,7 +122,7 @@ export default function ConsistencyPage() {
               onClick={handleAnalyze}
               disabled={analyzing}
             >
-              {analyzing ? 'Analyzing...' : 'Run Analysis'}
+              {analyzing ? 'Analisando...' : 'Executar Analise'}
             </Button>
           </div>
         </div>
@@ -133,7 +133,7 @@ export default function ConsistencyPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Issues</p>
+                  <p className="text-sm text-gray-600">Total de Problemas</p>
                   <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
                 </div>
                 <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
@@ -159,7 +159,7 @@ export default function ConsistencyPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Open</p>
+                  <p className="text-sm text-gray-600">Abertos</p>
                   <p className="text-2xl font-bold text-orange-600">{stats.open}</p>
                 </div>
                 <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
@@ -185,7 +185,7 @@ export default function ConsistencyPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Resolved</p>
+                  <p className="text-sm text-gray-600">Resolvidos</p>
                   <p className="text-2xl font-bold text-green-600">{stats.resolved}</p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
@@ -211,7 +211,7 @@ export default function ConsistencyPage() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Critical</p>
+                  <p className="text-sm text-gray-600">Criticos</p>
                   <p className="text-2xl font-bold text-red-600">{stats.critical}</p>
                 </div>
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
@@ -239,37 +239,37 @@ export default function ConsistencyPage() {
           <CardContent className="p-4">
             <div className="flex flex-wrap gap-4">
               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-700">Status:</label>
+                <label className="text-sm font-medium text-gray-700">Status: </label>
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
                   className="rounded border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
                 >
-                  <option value="all">All</option>
-                  <option value="open">Open</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="ignored">Ignored</option>
+                  <option value="all">Todos</option>
+                  <option value="open">Aberto</option>
+                  <option value="resolved">Resolvido</option>
+                  <option value="ignored">Ignorado</option>
                 </select>
               </div>
 
               <div className="flex items-center gap-2">
-                <label className="text-sm font-medium text-gray-700">Severity:</label>
+                <label className="text-sm font-medium text-gray-700">Severidade:</label>
                 <select
                   value={filterSeverity}
                   onChange={(e) => setFilterSeverity(e.target.value)}
                   className="rounded border-gray-300 text-sm focus:border-blue-500 focus:ring-blue-500"
                 >
-                  <option value="all">All</option>
-                  <option value="critical">Critical</option>
-                  <option value="high">High</option>
-                  <option value="medium">Medium</option>
-                  <option value="low">Low</option>
+                  <option value="all">Todas</option>
+                  <option value="critical">Critica</option>
+                  <option value="high">Alta</option>
+                  <option value="medium">Media</option>
+                  <option value="low">Baixa</option>
                 </select>
               </div>
 
               <div className="ml-auto flex items-center gap-2">
                 <span className="text-sm text-gray-600">
-                  Showing {filteredIssues.length} of {issues.length} issues
+                  Mostrando {filteredIssues.length} de {issues.length} problemas
                 </span>
               </div>
             </div>
@@ -281,7 +281,7 @@ export default function ConsistencyPage() {
           <Card>
             <CardContent className="py-12 text-center text-gray-500">
               <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-              <p>Loading issues...</p>
+              <p>Carregando problemas...</p>
             </CardContent>
           </Card>
         ) : (

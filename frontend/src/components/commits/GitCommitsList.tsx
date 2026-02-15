@@ -419,10 +419,10 @@ export function GitCommitsList({ projectId }: Props) {
 
   const getStatusLabel = (status: string) => {
     switch (status) {
-      case 'A': return 'Added';
-      case 'D': return 'Deleted';
-      case 'M': return 'Modified';
-      case 'R': return 'Renamed';
+      case 'A': return 'Adicionado';
+      case 'D': return 'Removido';
+      case 'M': return 'Modificado';
+      case 'R': return 'Renomeado';
       default: return status;
     }
   };
@@ -433,9 +433,9 @@ export function GitCommitsList({ projectId }: Props) {
       <Card>
         <CardContent className="py-12 text-center">
           <AlertCircle className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Not a Git Repository</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Nao e um Repositorio Git</h3>
           <p className="text-gray-500 mb-4">
-            The project folder is not initialized as a Git repository.
+            A pasta do projeto nao esta inicializada como um repositorio Git.
           </p>
           {repoInfo.path && (
             <p className="text-sm text-gray-400 font-mono">{repoInfo.path}</p>
@@ -452,7 +452,7 @@ export function GitCommitsList({ projectId }: Props) {
         <CardContent className="py-12">
           <div className="flex items-center justify-center">
             <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
-            <span className="ml-3 text-gray-600">Loading commits...</span>
+            <span className="ml-3 text-gray-600">Carregando commits...</span>
           </div>
         </CardContent>
       </Card>
@@ -465,11 +465,11 @@ export function GitCommitsList({ projectId }: Props) {
       <Card className="border-red-200 bg-red-50">
         <CardContent className="py-8 text-center">
           <AlertCircle className="w-12 h-12 mx-auto text-red-500 mb-4" />
-          <h3 className="text-lg font-medium text-red-900 mb-2">Failed to Load Commits</h3>
+          <h3 className="text-lg font-medium text-red-900 mb-2">Falha ao Carregar Commits</h3>
           <p className="text-red-700 mb-4">{error}</p>
           <Button variant="outline" onClick={handleRefresh}>
             <RefreshCw className="w-4 h-4 mr-2" />
-            Try Again
+            Tentar Novamente
           </Button>
         </CardContent>
       </Card>
@@ -511,7 +511,7 @@ export function GitCommitsList({ projectId }: Props) {
                 onClick={() => setShowBranches(!showBranches)}
                 className="flex items-center gap-2 px-3 py-1.5 bg-white border rounded-md hover:bg-gray-50 transition-colors"
               >
-                <span className="font-medium text-sm">{selectedBranch || 'Select branch'}</span>
+                <span className="font-medium text-sm">{selectedBranch || 'Selecionar branch'}</span>
                 {showBranches ? (
                   <ChevronUp className="w-4 h-4 text-gray-400" />
                 ) : (
@@ -531,7 +531,7 @@ export function GitCommitsList({ projectId }: Props) {
                     >
                       <span className="text-sm truncate">{branch.name}</span>
                       {branch.is_current && (
-                        <Badge variant="info" className="text-xs">current</Badge>
+                        <Badge variant="info" className="text-xs">atual</Badge>
                       )}
                     </button>
                   ))}
@@ -547,7 +547,7 @@ export function GitCommitsList({ projectId }: Props) {
           {repoInfo?.has_uncommitted_changes && (
             <div className="flex items-center gap-2">
               <Badge variant="warning" className="text-xs">
-                Uncommitted changes
+                Alteracoes nao commitadas
               </Badge>
               <Button
                 size="sm"
@@ -575,7 +575,7 @@ export function GitCommitsList({ projectId }: Props) {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <Input
               type="text"
-              placeholder="Search commits..."
+              placeholder="Buscar commits..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 w-64"
@@ -593,11 +593,11 @@ export function GitCommitsList({ projectId }: Props) {
         <Card>
           <CardContent className="py-12 text-center text-gray-500">
             <GitCommit className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-            <p className="text-lg font-medium">No commits found</p>
+            <p className="text-lg font-medium">Nenhum commit encontrado</p>
             <p className="text-sm mt-2">
               {searchQuery
-                ? 'Try a different search term'
-                : 'This branch has no commits yet'}
+                ? 'Tente um termo de busca diferente'
+                : 'Esta branch ainda nao tem commits'}
             </p>
           </CardContent>
         </Card>
@@ -668,7 +668,7 @@ export function GitCommitsList({ projectId }: Props) {
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
                               >
                                 <Eye className="w-4 h-4 text-blue-600" />
-                                View Diff
+                                Ver Diff
                               </button>
                               <button
                                 onClick={() => {
@@ -684,7 +684,7 @@ export function GitCommitsList({ projectId }: Props) {
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
                               >
                                 <GitBranchPlus className="w-4 h-4 text-green-600" />
-                                Create Branch
+                                Criar Branch
                               </button>
                               <button
                                 onClick={() => {
@@ -702,7 +702,7 @@ export function GitCommitsList({ projectId }: Props) {
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 flex items-center gap-2"
                               >
                                 <Undo2 className="w-4 h-4 text-orange-600" />
-                                Revert
+                                Reverter
                               </button>
                               <hr className="my-1" />
                               <button
@@ -710,7 +710,7 @@ export function GitCommitsList({ projectId }: Props) {
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-600"
                               >
                                 <RotateCcw className="w-4 h-4" />
-                                Reset to Here...
+                                Resetar para Aqui...
                               </button>
                             </div>
                           )}
@@ -726,7 +726,7 @@ export function GitCommitsList({ projectId }: Props) {
                       <span>{commit.relative_date}</span>
                       {commit.files_changed !== undefined && commit.files_changed !== null && (
                         <span className="flex items-center gap-1">
-                          <span>{commit.files_changed} files</span>
+                          <span>{commit.files_changed} arquivos</span>
                           {commit.insertions !== undefined && commit.insertions !== null && (
                             <span className="text-green-600">+{commit.insertions}</span>
                           )}
@@ -751,7 +751,7 @@ export function GitCommitsList({ projectId }: Props) {
                         {loadingDiffFor === commit.hash && (
                           <div className="flex items-center justify-center py-8">
                             <RefreshCw className="w-6 h-6 text-blue-600 animate-spin" />
-                            <span className="ml-2 text-gray-600">Loading diff...</span>
+                            <span className="ml-2 text-gray-600">Carregando diff...</span>
                           </div>
                         )}
 
@@ -760,7 +760,7 @@ export function GitCommitsList({ projectId }: Props) {
                           <div className="space-y-3">
                             {/* Stats summary */}
                             <div className="flex items-center gap-4 text-sm text-gray-600 pb-2 border-b">
-                              <span>{inlineDiffData[commit.hash].stats.files_changed} files changed</span>
+                              <span>{inlineDiffData[commit.hash].stats.files_changed} arquivos alterados</span>
                               <span className="text-green-600">+{inlineDiffData[commit.hash].stats.insertions}</span>
                               <span className="text-red-600">-{inlineDiffData[commit.hash].stats.deletions}</span>
                             </div>
@@ -845,12 +845,12 @@ export function GitCommitsList({ projectId }: Props) {
                 {loadingMore ? (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Loading...
+                    Carregando...
                   </>
                 ) : (
                   <>
                     <ChevronDown className="w-4 h-4 mr-2" />
-                    Load More
+                    Carregar Mais
                   </>
                 )}
               </Button>
@@ -863,9 +863,9 @@ export function GitCommitsList({ projectId }: Props) {
       {showBranchDialog && selectedCommitForAction && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold mb-4">Create Branch</h3>
+            <h3 className="text-lg font-semibold mb-4">Criar Branch</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Create a new branch from commit <code className="bg-gray-100 px-1 rounded">{selectedCommitForAction.short_hash}</code>
+              Criar nova branch a partir do commit <code className="bg-gray-100 px-1 rounded">{selectedCommitForAction.short_hash}</code>
             </p>
             <Input
               placeholder="Nome da branch"
@@ -875,13 +875,13 @@ export function GitCommitsList({ projectId }: Props) {
             />
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowBranchDialog(false)}>
-                Cancel
+                Cancelar
               </Button>
               <Button
                 onClick={() => executeGitOperation('branch', selectedCommitForAction.hash, { branch_name: newBranchName })}
                 disabled={!newBranchName || operationLoading}
               >
-                {operationLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Create Branch'}
+                {operationLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : 'Criar Branch'}
               </Button>
             </div>
           </div>
@@ -892,9 +892,9 @@ export function GitCommitsList({ projectId }: Props) {
       {showResetDialog && selectedCommitForAction && (
         <div className="fixed inset-0 z-50 bg-black bg-opacity-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold mb-2 text-red-600">Reset to Commit</h3>
+            <h3 className="text-lg font-semibold mb-2 text-red-600">Resetar para Commit</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Reset current branch to <code className="bg-gray-100 px-1 rounded">{selectedCommitForAction.short_hash}</code>
+              Resetar branch atual para <code className="bg-gray-100 px-1 rounded">{selectedCommitForAction.short_hash}</code>
             </p>
 
             <div className="space-y-2 mb-4">
@@ -908,7 +908,7 @@ export function GitCommitsList({ projectId }: Props) {
                 />
                 <div>
                   <span className="font-medium">Soft</span>
-                  <p className="text-xs text-gray-500">Keep changes staged</p>
+                  <p className="text-xs text-gray-500">Manter alteracoes staged</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 p-2 border rounded hover:bg-gray-50 cursor-pointer">
@@ -921,7 +921,7 @@ export function GitCommitsList({ projectId }: Props) {
                 />
                 <div>
                   <span className="font-medium">Mixed</span>
-                  <p className="text-xs text-gray-500">Keep changes unstaged (default)</p>
+                  <p className="text-xs text-gray-500">Manter alteracoes unstaged (padrao)</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 p-2 border border-red-200 rounded hover:bg-red-50 cursor-pointer">
@@ -934,7 +934,7 @@ export function GitCommitsList({ projectId }: Props) {
                 />
                 <div>
                   <span className="font-medium text-red-600">Hard</span>
-                  <p className="text-xs text-red-500">Discard ALL changes (dangerous!)</p>
+                  <p className="text-xs text-red-500">Descartar TODAS as alteracoes (perigoso!)</p>
                 </div>
               </label>
             </div>
@@ -942,14 +942,14 @@ export function GitCommitsList({ projectId }: Props) {
             {resetMode === 'hard' && (
               <div className="p-3 bg-red-50 border border-red-200 rounded mb-4">
                 <p className="text-sm text-red-700">
-                  ⚠️ Hard reset will permanently discard all uncommitted changes. This cannot be undone!
+                  Hard reset descartara permanentemente todas as alteracoes nao commitadas. Esta acao nao pode ser desfeita!
                 </p>
               </div>
             )}
 
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={() => setShowResetDialog(false)}>
-                Cancel
+                Cancelar
               </Button>
               <Button
                 variant={resetMode === 'hard' ? 'danger' : 'default'}
@@ -972,7 +972,7 @@ export function GitCommitsList({ projectId }: Props) {
               {loadingModalDiff ? (
                 <div className="flex items-center gap-2">
                   <RefreshCw className="w-5 h-5 text-blue-600 animate-spin" />
-                  <span className="text-gray-600">Loading diff...</span>
+                  <span className="text-gray-600">Carregando diff...</span>
                 </div>
               ) : modalDiffData ? (
                 <div>

@@ -383,13 +383,13 @@ export default function ProjectDetailsPage() {
       <Layout>
         <div className="text-center py-12">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Project Not Found
+            Projeto Nao Encontrado
           </h2>
           <p className="text-gray-600 mb-4">
-            The project you're looking for doesn't exist.
+            O projeto que voce esta procurando nao existe.
           </p>
           <Link href="/projects">
-            <Button variant="primary">Back to Projects</Button>
+            <Button variant="primary">Voltar para Projetos</Button>
           </Link>
         </div>
       </Layout>
@@ -467,9 +467,9 @@ export default function ProjectDetailsPage() {
             <div className="flex items-center gap-3">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
               <div>
-                <h4 className="font-medium text-blue-900">Project is being processed</h4>
+                <h4 className="font-medium text-blue-900">Projeto esta sendo processado</h4>
                 <p className="text-sm text-blue-700">
-                  The codebase is being analyzed. This may take a few minutes.
+                  O codebase esta sendo analisado. Isso pode levar alguns minutos.
                 </p>
               </div>
             </div>
@@ -482,7 +482,7 @@ export default function ProjectDetailsPage() {
             <div className="flex items-center gap-2">
               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500" />
               <span className="text-sm text-gray-600">
-                Watchdog active — continuously discovering and updating project knowledge
+                Watchdog ativo — descobrindo e atualizando conhecimento do projeto continuamente
               </span>
             </div>
           </div>
@@ -556,7 +556,7 @@ export default function ProjectDetailsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">
-                  Hierarchical view of Epics, Stories, Tasks, and Bugs
+                  Visao hierarquica de Epicos, Stories, Tasks e Bugs
                 </p>
               </div>
               <Button
@@ -567,7 +567,7 @@ export default function ProjectDetailsPage() {
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                 </svg>
-                {showBacklogFilters ? 'Hide Filters' : 'Show Filters'}
+                {showBacklogFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
               </Button>
             </div>
 
@@ -696,8 +696,8 @@ export default function ProjectDetailsPage() {
                 ) : (
                   <Card>
                     <CardContent className="py-12 text-center text-gray-500">
-                      <p>No RAG data available yet</p>
-                      <p className="text-sm mt-2">Index your code below to enable RAG-enhanced AI operations</p>
+                      <p>Nenhum dado RAG disponivel ainda</p>
+                      <p className="text-sm mt-2">Indexe seu codigo abaixo para habilitar operacoes de IA aprimoradas por RAG</p>
                     </CardContent>
                   </Card>
                 )}
@@ -710,33 +710,33 @@ export default function ProjectDetailsPage() {
                         <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                         </svg>
-                        Document Storage
+                        Armazenamento de Documentos
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="bg-purple-50 rounded-lg p-4 text-center">
                           <div className="text-2xl font-bold text-purple-700">{knowledgeStats.total_documents}</div>
-                          <div className="text-xs text-purple-600">Total Documents</div>
+                          <div className="text-xs text-purple-600">Total de Documentos</div>
                         </div>
                         <div className="bg-blue-50 rounded-lg p-4 text-center">
                           <div className="text-2xl font-bold text-blue-700">{knowledgeStats.code_files_count}</div>
-                          <div className="text-xs text-blue-600">Code Files</div>
+                          <div className="text-xs text-blue-600">Arquivos de Codigo</div>
                         </div>
                         <div className="bg-yellow-50 rounded-lg p-4 text-center">
                           <div className="text-2xl font-bold text-yellow-700">{knowledgeStats.interview_answers_count}</div>
-                          <div className="text-xs text-yellow-600">Interview Answers</div>
+                          <div className="text-xs text-yellow-600">Respostas de Entrevista</div>
                         </div>
                         <div className="bg-orange-50 rounded-lg p-4 text-center">
                           <div className="text-2xl font-bold text-orange-700">{knowledgeStats.business_rules_count}</div>
-                          <div className="text-xs text-orange-600">Business Rules</div>
+                          <div className="text-xs text-orange-600">Regras de Negocio</div>
                         </div>
                       </div>
 
                       {/* By Source breakdown */}
                       {Object.keys(knowledgeStats.by_source).length > 0 && (
                         <div className="mt-4 pt-4 border-t">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">By Source</h4>
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Por Fonte</h4>
                           <div className="flex flex-wrap gap-2">
                             {Object.entries(knowledgeStats.by_source).map(([source, count]) => (
                               <span key={source} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
@@ -750,7 +750,7 @@ export default function ProjectDetailsPage() {
                       {/* By Category breakdown (for business rules) */}
                       {Object.keys(knowledgeStats.by_category).length > 0 && (
                         <div className="mt-4 pt-4 border-t">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Business Rules by Category</h4>
+                          <h4 className="text-sm font-medium text-gray-700 mb-2">Regras de Negocio por Categoria</h4>
                           <div className="flex flex-wrap gap-2">
                             {Object.entries(knowledgeStats.by_category).map(([category, count]) => (
                               <span key={category} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
@@ -786,7 +786,7 @@ export default function ProjectDetailsPage() {
           <div className="space-y-6">
             {/* Time Period Selector */}
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-900">Blocking System Analytics</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Analise do Sistema de Bloqueios</h3>
               <div className="flex gap-2">
                 {[7, 30, 90, 365].map((days) => (
                   <Button
@@ -795,7 +795,7 @@ export default function ProjectDetailsPage() {
                     size="sm"
                     onClick={() => setAnalyticsDays(days)}
                   >
-                    {days === 365 ? 'All Time' : `${days}d`}
+                    {days === 365 ? 'Todo Periodo' : `${days}d`}
                   </Button>
                 ))}
               </div>
@@ -814,52 +814,52 @@ export default function ProjectDetailsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-sm font-medium text-gray-500">Currently Blocked</CardTitle>
+                      <CardTitle className="text-sm font-medium text-gray-500">Atualmente Bloqueados</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-baseline">
                         <span className="text-3xl font-bold text-red-600">{analyticsData.total_blocked}</span>
-                        <span className="ml-2 text-sm text-gray-500">tasks</span>
+                        <span className="ml-2 text-sm text-gray-500">tarefas</span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">Pending user approval</p>
+                      <p className="text-xs text-gray-400 mt-1">Pendente de aprovacao do usuario</p>
                     </CardContent>
                   </Card>
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-sm font-medium text-gray-500">Approved</CardTitle>
+                      <CardTitle className="text-sm font-medium text-gray-500">Aprovados</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-baseline">
                         <span className="text-3xl font-bold text-green-600">{analyticsData.total_approved}</span>
-                        <span className="ml-2 text-sm text-gray-500">modifications</span>
+                        <span className="ml-2 text-sm text-gray-500">modificacoes</span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">{(analyticsData.approval_rate * 100).toFixed(1)}% approval rate</p>
+                      <p className="text-xs text-gray-400 mt-1">{(analyticsData.approval_rate * 100).toFixed(1)}% taxa de aprovacao</p>
                     </CardContent>
                   </Card>
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-sm font-medium text-gray-500">Rejected</CardTitle>
+                      <CardTitle className="text-sm font-medium text-gray-500">Rejeitados</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-baseline">
                         <span className="text-3xl font-bold text-orange-600">{analyticsData.total_rejected}</span>
-                        <span className="ml-2 text-sm text-gray-500">modifications</span>
+                        <span className="ml-2 text-sm text-gray-500">modificacoes</span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">{(analyticsData.rejection_rate * 100).toFixed(1)}% rejection rate</p>
+                      <p className="text-xs text-gray-400 mt-1">{(analyticsData.rejection_rate * 100).toFixed(1)}% taxa de rejeicao</p>
                     </CardContent>
                   </Card>
 
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-sm font-medium text-gray-500">Avg Similarity</CardTitle>
+                      <CardTitle className="text-sm font-medium text-gray-500">Similaridade Media</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="flex items-baseline">
                         <span className="text-3xl font-bold text-blue-600">{(analyticsData.avg_similarity_score * 100).toFixed(1)}%</span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">AI detection accuracy</p>
+                      <p className="text-xs text-gray-400 mt-1">Precisao de deteccao da IA</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -869,7 +869,7 @@ export default function ProjectDetailsPage() {
                   {/* Similarity Distribution */}
                   <Card>
                     <CardHeader>
-                      <CardTitle>Similarity Score Distribution</CardTitle>
+                      <CardTitle>Distribuicao de Pontuacao de Similaridade</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
@@ -887,7 +887,7 @@ export default function ProjectDetailsPage() {
                           return (
                             <div key={range}>
                               <div className="flex justify-between text-sm mb-1">
-                                <span className="font-medium text-gray-700">{range}% Similar</span>
+                                <span className="font-medium text-gray-700">{range}% Similares</span>
                                 <span className="text-gray-500">{count} ({percentage.toFixed(0)}%)</span>
                               </div>
                               <div className="w-full bg-gray-200 rounded-full h-3">
@@ -906,13 +906,13 @@ export default function ProjectDetailsPage() {
                   {/* Approval vs Rejection Rate */}
                   <Card>
                     <CardHeader>
-                      <CardTitle>Resolution Rate</CardTitle>
+                      <CardTitle>Taxa de Resolucao</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
                         <div>
                           <div className="flex justify-between text-sm mb-1">
-                            <span className="font-medium text-green-700">Approved</span>
+                            <span className="font-medium text-green-700">Aprovados</span>
                             <span className="text-gray-500">{analyticsData.total_approved} ({(analyticsData.approval_rate * 100).toFixed(1)}%)</span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-6">
@@ -927,7 +927,7 @@ export default function ProjectDetailsPage() {
 
                         <div>
                           <div className="flex justify-between text-sm mb-1">
-                            <span className="font-medium text-orange-700">Rejected</span>
+                            <span className="font-medium text-orange-700">Rejeitados</span>
                             <span className="text-gray-500">{analyticsData.total_rejected} ({(analyticsData.rejection_rate * 100).toFixed(1)}%)</span>
                           </div>
                           <div className="w-full bg-gray-200 rounded-full h-6">
@@ -942,10 +942,10 @@ export default function ProjectDetailsPage() {
 
                         <div className="pt-4 border-t">
                           <div className="text-sm text-gray-600">
-                            <strong>Total Resolved:</strong> {analyticsData.total_approved + analyticsData.total_rejected} modifications
+                            <strong>Total Resolvidos:</strong> {analyticsData.total_approved + analyticsData.total_rejected} modificacoes
                           </div>
                           <div className="text-sm text-gray-600 mt-1">
-                            <strong>Blocking Rate:</strong> {(analyticsData.blocking_rate * 100).toFixed(1)}% of all tasks
+                            <strong>Taxa de Bloqueio:</strong> {(analyticsData.blocking_rate * 100).toFixed(1)}% de todas as tarefas
                           </div>
                         </div>
                       </div>
@@ -957,14 +957,14 @@ export default function ProjectDetailsPage() {
                 {analyticsData.blocked_by_date && analyticsData.blocked_by_date.length > 0 && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Blocking Timeline</CardTitle>
+                      <CardTitle>Linha do Tempo de Bloqueios</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-2">
                         {analyticsData.blocked_by_date.slice(0, 10).map((item) => (
                           <div key={item.date} className="flex justify-between items-center py-2 border-b last:border-0">
                             <span className="text-sm font-medium text-gray-700">{new Date(item.date).toLocaleDateString()}</span>
-                            <Badge variant="outline">{item.count} blocked</Badge>
+                            <Badge variant="outline">{item.count} bloqueados</Badge>
                           </div>
                         ))}
                       </div>
@@ -975,8 +975,8 @@ export default function ProjectDetailsPage() {
             ) : (
               <Card>
                 <CardContent className="py-12 text-center text-gray-500">
-                  <p>No blocking analytics available yet</p>
-                  <p className="text-sm mt-2">Analytics will appear after AI suggests modifications to tasks</p>
+                  <p>Nenhuma analise de bloqueios disponivel ainda</p>
+                  <p className="text-sm mt-2">Analises aparecerao apos a IA sugerir modificacoes nas tarefas</p>
                 </CardContent>
               </Card>
             )}
@@ -989,8 +989,8 @@ export default function ProjectDetailsPage() {
             <div className="border-b border-gray-200">
               <nav className="-mb-px flex space-x-8">
                 {[
-                  { id: 'description', label: 'Project Description' },
-                  { id: 'statistics', label: 'Statistics' },
+                  { id: 'description', label: 'Descricao do Projeto' },
+                  { id: 'statistics', label: 'Estatisticas' },
                 ].map((sub) => (
                   <button
                     key={sub.id}
@@ -1016,10 +1016,10 @@ export default function ProjectDetailsPage() {
               {/* PROMPT #272 - Wiki stats moved to Wiki tab */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Project Description</CardTitle>
+                  <CardTitle>Descricao do Projeto</CardTitle>
                   <div className="flex gap-2">
                     {isFormattingDescription && (
-                      <span className="text-xs text-gray-500 italic">Formatting to Markdown...</span>
+                      <span className="text-xs text-gray-500 italic">Formatando para Markdown...</span>
                     )}
                     {!isEditingDescription ? (
                       <Button
@@ -1030,7 +1030,7 @@ export default function ProjectDetailsPage() {
                         <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
-                        Edit
+                        Editar
                       </Button>
                     ) : (
                       <>
@@ -1039,7 +1039,7 @@ export default function ProjectDetailsPage() {
                           size="sm"
                           onClick={handleCancelEdit}
                         >
-                          Cancel
+                          Cancelar
                         </Button>
                         <Button
                           variant="primary"
@@ -1049,7 +1049,7 @@ export default function ProjectDetailsPage() {
                           <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                           </svg>
-                          Save
+                          Salvar
                         </Button>
                       </>
                     )}
@@ -1062,7 +1062,7 @@ export default function ProjectDetailsPage() {
                         value={editedDescription}
                         onChange={(e) => setEditedDescription(e.target.value)}
                         className="w-full min-h-[300px] p-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                        placeholder="Enter project description in Markdown format..."
+                        placeholder="Digite a descricao do projeto em formato Markdown..."
                       />
                     ) : (
                       <div className="prose prose-sm max-w-none">
@@ -1075,7 +1075,7 @@ export default function ProjectDetailsPage() {
                       </div>
                     )
                   ) : (
-                    <p className="text-gray-500 text-sm italic">No description yet. Click Edit to add one.</p>
+                    <p className="text-gray-500 text-sm italic">Nenhuma descricao ainda. Clique em Editar para adicionar uma.</p>
                   )}
                 </CardContent>
               </Card>
@@ -1088,29 +1088,29 @@ export default function ProjectDetailsPage() {
                 {/* Statistics */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Statistics</CardTitle>
+                    <CardTitle>Estatisticas</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div>
-                      <p className="text-sm text-gray-500">Total Tasks</p>
+                      <p className="text-sm text-gray-500">Total de Tarefas</p>
                       <p className="text-2xl font-bold text-gray-900">
                         {tasks.length}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Completed</p>
+                      <p className="text-sm text-gray-500">Concluidas</p>
                       <p className="text-2xl font-bold text-green-600">
                         {tasksByStatus.done.length}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">In Progress</p>
+                      <p className="text-sm text-gray-500">Em Progresso</p>
                       <p className="text-2xl font-bold text-blue-600">
                         {tasksByStatus.in_progress.length}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-500">Pending</p>
+                      <p className="text-sm text-gray-500">Pendentes</p>
                       <p className="text-2xl font-bold text-gray-600">
                         {tasksByStatus.todo.length + tasksByStatus.backlog.length}
                       </p>
@@ -1121,7 +1121,7 @@ export default function ProjectDetailsPage() {
                 {/* Progress */}
                 <Card className="lg:col-span-2">
                   <CardHeader>
-                    <CardTitle>Progress by Status</CardTitle>
+                    <CardTitle>Progresso por Status</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     {Object.entries(tasksByStatus).map(([status, statusTasks]) => {
@@ -1167,13 +1167,13 @@ export default function ProjectDetailsPage() {
       <Dialog
         open={showEpicCountDialog}
         onClose={() => setShowEpicCountDialog(false)}
-        title="Generate Epics"
-        description="Choose how many epics you want to generate for this project."
+        title="Gerar Epicos"
+        description="Escolha quantos epicos voce quer gerar para este projeto."
         size="sm"
       >
         <div className="py-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Number of Epics
+            Numero de Epicos
           </label>
           <input
             type="number"
@@ -1190,7 +1190,7 @@ export default function ProjectDetailsPage() {
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowEpicCountDialog(false)}>
-            Cancel
+            Cancelar
           </Button>
           <Button
             variant="primary"
@@ -1206,18 +1206,18 @@ export default function ProjectDetailsPage() {
                 if (res.ok) {
                   const data = await res.json();
                   if (data.job_id) {
-                    showSuccess(`Generation of ${epicCount} epics started in background. Check Jobs page for progress.`, 'Epics');
+                    showSuccess(`Geracao de ${epicCount} epicos iniciada em segundo plano. Verifique a pagina de Jobs para acompanhar o progresso.`, 'Epicos');
                   }
                 } else {
                   const err = await res.json();
-                  showError(err.detail || 'Failed to generate epics');
+                  showError(err.detail || 'Falha ao gerar epicos');
                 }
               } catch (e) {
                 showError('Falha ao iniciar geracao de epic');
               }
             }}
           >
-            Generate
+            Gerar
           </Button>
         </DialogFooter>
       </Dialog>

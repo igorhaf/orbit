@@ -86,7 +86,7 @@ export default function AIExecutionsPage() {
       setStats(statsData);
     } catch (err: any) {
       console.error('Failed to load executions:', err);
-      setError(err.message || 'Failed to load executions');
+      setError(err.message || 'Falha ao carregar execucoes');
     } finally {
       setLoading(false);
     }
@@ -107,7 +107,7 @@ export default function AIExecutionsPage() {
   }, [filterUsageType, filterProvider, filterHasError]);
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
+    return new Date(dateString).toLocaleString('pt-BR', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -124,11 +124,11 @@ export default function AIExecutionsPage() {
 
   const getUsageTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      'prompt_generation': 'Prompt Generation',
-      'task_execution': 'Task Execution',
-      'commit_generation': 'Commit Generation',
-      'interview': 'Interview',
-      'general': 'General'
+      'prompt_generation': 'Geracao de Prompts',
+      'task_execution': 'Execucao de Tarefas',
+      'commit_generation': 'Geracao de Commits',
+      'interview': 'Entrevista',
+      'general': 'Geral'
     };
     return labels[type] || type;
   };
@@ -153,9 +153,9 @@ export default function AIExecutionsPage() {
               <Activity className="w-6 h-6 text-indigo-600" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">AI Executions</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Execucoes IA</h1>
               <p className="text-gray-600 mt-1">
-                Monitor and analyze AI model execution logs
+                Monitore e analise logs de execucao de modelos IA
               </p>
             </div>
           </div>
@@ -165,7 +165,7 @@ export default function AIExecutionsPage() {
             disabled={loading}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+            Atualizar
           </Button>
         </div>
 
@@ -176,7 +176,7 @@ export default function AIExecutionsPage() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Total Executions</p>
+                    <p className="text-sm text-gray-600">Total de Execucoes</p>
                     <p className="text-2xl font-bold text-gray-900">{formatNumber(stats.total_executions)}</p>
                   </div>
                   <Database className="w-8 h-8 text-indigo-500" />
@@ -188,7 +188,7 @@ export default function AIExecutionsPage() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Total Tokens</p>
+                    <p className="text-sm text-gray-600">Tokens Totais</p>
                     <p className="text-2xl font-bold text-gray-900">{formatNumber(stats.total_tokens)}</p>
                   </div>
                   <TrendingUp className="w-8 h-8 text-green-500" />
@@ -200,7 +200,7 @@ export default function AIExecutionsPage() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Input Tokens</p>
+                    <p className="text-sm text-gray-600">Tokens de Entrada</p>
                     <p className="text-2xl font-bold text-gray-900">{formatNumber(stats.total_input_tokens)}</p>
                   </div>
                   <Activity className="w-8 h-8 text-blue-500" />
@@ -212,7 +212,7 @@ export default function AIExecutionsPage() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Avg Exec Time</p>
+                    <p className="text-sm text-gray-600">Tempo Medio Exec</p>
                     <p className="text-2xl font-bold text-gray-900">
                       {stats.avg_execution_time_ms ? `${Math.round(stats.avg_execution_time_ms)}ms` : 'N/A'}
                     </p>
@@ -227,38 +227,38 @@ export default function AIExecutionsPage() {
         {/* Filters */}
         <Card>
           <CardHeader>
-            <CardTitle>Filters</CardTitle>
+            <CardTitle>Filtros</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Usage Type
+                  Tipo de Uso
                 </label>
                 <select
                   value={filterUsageType}
                   onChange={(e) => setFilterUsageType(e.target.value)}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                 >
-                  <option value="">All Types</option>
-                  <option value="prompt_generation">Prompt Generation</option>
-                  <option value="task_execution">Task Execution</option>
-                  <option value="commit_generation">Commit Generation</option>
-                  <option value="interview">Interview</option>
-                  <option value="general">General</option>
+                  <option value="">Todos os Tipos</option>
+                  <option value="prompt_generation">Geracao de Prompts</option>
+                  <option value="task_execution">Execucao de Tarefas</option>
+                  <option value="commit_generation">Geracao de Commits</option>
+                  <option value="interview">Entrevista</option>
+                  <option value="general">Geral</option>
                 </select>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Provider
+                  Provedor
                 </label>
                 <select
                   value={filterProvider}
                   onChange={(e) => setFilterProvider(e.target.value)}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                 >
-                  <option value="">All Providers</option>
+                  <option value="">Todos os Provedores</option>
                   <option value="anthropic">Anthropic (Claude)</option>
                   <option value="openai">OpenAI (GPT)</option>
                   <option value="google">Google (Gemini)</option>
@@ -274,9 +274,9 @@ export default function AIExecutionsPage() {
                   onChange={(e) => setFilterHasError(e.target.value)}
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                 >
-                  <option value="">All Status</option>
-                  <option value="false">Successful Only</option>
-                  <option value="true">Errors Only</option>
+                  <option value="">Todos os Status</option>
+                  <option value="false">Apenas Sucesso</option>
+                  <option value="true">Apenas Erros</option>
                 </select>
               </div>
             </div>
@@ -290,7 +290,7 @@ export default function AIExecutionsPage() {
               <div className="flex items-start gap-3">
                 <AlertCircle className="w-5 h-5 text-red-600 mt-0.5" />
                 <div>
-                  <h3 className="font-semibold text-red-900 mb-1">Error</h3>
+                  <h3 className="font-semibold text-red-900 mb-1">Erro</h3>
                   <p className="text-sm text-red-800">{error}</p>
                 </div>
               </div>
@@ -301,20 +301,20 @@ export default function AIExecutionsPage() {
         {/* Executions Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Execution History ({executions.length})</CardTitle>
+            <CardTitle>Historico de Execucoes ({executions.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="text-center py-12">
                 <RefreshCw className="w-8 h-8 text-gray-400 animate-spin mx-auto mb-3" />
-                <p className="text-gray-600">Loading executions...</p>
+                <p className="text-gray-600">Carregando execucoes...</p>
               </div>
             ) : executions.length === 0 ? (
               <div className="text-center py-12">
                 <Activity className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600">No executions found</p>
+                <p className="text-gray-600">Nenhuma execucao encontrada</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Executions will appear here as AI models are used
+                  Execucoes aparecerao aqui conforme os modelos IA forem usados
                 </p>
               </div>
             ) : (
@@ -323,16 +323,16 @@ export default function AIExecutionsPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Time
+                        Hora
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Usage Type
+                        Tipo de Uso
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Provider
+                        Provedor
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Model
+                        Modelo
                       </th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Tokens
@@ -341,7 +341,7 @@ export default function AIExecutionsPage() {
                         Status
                       </th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
+                        Acoes
                       </th>
                     </tr>
                   </thead>
@@ -373,7 +373,7 @@ export default function AIExecutionsPage() {
                             <div>
                               <span className="font-medium">{formatNumber(execution.total_tokens)}</span>
                               <span className="text-xs text-gray-500 ml-1">
-                                ({formatNumber(execution.input_tokens)} in / {formatNumber(execution.output_tokens)} out)
+                                ({formatNumber(execution.input_tokens)} ent / {formatNumber(execution.output_tokens)} sai)
                               </span>
                             </div>
                           ) : (
@@ -383,11 +383,11 @@ export default function AIExecutionsPage() {
                         <td className="px-4 py-4 whitespace-nowrap text-center">
                           {execution.error_message ? (
                             <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">
-                              Error
+                              Erro
                             </span>
                           ) : (
                             <span className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
-                              Success
+                              Sucesso
                             </span>
                           )}
                         </td>
@@ -400,7 +400,7 @@ export default function AIExecutionsPage() {
                               loadExecutionDetail(execution.id);
                             }}
                           >
-                            View Details
+                            Ver Detalhes
                           </Button>
                         </td>
                       </tr>
@@ -418,9 +418,9 @@ export default function AIExecutionsPage() {
             <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900">Execution Details</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">Detalhes da Execucao</h2>
                   <Button variant="outline" onClick={() => setSelectedExecution(null)}>
-                    Close
+                    Fechar
                   </Button>
                 </div>
 
@@ -432,23 +432,23 @@ export default function AIExecutionsPage() {
                       <p className="text-sm text-gray-900 font-mono">{selectedExecution.id}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Timestamp</label>
+                      <label className="text-sm font-medium text-gray-500">Data/Hora</label>
                       <p className="text-sm text-gray-900">{formatDate(selectedExecution.created_at)}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Usage Type</label>
+                      <label className="text-sm font-medium text-gray-500">Tipo de Uso</label>
                       <p className="text-sm text-gray-900">{getUsageTypeLabel(selectedExecution.usage_type)}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Provider</label>
+                      <label className="text-sm font-medium text-gray-500">Provedor</label>
                       <p className="text-sm text-gray-900">{selectedExecution.provider}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Model</label>
+                      <label className="text-sm font-medium text-gray-500">Modelo</label>
                       <p className="text-sm text-gray-900">{selectedExecution.model_name}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Execution Time</label>
+                      <label className="text-sm font-medium text-gray-500">Tempo de Execucao</label>
                       <p className="text-sm text-gray-900">
                         {selectedExecution.execution_time_ms ? `${selectedExecution.execution_time_ms}ms` : 'N/A'}
                       </p>
@@ -457,18 +457,18 @@ export default function AIExecutionsPage() {
 
                   {/* Tokens */}
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Token Usage</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Uso de Tokens</h3>
                     <div className="grid grid-cols-3 gap-4">
                       <div className="bg-blue-50 p-4 rounded-lg">
-                        <p className="text-sm text-blue-600 font-medium">Input Tokens</p>
+                        <p className="text-sm text-blue-600 font-medium">Tokens de Entrada</p>
                         <p className="text-2xl font-bold text-blue-900">{formatNumber(selectedExecution.input_tokens)}</p>
                       </div>
                       <div className="bg-green-50 p-4 rounded-lg">
-                        <p className="text-sm text-green-600 font-medium">Output Tokens</p>
+                        <p className="text-sm text-green-600 font-medium">Tokens de Saida</p>
                         <p className="text-2xl font-bold text-green-900">{formatNumber(selectedExecution.output_tokens)}</p>
                       </div>
                       <div className="bg-purple-50 p-4 rounded-lg">
-                        <p className="text-sm text-purple-600 font-medium">Total Tokens</p>
+                        <p className="text-sm text-purple-600 font-medium">Tokens Totais</p>
                         <p className="text-2xl font-bold text-purple-900">{formatNumber(selectedExecution.total_tokens)}</p>
                       </div>
                     </div>
@@ -476,7 +476,7 @@ export default function AIExecutionsPage() {
 
                   {/* Parameters */}
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Parameters</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Parametros</h3>
                     <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                       <div>
                         <span className="text-sm font-medium text-gray-500">Temperature:</span>
@@ -501,7 +501,7 @@ export default function AIExecutionsPage() {
 
                   {/* Input Messages */}
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Input Messages</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Mensagens de Entrada</h3>
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono">
                         {JSON.stringify(selectedExecution.input_messages, null, 2)}
@@ -512,7 +512,7 @@ export default function AIExecutionsPage() {
                   {/* Response */}
                   {selectedExecution.response_content && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Response</h3>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-3">Resposta</h3>
                       <div className="bg-gray-50 p-4 rounded-lg">
                         <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono">{selectedExecution.response_content}</pre>
                       </div>
@@ -522,7 +522,7 @@ export default function AIExecutionsPage() {
                   {/* Error */}
                   {selectedExecution.error_message && (
                     <div>
-                      <h3 className="text-lg font-semibold text-red-900 mb-3">Error Message</h3>
+                      <h3 className="text-lg font-semibold text-red-900 mb-3">Mensagem de Erro</h3>
                       <div className="bg-red-50 p-4 rounded-lg border border-red-200">
                         <pre className="text-sm text-red-900 whitespace-pre-wrap font-mono">{selectedExecution.error_message}</pre>
                       </div>
