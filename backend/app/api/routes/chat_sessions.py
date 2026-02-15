@@ -77,7 +77,7 @@ async def create_chat_session(
     if not isinstance(session_data.messages, list):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="messages must be an array"
+            detail="messages deve ser um array"
         )
 
     db_session = ChatSession(
@@ -128,7 +128,7 @@ async def update_chat_session(
         if not isinstance(update_data["messages"], list):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="messages must be an array"
+                detail="messages deve ser um array"
             )
 
     for field, value in update_data.items():
@@ -243,7 +243,7 @@ async def send_message_and_execute(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Chat session {session_id} not found"
+            detail=f"Sessao de chat {session_id} nao encontrada"
         )
 
     # Executar task com a mensagem do usuário usando AI Orchestrator
@@ -269,7 +269,7 @@ async def send_message_and_execute(
         logger.error(f"Failed to execute task: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to execute task: {str(e)}"
+            detail=f"Falha ao executar tarefa: {str(e)}"
         )
 
 
@@ -308,7 +308,7 @@ async def execute_task_direct(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Chat session {session_id} not found"
+            detail=f"Sessao de chat {session_id} nao encontrada"
         )
 
     # Executar task diretamente usando AI Orchestrator
@@ -334,5 +334,5 @@ async def execute_task_direct(
         logger.error(f"Failed to execute task: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to execute task: {str(e)}"
+            detail=f"Falha ao executar tarefa: {str(e)}"
         )

@@ -546,7 +546,7 @@ async def cleanup_old_jobs(
         {
             "deleted_count": 25,
             "cutoff_days": 7,
-            "message": "Successfully deleted 25 old jobs"
+            "message": "25 jobs antigos excluidos com sucesso"
         }
 
     Example:
@@ -601,7 +601,7 @@ async def bulk_delete_jobs(
     Returns:
         {
             "deleted_count": 25,
-            "message": "Successfully deleted 25 jobs"
+            "message": "25 jobs excluidos com sucesso"
         }
     """
     if not status and not job_type and not older_than_hours:

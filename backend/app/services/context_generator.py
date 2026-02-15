@@ -583,13 +583,13 @@ class ContextGeneratorService:
         # 1. Validate interview
         interview = self.db.query(Interview).filter(Interview.id == interview_id).first()
         if not interview:
-            raise ValueError(f"Interview {interview_id} not found")
+            raise ValueError(f"Entrevista {interview_id} nao encontrada")
 
         # Accept both "context" and "meta_prompt" modes for compatibility
         if interview.interview_mode not in ["context", "meta_prompt"]:
             raise ValueError(
-                f"Interview {interview_id} is not a context interview "
-                f"(mode: {interview.interview_mode}). Only 'context' mode supported."
+                f"Entrevista {interview_id} nao e uma entrevista de contexto "
+                f"(modo: {interview.interview_mode}). Apenas modo 'context' suportado."
             )
 
         # PROMPT #122 - Allow generating context from memory scan even without conversation
@@ -597,7 +597,7 @@ class ContextGeneratorService:
         # with minimal conversation (just the AI greeting is enough)
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Project {project_id} not found")
+            raise ValueError(f"Projeto {project_id} nao encontrado")
 
         has_memory_context = bool(project.initial_memory_context)
         message_count = len(interview.conversation_data or [])
@@ -907,7 +907,7 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
 
         # Validate required fields
         if "context_semantic" not in result:
-            raise ValueError("AI response missing 'context_semantic' field")
+            raise ValueError("Resposta da IA sem o campo 'context_semantic'")
 
         semantic_map = result.get("semantic_map", {})
 
@@ -1448,7 +1448,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         """
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Project {project_id} not found")
+            raise ValueError(f"Projeto {project_id} nao encontrado")
 
         if project.context_locked:
             logger.warning(f"Project {project_id} context is already locked")
@@ -1456,7 +1456,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
         if not project.context_semantic:
             raise ValueError(
-                f"Cannot lock context for project {project_id}: no context generated yet"
+                f"Nao e possivel travar contexto do projeto {project_id}: nenhum contexto gerado ainda"
             )
 
         project.context_locked = True
@@ -1551,7 +1551,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         # 1. Fetch item
         epic = self.db.query(Task).filter(Task.id == epic_id).first()
         if not epic:
-            raise ValueError(f"Item {epic_id} not found")
+            raise ValueError(f"Item {epic_id} nao encontrado")
 
         # Check if it's a suggested item
         is_suggested = (
@@ -1560,19 +1560,19 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
         if not is_suggested:
             raise ValueError(
-                f"Item {epic_id} is not a suggested item. "
-                "It may have already been activated."
+                f"Item {epic_id} nao e um item sugerido. "
+                "Pode ja ter sido ativado."
             )
 
         # 2. Fetch project and context
         project = self.db.query(Project).filter(Project.id == epic.project_id).first()
         if not project:
-            raise ValueError(f"Project {epic.project_id} not found")
+            raise ValueError(f"Projeto {epic.project_id} nao encontrado")
 
         if not project.context_semantic:
             raise ValueError(
-                f"Project {project.id} has no context. "
-                "Please complete the Context Interview first."
+                f"Projeto {project.id} nao tem contexto. "
+                "Por favor, complete a Entrevista de Contexto primeiro."
             )
 
         # 3. Generate full epic content using AI
@@ -1729,11 +1729,11 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         """
         parent = self.db.query(Task).filter(Task.id == parent_id).first()
         if not parent:
-            raise ValueError(f"Item {parent_id} not found")
+            raise ValueError(f"Item {parent_id} nao encontrado")
 
         project = self.db.query(Project).filter(Project.id == parent.project_id).first()
         if not project:
-            raise ValueError(f"Project {parent.project_id} not found")
+            raise ValueError(f"Projeto {parent.project_id} nao encontrado")
 
         if parent.item_type == ItemType.EPIC:
             children = await self._generate_draft_stories(parent, project, count=count)
@@ -1742,7 +1742,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         elif parent.item_type == ItemType.TASK:
             children = await self._generate_draft_subtasks(parent, project, count=count)
         else:
-            raise ValueError(f"Cannot generate children for item_type={parent.item_type.value}")
+            raise ValueError(f"Nao e possivel gerar filhos para item_type={parent.item_type.value}")
 
         child_type = {
             ItemType.EPIC: "stories",
@@ -2812,7 +2812,7 @@ GERE A ESPECIFICAÇÃO COMPLETA AGORA, preenchendo TODOS os campos com dados REA
                     }
                     logger.info("✅ Using simplified AI response as fallback content")
                 else:
-                    raise ValueError("Response too short")
+                    raise ValueError("Resposta muito curta")
 
             except Exception as fallback_error:
                 logger.error(f"❌ Simplified request also failed: {fallback_error}")
@@ -2929,7 +2929,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         # Fetch item
         epic = self.db.query(Task).filter(Task.id == epic_id).first()
         if not epic:
-            raise ValueError(f"Item {epic_id} not found")
+            raise ValueError(f"Item {epic_id} nao encontrado")
 
         # Check if it's a suggested item
         is_suggested = (
@@ -2938,8 +2938,8 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
 
         if not is_suggested:
             raise ValueError(
-                f"Item {epic_id} is not a suggested item. "
-                "Only suggested items can be rejected."
+                f"Item {epic_id} nao e um item sugerido. "
+                "Apenas itens sugeridos podem ser rejeitados."
             )
 
         item_title = epic.title
@@ -3640,20 +3640,20 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         # Fetch story
         story = self.db.query(Task).filter(Task.id == story_id).first()
         if not story:
-            raise ValueError(f"Story {story_id} not found")
+            raise ValueError(f"Story {story_id} nao encontrada")
 
         if story.item_type != ItemType.STORY:
-            raise ValueError(f"Item {story_id} is not a Story (type: {story.item_type})")
+            raise ValueError(f"Item {story_id} nao e uma Story (tipo: {story.item_type})")
 
         # Check if suggested
         is_suggested = (story.labels and "suggested" in story.labels) or story.workflow_state == "draft"
         if not is_suggested:
-            raise ValueError(f"Story {story_id} is not a suggested item")
+            raise ValueError(f"Story {story_id} nao e um item sugerido")
 
         # Fetch project
         project = self.db.query(Project).filter(Project.id == story.project_id).first()
         if not project:
-            raise ValueError(f"Project {story.project_id} not found")
+            raise ValueError(f"Projeto {story.project_id} nao encontrado")
 
         # Generate full story content
         story_content = await self._generate_full_story_content(story, project)
@@ -4101,20 +4101,20 @@ Retorne APENAS o JSON, sem explicações."""
         # Fetch task
         task = self.db.query(Task).filter(Task.id == task_id).first()
         if not task:
-            raise ValueError(f"Task {task_id} not found")
+            raise ValueError(f"Task {task_id} nao encontrada")
 
         if task.item_type != ItemType.TASK:
-            raise ValueError(f"Item {task_id} is not a Task (type: {task.item_type})")
+            raise ValueError(f"Item {task_id} nao e uma Task (tipo: {task.item_type})")
 
         # Check if suggested
         is_suggested = (task.labels and "suggested" in task.labels) or task.workflow_state == "draft"
         if not is_suggested:
-            raise ValueError(f"Task {task_id} is not a suggested item")
+            raise ValueError(f"Task {task_id} nao e um item sugerido")
 
         # Fetch project
         project = self.db.query(Project).filter(Project.id == task.project_id).first()
         if not project:
-            raise ValueError(f"Project {task.project_id} not found")
+            raise ValueError(f"Projeto {task.project_id} nao encontrado")
 
         # Fetch parent story and grandparent epic for full context
         parent_story = None
@@ -4564,20 +4564,20 @@ Retorne APENAS o JSON, sem explicações."""
         # Fetch subtask
         subtask = self.db.query(Task).filter(Task.id == subtask_id).first()
         if not subtask:
-            raise ValueError(f"Subtask {subtask_id} not found")
+            raise ValueError(f"Subtask {subtask_id} nao encontrada")
 
         if subtask.item_type != ItemType.SUBTASK:
-            raise ValueError(f"Item {subtask_id} is not a Subtask (type: {subtask.item_type})")
+            raise ValueError(f"Item {subtask_id} nao e uma Subtask (tipo: {subtask.item_type})")
 
         # Check if suggested
         is_suggested = (subtask.labels and "suggested" in subtask.labels) or subtask.workflow_state == "draft"
         if not is_suggested:
-            raise ValueError(f"Subtask {subtask_id} is not a suggested item")
+            raise ValueError(f"Subtask {subtask_id} nao e um item sugerido")
 
         # Fetch project
         project = self.db.query(Project).filter(Project.id == subtask.project_id).first()
         if not project:
-            raise ValueError(f"Project {subtask.project_id} not found")
+            raise ValueError(f"Projeto {subtask.project_id} nao encontrado")
 
         # Fetch full hierarchy for complete context
         parent_task = None
@@ -5073,11 +5073,11 @@ Retorne APENAS o JSON, sem explicações."""
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
             logger.error(f"❌ Project {project_id} not found for card generation")
-            return {"success": False, "error": "Project not found"}
+            return {"success": False, "error": "Projeto nao encontrado"}
 
         if not project.initial_memory_context:
             logger.warning(f"⚠️ Project {project_id} has no memory context for card generation")
-            return {"success": False, "error": "No memory context available"}
+            return {"success": False, "error": "Nenhum contexto de memoria disponivel"}
 
         logger.info(f"🎯 Starting card generation from memory for project: {project.name}")
 
@@ -5185,7 +5185,7 @@ Retorne APENAS o JSON, sem explicações."""
         """
         memory_ctx = project.initial_memory_context
         if not memory_ctx:
-            raise ValueError("No memory context available")
+            raise ValueError("Nenhum contexto de memoria disponivel")
 
         # Build a summary from memory scan
         stack_info = memory_ctx.get("stack_info", {})
@@ -5735,11 +5735,11 @@ IMPORTANTE:
 
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Project {project_id} not found")
+            raise ValueError(f"Projeto {project_id} nao encontrado")
 
         memory_ctx = project.initial_memory_context
         if not memory_ctx:
-            raise ValueError(f"No memory context for project {project_id}")
+            raise ValueError(f"Nenhum contexto de memoria para o projeto {project_id}")
 
         loader = PromptLoader()
 

@@ -67,7 +67,7 @@ def _resolve_chain_models(db: Session, chain_ids: List[str]) -> List[dict]:
         else:
             models.append({
                 "id": model_id,
-                "name": "Unknown (deleted)",
+                "name": "Desconhecido (excluido)",
                 "provider": "unknown",
                 "usage_type": "general",
                 "is_active": False,
@@ -701,8 +701,8 @@ async def get_chain_templates(
         templates.append(
             ChainTemplate(
                 id="nave",
-                name="Nave (Maximum Quality)",
-                description="Maximum quality, local Ollama only, unlimited time, zero cost",
+                name="Nave (Qualidade Maxima)",
+                description="Qualidade maxima, apenas Ollama local, tempo ilimitado, custo zero",
                 chain=[str(m.id) for m in nave_sorted],
                 models=[model_info(m) for m in nave_sorted],
                 utility_nodes=TEMPLATE_UTILITY_NODES["nave"],
@@ -720,7 +720,7 @@ UTILITY_NODE_CATALOG = {
     "cache": {
         "type": "cache",
         "label": "Cache",
-        "description": "Checks Redis cache before calling AI models. Returns cached response if available.",
+        "description": "Verifica cache Redis antes de chamar modelos de IA. Retorna resposta em cache se disponivel.",
         "icon": "database",
         "color": "#8b5cf6",
         "default_config": {
@@ -732,7 +732,7 @@ UTILITY_NODE_CATALOG = {
     "rag_context": {
         "type": "rag_context",
         "label": "RAG Context",
-        "description": "Enriches the prompt with semantic context from the RAG vector store. PROMPT #229: type filtering, deduplication, context compression, and reranking.",
+        "description": "Enriquece o prompt com contexto semantico do RAG vector store. PROMPT #229: filtragem por tipo, deduplicacao, compressao de contexto e reranking.",
         "icon": "search",
         "color": "#06b6d4",
         "default_config": {
@@ -750,7 +750,7 @@ UTILITY_NODE_CATALOG = {
     "prompt_transformer": {
         "type": "prompt_transformer",
         "label": "Prompt Transformer",
-        "description": "Applies transformations to the prompt before sending to AI (compression, translation, etc.). Can override max_tokens (capped by model) and temperature (free).",
+        "description": "Aplica transformacoes ao prompt antes de enviar para IA (compressao, traducao, etc.). Pode sobrescrever max_tokens (limitado pelo modelo) e temperature (livre).",
         "icon": "wand",
         "color": "#f59e0b",
         "default_config": {
@@ -764,7 +764,7 @@ UTILITY_NODE_CATALOG = {
     "router": {
         "type": "router",
         "label": "Router",
-        "description": "Routes requests to different model chains based on conditions (complexity, cost, topic). PROMPT #231: reads query_classification from metadata to skip cheap models for complex queries.",
+        "description": "Roteia requisicoes para diferentes cadeias de modelos baseado em condicoes (complexidade, custo, topico). PROMPT #231: le query_classification dos metadados para pular modelos baratos em consultas complexas.",
         "icon": "git-branch",
         "color": "#10b981",
         "default_config": {
@@ -780,7 +780,7 @@ UTILITY_NODE_CATALOG = {
     "retry": {
         "type": "retry",
         "label": "Retry",
-        "description": "Retries the same model with exponential backoff on transient failures. Smart skip: permanent errors (401, 404) are never retried.",
+        "description": "Tenta novamente o mesmo modelo com backoff exponencial em falhas transitorias. Pulo inteligente: erros permanentes (401, 404) nunca sao tentados novamente.",
         "icon": "refresh-cw",
         "color": "#3b82f6",
         "default_config": {
@@ -794,7 +794,7 @@ UTILITY_NODE_CATALOG = {
     "validator": {
         "type": "validator",
         "label": "Validator",
-        "description": "Validates AI output against rules (JSON schema, length, keywords, format). Auto-repair: attempts JSON fix before triggering retry. PROMPT #231: interview_score type with 0.0-1.0 structural scoring.",
+        "description": "Valida saida de IA contra regras (JSON schema, comprimento, palavras-chave, formato). Auto-reparo: tenta corrigir JSON antes de acionar retry. PROMPT #231: tipo interview_score com pontuacao estrutural 0.0-1.0.",
         "icon": "check-circle",
         "color": "#22c55e",
         "default_config": {
@@ -810,7 +810,7 @@ UTILITY_NODE_CATALOG = {
     "cost_guard": {
         "type": "cost_guard",
         "label": "Cost Guard",
-        "description": "Blocks requests that would exceed a budget threshold (per-call or cumulative).",
+        "description": "Bloqueia requisicoes que excederiam um limite de orcamento (por chamada ou cumulativo).",
         "icon": "shield",
         "color": "#ef4444",
         "default_config": {
@@ -823,7 +823,7 @@ UTILITY_NODE_CATALOG = {
     "rate_limiter": {
         "type": "rate_limiter",
         "label": "Rate Limiter",
-        "description": "Limits the number of requests per time window using a sliding window algorithm.",
+        "description": "Limita o numero de requisicoes por janela de tempo usando um algoritmo de janela deslizante.",
         "icon": "clock",
         "color": "#ec4899",
         "default_config": {
@@ -835,7 +835,7 @@ UTILITY_NODE_CATALOG = {
     "timeout": {
         "type": "timeout",
         "label": "Timeout",
-        "description": "Sets the API call timeout in seconds. Overrides model and system defaults. Hierarchy: Timeout Node → AI Model timeout → System Settings default.",
+        "description": "Define timeout de chamada de API em segundos. Sobrescreve padroes do modelo e do sistema. Hierarquia: No Timeout → AI Model timeout → System Settings padrao.",
         "icon": "timer",
         "color": "#f97316",
         "default_config": {
@@ -845,7 +845,7 @@ UTILITY_NODE_CATALOG = {
     "prompt_queue": {
         "type": "prompt_queue",
         "label": "Prompt Queue",
-        "description": "Orchestration priority queue. Orders prompts by hierarchy, priority, dependencies, and age. Ensures parent cards execute before children for code consistency.",
+        "description": "Fila de prioridade de orquestracao. Ordena prompts por hierarquia, prioridade, dependencias e idade. Garante que cards pais executem antes dos filhos para consistencia de codigo.",
         "icon": "list-ordered",
         "color": "#8b5cf6",
         "default_config": {
