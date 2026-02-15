@@ -266,6 +266,7 @@ export default function WikiPageView() {
             ) : (
               <div className="prose prose-sm max-w-none">
                 <ReactMarkdown
+                  urlTransform={(url) => url}
                   components={{
                     a: ({ href, children, ...props }) => {
                       // Internal wiki links: wiki:slug or plain slug (no protocol)
