@@ -22,13 +22,13 @@ async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSON
 
     # Extract user-friendly messages for common errors
     if "duplicate key" in error_msg.lower():
-        detail = "A record with this value already exists"
+        detail = "Um registro com este valor ja existe"
     elif "foreign key" in error_msg.lower():
-        detail = "Referenced record does not exist"
+        detail = "Registro referenciado nao existe"
     elif "not null" in error_msg.lower():
-        detail = "Required field is missing"
+        detail = "Campo obrigatorio esta faltando"
     else:
-        detail = "Database constraint violation"
+        detail = "Violacao de restricao do banco de dados"
 
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -49,7 +49,7 @@ async def validation_error_handler(request: Request, exc: ValidationError) -> JS
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
-            "detail": "Validation error",
+            "detail": "Erro de validacao",
             "error_type": "validation_error",
             "errors": exc.errors()
         }
@@ -65,7 +65,7 @@ async def sqlalchemy_error_handler(request: Request, exc: SQLAlchemyError) -> JS
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
-            "detail": "An internal database error occurred",
+            "detail": "Ocorreu um erro interno no banco de dados",
             "error_type": "database_error"
         }
     )
