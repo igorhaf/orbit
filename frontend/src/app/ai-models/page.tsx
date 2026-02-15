@@ -547,7 +547,7 @@ export default function AIModelsPage() {
                   <option value="cohere">Cohere</option>
                   <option value="ollama">Ollama (Local)</option>
                   <option value="local">Local</option>
-                  <option value="custom">Custom</option>
+                  <option value="custom">Personalizado</option>
                 </select>
               </div>
 
@@ -789,7 +789,7 @@ export default function AIModelsPage() {
                   <option value="cohere">Cohere</option>
                   <option value="ollama">Ollama (Local)</option>
                   <option value="local">Local</option>
-                  <option value="custom">Custom</option>
+                  <option value="custom">Personalizado</option>
                 </select>
               </div>
 

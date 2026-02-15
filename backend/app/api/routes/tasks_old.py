@@ -2021,12 +2021,12 @@ async def _activate_item_async(
         # Now activate the target item
         target_progress = 10.0 + (len(unactivated_ancestors) * progress_per_step)
         item_type_messages = {
-            ItemType.EPIC: "Generating epic content...",
-            ItemType.STORY: "Generating story content...",
-            ItemType.TASK: "Generating task content...",
-            ItemType.SUBTASK: "Generating subtask content...",
+            ItemType.EPIC: "Gerando conteudo do epic...",
+            ItemType.STORY: "Gerando conteudo da story...",
+            ItemType.TASK: "Gerando conteudo da tarefa...",
+            ItemType.SUBTASK: "Gerando conteudo da subtarefa...",
         }
-        start_msg = item_type_messages.get(item_type, "Processing...")
+        start_msg = item_type_messages.get(item_type, "Processando...")
 
         job_manager.update_progress(job_id, target_progress, start_msg)
 
