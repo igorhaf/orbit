@@ -254,6 +254,21 @@ export default function SettingsPage() {
     handleAddBlockDir(folderName);
   };
 
+  const handleFolderPickerSelectMultiple = async (fullPaths: string[]) => {
+    const newDirs = fullPaths
+      .map(p => p.split('/').pop() || p)
+      .filter(d => d && !blocklist.directories.includes(d));
+    if (newDirs.length === 0) { showWarning('Todas as pastas ja estao na lista'); return; }
+    const updated = { ...blocklist, directories: [...blocklist.directories, ...newDirs].sort() };
+    setSavingBlocklist(true);
+    try {
+      const result = await settingsApi.saveBlocklist(updated);
+      setBlocklist(result);
+      setSaveSuccess(`${newDirs.length} ${newDirs.length === 1 ? 'pasta adicionada' : 'pastas adicionadas'} a lista de bloqueio`);
+    } catch (err: any) { showError(`Falha ao salvar: ${err.message}`); }
+    finally { setSavingBlocklist(false); }
+  };
+
   const handleAddBlockPattern = async (patName?: string) => {
     const pat = (patName || newBlockPattern).trim();
     if (!pat) { showWarning('Insira o padrao de arquivo'); return; }
@@ -761,7 +776,9 @@ export default function SettingsPage() {
                   open={showBlocklistFolderPicker}
                   onClose={() => setShowBlocklistFolderPicker(false)}
                   onSelect={handleFolderPickerSelect}
-                  title="Selecionar Pasta para Bloquear"
+                  onSelectMultiple={handleFolderPickerSelectMultiple}
+                  multiSelect
+                  title="Selecionar Pastas para Bloquear"
                 />
               </CardContent>
             </Card>

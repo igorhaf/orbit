@@ -30,6 +30,8 @@ export interface FolderPickerProps {
   open: boolean;
   onClose: () => void;
   onSelect: (path: string) => void;
+  onSelectMultiple?: (paths: string[]) => void;
+  multiSelect?: boolean;
   title?: string;
 }
 
@@ -37,6 +39,8 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
   open,
   onClose,
   onSelect,
+  onSelectMultiple,
+  multiSelect = false,
   title = 'Selecionar Pasta do Projeto',
 }) => {
   const [currentPath, setCurrentPath] = useState('');
@@ -44,6 +48,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
   const [browseResult, setBrowseResult] = useState<BrowseResult | null>(null);
 
   const loadFolders = useCallback(async (path: string = '') => {
@@ -71,6 +76,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
     if (open) {
       loadFolders('');
       setSelectedPath(null);
+      setSelectedPaths(new Set());
     }
   }, [open, loadFolders]);
 
@@ -85,13 +91,32 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
     }
     loadFolders(folder.path);
     setSelectedPath(null);
+    setSelectedPaths(new Set());
   };
 
-  const handleFolderSelect = (folder: Folder) => {
-    setSelectedPath(folder.full_path);
+  const handleFolderSelect = (folder: Folder, ctrlKey: boolean) => {
+    if (multiSelect && ctrlKey) {
+      // Ctrl+click: toggle in multi-selection
+      setSelectedPaths(prev => {
+        const next = new Set(prev);
+        if (next.has(folder.full_path)) {
+          next.delete(folder.full_path);
+        } else {
+          next.add(folder.full_path);
+        }
+        return next;
+      });
+    } else if (multiSelect) {
+      // Normal click in multi mode: replace selection with just this one
+      setSelectedPaths(new Set([folder.full_path]));
+    } else {
+      // Single-select mode
+      setSelectedPath(folder.full_path);
+    }
   };
 
-  const handleItemClick = (folder: Folder) => {
+  const handleItemClick = (folder: Folder, e: React.MouseEvent) => {
+    const ctrlKey = e.ctrlKey || e.metaKey;
     if (clickTimerRef.current) {
       // Second click within 300ms = double-click → navigate
       clearTimeout(clickTimerRef.current);
@@ -101,7 +126,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
       // First click → wait to see if double-click follows
       clickTimerRef.current = setTimeout(() => {
         clickTimerRef.current = null;
-        handleFolderSelect(folder);
+        handleFolderSelect(folder, ctrlKey);
       }, 300);
     }
   };
@@ -110,6 +135,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
     if (browseResult?.parent_path !== null && browseResult?.parent_path !== undefined) {
       loadFolders(browseResult.parent_path);
       setSelectedPath(null);
+      setSelectedPaths(new Set());
     }
   };
 
@@ -121,7 +147,12 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
   };
 
   const handleConfirm = () => {
-    if (selectedPath) {
+    if (multiSelect && selectedPaths.size > 0) {
+      if (onSelectMultiple) {
+        onSelectMultiple(Array.from(selectedPaths));
+      }
+      onClose();
+    } else if (selectedPath) {
       onSelect(selectedPath);
       onClose();
     }
@@ -132,7 +163,9 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
       open={open}
       onClose={onClose}
       title={title}
-      description="Navegue e selecione uma pasta contendo o codigo do seu projeto"
+      description={multiSelect
+        ? "Navegue e selecione pastas para bloquear (Ctrl+clique para selecionar multiplas)"
+        : "Navegue e selecione uma pasta contendo o codigo do seu projeto"}
       size="lg"
     >
       {/* Breadcrumb / Current Path */}
@@ -210,9 +243,10 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
               <li
                 key={folder.path}
                 className={`flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer transition-colors ${
-                  selectedPath === folder.full_path ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                  (multiSelect ? selectedPaths.has(folder.full_path) : selectedPath === folder.full_path)
+                    ? 'bg-blue-50 border-l-4 border-blue-500' : ''
                 }`}
-                onClick={() => handleItemClick(folder)}
+                onClick={(e) => handleItemClick(folder, e)}
               >
                 {/* Folder Icon */}
                 <div className={`flex-shrink-0 ${folder.is_project ? 'text-blue-500' : 'text-yellow-500'}`}>
@@ -260,7 +294,21 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
       </div>
 
       {/* Selected Path Preview */}
-      {selectedPath && (
+      {multiSelect && selectedPaths.size > 0 ? (
+        <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center gap-2 text-sm text-green-800 mb-1">
+            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span>{selectedPaths.size} {selectedPaths.size === 1 ? 'pasta selecionada' : 'pastas selecionadas'}</span>
+          </div>
+          <div className="ml-6 space-y-0.5">
+            {Array.from(selectedPaths).map(p => (
+              <div key={p} className="font-mono text-xs text-green-700 truncate">{p}</div>
+            ))}
+          </div>
+        </div>
+      ) : !multiSelect && selectedPath ? (
         <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
           <div className="flex items-center gap-2 text-sm text-green-800">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -270,11 +318,13 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
             <span className="font-mono font-medium truncate">{selectedPath}</span>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Help Text */}
       <p className="mt-3 text-xs text-gray-500">
-        Clique uma vez para selecionar, clique duplo para navegar para dentro da pasta
+        {multiSelect
+          ? 'Clique para selecionar, Ctrl+clique para selecionar multiplas, clique duplo para navegar'
+          : 'Clique uma vez para selecionar, clique duplo para navegar para dentro da pasta'}
       </p>
 
       <DialogFooter>
@@ -284,9 +334,11 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
         <Button
           variant="primary"
           onClick={handleConfirm}
-          disabled={!selectedPath}
+          disabled={multiSelect ? selectedPaths.size === 0 : !selectedPath}
         >
-          Selecionar Pasta
+          {multiSelect && selectedPaths.size > 1
+            ? `Selecionar ${selectedPaths.size} Pastas`
+            : 'Selecionar Pasta'}
         </Button>
       </DialogFooter>
     </Dialog>
