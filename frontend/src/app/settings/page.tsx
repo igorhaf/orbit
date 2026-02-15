@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/Label';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { FolderPicker } from '@/components/ui/FolderPicker';
 import { settingsApi, aiModelsApi } from '@/lib/api';
 import { SystemSettings, AIModel, AIModelUsageType } from '@/lib/types';
 import {
@@ -42,6 +43,7 @@ import {
   Check,
   X,
   Lightbulb,
+  Folder,
 } from 'lucide-react';
 import { useNotification } from '@/hooks';
 
@@ -96,6 +98,7 @@ export default function SettingsPage() {
   const [newBlockDir, setNewBlockDir] = useState('');
   const [newBlockPattern, setNewBlockPattern] = useState('');
   const [savingBlocklist, setSavingBlocklist] = useState(false);
+  const [showBlocklistFolderPicker, setShowBlocklistFolderPicker] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -230,8 +233,8 @@ export default function SettingsPage() {
   };
 
   // PROMPT #250 - Blocklist handlers
-  const handleAddBlockDir = async () => {
-    const dir = newBlockDir.trim();
+  const handleAddBlockDir = async (dirName?: string) => {
+    const dir = (dirName || newBlockDir).trim();
     if (!dir) { showWarning('Insira o nome da pasta'); return; }
     if (blocklist.directories.includes(dir)) { showWarning('Pasta ja esta na lista'); return; }
     const updated = { ...blocklist, directories: [...blocklist.directories, dir].sort() };
@@ -245,8 +248,14 @@ export default function SettingsPage() {
     finally { setSavingBlocklist(false); }
   };
 
-  const handleAddBlockPattern = async () => {
-    const pat = newBlockPattern.trim();
+  const handleFolderPickerSelect = (fullPath: string) => {
+    const folderName = fullPath.split('/').pop() || fullPath;
+    setShowBlocklistFolderPicker(false);
+    handleAddBlockDir(folderName);
+  };
+
+  const handleAddBlockPattern = async (patName?: string) => {
+    const pat = (patName || newBlockPattern).trim();
     if (!pat) { showWarning('Insira o padrao de arquivo'); return; }
     if (blocklist.file_patterns.includes(pat)) { showWarning('Padrao ja esta na lista'); return; }
     const updated = { ...blocklist, file_patterns: [...blocklist.file_patterns, pat].sort() };
@@ -594,177 +603,267 @@ export default function SettingsPage() {
 
             {/* Suggestions Section */}
             {blocklistSuggestions.length > 0 && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Lightbulb className="w-4 h-4 text-amber-500" />
-                    <span className="text-sm font-medium text-gray-900">Sugestoes Pendentes</span>
-                    <Badge variant="warning" className="text-xs">{blocklistSuggestions.length}</Badge>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={handleApproveAllSuggestions} className="text-green-700 border-green-300 hover:bg-green-50">
-                      <Check className="w-3.5 h-3.5 mr-1" />
-                      Aprovar Todas
-                    </Button>
-                    <Button variant="outline" size="sm" onClick={handleRejectAllSuggestions} className="text-red-700 border-red-300 hover:bg-red-50">
-                      <X className="w-3.5 h-3.5 mr-1" />
-                      Rejeitar Todas
-                    </Button>
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  {blocklistSuggestions.map((sug, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                      <div className="flex items-center gap-3 flex-1 min-w-0">
-                        {sug.type === 'directory' ? (
-                          <FolderX className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                        ) : (
-                          <FileX className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                        )}
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <code className="text-sm font-semibold text-gray-900">{sug.path}</code>
-                            <Badge variant="default" className="text-xs">
-                              {sug.type === 'directory' ? 'pasta' : 'padrao'}
-                            </Badge>
-                          </div>
-                          {sug.rationale && (
-                            <p className="text-xs text-gray-500 mt-0.5 truncate">{sug.rationale}</p>
-                          )}
-                          {sug.source_project && (
-                            <p className="text-xs text-gray-400 mt-0.5">Projeto: {sug.source_project}</p>
-                          )}
-                        </div>
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <div className="p-2 bg-amber-50 rounded-lg">
+                        <Lightbulb className="w-4 h-4 text-amber-600" />
                       </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleApproveSuggestion({ path: sug.path, type: sug.type })}
-                          className="text-green-600 hover:text-green-800 hover:bg-green-100"
-                          title="Aprovar"
-                        >
-                          <Check className="w-4 h-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRejectSuggestion({ path: sug.path, type: sug.type })}
-                          className="text-red-600 hover:text-red-800 hover:bg-red-100"
-                          title="Rejeitar"
-                        >
-                          <X className="w-4 h-4" />
-                        </Button>
+                      <div>
+                        <span className="text-sm font-medium text-gray-900">Sugestoes Pendentes</span>
+                        <p className="text-xs text-gray-500">Detectadas automaticamente pela IA durante analise de projetos</p>
                       </div>
+                      <Badge variant="warning" className="text-xs ml-2">{blocklistSuggestions.length}</Badge>
                     </div>
-                  ))}
-                </div>
-              </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={handleApproveAllSuggestions} className="text-green-700 border-green-300 hover:bg-green-50">
+                        <Check className="w-3.5 h-3.5 mr-1" />
+                        Aprovar Todas
+                      </Button>
+                      <Button variant="outline" size="sm" onClick={handleRejectAllSuggestions} className="text-red-700 border-red-300 hover:bg-red-50">
+                        <X className="w-3.5 h-3.5 mr-1" />
+                        Rejeitar Todas
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[300px] overflow-y-auto">
+                    <ul className="divide-y divide-gray-100">
+                      {blocklistSuggestions.map((sug, idx) => (
+                        <li key={idx} className="flex items-center justify-between p-3 hover:bg-gray-50 transition-colors">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className={`flex-shrink-0 ${sug.type === 'directory' ? 'text-yellow-500' : 'text-orange-500'}`}>
+                              {sug.type === 'directory' ? (
+                                <Folder className="w-5 h-5" />
+                              ) : (
+                                <FileX className="w-5 h-5" />
+                              )}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-gray-900 truncate">{sug.path}</span>
+                                <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                  sug.type === 'directory'
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'bg-orange-100 text-orange-700'
+                                }`}>
+                                  {sug.type === 'directory' ? 'Pasta' : 'Padrao'}
+                                </span>
+                              </div>
+                              {sug.rationale && (
+                                <p className="text-xs text-gray-500 truncate font-mono mt-0.5">{sug.rationale}</p>
+                              )}
+                              {sug.source_project && (
+                                <p className="text-xs text-gray-400 mt-0.5">Projeto: {sug.source_project}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1 flex-shrink-0 ml-3">
+                            <button
+                              onClick={() => handleApproveSuggestion({ path: sug.path, type: sug.type })}
+                              className="p-2 text-green-500 hover:text-green-700 hover:bg-green-100 rounded transition-colors"
+                              title="Aprovar"
+                            >
+                              <Check className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleRejectSuggestion({ path: sug.path, type: sug.type })}
+                              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-100 rounded transition-colors"
+                              title="Rejeitar"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
             )}
 
             {/* Blocked Directories */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <FolderX className="w-4 h-4 text-red-500" />
-                <span className="text-sm font-medium text-gray-900">Pastas Bloqueadas</span>
-                {blocklist.directories.length > 0 && (
-                  <Badge variant="default" className="text-xs">{blocklist.directories.length}</Badge>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Nome da pasta (ex: node_modules, .cache)..."
-                  value={newBlockDir}
-                  onChange={(e) => setNewBlockDir(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddBlockDir()}
-                  className="flex-1"
-                />
-                <Button onClick={handleAddBlockDir} size="sm" disabled={savingBlocklist}>
-                  <Plus className="w-4 h-4 mr-1" />
-                  Adicionar
-                </Button>
-              </div>
-
-              {blocklist.directories.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <FolderX className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Nenhuma pasta bloqueada</p>
-                  <p className="text-xs mt-1">Adicione pastas que devem ser ignoradas em todos os projetos</p>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {blocklist.directories.map((dir) => (
-                    <div
-                      key={dir}
-                      className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50 border border-red-200 rounded-full text-sm"
-                    >
-                      <FolderX className="w-3.5 h-3.5 text-red-400" />
-                      <span className="text-gray-800">{dir}</span>
-                      <button
-                        onClick={() => handleRemoveBlockDir(dir)}
-                        className="ml-0.5 text-gray-400 hover:text-red-600 transition-colors"
-                        title="Remover"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-red-50 rounded-lg flex-shrink-0">
+                    <FolderX className="w-4 h-4 text-red-600" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">Pastas Bloqueadas</span>
+                      {blocklist.directories.length > 0 && (
+                        <Badge variant="default" className="text-xs">{blocklist.directories.length}</Badge>
+                      )}
                     </div>
-                  ))}
+                    <p className="text-xs text-gray-500 mt-0.5">Pastas com esses nomes serao ignoradas em todos os projetos</p>
+                  </div>
                 </div>
-              )}
-            </div>
+
+                {/* Input + Browse (mesmo estilo do novo projeto) */}
+                <div className="flex gap-2 mb-4">
+                  <input
+                    value={newBlockDir}
+                    onChange={(e) => setNewBlockDir(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddBlockDir()}
+                    placeholder="Nome da pasta (ex: node_modules, .cache, dist)..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowBlocklistFolderPicker(true)}
+                    title="Navegar pastas"
+                  >
+                    <Folder className="w-5 h-5" />
+                  </Button>
+                  <Button onClick={() => handleAddBlockDir()} disabled={savingBlocklist || !newBlockDir.trim()}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Adicionar
+                  </Button>
+                </div>
+
+                {/* Blocked dirs list (estilo FolderPicker) */}
+                {blocklist.directories.length === 0 ? (
+                  <div className="border border-gray-200 rounded-lg p-8 text-center text-gray-500">
+                    <FolderX className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm">Nenhuma pasta bloqueada</p>
+                    <p className="text-xs mt-1">Adicione manualmente ou navegue para selecionar pastas</p>
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[250px] overflow-y-auto">
+                    <ul className="divide-y divide-gray-100">
+                      {blocklist.directories.map((dir) => (
+                        <li
+                          key={dir}
+                          className="flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors group"
+                        >
+                          <div className="flex-shrink-0 text-red-400">
+                            <FolderX className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-gray-900">{dir}</span>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveBlockDir(dir)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-all"
+                            title="Remover"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <FolderPicker
+                  open={showBlocklistFolderPicker}
+                  onClose={() => setShowBlocklistFolderPicker(false)}
+                  onSelect={handleFolderPickerSelect}
+                  title="Selecionar Pasta para Bloquear"
+                />
+              </CardContent>
+            </Card>
 
             {/* Blocked File Patterns */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <FileX className="w-4 h-4 text-orange-500" />
-                <span className="text-sm font-medium text-gray-900">Padroes de Arquivos Bloqueados</span>
-                {blocklist.file_patterns.length > 0 && (
-                  <Badge variant="default" className="text-xs">{blocklist.file_patterns.length}</Badge>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2">
-                <Input
-                  placeholder="Padrao de arquivo (ex: *.log, *.bak, *.min.js)..."
-                  value={newBlockPattern}
-                  onChange={(e) => setNewBlockPattern(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddBlockPattern()}
-                  className="flex-1"
-                />
-                <Button onClick={handleAddBlockPattern} size="sm" disabled={savingBlocklist}>
-                  <Plus className="w-4 h-4 mr-1" />
-                  Adicionar
-                </Button>
-              </div>
-
-              {blocklist.file_patterns.length === 0 ? (
-                <div className="text-center py-8 text-gray-400">
-                  <FileX className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p className="text-sm">Nenhum padrao bloqueado</p>
-                  <p className="text-xs mt-1">Adicione padroes de arquivos que devem ser ignorados</p>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {blocklist.file_patterns.map((pat) => (
-                    <div
-                      key={pat}
-                      className="group inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 border border-orange-200 rounded-full text-sm"
-                    >
-                      <FileX className="w-3.5 h-3.5 text-orange-400" />
-                      <code className="text-gray-800">{pat}</code>
-                      <button
-                        onClick={() => handleRemoveBlockPattern(pat)}
-                        className="ml-0.5 text-gray-400 hover:text-red-600 transition-colors"
-                        title="Remover"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-orange-50 rounded-lg flex-shrink-0">
+                    <FileX className="w-4 h-4 text-orange-600" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">Padroes de Arquivos Bloqueados</span>
+                      {blocklist.file_patterns.length > 0 && (
+                        <Badge variant="default" className="text-xs">{blocklist.file_patterns.length}</Badge>
+                      )}
                     </div>
-                  ))}
+                    <p className="text-xs text-gray-500 mt-0.5">Arquivos correspondentes a esses padroes serao ignorados</p>
+                  </div>
                 </div>
-              )}
-            </div>
+
+                {/* Presets (estilo scan depth cards) */}
+                <div className="mb-4">
+                  <p className="text-xs text-gray-500 mb-2">Padroes comuns:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { pattern: '*.log', label: 'Logs' },
+                      { pattern: '*.bak', label: 'Backups' },
+                      { pattern: '*.tmp', label: 'Temporarios' },
+                      { pattern: '*.min.js', label: 'JS minificado' },
+                      { pattern: '*.min.css', label: 'CSS minificado' },
+                      { pattern: '*.map', label: 'Source maps' },
+                      { pattern: '*.lock', label: 'Lock files' },
+                      { pattern: '.DS_Store', label: 'macOS' },
+                      { pattern: 'Thumbs.db', label: 'Windows' },
+                      { pattern: '*.pyc', label: 'Python cache' },
+                    ].filter(p => !blocklist.file_patterns.includes(p.pattern)).map((preset) => (
+                      <button
+                        key={preset.pattern}
+                        onClick={() => handleAddBlockPattern(preset.pattern)}
+                        disabled={savingBlocklist}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 border-2 border-dashed border-gray-300 rounded-lg text-xs text-gray-600 hover:border-orange-400 hover:bg-orange-50 hover:text-orange-700 transition-all"
+                      >
+                        <Plus className="w-3 h-3" />
+                        <code>{preset.pattern}</code>
+                        <span className="text-gray-400">({preset.label})</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Manual input */}
+                <div className="flex gap-2 mb-4">
+                  <input
+                    value={newBlockPattern}
+                    onChange={(e) => setNewBlockPattern(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleAddBlockPattern()}
+                    placeholder="Padrao personalizado (ex: *.sqlite, *.env.*, *.old)..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
+                  />
+                  <Button onClick={() => handleAddBlockPattern()} disabled={savingBlocklist || !newBlockPattern.trim()}>
+                    <Plus className="w-4 h-4 mr-1" />
+                    Adicionar
+                  </Button>
+                </div>
+
+                {/* Blocked patterns list */}
+                {blocklist.file_patterns.length === 0 ? (
+                  <div className="border border-gray-200 rounded-lg p-8 text-center text-gray-500">
+                    <FileX className="w-10 h-10 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm">Nenhum padrao bloqueado</p>
+                    <p className="text-xs mt-1">Selecione padroes comuns acima ou adicione manualmente</p>
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[250px] overflow-y-auto">
+                    <ul className="divide-y divide-gray-100">
+                      {blocklist.file_patterns.map((pat) => (
+                        <li
+                          key={pat}
+                          className="flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors group"
+                        >
+                          <div className="flex-shrink-0 text-orange-400">
+                            <FileX className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <code className="font-medium text-gray-900">{pat}</code>
+                          </div>
+                          <button
+                            onClick={() => handleRemoveBlockPattern(pat)}
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-all"
+                            title="Remover"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
