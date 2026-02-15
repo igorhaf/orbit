@@ -207,14 +207,14 @@ async def generate_wiki_from_context(
 
     if all_rules:
         rules_parts = [
-            "## Reference Catalog - Raw Rules\n",
-            f"Total rules extracted from codebase: **{len(all_rules)}**\n",
-            "These are the raw rules automatically extracted from source code.",
-            "The main Business Rules page contains the enriched and organized version.\n",
+            "## Catalogo de Referencia - Regras Brutas\n",
+            f"Total de regras extraidas do codebase: **{len(all_rules)}**\n",
+            "Estas sao as regras brutas extraidas automaticamente do codigo-fonte.",
+            "A pagina principal de [Regras de Negocio](wiki:regras-de-negocio) contem a versao enriquecida e organizada.\n",
         ]
         for i, rule in enumerate(all_rules, 1):
             if isinstance(rule, dict):
-                title = rule.get("title", rule.get("rule", f"Rule {i}"))
+                title = rule.get("title", rule.get("rule", f"Regra {i}"))
                 desc = rule.get("description", "")
                 rules_parts.append(f"### {i}. {title}\n")
                 if desc:
@@ -227,7 +227,7 @@ async def generate_wiki_from_context(
         regras_parent = next((p for p in created_pages if p and p.slug == "regras-de-negocio"), None)
         created_pages.append(_upsert_wiki_page(
             db, project_id, "regras-catalogo-bruto",
-            "Reference Catalog - Raw Rules",
+            "Catalogo de Referencia - Regras Brutas",
             rules_content, 12, "ai_generated",
             parent_id=regras_parent.id if regras_parent else None,
         ))
@@ -1088,8 +1088,8 @@ def _build_business_rules_wiki_pages(
     if not parent_page:
         parent_page = _upsert_wiki_page(
             db, project_id, "regras-de-negocio",
-            "Business Rules",
-            "## Business Rules\n\nMain page for the project's business rules.\n",
+            "Regras de Negocio",
+            "## Regras de Negócio\n\nPágina principal das regras de negócio do projeto.\n",
             2, "ai_generated"
         )
         db.flush()
@@ -1107,14 +1107,14 @@ def _build_business_rules_wiki_pages(
                 all_source_files.add(rule["source_file"])
 
     index_lines = [
-        "## Business Rules - Index by Domain\n",
-        f"Total rules extracted: **{total_rules}** across **{total_domains}** domains "
-        f"from **{len(all_source_files)}** source files.\n",
-        "Click a domain to see all rules in that area.\n",
+        "## Regras de Negocio - Indice por Dominio\n",
+        f"Total de regras extraidas: **{total_rules}** em **{total_domains}** dominios "
+        f"a partir de **{len(all_source_files)}** arquivos fonte.\n",
+        "Clique em um dominio para ver todas as regras daquela area.\n",
         "---\n",
-        "### Summary\n",
-        "| Domain | Rules | Source Files |",
-        "|--------|-------|--------------|",
+        "### Resumo\n",
+        "| Dominio | Regras | Arquivos Fonte |",
+        "|---------|--------|----------------|",
     ]
     for domain_name in sorted(domains.keys()):
         rules = domains[domain_name]
@@ -1127,7 +1127,7 @@ def _build_business_rules_wiki_pages(
     index_lines.append("---\n")
 
     # Add domain list with brief description
-    index_lines.append("### Domains\n")
+    index_lines.append("### Dominios\n")
     for domain_name in sorted(domains.keys()):
         rules = domains[domain_name]
         domain_slug = rules[0]["domain_slug"]
@@ -1143,14 +1143,14 @@ def _build_business_rules_wiki_pages(
         if previews:
             preview_text = " — " + "; ".join(previews)
             if len(rules) > 3:
-                preview_text += f"; ... (+{len(rules) - 3} more)"
+                preview_text += f"; ... (+{len(rules) - 3} mais)"
         index_lines.append(
-            f"- **[{domain_name}](wiki:regras-{domain_slug})** ({len(rules)} rules){preview_text}"
+            f"- **[{domain_name}](wiki:regras-{domain_slug})** ({len(rules)} regras){preview_text}"
         )
 
     index_page = _upsert_wiki_page(
         db, project_id, "regras-indice",
-        "Business Rules - Index",
+        "Regras de Negocio - Indice",
         "\n".join(index_lines),
         20, "ai_generated",
         parent_id=parent_id,
@@ -1166,8 +1166,8 @@ def _build_business_rules_wiki_pages(
 
         # Domain page with bullet list
         domain_lines = [
-            f"## Business Rules - {domain_name}\n",
-            f"Total rules in this domain: **{len(rules)}**\n",
+            f"## Regras de Negocio - {domain_name}\n",
+            f"Total de regras neste dominio: **{len(rules)}**\n",
         ]
 
         # Group by source file within domain
@@ -1191,7 +1191,7 @@ def _build_business_rules_wiki_pages(
 
         domain_page = _upsert_wiki_page(
             db, project_id, page_slug,
-            f"Business Rules - {domain_name}",
+            f"Regras de Negocio - {domain_name}",
             "\n".join(domain_lines),
             domain_order, "ai_generated",
             parent_id=index_page.id if index_page else None,
@@ -1214,17 +1214,17 @@ def _build_business_rules_wiki_pages(
 
             rule_content = (
                 f"## {title}\n\n"
-                f"**Domain:** {domain_name}  \n"
-                f"**Source File:** `{source_display}`\n\n"
+                f"**Dominio:** {domain_name}  \n"
+                f"**Arquivo Fonte:** `{source_display}`\n\n"
                 f"---\n\n"
-                f"### Description\n\n"
+                f"### Descricao\n\n"
                 f"{rule['content']}\n\n"
                 f"---\n\n"
-                f"### Context\n\n"
-                f"Business rule automatically extracted from file "
-                f"`{source_display}`, part of the **{domain_name}** module.\n\n"
-                f"This rule was identified during source code analysis "
-                f"and represents a behavior or constraint implemented in the system.\n"
+                f"### Contexto\n\n"
+                f"Regra de negocio extraida automaticamente do arquivo "
+                f"`{source_display}`, parte do modulo **{domain_name}**.\n\n"
+                f"Esta regra foi identificada durante a analise do codigo-fonte "
+                f"e representa um comportamento ou restricao implementada no sistema.\n"
             )
 
             rule_page = _upsert_wiki_page(
@@ -1432,13 +1432,13 @@ async def _enrich_rules_background(
                 rule_content = page.title
 
                 if page.source == "ai_generated":
-                    # Original template format - parse markers
+                    # Original template format - parse markers (supports both PT and EN labels)
                     for line in page.content.split("\n"):
                         if line.startswith("**Dominio:**") or line.startswith("**Domain:**"):
                             domain_name = line.replace("**Dominio:**", "").replace("**Domain:**", "").strip()
                         elif line.startswith("**Arquivo Fonte:**") or line.startswith("**Source File:**"):
                             source_file = line.replace("**Arquivo Fonte:**", "").replace("**Source File:**", "").strip().strip("`")
-                    for desc_marker in ("### Description", "### Descricao"):
+                    for desc_marker in ("### Descricao", "### Description"):
                         if desc_marker in page.content:
                             parts = page.content.split(desc_marker, 1)
                             if len(parts) > 1:

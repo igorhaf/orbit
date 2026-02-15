@@ -1162,31 +1162,46 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             logger.error(f"Project {project_id} not found")
             return []
 
-        # Check if project has memory context with business rules
-        if not project.initial_memory_context:
-            logger.info(f"Project {project_id} has no initial_memory_context, skipping business rules")
-            return []
+        # PROMPT #291 - Read business rules from RAG (comprehensive) instead of
+        # initial_memory_context (which only has ~20 rules from initial scan).
+        # RAG has ALL rules from continuous scans (typically 500-745+).
+        from sqlalchemy import text as sql_text
+        rag_result = self.db.execute(sql_text("""
+            SELECT content FROM rag_documents
+            WHERE project_id = :pid
+            AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')
+            ORDER BY created_at
+        """), {"pid": str(project_id)})
+        rag_rules = [row[0] for row in rag_result]
 
-        business_rules = project.initial_memory_context.get("business_rules", [])
-        if not business_rules:
-            logger.info(f"Project {project_id} has no business rules in memory context")
-            return []
+        # Fallback to initial_memory_context if RAG has no rules
+        if not rag_rules:
+            if project.initial_memory_context:
+                rag_rules = project.initial_memory_context.get("business_rules", [])
+            if not rag_rules:
+                logger.info(f"Project {project_id} has no business rules in RAG or memory context")
+                return []
 
-        # PROMPT #285 - Duplicate protection: check if business_rule cards already exist
+        business_rules = rag_rules
+
+        # PROMPT #291 - Delete existing business_rule cards before regenerating
+        # This allows re-running with updated RAG data (745 rules vs old 20).
         existing_br_cards = self.db.query(Task).filter(
             Task.project_id == project_id,
-            Task.labels.contains(["business_rule"]),
-            Task.workflow_state == "closed"
+            Task.labels.contains(["business_rule"])
         ).count()
 
         if existing_br_cards > 0:
             logger.info(
-                f"Project {project_id} already has {existing_br_cards} business_rule cards, "
-                f"skipping to avoid duplicates"
+                f"Removing {existing_br_cards} existing business_rule cards to regenerate from RAG ({len(business_rules)} rules)"
             )
-            return []
+            self.db.query(Task).filter(
+                Task.project_id == project_id,
+                Task.labels.contains(["business_rule"])
+            ).delete(synchronize_session='fetch')
+            self.db.flush()
 
-        logger.info(f"Generating {len(business_rules)} business rule cards for project {project.name}")
+        logger.info(f"Generating {len(business_rules)} business rule cards from RAG for project {project.name}")
 
         # PROMPT #193 - Try hierarchical classification via AI
         hierarchy = await self._classify_rules_hierarchy(project, business_rules)
