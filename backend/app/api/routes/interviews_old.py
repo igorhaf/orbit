@@ -745,7 +745,7 @@ async def create_interview(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {interview_data.project_id} not found"
+            detail=f"Projeto {interview_data.project_id} nao encontrado"
         )
 
     detector = ProjectStateDetector(db)
@@ -958,7 +958,7 @@ async def generate_prompts_async(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Create async job
@@ -984,7 +984,7 @@ async def generate_prompts_async(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": "Backlog generation started. This may take 2-5 minutes. Poll GET /api/v1/jobs/{} for progress.".format(job.id)
+        "message": "Geracao de backlog iniciada. Isso pode levar 2-5 minutos. Consulte GET /api/v1/jobs/{} para acompanhar o progresso.".format(job.id)
     }
 
 
@@ -1164,7 +1164,7 @@ async def _generate_backlog_async(
             "stories_created": len(created_stories),
             "tasks_created": len(all_created_tasks),
             "total_items": total_items,
-            "message": f"Generated hierarchical backlog: 1 Epic → {len(created_stories)} Stories → {len(all_created_tasks)} Tasks!"
+            "message": f"Backlog hierarquico gerado: 1 Epic → {len(created_stories)} Stories → {len(all_created_tasks)} Tasks!"
         })
 
         logger.info(f"✅ Job {job_id} completed successfully")
@@ -1234,15 +1234,15 @@ async def generate_task_direct(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Validate task-focused mode
     if interview.interview_mode != "task_focused":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only task-focused interviews can generate direct tasks. "
-                   "This interview is in 'requirements' mode (use generate-prompts-async instead)."
+            detail="Apenas entrevistas focadas em tarefas podem gerar tarefas diretas. "
+                   "Esta entrevista esta no modo 'requirements' (use generate-prompts-async)."
         )
 
     # Create async job
@@ -1269,7 +1269,7 @@ async def generate_task_direct(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Task generation started. This may take 30-60 seconds. Poll GET /api/v1/jobs/{job.id} for progress."
+        "message": f"Geracao de tarefa iniciada. Isso pode levar 30-60 segundos. Consulte GET /api/v1/jobs/{job.id} para acompanhar o progresso."
     }
 
 
@@ -1401,14 +1401,14 @@ async def start_interview(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Verificar se já foi iniciada
     if interview.conversation_data and len(interview.conversation_data) > 0:
         return {
             "success": True,
-            "message": "Interview already started",
+            "message": "Entrevista ja iniciada",
             "conversation": interview.conversation_data
         }
 
@@ -1420,7 +1420,7 @@ async def start_interview(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
+            detail="Projeto nao encontrado"
         )
 
     # Inicializar conversa
@@ -1435,7 +1435,7 @@ async def start_interview(
     if not assistant_message:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get fixed question 1"
+            detail="Falha ao obter pergunta fixa 1"
         )
 
     # Add Question 1 to conversation
@@ -1485,7 +1485,7 @@ async def save_interview_stack(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Buscar projeto
@@ -1494,7 +1494,7 @@ async def save_interview_stack(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
+            detail="Projeto nao encontrado"
         )
 
     # Salvar stack no projeto
@@ -1557,7 +1557,7 @@ async def save_interview_stack(
     # Return response with provisioning info
     response = {
         "success": True,
-        "message": f"Stack configuration saved: {stack_description}",  # PROMPT #67 - Includes mobile if set
+        "message": f"Configuracao de stack salva: {stack_description}",  # PROMPT #67 - Includes mobile if set
         "provisioning": {
             "attempted": True,
             "success": provisioning_result is not None and provisioning_result.get("success", False),
@@ -1635,7 +1635,7 @@ async def save_interview_stack_async(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Validate project exists
@@ -1643,7 +1643,7 @@ async def save_interview_stack_async(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found"
+            detail="Projeto nao encontrado"
         )
 
     # Save stack configuration immediately (synchronous, fast)
@@ -1691,7 +1691,7 @@ async def save_interview_stack_async(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Project provisioning started. This may take 1-5 minutes. Poll GET /api/v1/jobs/{job.id} for progress."
+        "message": f"Provisionamento do projeto iniciado. Isso pode levar 1-5 minutos. Consulte GET /api/v1/jobs/{job.id} para acompanhar o progresso."
     }
 
 
@@ -1792,7 +1792,7 @@ async def _provision_project_async(
             "credentials": provisioning_result.get("credentials", {}),
             "next_steps": provisioning_result.get("next_steps", []),
             "scripts_executed": provisioning_result.get("scripts_executed", []),
-            "message": f"Project '{project.name}' provisioned successfully!"
+            "message": f"Projeto '{project.name}' provisionado com sucesso!"
         })
 
         logger.info(f"✅ Provisioning job {job_id} completed successfully")
@@ -1842,7 +1842,7 @@ async def send_message_to_interview(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Inicializar conversation_data se vazio
@@ -1949,7 +1949,7 @@ As perguntas de stack estão completas. Foque nos requisitos de negócio agora.
         logger.error(f"Unknown interview_mode: {interview.interview_mode}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unknown interview mode: {interview.interview_mode}"
+            detail=f"Modo de entrevista desconhecido: {interview.interview_mode}"
         )
 
 
@@ -1984,7 +1984,7 @@ async def update_project_info(
         logger.error(f"Interview {interview_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview not found"
+            detail="Entrevista nao encontrada"
         )
 
     # Get associated project
@@ -1993,7 +1993,7 @@ async def update_project_info(
         logger.error(f"Project {interview.project_id} not found for interview {interview_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Associated project not found"
+            detail="Projeto associado nao encontrado"
         )
 
     # 2. Update project fields if provided
@@ -2013,7 +2013,7 @@ async def update_project_info(
     if not updated_fields:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No valid title or description provided"
+            detail="Nenhum titulo ou descricao valido fornecido"
         )
 
     # 3. Commit changes to database
@@ -2026,7 +2026,7 @@ async def update_project_info(
         logger.error(f"Failed to update project {project.id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update project information"
+            detail="Falha ao atualizar informacoes do projeto"
         )
 
     # 4. Return success with updated data
@@ -2097,7 +2097,7 @@ async def provision_project(
         logger.error(f"Interview {interview_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview not found"
+            detail="Entrevista nao encontrada"
         )
 
     project = db.query(Project).filter(Project.id == interview.project_id).first()
@@ -2105,14 +2105,14 @@ async def provision_project(
         logger.error(f"Project {interview.project_id} not found for interview {interview_id}")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Associated project not found"
+            detail="Projeto associado nao encontrado"
         )
 
     # 2. Validate stack is configured
     if not project.stack:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Project stack not configured. Complete interview stack questions first (questions 3-6)."
+            detail="Stack do projeto nao configurada. Complete as perguntas de stack da entrevista primeiro (perguntas 3-6)."
         )
 
     logger.info(f"Provisioning project '{project.name}' with stack: {project.stack}")
@@ -2144,7 +2144,7 @@ async def provision_project(
 
         return {
             "success": True,
-            "message": f"Project '{project.name}' provisioned successfully",
+            "message": f"Projeto '{project.name}' provisionado com sucesso",
             "project_name": result["project_name"],
             "project_path": result["project_path"],
             "stack": result["stack"],
@@ -2164,14 +2164,14 @@ async def provision_project(
         logger.error(f"Provisioning script not found: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Provisioning script not found. Contact administrator."
+            detail="Script de provisionamento nao encontrado. Contate o administrador."
         )
 
     except Exception as e:
         logger.error(f"Unexpected error during provisioning: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Provisioning failed: {str(e)}"
+            detail=f"Falha no provisionamento: {str(e)}"
         )
 
 
@@ -2231,7 +2231,7 @@ async def send_message_async(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Interview {interview_id} not found"
+            detail=f"Entrevista {interview_id} nao encontrada"
         )
 
     # Create async job
@@ -2257,7 +2257,7 @@ async def send_message_async(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Job created successfully. Poll GET /api/v1/jobs/{job.id} for result."
+        "message": f"Job criado com sucesso. Consulte GET /api/v1/jobs/{job.id} para o resultado."
     }
 
 

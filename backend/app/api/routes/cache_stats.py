@@ -52,7 +52,7 @@ async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
             return {
                 "enabled": False,
                 "backend": "none",
-                "message": "Cache is not enabled in AIOrchestrator."
+                "message": "Cache nao esta habilitado no AIOrchestrator."
             }
 
         # Get cache statistics from AIOrchestrator
@@ -123,7 +123,7 @@ async def clear_cache(db: Session = Depends(get_db)) -> Dict[str, str]:
         if hasattr(orchestrator.cache_service, 'clear'):
             orchestrator.cache_service.clear()
             logger.info("✅ Cache cleared successfully")
-            return {"status": "success", "message": "Cache cleared successfully"}
+            return {"status": "success", "message": "Cache limpo com sucesso"}
         else:
             raise HTTPException(status_code=501, detail="Limpeza de cache nao implementada")
 

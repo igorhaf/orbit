@@ -112,7 +112,7 @@ async def search_project_knowledge(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     try:
@@ -174,7 +174,7 @@ async def search_project_knowledge(
         logger.error(f"Knowledge search failed for project {project_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Knowledge search failed: {str(e)}"
+            detail=f"Falha na busca de conhecimento: {str(e)}"
         )
 
 
@@ -213,7 +213,7 @@ async def get_global_rag_stats(
         logger.error(f"Failed to get global RAG stats: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get global RAG stats: {str(e)}"
+            detail=f"Falha ao obter estatisticas globais do RAG: {str(e)}"
         )
 
 
@@ -335,7 +335,7 @@ async def get_all_projects_rag_stats(
         logger.error(f"Failed to get projects RAG stats: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get projects RAG stats: {str(e)}"
+            detail=f"Falha ao obter estatisticas RAG dos projetos: {str(e)}"
         )
 
 
@@ -370,7 +370,7 @@ async def get_project_knowledge_stats(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     try:
@@ -407,7 +407,7 @@ async def get_project_knowledge_stats(
         logger.error(f"Failed to get knowledge stats for project {project_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get knowledge stats: {str(e)}"
+            detail=f"Falha ao obter estatisticas de conhecimento: {str(e)}"
         )
 
 
@@ -436,7 +436,7 @@ async def list_business_rules(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     try:
@@ -484,7 +484,7 @@ async def list_business_rules(
         logger.error(f"Failed to list business rules: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list business rules: {str(e)}"
+            detail=f"Falha ao listar regras de negocio: {str(e)}"
         )
 
 
@@ -506,7 +506,7 @@ async def add_business_rule(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     try:
@@ -530,14 +530,14 @@ async def add_business_rule(
         return {
             "id": str(doc_id),
             "status": "created",
-            "message": f"Business rule '{rule.title}' added successfully"
+            "message": f"Regra de negocio '{rule.title}' adicionada com sucesso"
         }
 
     except Exception as e:
         logger.error(f"Failed to add business rule: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to add business rule: {str(e)}"
+            detail=f"Falha ao adicionar regra de negocio: {str(e)}"
         )
 
 
@@ -557,7 +557,7 @@ async def delete_business_rule(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     try:
@@ -570,7 +570,7 @@ async def delete_business_rule(
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Business rule {rule_id} not found"
+                detail=f"Regra de negocio {rule_id} nao encontrada"
             )
 
     except HTTPException:
@@ -579,7 +579,7 @@ async def delete_business_rule(
         logger.error(f"Failed to delete business rule: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete business rule: {str(e)}"
+            detail=f"Falha ao excluir regra de negocio: {str(e)}"
         )
 
 
@@ -650,7 +650,7 @@ async def upload_document(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     # Validate file type
@@ -661,7 +661,7 @@ async def upload_document(
     if ext not in allowed_extensions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"File type not allowed. Allowed: {', '.join(allowed_extensions)}"
+            detail=f"Tipo de arquivo nao permitido. Permitidos: {', '.join(allowed_extensions)}"
         )
 
     try:
@@ -698,13 +698,13 @@ async def upload_document(
     except UnicodeDecodeError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File must be UTF-8 encoded text"
+            detail="O arquivo deve ser texto codificado em UTF-8"
         )
     except Exception as e:
         logger.error(f"Failed to upload document: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload document: {str(e)}"
+            detail=f"Falha ao enviar documento: {str(e)}"
         )
 
 
@@ -725,7 +725,7 @@ async def list_documents(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     try:
@@ -758,7 +758,7 @@ async def list_documents(
         logger.error(f"Failed to list documents: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to list documents: {str(e)}"
+            detail=f"Falha ao listar documentos: {str(e)}"
         )
 
 
@@ -778,7 +778,7 @@ async def delete_document(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     try:
@@ -807,7 +807,7 @@ async def delete_document(
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Document '{filename}' not found"
+                detail=f"Documento '{filename}' nao encontrado"
             )
 
     except HTTPException:
@@ -816,7 +816,7 @@ async def delete_document(
         logger.error(f"Failed to delete document: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete document: {str(e)}"
+            detail=f"Falha ao excluir documento: {str(e)}"
         )
 
 
@@ -841,7 +841,7 @@ async def get_full_knowledge_stats(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     try:
@@ -903,7 +903,7 @@ async def get_full_knowledge_stats(
         logger.error(f"Failed to get full knowledge stats: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get knowledge stats: {str(e)}"
+            detail=f"Falha ao obter estatisticas de conhecimento: {str(e)}"
         )
 
 
@@ -931,7 +931,7 @@ async def sync_prompt_docs(db: Session = Depends(get_db)):
         logger.error(f"PROMPT doc sync failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"PROMPT doc sync failed: {str(e)}"
+            detail=f"Falha na sincronizacao de documentos PROMPT: {str(e)}"
         )
 
 
@@ -954,13 +954,13 @@ async def sync_git_commits(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found"
+            detail=f"Projeto {project_id} nao encontrado"
         )
 
     if not project.code_path:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Project has no code_path configured"
+            detail="Projeto nao tem code_path configurado"
         )
 
     try:
@@ -972,5 +972,5 @@ async def sync_git_commits(
         logger.error(f"Git commit sync failed for project {project_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Git commit sync failed: {str(e)}"
+            detail=f"Falha na sincronizacao de commits git: {str(e)}"
         )

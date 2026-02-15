@@ -365,7 +365,7 @@ export default function ConsolePage() {
               logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             }}
             className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-white"
-            title="Scroll to bottom"
+            title="Rolar para o final"
           >
             bottom
           </button>
@@ -377,7 +377,7 @@ export default function ConsolePage() {
                 ? 'bg-yellow-600 text-white'
                 : 'bg-gray-800 text-gray-500'
             }`}
-            title="Pause/Resume"
+            title="Pausar/Retomar"
           >
             {isPaused ? 'paused' : 'live'}
           </button>
@@ -385,7 +385,7 @@ export default function ConsolePage() {
           <button
             onClick={copyLogs}
             className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-white"
-            title="Copy to clipboard"
+            title="Copiar para area de transferencia"
           >
             copy
           </button>
@@ -393,7 +393,7 @@ export default function ConsolePage() {
           <button
             onClick={clearLogs}
             className="px-2 py-1 text-xs rounded bg-gray-800 text-red-400 hover:text-red-300"
-            title="Clear logs"
+            title="Limpar logs"
           >
             clear
           </button>

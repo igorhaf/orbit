@@ -1854,7 +1854,7 @@ async def generate_children(
     if task.item_type == ItemType.SUBTASK:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Subtasks are leaf nodes and cannot have children"
+            detail="Subtarefas sao nos folha e nao podem ter filhos"
         )
 
     default_counts = {

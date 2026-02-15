@@ -313,7 +313,7 @@ async def handle_meta_prompt_interview(
         logger.error(f"Unexpected message_count={message_count} in meta prompt mode")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected interview state (message_count={message_count})"
+            detail=f"Estado inesperado da entrevista (message_count={message_count})"
         )
 
 
@@ -381,7 +381,7 @@ async def handle_requirements_interview(
         logger.error(f"Unexpected message_count={message_count} in requirements mode")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected interview state (message_count={message_count})"
+            detail=f"Estado inesperado da entrevista (message_count={message_count})"
         )
 
 
@@ -429,7 +429,7 @@ async def handle_task_focused_interview(
         if not assistant_message:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Failed to get task type question"
+                detail="Falha ao obter pergunta de tipo de tarefa"
             )
 
         interview.conversation_data.append(assistant_message)
@@ -499,7 +499,7 @@ async def handle_task_focused_interview(
         logger.error(f"Unexpected message_count={message_count} in task-focused mode")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected interview state (message_count={message_count})"
+            detail=f"Estado inesperado da entrevista (message_count={message_count})"
         )
 
 
@@ -522,7 +522,7 @@ def _handle_fixed_question(
     if not assistant_message:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get fixed question {question_number}"
+            detail=f"Falha ao obter pergunta fixa {question_number}"
         )
 
     interview.conversation_data.append(assistant_message)
@@ -783,7 +783,7 @@ async def _execute_ai_question(
         logger.error(f"AI execution failed: {str(ai_error)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get AI response: {str(ai_error)}"
+            detail=f"Falha ao obter resposta da IA: {str(ai_error)}"
         )
 
 
@@ -894,7 +894,7 @@ def _handle_fixed_question_meta(
     if not assistant_message:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get fixed meta prompt question {question_number}"
+            detail=f"Falha ao obter pergunta fixa do meta prompt {question_number}"
         )
 
     interview.conversation_data.append(assistant_message)
@@ -1427,7 +1427,7 @@ async def handle_subtask_focused_interview(
         logger.error(f"Unexpected message_count={message_count} in subtask-focused mode")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unexpected interview state (message_count={message_count})"
+            detail=f"Estado inesperado da entrevista (message_count={message_count})"
         )
 
 
@@ -1967,7 +1967,7 @@ async def _handle_card_focused_ai_question(
         logger.error(f"❌ AIOrchestrator failed: {response.get('error')}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI response generation failed: {response.get('error')}"
+            detail=f"Falha na geracao de resposta da IA: {response.get('error')}"
         )
 
     ai_response = response['response']

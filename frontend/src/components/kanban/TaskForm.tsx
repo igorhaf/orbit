@@ -18,10 +18,10 @@ interface Props {
 
 const STATUS_OPTIONS = [
   { value: 'backlog', label: 'Backlog' },
-  { value: 'todo', label: 'To Do' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'review', label: 'Review' },
-  { value: 'done', label: 'Done' },
+  { value: 'todo', label: 'A Fazer' },
+  { value: 'in_progress', label: 'Em Progresso' },
+  { value: 'review', label: 'Revisao' },
+  { value: 'done', label: 'Concluido' },
 ];
 
 export function TaskForm({ projectId, onSuccess, onCancel }: Props) {
@@ -37,7 +37,7 @@ export function TaskForm({ projectId, onSuccess, onCancel }: Props) {
     e.preventDefault();
 
     if (!formData.title.trim()) {
-      setError('Title is required');
+      setError('Titulo e obrigatorio');
       return;
     }
 
@@ -53,8 +53,8 @@ export function TaskForm({ projectId, onSuccess, onCancel }: Props) {
       });
       onSuccess();
     } catch (err: any) {
-      console.error('Failed to create task:', err);
-      setError(err.response?.data?.detail || 'Failed to create task');
+      console.error('Falha ao criar tarefa:', err);
+      setError(err.response?.data?.detail || 'Falha ao criar tarefa');
     } finally {
       setLoading(false);
     }
@@ -62,19 +62,19 @@ export function TaskForm({ projectId, onSuccess, onCancel }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Title */}
+      {/* Titulo */}
       <Input
-        label="Title"
-        placeholder="Task title"
+        label="Titulo"
+        placeholder="Titulo da tarefa"
         required
         value={formData.title}
         onChange={(e) => setFormData({ ...formData, title: e.target.value })}
       />
 
-      {/* Description */}
+      {/* Descricao */}
       <Textarea
-        label="Description"
-        placeholder="Task description (optional)"
+        label="Descricao"
+        placeholder="Descricao da tarefa (opcional)"
         value={formData.description}
         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
         rows={4}
@@ -88,18 +88,18 @@ export function TaskForm({ projectId, onSuccess, onCancel }: Props) {
         onChange={(e) => setFormData({ ...formData, status: e.target.value as TaskStatus })}
       />
 
-      {/* Error */}
+      {/* Erro */}
       {error && (
         <div className="text-sm text-red-500 bg-red-50 p-3 rounded">{error}</div>
       )}
 
-      {/* Actions */}
+      {/* Acoes */}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancel
+          Cancelar
         </Button>
         <Button type="submit" variant="primary" isLoading={loading}>
-          Create Task
+          Criar Tarefa
         </Button>
       </div>
     </form>

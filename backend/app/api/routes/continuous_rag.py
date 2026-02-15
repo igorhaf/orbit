@@ -49,7 +49,7 @@ async def trigger_rag_scan(
 
     if existing:
         return {
-            "message": "A RAG scan is already in progress",
+            "message": "Uma varredura de RAG ja esta em andamento",
             "job_id": str(existing.id),
             "status": existing.status.value,
         }
@@ -87,7 +87,7 @@ async def trigger_rag_scan(
     background_tasks.add_task(_run_scan, job.id, project_id)
 
     return {
-        "message": "RAG scan started",
+        "message": "Varredura de RAG iniciada",
         "job_id": str(job.id),
         "status": "pending",
     }
@@ -186,7 +186,7 @@ async def reset_rag_state(
     result = await service.reset_project(project_id)
 
     return {
-        "message": "Continuous RAG state reset successfully",
+        "message": "Estado do RAG continuo redefinido com sucesso",
         **result,
     }
 

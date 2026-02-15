@@ -42,11 +42,11 @@ interface DiscoveryQueueItem {
 }
 
 const STATUS_CONFIG = {
-  pending: { label: 'Pending', color: 'yellow', icon: Clock },
-  processing: { label: 'Processing', color: 'blue', icon: RefreshCw },
-  completed: { label: 'Completed', color: 'green', icon: CheckCircle },
-  dismissed: { label: 'Dismissed', color: 'gray', icon: XCircle },
-  failed: { label: 'Failed', color: 'red', icon: AlertCircle },
+  pending: { label: 'Pendente', color: 'yellow', icon: Clock },
+  processing: { label: 'Processando', color: 'blue', icon: RefreshCw },
+  completed: { label: 'Concluido', color: 'green', icon: CheckCircle },
+  dismissed: { label: 'Descartado', color: 'gray', icon: XCircle },
+  failed: { label: 'Falhou', color: 'red', icon: AlertCircle },
 };
 
 export default function DiscoveryQueuePage() {
@@ -161,12 +161,12 @@ export default function DiscoveryQueuePage() {
         <div className="flex gap-3">
           <Button variant="secondary" onClick={loadQueue}>
             <RefreshCw className="w-4 h-4 mr-2" />
-            Refresh
+            Atualizar
           </Button>
           {stats.completed > 0 && (
             <Button variant="ghost" onClick={handleClearCompleted}>
               <Trash2 className="w-4 h-4 mr-2" />
-              Clear Completed
+              Limpar Concluidos
             </Button>
           )}
         </div>
@@ -175,10 +175,10 @@ export default function DiscoveryQueuePage() {
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Discovery Queue</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Fila de Descoberta</h1>
           <p className="mt-2 text-gray-600">
-            Projects awaiting pattern discovery. When task execution happens without specs,
-            projects are queued here for manual validation and pattern discovery.
+            Projetos aguardando descoberta de padroes. Quando a execucao de tarefas acontece sem specs,
+            os projetos sao enfileirados aqui para validacao manual e descoberta de padroes.
           </p>
         </div>
 
@@ -196,7 +196,7 @@ export default function DiscoveryQueuePage() {
             <CardContent className="pt-6">
               <div className="text-center">
                 <Clock className="w-5 h-5 mx-auto text-yellow-600 mb-1" />
-                <p className="text-sm text-gray-500">Pending</p>
+                <p className="text-sm text-gray-500">Pendente</p>
                 <p className="text-3xl font-bold text-yellow-600 mt-1">{stats.pending}</p>
               </div>
             </CardContent>
@@ -205,7 +205,7 @@ export default function DiscoveryQueuePage() {
             <CardContent className="pt-6">
               <div className="text-center">
                 <RefreshCw className="w-5 h-5 mx-auto text-blue-600 mb-1" />
-                <p className="text-sm text-gray-500">Processing</p>
+                <p className="text-sm text-gray-500">Processando</p>
                 <p className="text-3xl font-bold text-blue-600 mt-1">{stats.processing}</p>
               </div>
             </CardContent>
@@ -214,7 +214,7 @@ export default function DiscoveryQueuePage() {
             <CardContent className="pt-6">
               <div className="text-center">
                 <CheckCircle className="w-5 h-5 mx-auto text-green-600 mb-1" />
-                <p className="text-sm text-gray-500">Completed</p>
+                <p className="text-sm text-gray-500">Concluido</p>
                 <p className="text-3xl font-bold text-green-600 mt-1">{stats.completed}</p>
               </div>
             </CardContent>
@@ -223,7 +223,7 @@ export default function DiscoveryQueuePage() {
             <CardContent className="pt-6">
               <div className="text-center">
                 <AlertCircle className="w-5 h-5 mx-auto text-red-600 mb-1" />
-                <p className="text-sm text-gray-500">Failed</p>
+                <p className="text-sm text-gray-500">Falhou</p>
                 <p className="text-3xl font-bold text-red-600 mt-1">{stats.failed}</p>
               </div>
             </CardContent>
@@ -239,12 +239,12 @@ export default function DiscoveryQueuePage() {
                 value={filterStatus}
                 onChange={(e) => setFilterStatus(e.target.value)}
               >
-                <option value="all">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="processing">Processing</option>
-                <option value="completed">Completed</option>
-                <option value="dismissed">Dismissed</option>
-                <option value="failed">Failed</option>
+                <option value="all">Todos os Status</option>
+                <option value="pending">Pendente</option>
+                <option value="processing">Processando</option>
+                <option value="completed">Concluido</option>
+                <option value="dismissed">Descartado</option>
+                <option value="failed">Falhou</option>
               </select>
             </div>
           </CardContent>
@@ -254,7 +254,7 @@ export default function DiscoveryQueuePage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              Queue Items ({filteredItems.length})
+              Itens da Fila ({filteredItems.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -265,9 +265,9 @@ export default function DiscoveryQueuePage() {
             ) : filteredItems.length === 0 ? (
               <div className="text-center py-12">
                 <FolderSearch className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-500">No items in queue</p>
+                <p className="text-gray-500">Nenhum item na fila</p>
                 <p className="text-sm text-gray-400 mt-1">
-                  Projects without specs will appear here during task execution
+                  Projetos sem specs aparecerao aqui durante a execucao de tarefas
                 </p>
               </div>
             ) : (
@@ -276,22 +276,22 @@ export default function DiscoveryQueuePage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Project
+                        Projeto
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Reason
+                        Motivo
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Related Task
+                        Tarefa Relacionada
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Created
+                        Criado
                       </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
+                        Acoes
                       </th>
                     </tr>
                   </thead>
@@ -305,16 +305,16 @@ export default function DiscoveryQueuePage() {
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div>
                               <div className="text-sm font-medium text-gray-900">
-                                {item.project?.name || 'Unknown Project'}
+                                {item.project?.name || 'Projeto Desconhecido'}
                               </div>
                               <div className="text-xs text-gray-500">
-                                {item.project?.code_path || 'No path configured'}
+                                {item.project?.code_path || 'Nenhum caminho configurado'}
                               </div>
                             </div>
                           </td>
                           <td className="px-6 py-4">
                             <div className="text-sm text-gray-600 max-w-xs truncate">
-                              {item.reason || 'No specs found during task execution'}
+                              {item.reason || 'Nenhuma spec encontrada durante a execucao de tarefas'}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -345,7 +345,7 @@ export default function DiscoveryQueuePage() {
                             </div>
                             {item.processed_at && (
                               <div className="text-xs text-gray-400">
-                                Processed: {formatDate(item.processed_at)}
+                                Processado: {formatDate(item.processed_at)}
                               </div>
                             )}
                           </td>
@@ -364,7 +364,7 @@ export default function DiscoveryQueuePage() {
                                     ) : (
                                       <>
                                         <Play className="w-4 h-4 mr-1" />
-                                        Discover
+                                        Descobrir
                                       </>
                                     )}
                                   </Button>
@@ -385,7 +385,7 @@ export default function DiscoveryQueuePage() {
                                   disabled={processingId === item.id}
                                 >
                                   <RefreshCw className="w-4 h-4 mr-1" />
-                                  Retry
+                                  Tentar Novamente
                                 </Button>
                               )}
                               <Button
@@ -415,12 +415,12 @@ export default function DiscoveryQueuePage() {
               <Search className="w-6 h-6 text-blue-600 flex-shrink-0" />
               <div className="flex-1">
                 <h3 className="font-semibold text-blue-900 mb-1">
-                  How Pattern Discovery Works
+                  Como Funciona a Descoberta de Padroes
                 </h3>
                 <p className="text-sm text-blue-800">
-                  When a task is executed for a project without discovered specs, the project is added to this queue.
-                  Click "Discover" to analyze the project's codebase using RAG and extract code patterns.
-                  Discovered patterns are saved as project-specific specs and used for future task execution.
+                  Quando uma tarefa e executada para um projeto sem specs descobertas, o projeto e adicionado a esta fila.
+                  Clique em "Descobrir" para analisar o codebase do projeto usando RAG e extrair padroes de codigo.
+                  Padroes descobertos sao salvos como specs especificas do projeto e usados para execucao futura de tarefas.
                 </p>
               </div>
             </div>
@@ -432,9 +432,9 @@ export default function DiscoveryQueuePage() {
       {showDeleteDialog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete Queue Item?</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Excluir Item da Fila?</h3>
             <p className="text-sm text-gray-600 mb-4">
-              Are you sure you want to remove this item from the discovery queue?
+              Tem certeza que deseja remover este item da fila de descoberta?
             </p>
 
             <div className="flex justify-end gap-2">
@@ -444,14 +444,14 @@ export default function DiscoveryQueuePage() {
                 onClick={() => setShowDeleteDialog(false)}
                 disabled={isDeleting}
               >
-                Cancel
+                Cancelar
               </Button>
               <Button
                 variant="danger"
                 onClick={confirmDelete}
                 disabled={isDeleting}
               >
-                {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+                {isDeleting ? 'Excluindo...' : 'Sim, Excluir'}
               </Button>
             </div>
           </div>
