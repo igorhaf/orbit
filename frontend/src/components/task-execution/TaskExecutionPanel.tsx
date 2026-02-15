@@ -277,7 +277,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
             variant="primary"
             size="sm"
           >
-            {isExecuting ? 'Executing...' : 'Execute All'}
+            {isExecuting ? 'Executando...' : 'Executar Todos'}
           </Button>
           <Button
             onClick={onStop}

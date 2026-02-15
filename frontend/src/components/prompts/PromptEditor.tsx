@@ -125,7 +125,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                 </Button>
                 <Button onClick={handleSave} disabled={saving}>
                   <Save className="w-4 h-4 mr-2" />
-                  {saving ? 'Saving...' : 'Save Changes'}
+                  {saving ? 'Salvando...' : 'Salvar Alteracoes'}
                 </Button>
               </>
             ) : (
@@ -262,7 +262,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="w-full h-96 p-4 font-mono text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              placeholder="Enter prompt content..."
+              placeholder="Insira o conteudo do prompt..."
             />
           ) : (
             <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">

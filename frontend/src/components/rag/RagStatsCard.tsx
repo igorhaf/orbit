@@ -54,7 +54,7 @@ export function RagStatsCard({ stats }: RagStatsCardProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       <StatCard
-        title="Hit Rate"
+        title="Taxa de Acerto"
         value={`${stats.hit_rate.toFixed(1)}%`}
         icon={<Target className="w-6 h-6 text-green-600" />}
         subtitle={`${stats.total_rag_hits} / ${stats.total_rag_enabled} hits`}
@@ -62,26 +62,26 @@ export function RagStatsCard({ stats }: RagStatsCardProps) {
       />
 
       <StatCard
-        title="Avg Similarity"
+        title="Similaridade Media"
         value={stats.avg_top_similarity.toFixed(3)}
         icon={<TrendingUp className="w-6 h-6 text-blue-600" />}
-        subtitle="Top match relevance"
+        subtitle="Relevancia do melhor resultado"
         color="blue"
       />
 
       <StatCard
-        title="Avg Latency"
+        title="Latencia Media"
         value={`${stats.avg_retrieval_time_ms.toFixed(0)}ms`}
         icon={<Clock className="w-6 h-6 text-purple-600" />}
-        subtitle="Retrieval speed"
+        subtitle="Velocidade de recuperacao"
         color="purple"
       />
 
       <StatCard
-        title="Avg Results"
+        title="Media de Resultados"
         value={stats.avg_results_count.toFixed(1)}
         icon={<Database className="w-6 h-6 text-indigo-600" />}
-        subtitle="Documents retrieved"
+        subtitle="Documentos recuperados"
         color="indigo"
       />
     </div>

@@ -65,13 +65,13 @@ import type {
 // ---------------------------------------------------------------------------
 
 const USAGE_TYPE_OPTIONS = [
-  { value: 'interview', label: 'Interview' },
-  { value: 'task_execution', label: 'Task Execution' },
-  { value: 'prompt_generation', label: 'Prompt Generation' },
-  { value: 'commit_generation', label: 'Commit Generation' },
-  { value: 'pattern_discovery', label: 'Pattern Discovery' },
-  { value: 'memory', label: 'Memory (Codebase Scan)' },
-  { value: 'general', label: 'General' },
+  { value: 'interview', label: 'Entrevista' },
+  { value: 'task_execution', label: 'Execucao de Tarefas' },
+  { value: 'prompt_generation', label: 'Geracao de Prompts' },
+  { value: 'commit_generation', label: 'Geracao de Commits' },
+  { value: 'pattern_discovery', label: 'Descoberta de Padroes' },
+  { value: 'memory', label: 'Memoria (Scan de Codebase)' },
+  { value: 'general', label: 'Geral' },
 ];
 
 const PROVIDER_COLORS: Record<string, string> = {
@@ -314,15 +314,15 @@ function ModelNode({ data }: { data: any }) {
         {data.position_label && (
           <div className="mt-1.5 flex items-center gap-1.5">
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-              data.position_label === 'Primary'
+              data.position_label === 'Primario'
                 ? 'bg-blue-100 text-blue-700'
                 : 'bg-amber-100 text-amber-700'
             }`}>
               {data.position_label}
             </span>
             {data.hasOverrides && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700" title="Per-flow overrides applied">
-                Overrides
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700" title="Sobreposicoes aplicadas por fluxo">
+                Sobreposicoes
               </span>
             )}
           </div>
@@ -334,16 +334,16 @@ function ModelNode({ data }: { data: any }) {
             <div className="text-[10px] text-gray-500">
               <span className={`font-semibold ${
                 metrics.health === 'green' ? 'text-green-600' : metrics.health === 'yellow' ? 'text-yellow-600' : 'text-red-600'
-              }`}>{metrics.success_rate.toFixed(1)}%</span> success
+              }`}>{metrics.success_rate.toFixed(1)}%</span> sucesso
             </div>
             <div className="text-[10px] text-gray-500">
-              <span className="font-semibold text-gray-700">{metrics.avg_latency_ms >= 1000 ? `${(metrics.avg_latency_ms / 1000).toFixed(1)}s` : `${Math.round(metrics.avg_latency_ms)}ms`}</span> avg
+              <span className="font-semibold text-gray-700">{metrics.avg_latency_ms >= 1000 ? `${(metrics.avg_latency_ms / 1000).toFixed(1)}s` : `${Math.round(metrics.avg_latency_ms)}ms`}</span> media
             </div>
             <div className="text-[10px] text-gray-500">
-              <span className="font-semibold text-gray-700">${metrics.avg_cost_per_call.toFixed(4)}</span>/call
+              <span className="font-semibold text-gray-700">${metrics.avg_cost_per_call.toFixed(4)}</span>/chamada
             </div>
             <div className="text-[10px] text-gray-500">
-              <span className="font-semibold text-gray-700">{metrics.total_executions}</span> calls
+              <span className="font-semibold text-gray-700">{metrics.total_executions}</span> chamadas
             </div>
           </div>
         )}
@@ -382,13 +382,13 @@ function CacheNode({ data }: { data: any }) {
           <UtilityNodeIcon type="cache" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Cache'}</div>
-            <div className="text-xs text-violet-600">Redis Cache Check</div>
+            <div className="text-xs text-violet-600">Verificacao de Cache Redis</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-violet-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
           <div className="text-[10px] text-gray-500">TTL: <span className="font-semibold text-gray-700">{data.config?.ttl_seconds || 86400}s</span></div>
-          <div className="text-[10px] text-gray-500">Level: <span className="font-semibold text-gray-700">{data.config?.cache_level || 'exact'}</span></div>
+          <div className="text-[10px] text-gray-500">Nivel: <span className="font-semibold text-gray-700">{data.config?.cache_level || 'exact'}</span></div>
         </div>
       </div>
       {data.onRemove && (
@@ -410,14 +410,14 @@ function RAGContextNode({ data }: { data: any }) {
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="rag_context" />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-gray-900">{data.label || 'RAG Context'}</div>
-            <div className="text-xs text-cyan-600">Semantic Enrichment</div>
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Contexto RAG'}</div>
+            <div className="text-xs text-cyan-600">Enriquecimento Semantico</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-cyan-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="text-[10px] text-gray-500">Max Results: <span className="font-semibold text-gray-700">{data.config?.max_results || 5}</span></div>
-          <div className="text-[10px] text-gray-500">Threshold: <span className="font-semibold text-gray-700">{data.config?.similarity_threshold || 0.7}</span></div>
+          <div className="text-[10px] text-gray-500">Max Resultados: <span className="font-semibold text-gray-700">{data.config?.max_results || 5}</span></div>
+          <div className="text-[10px] text-gray-500">Limiar: <span className="font-semibold text-gray-700">{data.config?.similarity_threshold || 0.7}</span></div>
         </div>
       </div>
       {data.onRemove && (
@@ -440,12 +440,12 @@ function PromptTransformerNode({ data }: { data: any }) {
           <UtilityNodeIcon type="prompt_transformer" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Transformer'}</div>
-            <div className="text-xs text-amber-600">Prompt Transform</div>
+            <div className="text-xs text-amber-600">Transformacao de Prompt</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-amber-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="text-[10px] text-gray-500">Mode: <span className="font-semibold text-gray-700">{data.config?.transformation || 'compress'}</span></div>
+          <div className="text-[10px] text-gray-500">Modo: <span className="font-semibold text-gray-700">{data.config?.transformation || 'compress'}</span></div>
           <div className="text-[10px] text-gray-500">Max Tokens: <span className="font-semibold text-gray-700">{data.config?.max_tokens || 4000}</span></div>
         </div>
       </div>
@@ -469,13 +469,13 @@ function RouterNode({ data }: { data: any }) {
           <UtilityNodeIcon type="router" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Router'}</div>
-            <div className="text-xs text-emerald-600">Conditional Routing</div>
+            <div className="text-xs text-emerald-600">Roteamento Condicional</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-emerald-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="text-[10px] text-gray-500">Condition: <span className="font-semibold text-gray-700">{data.config?.condition || 'complexity'}</span></div>
-          <div className="text-[10px] text-gray-500">Threshold: <span className="font-semibold text-gray-700">{data.config?.threshold || 'medium'}</span></div>
+          <div className="text-[10px] text-gray-500">Condicao: <span className="font-semibold text-gray-700">{data.config?.condition || 'complexity'}</span></div>
+          <div className="text-[10px] text-gray-500">Limiar: <span className="font-semibold text-gray-700">{data.config?.threshold || 'medium'}</span></div>
         </div>
       </div>
       {data.onRemove && (
@@ -498,12 +498,12 @@ function RetryNode({ data }: { data: any }) {
           <UtilityNodeIcon type="retry" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Retry'}</div>
-            <div className="text-xs text-blue-600">Retry with Backoff</div>
+            <div className="text-xs text-blue-600">Retry com Backoff</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-blue-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="text-[10px] text-gray-500">Max Retries: <span className="font-semibold text-gray-700">{data.config?.max_retries || 3}</span></div>
+          <div className="text-[10px] text-gray-500">Max Tentativas: <span className="font-semibold text-gray-700">{data.config?.max_retries || 3}</span></div>
           <div className="text-[10px] text-gray-500">Base: <span className="font-semibold text-gray-700">{data.config?.backoff_base_ms || 1000}ms</span></div>
         </div>
       </div>
@@ -526,14 +526,14 @@ function ValidatorNode({ data }: { data: any }) {
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="validator" />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-gray-900">{data.label || 'Validator'}</div>
-            <div className="text-xs text-green-600">Output Validation</div>
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Validador'}</div>
+            <div className="text-xs text-green-600">Validacao de Saida</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-green-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="text-[10px] text-gray-500">Type: <span className="font-semibold text-gray-700">{data.config?.validation_type || 'json'}</span></div>
-          <div className="text-[10px] text-gray-500">Retry: <span className="font-semibold text-gray-700">{data.config?.retry_on_fail !== false ? 'Yes' : 'No'}</span></div>
+          <div className="text-[10px] text-gray-500">Tipo: <span className="font-semibold text-gray-700">{data.config?.validation_type || 'json'}</span></div>
+          <div className="text-[10px] text-gray-500">Retry: <span className="font-semibold text-gray-700">{data.config?.retry_on_fail !== false ? 'Sim' : 'Nao'}</span></div>
         </div>
       </div>
       {data.onRemove && (
@@ -555,14 +555,14 @@ function CostGuardNode({ data }: { data: any }) {
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="cost_guard" />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-gray-900">{data.label || 'Cost Guard'}</div>
-            <div className="text-xs text-red-600">Budget Limiter</div>
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Controle de Custo'}</div>
+            <div className="text-xs text-red-600">Limitador de Orcamento</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-red-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="text-[10px] text-gray-500">Per Call: <span className="font-semibold text-gray-700">${data.config?.max_cost_per_call || 0.10}</span></div>
-          <div className="text-[10px] text-gray-500">Daily: <span className="font-semibold text-gray-700">${data.config?.daily_budget || 10.0}</span></div>
+          <div className="text-[10px] text-gray-500">Por Chamada: <span className="font-semibold text-gray-700">${data.config?.max_cost_per_call || 0.10}</span></div>
+          <div className="text-[10px] text-gray-500">Diario: <span className="font-semibold text-gray-700">${data.config?.daily_budget || 10.0}</span></div>
         </div>
       </div>
       {data.onRemove && (
@@ -584,14 +584,14 @@ function RateLimiterNode({ data }: { data: any }) {
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="rate_limiter" />
           <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-gray-900">{data.label || 'Rate Limiter'}</div>
-            <div className="text-xs text-pink-600">Request Throttling</div>
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Limitador de Taxa'}</div>
+            <div className="text-xs text-pink-600">Limitacao de Requisicoes</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-pink-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="text-[10px] text-gray-500">Limit: <span className="font-semibold text-gray-700">{data.config?.max_requests || 60} req</span></div>
-          <div className="text-[10px] text-gray-500">Window: <span className="font-semibold text-gray-700">{data.config?.window_seconds || 60}s</span></div>
+          <div className="text-[10px] text-gray-500">Limite: <span className="font-semibold text-gray-700">{data.config?.max_requests || 60} req</span></div>
+          <div className="text-[10px] text-gray-500">Janela: <span className="font-semibold text-gray-700">{data.config?.window_seconds || 60}s</span></div>
         </div>
       </div>
       {data.onRemove && (
@@ -671,13 +671,13 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('ttl_seconds', parseInt(e.target.value) || 86400)}
             />
             <Select
-              label="Cache Level"
+              label="Nivel de Cache"
               value={config.cache_level ?? 'exact'}
               onChange={(e) => updateConfig('cache_level', e.target.value)}
               options={[
-                { value: 'exact', label: 'Exact Match' },
-                { value: 'semantic', label: 'Semantic Match' },
-                { value: 'template', label: 'Template Cache' },
+                { value: 'exact', label: 'Correspondencia Exata' },
+                { value: 'semantic', label: 'Correspondencia Semantica' },
+                { value: 'template', label: 'Cache de Template' },
               ]}
             />
           </>
@@ -687,7 +687,7 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Input
-              label="Max Results"
+              label="Max Resultados"
               type="number"
               min="1"
               max="20"
@@ -695,7 +695,7 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('max_results', parseInt(e.target.value) || 5)}
             />
             <Input
-              label="Similarity Threshold (0-1)"
+              label="Limiar de Similaridade (0-1)"
               type="number"
               min="0"
               max="1"
@@ -711,52 +711,52 @@ function EditUtilityNodeDialog({
                 checked={config.include_metadata ?? true}
                 onChange={(e) => updateConfig('include_metadata', e.target.checked)}
               />
-              <label htmlFor="include-metadata" className="text-sm text-gray-700">Include Metadata</label>
+              <label htmlFor="include-metadata" className="text-sm text-gray-700">Incluir Metadados</label>
             </div>
             <div className="border-t border-gray-200 pt-3 mt-3">
-              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">PROMPT #229 - RAG Optimization</p>
+              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">PROMPT #229 - Otimizacao RAG</p>
             </div>
             <Input
-              label="Filter Types (comma-separated)"
-              placeholder="e.g., spec, business_rule, feature"
+              label="Filtrar Tipos (separados por virgula)"
+              placeholder="ex: spec, business_rule, feature"
               value={config.filter_types ?? ''}
               onChange={(e) => updateConfig('filter_types', e.target.value || null)}
-              helperText="Only include these document types. Leave empty for all."
+              helperText="Incluir apenas estes tipos de documento. Deixe vazio para todos."
             />
             <Input
-              label="Exclude Types (comma-separated)"
-              placeholder="e.g., commit, log"
+              label="Excluir Tipos (separados por virgula)"
+              placeholder="ex: commit, log"
               value={config.exclude_types ?? ''}
               onChange={(e) => updateConfig('exclude_types', e.target.value || null)}
-              helperText="Exclude these document types from results."
+              helperText="Excluir estes tipos de documento dos resultados."
             />
             <Input
-              label="Deduplication Threshold (0-1)"
+              label="Limiar de Deduplicacao (0-1)"
               type="number"
               min="0"
               max="1"
               step="0.05"
               value={config.dedupe_threshold ?? 0.95}
               onChange={(e) => updateConfig('dedupe_threshold', parseFloat(e.target.value) || 0.95)}
-              helperText="Jaccard similarity above this removes duplicate docs."
+              helperText="Similaridade Jaccard acima deste valor remove documentos duplicados."
             />
             <Input
-              label="Max Context Chars"
+              label="Max Caracteres de Contexto"
               type="number"
               min="500"
               step="500"
               value={config.max_context_chars ?? 6000}
               onChange={(e) => updateConfig('max_context_chars', parseInt(e.target.value) || 6000)}
-              helperText="Compress context to this size before sending to LLM."
+              helperText="Comprimir contexto para este tamanho antes de enviar ao LLM."
             />
             <Select
-              label="Compression Strategy"
+              label="Estrategia de Compressao"
               value={config.compression_strategy ?? 'key_sentences'}
               onChange={(e) => updateConfig('compression_strategy', e.target.value)}
               options={[
-                { value: 'key_sentences', label: 'Key Sentences (score by position + length)' },
-                { value: 'extractive', label: 'Extractive (first + last + best middles)' },
-                { value: 'truncate', label: 'Truncate (simple cut at max chars)' },
+                { value: 'key_sentences', label: 'Frases-Chave (pontuacao por posicao + tamanho)' },
+                { value: 'extractive', label: 'Extrativa (primeira + ultima + melhores do meio)' },
+                { value: 'truncate', label: 'Truncar (corte simples no max de caracteres)' },
               ]}
             />
             <Input
@@ -766,7 +766,7 @@ function EditUtilityNodeDialog({
               max="20"
               value={config.rerank_top_k ?? 3}
               onChange={(e) => updateConfig('rerank_top_k', parseInt(e.target.value) || 3)}
-              helperText="After initial retrieval, keep only the top K most relevant docs."
+              helperText="Apos a recuperacao inicial, manter apenas os K documentos mais relevantes."
             />
           </>
         );
@@ -775,13 +775,13 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Select
-              label="Transformation"
+              label="Transformacao"
               value={config.transformation ?? 'compress'}
               onChange={(e) => updateConfig('transformation', e.target.value)}
               options={[
-                { value: 'compress', label: 'Compress (truncate long messages)' },
-                { value: 'summarize_context', label: 'Summarize Context (keep last N)' },
-                { value: 'add_instructions', label: 'Add Instructions' },
+                { value: 'compress', label: 'Comprimir (truncar mensagens longas)' },
+                { value: 'summarize_context', label: 'Resumir Contexto (manter ultimos N)' },
+                { value: 'add_instructions', label: 'Adicionar Instrucoes' },
               ]}
             />
             <Input
@@ -792,24 +792,24 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('max_tokens', parseInt(e.target.value) || 4000)}
             />
             <Input
-              label="Override Max Tokens"
+              label="Sobrescrever Max Tokens"
               type="number"
               min="0"
-              placeholder="Leave empty to use model default"
+              placeholder="Deixe vazio para usar padrao do modelo"
               value={config.override_max_tokens ?? ''}
               onChange={(e) => updateConfig('override_max_tokens', e.target.value ? parseInt(e.target.value) : null)}
-              helperText="Capped by model max_tokens. Leave empty for no override."
+              helperText="Limitado pelo max_tokens do modelo. Deixe vazio para nao sobrescrever."
             />
             <Input
-              label="Override Temperature"
+              label="Sobrescrever Temperature"
               type="number"
               min="0"
               max="2"
               step="0.1"
-              placeholder="Leave empty to use model default"
+              placeholder="Deixe vazio para usar padrao do modelo"
               value={config.override_temperature ?? ''}
               onChange={(e) => updateConfig('override_temperature', e.target.value ? parseFloat(e.target.value) : null)}
-              helperText="Free value (0.0-2.0). Leave empty for no override."
+              helperText="Valor livre (0.0-2.0). Deixe vazio para nao sobrescrever."
             />
           </>
         );
@@ -818,23 +818,23 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Select
-              label="Condition"
+              label="Condicao"
               value={config.condition ?? 'complexity'}
               onChange={(e) => updateConfig('condition', e.target.value)}
               options={[
-                { value: 'complexity', label: 'Complexity' },
-                { value: 'cost', label: 'Cost' },
-                { value: 'message_count', label: 'Message Count' },
+                { value: 'complexity', label: 'Complexidade' },
+                { value: 'cost', label: 'Custo' },
+                { value: 'message_count', label: 'Quantidade de Mensagens' },
               ]}
             />
             <Select
-              label="Threshold"
+              label="Limiar"
               value={config.threshold ?? 'medium'}
               onChange={(e) => updateConfig('threshold', e.target.value)}
               options={[
-                { value: 'low', label: 'Low' },
-                { value: 'medium', label: 'Medium' },
-                { value: 'high', label: 'High' },
+                { value: 'low', label: 'Baixo' },
+                { value: 'medium', label: 'Medio' },
+                { value: 'high', label: 'Alto' },
               ]}
             />
           </>
@@ -844,7 +844,7 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Input
-              label="Max Retries"
+              label="Max Tentativas"
               type="number"
               min="1"
               max="10"
@@ -859,7 +859,7 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('backoff_base_ms', parseInt(e.target.value) || 1000)}
             />
             <Input
-              label="Backoff Multiplier"
+              label="Multiplicador de Backoff"
               type="number"
               min="1"
               max="10"
@@ -875,9 +875,9 @@ function EditUtilityNodeDialog({
                 checked={config.skip_permanent_errors ?? true}
                 onChange={(e) => updateConfig('skip_permanent_errors', e.target.checked)}
               />
-              <label htmlFor="skip-permanent-errors" className="text-sm text-gray-700">Skip Permanent Errors (401, 404)</label>
+              <label htmlFor="skip-permanent-errors" className="text-sm text-gray-700">Ignorar Erros Permanentes (401, 404)</label>
             </div>
-            <p className="text-xs text-gray-500 ml-6">When enabled, permanent errors are never retried - falls through directly to chain fallback.</p>
+            <p className="text-xs text-gray-500 ml-6">Quando ativado, erros permanentes nunca sao retentados - passa direto para o fallback da cadeia.</p>
           </>
         );
 
@@ -885,26 +885,26 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Select
-              label="Validation Type"
+              label="Tipo de Validacao"
               value={config.validation_type ?? 'json'}
               onChange={(e) => updateConfig('validation_type', e.target.value)}
               options={[
-                { value: 'json', label: 'JSON Parsing' },
-                { value: 'length', label: 'Length Check' },
-                { value: 'keywords', label: 'Required Keywords' },
-                { value: 'not_empty', label: 'Not Empty' },
+                { value: 'json', label: 'Parsing JSON' },
+                { value: 'length', label: 'Verificacao de Tamanho' },
+                { value: 'keywords', label: 'Palavras-chave Obrigatorias' },
+                { value: 'not_empty', label: 'Nao Vazio' },
               ]}
             />
             <Input
-              label="Max Length (0 = no limit)"
+              label="Tamanho Maximo (0 = sem limite)"
               type="number"
               min="0"
               value={config.max_length ?? 0}
               onChange={(e) => updateConfig('max_length', parseInt(e.target.value) || 0)}
             />
             <Input
-              label="Required Keywords (comma-separated)"
-              placeholder="e.g., result, status, data"
+              label="Palavras-chave Obrigatorias (separadas por virgula)"
+              placeholder="ex: result, status, data"
               value={Array.isArray(config.required_keywords) ? config.required_keywords.join(', ') : (config.required_keywords || '')}
               onChange={(e) => updateConfig('required_keywords', e.target.value ? e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) : [])}
             />
@@ -916,7 +916,7 @@ function EditUtilityNodeDialog({
                 checked={config.retry_on_fail ?? true}
                 onChange={(e) => updateConfig('retry_on_fail', e.target.checked)}
               />
-              <label htmlFor="retry-on-fail" className="text-sm text-gray-700">Retry on Validation Failure</label>
+              <label htmlFor="retry-on-fail" className="text-sm text-gray-700">Retentar em Falha de Validacao</label>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -926,9 +926,9 @@ function EditUtilityNodeDialog({
                 checked={config.auto_repair_json ?? true}
                 onChange={(e) => updateConfig('auto_repair_json', e.target.checked)}
               />
-              <label htmlFor="auto-repair-json" className="text-sm text-gray-700">Auto-repair JSON</label>
+              <label htmlFor="auto-repair-json" className="text-sm text-gray-700">Auto-reparar JSON</label>
             </div>
-            <p className="text-xs text-gray-500 ml-6">Attempt to fix malformed JSON (trailing commas, single quotes, code blocks) before triggering retry.</p>
+            <p className="text-xs text-gray-500 ml-6">Tentar corrigir JSON malformado (virgulas finais, aspas simples, blocos de codigo) antes de acionar retry.</p>
           </>
         );
 
@@ -936,7 +936,7 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Input
-              label="Max Cost per Call ($)"
+              label="Custo Maximo por Chamada ($)"
               type="number"
               min="0.01"
               step="0.01"
@@ -944,7 +944,7 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('max_cost_per_call', parseFloat(e.target.value) || 0.10)}
             />
             <Input
-              label="Daily Budget ($)"
+              label="Orcamento Diario ($)"
               type="number"
               min="0"
               step="0.50"
@@ -952,7 +952,7 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('daily_budget', parseFloat(e.target.value) || 10.0)}
             />
             <Input
-              label="Monthly Budget ($)"
+              label="Orcamento Mensal ($)"
               type="number"
               min="0"
               step="1"
@@ -960,12 +960,12 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('monthly_budget', parseFloat(e.target.value) || 100.0)}
             />
             <Select
-              label="Action on Exceed"
+              label="Acao ao Exceder"
               value={config.action_on_exceed ?? 'block'}
               onChange={(e) => updateConfig('action_on_exceed', e.target.value)}
               options={[
-                { value: 'block', label: 'Block Request' },
-                { value: 'warn', label: 'Warn Only' },
+                { value: 'block', label: 'Bloquear Requisicao' },
+                { value: 'warn', label: 'Apenas Avisar' },
               ]}
             />
           </>
@@ -975,26 +975,26 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Input
-              label="Max Requests"
+              label="Max Requisicoes"
               type="number"
               min="1"
               value={config.max_requests ?? 60}
               onChange={(e) => updateConfig('max_requests', parseInt(e.target.value) || 60)}
             />
             <Input
-              label="Window (seconds)"
+              label="Janela (segundos)"
               type="number"
               min="1"
               value={config.window_seconds ?? 60}
               onChange={(e) => updateConfig('window_seconds', parseInt(e.target.value) || 60)}
             />
             <Select
-              label="Action on Exceed"
+              label="Acao ao Exceder"
               value={config.action_on_exceed ?? 'queue'}
               onChange={(e) => updateConfig('action_on_exceed', e.target.value)}
               options={[
-                { value: 'queue', label: 'Queue (wait)' },
-                { value: 'block', label: 'Block Request' },
+                { value: 'queue', label: 'Fila (aguardar)' },
+                { value: 'block', label: 'Bloquear Requisicao' },
               ]}
             />
           </>
@@ -1003,22 +1003,22 @@ function EditUtilityNodeDialog({
       case 'timeout':
         return (
           <Input
-            label="Timeout (seconds)"
+            label="Timeout (segundos)"
             type="number"
             min="1"
             value={config.timeout_seconds ?? 120}
             onChange={(e) => updateConfig('timeout_seconds', parseInt(e.target.value) || 120)}
-            helperText="Overrides AI Model timeout and System Settings default."
+            helperText="Sobrescreve o timeout do Modelo de IA e o padrao das Configuracoes do Sistema."
           />
         );
 
       default:
-        return <p className="text-sm text-gray-500">No editable configuration for this node type.</p>;
+        return <p className="text-sm text-gray-500">Nenhuma configuracao editavel para este tipo de no.</p>;
     }
   };
 
   return (
-    <Dialog open={true} onClose={onClose} title={`Edit ${node.type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}`} size="md">
+    <Dialog open={true} onClose={onClose} title={`Editar ${node.type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}`} size="md">
       <div className="space-y-4">
         {/* Header with icon and color indicator */}
         <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
@@ -1027,10 +1027,10 @@ function EditUtilityNodeDialog({
           </div>
           <div className="flex-1">
             <Input
-              label="Label"
+              label="Rotulo"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Node label"
+              placeholder="Rotulo do no"
             />
           </div>
         </div>
@@ -1044,19 +1044,19 @@ function EditUtilityNodeDialog({
             checked={enabled}
             onChange={(e) => setEnabled(e.target.checked)}
           />
-          <label htmlFor="node-enabled" className="text-sm font-medium text-gray-700">Enabled</label>
+          <label htmlFor="node-enabled" className="text-sm font-medium text-gray-700">Ativado</label>
         </div>
 
         {/* Type-specific fields */}
         <div className="space-y-3">
-          <h4 className="text-sm font-semibold text-gray-900">Configuration</h4>
+          <h4 className="text-sm font-semibold text-gray-900">Configuracao</h4>
           {renderFields()}
         </div>
 
         {/* Footer */}
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave}>Save</Button>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" onClick={handleSave}>Salvar</Button>
         </div>
       </div>
     </Dialog>
@@ -1110,7 +1110,7 @@ function EditModelNodeDialog({
   const providerColor = PROVIDER_COLORS[model.provider] || '#6b7280';
 
   return (
-    <Dialog open={true} onClose={onClose} title={`Edit Model: ${model.name}`} size="md">
+    <Dialog open={true} onClose={onClose} title={`Editar Modelo: ${model.name}`} size="md">
       <div className="space-y-4">
         {/* Header */}
         <div className="flex items-center gap-3 pb-3 border-b border-gray-200">
@@ -1125,12 +1125,12 @@ function EditModelNodeDialog({
 
         {/* Info */}
         <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-          Override model defaults for this specific flow position. Leave fields empty to use the model's global settings.
+          Sobrescrever padroes do modelo para esta posicao especifica do fluxo. Deixe campos vazios para usar as configuracoes globais do modelo.
         </div>
 
         {/* Override fields */}
         <div className="space-y-3">
-          <h4 className="text-sm font-semibold text-gray-900">Per-Flow Overrides</h4>
+          <h4 className="text-sm font-semibold text-gray-900">Sobreposicoes por Fluxo</h4>
 
           <Input
             label="Temperature"
@@ -1138,58 +1138,58 @@ function EditModelNodeDialog({
             min="0"
             max="2"
             step="0.1"
-            placeholder={`Default: ${model.config?.temperature ?? 'model default'}`}
+            placeholder={`Padrao: ${model.config?.temperature ?? 'padrao do modelo'}`}
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
-            helperText="0.0 = deterministic, 2.0 = very creative. Empty = use model default."
+            helperText="0.0 = deterministico, 2.0 = muito criativo. Vazio = usar padrao do modelo."
           />
 
           <Input
             label="Max Tokens"
             type="number"
             min="1"
-            placeholder={`Default: ${model.config?.max_tokens ?? 'model default'}`}
+            placeholder={`Padrao: ${model.config?.max_tokens ?? 'padrao do modelo'}`}
             value={maxTokens}
             onChange={(e) => setMaxTokens(e.target.value)}
-            helperText="Maximum response length. Empty = use model default."
+            helperText="Tamanho maximo da resposta. Vazio = usar padrao do modelo."
           />
 
           <Input
-            label="Timeout (seconds)"
+            label="Timeout (segundos)"
             type="number"
             min="1"
-            placeholder="Default: model/system default"
+            placeholder="Padrao: padrao do modelo/sistema"
             value={timeoutSeconds}
             onChange={(e) => setTimeoutSeconds(e.target.value)}
-            helperText="API call timeout. Empty = use model default."
+            helperText="Timeout da chamada API. Vazio = usar padrao do modelo."
           />
 
           <Input
-            label="Max Concurrent Requests"
+            label="Max Requisicoes Simultaneas"
             type="number"
             min="1"
-            placeholder={`Default: ${model.max_concurrent_requests || 'Unlimited'}`}
+            placeholder={`Padrao: ${model.max_concurrent_requests || 'Ilimitado'}`}
             value={maxConcurrent}
             onChange={(e) => setMaxConcurrent(e.target.value)}
-            helperText="Max parallel API calls. Empty = use model default."
+            helperText="Max chamadas API em paralelo. Vazio = usar padrao do modelo."
           />
         </div>
 
         {/* Current global settings (read-only) */}
         <div className="space-y-1 pt-2 border-t border-gray-200">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase">Global Model Settings</h4>
+          <h4 className="text-xs font-semibold text-gray-500 uppercase">Configuracoes Globais do Modelo</h4>
           <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
             <div>Max Tokens: <span className="font-medium text-gray-900">{model.config?.max_tokens || 'N/A'}</span></div>
             <div>Temperature: <span className="font-medium text-gray-900">{model.config?.temperature ?? 'N/A'}</span></div>
-            <div>Rate Limit: <span className="font-medium text-gray-900">{model.rate_limit_requests ? `${model.rate_limit_requests} req/${model.rate_limit_window_seconds}s` : 'None'}</span></div>
-            <div>Concurrency: <span className="font-medium text-gray-900">{model.max_concurrent_requests ? `${model.max_concurrent_requests}x` : 'Unlimited'}</span></div>
+            <div>Limite de Taxa: <span className="font-medium text-gray-900">{model.rate_limit_requests ? `${model.rate_limit_requests} req/${model.rate_limit_window_seconds}s` : 'Nenhum'}</span></div>
+            <div>Concorrencia: <span className="font-medium text-gray-900">{model.max_concurrent_requests ? `${model.max_concurrent_requests}x` : 'Ilimitado'}</span></div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
-          <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={handleSave}>Save Overrides</Button>
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="primary" onClick={handleSave}>Salvar Sobreposicoes</Button>
         </div>
       </div>
     </Dialog>
@@ -1261,7 +1261,7 @@ function computeEdgeProps(
 
   // Edge going TO the first model (the "try" edge)
   if (targetId === firstModelId && !isSourceModel) {
-    return { label: 'try', color: '#3b82f6', strokeWidth: isAnimating ? 3 : 2, dashed: false, animated: true };
+    return { label: 'tentar', color: '#3b82f6', strokeWidth: isAnimating ? 3 : 2, dashed: false, animated: true };
   }
 
   // Model-to-model fallback
@@ -1272,15 +1272,15 @@ function computeEdgeProps(
   // Last model → first post-process or response
   if (sourceId === lastModelId && !isTargetModel && targetId !== 'error') {
     if (targetId === 'response') {
-      return { label: 'success', color: '#22c55e', strokeWidth: 2, dashed: false, animated: false };
+      return { label: 'sucesso', color: '#22c55e', strokeWidth: 2, dashed: false, animated: false };
     }
     const utilColor = targetUtility ? (UTILITY_NODE_COLORS[targetUtility.type] || '#6b7280') : '#22c55e';
-    return { label: targetUtility ? targetUtility.type.replace(/_/g, ' ') : 'process', color: utilColor, strokeWidth: 1.5, dashed: false, animated: false };
+    return { label: targetUtility ? targetUtility.type.replace(/_/g, ' ') : 'processar', color: utilColor, strokeWidth: 1.5, dashed: false, animated: false };
   }
 
   // Any node → Response (final edge)
   if (targetId === 'response') {
-    return { label: 'done', color: '#22c55e', strokeWidth: 2, dashed: false, animated: false };
+    return { label: 'concluido', color: '#22c55e', strokeWidth: 2, dashed: false, animated: false };
   }
 
   // Utility-to-utility or start-to-utility edges
@@ -1335,7 +1335,7 @@ function buildFlowFromChain(
   nodes.push({
     id: 'start',
     type: 'input',
-    data: { label: 'Request' },
+    data: { label: 'Requisicao' },
     position: startPos,
     style: {
       background: '#3b82f6',
@@ -1387,7 +1387,7 @@ function buildFlowFromChain(
       type: 'modelNode',
       data: {
         ...model,
-        position_label: index === 0 ? 'Primary' : `Fallback ${index}`,
+        position_label: index === 0 ? 'Primario' : `Fallback ${index}`,
         onRemove: onRemove ? () => onRemove(model.id) : undefined,
         metrics: metricsMap?.[model.id],
         animation: animationsMap?.[nodeId] || 'idle',
@@ -1426,7 +1426,7 @@ function buildFlowFromChain(
   nodes.push({
     id: 'response',
     type: 'output',
-    data: { label: 'Response' },
+    data: { label: 'Resposta' },
     position: responsePos,
     style: {
       background: '#22c55e',
@@ -1450,7 +1450,7 @@ function buildFlowFromChain(
     nodes.push({
       id: 'error',
       type: 'output',
-      data: { label: 'Error' },
+      data: { label: 'Erro' },
       position: errorPos,
       style: {
         background: '#ef4444',
@@ -1486,8 +1486,8 @@ function buildFlowFromChain(
       target: targetId,
       label: props.label,
       labelStyle: {
-        fontSize: (props.label === 'try' || props.label === 'fallback') ? 11 : 9,
-        fontWeight: (props.label === 'try' || props.label === 'fallback') ? 600 : 500,
+        fontSize: (props.label === 'tentar' || props.label === 'fallback') ? 11 : 9,
+        fontWeight: (props.label === 'tentar' || props.label === 'fallback') ? 600 : 500,
       },
       labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
       animated: props.animated,
@@ -1507,7 +1507,7 @@ function buildFlowFromChain(
       id: `edge-${lastModelId}-error`,
       source: lastModelId,
       target: 'error',
-      label: 'all failed',
+      label: 'todos falharam',
       labelStyle: { fontSize: 10, fontWeight: 500 },
       labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
       style: { stroke: '#ef4444', strokeWidth: 1.5, strokeDasharray: '5,5' },
@@ -1536,7 +1536,7 @@ function AnalyticsPanel({
     return (
       <div className="flex items-center justify-center py-8">
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-        <span className="ml-2 text-sm text-gray-500">Loading analytics...</span>
+        <span className="ml-2 text-sm text-gray-500">Carregando analiticos...</span>
       </div>
     );
   }
@@ -1544,7 +1544,7 @@ function AnalyticsPanel({
   if (!analytics) {
     return (
       <div className="text-center py-6 text-sm text-gray-400">
-        No analytics data available. Chain executions will appear here.
+        Nenhum dado analitico disponivel. Execucoes da cadeia aparecerao aqui.
       </div>
     );
   }
@@ -1554,24 +1554,24 @@ function AnalyticsPanel({
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-3">
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <div className="text-xs text-blue-600 font-medium">Total Cost</div>
+          <div className="text-xs text-blue-600 font-medium">Custo Total</div>
           <div className="text-lg font-bold text-blue-900">${analytics.total_cost_all_chains.toFixed(4)}</div>
         </div>
         <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-          <div className="text-xs text-green-600 font-medium">Fallback Savings</div>
+          <div className="text-xs text-green-600 font-medium">Economia de Fallback</div>
           <div className="text-lg font-bold text-green-900">${analytics.total_fallback_savings.toFixed(4)}</div>
         </div>
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <div className="text-xs text-amber-600 font-medium">Most Failing</div>
+          <div className="text-xs text-amber-600 font-medium">Mais Falhas</div>
           <div className="text-sm font-bold text-amber-900 truncate">
-            {analytics.most_failing_model?.model_name || 'None'}
+            {analytics.most_failing_model?.model_name || 'Nenhum'}
           </div>
           {analytics.most_failing_model && (
-            <div className="text-[10px] text-amber-600">{(analytics.most_failing_model.failure_rate * 100).toFixed(1)}% failure</div>
+            <div className="text-[10px] text-amber-600">{(analytics.most_failing_model.failure_rate * 100).toFixed(1)}% falha</div>
           )}
         </div>
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-          <div className="text-xs text-purple-600 font-medium">Lookback</div>
+          <div className="text-xs text-purple-600 font-medium">Periodo</div>
           <div className="text-lg font-bold text-purple-900">{analytics.lookback_days}d</div>
         </div>
       </div>
@@ -1582,13 +1582,13 @@ function AnalyticsPanel({
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">Operation</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Executions</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Fallback Rate</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Primary Success</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Avg Depth</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Total Cost</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Savings</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600">Operacao</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Execucoes</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Taxa de Fallback</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Sucesso Primario</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Prof. Media</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Custo Total</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Economia</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -1620,7 +1620,7 @@ function AnalyticsPanel({
 
       <div className="flex justify-end">
         <button onClick={onRefresh} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
-          Refresh Analytics
+          Atualizar Analiticos
         </button>
       </div>
     </div>
@@ -1654,9 +1654,9 @@ function OptimizeDialog({
       const res = await aiFlowApi.optimizeChain(usageType, strategy);
       setResult(res);
     } catch (err: any) {
-      const msg = err?.message || 'Failed to optimize';
+      const msg = err?.message || 'Falha ao otimizar';
       if (msg.includes('No chain configured')) {
-        setError('No chain configured for this operation. Add models to the chain first.');
+        setError('Nenhuma cadeia configurada para esta operacao. Adicione modelos a cadeia primeiro.');
       } else {
         setError(msg);
       }
@@ -1679,9 +1679,9 @@ function OptimizeDialog({
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
       <div className="bg-white rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto">
         <div className="p-5 border-b">
-          <h3 className="text-lg font-semibold text-gray-900">Optimize Chain Order</h3>
+          <h3 className="text-lg font-semibold text-gray-900">Otimizar Ordem da Cadeia</h3>
           <p className="text-sm text-gray-500 mt-1">
-            Analyze model performance and get a recommended order for{' '}
+            Analisar desempenho dos modelos e obter uma ordem recomendada para{' '}
             {USAGE_TYPE_OPTIONS.find(o => o.value === usageType)?.label || usageType}
           </p>
         </div>
@@ -1689,13 +1689,13 @@ function OptimizeDialog({
         <div className="p-5 space-y-4">
           {/* Strategy selector */}
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Strategy</label>
+            <label className="text-sm font-medium text-gray-700 block mb-2">Estrategia</label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { value: 'balanced', label: 'Balanced', desc: 'Best overall' },
-                { value: 'reliability', label: 'Reliability', desc: 'Highest success rate' },
-                { value: 'cost', label: 'Cost', desc: 'Lowest cost first' },
-                { value: 'quality', label: 'Quality', desc: 'Best models first' },
+                { value: 'balanced', label: 'Equilibrado', desc: 'Melhor geral' },
+                { value: 'reliability', label: 'Confiabilidade', desc: 'Maior taxa de sucesso' },
+                { value: 'cost', label: 'Custo', desc: 'Menor custo primeiro' },
+                { value: 'quality', label: 'Qualidade', desc: 'Melhores modelos primeiro' },
               ].map((s) => (
                 <button
                   key={s.value}
@@ -1729,10 +1729,10 @@ function OptimizeDialog({
               {loading ? (
                 <div className="flex items-center justify-center gap-2">
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white" />
-                  Analyzing...
+                  Analisando...
                 </div>
               ) : (
-                'Analyze & Recommend'
+                'Analisar e Recomendar'
               )}
             </Button>
           )}
@@ -1740,21 +1740,21 @@ function OptimizeDialog({
           {/* Result */}
           {result && (
             <div className="space-y-3">
-              <h4 className="text-sm font-medium text-gray-900">Recommended Order</h4>
+              <h4 className="text-sm font-medium text-gray-900">Ordem Recomendada</h4>
               <div className="space-y-1.5">
                 {result.models.map((m: AIFlowOptimizeModelScore, i: number) => (
                   <div key={m.model_id} className="flex items-center gap-2 p-2 rounded-md bg-gray-50 border text-xs">
                     <span className="font-bold text-gray-500 w-5">{i + 1}</span>
                     <ProviderIcon provider={m.provider} size="w-4 h-4" />
                     <span className="flex-1 font-medium">{m.model_name}</span>
-                    <span className="text-gray-500">Score: {m.score.toFixed(2)}</span>
+                    <span className="text-gray-500">Pontuacao: {m.score.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
 
               {result.estimated_improvement && Object.keys(result.estimated_improvement).length > 0 && (
                 <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-xs text-green-700">
-                  <div className="font-medium mb-1">Estimated Improvement</div>
+                  <div className="font-medium mb-1">Melhoria Estimada</div>
                   {Object.entries(result.estimated_improvement).map(([k, v]) => (
                     <div key={k}>{k}: {v}</div>
                   ))}
@@ -1763,16 +1763,16 @@ function OptimizeDialog({
 
               <div className="flex gap-2">
                 <Button variant="primary" onClick={() => onApply(result.recommended_order)} className="flex-1">
-                  Apply Recommended Order
+                  Aplicar Ordem Recomendada
                 </Button>
-                <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                <Button variant="ghost" onClick={onClose}>Cancelar</Button>
               </div>
             </div>
           )}
 
           {!result && (
             <div className="flex justify-end">
-              <Button variant="ghost" onClick={onClose}>Cancel</Button>
+              <Button variant="ghost" onClick={onClose}>Cancelar</Button>
             </div>
           )}
         </div>
@@ -2150,7 +2150,7 @@ export default function AIFlowPage() {
       if (workingChain.length === 0 && workingUtilityNodes.length === 0 && currentChain) {
         // Chain was emptied — delete it
         await aiFlowApi.deleteChain(selectedUsageType);
-        showSuccess('Flow chain deleted');
+        showSuccess('Cadeia de fluxo excluida');
       } else if (workingChain.length > 0 || workingUtilityNodes.length > 0) {
         await aiFlowApi.upsertChain(selectedUsageType, {
           chain: workingChain,
@@ -2158,13 +2158,13 @@ export default function AIFlowPage() {
           utility_nodes: workingUtilityNodes.length > 0 ? workingUtilityNodes : null,
           is_active: true,
         } as any);
-        showSuccess('Flow saved');
+        showSuccess('Fluxo salvo');
       }
       setPositionsChanged(false);
       await loadData();
     } catch (error) {
       console.error('Failed to save chain:', error);
-      showError('Failed to save flow chain');
+      showError('Falha ao salvar cadeia de fluxo');
     } finally {
       setSaving(false);
     }
@@ -2176,14 +2176,14 @@ export default function AIFlowPage() {
     if (template.utility_nodes && template.utility_nodes.length > 0) {
       setWorkingUtilityNodes(template.utility_nodes);
     }
-    showSuccess(`Template "${template.name}" applied (unsaved)`);
+    showSuccess(`Template "${template.name}" aplicado (nao salvo)`);
   };
 
   // PROMPT #124 - Apply optimize result
   const handleApplyOptimize = (order: string[]) => {
     setWorkingChain(order);
     setShowOptimize(false);
-    showSuccess('Optimized order applied (unsaved)');
+    showSuccess('Ordem otimizada aplicada (nao salvo)');
   };
 
   if (loading) {
@@ -2212,7 +2212,7 @@ export default function AIFlowPage() {
         {/* Controls bar */}
         <div className="flex items-center justify-between px-3 py-2 bg-white border rounded-lg mb-3 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-700">Operation:</label>
+            <label className="text-sm font-medium text-gray-700">Operacao:</label>
             <select
               value={selectedUsageType}
               onChange={(e) => setSelectedUsageType(e.target.value)}
@@ -2227,12 +2227,12 @@ export default function AIFlowPage() {
 
             {(workingChain.length > 0 || workingUtilityNodes.length > 0) && (
               <span className="text-xs text-gray-500">
-                {workingChain.length} model{workingChain.length !== 1 ? 's' : ''}
-                {workingUtilityNodes.length > 0 && ` + ${workingUtilityNodes.length} node${workingUtilityNodes.length !== 1 ? 's' : ''}`}
+                {workingChain.length} modelo{workingChain.length !== 1 ? 's' : ''}
+                {workingUtilityNodes.length > 0 && ` + ${workingUtilityNodes.length} no${workingUtilityNodes.length !== 1 ? 's' : ''}`}
               </span>
             )}
             {hasUnsavedChanges && (
-              <span className="text-xs text-amber-600 font-medium">Unsaved changes</span>
+              <span className="text-xs text-amber-600 font-medium">Alteracoes nao salvas</span>
             )}
           </div>
 
@@ -2262,7 +2262,7 @@ export default function AIFlowPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                 </svg>
               )}
-              Save
+              Salvar
             </Button>
           </div>
         </div>
@@ -2308,9 +2308,9 @@ export default function AIFlowPage() {
                 <svg className="w-16 h-16 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                <p className="text-lg font-medium">No flow configured</p>
+                <p className="text-lg font-medium">Nenhum fluxo configurado</p>
                 <p className="text-sm mt-1">
-                  Add models from the sidebar to build a fallback chain for {USAGE_TYPE_OPTIONS.find(o => o.value === selectedUsageType)?.label || selectedUsageType}
+                  Adicione modelos pela barra lateral para construir uma cadeia de fallback para {USAGE_TYPE_OPTIONS.find(o => o.value === selectedUsageType)?.label || selectedUsageType}
                 </p>
               </div>
             )}
@@ -2320,7 +2320,7 @@ export default function AIFlowPage() {
           <div className="w-72 border rounded-lg bg-white overflow-hidden flex flex-col flex-shrink-0">
             {/* PROMPT #124 - Quick Actions */}
             <div className="border-b p-3">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Quick Actions</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Acoes Rapidas</h3>
               <div className="space-y-1.5">
                 <button
                   onClick={() => setShowOptimize(true)}
@@ -2330,12 +2330,12 @@ export default function AIFlowPage() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                   </svg>
-                  Optimize Order
+                  Otimizar Ordem
                 </button>
 
                 {/* Templates */}
                 {templatesLoading ? (
-                  <div className="text-xs text-gray-400 text-center py-1">Loading templates...</div>
+                  <div className="text-xs text-gray-400 text-center py-1">Carregando templates...</div>
                 ) : templates.length > 0 ? (
                   templates.map((tmpl) => (
                     <button
@@ -2353,16 +2353,16 @@ export default function AIFlowPage() {
                     </button>
                   ))
                 ) : (
-                  <div className="text-[10px] text-gray-400 italic">No templates for this operation</div>
+                  <div className="text-[10px] text-gray-400 italic">Nenhum template para esta operacao</div>
                 )}
               </div>
             </div>
 
             {/* Chain order */}
             <div className="border-b p-3">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Chain Order</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Ordem da Cadeia</h3>
               {workingChain.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">No models added yet</p>
+                <p className="text-xs text-gray-400 italic">Nenhum modelo adicionado ainda</p>
               ) : (
                 <div className="space-y-1.5">
                   {workingChain.map((id, index) => {
@@ -2412,9 +2412,9 @@ export default function AIFlowPage() {
             <div className="flex-1 overflow-y-auto">
               {/* Available models */}
               <div className="border-b p-3">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Available Models</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">Modelos Disponiveis</h3>
                 {availableModels.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">All active models are in the chain</p>
+                  <p className="text-xs text-gray-400 italic">Todos os modelos ativos estao na cadeia</p>
                 ) : (
                   <div className="space-y-1.5">
                     {availableModels.map((model) => (
@@ -2433,7 +2433,7 @@ export default function AIFlowPage() {
                           className="text-xs px-2 py-1 h-auto"
                           onClick={() => handleAddToChain(model.id)}
                         >
-                          + Add
+                          + Adicionar
                         </Button>
                       </div>
                     ))}
@@ -2443,10 +2443,10 @@ export default function AIFlowPage() {
 
               {/* PROMPT #204 - Utility Nodes */}
               <div className="p-3">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Flow Nodes</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">Nos do Fluxo</h3>
                 {workingUtilityNodes.length > 0 && (
                   <div className="mb-3 space-y-1">
-                    <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Active</div>
+                    <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Ativos</div>
                     {workingUtilityNodes.map((uNode) => (
                       <div key={uNode.id} className={`flex items-center gap-2 p-2 rounded-md border text-xs ${UTILITY_NODE_BG[uNode.type] || 'bg-gray-50 border-gray-200'}`}>
                         <UtilityNodeIcon type={uNode.type} size="w-4 h-4" />
@@ -2463,7 +2463,7 @@ export default function AIFlowPage() {
                     ))}
                   </div>
                 )}
-                <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Add Node</div>
+                <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Adicionar No</div>
                 <div className="space-y-1">
                   {utilityNodeTypes.map((nodeType) => (
                     <button
@@ -2489,7 +2489,7 @@ export default function AIFlowPage() {
         {showAnalytics && (
           <div className="mt-3 border rounded-lg bg-white p-4 flex-shrink-0 max-h-[300px] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900">Chain Analytics</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Analiticos da Cadeia</h3>
               <button onClick={() => setShowAnalytics(false)} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -2510,10 +2510,10 @@ export default function AIFlowPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span>
-            Models are tried in order. If one fails, the next is used automatically.
-            Add utility nodes (Cache, RAG, Validator, etc.) for pre/post-processing.
-            Metrics refresh every 30s.
-            {' '}<a href="/ai-models" className="underline font-medium">Manage models</a>
+            Os modelos sao testados em ordem. Se um falhar, o proximo e usado automaticamente.
+            Adicione nos utilitarios (Cache, RAG, Validador, etc.) para pre/pos-processamento.
+            Metricas atualizam a cada 30s.
+            {' '}<a href="/ai-models" className="underline font-medium">Gerenciar modelos</a>
           </span>
         </div>
       </div>

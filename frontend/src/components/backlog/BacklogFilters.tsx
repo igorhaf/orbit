@@ -19,6 +19,32 @@ interface BacklogFiltersProps {
   availableLabels?: string[];  // PROMPT #123 - Available labels from backlog items
 }
 
+// Display labels in pt-BR for enum values
+const itemTypeLabels: Record<ItemType, string> = {
+  [ItemType.EPIC]: 'Epico',
+  [ItemType.STORY]: 'Historia',
+  [ItemType.TASK]: 'Tarefa',
+  [ItemType.SUBTASK]: 'Subtarefa',
+  [ItemType.BUG]: 'Bug',
+};
+
+const priorityLabels: Record<PriorityLevel, string> = {
+  [PriorityLevel.CRITICAL]: 'Critico',
+  [PriorityLevel.HIGH]: 'Alto',
+  [PriorityLevel.MEDIUM]: 'Medio',
+  [PriorityLevel.LOW]: 'Baixo',
+  [PriorityLevel.TRIVIAL]: 'Trivial',
+};
+
+const statusLabels: Record<TaskStatus, string> = {
+  [TaskStatus.BACKLOG]: 'Backlog',
+  [TaskStatus.TODO]: 'A Fazer',
+  [TaskStatus.IN_PROGRESS]: 'Em Progresso',
+  [TaskStatus.REVIEW]: 'Revisao',
+  [TaskStatus.DONE]: 'Concluido',
+  [TaskStatus.BLOCKED]: 'Bloqueado',
+};
+
 export default function BacklogFilters({
   filters,
   onFiltersChange,
@@ -149,7 +175,7 @@ export default function BacklogFilters({
           {/* Header */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold text-gray-900">Filters</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Filtros</h3>
               {hasActiveFilters() && (
                 <span className="px-2 py-0.5 text-xs font-medium bg-blue-100 text-blue-700 rounded-full">
                   {getActiveFilterCount()}
@@ -163,14 +189,14 @@ export default function BacklogFilters({
                 onClick={onClearFilters}
                 className="text-xs text-blue-600 hover:text-blue-700"
               >
-                Clear All
+                Limpar Tudo
               </Button>
             )}
           </div>
 
           {/* Search */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Search</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Buscar</label>
             <div className="relative">
               <svg
                 className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400"
@@ -182,7 +208,7 @@ export default function BacklogFilters({
               </svg>
               <input
                 type="text"
-                placeholder="Search items..."
+                placeholder="Buscar itens..."
                 value={filters.search || ''}
                 onChange={(e) => onFiltersChange({ ...filters, search: e.target.value })}
                 className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -202,7 +228,7 @@ export default function BacklogFilters({
 
           {/* PROMPT #123 - Labels Filter */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Labels</label>
+            <label className="block text-xs font-medium text-gray-700 mb-1">Etiquetas</label>
             {/* Selected Labels */}
             {filters.labels && filters.labels.length > 0 && (
               <div className="flex flex-wrap gap-1 mb-2">
@@ -236,7 +262,7 @@ export default function BacklogFilters({
               </svg>
               <input
                 type="text"
-                placeholder="Add label..."
+                placeholder="Adicionar etiqueta..."
                 value={labelInput}
                 onChange={(e) => {
                   setLabelInput(e.target.value);
@@ -293,7 +319,7 @@ export default function BacklogFilters({
                 })}
                 {availableLabels.length > 5 && (
                   <span className="px-2 py-0.5 text-xs text-gray-500">
-                    +{availableLabels.length - 5} more
+                    +{availableLabels.length - 5} mais
                   </span>
                 )}
               </div>
@@ -302,7 +328,7 @@ export default function BacklogFilters({
 
           {/* Item Type */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-2">Item Type</label>
+            <label className="block text-xs font-medium text-gray-700 mb-2">Tipo de Item</label>
             <div className="space-y-1">
               {Object.values(ItemType).map((type) => {
                 const isSelected = filters.item_type?.includes(type) || false;
@@ -320,7 +346,7 @@ export default function BacklogFilters({
                       className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                     />
                     <span className="text-gray-600">{getItemTypeIcon(type)}</span>
-                    <span className="text-sm text-gray-700 capitalize">{type}</span>
+                    <span className="text-sm text-gray-700">{itemTypeLabels[type]}</span>
                   </label>
                 );
               })}
@@ -329,7 +355,7 @@ export default function BacklogFilters({
 
           {/* Priority */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-2">Priority</label>
+            <label className="block text-xs font-medium text-gray-700 mb-2">Prioridade</label>
             <div className="space-y-1">
               {Object.values(PriorityLevel).map((priority) => {
                 const isSelected = filters.priority?.includes(priority) || false;
@@ -354,8 +380,8 @@ export default function BacklogFilters({
                       onChange={() => togglePriority(priority)}
                       className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                     />
-                    <span className={`px-2 py-0.5 text-xs font-medium rounded ${colorClass} capitalize`}>
-                      {priority}
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded ${colorClass}`}>
+                      {priorityLabels[priority]}
                     </span>
                   </label>
                 );
@@ -365,7 +391,7 @@ export default function BacklogFilters({
 
           {/* Status */}
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-2">Status</label>
+            <label className="block text-xs font-medium text-gray-700 mb-2">Estado</label>
             <div className="space-y-1">
               {Object.values(TaskStatus).map((status) => {
                 const isSelected = filters.status?.includes(status) || false;
@@ -384,8 +410,8 @@ export default function BacklogFilters({
                       className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
                     />
                     <span className={`w-5 text-center ${color} rounded`}>{icon}</span>
-                    <span className="text-sm text-gray-700 capitalize">
-                      {status.replace('_', ' ')}
+                    <span className="text-sm text-gray-700">
+                      {statusLabels[status]}
                     </span>
                   </label>
                 );

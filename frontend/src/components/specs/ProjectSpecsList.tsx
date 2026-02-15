@@ -127,11 +127,11 @@ export function ProjectSpecsList({ projectId }: Props) {
       if (response.ok) {
         loadSpecs();
       } else {
-        showError(data.detail || 'Failed to discover specs');
+        showError(data.detail || 'Falha ao descobrir specs');
       }
     } catch (error) {
       console.error('Failed to discover specs:', error);
-      showError('Failed to discover specs. Please try again.');
+      showError('Falha ao descobrir specs. Tente novamente.');
     } finally {
       setDiscovering(false);
     }
@@ -189,7 +189,7 @@ export function ProjectSpecsList({ projectId }: Props) {
       loadSpecs();
     } catch (error) {
       console.error('Failed to create spec:', error);
-      showError('Failed to create spec. Please try again.');
+      showError('Falha ao criar spec. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -211,7 +211,7 @@ export function ProjectSpecsList({ projectId }: Props) {
       loadSpecs();
     } catch (error) {
       console.error('Failed to update spec:', error);
-      showError('Failed to update spec. Please try again.');
+      showError('Falha ao atualizar spec. Tente novamente.');
     } finally {
       setIsSubmitting(false);
     }
@@ -318,7 +318,7 @@ export function ProjectSpecsList({ projectId }: Props) {
         <textarea
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           rows={2}
-          placeholder="Brief description of this specification"
+          placeholder="Breve descricao desta especificacao"
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
         />
@@ -330,7 +330,7 @@ export function ProjectSpecsList({ projectId }: Props) {
         <textarea
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
           rows={8}
-          placeholder="Enter the specification content/template here"
+          placeholder="Insira o conteudo/template da especificacao aqui"
           value={formData.content}
           onChange={(e) => setFormData({ ...formData, content: e.target.value })}
           required
@@ -395,10 +395,10 @@ export function ProjectSpecsList({ projectId }: Props) {
             size="sm"
             onClick={handleDiscoverSpecs}
             disabled={discovering || specs.length >= 50}
-            title={specs.length >= 50 ? 'Cap of 50 specs reached' : 'Discover patterns from codebase using AI'}
+            title={specs.length >= 50 ? 'Limite de 50 specs atingido' : 'Descobrir padroes do codebase usando IA'}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${discovering ? 'animate-spin' : ''}`} />
-            {discovering ? 'Discovering...' : 'Discover Specs'}
+            {discovering ? 'Descobrindo...' : 'Descobrir Specs'}
           </Button>
           <Button variant="primary" size="sm" onClick={handleOpenCreate}>
             <Plus className="w-4 h-4 mr-2" />
@@ -573,7 +573,7 @@ export function ProjectSpecsList({ projectId }: Props) {
                   Cancel
                 </Button>
                 <Button type="submit" variant="primary" disabled={isSubmitting}>
-                  {isSubmitting ? 'Creating...' : 'Create Spec'}
+                  {isSubmitting ? 'Criando...' : 'Criar Spec'}
                 </Button>
               </div>
             </form>
@@ -593,7 +593,7 @@ export function ProjectSpecsList({ projectId }: Props) {
                   Cancel
                 </Button>
                 <Button type="submit" variant="primary" disabled={isSubmitting}>
-                  {isSubmitting ? 'Updating...' : 'Update Spec'}
+                  {isSubmitting ? 'Atualizando...' : 'Atualizar Spec'}
                 </Button>
               </div>
             </form>
@@ -629,7 +629,7 @@ export function ProjectSpecsList({ projectId }: Props) {
                 Cancel
               </Button>
               <Button variant="danger" onClick={confirmDelete} disabled={isDeleting}>
-                {isDeleting ? 'Deleting...' : 'Yes, Delete Spec'}
+                {isDeleting ? 'Excluindo...' : 'Sim, Excluir Spec'}
               </Button>
             </div>
           </div>

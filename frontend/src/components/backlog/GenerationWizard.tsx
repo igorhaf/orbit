@@ -48,14 +48,14 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
       setInterviews(Array.isArray(interviewsData.data) ? interviewsData.data : interviewsData);
     } catch (err) {
       console.error('Error fetching data:', err);
-      setError('Failed to load projects and interviews');
+      setError('Falha ao carregar projetos e entrevistas');
     }
   };
 
   // Step 1: Select Interview
   const handleSelectInterview = () => {
     if (!selectedProjectId || !selectedInterviewId) {
-      setError('Please select both project and interview');
+      setError('Por favor, selecione o projeto e a entrevista');
       return;
     }
     setError('');
@@ -73,7 +73,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
       setCurrentStep('generate-epic');
     } catch (err: any) {
       console.error('Error generating epic:', err);
-      setError(err.message || 'Failed to generate Epic');
+      setError(err.message || 'Falha ao gerar Epic');
     } finally {
       setLoading(false);
     }
@@ -95,7 +95,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
       setCurrentStep('generate-stories');
     } catch (err: any) {
       console.error('Error approving epic:', err);
-      setError(err.message || 'Failed to approve Epic');
+      setError(err.message || 'Falha ao aprovar Epic');
     } finally {
       setLoading(false);
     }
@@ -112,7 +112,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
       setCurrentStep('generate-stories');
     } catch (err: any) {
       console.error('Error generating stories:', err);
-      setError(err.message || 'Failed to generate Stories');
+      setError(err.message || 'Falha ao gerar Stories');
     } finally {
       setLoading(false);
     }
@@ -131,7 +131,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
       }
     } catch (err: any) {
       console.error('Error approving stories:', err);
-      setError(err.message || 'Failed to approve Stories');
+      setError(err.message || 'Falha ao aprovar Stories');
     } finally {
       setLoading(false);
     }
@@ -150,9 +150,9 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b">
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">AI Backlog Generation Wizard</h2>
+            <h2 className="text-2xl font-bold text-gray-900">Assistente de Geração de Backlog com IA</h2>
             <p className="text-sm text-gray-500 mt-1">
-              Generate Epics and Stories from your Interview insights
+              Gere Epics e Stories a partir dos insights da sua Entrevista
             </p>
           </div>
           <button
@@ -177,7 +177,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                 {getCurrentStepNumber() > 1 ? '✓' : '1'}
               </div>
               <span className={`ml-2 text-sm font-medium ${getCurrentStepNumber() >= 1 ? 'text-gray-900' : 'text-gray-500'}`}>
-                Select Interview
+                Selecionar Entrevista
               </span>
             </div>
 
@@ -193,7 +193,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                 {getCurrentStepNumber() > 2 ? '✓' : '2'}
               </div>
               <span className={`ml-2 text-sm font-medium ${getCurrentStepNumber() >= 2 ? 'text-gray-900' : 'text-gray-500'}`}>
-                Generate Epic
+                Gerar Epic
               </span>
             </div>
 
@@ -209,7 +209,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                 {getCurrentStepNumber() > 3 ? '✓' : '3'}
               </div>
               <span className={`ml-2 text-sm font-medium ${getCurrentStepNumber() >= 3 ? 'text-gray-900' : 'text-gray-500'}`}>
-                Generate Stories
+                Gerar Stories
               </span>
             </div>
 
@@ -225,7 +225,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                 {getCurrentStepNumber() >= 4 ? '✓' : '4'}
               </div>
               <span className={`ml-2 text-sm font-medium ${getCurrentStepNumber() >= 4 ? 'text-gray-900' : 'text-gray-500'}`}>
-                Complete
+                Concluído
               </span>
             </div>
           </div>
@@ -244,21 +244,21 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
           {currentStep === 'select-interview' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Select Project and Interview</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Selecionar Projeto e Entrevista</h3>
                 <p className="text-sm text-gray-600 mb-6">
-                  Choose the Interview that contains your project requirements. The AI will analyze the conversation
-                  to generate an Epic with User Stories.
+                  Escolha a Entrevista que contém os requisitos do seu projeto. A IA analisará a conversa
+                  para gerar um Epic com User Stories.
                 </p>
 
                 {/* Project Selector */}
                 <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Project</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Projeto</label>
                   <select
                     value={selectedProjectId}
                     onChange={(e) => setSelectedProjectId(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Select a project...</option>
+                    <option value="">Selecione um projeto...</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name}
@@ -269,23 +269,23 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
 
                 {/* Interview Selector */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Interview</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Entrevista</label>
                   <select
                     value={selectedInterviewId}
                     onChange={(e) => setSelectedInterviewId(e.target.value)}
                     className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">Select an interview...</option>
+                    <option value="">Selecione uma entrevista...</option>
                     {interviews
                       .filter(i => i.status === 'completed')
                       .map((interview) => (
                         <option key={interview.id} value={interview.id}>
-                          Interview {interview.id.substring(0, 8)} - {new Date(interview.created_at).toLocaleDateString()}
+                          Entrevista {interview.id.substring(0, 8)} - {new Date(interview.created_at).toLocaleDateString()}
                         </option>
                       ))}
                   </select>
                   <p className="text-xs text-gray-500 mt-1">
-                    Only completed interviews are shown
+                    Apenas entrevistas concluídas são exibidas
                   </p>
                 </div>
               </div>
@@ -296,7 +296,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
           {currentStep === 'generate-epic' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Generate Epic</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Gerar Epic</h3>
 
                 {!epicSuggestion && (
                   <div className="text-center py-12">
@@ -306,7 +306,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                       </svg>
                     </div>
                     <p className="text-gray-600 mb-6">
-                      Click the button below to let AI analyze your Interview and generate an Epic suggestion.
+                      Clique no botão abaixo para a IA analisar sua Entrevista e gerar uma sugestão de Epic.
                     </p>
                     <Button
                       variant="primary"
@@ -317,7 +317,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                       <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      Generate Epic with AI
+                      Gerar Epic com IA
                     </Button>
                   </div>
                 )}
@@ -326,9 +326,9 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                   <Card variant="bordered">
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle>AI-Generated Epic</CardTitle>
+                        <CardTitle>Epic Gerado por IA</CardTitle>
                         <span className="px-3 py-1 text-xs rounded-full bg-purple-100 text-purple-700 border border-purple-200">
-                          AI Suggestion
+                          Sugestão da IA
                         </span>
                       </div>
                     </CardHeader>
@@ -336,7 +336,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                       <div className="space-y-4">
                         {/* Title */}
                         <div>
-                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Title</label>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Título</label>
                           <Input
                             value={epicSuggestion.title}
                             onChange={(e) => setEpicSuggestion({ ...epicSuggestion, title: e.target.value })}
@@ -346,7 +346,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
 
                         {/* Description */}
                         <div>
-                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Description</label>
+                          <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Descrição</label>
                           <textarea
                             value={epicSuggestion.description}
                             onChange={(e) => setEpicSuggestion({ ...epicSuggestion, description: e.target.value })}
@@ -358,13 +358,13 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                         {/* Metadata Grid */}
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Priority</label>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Prioridade</label>
                             <span className="inline-block px-3 py-1 text-sm rounded border bg-yellow-50 text-yellow-800 border-yellow-200">
                               {epicSuggestion.priority}
                             </span>
                           </div>
                           <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Story Points</label>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">Pontos de História</label>
                             <span className="inline-block px-3 py-1 text-sm rounded border bg-purple-50 text-purple-700 border-purple-200">
                               {epicSuggestion.story_points} pts
                             </span>
@@ -374,7 +374,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                         {/* Acceptance Criteria */}
                         {epicSuggestion.acceptance_criteria && epicSuggestion.acceptance_criteria.length > 0 && (
                           <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Acceptance Criteria</label>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Critérios de Aceitação</label>
                             <ul className="space-y-2">
                               {epicSuggestion.acceptance_criteria.map((criterion, idx) => (
                                 <li key={idx} className="flex items-start gap-2 text-sm text-gray-700">
@@ -389,7 +389,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                         {/* Interview Insights */}
                         {epicSuggestion.interview_insights && Object.keys(epicSuggestion.interview_insights).length > 0 && (
                           <div>
-                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Interview Insights</label>
+                            <label className="block text-xs font-semibold text-gray-500 uppercase mb-2">Insights da Entrevista</label>
                             <div className="bg-green-50 border border-green-200 rounded p-3 text-xs">
                               <pre className="whitespace-pre-wrap">
                                 {JSON.stringify(epicSuggestion.interview_insights, null, 2)}
@@ -409,7 +409,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
           {currentStep === 'generate-stories' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Generate User Stories</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Gerar User Stories</h3>
 
                 {storiesSuggestions.length === 0 && (
                   <div className="text-center py-12">
@@ -419,7 +419,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                       </svg>
                     </div>
                     <p className="text-gray-600 mb-6">
-                      Click the button below to decompose the Epic into User Stories using AI.
+                      Clique no botão abaixo para decompor o Epic em User Stories usando IA.
                     </p>
                     <Button
                       variant="primary"
@@ -430,7 +430,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                       <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                       </svg>
-                      Generate Stories with AI
+                      Gerar Stories com IA
                     </Button>
                   </div>
                 )}
@@ -438,7 +438,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                 {storiesSuggestions.length > 0 && (
                   <div className="space-y-4">
                     <p className="text-sm text-gray-600 mb-4">
-                      Review the AI-generated User Stories below. You can edit them before approval.
+                      Revise as User Stories geradas pela IA abaixo. Você pode editá-las antes da aprovação.
                     </p>
 
                     {storiesSuggestions.map((story, idx) => (
@@ -447,7 +447,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                           <div className="flex items-center justify-between">
                             <CardTitle className="text-base">Story {idx + 1}</CardTitle>
                             <span className="px-2 py-1 text-xs rounded-full bg-purple-100 text-purple-700">
-                              AI
+                              IA
                             </span>
                           </div>
                         </CardHeader>
@@ -504,9 +504,9 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                   </svg>
                 </div>
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 mb-2">Backlog Generated Successfully!</h3>
+              <h3 className="text-2xl font-bold text-gray-900 mb-2">Backlog Gerado com Sucesso!</h3>
               <p className="text-gray-600 mb-8">
-                Your Epic and User Stories have been created and added to the backlog.
+                Seu Epic e User Stories foram criados e adicionados ao backlog.
               </p>
               <div className="space-y-4 max-w-md mx-auto text-left">
                 <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-lg">
@@ -514,8 +514,8 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-blue-900">1 Epic Created</p>
-                    <p className="text-xs text-blue-700 mt-1">Parent for all user stories</p>
+                    <p className="text-sm font-medium text-blue-900">1 Epic Criado</p>
+                    <p className="text-xs text-blue-700 mt-1">Pai de todas as user stories</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3 p-4 bg-green-50 rounded-lg">
@@ -523,8 +523,8 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <div className="flex-1">
-                    <p className="text-sm font-medium text-green-900">{storiesSuggestions.length} User Stories Created</p>
-                    <p className="text-xs text-green-700 mt-1">Ready for planning and estimation</p>
+                    <p className="text-sm font-medium text-green-900">{storiesSuggestions.length} User Stories Criadas</p>
+                    <p className="text-xs text-green-700 mt-1">Prontas para planejamento e estimativa</p>
                   </div>
                 </div>
               </div>
@@ -535,7 +535,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
         {/* Footer */}
         <div className="flex items-center justify-between p-6 border-t bg-gray-50">
           <Button variant="ghost" onClick={onClose}>
-            {currentStep === 'complete' ? 'Close' : 'Cancel'}
+            {currentStep === 'complete' ? 'Fechar' : 'Cancelar'}
           </Button>
 
           <div className="flex gap-2">
@@ -545,7 +545,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                 onClick={handleSelectInterview}
                 disabled={!selectedProjectId || !selectedInterviewId}
               >
-                Next Step
+                Próximo Passo
               </Button>
             )}
 
@@ -555,7 +555,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                 onClick={handleApproveEpic}
                 isLoading={loading}
               >
-                Approve & Generate Stories
+                Aprovar e Gerar Stories
               </Button>
             )}
 
@@ -565,7 +565,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                 onClick={handleApproveStories}
                 isLoading={loading}
               >
-                Approve Stories
+                Aprovar Stories
               </Button>
             )}
 
@@ -577,7 +577,7 @@ export default function GenerationWizard({ projectId: initialProjectId, onComple
                   onClose();
                 }}
               >
-                View Backlog
+                Ver Backlog
               </Button>
             )}
           </div>

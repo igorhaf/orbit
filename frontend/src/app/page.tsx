@@ -142,7 +142,7 @@ export default function Home() {
   };
 
   const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('en-US').format(num);
+    return new Intl.NumberFormat('pt-BR').format(num);
   };
 
   const formatDate = (dateStr: string) => {
@@ -180,9 +180,9 @@ export default function Home() {
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Painel</h1>
             <p className="mt-1 text-sm text-gray-500">
-              AI execution costs, cache performance, and token usage analytics
+              Custos de execucao IA, desempenho de cache e analiticos de uso de tokens
             </p>
           </div>
 
@@ -192,14 +192,14 @@ export default function Home() {
               onChange={(e) => setDateRange(Number(e.target.value))}
               className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
             >
-              <option value={1}>Last 24 hours</option>
-              <option value={7}>Last 7 days</option>
-              <option value={30}>Last 30 days</option>
-              <option value={90}>Last 90 days</option>
+              <option value={1}>Ultimas 24 horas</option>
+              <option value={7}>Ultimos 7 dias</option>
+              <option value={30}>Ultimos 30 dias</option>
+              <option value={90}>Ultimos 90 dias</option>
             </select>
 
             <Button onClick={() => { fetchAnalytics(); fetchCacheStats(); }}>
-              Refresh
+              Atualizar
             </Button>
           </div>
         </div>
@@ -210,31 +210,31 @@ export default function Home() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               <Card>
                 <div className="p-6">
-                  <div className="text-sm font-medium text-gray-500">Total Cost</div>
+                  <div className="text-sm font-medium text-gray-500">Custo Total</div>
                   <div className="mt-2 text-3xl font-bold text-gray-900">
                     {formatCost(analytics.summary.total_cost)}
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
-                    {formatNumber(analytics.summary.total_executions)} executions
+                    {formatNumber(analytics.summary.total_executions)} execucoes
                   </div>
                 </div>
               </Card>
 
               <Card>
                 <div className="p-6">
-                  <div className="text-sm font-medium text-gray-500">Avg Cost/Execution</div>
+                  <div className="text-sm font-medium text-gray-500">Custo Medio/Execucao</div>
                   <div className="mt-2 text-3xl font-bold text-gray-900">
                     {formatCost(analytics.summary.avg_cost_per_execution)}
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
-                    Per AI call
+                    Por chamada de IA
                   </div>
                 </div>
               </Card>
 
               <Card>
                 <div className="p-6">
-                  <div className="text-sm font-medium text-gray-500">Total Tokens</div>
+                  <div className="text-sm font-medium text-gray-500">Tokens Totais</div>
                   <div className="mt-2 text-3xl font-bold text-gray-900">
                     {formatNumber(analytics.summary.total_tokens)}
                   </div>
@@ -246,12 +246,12 @@ export default function Home() {
 
               <Card>
                 <div className="p-6">
-                  <div className="text-sm font-medium text-gray-500">Total Executions</div>
+                  <div className="text-sm font-medium text-gray-500">Total de Execucoes</div>
                   <div className="mt-2 text-3xl font-bold text-gray-900">
                     {formatNumber(analytics.summary.total_executions)}
                   </div>
                   <div className="mt-1 text-xs text-gray-500">
-                    AI calls made
+                    Chamadas de IA realizadas
                   </div>
                 </div>
               </Card>
@@ -262,26 +262,26 @@ export default function Home() {
               <Card>
                 <div className="p-6">
                   <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">Cache Performance</h2>
+                    <h2 className="text-lg font-semibold text-gray-900">Desempenho do Cache</h2>
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                       cacheStats.enabled
                         ? 'bg-green-100 text-green-800'
                         : 'bg-gray-100 text-gray-800'
                     }`}>
-                      {cacheStats.enabled ? `✓ ${cacheStats.backend.toUpperCase()}` : '✗ Disabled'}
+                      {cacheStats.enabled ? `✓ ${cacheStats.backend.toUpperCase()}` : '✗ Desabilitado'}
                     </span>
                   </div>
 
                   {!cacheStats.enabled ? (
                     <div className="text-sm text-gray-500">
-                      {cacheStats.message || 'Cache is not enabled'}
+                      {cacheStats.message || 'Cache nao esta habilitado'}
                     </div>
                   ) : cacheStats.statistics && (
                     <>
                       {/* Overall Cache Stats */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                         <div>
-                          <div className="text-sm text-gray-500">Overall Hit Rate</div>
+                          <div className="text-sm text-gray-500">Taxa de Acerto Geral</div>
                           <div className="text-2xl font-bold text-green-600">
                             {(cacheStats.statistics.total.hit_rate * 100).toFixed(1)}%
                           </div>
@@ -290,44 +290,44 @@ export default function Home() {
                           </div>
                         </div>
                         <div>
-                          <div className="text-sm text-gray-500">Cost Saved</div>
+                          <div className="text-sm text-gray-500">Custo Economizado</div>
                           <div className="text-2xl font-bold text-blue-600">
                             {formatCost(cacheStats.statistics.total.estimated_cost_saved)}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            From cached responses
+                            De respostas em cache
                           </div>
                         </div>
                         <div>
-                          <div className="text-sm text-gray-500">Tokens Saved</div>
+                          <div className="text-sm text-gray-500">Tokens Economizados</div>
                           <div className="text-xl font-semibold text-purple-600">
                             {formatNumber(cacheStats.statistics.total.tokens_saved)}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Not sent to AI
+                            Nao enviados para IA
                           </div>
                         </div>
                         <div>
-                          <div className="text-sm text-gray-500">Cache Hits</div>
+                          <div className="text-sm text-gray-500">Acertos do Cache</div>
                           <div className="text-xl font-semibold text-gray-900">
                             {formatNumber(cacheStats.statistics.total.hits)}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Successful retrievals
+                            Recuperacoes bem-sucedidas
                           </div>
                         </div>
                       </div>
 
                       {/* Multi-Level Cache Breakdown */}
                       <div className="border-t pt-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Cache Levels</h3>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Niveis de Cache</h3>
                         <div className="space-y-3">
                           {/* L1 - Exact Match */}
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-900">L1 - Exact Match</span>
-                                <span className="text-xs text-gray-500">(SHA256 hash, 7 days TTL)</span>
+                                <span className="text-sm font-medium text-gray-900">L1 - Correspondencia Exata</span>
+                                <span className="text-xs text-gray-500">(SHA256 hash, 7 dias TTL)</span>
                               </div>
                               <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
                                 <div
@@ -350,10 +350,10 @@ export default function Home() {
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-900">L2 - Semantic</span>
-                                <span className="text-xs text-gray-500">(95% similarity, 1 day TTL)</span>
+                                <span className="text-sm font-medium text-gray-900">L2 - Semantico</span>
+                                <span className="text-xs text-gray-500">(95% similaridade, 1 dia TTL)</span>
                                 {!cacheStats.statistics.l2_semantic.enabled && (
-                                  <span className="text-xs text-orange-600">(needs Redis)</span>
+                                  <span className="text-xs text-orange-600">(requer Redis)</span>
                                 )}
                               </div>
                               <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
@@ -378,7 +378,7 @@ export default function Home() {
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium text-gray-900">L3 - Template</span>
-                                <span className="text-xs text-gray-500">(Deterministic, 30 days TTL)</span>
+                                <span className="text-xs text-gray-500">(Deterministico, 30 dias TTL)</span>
                               </div>
                               <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
                                 <div
@@ -409,16 +409,16 @@ export default function Home() {
               {/* Cost by Provider */}
               <Card>
                 <div className="p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Cost by Provider</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Custo por Provedor</h2>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead>
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provider</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Executions</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provedor</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Custo</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Execucoes</th>
                           <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tokens</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">% of Total</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">% do Total</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
@@ -452,15 +452,15 @@ export default function Home() {
               {/* Cost by Usage Type */}
               <Card>
                 <div className="p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Cost by Usage Type</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Custo por Tipo de Uso</h2>
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
                       <thead>
                         <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Usage Type</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cost</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Avg/Call</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Executions</th>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo de Uso</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Custo</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Media/Chamada</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Execucoes</th>
                           <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tokens</th>
                         </tr>
                       </thead>

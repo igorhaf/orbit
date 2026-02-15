@@ -98,9 +98,9 @@ export function NotificationBell() {
   const getStatusText = (status: string) => {
     switch (status) {
       case 'pending':
-        return 'Pending';
+        return 'Pendente';
       case 'running':
-        return 'Running';
+        return 'Em execucao';
       case 'completed':
         return 'Completed';
       case 'failed':
@@ -118,7 +118,7 @@ export function NotificationBell() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
-        title="Notifications"
+        title="Notificacoes"
       >
         {/* Bell Icon */}
         <svg
@@ -282,7 +282,7 @@ export function NotificationBell() {
                           {job.title}
                         </p>
                         <p className="text-xs text-gray-500 truncate">
-                          {job.progress_message || job.description || 'Processing...'}
+                          {job.progress_message || job.description || 'Processando...'}
                         </p>
 
                         {/* Progress bar */}

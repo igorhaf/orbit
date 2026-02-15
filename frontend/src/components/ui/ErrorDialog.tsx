@@ -58,10 +58,10 @@ export const ErrorDialog: React.FC<ErrorDialogProps> = ({
   };
 
   const defaultTitles = {
-    error: 'Error',
-    warning: 'Warning',
-    info: 'Information',
-    success: 'Success',
+    error: 'Erro',
+    warning: 'Aviso',
+    info: 'Informacao',
+    success: 'Sucesso',
   };
 
   return (
@@ -83,7 +83,7 @@ export const ErrorDialog: React.FC<ErrorDialogProps> = ({
             {details && (
               <details className="mt-2">
                 <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
-                  Technical details
+                  Detalhes tecnicos
                 </summary>
                 <pre className="mt-2 p-2 bg-gray-100 rounded text-xs text-gray-600 overflow-x-auto">
                   {details}
@@ -139,5 +139,5 @@ export function formatErrorMessage(error: unknown): string {
     }
   }
 
-  return 'An unexpected error occurred. Please try again.';
+  return 'Ocorreu um erro inesperado. Por favor, tente novamente.';
 }

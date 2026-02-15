@@ -29,19 +29,19 @@ export const TaskStatusBadge: React.FC<TaskStatusBadgeProps> = ({
   const statusConfig = {
     pending: {
       variant: 'default' as const,
-      label: 'Pending',
+      label: 'Pendente',
       icon: <IconClock className="w-3.5 h-3.5" />,
       animation: '',
     },
     in_progress: {
       variant: 'info' as const,
-      label: 'Running',
+      label: 'Em execucao',
       icon: <IconPlay className="w-3.5 h-3.5" />,
       animation: animated ? 'animate-pulse' : '',
     },
     validating: {
       variant: 'warning' as const,
-      label: 'Validating',
+      label: 'Validando',
       icon: <IconSearch className="w-3.5 h-3.5" />,
       animation: animated ? 'animate-pulse' : '',
     },

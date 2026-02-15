@@ -54,23 +54,23 @@ const getPriorityColor = (priority: PriorityLevel) => {
 // Helper function to get status badge
 const getStatusBadge = (status: string | undefined) => {
   if (!status) {
-    return <Badge className="bg-gray-100 text-gray-800 border-gray-200">No Status</Badge>;
+    return <Badge className="bg-gray-100 text-gray-800 border-gray-200">Sem Status</Badge>;
   }
 
   const statusLower = status.toLowerCase();
 
   // PROMPT #95 - Blocked status
   if (statusLower === 'blocked') {
-    return <Badge className="bg-red-100 text-red-800 border-red-300 font-semibold"><span className="inline-flex items-center gap-1"><IconAlert className="w-3 h-3" /> BLOCKED</span></Badge>;
+    return <Badge className="bg-red-100 text-red-800 border-red-300 font-semibold"><span className="inline-flex items-center gap-1"><IconAlert className="w-3 h-3" /> BLOQUEADO</span></Badge>;
   }
   if (statusLower === 'done' || statusLower === 'completed') {
-    return <Badge className="bg-green-100 text-green-800 border-green-200">Done</Badge>;
+    return <Badge className="bg-green-100 text-green-800 border-green-200">Concluido</Badge>;
   }
   if (statusLower === 'in_progress' || statusLower === 'in progress') {
-    return <Badge className="bg-blue-100 text-blue-800 border-blue-200">In Progress</Badge>;
+    return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Em Progresso</Badge>;
   }
   if (statusLower === 'review') {
-    return <Badge className="bg-purple-100 text-purple-800 border-purple-200">Review</Badge>;
+    return <Badge className="bg-purple-100 text-purple-800 border-purple-200">Revisao</Badge>;
   }
   if (statusLower === 'backlog' || statusLower === 'todo') {
     return <Badge className="bg-gray-100 text-gray-800 border-gray-200">Backlog</Badge>;
@@ -199,7 +199,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           false,
           task.id // task_id for persistent loading state
         );
-        showSuccess('Activation started! Track progress in the notification bell.');
+        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificacoes.');
         return;
       } else {
         // Legacy flow (synchronous response)
@@ -264,7 +264,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
             {/* Title */}
             <div className="flex-1">
               <CardTitle className={`text-lg font-semibold ${isSuggested ? 'text-gray-500' : 'text-gray-900'}`}>
-                {isSuggested && <span className="text-xs font-normal text-gray-400 mr-2">[Suggestion]</span>}
+                {isSuggested && <span className="text-xs font-normal text-gray-400 mr-2">[Sugestao]</span>}
                 {task.title}
               </CardTitle>
               {task.description && (
@@ -305,7 +305,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         {task.acceptance_criteria && task.acceptance_criteria.length > 0 && (
           <div className="mb-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-2">
-              <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-4 h-4" /> Acceptance Criteria:</span>
+              <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-4 h-4" /> Criterios de Aceitacao:</span>
             </h4>
             <ul className="list-disc list-inside space-y-1">
               {task.acceptance_criteria.map((criterion, idx) => (
@@ -348,7 +348,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                   </svg>
                 )}
-                <span className="inline-flex items-center gap-1"><IconCpu className="w-4 h-4" /> AI-Suggested Subtasks ({task.subtask_suggestions!.length})</span>
+                <span className="inline-flex items-center gap-1"><IconCpu className="w-4 h-4" /> Subtarefas Sugeridas pela IA ({task.subtask_suggestions!.length})</span>
               </button>
             </div>
 
@@ -394,14 +394,14 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
                 {acceptingSubtasks ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Accepting...</span>
+                    <span>Aceitando...</span>
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    <span>Accept All Subtasks</span>
+                    <span>Aceitar Todas as Subtarefas</span>
                   </>
                 )}
               </Button>
@@ -417,14 +417,14 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
                 {creatingInterview ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Creating...</span>
+                    <span>Criando...</span>
                   </>
                 ) : (
                   <>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                     </svg>
-                    <span>Create Sub-Interview</span>
+                    <span>Criar Sub-Entrevista</span>
                   </>
                 )}
               </Button>
@@ -453,7 +453,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                   </svg>
-                  <span>Explore this Task</span>
+                  <span>Explorar esta Tarefa</span>
                 </>
               )}
             </Button>
@@ -470,19 +470,19 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
               }}
               disabled={activatingEpic || rejectingEpic}
               className="px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-              title="Approve suggestion"
+              title="Aprovar sugestao"
             >
               {activatingEpic ? (
                 <>
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-green-700"></div>
-                  <span>Activating...</span>
+                  <span>Ativando...</span>
                 </>
               ) : (
                 <>
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span>Approve</span>
+                  <span>Aprovar</span>
                 </>
               )}
             </button>
@@ -494,7 +494,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
               }}
               disabled={activatingEpic || rejectingEpic}
               className="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded border border-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-              title="Reject suggestion"
+              title="Rejeitar sugestao"
             >
               {rejectingEpic ? (
                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
@@ -503,7 +503,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               )}
-              <span>Reject</span>
+              <span>Rejeitar</span>
             </button>
           </div>
         )}
@@ -513,11 +513,11 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         open={showRejectConfirm}
         onClose={() => setShowRejectConfirm(false)}
         onConfirm={confirmRejectEpic}
-        title="Reject Item"
-        message={`Are you sure you want to reject and delete "${task.title}"? This action cannot be undone.`}
+        title="Rejeitar Item"
+        message={`Tem certeza que deseja rejeitar e excluir "${task.title}"? Esta acao nao pode ser desfeita.`}
         type="danger"
-        confirmLabel="Reject"
-        cancelLabel="Cancel"
+        confirmLabel="Rejeitar"
+        cancelLabel="Cancelar"
       />
     </Card>
   );

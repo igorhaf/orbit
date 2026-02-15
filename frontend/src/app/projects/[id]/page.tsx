@@ -359,7 +359,7 @@ export default function ProjectDetailsPage() {
       await loadProjectData();
     } catch (error) {
       console.error('Error saving description:', error);
-      showError('Failed to save description. Please try again.');
+      showError('Falha ao salvar descricao. Tente novamente.');
     }
   };
 
@@ -1213,7 +1213,7 @@ export default function ProjectDetailsPage() {
                   showError(err.detail || 'Failed to generate epics');
                 }
               } catch (e) {
-                showError('Failed to start epic generation');
+                showError('Falha ao iniciar geracao de epic');
               }
             }}
           >

@@ -119,7 +119,7 @@ async def generate_stories_from_epic(
     # Verify epic exists
     epic = db.query(Task).filter(Task.id == epic_id).first()
     if not epic:
-        raise HTTPException(status_code=404, detail=f"Epic {epic_id} not found")
+        raise HTTPException(status_code=404, detail=f"Epic {epic_id} nao encontrado")
 
     # Create job
     job_manager = JobManager(db)
@@ -174,7 +174,7 @@ async def generate_tasks_from_story(
     # Verify story exists
     story = db.query(Task).filter(Task.id == story_id).first()
     if not story:
-        raise HTTPException(status_code=404, detail=f"Story {story_id} not found")
+        raise HTTPException(status_code=404, detail=f"Story {story_id} nao encontrada")
 
     # Create job
     job_manager = JobManager(db)
@@ -254,7 +254,7 @@ async def approve_and_create_epic(
         logger.error(f"Failed to create Epic: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create Epic: {str(e)}"
+            detail=f"Falha ao criar Epic: {str(e)}"
         )
 
 
@@ -315,7 +315,7 @@ async def approve_and_create_stories(
         logger.error(f"Failed to create Stories: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create Stories: {str(e)}"
+            detail=f"Falha ao criar Stories: {str(e)}"
         )
 
 
@@ -428,7 +428,7 @@ async def approve_and_create_tasks(
         logger.error(f"Failed to create Tasks: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to create Tasks: {str(e)}"
+            detail=f"Falha ao criar Tasks: {str(e)}"
         )
 
 
@@ -516,7 +516,7 @@ async def migrate_semantic_to_human_descriptions(
         logger.error(f"Migration failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Migration failed: {str(e)}"
+            detail=f"Falha na migracao: {str(e)}"
         )
 
 

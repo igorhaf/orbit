@@ -96,7 +96,7 @@ export default function AIModelsPage() {
       fetchModels();
     } catch (error) {
       console.error('Error creating model:', error);
-      showError('Error creating model. Please check the console for details.');
+      showError('Erro ao criar modelo. Verifique o console para detalhes.');
     } finally {
       setIsSubmitting(false);
     }
@@ -136,7 +136,7 @@ export default function AIModelsPage() {
       fetchModels();
     } catch (error) {
       console.error('Error updating model:', error);
-      showError('Error updating model. Please check the console for details.');
+      showError('Erro ao atualizar modelo. Verifique o console para detalhes.');
     } finally {
       setIsSubmitting(false);
     }
@@ -159,7 +159,7 @@ export default function AIModelsPage() {
       fetchModels();
     } catch (error) {
       console.error('Error deleting model:', error);
-      showError('Error deleting model. Please check the console for details.');
+      showError('Erro ao excluir modelo. Verifique o console para detalhes.');
     } finally {
       setIsSubmitting(false);
     }
@@ -228,9 +228,9 @@ export default function AIModelsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">AI Models</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Modelos IA</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Manage AI model configurations and monitor usage
+              Gerencie configuracoes de modelos IA e monitore uso
             </p>
           </div>
           <Button
@@ -247,7 +247,7 @@ export default function AIModelsPage() {
               </svg>
             }
           >
-            Add Model
+            Adicionar Modelo
           </Button>
         </div>
 
@@ -270,16 +270,16 @@ export default function AIModelsPage() {
               </div>
               <div className="ml-3">
                 <h3 className="text-sm font-medium text-yellow-800">
-                  No General Model Configured
+                  Nenhum Modelo General Configurado
                 </h3>
                 <div className="mt-2 text-sm text-yellow-700">
                   <p>
-                    You don&apos;t have an active model with <strong>Usage Type: General</strong>.
-                    This type serves as a fallback when no specific model is configured for a task.
-                    Without it, the system may fail if a required model is not available.
+                    Voce nao tem um modelo ativo com <strong>Usage Type: General</strong>.
+                    Este tipo serve como fallback quando nenhum modelo especifico esta configurado para uma tarefa.
+                    Sem ele, o sistema pode falhar se um modelo necessario nao estiver disponivel.
                   </p>
                   <p className="mt-2">
-                    <strong>Recommendation:</strong> Create or activate a General model to ensure system reliability.
+                    <strong>Recomendacao:</strong> Crie ou ative um modelo General para garantir confiabilidade do sistema.
                   </p>
                 </div>
               </div>
@@ -308,16 +308,16 @@ export default function AIModelsPage() {
                   d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
                 />
               </svg>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No AI models</h3>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhum modelo IA</h3>
               <p className="mt-1 text-sm text-gray-500">
-                Get started by adding an AI model configuration.
+                Comece adicionando uma configuracao de modelo IA.
               </p>
               <div className="mt-6">
                 <Button
                   variant="primary"
                   onClick={() => setShowCreateDialog(true)}
                 >
-                  Add Model
+                  Adicionar Modelo
                 </Button>
               </div>
             </CardContent>
@@ -340,11 +340,11 @@ export default function AIModelsPage() {
                     <div>
                       {model.is_active ? (
                         <span className="px-2 py-1 text-xs rounded-full bg-green-100 text-green-800 font-medium">
-                          Active
+                          Ativo
                         </span>
                       ) : (
                         <span className="px-2 py-1 text-xs rounded-full bg-gray-100 text-gray-800 font-medium">
-                          Inactive
+                          Inativo
                         </span>
                       )}
                     </div>
@@ -355,7 +355,7 @@ export default function AIModelsPage() {
                     {/* Model ID */}
                     {model.config?.model && (
                       <div className="text-xs text-gray-500">
-                        <span className="font-medium">Model ID:</span>{' '}
+                        <span className="font-medium">ID do Modelo:</span>{' '}
                         <span className="font-mono">{model.config.model}</span>
                       </div>
                     )}
@@ -397,7 +397,7 @@ export default function AIModelsPage() {
                         {/* PROMPT #152 - Rate Limit Display */}
                         {model.rate_limit_requests && model.rate_limit_window_seconds && (
                           <div>
-                            <div className="text-gray-500 text-xs">Rate Limit</div>
+                            <div className="text-gray-500 text-xs">Limite de Taxa</div>
                             <div className="font-semibold text-gray-900">
                               {model.rate_limit_requests}/{model.rate_limit_window_seconds}s
                             </div>
@@ -415,7 +415,7 @@ export default function AIModelsPage() {
                         {/* PROMPT #228 - Concurrency Display */}
                         {model.max_concurrent_requests && (
                           <div>
-                            <div className="text-gray-500 text-xs">Concurrency</div>
+                            <div className="text-gray-500 text-xs">Concorrencia</div>
                             <div className="font-semibold text-gray-900">
                               {model.max_concurrent_requests}x
                             </div>
@@ -432,7 +432,7 @@ export default function AIModelsPage() {
                         className="flex-1"
                         onClick={() => toggleModel(model.id)}
                       >
-                        {model.is_active ? 'Deactivate' : 'Activate'}
+                        {model.is_active ? 'Desativar' : 'Ativar'}
                       </Button>
                       <Button
                         variant="ghost"
@@ -489,20 +489,20 @@ export default function AIModelsPage() {
         {/* Info Card */}
         <Card>
           <CardHeader>
-            <CardTitle>About AI Models</CardTitle>
+            <CardTitle>Sobre Modelos IA</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-sm text-gray-600 space-y-2">
               <p>
-                AI models are used throughout the application for different purposes:
+                Modelos IA sao usados em toda a aplicacao para diferentes propositos:
               </p>
               <ul className="list-disc list-inside space-y-1 ml-2">
-                <li><strong>Interviews:</strong> Conversational models for technical interviews</li>
-                <li><strong>Prompts:</strong> Models for analyzing interviews and generating tasks</li>
-                <li><strong>Code:</strong> Models for executing tasks and writing code</li>
+                <li><strong>Entrevistas:</strong> Modelos conversacionais para entrevistas tecnicas</li>
+                <li><strong>Prompts:</strong> Modelos para analisar entrevistas e gerar tarefas</li>
+                <li><strong>Codigo:</strong> Modelos para executar tarefas e escrever codigo</li>
               </ul>
               <p className="pt-2">
-                Orbit automatically selects the best model for each task based on configuration and availability.
+                Orbit seleciona automaticamente o melhor modelo para cada tarefa com base na configuracao e disponibilidade.
               </p>
             </div>
           </CardContent>
@@ -512,14 +512,14 @@ export default function AIModelsPage() {
         <Dialog
           open={showCreateDialog}
           onClose={() => setShowCreateDialog(false)}
-          title="Add AI Model"
-          description="Configure a new AI model for the orchestration system"
+          title="Adicionar Modelo IA"
+          description="Configure um novo modelo IA para o sistema de orquestracao"
         >
           <form onSubmit={handleCreateModel}>
             <div className="space-y-4">
               {/* Name */}
               <Input
-                label="Model Name"
+                label="Nome do Modelo"
                 placeholder="e.g., Claude Sonnet Interview"
                 required
                 value={createFormData.name}
@@ -531,7 +531,7 @@ export default function AIModelsPage() {
               {/* Provider */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Provider
+                  Provedor
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -553,9 +553,9 @@ export default function AIModelsPage() {
 
               {/* API Key */}
               <Input
-                label={createFormData.provider === 'ollama' ? 'API Key (optional for Ollama)' : 'API Key'}
+                label={createFormData.provider === 'ollama' ? 'Chave API (opcional para Ollama)' : 'Chave API'}
                 type="password"
-                placeholder={createFormData.provider === 'ollama' ? 'Leave empty for local Ollama' : 'Enter API key (sk-..., AIza..., co-..., etc)'}
+                placeholder={createFormData.provider === 'ollama' ? 'Deixe vazio para Ollama local' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
                 required={createFormData.provider !== 'ollama'}
                 value={createFormData.api_key}
                 onChange={(e) =>
@@ -566,7 +566,7 @@ export default function AIModelsPage() {
               {/* Usage Type */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Usage Type
+                  Tipo de Uso
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -579,19 +579,19 @@ export default function AIModelsPage() {
                   }
                   required
                 >
-                  <option value={AIModelUsageType.INTERVIEW}>Interview</option>
-                  <option value={AIModelUsageType.PROMPT_GENERATION}>Prompt Generation</option>
-                  <option value={AIModelUsageType.TASK_EXECUTION}>Task Execution</option>
-                  <option value={AIModelUsageType.COMMIT_GENERATION}>Commit Generation</option>
-                  <option value={AIModelUsageType.PATTERN_DISCOVERY}>Pattern Discovery</option>
-                  <option value={AIModelUsageType.MEMORY}>Memory (Codebase Scan)</option>
-                  <option value={AIModelUsageType.GENERAL}>General</option>
+                  <option value={AIModelUsageType.INTERVIEW}>Entrevista</option>
+                  <option value={AIModelUsageType.PROMPT_GENERATION}>Geracao de Prompts</option>
+                  <option value={AIModelUsageType.TASK_EXECUTION}>Execucao de Tarefas</option>
+                  <option value={AIModelUsageType.COMMIT_GENERATION}>Geracao de Commits</option>
+                  <option value={AIModelUsageType.PATTERN_DISCOVERY}>Descoberta de Padroes</option>
+                  <option value={AIModelUsageType.MEMORY}>Memoria (Scan de Codebase)</option>
+                  <option value={AIModelUsageType.GENERAL}>Geral</option>
                 </select>
               </div>
 
               {/* Model ID */}
               <Input
-                label="Model ID (optional)"
+                label="ID do Modelo (opcional)"
                 placeholder="e.g., claude-sonnet-4-20250514"
                 value={createFormData.config?.model || ''}
                 onChange={(e) =>
@@ -604,7 +604,7 @@ export default function AIModelsPage() {
 
               {/* Max Tokens */}
               <Input
-                label="Max Tokens (optional)"
+                label="Max Tokens (opcional)"
                 type="number"
                 placeholder="4096"
                 value={createFormData.config?.max_tokens || ''}
@@ -621,7 +621,7 @@ export default function AIModelsPage() {
 
               {/* Temperature */}
               <Input
-                label="Temperature (optional)"
+                label="Temperatura (opcional)"
                 type="number"
                 step="0.1"
                 min="0"
@@ -641,10 +641,10 @@ export default function AIModelsPage() {
 
               {/* Rate Limiting Section (PROMPT #152) */}
               <div className="border-t pt-4 mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Rate Limiting</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Limite de Taxa</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <Input
-                    label="Max Requests"
+                    label="Max Requisicoes"
                     type="number"
                     min="1"
                     placeholder="e.g., 3"
@@ -657,7 +657,7 @@ export default function AIModelsPage() {
                     }
                   />
                   <Input
-                    label="Time Window (seconds)"
+                    label="Janela de Tempo (segundos)"
                     type="number"
                     min="1"
                     placeholder="e.g., 60"
@@ -671,15 +671,15 @@ export default function AIModelsPage() {
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Leave empty for no rate limiting. Example: 3 requests per 60 seconds.
+                  Deixe vazio para sem limite. Exemplo: 3 requisicoes por 60 segundos.
                 </p>
               </div>
 
               {/* Timeout Section (PROMPT #207) */}
               <div className="border-t pt-4 mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">API Timeout</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Timeout da API</h4>
                 <Input
-                  label="Timeout (seconds)"
+                  label="Timeout (segundos)"
                   type="number"
                   min="1"
                   placeholder="e.g., 120"
@@ -692,18 +692,18 @@ export default function AIModelsPage() {
                   }
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Leave empty to use system default. Overridden by Timeout Node in AI Flow diagram.
+                  Deixe vazio para usar padrao do sistema. Substituido pelo No de Timeout no diagrama AI Flow.
                 </p>
               </div>
 
               {/* Concurrency Section (PROMPT #228) */}
               <div className="border-t pt-4 mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Concurrency</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Concorrencia</h4>
                 <Input
-                  label="Max Concurrent Requests"
+                  label="Max Requisicoes Simultaneas"
                   type="number"
                   min="1"
-                  placeholder="Unlimited"
+                  placeholder="Ilimitado"
                   value={createFormData.max_concurrent_requests || ''}
                   onChange={(e) =>
                     setCreateFormData({
@@ -713,7 +713,7 @@ export default function AIModelsPage() {
                   }
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Max parallel API calls to this model. Leave empty for unlimited.
+                  Max chamadas API paralelas para este modelo. Deixe vazio para ilimitado.
                 </p>
               </div>
 
@@ -732,7 +732,7 @@ export default function AIModelsPage() {
                   htmlFor="create-is-active"
                   className="ml-2 block text-sm text-gray-900"
                 >
-                  Active
+                  Ativo
                 </label>
               </div>
             </div>
@@ -743,10 +743,10 @@ export default function AIModelsPage() {
                 variant="ghost"
                 onClick={() => setShowCreateDialog(false)}
               >
-                Cancel
+                Cancelar
               </Button>
               <Button type="submit" variant="primary" isLoading={isSubmitting}>
-                Create Model
+                Criar Modelo
               </Button>
             </DialogFooter>
           </form>
@@ -756,14 +756,14 @@ export default function AIModelsPage() {
         <Dialog
           open={showEditDialog}
           onClose={() => setShowEditDialog(false)}
-          title="Edit AI Model"
-          description="Update AI model configuration"
+          title="Editar Modelo IA"
+          description="Atualizar configuracao do modelo IA"
         >
           <form onSubmit={handleUpdateModel}>
             <div className="space-y-4">
               {/* Name */}
               <Input
-                label="Model Name"
+                label="Nome do Modelo"
                 placeholder="e.g., Claude Sonnet Interview"
                 value={editFormData.name || ''}
                 onChange={(e) =>
@@ -774,7 +774,7 @@ export default function AIModelsPage() {
               {/* Provider */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Provider
+                  Provedor
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -795,9 +795,9 @@ export default function AIModelsPage() {
 
               {/* API Key */}
               <Input
-                label={editFormData.provider === 'ollama' ? 'API Key (optional for Ollama)' : 'API Key'}
+                label={editFormData.provider === 'ollama' ? 'Chave API (opcional para Ollama)' : 'Chave API'}
                 type="text"
-                placeholder={editFormData.provider === 'ollama' ? 'Leave empty for local Ollama' : 'Enter API key (sk-..., AIza..., co-..., etc)'}
+                placeholder={editFormData.provider === 'ollama' ? 'Deixe vazio para Ollama local' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
                 value={editFormData.api_key || ''}
                 onChange={(e) =>
                   setEditFormData({ ...editFormData, api_key: e.target.value })
@@ -807,7 +807,7 @@ export default function AIModelsPage() {
               {/* Usage Type */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Usage Type
+                  Tipo de Uso
                 </label>
                 <select
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -819,19 +819,19 @@ export default function AIModelsPage() {
                     })
                   }
                 >
-                  <option value={AIModelUsageType.INTERVIEW}>Interview</option>
-                  <option value={AIModelUsageType.PROMPT_GENERATION}>Prompt Generation</option>
-                  <option value={AIModelUsageType.TASK_EXECUTION}>Task Execution</option>
-                  <option value={AIModelUsageType.COMMIT_GENERATION}>Commit Generation</option>
-                  <option value={AIModelUsageType.PATTERN_DISCOVERY}>Pattern Discovery</option>
-                  <option value={AIModelUsageType.MEMORY}>Memory (Codebase Scan)</option>
-                  <option value={AIModelUsageType.GENERAL}>General</option>
+                  <option value={AIModelUsageType.INTERVIEW}>Entrevista</option>
+                  <option value={AIModelUsageType.PROMPT_GENERATION}>Geracao de Prompts</option>
+                  <option value={AIModelUsageType.TASK_EXECUTION}>Execucao de Tarefas</option>
+                  <option value={AIModelUsageType.COMMIT_GENERATION}>Geracao de Commits</option>
+                  <option value={AIModelUsageType.PATTERN_DISCOVERY}>Descoberta de Padroes</option>
+                  <option value={AIModelUsageType.MEMORY}>Memoria (Scan de Codebase)</option>
+                  <option value={AIModelUsageType.GENERAL}>Geral</option>
                 </select>
               </div>
 
               {/* Model ID */}
               <Input
-                label="Model ID"
+                label="ID do Modelo"
                 placeholder="e.g., claude-sonnet-4-20250514"
                 value={editFormData.config?.model || ''}
                 onChange={(e) =>
@@ -861,7 +861,7 @@ export default function AIModelsPage() {
 
               {/* Temperature */}
               <Input
-                label="Temperature"
+                label="Temperatura"
                 type="number"
                 step="0.1"
                 min="0"
@@ -881,10 +881,10 @@ export default function AIModelsPage() {
 
               {/* Rate Limiting Section (PROMPT #152) */}
               <div className="border-t pt-4 mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Rate Limiting</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Limite de Taxa</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <Input
-                    label="Max Requests"
+                    label="Max Requisicoes"
                     type="number"
                     min="1"
                     placeholder="e.g., 3"
@@ -897,7 +897,7 @@ export default function AIModelsPage() {
                     }
                   />
                   <Input
-                    label="Time Window (seconds)"
+                    label="Janela de Tempo (segundos)"
                     type="number"
                     min="1"
                     placeholder="e.g., 60"
@@ -911,15 +911,15 @@ export default function AIModelsPage() {
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Leave empty for no rate limiting. Example: 3 requests per 60 seconds.
+                  Deixe vazio para sem limite. Exemplo: 3 requisicoes por 60 segundos.
                 </p>
               </div>
 
               {/* Timeout Section (PROMPT #207) */}
               <div className="border-t pt-4 mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">API Timeout</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Timeout da API</h4>
                 <Input
-                  label="Timeout (seconds)"
+                  label="Timeout (segundos)"
                   type="number"
                   min="1"
                   placeholder="e.g., 120"
@@ -932,18 +932,18 @@ export default function AIModelsPage() {
                   }
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Leave empty to use system default. Overridden by Timeout Node in AI Flow diagram.
+                  Deixe vazio para usar padrao do sistema. Substituido pelo No de Timeout no diagrama AI Flow.
                 </p>
               </div>
 
               {/* Concurrency Section (PROMPT #228) */}
               <div className="border-t pt-4 mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Concurrency</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Concorrencia</h4>
                 <Input
-                  label="Max Concurrent Requests"
+                  label="Max Requisicoes Simultaneas"
                   type="number"
                   min="1"
-                  placeholder="Unlimited"
+                  placeholder="Ilimitado"
                   value={editFormData.max_concurrent_requests || ''}
                   onChange={(e) =>
                     setEditFormData({
@@ -953,7 +953,7 @@ export default function AIModelsPage() {
                   }
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Max parallel API calls to this model. Leave empty for unlimited.
+                  Max chamadas API paralelas para este modelo. Deixe vazio para ilimitado.
                 </p>
               </div>
 
@@ -972,7 +972,7 @@ export default function AIModelsPage() {
                   htmlFor="edit-is-active"
                   className="ml-2 block text-sm text-gray-900"
                 >
-                  Active
+                  Ativo
                 </label>
               </div>
             </div>
@@ -983,10 +983,10 @@ export default function AIModelsPage() {
                 variant="ghost"
                 onClick={() => setShowEditDialog(false)}
               >
-                Cancel
+                Cancelar
               </Button>
               <Button type="submit" variant="primary" isLoading={isSubmitting}>
-                Update Model
+                Atualizar Modelo
               </Button>
             </DialogFooter>
           </form>
@@ -996,15 +996,15 @@ export default function AIModelsPage() {
         <Dialog
           open={showDeleteDialog}
           onClose={() => setShowDeleteDialog(false)}
-          title="Delete AI Model"
-          description="Are you sure you want to delete this model? This action cannot be undone."
+          title="Excluir Modelo IA"
+          description="Tem certeza que deseja excluir este modelo? Esta acao nao pode ser desfeita."
         >
           {selectedModel && (
             <div className="space-y-4">
               <div className="bg-gray-50 p-4 rounded-md">
                 <p className="text-sm font-medium text-gray-900">{selectedModel.name}</p>
                 <p className="text-xs text-gray-500 mt-1">
-                  Provider: {selectedModel.provider} | Usage: {selectedModel.usage_type}
+                  Provedor: {selectedModel.provider} | Uso: {selectedModel.usage_type}
                 </p>
               </div>
 
@@ -1014,7 +1014,7 @@ export default function AIModelsPage() {
                   variant="ghost"
                   onClick={() => setShowDeleteDialog(false)}
                 >
-                  Cancel
+                  Cancelar
                 </Button>
                 <Button
                   type="button"
@@ -1022,7 +1022,7 @@ export default function AIModelsPage() {
                   onClick={handleDeleteModel}
                   isLoading={isSubmitting}
                 >
-                  Delete Model
+                  Excluir Modelo
                 </Button>
               </DialogFooter>
             </div>

@@ -83,7 +83,7 @@ export default function AnalyzePage() {
       pollAnalysisStatus(newAnalysis.id);
     } catch (error) {
       console.error('Upload failed:', error);
-      showError('Failed to upload file. Please try again.');
+      showError('Falha ao enviar arquivo. Tente novamente.');
     } finally {
       setUploading(false);
     }
@@ -121,11 +121,11 @@ export default function AnalyzePage() {
 
     try {
       await analyzersApi.generateOrchestrator(selectedAnalysis.id);
-      showSuccess('Orchestrator generated successfully!');
+      showSuccess('Orquestrador gerado com sucesso!');
       loadAnalyses();
     } catch (error) {
       console.error('Failed to generate orchestrator:', error);
-      showError('Failed to generate orchestrator. Please try again.');
+      showError('Falha ao gerar orquestrador. Tente novamente.');
     }
   };
 

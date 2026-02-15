@@ -80,22 +80,22 @@ const NotificationContext = createContext<NotificationContextType | undefined>(u
 
 // Job type to human-readable title mapping
 const JOB_TYPE_TITLES: Record<string, string> = {
-  'interview_message': 'Interview Response',
-  'backlog_generation': 'Generating Backlog',
-  'task_generation': 'Generating Tasks',
-  'epic_activation': 'Activating Epic',
-  'story_activation': 'Activating Story',
-  'task_activation': 'Activating Task',
-  'subtask_activation': 'Activating Subtask',
-  'task_execution': 'Executing Task',
-  'batch_execution': 'Batch Execution',
-  'commit_generation': 'Generating Commit',
-  'context_generation': 'Generating Context',
+  'interview_message': 'Resposta da Entrevista',
+  'backlog_generation': 'Gerando Backlog',
+  'task_generation': 'Gerando Tarefas',
+  'epic_activation': 'Ativando Epic',
+  'story_activation': 'Ativando Story',
+  'task_activation': 'Ativando Tarefa',
+  'subtask_activation': 'Ativando Subtarefa',
+  'task_execution': 'Executando Tarefa',
+  'batch_execution': 'Execucao em Lote',
+  'commit_generation': 'Gerando Commit',
+  'context_generation': 'Gerando Contexto',
   // PROMPT #133 - New job types
-  'interview_question': 'Generating Question',
-  'memory_scan': 'Analyzing Code',
-  'project_title': 'Generating Title',
-  'suggested_epics': 'Generating Epics',
+  'interview_question': 'Gerando Pergunta',
+  'memory_scan': 'Analisando Codigo',
+  'project_title': 'Gerando Titulo',
+  'suggested_epics': 'Gerando Epics',
 };
 
 // Job type to icon mapping (matching AIModelBadge style) - PROMPT #188: SVG icons
@@ -175,10 +175,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       job_type: jobType,
       status: 'pending',
       progress_percent: null,
-      progress_message: 'Waiting...',
+      progress_message: 'Aguardando...',
       created_at: new Date().toISOString(),
       read: false,
-      title: title || JOB_TYPE_TITLES[jobType] || 'Processing...',
+      title: title || JOB_TYPE_TITLES[jobType] || 'Processando...',
       description,
       watching, // PROMPT #140
       task_id: taskId, // PROMPT #173 - Track which task is being activated
@@ -310,10 +310,10 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           job_type: data.job_type,
           status: 'running',
           progress_percent: null,
-          progress_message: 'Processing...',
+          progress_message: 'Processando...',
           created_at: new Date().toISOString(),
           read: false,
-          title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Processing...',
+          title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Processando...',
         };
         return [...prevJobs, newJob];
       }
@@ -326,7 +326,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       case 'job_started':
         updateJob(data.job_id, {
           status: 'running',
-          progress_message: 'Processing...',
+          progress_message: 'Processando...',
           task_id: data.task_id,
           project_id: data.project_id,
         });
@@ -344,7 +344,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         updateJob(data.job_id, {
           status: 'completed',
           result: data.result,
-          title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Completed',
+          title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Concluido',
           deep_link: data.deep_link,
           project_id: data.project_id,
           task_id: data.task_id,
@@ -356,7 +356,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         updateJob(data.job_id, {
           status: 'failed',
           error: data.error,
-          title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Failed',
+          title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Falhou',
           deep_link: data.deep_link,
           project_id: data.project_id,
           task_id: data.task_id,
@@ -397,7 +397,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
               progress_message: job.progress_message,
               created_at: job.created_at,
               read: false,
-              title: job.notification_title || JOB_TYPE_TITLES[job.job_type] || 'Processing...',
+              title: job.notification_title || JOB_TYPE_TITLES[job.job_type] || 'Processando...',
               deep_link: job.deep_link,
               project_id: job.project_id,
               task_id: job.task_id,

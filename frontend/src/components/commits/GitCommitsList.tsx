@@ -553,7 +553,7 @@ export function GitCommitsList({ projectId }: Props) {
                 size="sm"
                 variant="ghost"
                 onClick={() => executeGitOperation('stash')}
-                title="Stash changes"
+                title="Guardar alteracoes"
               >
                 <Archive className="w-4 h-4" />
               </Button>
@@ -566,7 +566,7 @@ export function GitCommitsList({ projectId }: Props) {
             size="sm"
             variant="ghost"
             onClick={() => executeGitOperation('stash/pop')}
-            title="Pop stash"
+            title="Restaurar alteracoes"
           >
             <ArchiveRestore className="w-4 h-4" />
           </Button>
@@ -639,7 +639,7 @@ export function GitCommitsList({ projectId }: Props) {
                         <button
                           onClick={() => handleCopyHash(commit.hash)}
                           className="p-1 text-gray-400 hover:text-gray-600 transition-colors"
-                          title="Copy full hash"
+                          title="Copiar hash completo"
                         >
                           {copiedHash === commit.hash ? (
                             <Check className="w-3.5 h-3.5 text-green-500" />
@@ -653,7 +653,7 @@ export function GitCommitsList({ projectId }: Props) {
                           <button
                             onClick={(e) => openActionMenu(commit, e)}
                             className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                            title="Actions"
+                            title="Acoes"
                           >
                             <MoreVertical className="w-4 h-4" />
                           </button>
@@ -868,7 +868,7 @@ export function GitCommitsList({ projectId }: Props) {
               Create a new branch from commit <code className="bg-gray-100 px-1 rounded">{selectedCommitForAction.short_hash}</code>
             </p>
             <Input
-              placeholder="Branch name"
+              placeholder="Nome da branch"
               value={newBranchName}
               onChange={(e) => setNewBranchName(e.target.value)}
               className="mb-4"

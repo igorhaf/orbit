@@ -78,14 +78,14 @@ export function IssueCard({ issue, onUpdateIssue }: Props) {
                     }
                     className="uppercase text-xs"
                   >
-                    {issue.severity}
+                    {issue.severity === 'critical' ? 'Critico' : issue.severity === 'high' ? 'Alto' : issue.severity === 'medium' ? 'Medio' : 'Baixo'}
                   </Badge>
                   <span
                     className={`px-2 py-0.5 rounded text-xs font-medium ${
                       statusColors[issue.status]
                     }`}
                   >
-                    {issue.status}
+                    {issue.status === 'open' ? 'Aberto' : issue.status === 'resolved' ? 'Resolvido' : 'Ignorado'}
                   </span>
                 </div>
 
@@ -119,7 +119,7 @@ export function IssueCard({ issue, onUpdateIssue }: Props) {
                 {expanded && issue.suggested_fix && (
                   <div className="mt-3">
                     <p className="text-sm font-medium text-gray-900 mb-2">
-                      Suggested Fix:
+                      Sugestao de Correcao:
                     </p>
                     <div className="bg-gray-900 rounded-lg p-3 font-mono text-sm text-gray-100 overflow-auto">
                       <pre className="whitespace-pre-wrap">{issue.suggested_fix}</pre>
@@ -135,7 +135,7 @@ export function IssueCard({ issue, onUpdateIssue }: Props) {
                       size="sm"
                       onClick={() => setExpanded(!expanded)}
                     >
-                      {expanded ? 'Hide' : 'Show'} Suggested Fix
+                      {expanded ? 'Ocultar' : 'Ver'} Sugestao de Correcao
                     </Button>
                   )}
 
@@ -146,14 +146,14 @@ export function IssueCard({ issue, onUpdateIssue }: Props) {
                         size="sm"
                         onClick={() => onUpdateIssue(issue.id, 'resolved')}
                       >
-                        Mark Resolved
+                        Marcar como Resolvido
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => onUpdateIssue(issue.id, 'ignored')}
                       >
-                        Ignore
+                        Ignorar
                       </Button>
                     </>
                   )}
@@ -163,14 +163,14 @@ export function IssueCard({ issue, onUpdateIssue }: Props) {
 
             {/* Metadata */}
             <div className="flex items-center gap-4 mt-3 text-xs text-gray-500">
-              <span>Category: {issue.category}</span>
+              <span>Categoria: {issue.category}</span>
               <span>•</span>
-              <span>Created: {new Date(issue.created_at).toLocaleDateString()}</span>
+              <span>Criado em: {new Date(issue.created_at).toLocaleDateString('pt-BR')}</span>
               {issue.resolved_at && (
                 <>
                   <span>•</span>
                   <span>
-                    Resolved: {new Date(issue.resolved_at).toLocaleDateString()}
+                    Resolvido em: {new Date(issue.resolved_at).toLocaleDateString('pt-BR')}
                   </span>
                 </>
               )}

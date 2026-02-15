@@ -49,43 +49,43 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
     const configs: Record<string, ValidTransition> = {
       'todo': {
         to_status: 'todo',
-        label: 'Move to To Do',
+        label: 'Mover para A Fazer',
         color: 'primary',
         icon: <IconClipboard className="w-4 h-4" />,
       },
       'in_progress': {
         to_status: 'in_progress',
-        label: 'Start Progress',
+        label: 'Iniciar Progresso',
         color: 'primary',
         icon: <IconPlay className="w-4 h-4" />,
       },
       'review': {
         to_status: 'review',
-        label: 'Send to Review',
+        label: 'Enviar para Revisao',
         color: 'warning',
         icon: <IconEye className="w-4 h-4" />,
       },
       'done': {
         to_status: 'done',
-        label: 'Mark as Done',
+        label: 'Marcar como Concluido',
         color: 'success',
         icon: <IconCheckCircle className="w-4 h-4" />,
       },
       'backlog': {
         to_status: 'backlog',
-        label: 'Move to Backlog',
+        label: 'Mover para Backlog',
         color: 'primary',
         icon: <IconArrowLeft className="w-4 h-4" />,
       },
       'blocked': {
         to_status: 'blocked',
-        label: 'Mark as Blocked',
+        label: 'Marcar como Bloqueado',
         color: 'danger',
         icon: <IconBan className="w-4 h-4" />,
       },
       'cancelled': {
         to_status: 'cancelled',
-        label: 'Cancel',
+        label: 'Cancelar',
         color: 'danger',
         icon: <IconXCircle className="w-4 h-4" />,
       },
@@ -116,7 +116,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
       }
     } catch (error: any) {
       console.error('Error transitioning status:', error);
-      showError(error.message || 'Failed to transition status');
+      showError(error.message || 'Falha ao alterar status');
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
   if (validTransitions.length === 0) {
     return (
       <div className="text-sm text-gray-500 italic">
-        No transitions available from current status
+        Nenhuma transicao disponivel a partir do status atual
       </div>
     );
   }
@@ -135,7 +135,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
       {NotificationComponent}
       {/* Current Status */}
       <div className="flex items-center gap-2 pb-2 border-b">
-        <span className="text-xs font-semibold text-gray-500 uppercase">Current Status:</span>
+        <span className="text-xs font-semibold text-gray-500 uppercase">Status Atual:</span>
         <span className="px-3 py-1 text-sm font-medium rounded border bg-blue-50 text-blue-800 border-blue-200">
           {item.workflow_state}
         </span>
@@ -165,10 +165,10 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
         <div className="mt-4 p-4 border-2 border-blue-500 rounded-lg bg-blue-50">
           <div className="mb-3">
             <p className="text-sm font-semibold text-gray-900 mb-1">
-              Confirm Status Transition
+              Confirmar Transicao de Status
             </p>
             <p className="text-xs text-gray-600">
-              Change status from <strong>{item.workflow_state}</strong> to{' '}
+              Mudar status de <strong>{item.workflow_state}</strong> para{' '}
               <strong>{showConfirm}</strong>
             </p>
           </div>
@@ -176,12 +176,12 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
           {/* Reason (Optional) */}
           <div className="mb-3">
             <label className="block text-xs font-medium text-gray-700 mb-1">
-              Reason (optional)
+              Motivo (opcional)
             </label>
             <textarea
               value={transitionReason}
               onChange={(e) => setTransitionReason(e.target.value)}
-              placeholder="Why are you making this change?"
+              placeholder="Por que voce esta fazendo esta mudanca?"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={2}
             />
@@ -198,7 +198,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
               }}
               disabled={loading}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               variant="primary"
@@ -206,7 +206,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
               onClick={() => handleTransition(showConfirm)}
               isLoading={loading}
             >
-              Confirm Transition
+              Confirmar Transicao
             </Button>
           </div>
         </div>

@@ -319,7 +319,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
       await loadData();
     } catch (error) {
       console.error('Failed to create context interview:', error);
-      showError('Failed to create interview');
+      showError('Falha ao criar entrevista');
     } finally {
       setCreatingContextInterview(false);
     }
@@ -354,11 +354,11 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
       await interviewsApi.delete(interviewToDelete.id);
       setShowDeleteModal(false);
       setInterviewToDelete(null);
-      showSuccess('Interview deleted successfully');
+      showSuccess('Entrevista excluida com sucesso');
       await loadData();
     } catch (error) {
       console.error('Failed to delete interview:', error);
-      showError('Failed to delete interview');
+      showError('Falha ao excluir entrevista');
     } finally {
       setIsDeleting(false);
     }
@@ -456,7 +456,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
                   handleCardClick(node.task!);
                 }}
                 className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                title="Open card details"
+                title="Abrir detalhes do card"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -473,7 +473,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
                   handleCreateCardInterview(node.task!);
                 }}
                 className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                title="Start interview for this card"
+                title="Iniciar entrevista para este card"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
@@ -486,7 +486,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
               <button
                 onClick={(e) => handleDeleteClick(e, node.interview!)}
                 className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                title="Delete interview"
+                title="Excluir entrevista"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -557,7 +557,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
               </svg>
             }
           >
-            {creatingContextInterview ? 'Creating...' : 'Start Context Interview'}
+            {creatingContextInterview ? 'Criando...' : 'Iniciar Entrevista de Contexto'}
           </Button>
         )}
       </div>
@@ -585,9 +585,9 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
                 d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
               />
             </svg>
-            <h3 className="mt-4 text-lg font-medium text-gray-900">No interviews yet</h3>
+            <h3 className="mt-4 text-lg font-medium text-gray-900">Nenhuma entrevista ainda</h3>
             <p className="mt-2 text-sm text-gray-500">
-              Start a context interview to define your project foundation.
+              Inicie uma entrevista de contexto para definir a base do seu projeto.
             </p>
             {!project?.context_locked && (
               <div className="mt-6">
@@ -596,7 +596,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
                   onClick={handleCreateContextInterview}
                   disabled={creatingContextInterview}
                 >
-                  {creatingContextInterview ? 'Creating...' : 'Start Context Interview'}
+                  {creatingContextInterview ? 'Criando...' : 'Iniciar Entrevista de Contexto'}
                 </Button>
               </div>
             )}
@@ -647,7 +647,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
           setShowDeleteModal(false);
           setInterviewToDelete(null);
         }}
-        title="Delete Interview"
+        title="Excluir Entrevista"
         size="sm"
       >
         <div className="space-y-4">
@@ -658,9 +658,9 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
               </svg>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900">Delete this interview?</p>
+              <p className="text-sm font-medium text-gray-900">Excluir esta entrevista?</p>
               <p className="text-xs text-gray-500 mt-1">
-                This will permanently delete the interview and all its messages.
+                Isso excluira permanentemente a entrevista e todas as suas mensagens.
               </p>
             </div>
           </div>
@@ -674,14 +674,14 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
             }}
             disabled={isDeleting}
           >
-            Cancel
+            Cancelar
           </Button>
           <Button
             variant="danger"
             onClick={handleDeleteConfirm}
             disabled={isDeleting}
           >
-            {isDeleting ? 'Deleting...' : 'Delete'}
+            {isDeleting ? 'Excluindo...' : 'Excluir'}
           </Button>
         </DialogFooter>
       </Dialog>

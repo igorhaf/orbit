@@ -129,7 +129,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         setEditTitle(pageData.title);
       } catch (error) {
         console.error('Failed to load wiki page:', error);
-        showError('Page not found');
+        showError('Pagina nao encontrada');
         setSelectedSlug(null);
       } finally {
         setLoadingPage(false);
@@ -146,7 +146,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       showSuccess(`${res.detail}`);
       loadTree();
     } catch (error: any) {
-      showError(error.message || 'Failed to generate wiki');
+      showError(error.message || 'Falha ao gerar wiki');
     } finally {
       setGenerating(false);
     }
@@ -154,7 +154,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
 
   const handleCreate = async () => {
     if (!newPage.title.trim()) {
-      showError('Title is required');
+      showError('Titulo obrigatorio');
       return;
     }
     setCreating(true);
@@ -171,12 +171,12 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         content: newPage.content || `## ${newPage.title}\n\nPage content.`,
         source: 'manual',
       });
-      showSuccess('Page created');
+      showSuccess('Pagina criada');
       setShowCreateDialog(false);
       setNewPage({ title: '', content: '' });
       loadTree();
     } catch (error: any) {
-      showError(error.message || 'Failed to create page');
+      showError(error.message || 'Falha ao criar pagina');
     } finally {
       setCreating(false);
     }
@@ -191,7 +191,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       if (editContent !== selectedPage.content) updates.content = editContent;
 
       await wikiApi.update(projectId, selectedSlug!, updates);
-      showSuccess('Page saved');
+      showSuccess('Pagina salva');
       setEditing(false);
       // Reload page and tree
       const pageData = await wikiApi.get(projectId, selectedSlug!);
@@ -200,7 +200,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       setEditTitle(pageData.title);
       loadTree();
     } catch (error: any) {
-      showError(error.message || 'Failed to save');
+      showError(error.message || 'Falha ao salvar');
     } finally {
       setSaving(false);
     }
@@ -212,12 +212,12 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
 
     try {
       await wikiApi.delete(projectId, selectedSlug!);
-      showSuccess('Page deleted');
+      showSuccess('Pagina excluida');
       setSelectedSlug(null);
       setSelectedPage(null);
       loadTree();
     } catch (error: any) {
-      showError(error.message || 'Failed to delete');
+      showError(error.message || 'Falha ao excluir');
     }
   };
 

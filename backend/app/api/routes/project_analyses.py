@@ -185,7 +185,7 @@ async def upload_project(
     if project_id:
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise HTTPException(status_code=404, detail="Project not found")
+            raise HTTPException(status_code=404, detail="Projeto nao encontrado")
 
     # Create analysis record
     analysis_id = uuid4()
@@ -234,7 +234,7 @@ async def upload_project(
     except Exception as e:
         db.delete(analysis)
         db.commit()
-        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Falha no upload: {str(e)}")
 
 
 @router.get("/", response_model=List[ProjectAnalysisResponse])
@@ -294,7 +294,7 @@ async def get_analysis(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analysis not found")
+        raise HTTPException(status_code=404, detail="Analise nao encontrada")
 
     return analysis
 
@@ -325,18 +325,18 @@ async def generate_orchestrator(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analysis not found")
+        raise HTTPException(status_code=404, detail="Analise nao encontrada")
 
     if analysis.status != "completed":
         raise HTTPException(
             status_code=400,
-            detail=f"Analysis must be completed first (current status: {analysis.status})"
+            detail=f"Analise deve ser concluida primeiro (status atual: {analysis.status})"
         )
 
     if analysis.orchestrator_generated:
         raise HTTPException(
             status_code=400,
-            detail="Orchestrator already generated for this analysis"
+            detail="Orquestrador ja foi gerado para esta analise"
         )
 
     # Generate orchestrator key
@@ -355,7 +355,7 @@ async def generate_orchestrator(
     if existing:
         raise HTTPException(
             status_code=400,
-            detail=f"Orchestrator key already exists: {orchestrator_key}"
+            detail=f"Chave do orquestrador ja existe: {orchestrator_key}"
         )
 
     # Generate orchestrator
@@ -392,7 +392,7 @@ async def generate_orchestrator(
         logger.error(f"Failed to generate orchestrator: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate orchestrator: {str(e)}"
+            detail=f"Falha ao gerar orquestrador: {str(e)}"
         )
 
 
@@ -414,12 +414,12 @@ async def register_orchestrator(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analysis not found")
+        raise HTTPException(status_code=404, detail="Analise nao encontrada")
 
     if not analysis.orchestrator_generated:
         raise HTTPException(
             status_code=400,
-            detail="Must generate orchestrator first"
+            detail="Deve gerar o orquestrador primeiro"
         )
 
     try:
@@ -432,7 +432,7 @@ async def register_orchestrator(
         logger.error(f"Failed to register orchestrator: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to register orchestrator: {str(e)}"
+            detail=f"Falha ao registrar orquestrador: {str(e)}"
         )
 
 
@@ -452,12 +452,12 @@ async def get_orchestrator_code(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analysis not found")
+        raise HTTPException(status_code=404, detail="Analise nao encontrada")
 
     if not analysis.orchestrator_generated:
         raise HTTPException(
             status_code=404,
-            detail="Orchestrator not generated for this analysis"
+            detail="Orquestrador nao gerado para esta analise"
         )
 
     # Extract class name from code
@@ -494,7 +494,7 @@ async def delete_analysis(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analysis not found")
+        raise HTTPException(status_code=404, detail="Analise nao encontrada")
 
     # Unregister orchestrator if exists
     if analysis.orchestrator_key:

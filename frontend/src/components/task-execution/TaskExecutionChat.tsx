@@ -46,7 +46,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
       setTask(taskRes.data);
     } catch (error) {
       console.error('Failed to load data:', error);
-      showError('Failed to load chat session or task');
+      showError('Falha ao carregar sessao de chat ou tarefa');
     } finally {
       setLoading(false);
     }
@@ -326,7 +326,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
                 variant="primary"
                 size="sm"
               >
-                {executing ? 'Sending...' : 'Send Message'}
+                {executing ? 'Enviando...' : 'Enviar Mensagem'}
               </Button>
             </div>
           </div>

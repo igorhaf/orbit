@@ -68,7 +68,7 @@ function AISuggestButton({
         onClick();
       }}
       disabled={disabled || isGenerating}
-      title="Suggest a better title with AI"
+      title="Sugerir um titulo melhor com IA"
       className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
     >
       {isGenerating ? (
@@ -141,7 +141,7 @@ export default function InlineCardCreator({
       onCreated(result);
     } catch (err) {
       console.error('Failed to create card:', err);
-      setError('Failed to create. Press Enter to retry.');
+      setError('Falha ao criar. Pressione Enter para tentar novamente.');
       setIsSaving(false);
       isSubmitting.current = false;
     }

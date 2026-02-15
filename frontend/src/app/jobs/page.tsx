@@ -1288,14 +1288,14 @@ export default function JobsPage() {
         open={cleanupConfirm.open}
         onClose={() => setCleanupConfirm({ open: false, days: 0 })}
         onConfirm={handleCleanupConfirm}
-        title="Cleanup Jobs"
+        title="Limpar Jobs"
         message={
           cleanupConfirm.days === 0
-            ? 'Are you sure you want to delete ALL completed, failed and cancelled jobs? This action cannot be undone.'
-            : `Are you sure you want to delete all completed and failed jobs older than ${cleanupConfirm.days} day${cleanupConfirm.days > 1 ? 's' : ''}? This action cannot be undone.`
+            ? 'Tem certeza que deseja excluir TODOS os jobs concluidos, com falha e cancelados? Esta acao nao pode ser desfeita.'
+            : `Tem certeza que deseja excluir todos os jobs concluidos e com falha com mais de ${cleanupConfirm.days} dia${cleanupConfirm.days > 1 ? 's' : ''}? Esta acao nao pode ser desfeita.`
         }
-        confirmLabel="Delete Jobs"
-        cancelLabel="Cancel"
+        confirmLabel="Excluir Jobs"
+        cancelLabel="Cancelar"
         type="danger"
       />
     </Layout>

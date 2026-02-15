@@ -68,7 +68,7 @@ async def list_wiki_pages(
     """List all wiki pages for a project, optionally filtered by parent."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
 
     query = db.query(WikiPage).filter(WikiPage.project_id == project_id)
 
@@ -87,7 +87,7 @@ async def get_wiki_tree(
     """Get the full wiki page tree for a project."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
 
     all_pages = (
         db.query(WikiPage)
@@ -165,7 +165,7 @@ async def generate_wiki_from_context(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
 
     created_pages = []
 
@@ -364,7 +364,7 @@ async def relink_wiki_pages(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
 
     linked_count = _apply_semantic_links_to_project(db, project_id)
     return {"detail": f"{linked_count} pages updated with semantic links"}
@@ -379,7 +379,7 @@ async def create_wiki_page(
     """Create a new wiki page."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
 
     slug = _ensure_unique_slug(db, project_id, _slugify(data.slug or data.title))
 
@@ -417,7 +417,7 @@ async def get_wiki_page(
         .first()
     )
     if not page:
-        raise HTTPException(status_code=404, detail="Wiki page not found")
+        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
     return page
 
 
@@ -435,7 +435,7 @@ async def update_wiki_page(
         .first()
     )
     if not page:
-        raise HTTPException(status_code=404, detail="Wiki page not found")
+        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
 
     if data.title is not None:
         page.title = data.title
@@ -471,7 +471,7 @@ async def delete_wiki_page(
         .first()
     )
     if not page:
-        raise HTTPException(status_code=404, detail="Wiki page not found")
+        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
 
     db.delete(page)
     db.commit()
@@ -1295,7 +1295,7 @@ async def enrich_business_rule_pages(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
 
     from sqlalchemy import text as sql_text
 

@@ -110,7 +110,7 @@ async def get_chain(usage_type: AIModelUsageType, db: Session = Depends(get_db))
     if not chain:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No chain configured for usage_type '{usage_type.value}'",
+            detail=f"Nenhuma cadeia configurada para o tipo de uso '{usage_type.value}'",
         )
     models = _resolve_chain_models(db, chain.chain or [])
     return _chain_to_dict(chain, models)
@@ -128,7 +128,7 @@ async def upsert_chain(
         if not model:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"AI Model '{model_id}' not found",
+                detail=f"Modelo de IA '{model_id}' nao encontrado",
             )
 
     existing = db.query(AIFlowChain).filter(AIFlowChain.usage_type == usage_type).first()
@@ -166,7 +166,7 @@ async def delete_chain(usage_type: AIModelUsageType, db: Session = Depends(get_d
     if not chain:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No chain configured for usage_type '{usage_type.value}'",
+            detail=f"Nenhuma cadeia configurada para o tipo de uso '{usage_type.value}'",
         )
     db.delete(chain)
     db.commit()
@@ -425,7 +425,7 @@ async def optimize_chain(
     """Analyze execution history and recommend optimal chain order."""
     chain = db.query(AIFlowChain).filter(AIFlowChain.usage_type == usage_type).first()
     if not chain or not chain.chain:
-        raise HTTPException(status_code=404, detail="No chain configured for this usage_type")
+        raise HTTPException(status_code=404, detail="Nenhuma cadeia configurada para este tipo de uso")
 
     cutoff = datetime.utcnow() - timedelta(days=data.days)
     model_uuids = [UUID(mid) for mid in chain.chain]

@@ -95,7 +95,7 @@ async def get_cache_stats(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(f"Error fetching cache stats: {e}")
-        raise HTTPException(status_code=500, detail=f"Error fetching cache statistics: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao buscar estatisticas de cache: {str(e)}")
 
 
 @router.post("/cache/clear")
@@ -117,7 +117,7 @@ async def clear_cache(db: Session = Depends(get_db)) -> Dict[str, str]:
         orchestrator = AIOrchestrator(db=db, enable_cache=True)
 
         if not orchestrator.cache_service:
-            raise HTTPException(status_code=400, detail="Cache is not enabled")
+            raise HTTPException(status_code=400, detail="Cache nao esta habilitado")
 
         # Clear cache via AIOrchestrator's cache service
         if hasattr(orchestrator.cache_service, 'clear'):
@@ -125,10 +125,10 @@ async def clear_cache(db: Session = Depends(get_db)) -> Dict[str, str]:
             logger.info("✅ Cache cleared successfully")
             return {"status": "success", "message": "Cache cleared successfully"}
         else:
-            raise HTTPException(status_code=501, detail="Cache clear not implemented")
+            raise HTTPException(status_code=501, detail="Limpeza de cache nao implementada")
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
-        raise HTTPException(status_code=500, detail=f"Error clearing cache: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro ao limpar cache: {str(e)}")

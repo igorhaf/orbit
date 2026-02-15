@@ -178,9 +178,9 @@ export default function ProjectsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Projects</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Projetos</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Manage your AI orchestration projects
+              Gerencie seus projetos de orquestracao de IA
             </p>
           </div>
           <Button
@@ -197,7 +197,7 @@ export default function ProjectsPage() {
               </svg>
             }
           >
-            New Project
+            Novo Projeto
           </Button>
         </div>
 
@@ -222,13 +222,13 @@ export default function ProjectsPage() {
                   d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
                 />
               </svg>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">No projects</h3>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhum projeto</h3>
               <p className="mt-1 text-sm text-gray-500">
-                Get started by creating a new project.
+                Comece criando um novo projeto.
               </p>
               <div className="mt-6">
                 <Button variant="primary" onClick={() => router.push('/projects/new')}>
-                  New Project
+                  Novo Projeto
                 </Button>
               </div>
             </CardContent>
@@ -256,18 +256,18 @@ export default function ProjectsPage() {
                     {isProcessing ? (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                         <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1" />
-                        Processing
+                        Processando
                       </span>
                     ) : project.status === 'active' ? (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
                         </svg>
-                        Active
+                        Ativo
                       </span>
                     ) : (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
-                        Draft
+                        Rascunho
                       </span>
                     )}
                   </div>
@@ -287,7 +287,7 @@ export default function ProjectsPage() {
                       <div>
                         <div className="flex justify-between items-center mb-1">
                           <span className="text-xs text-gray-500">
-                            {jobInfo?.message || 'Initializing...'}
+                            {jobInfo?.message || 'Inicializando...'}
                           </span>
                           <span className="text-xs font-medium text-blue-600">
                             {Math.round(jobInfo?.progress || 0)}%
@@ -304,13 +304,13 @@ export default function ProjectsPage() {
                       {/* Actions */}
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-blue-500 font-medium">
-                          Click for details
+                          Clique para detalhes
                         </span>
                         <button
                           onClick={(e) => handleCancelCreation(e, project, jobInfo?.jobId)}
                           disabled={cancellingProject === project.id}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                          title="Cancel project creation"
+                          title="Cancelar criacao do projeto"
                         >
                           {cancellingProject === project.id ? (
                             <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-600" />
@@ -319,7 +319,7 @@ export default function ProjectsPage() {
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                           )}
-                          Cancel
+                          Cancelar
                         </button>
                       </div>
                     </div>
@@ -327,7 +327,7 @@ export default function ProjectsPage() {
                   <>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <p className="text-sm text-gray-600 line-clamp-3">
-                      {project.description ? stripMarkdown(project.description) : 'No description'}
+                      {project.description ? stripMarkdown(project.description) : 'Sem descricao'}
                     </p>
                     {/* PROMPT #128 - Show AI model icon if project has AI-generated context */}
                     {project.context_human && (
@@ -352,12 +352,12 @@ export default function ProjectsPage() {
                     </div>
                   )}
                   <div className="text-xs text-gray-400 mb-4">
-                    Created: {new Date(project.created_at).toLocaleDateString()}
+                    Criado: {new Date(project.created_at).toLocaleDateString()}
                   </div>
                   <div className="flex gap-2">
                     <Link href={`/projects/${project.id}`} className="flex-1">
                       <Button variant="primary" size="sm" className="w-full">
-                        View
+                        Ver
                       </Button>
                     </Link>
                     <Button
@@ -393,17 +393,17 @@ export default function ProjectsPage() {
         <Dialog
           open={showDeleteDialog}
           onClose={() => setShowDeleteDialog(false)}
-          title="Delete Project?"
-          description="Are you sure you want to delete this project?"
+          title="Excluir Projeto?"
+          description="Tem certeza que deseja excluir este projeto?"
         >
           <div className="space-y-4">
             <div className="bg-red-50 border border-red-200 rounded-lg p-4">
               <div className="flex items-start gap-3">
                 <div className="text-red-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
                 <div>
-                  <h4 className="font-semibold text-red-900 mb-1">Warning: This action cannot be undone!</h4>
+                  <h4 className="font-semibold text-red-900 mb-1">Atencao: Esta acao nao pode ser desfeita!</h4>
                   <p className="text-sm text-red-800">
-                    Project &quot;{projectToDelete?.name}&quot; and all associated data (tasks, interviews, wiki, jobs, RAG documents) will be permanently deleted.
+                    O projeto &quot;{projectToDelete?.name}&quot; e todos os dados associados (tarefas, entrevistas, wiki, jobs, documentos RAG) serao permanentemente excluidos.
                   </p>
                 </div>
               </div>
@@ -416,7 +416,7 @@ export default function ProjectsPage() {
                 onClick={() => setShowDeleteDialog(false)}
                 disabled={isDeleting}
               >
-                Cancel
+                Cancelar
               </Button>
               <Button
                 variant="danger"
@@ -424,7 +424,7 @@ export default function ProjectsPage() {
                 disabled={isDeleting}
                 isLoading={isDeleting}
               >
-                Yes, Delete Project
+                Sim, Excluir Projeto
               </Button>
             </div>
           </div>

@@ -59,7 +59,7 @@ export default function BulkActionBar({
                 {selectedCount}
               </div>
               <span className="text-sm font-medium text-gray-900">
-                item{selectedCount !== 1 ? 's' : ''} selected
+                {selectedCount !== 1 ? 'itens selecionados' : 'item selecionado'}
               </span>
             </div>
             {onClearSelection && (
@@ -69,7 +69,7 @@ export default function BulkActionBar({
                 onClick={onClearSelection}
                 className="text-xs text-gray-600"
               >
-                Clear
+                Limpar
               </Button>
             )}
           </div>
@@ -89,7 +89,7 @@ export default function BulkActionBar({
                     </svg>
                   }
                 >
-                  Priority
+                  Prioridade
                 </Button>
                 {showPriorityDialog && (
                   <div className="absolute bottom-full mb-2 left-0 bg-white border border-gray-300 rounded-lg shadow-lg p-2 min-w-[160px]">
@@ -123,13 +123,13 @@ export default function BulkActionBar({
                     </svg>
                   }
                 >
-                  Label
+                  Etiqueta
                 </Button>
                 {showLabelDialog && (
                   <div className="absolute bottom-full mb-2 left-0 bg-white border border-gray-300 rounded-lg shadow-lg p-3 min-w-[200px]">
                     <input
                       type="text"
-                      placeholder="Label name..."
+                      placeholder="Nome da etiqueta..."
                       value={labelInput}
                       onChange={(e) => setLabelInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleAddLabel()}
@@ -138,10 +138,10 @@ export default function BulkActionBar({
                     />
                     <div className="flex gap-2">
                       <Button size="sm" variant="primary" onClick={handleAddLabel} className="flex-1">
-                        Add
+                        Adicionar
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setShowLabelDialog(false)}>
-                        Cancel
+                        Cancelar
                       </Button>
                     </div>
                   </div>
@@ -196,15 +196,15 @@ export default function BulkActionBar({
                     </svg>
                   }
                 >
-                  Delete
+                  Excluir
                 </Button>
                 {showDeleteDialog && (
                   <div className="absolute bottom-full mb-2 right-0 bg-white border border-red-300 rounded-lg shadow-lg p-4 min-w-[280px]">
                     <div className="text-sm font-medium text-gray-900 mb-2">
-                      Delete {selectedCount} item{selectedCount !== 1 ? 's' : ''}?
+                      Excluir {selectedCount} {selectedCount !== 1 ? 'itens' : 'item'}?
                     </div>
                     <p className="text-xs text-gray-600 mb-3">
-                      This action cannot be undone.
+                      Esta acao nao pode ser desfeita.
                     </p>
                     <div className="flex gap-2">
                       <Button
@@ -216,10 +216,10 @@ export default function BulkActionBar({
                         }}
                         className="flex-1"
                       >
-                        Delete
+                        Excluir
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setShowDeleteDialog(false)}>
-                        Cancel
+                        Cancelar
                       </Button>
                     </div>
                   </div>

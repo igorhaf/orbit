@@ -88,7 +88,7 @@ export function InterviewList({
     const targetProjectId = projectId || selectedProject;
 
     if (!targetProjectId) {
-      showWarning('Please select a project');
+      showWarning('Selecione um projeto');
       return;
     }
 
@@ -121,7 +121,7 @@ export function InterviewList({
       router.push(`/projects/${targetProjectId}/interviews/${interviewId}`);
     } catch (error) {
       console.error('Failed to create interview:', error);
-      showError('Failed to create interview. Please try again.');
+      showError('Falha ao criar entrevista. Tente novamente.');
       setCreating(false);
     }
     // Note: Don't setCreating(false) on success - we're navigating away
@@ -146,7 +146,7 @@ export function InterviewList({
       await loadData(); // Refresh list
     } catch (error) {
       console.error('Failed to delete interview:', error);
-      showError('Failed to delete interview. Please try again.');
+      showError('Falha ao excluir entrevista. Tente novamente.');
     } finally {
       setIsDeleting(false);
     }
@@ -300,12 +300,12 @@ export function InterviewList({
                     {interview.conversation_data.length > 0
                       ? interview.conversation_data[interview.conversation_data.length - 1].content.substring(0, 150) +
                         (interview.conversation_data[interview.conversation_data.length - 1].content.length > 150 ? '...' : '')
-                      : 'No messages yet. Click to start the conversation.'}
+                      : 'Nenhuma mensagem. Clique para iniciar a conversa.'}
                   </p>
 
                   <div className="flex items-center justify-between text-xs text-gray-400 pt-3 border-t border-gray-100">
                     <span>
-                      Created: {new Date(interview.created_at).toLocaleDateString()}
+                      Criado: {new Date(interview.created_at).toLocaleDateString()}
                     </span>
                     <div className="flex items-center gap-2">
                       <Badge
@@ -323,7 +323,7 @@ export function InterviewList({
                       <button
                         onClick={(e) => handleDeleteClick(e, interview)}
                         className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
-                        title="Delete interview"
+                        title="Excluir entrevista"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -342,10 +342,10 @@ export function InterviewList({
       <Dialog
         open={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        title="Create New Interview"
+        title="Criar Nova Entrevista"
         description={projectId
-          ? "Start a new AI interview session for this project"
-          : "Start a new AI interview session for a project"
+          ? "Iniciar nova sessao de entrevista IA para este projeto"
+          : "Iniciar nova sessao de entrevista IA para um projeto"
         }
       >
         <div className="space-y-4">
@@ -353,8 +353,8 @@ export function InterviewList({
           {!projectId && (
             <>
               <Select
-                label="Select Project"
-                placeholder="-- Select a project --"
+                label="Selecionar Projeto"
+                placeholder="-- Selecione um projeto --"
                 options={(projects || []).map((p) => ({ value: p.id, label: p.name }))}
                 value={selectedProject}
                 onChange={(e) => setSelectedProject(e.target.value)}
@@ -362,7 +362,7 @@ export function InterviewList({
 
               {(projects || []).length === 0 && (
                 <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded">
-                  No projects available. Please create a project first.
+                  Nenhum projeto disponivel. Crie um projeto primeiro.
                 </div>
               )}
             </>
@@ -371,9 +371,9 @@ export function InterviewList({
           {/* Confirmation message when projectId is provided */}
           {projectId && (
             <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded">
-              <p className="font-medium mb-1">Ready to start interview</p>
+              <p className="font-medium mb-1">Pronto para iniciar entrevista</p>
               <p className="text-xs text-gray-500">
-                The interview will be created for the current project and will begin immediately.
+                A entrevista sera criada para o projeto atual e iniciara imediatamente.
               </p>
             </div>
           )}
@@ -382,19 +382,19 @@ export function InterviewList({
           {/* Show Context Interview info if project doesn't have context yet */}
           {projectProp && !projectProp.context_locked ? (
             <div className="text-sm text-gray-600 bg-amber-50 p-4 rounded border border-amber-200">
-              <p className="font-medium text-gray-900 mb-1">Context Interview (Required First Step)</p>
+              <p className="font-medium text-gray-900 mb-1">Entrevista de Contexto (Primeiro Passo Obrigatorio)</p>
               <p className="text-xs text-gray-600">
-                This interview will establish the foundational context for your project.
-                After completing this, the context will be locked and you can create Epics.
+                Esta entrevista estabelecera o contexto fundamental do seu projeto.
+                Apos concluir, o contexto sera travado e voce podera criar Epics.
               </p>
             </div>
           ) : (
             <div className="text-sm text-gray-600 bg-blue-50 p-4 rounded border border-blue-200">
-              <p className="font-medium text-gray-900 mb-1">Epic Interview</p>
+              <p className="font-medium text-gray-900 mb-1">Entrevista de Epic</p>
               <p className="text-xs text-gray-600">
-                This interview will create an Epic for your project.
-                Card-focused mode (with motivation types) is available for hierarchical interviews
-                (Stories, Tasks, Subtasks) created from this Epic.
+                Esta entrevista criara um Epic para seu projeto.
+                Modo focado em cards (com tipos de motivacao) esta disponivel para entrevistas hierarquicas
+                (Stories, Tasks, Subtasks) criadas a partir deste Epic.
               </p>
             </div>
           )}
@@ -408,7 +408,7 @@ export function InterviewList({
                 setSelectedProject('');
               }}
             >
-              Cancel
+              Cancelar
             </Button>
             <Button
               variant="primary"
@@ -416,7 +416,7 @@ export function InterviewList({
               disabled={(!projectId && !selectedProject) || creating}
               isLoading={creating}
             >
-              {creating ? 'Creating...' : 'Create Interview'}
+              {creating ? 'Criando...' : 'Criar Entrevista'}
             </Button>
           </div>
         </div>
@@ -429,7 +429,7 @@ export function InterviewList({
           setShowDeleteModal(false);
           setInterviewToDelete(null);
         }}
-        title="Delete Interview"
+        title="Excluir Entrevista"
         size="sm"
       >
         <div className="space-y-4">
@@ -441,10 +441,10 @@ export function InterviewList({
             </div>
             <div>
               <p className="text-sm font-medium text-gray-900">
-                Delete this interview?
+                Excluir esta entrevista?
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                This will permanently delete the interview and all its messages. This action cannot be undone.
+                Isso excluira permanentemente a entrevista e todas as suas mensagens. Esta acao nao pode ser desfeita.
               </p>
             </div>
           </div>
@@ -458,14 +458,14 @@ export function InterviewList({
             }}
             disabled={isDeleting}
           >
-            Cancel
+            Cancelar
           </Button>
           <Button
             variant="danger"
             onClick={handleDeleteConfirm}
             disabled={isDeleting}
           >
-            {isDeleting ? 'Deleting...' : 'Delete'}
+            {isDeleting ? 'Excluindo...' : 'Excluir'}
           </Button>
         </DialogFooter>
       </Dialog>

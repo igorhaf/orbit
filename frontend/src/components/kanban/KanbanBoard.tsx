@@ -220,7 +220,7 @@ export function KanbanBoard({ projectId }: Props) {
       });
     } catch (error) {
       console.error('Failed to move task:', error);
-      showError('Failed to move task');
+      showError('Falha ao mover tarefa');
       await loadBoard(); // Reload to revert UI
     }
   };
@@ -259,7 +259,7 @@ export function KanbanBoard({ projectId }: Props) {
       await loadBoard(); // Reload to show new task
     } catch (error) {
       console.error('Failed to approve modification:', error);
-      showError('Failed to approve modification. Please try again.');
+      showError('Falha ao aprovar modificacao. Tente novamente.');
     }
   };
 
@@ -273,7 +273,7 @@ export function KanbanBoard({ projectId }: Props) {
       await loadBoard(); // Reload to show unblocked task
     } catch (error) {
       console.error('Failed to reject modification:', error);
-      showError('Failed to reject modification. Please try again.');
+      showError('Falha ao rejeitar modificacao. Tente novamente.');
     }
   };
 

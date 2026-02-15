@@ -213,16 +213,16 @@ async def list_git_commits(
     # Get project
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
 
     if not project.code_path:
-        raise HTTPException(status_code=400, detail="Project has no code_path configured")
+        raise HTTPException(status_code=400, detail="Projeto nao tem code_path configurado")
 
     if not os.path.isdir(project.code_path):
-        raise HTTPException(status_code=400, detail=f"Code path does not exist: {project.code_path}")
+        raise HTTPException(status_code=400, detail=f"Caminho do codigo nao existe: {project.code_path}")
 
     if not is_git_repository(project.code_path):
-        raise HTTPException(status_code=400, detail=f"Code path is not a Git repository: {project.code_path}")
+        raise HTTPException(status_code=400, detail=f"Caminho do codigo nao e um repositorio Git: {project.code_path}")
 
     # Build git log command
     # Format: hash|short_hash|author_name|author_email|date|relative_date|subject
@@ -253,7 +253,7 @@ async def list_git_commits(
 
     success, output = run_git_command(project.code_path, git_args)
     if not success:
-        raise HTTPException(status_code=500, detail=f"Git command failed: {output}")
+        raise HTTPException(status_code=500, detail=f"Comando Git falhou: {output}")
 
     commits = parse_commit_log(output)
 
@@ -297,10 +297,10 @@ async def get_git_commit_detail(
     # Get project
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
 
     if not project.code_path or not is_git_repository(project.code_path):
-        raise HTTPException(status_code=400, detail="Project is not a Git repository")
+        raise HTTPException(status_code=400, detail="Projeto nao e um repositorio Git")
 
     # Get commit details
     format_str = "%H|%h|%an|%ae|%aI|%ar|%s|%b"
@@ -310,11 +310,11 @@ async def get_git_commit_detail(
     )
 
     if not success or not output:
-        raise HTTPException(status_code=404, detail=f"Commit {commit_hash} not found")
+        raise HTTPException(status_code=404, detail=f"Commit {commit_hash} nao encontrado")
 
     parts = output.split("|", 7)
     if len(parts) < 7:
-        raise HTTPException(status_code=500, detail="Failed to parse commit details")
+        raise HTTPException(status_code=500, detail="Falha ao analisar detalhes do commit")
 
     # Get file stats
     success, stat_output = run_git_command(
@@ -364,10 +364,10 @@ async def list_git_branches(
     # Get project
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
 
     if not project.code_path or not is_git_repository(project.code_path):
-        raise HTTPException(status_code=400, detail="Project is not a Git repository")
+        raise HTTPException(status_code=400, detail="Projeto nao e um repositorio Git")
 
     # Get current branch
     success, current_branch = run_git_command(project.code_path, ["rev-parse", "--abbrev-ref", "HEAD"])
@@ -381,7 +381,7 @@ async def list_git_branches(
     )
 
     if not success:
-        raise HTTPException(status_code=500, detail=f"Failed to list branches: {output}")
+        raise HTTPException(status_code=500, detail=f"Falha ao listar branches: {output}")
 
     branches = []
     for line in output.split("\n"):
@@ -431,7 +431,7 @@ async def get_git_repo_info(
     # Get project
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
 
     if not project.code_path:
         return GitRepoInfo(
@@ -497,10 +497,10 @@ def get_project_repo(project_id: UUID, db: Session) -> tuple[Project, str]:
     """Helper to get project and validate it's a git repo."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
 
     if not project.code_path or not is_git_repository(project.code_path):
-        raise HTTPException(status_code=400, detail="Project is not a Git repository")
+        raise HTTPException(status_code=400, detail="Projeto nao e um repositorio Git")
 
     return project, project.code_path
 
@@ -521,11 +521,11 @@ async def get_commit_diff(
     format_str = "%H|%h|%s|%an|%ae|%aI|%b"
     success, output = run_git_command(code_path, ["log", "-1", f"--format={format_str}", commit_hash])
     if not success or not output:
-        raise HTTPException(status_code=404, detail=f"Commit {commit_hash} not found")
+        raise HTTPException(status_code=404, detail=f"Commit {commit_hash} nao encontrado")
 
     parts = output.split("|", 6)
     if len(parts) < 6:
-        raise HTTPException(status_code=500, detail="Failed to parse commit")
+        raise HTTPException(status_code=500, detail="Falha ao analisar commit")
 
     # Get file list with stats
     success, files_output = run_git_command(
@@ -624,7 +624,7 @@ async def checkout_commit(
     if success and status:
         raise HTTPException(
             status_code=400,
-            detail="Cannot checkout: you have uncommitted changes. Commit or stash them first."
+            detail="Nao e possivel fazer checkout: voce tem alteracoes nao commitadas. Faca commit ou stash primeiro."
         )
 
     success, output = run_git_command(code_path, ["checkout", request.commit_hash])
@@ -636,7 +636,7 @@ async def checkout_commit(
             details={"commit": request.commit_hash, "state": "detached HEAD"}
         )
     else:
-        raise HTTPException(status_code=500, detail=f"Checkout failed: {output}")
+        raise HTTPException(status_code=500, detail=f"Checkout falhou: {output}")
 
 
 @router.post("/projects/{project_id}/git/branch", response_model=GitOperationResponse)
@@ -651,11 +651,11 @@ async def create_branch_from_commit(
     project, code_path = get_project_repo(project_id, db)
 
     if not request.branch_name:
-        raise HTTPException(status_code=400, detail="Branch name is required")
+        raise HTTPException(status_code=400, detail="Nome da branch e obrigatorio")
 
     # Validate branch name
     if " " in request.branch_name or ".." in request.branch_name:
-        raise HTTPException(status_code=400, detail="Invalid branch name")
+        raise HTTPException(status_code=400, detail="Nome da branch invalido")
 
     success, output = run_git_command(
         code_path,
@@ -669,7 +669,7 @@ async def create_branch_from_commit(
             details={"branch": request.branch_name, "from_commit": request.commit_hash}
         )
     else:
-        raise HTTPException(status_code=500, detail=f"Failed to create branch: {output}")
+        raise HTTPException(status_code=500, detail=f"Falha ao criar branch: {output}")
 
 
 @router.post("/projects/{project_id}/git/revert", response_model=GitOperationResponse)
@@ -688,7 +688,7 @@ async def revert_commit(
     if success and status:
         raise HTTPException(
             status_code=400,
-            detail="Cannot revert: you have uncommitted changes. Commit or stash them first."
+            detail="Nao e possivel reverter: voce tem alteracoes nao commitadas. Faca commit ou stash primeiro."
         )
 
     success, output = run_git_command(
@@ -710,7 +710,7 @@ async def revert_commit(
     else:
         # Abort revert if it failed
         run_git_command(code_path, ["revert", "--abort"])
-        raise HTTPException(status_code=500, detail=f"Revert failed: {output}")
+        raise HTTPException(status_code=500, detail=f"Revert falhou: {output}")
 
 
 @router.post("/projects/{project_id}/git/cherry-pick", response_model=GitOperationResponse)
@@ -729,7 +729,7 @@ async def cherry_pick_commit(
     if success and status:
         raise HTTPException(
             status_code=400,
-            detail="Cannot cherry-pick: you have uncommitted changes. Commit or stash them first."
+            detail="Nao e possivel fazer cherry-pick: voce tem alteracoes nao commitadas. Faca commit ou stash primeiro."
         )
 
     success, output = run_git_command(
@@ -750,7 +750,7 @@ async def cherry_pick_commit(
     else:
         # Abort cherry-pick if it failed
         run_git_command(code_path, ["cherry-pick", "--abort"])
-        raise HTTPException(status_code=500, detail=f"Cherry-pick failed: {output}")
+        raise HTTPException(status_code=500, detail=f"Cherry-pick falhou: {output}")
 
 
 @router.post("/projects/{project_id}/git/reset", response_model=GitOperationResponse)
@@ -771,7 +771,7 @@ async def reset_to_commit(
 
     mode = request.reset_mode or "mixed"
     if mode not in ["soft", "mixed", "hard"]:
-        raise HTTPException(status_code=400, detail="Invalid reset mode. Use: soft, mixed, or hard")
+        raise HTTPException(status_code=400, detail="Modo de reset invalido. Use: soft, mixed ou hard")
 
     # Extra warning for hard reset
     if mode == "hard":
@@ -794,7 +794,7 @@ async def reset_to_commit(
             }
         )
     else:
-        raise HTTPException(status_code=500, detail=f"Reset failed: {output}")
+        raise HTTPException(status_code=500, detail=f"Reset falhou: {output}")
 
 
 @router.post("/projects/{project_id}/git/stash", response_model=GitOperationResponse)
@@ -816,7 +816,7 @@ async def stash_changes(
             details={"output": output}
         )
     else:
-        raise HTTPException(status_code=500, detail=f"Stash failed: {output}")
+        raise HTTPException(status_code=500, detail=f"Stash falhou: {output}")
 
 
 @router.post("/projects/{project_id}/git/stash/pop", response_model=GitOperationResponse)
@@ -838,4 +838,4 @@ async def stash_pop(
             details={"output": output}
         )
     else:
-        raise HTTPException(status_code=500, detail=f"Stash pop failed: {output}")
+        raise HTTPException(status_code=500, detail=f"Stash pop falhou: {output}")

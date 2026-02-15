@@ -60,7 +60,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
       }
     } catch (err) {
       console.error('Failed to load folders:', err);
-      setError('Failed to load folders. Make sure the projects folder is mounted.');
+      setError('Falha ao carregar pastas. Verifique se a pasta de projetos esta montada.');
       setFolders([]);
     } finally {
       setLoading(false);
@@ -110,7 +110,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
       open={open}
       onClose={onClose}
       title={title}
-      description="Navigate and select a folder containing your project code"
+      description="Navegue e selecione uma pasta contendo o codigo do seu projeto"
       size="lg"
     >
       {/* Breadcrumb / Current Path */}
@@ -226,7 +226,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
                     handleFolderClick(folder);
                   }}
                   className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded"
-                  title="Open folder"
+                  title="Abrir pasta"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

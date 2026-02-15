@@ -98,7 +98,7 @@ export default function AIExecutionsPage() {
       setSelectedExecution(detail);
     } catch (err: any) {
       console.error('Failed to load execution detail:', err);
-      showError('Failed to load execution details');
+      showError('Falha ao carregar detalhes da execucao');
     }
   };
 

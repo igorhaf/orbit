@@ -48,7 +48,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
 
     return changes.length > 0
       ? `Updated ${changes.join(', ')}`
-      : 'No changes detected';
+      : 'Nenhuma alteracao detectada';
   };
 
   return (

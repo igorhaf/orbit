@@ -85,7 +85,7 @@ export default function DiscoveryQueuePage() {
       loadQueue();
     } catch (error) {
       console.error('Failed to process item:', error);
-      showError('Failed to process item. Please try again.');
+      showError('Falha ao processar item. Tente novamente.');
     } finally {
       setProcessingId(null);
     }

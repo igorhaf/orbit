@@ -157,7 +157,7 @@ export function ExecutionPanel({
                 }
               />
             </svg>
-            {isExecuting ? 'Executing...' : 'Start Execution'}
+            {isExecuting ? 'Executando...' : 'Iniciar Execucao'}
           </Button>
         </CardHeader>
         <CardContent>

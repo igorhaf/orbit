@@ -447,7 +447,7 @@ export default function BacklogListView({
           false,
           item.id // task_id for persistent loading state
         );
-        showSuccess('Activation started! Track progress in the notification bell.');
+        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificacoes.');
         return;
       }
 
@@ -704,7 +704,7 @@ export default function BacklogListView({
                 }}
                 disabled={isItemActivating(item.id) || rejectingId === item.id}
                 className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                title="Approve suggestion"
+                title="Aprovar sugestao"
               >
                 {isItemActivating(item.id) ? (
                   <>
@@ -728,7 +728,7 @@ export default function BacklogListView({
                 }}
                 disabled={isItemActivating(item.id) || rejectingId === item.id}
                 className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded border border-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                title="Reject suggestion"
+                title="Rejeitar sugestao"
               >
                 {rejectingId === item.id ? (
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
@@ -945,7 +945,7 @@ export default function BacklogListView({
                         ? 'bg-white text-blue-600 shadow-sm'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
-                    title="Tree View"
+                    title="Visualizacao em Arvore"
                   >
                     <span className="inline-flex items-center gap-1"><IconTree className="w-3 h-3" /> Tree</span>
                   </button>
@@ -956,7 +956,7 @@ export default function BacklogListView({
                         ? 'bg-white text-blue-600 shadow-sm'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
-                    title="Card View"
+                    title="Visualizacao em Cards"
                   >
                     <span className="inline-flex items-center gap-1"><IconCards className="w-3 h-3" /> Cards</span>
                   </button>
@@ -968,14 +968,14 @@ export default function BacklogListView({
                     <button
                       onClick={expandAll}
                       className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                      title="Expand all items"
+                      title="Expandir todos os itens"
                     >
                       Expand All
                     </button>
                     <button
                       onClick={collapseAll}
                       className="px-3 py-1 text-xs font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-50 rounded transition-colors"
-                      title="Collapse all items"
+                      title="Recolher todos os itens"
                     >
                       Collapse All
                     </button>
@@ -1152,8 +1152,8 @@ export default function BacklogListView({
         title={confirmDialog.title}
         message={confirmDialog.message}
         type={confirmDialog.type}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
       />
     </Card>
   );

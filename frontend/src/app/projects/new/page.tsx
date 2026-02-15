@@ -81,7 +81,7 @@ function NewProjectContent() {
           }
         } catch (error) {
           console.error('Failed to resume pipeline:', error);
-          showError('Failed to load project progress.');
+          showError('Falha ao carregar progresso do projeto.');
         }
       };
       resumePipeline();
@@ -102,7 +102,7 @@ function NewProjectContent() {
   const handlePipelineError = (error: string) => {
     setProcessing(false);
     setPipelineJobId(null);
-    showError(`Pipeline failed: ${error}`);
+    showError(`Pipeline falhou: ${error}`);
   };
 
   const { job: pipelineJob } = useJobPolling(pipelineJobId, {
@@ -120,7 +120,7 @@ function NewProjectContent() {
   // Start pipeline
   const handleGenerate = async () => {
     if (!codePath) {
-      showWarning('Please select a code folder first');
+      showWarning('Selecione uma pasta de codigo primeiro');
       return;
     }
 
@@ -142,16 +142,16 @@ function NewProjectContent() {
 
         // Track in notification bell
         const folderName = codePath.split('/').pop() || 'project';
-        addJob(data.job_id, 'project_pipeline', `Processing ${folderName}...`, `/projects/${data.project.id}`, true);
+        addJob(data.job_id, 'project_pipeline', `Processando ${folderName}...`, `/projects/${data.project.id}`, true);
       } else {
         const error = await response.json();
         setProcessing(false);
-        showError(`Failed to create project: ${error.detail || 'Unknown error'}`);
+        showError(`Falha ao criar projeto: ${error.detail || 'Erro desconhecido'}`);
       }
     } catch (error) {
       console.error('Create and process failed:', error);
       setProcessing(false);
-      showError('Failed to create project. Please try again.');
+      showError('Falha ao criar projeto. Tente novamente.');
     }
   };
 
@@ -173,7 +173,7 @@ function NewProjectContent() {
       router.push('/projects');
     } catch (error) {
       console.error('Error cancelling project creation:', error);
-      showError('Failed to cancel project creation.');
+      showError('Falha ao cancelar criacao do projeto.');
     } finally {
       setCancelling(false);
     }
@@ -181,7 +181,7 @@ function NewProjectContent() {
 
   // Compute progress info from job
   const progressPercent = pipelineJob?.progress_percent || 0;
-  const progressMessage = pipelineJob?.progress_message || 'Initializing...';
+  const progressMessage = pipelineJob?.progress_message || 'Inicializando...';
 
   // Determine which pipeline stage is active
   const getStageStatus = (stageStart: number, stageEnd: number) => {
@@ -192,8 +192,8 @@ function NewProjectContent() {
 
   // PROMPT #241 - Simplified to 2 stages (context generation moved to watchdog)
   const stages = [
-    { label: 'Scanning codebase', start: 0, end: 85, icon: 'M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z' },
-    { label: 'Finalizing project', start: 85, end: 100, icon: 'M5 13l4 4L19 7' },
+    { label: 'Escaneando codebase', start: 0, end: 85, icon: 'M10 21h7a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v11m0 5l4.879-4.879m0 0a3 3 0 104.243-4.242 3 3 0 00-4.243 4.242z' },
+    { label: 'Finalizando projeto', start: 85, end: 100, icon: 'M5 13l4 4L19 7' },
   ];
 
   return (
@@ -201,27 +201,27 @@ function NewProjectContent() {
       <Breadcrumbs />
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-bold text-gray-900 mb-8">
-          {processing ? 'Processing Project' : 'New Project'}
+          {processing ? 'Processando Projeto' : 'Novo Projeto'}
         </h1>
 
         {!processing ? (
           /* --- Selection Form --- */
           <Card>
             <CardHeader>
-              <CardTitle>Select Code Folder</CardTitle>
+              <CardTitle>Selecionar Pasta de Codigo</CardTitle>
               <p className="text-sm text-gray-600 mt-1">
-                Choose your existing code folder and analysis depth. ORBIT will scan the codebase, generate a rich context, and prepare your project.
+                Escolha sua pasta de codigo existente e a profundidade de analise. O ORBIT escaneara o codebase, gerara um contexto rico e preparara seu projeto.
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Folder Picker */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Code Folder Path *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Caminho da Pasta de Codigo *</label>
                 <div className="flex gap-2">
                   <input
                     value={codePath}
                     onChange={(e) => setCodePath(e.target.value)}
-                    placeholder="/projects/my-existing-code"
+                    placeholder="/projetos/meu-codigo-existente"
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     autoFocus
                   />
@@ -229,7 +229,7 @@ function NewProjectContent() {
                     type="button"
                     variant="outline"
                     onClick={() => setShowFolderPicker(true)}
-                    title="Browse folders"
+                    title="Navegar pastas"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
@@ -237,23 +237,23 @@ function NewProjectContent() {
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Select the path to your existing code folder.
-                  <strong className="block text-gray-600 mt-1">This path cannot be changed after project creation.</strong>
+                  Selecione o caminho para sua pasta de codigo existente.
+                  <strong className="block text-gray-600 mt-1">Este caminho nao pode ser alterado apos a criacao do projeto.</strong>
                 </p>
 
                 <FolderPicker
                   open={showFolderPicker}
                   onClose={() => setShowFolderPicker(false)}
                   onSelect={handleFolderSelect}
-                  title="Select Code Folder"
+                  title="Selecionar Pasta de Codigo"
                 />
               </div>
 
               {/* Scan Depth Selector */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Analysis Depth</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Profundidade de Analise</label>
                 <p className="text-xs text-gray-500 mb-3">
-                  Choose how deeply the AI should analyze your codebase. Deeper analysis provides better results but takes longer.
+                  Escolha a profundidade com que a IA deve analisar seu codebase. Analise mais profunda fornece melhores resultados, mas demora mais.
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   <button
@@ -265,8 +265,8 @@ function NewProjectContent() {
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    <div className="font-medium text-sm">Quick</div>
-                    <div className="text-xs text-gray-500 mt-1">30 files, ~2 min</div>
+                    <div className="font-medium text-sm">Rapida</div>
+                    <div className="text-xs text-gray-500 mt-1">30 arquivos, ~2 min</div>
                   </button>
 
                   <button
@@ -279,8 +279,8 @@ function NewProjectContent() {
                     }`}
                   >
                     <div className="font-medium text-sm">Normal</div>
-                    <div className="text-xs text-gray-500 mt-1">100 files, ~5-10 min</div>
-                    <div className="text-xs text-blue-600 font-medium mt-1">Recommended</div>
+                    <div className="text-xs text-gray-500 mt-1">100 arquivos, ~5-10 min</div>
+                    <div className="text-xs text-blue-600 font-medium mt-1">Recomendado</div>
                   </button>
 
                   <button
@@ -292,8 +292,8 @@ function NewProjectContent() {
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    <div className="font-medium text-sm">Deep</div>
-                    <div className="text-xs text-gray-500 mt-1">ALL files, ~15-30+ min</div>
+                    <div className="font-medium text-sm">Profunda</div>
+                    <div className="text-xs text-gray-500 mt-1">TODOS os arquivos, ~15-30+ min</div>
                   </button>
                 </div>
               </div>
@@ -304,14 +304,14 @@ function NewProjectContent() {
                   variant="outline"
                   onClick={() => router.push('/projects')}
                 >
-                  Cancel
+                  Cancelar
                 </Button>
                 <Button
                   variant="primary"
                   onClick={handleGenerate}
                   disabled={!codePath.trim()}
                 >
-                  Generate Project
+                  Gerar Projeto
                 </Button>
               </div>
             </CardContent>
@@ -320,16 +320,16 @@ function NewProjectContent() {
           /* --- Pipeline Progress View --- */
           <Card>
             <CardHeader>
-              <CardTitle>Processing Project</CardTitle>
+              <CardTitle>Processando Projeto</CardTitle>
               <p className="text-sm text-gray-600 mt-1">
-                {projectName || codePath.split('/').pop() || 'Project'} is being analyzed and configured.
+                {projectName || codePath.split('/').pop() || 'Project'} esta sendo analisado e configurado.
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Overall progress bar */}
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-medium text-gray-700">Overall Progress</span>
+                  <span className="text-sm font-medium text-gray-700">Progresso Geral</span>
                   <span className="text-sm text-gray-500">{Math.round(progressPercent)}%</span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3">
@@ -405,7 +405,7 @@ function NewProjectContent() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <p className="text-sm text-gray-600">
-                    You can navigate away from this page. The processing will continue in the background and you'll be notified when it's complete.
+                    Voce pode sair desta pagina. O processamento continuara em segundo plano e voce sera notificado quando estiver completo.
                   </p>
                 </div>
               </div>
@@ -417,13 +417,13 @@ function NewProjectContent() {
                   disabled={cancelling}
                   isLoading={cancelling}
                 >
-                  Cancel Creation
+                  Cancelar Criacao
                 </Button>
                 <Button
                   variant="outline"
                   onClick={() => router.push('/projects')}
                 >
-                  Go to Projects
+                  Ir para Projetos
                 </Button>
               </div>
             </CardContent>

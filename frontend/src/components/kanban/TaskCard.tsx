@@ -25,17 +25,17 @@ interface Props {
 const getItemTypeDisplay = (type: ItemType | undefined) => {
   switch (type) {
     case ItemType.EPIC:
-      return { icon: <IconTarget className="w-5 h-5" />, label: 'Epic', color: 'bg-purple-100 text-purple-800 border-purple-200' };
+      return { icon: <IconTarget className="w-5 h-5" />, label: 'Epico', color: 'bg-purple-100 text-purple-800 border-purple-200' };
     case ItemType.STORY:
-      return { icon: <IconBook className="w-5 h-5" />, label: 'Story', color: 'bg-blue-100 text-blue-800 border-blue-200' };
+      return { icon: <IconBook className="w-5 h-5" />, label: 'Historia', color: 'bg-blue-100 text-blue-800 border-blue-200' };
     case ItemType.TASK:
-      return { icon: <IconCheck className="w-5 h-5" />, label: 'Task', color: 'bg-gray-100 text-gray-800 border-gray-200' };
+      return { icon: <IconCheck className="w-5 h-5" />, label: 'Tarefa', color: 'bg-gray-100 text-gray-800 border-gray-200' };
     case ItemType.SUBTASK:
-      return { icon: <IconCircle className="w-5 h-5" />, label: 'Subtask', color: 'bg-gray-50 text-gray-700 border-gray-200' };
+      return { icon: <IconCircle className="w-5 h-5" />, label: 'Subtarefa', color: 'bg-gray-50 text-gray-700 border-gray-200' };
     case ItemType.BUG:
       return { icon: <IconBug className="w-5 h-5" />, label: 'Bug', color: 'bg-red-100 text-red-800 border-red-200' };
     default:
-      return { icon: <IconDot className="w-3 h-3" />, label: 'Task', color: 'bg-gray-100 text-gray-800 border-gray-200' };
+      return { icon: <IconDot className="w-3 h-3" />, label: 'Tarefa', color: 'bg-gray-100 text-gray-800 border-gray-200' };
   }
 };
 
@@ -68,7 +68,7 @@ export function TaskCard({
                 onMoveLeft();
               }}
               className="text-gray-400 hover:text-gray-600 p-1"
-              title="Move left"
+              title="Mover para Esquerda"
             >
               <IconArrowLeft className="w-4 h-4" />
             </button>
@@ -80,7 +80,7 @@ export function TaskCard({
                 onMoveRight();
               }}
               className="text-gray-400 hover:text-gray-600 p-1"
-              title="Move right"
+              title="Mover para Direita"
             >
               <IconArrowRight className="w-4 h-4" />
             </button>

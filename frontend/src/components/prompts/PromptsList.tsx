@@ -172,8 +172,8 @@ export const PromptsList: React.FC<PromptsListProps> = ({
           </h3>
           <p className="text-gray-600">
             {searchTerm || filterStatus !== 'all' || filterType !== 'all'
-              ? 'Try adjusting your filters'
-              : 'No prompts have been generated yet'}
+              ? 'Tente ajustar seus filtros'
+              : 'Nenhum prompt foi gerado ainda'}
           </p>
         </div>
       ) : (

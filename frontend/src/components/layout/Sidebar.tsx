@@ -25,7 +25,7 @@ interface SidebarProps {
 
 const navigation: NavItem[] = [
   {
-    name: 'Dashboard',
+    name: 'Painel',
     href: '/',
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -39,7 +39,7 @@ const navigation: NavItem[] = [
     ),
   },
   {
-    name: 'Projects',
+    name: 'Projetos',
     href: '/projects',
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -67,7 +67,7 @@ const navigation: NavItem[] = [
     ),
   },
   {
-    name: 'AI Models',
+    name: 'Modelos IA',
     href: '/ai-models',
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -95,7 +95,7 @@ const navigation: NavItem[] = [
     ),
   },
   {
-    name: 'Contracts',
+    name: 'Contratos',
     href: '/contracts',
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -109,7 +109,7 @@ const navigation: NavItem[] = [
     ),
   },
   {
-    name: 'RAG Analytics',
+    name: 'Analitico RAG',
     href: '/rag',
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -123,7 +123,7 @@ const navigation: NavItem[] = [
     ),
   },
   {
-    name: 'Job Queue',
+    name: 'Fila de Jobs',
     href: '/jobs',
     icon: (
       <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -229,7 +229,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onToggle })
               'flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors',
               collapsed ? 'justify-center' : 'space-x-3'
             )}
-            title={collapsed ? 'Settings' : undefined}
+            title={collapsed ? 'Configuracoes' : undefined}
           >
             <svg
               className="w-5 h-5 flex-shrink-0"
@@ -250,7 +250,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onToggle })
                 d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
               />
             </svg>
-            {!collapsed && <span>Settings</span>}
+            {!collapsed && <span>Configuracoes</span>}
           </Link>
         </div>
 
@@ -265,7 +265,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onToggle })
               'flex items-center w-full px-3 py-2 rounded-md text-sm font-medium text-gray-500 hover:bg-gray-800 hover:text-white transition-colors',
               collapsed ? 'justify-center' : 'space-x-3'
             )}
-            title={collapsed ? 'Expand menu' : 'Collapse menu'}
+            title={collapsed ? 'Expandir menu' : 'Recolher menu'}
           >
             <svg
               className={clsx('w-5 h-5 flex-shrink-0 transition-transform duration-200', collapsed && 'rotate-180')}
@@ -280,7 +280,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onToggle })
                 d="M11 19l-7-7 7-7m8 14l-7-7 7-7"
               />
             </svg>
-            {!collapsed && <span>Collapse</span>}
+            {!collapsed && <span>Recolher</span>}
           </button>
         </div>
       </nav>

@@ -40,13 +40,13 @@ import {
 import { useNotification } from '@/hooks';
 
 const MODEL_CONFIGS = [
-  { key: 'interview', label: 'Interviews', usageType: AIModelUsageType.INTERVIEW, icon: MessageSquare, color: 'text-blue-600 bg-blue-50', description: 'Context and card-focused interview questions' },
-  { key: 'prompt_generation', label: 'Prompt Generation', usageType: AIModelUsageType.PROMPT_GENERATION, icon: Zap, color: 'text-purple-600 bg-purple-50', description: 'Generating prompts and card content' },
-  { key: 'commit_generation', label: 'Commit Generation', usageType: AIModelUsageType.COMMIT_GENERATION, icon: GitCommit, color: 'text-green-600 bg-green-50', description: 'Git commit message generation' },
-  { key: 'task_execution', label: 'Task Execution', usageType: AIModelUsageType.TASK_EXECUTION, icon: Cpu, color: 'text-orange-600 bg-orange-50', description: 'Executing task prompts and code generation' },
-  { key: 'pattern_discovery', label: 'Pattern Discovery', usageType: AIModelUsageType.PATTERN_DISCOVERY, icon: Search, color: 'text-cyan-600 bg-cyan-50', description: 'AI-powered code pattern and specs discovery' },
-  { key: 'queue_orchestration', label: 'Queue Orchestration', usageType: AIModelUsageType.QUEUE_ORCHESTRATION, icon: Layers, color: 'text-pink-600 bg-pink-50', description: 'Prompt execution from the orchestration queue' },
-  { key: 'general', label: 'General', usageType: AIModelUsageType.GENERAL, icon: Globe, color: 'text-gray-600 bg-gray-100', description: 'Fallback model for all other operations' },
+  { key: 'interview', label: 'Entrevistas', usageType: AIModelUsageType.INTERVIEW, icon: MessageSquare, color: 'text-blue-600 bg-blue-50', description: 'Perguntas de entrevista de contexto e focadas em cards' },
+  { key: 'prompt_generation', label: 'Geracao de Prompts', usageType: AIModelUsageType.PROMPT_GENERATION, icon: Zap, color: 'text-purple-600 bg-purple-50', description: 'Gerando prompts e conteudo de cards' },
+  { key: 'commit_generation', label: 'Geracao de Commits', usageType: AIModelUsageType.COMMIT_GENERATION, icon: GitCommit, color: 'text-green-600 bg-green-50', description: 'Geracao de mensagens de commit Git' },
+  { key: 'task_execution', label: 'Execucao de Tarefas', usageType: AIModelUsageType.TASK_EXECUTION, icon: Cpu, color: 'text-orange-600 bg-orange-50', description: 'Executando prompts de tarefas e geracao de codigo' },
+  { key: 'pattern_discovery', label: 'Descoberta de Padroes', usageType: AIModelUsageType.PATTERN_DISCOVERY, icon: Search, color: 'text-cyan-600 bg-cyan-50', description: 'Descoberta de padroes de codigo e specs por IA' },
+  { key: 'queue_orchestration', label: 'Orquestracao de Fila', usageType: AIModelUsageType.QUEUE_ORCHESTRATION, icon: Layers, color: 'text-pink-600 bg-pink-50', description: 'Execucao de prompts da fila de orquestracao' },
+  { key: 'general', label: 'General', usageType: AIModelUsageType.GENERAL, icon: Globe, color: 'text-gray-600 bg-gray-100', description: 'Modelo fallback para todas as outras operacoes' },
 ];
 
 type TabId = 'models' | 'queue' | 'general';
@@ -133,7 +133,7 @@ export default function SettingsPage() {
 
   const handleAddSetting = async () => {
     if (!newKey.trim()) {
-      showWarning('Please enter a setting key');
+      showWarning('Insira uma chave de configuracao');
       return;
     }
 
@@ -143,9 +143,9 @@ export default function SettingsPage() {
       setNewValue('');
       setNewDescription('');
       await loadData();
-      setSaveSuccess('Setting added');
+      setSaveSuccess('Configuracao adicionada');
     } catch (err: any) {
-      showError(`Failed to add setting: ${err.message}`);
+      showError(`Falha ao adicionar configuracao: ${err.message}`);
     }
   };
 
@@ -164,7 +164,7 @@ export default function SettingsPage() {
       setSettingToDelete(null);
       await loadData();
     } catch (err: any) {
-      showError(`Failed to delete setting: ${err.message}`);
+      showError(`Falha ao excluir configuracao: ${err.message}`);
     } finally {
       setIsDeleting(false);
     }
@@ -210,9 +210,9 @@ export default function SettingsPage() {
   const configuredModels = Object.values(defaultModels).filter(v => v && v.length > 0).length;
 
   const tabs = [
-    { id: 'models' as TabId, label: 'AI Models', icon: Bot, count: `${configuredModels}/7` },
-    { id: 'queue' as TabId, label: 'Queue', icon: ListOrdered },
-    { id: 'general' as TabId, label: 'Advanced', icon: Sliders, count: generalSettings.length > 0 ? String(generalSettings.length) : undefined },
+    { id: 'models' as TabId, label: 'Modelos IA', icon: Bot, count: `${configuredModels}/7` },
+    { id: 'queue' as TabId, label: 'Fila', icon: ListOrdered },
+    { id: 'general' as TabId, label: 'Avancado', icon: Sliders, count: generalSettings.length > 0 ? String(generalSettings.length) : undefined },
   ];
 
   if (loading) {
@@ -237,9 +237,9 @@ export default function SettingsPage() {
               <SettingsIcon className="w-7 h-7 text-gray-700" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Configuracoes</h1>
               <p className="text-sm text-gray-500 mt-0.5">
-                System configuration and default preferences
+                Configuracao do sistema e preferencias padrao
               </p>
             </div>
           </div>
@@ -250,7 +250,7 @@ export default function SettingsPage() {
             className="gap-2"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+            Atualizar
           </Button>
         </div>
 
@@ -270,7 +270,7 @@ export default function SettingsPage() {
               <p className="text-sm font-medium text-red-900">{error}</p>
             </div>
             <Button variant="outline" size="sm" onClick={loadData}>
-              Retry
+              Tentar Novamente
             </Button>
           </div>
         )}
@@ -314,11 +314,11 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Select which AI model handles each operation type. Models must be configured and active in the AI Models page.
+                Selecione qual modelo IA gerencia cada tipo de operacao. Modelos devem estar configurados e ativos na pagina Modelos IA.
               </p>
               <Button onClick={handleSaveDefaultModels} disabled={saving}>
                 <Save className="w-4 h-4 mr-2" />
-                {saving ? 'Saving...' : 'Save Changes'}
+                {saving ? 'Salvando...' : 'Salvar Alteracoes'}
               </Button>
             </div>
 
@@ -345,7 +345,7 @@ export default function SettingsPage() {
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-sm font-medium text-gray-900">{config.label}</span>
                           {isConfigured && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Configured" />
+                            <span className="w-1.5 h-1.5 rounded-full bg-green-500" title="Configurado" />
                           )}
                         </div>
                         <p className="text-xs text-gray-500 mb-3">{config.description}</p>
@@ -354,7 +354,7 @@ export default function SettingsPage() {
                           value={defaultModels[config.key] || ''}
                           onChange={(e) => setDefaultModels({ ...defaultModels, [config.key]: e.target.value })}
                           options={[
-                            { value: '', label: availableModels.length === 0 ? 'No models available' : 'No default model' },
+                            { value: '', label: availableModels.length === 0 ? 'Nenhum modelo disponivel' : 'Nenhum modelo padrao' },
                             ...availableModels.map(m => ({
                               value: m.id,
                               label: m.name,
@@ -373,7 +373,7 @@ export default function SettingsPage() {
               <div className="flex items-center gap-3 px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
                 <p className="text-sm text-yellow-800">
-                  The <strong>General</strong> model acts as a fallback for all operations. It is recommended to configure it.
+                  O modelo <strong>General</strong> age como fallback para todas as operacoes. Recomenda-se configura-lo.
                 </p>
               </div>
             )}
@@ -385,11 +385,11 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Control how the prompt orchestration queue processes and orders execution.
+                Controle como a fila de orquestracao de prompts processa e ordena a execucao.
               </p>
               <Button onClick={handleSaveQueueSettings} disabled={savingQueue}>
                 <Save className="w-4 h-4 mr-2" />
-                {savingQueue ? 'Saving...' : 'Save Changes'}
+                {savingQueue ? 'Salvando...' : 'Salvar Alteracoes'}
               </Button>
             </div>
 
@@ -401,8 +401,8 @@ export default function SettingsPage() {
                       <ListOrdered className="w-4 h-4 text-blue-600" />
                     </div>
                     <div className="flex-1">
-                      <Label htmlFor="queue-strategy" className="text-sm font-medium text-gray-900">Auto-Sort Strategy</Label>
-                      <p className="text-xs text-gray-500 mt-0.5 mb-2">Determines how cards are automatically ordered in the execution queue</p>
+                      <Label htmlFor="queue-strategy" className="text-sm font-medium text-gray-900">Estrategia de Ordenacao Automatica</Label>
+                      <p className="text-xs text-gray-500 mt-0.5 mb-2">Determina como os cards sao ordenados automaticamente na fila de execucao</p>
                       <Select
                         id="queue-strategy"
                         value={queueSettings.queue_auto_sort_strategy}
@@ -428,8 +428,8 @@ export default function SettingsPage() {
                         <Cpu className="w-4 h-4 text-orange-600" />
                       </div>
                       <div className="flex-1">
-                        <Label htmlFor="queue-concurrent" className="text-sm font-medium text-gray-900">Max Concurrent</Label>
-                        <p className="text-xs text-gray-500 mt-0.5 mb-2">Simultaneous prompt executions</p>
+                        <Label htmlFor="queue-concurrent" className="text-sm font-medium text-gray-900">Max Simultaneos</Label>
+                        <p className="text-xs text-gray-500 mt-0.5 mb-2">Execucoes de prompts simultaneas</p>
                         <Select
                           id="queue-concurrent"
                           value={queueSettings.queue_max_concurrent}
@@ -453,15 +453,15 @@ export default function SettingsPage() {
                         <Zap className="w-4 h-4 text-green-600" />
                       </div>
                       <div className="flex-1">
-                        <Label htmlFor="queue-auto-populate" className="text-sm font-medium text-gray-900">Auto-Populate</Label>
-                        <p className="text-xs text-gray-500 mt-0.5 mb-2">Add cards to queue on activation</p>
+                        <Label htmlFor="queue-auto-populate" className="text-sm font-medium text-gray-900">Auto-Preencher</Label>
+                        <p className="text-xs text-gray-500 mt-0.5 mb-2">Adicionar cards a fila ao ativar</p>
                         <Select
                           id="queue-auto-populate"
                           value={queueSettings.queue_auto_populate}
                           onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_populate: e.target.value })}
                           options={[
-                            { value: 'true', label: 'Enabled' },
-                            { value: 'false', label: 'Disabled' },
+                            { value: 'true', label: 'Habilitado' },
+                            { value: 'false', label: 'Desabilitado' },
                           ]}
                         />
                       </div>
@@ -477,14 +477,14 @@ export default function SettingsPage() {
         {activeTab === 'general' && (
           <div className="space-y-4">
             <p className="text-sm text-gray-500">
-              Custom key-value pairs for advanced system configuration.
+              Pares chave-valor personalizados para configuracao avancada do sistema.
             </p>
 
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-4">
                   <Plus className="w-4 h-4 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-900">Add Setting</span>
+                  <span className="text-sm font-medium text-gray-900">Adicionar Configuracao</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
@@ -497,19 +497,19 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="new-value" className="text-xs text-gray-500 mb-1">Value</Label>
+                    <Label htmlFor="new-value" className="text-xs text-gray-500 mb-1">Valor</Label>
                     <Input
                       id="new-value"
-                      placeholder="Value"
+                      placeholder="Valor"
                       value={newValue}
                       onChange={(e) => setNewValue(e.target.value)}
                     />
                   </div>
                   <div>
-                    <Label htmlFor="new-desc" className="text-xs text-gray-500 mb-1">Description</Label>
+                    <Label htmlFor="new-desc" className="text-xs text-gray-500 mb-1">Descricao</Label>
                     <Input
                       id="new-desc"
-                      placeholder="Optional description"
+                      placeholder="Descricao opcional"
                       value={newDescription}
                       onChange={(e) => setNewDescription(e.target.value)}
                     />
@@ -518,7 +518,7 @@ export default function SettingsPage() {
                 <div className="mt-3">
                   <Button onClick={handleAddSetting} size="sm">
                     <Plus className="w-4 h-4 mr-1" />
-                    Add
+                    Adicionar
                   </Button>
                 </div>
               </CardContent>
@@ -527,8 +527,8 @@ export default function SettingsPage() {
             {generalSettings.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
                 <Sliders className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">No custom settings configured</p>
-                <p className="text-xs mt-1">Add a setting above to get started</p>
+                <p className="text-sm">Nenhuma configuracao personalizada</p>
+                <p className="text-xs mt-1">Adicione uma configuracao acima para comecar</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -572,11 +572,11 @@ export default function SettingsPage() {
         open={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}
         onConfirm={confirmDeleteSetting}
-        title="Delete Setting"
-        message={`Are you sure you want to delete "${settingToDelete}"? This action cannot be undone.`}
+        title="Excluir Configuracao"
+        message={`Tem certeza que deseja excluir "${settingToDelete}"? Esta acao nao pode ser desfeita.`}
         type="danger"
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
         isLoading={isDeleting}
       />
 

@@ -234,7 +234,7 @@ export function ModificationApprovalModal({
                 onClick={handleApprove}
                 disabled={loading}
               >
-                {loading ? 'Approving...' : 'Approve Modification'}
+                {loading ? 'Aprovando...' : 'Aprovar Modificacao'}
               </Button>
             </>
           ) : (
@@ -243,7 +243,7 @@ export function ModificationApprovalModal({
               onClick={handleReject}
               disabled={loading}
             >
-              {loading ? 'Rejecting...' : 'Confirm Rejection'}
+              {loading ? 'Rejeitando...' : 'Confirmar Rejeicao'}
             </Button>
           )}
         </div>

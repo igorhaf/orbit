@@ -210,7 +210,7 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
             </Button>
           )}
           <Button variant="outline" size="sm" onClick={handlePopulate} disabled={populating}>
-            {populating ? 'Loading...' : 'Populate'}
+            {populating ? 'Carregando...' : 'Popular'}
           </Button>
         </div>
       </div>
@@ -231,7 +231,7 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
           className="w-44"
         />
         <Button variant="outline" size="sm" onClick={handleAutoSort} disabled={sorting}>
-          {sorting ? 'Sorting...' : 'Auto-Sort'}
+          {sorting ? 'Ordenando...' : 'Auto-Ordenar'}
         </Button>
         <div className="ml-auto flex items-center gap-4 text-[10px] text-gray-500">
           <span className="flex items-center gap-1">{getScoreBar(70, 100, 'bg-purple-400')} Hierarchy</span>
@@ -247,7 +247,7 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
           <CardContent className="py-12 text-center">
             <p className="text-gray-500 mb-4">Queue is empty. Populate it with project cards.</p>
             <Button variant="primary" onClick={handlePopulate} disabled={populating}>
-              {populating ? 'Populating...' : 'Populate from Cards'}
+              {populating ? 'Populando...' : 'Popular a partir dos Cards'}
             </Button>
           </CardContent>
         </Card>
@@ -308,7 +308,7 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
 
               {/* Manual override indicator */}
               {item.manual_override && (
-                <span className="text-[10px] text-blue-500" title="Manually reordered">✋</span>
+                <span className="text-[10px] text-blue-500" title="Reordenado manualmente">✋</span>
               )}
 
               {/* Status badge */}
@@ -322,7 +322,7 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
                   <button
                     onClick={() => handleSkip(item.id)}
                     className="p-1 text-gray-400 hover:text-yellow-600 transition-colors"
-                    title="Skip"
+                    title="Pular"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
@@ -331,7 +331,7 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
                   <button
                     onClick={() => handleRemove(item.id)}
                     className="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                    title="Remove from queue"
+                    title="Remover da fila"
                   >
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />

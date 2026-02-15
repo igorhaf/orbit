@@ -73,7 +73,7 @@ async def generate_spec(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to generate spec: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to generate spec")
+        raise HTTPException(status_code=500, detail="Falha ao gerar spec")
 
 
 @router.post("/decompose", response_model=TasksResponse)
@@ -110,7 +110,7 @@ async def decompose_spec(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to decompose: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to decompose spec")
+        raise HTTPException(status_code=500, detail="Falha ao decompor spec")
 
 
 @router.get("/{stack_key}/context")
@@ -167,5 +167,5 @@ async def test_all_apis():
         logger.error(f"Failed to test APIs: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to test APIs: {str(e)}"
+            detail=f"Falha ao testar APIs: {str(e)}"
         )
