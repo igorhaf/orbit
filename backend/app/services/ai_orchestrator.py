@@ -334,7 +334,7 @@ class AIOrchestrator:
             else:
                 logger.warning(
                     f"⚠️  Skipping model {model_id} in chain: "
-                    f"{'not found or inactive' if not db_model else 'provider not initialized'}"
+                    f"{'nao encontrado ou inativo' if not db_model else 'provedor nao inicializado'}"
                 )
 
         result = model_configs if model_configs else None
@@ -567,7 +567,7 @@ class AIOrchestrator:
             else:
                 logger.warning(
                     f"⚠️  Model '{db_model.name}' configured for {usage_type} but "
-                    f"provider '{provider}' not initialized"
+                    f"provedor '{provider}' nao inicializado"
                 )
 
         # 2. Fallback: buscar modelo GENERAL como padrão
@@ -622,8 +622,8 @@ class AIOrchestrator:
 
         # 4. Nenhum modelo disponível
         raise ValueError(
-            f"❌ No active AI model configured for '{usage_type}'. "
-            f"Please configure an AI model in /ai-models page."
+            f"Nenhum modelo de IA ativo configurado para '{usage_type}'. "
+            f"Configure um modelo de IA na pagina /ai-models."
         )
 
     def _get_default_model(self, provider: str) -> str:
@@ -1528,7 +1528,7 @@ class AIOrchestrator:
                         timeout_seconds=_resolved_timeout
                     )
                 else:
-                    raise ValueError(f"Unknown provider: {provider}")
+                    raise ValueError(f"Provedor desconhecido: {provider}")
 
                 # Emit stream completion event
                 asyncio.create_task(console.log_ai_streaming_chunk(
@@ -1572,7 +1572,7 @@ class AIOrchestrator:
                         timeout_seconds=_resolved_timeout
                     )
                 else:
-                    raise ValueError(f"Unknown provider: {provider}")
+                    raise ValueError(f"Provedor desconhecido: {provider}")
 
             # Adicionar informações do modelo do banco na resposta
             result["db_model_id"] = model_config["db_model_id"]
@@ -1930,8 +1930,8 @@ class AIOrchestrator:
                 continue
 
         raise Exception(
-            f"All {len(chain_models)} models in the flow chain for '{usage_type}' failed. "
-            f"Last error: {last_error}"
+            f"Todos os {len(chain_models)} modelos na cadeia de fluxo para '{usage_type}' falharam. "
+            f"Ultimo erro: {last_error}"
         )
 
     async def _execute_with_config(
@@ -2057,7 +2057,7 @@ class AIOrchestrator:
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 else:
-                    raise ValueError(f"Unknown provider: {provider}")
+                    raise ValueError(f"Provedor desconhecido: {provider}")
 
                 # Emit stream completion
                 console = get_console_logger()
@@ -2079,7 +2079,7 @@ class AIOrchestrator:
                 elif provider == "cohere":
                     result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 else:
-                    raise ValueError(f"Unknown provider: {provider}")
+                    raise ValueError(f"Provedor desconhecido: {provider}")
 
             result["db_model_id"] = model_config["db_model_id"]
             result["db_model_name"] = model_config["db_model_name"]
@@ -2242,13 +2242,13 @@ class AIOrchestrator:
         try:
             response = await http_client.post(url, json=payload, timeout=effective_timeout)
         except Exception as http_error:
-            raise Exception(f"HTTP request failed: {type(http_error).__name__}: {str(http_error)}")
+            raise Exception(f"Requisicao HTTP falhou: {type(http_error).__name__}: {str(http_error)}")
 
         # PROMPT #118 FIX - Better error handling for Gemini API
         try:
             data = response.json()
         except Exception as json_error:
-            raise Exception(f"Failed to parse JSON response: {response.text[:500]}")
+            raise Exception(f"Falha ao analisar resposta JSON: {response.text[:500]}")
 
         # Check for API error in response body (Gemini can return errors with 200 status)
         if "error" in data:
@@ -2263,7 +2263,7 @@ class AIOrchestrator:
                     # Store model_id in instance for backoff (set by execute())
                     if hasattr(self, '_current_model_id') and self._current_model_id and self.rate_limiter:
                         self.rate_limiter.set_provider_backoff(self._current_model_id, retry_seconds)
-            raise Exception(f"Gemini API Error: {error_msg}")
+            raise Exception(f"Erro da API Gemini: {error_msg}")
 
         # Check HTTP status
         response.raise_for_status()
@@ -2274,7 +2274,7 @@ class AIOrchestrator:
             # Check for safety blocks or other issues
             prompt_feedback = data.get("promptFeedback", {})
             block_reason = prompt_feedback.get("blockReason", "Unknown")
-            raise Exception(f"Gemini returned no candidates. Block reason: {block_reason}")
+            raise Exception(f"Gemini nao retornou candidatos. Motivo do bloqueio: {block_reason}")
 
         # Extract content from response
         candidate = candidates[0]
@@ -2283,7 +2283,7 @@ class AIOrchestrator:
 
         if not parts:
             finish_reason = candidate.get("finishReason", "Unknown")
-            raise Exception(f"Gemini returned empty content. Finish reason: {finish_reason}")
+            raise Exception(f"Gemini retornou conteudo vazio. Motivo da conclusao: {finish_reason}")
 
         content = parts[0].get("text", "")
 
@@ -2374,7 +2374,7 @@ class AIOrchestrator:
                 response = await http_client.post(url, json=payload)
             response.raise_for_status()
         except asyncio.TimeoutError:
-            raise Exception(f"Ollama request timed out after {timeout_seconds}s")
+            raise Exception(f"Requisicao Ollama expirou apos {timeout_seconds}s")
         except Exception as e:
             logger.error(f"❌ Ollama request failed: {e}")
             logger.error(f"   Tip: Without GPU, large prompts can take 2-5+ minutes. Consider enabling GPU or using cloud APIs.")
@@ -2386,7 +2386,7 @@ class AIOrchestrator:
         if "error" in data:
             error_msg = data["error"]
             logger.error(f"❌ Ollama returned error: {error_msg}")
-            raise Exception(f"Ollama error: {error_msg}")
+            raise Exception(f"Erro Ollama: {error_msg}")
 
         content = data.get("message", {}).get("content", "")
 
@@ -2493,18 +2493,18 @@ class AIOrchestrator:
         try:
             response = await http_client.post(url, json=payload, headers=headers, timeout=effective_timeout)
         except Exception as http_error:
-            raise Exception(f"HTTP request failed: {type(http_error).__name__}: {str(http_error)}")
+            raise Exception(f"Requisicao HTTP falhou: {type(http_error).__name__}: {str(http_error)}")
 
         # Parse response
         try:
             data = response.json()
         except Exception as json_error:
-            raise Exception(f"Failed to parse JSON response: {response.text[:500]}")
+            raise Exception(f"Falha ao analisar resposta JSON: {response.text[:500]}")
 
         # Check for API error
         if response.status_code != 200:
             error_msg = data.get("message", str(data))
-            raise Exception(f"Cohere API Error ({response.status_code}): {error_msg}")
+            raise Exception(f"Erro da API Cohere ({response.status_code}): {error_msg}")
 
         # Extract content from response
         content = data.get("text", "")

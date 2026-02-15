@@ -129,7 +129,7 @@ export default function ProjectsPage() {
             newJobs[project.id] = {
               jobId: job.id,
               progress: job.progress_percent || 0,
-              message: job.progress_message || 'Processing...',
+              message: job.progress_message || 'Processando...',
             };
 
             // If job completed/failed, refresh projects to get updated status

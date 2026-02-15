@@ -150,8 +150,8 @@ export function useJobPolling(
         onComplete(trackedJob.result);
       } else if (trackedJob.status === 'failed' && onError) {
         callbacksFiredRef.current = { jobId: trackedJob.job_id, status: trackedJob.status };
-        setError(trackedJob.error || 'Job failed');
-        onError(trackedJob.error || 'Job failed');
+        setError(trackedJob.error || 'Job falhou');
+        onError(trackedJob.error || 'Job falhou');
       } else if (trackedJob.status === 'cancelled' && onCancelled) {
         callbacksFiredRef.current = { jobId: trackedJob.job_id, status: trackedJob.status };
         onCancelled();
@@ -170,7 +170,7 @@ export function useJobPolling(
 
       // Add job to NotificationContext if not already tracked
       if (!trackedJob) {
-        addJob(jobId, data.job_type, data.notification_title || 'Processing...');
+        addJob(jobId, data.job_type, data.notification_title || 'Processando...');
       }
 
       setJob(data);

@@ -91,12 +91,12 @@ class TaskExecutor:
         # Fetch task
         task = self.db.query(Task).filter(Task.id == task_id).first()
         if not task:
-            raise ValueError(f"Task {task_id} not found")
+            raise ValueError(f"Tarefa {task_id} nao encontrada")
 
         # Fetch project
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Project {project_id} not found")
+            raise ValueError(f"Projeto {project_id} nao encontrado")
 
         # Check if already executed
         existing_result = self.db.query(TaskResult).filter(
@@ -272,7 +272,7 @@ class TaskExecutor:
         # 1. Fetch task
         task = self.db.query(Task).filter(Task.id == task_id).first()
         if not task:
-            raise ValueError(f"Task {task_id} not found")
+            raise ValueError(f"Tarefa {task_id} nao encontrada")
 
         # 2. Set token budget if not set
         self.budget_manager.set_budget_if_not_set(task)

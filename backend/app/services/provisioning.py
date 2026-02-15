@@ -113,7 +113,7 @@ class ProvisioningService:
         """
         # Validate stack exists
         if not project.stack:
-            raise ValueError(f"Project {project.id} has no stack configuration set")
+            raise ValueError(f"Projeto {project.id} nao possui configuracao de stack")
 
         # Get scripts to execute
         script_names = self.get_provisioning_scripts(project.stack)

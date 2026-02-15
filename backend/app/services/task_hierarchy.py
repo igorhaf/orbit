@@ -211,7 +211,7 @@ class TaskHierarchyService:
         """
         task = self.db.query(Task).filter(Task.id == task_id).first()
         if not task:
-            raise ValueError(f"Task {task_id} not found")
+            raise ValueError(f"Tarefa {task_id} nao encontrada")
 
         # If setting a parent, validate
         if new_parent_id:
@@ -223,7 +223,7 @@ class TaskHierarchyService:
             if validate_rules:
                 parent = self.db.query(Task).filter(Task.id == new_parent_id).first()
                 if not parent:
-                    raise ValueError(f"Parent task {new_parent_id} not found")
+                    raise ValueError(f"Tarefa pai {new_parent_id} nao encontrada")
 
                 if not self.validate_hierarchy_rules(task.item_type, parent.item_type):
                     raise ValueError(

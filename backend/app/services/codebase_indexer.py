@@ -132,14 +132,14 @@ class CodebaseIndexer:
         # Get project
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Project {project_id} not found")
+            raise ValueError(f"Projeto {project_id} nao encontrado")
 
         if not project.project_folder:
-            raise ValueError(f"Project {project_id} has no project_folder configured")
+            raise ValueError(f"Projeto {project_id} nao possui project_folder configurado")
 
         project_path = Path(project.project_folder)
         if not project_path.exists():
-            raise ValueError(f"Project folder does not exist: {project_path}")
+            raise ValueError(f"Pasta do projeto nao existe: {project_path}")
 
         logger.info(f"Starting codebase indexing for project {project_id} at {project_path}")
 

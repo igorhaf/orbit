@@ -609,10 +609,10 @@ class CodebaseMemoryService:
         path = Path(code_path)
 
         if not path.exists():
-            raise ValueError(f"Code path does not exist: {code_path}")
+            raise ValueError(f"Caminho do codigo nao existe: {code_path}")
 
         if not path.is_dir():
-            raise ValueError(f"Code path is not a directory: {code_path}")
+            raise ValueError(f"Caminho do codigo nao e um diretorio: {code_path}")
 
         # PROMPT #163 - Store scan settings
         self.current_folder_name = path.name

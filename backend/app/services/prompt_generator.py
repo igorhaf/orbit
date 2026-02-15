@@ -664,4 +664,4 @@ Retorne APENAS o JSON válido, sem texto adicional antes ou depois."""
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")
             logger.error(f"Response text: {response_text[:500]}")
-            raise ValueError(f"Invalid JSON response from AI: {str(e)}")
+            raise ValueError(f"Resposta JSON invalida da IA: {str(e)}")

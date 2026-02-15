@@ -73,15 +73,15 @@ async function request<T>(
     // Melhorar mensagens de erro comuns
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
       throw new Error(
-        `Cannot connect to backend at ${API_URL}. ` +
-        `Please ensure backend is running with: uvicorn app.main:app --reload`
+        `Nao e possivel conectar ao backend em ${API_URL}. ` +
+        `Certifique-se de que o backend esta em execucao com: uvicorn app.main:app --reload`
       );
     }
 
     if (error.message.includes('CORS')) {
       throw new Error(
-        `CORS error. Backend needs to allow origin ${typeof window !== 'undefined' ? window.location.origin : 'localhost:3000'}. ` +
-        `Check backend CORS configuration.`
+        `Erro de CORS. Backend precisa permitir origem ${typeof window !== 'undefined' ? window.location.origin : 'localhost:3000'}. ` +
+        `Verifique a configuracao de CORS do backend.`
       );
     }
 
@@ -1101,16 +1101,16 @@ export const jobsApi = {
       }
 
       if (job.status === 'failed') {
-        throw new Error(job.error || 'Job failed');
+        throw new Error(job.error || 'Job falhou');
       }
 
       if (job.status === 'cancelled') {
-        throw new Error('Job was cancelled');
+        throw new Error('Job foi cancelado');
       }
 
       // Check timeout
       if (Date.now() - startTime > timeoutMs) {
-        throw new Error('Job polling timeout');
+        throw new Error('Timeout na consulta do job');
       }
 
       // Wait before next poll

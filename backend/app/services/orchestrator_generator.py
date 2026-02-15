@@ -158,7 +158,7 @@ class OrchestratorGenerator:
 
         if not validation_passed:
             logger.error(f"Generated code has syntax errors: {error}")
-            raise ValueError(f"Generated orchestrator has syntax errors: {error}")
+            raise ValueError(f"Orquestrador gerado possui erros de sintaxe: {error}")
 
         # Save to file
         file_path = self.output_dir / f"{orchestrator_key}.py"

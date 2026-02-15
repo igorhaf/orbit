@@ -204,11 +204,11 @@ class BacklogGeneratorService:
         # 1. Fetch interview
         interview = self.db.query(Interview).filter(Interview.id == interview_id).first()
         if not interview:
-            raise ValueError(f"Interview {interview_id} not found")
+            raise ValueError(f"Entrevista {interview_id} nao encontrada")
 
         conversation = interview.conversation_data
         if not conversation or len(conversation) == 0:
-            raise ValueError(f"Interview {interview_id} has no conversation data")
+            raise ValueError(f"Entrevista {interview_id} nao possui dados de conversa")
 
         # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
         system_prompt = """Você é um Product Owner especialista analisando conversas de entrevistas para extrair requisitos de nível Epic.
@@ -415,7 +415,7 @@ LEMBRE-SE:
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
             logger.error(f"AI response: {result.get('response', result.get('content', ''))}")
-            raise ValueError(f"AI did not return valid JSON: {str(e)}")
+            raise ValueError(f"IA nao retornou JSON valido: {str(e)}")
 
     async def decompose_epic_to_stories(
         self,
@@ -460,7 +460,7 @@ LEMBRE-SE:
         ).first()
 
         if not epic:
-            raise ValueError(f"Epic {epic_id} not found or is not an Epic")
+            raise ValueError(f"Epic {epic_id} nao encontrado ou nao e um Epic")
 
         # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
         system_prompt = """Você é um Product Owner especialista decompondo Epics em Stories.
@@ -726,7 +726,7 @@ LEMBRE-SE:
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
             logger.error(f"AI response: {result.get('response', result.get('content', ''))}")
-            raise ValueError(f"AI did not return valid JSON: {str(e)}")
+            raise ValueError(f"IA nao retornou JSON valido: {str(e)}")
 
     async def decompose_story_to_tasks(
         self,
@@ -774,7 +774,7 @@ LEMBRE-SE:
         ).first()
 
         if not story:
-            raise ValueError(f"Story {story_id} not found or is not a Story")
+            raise ValueError(f"Story {story_id} nao encontrada ou nao e uma Story")
 
         # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
         # PROMPT #54.2 - FIX: Specs removed from decomposition (only for execution)
@@ -1039,7 +1039,7 @@ LEMBRE-SE:
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
             logger.error(f"AI response: {result.get('response', result.get('content', ''))}")
-            raise ValueError(f"AI did not return valid JSON: {str(e)}")
+            raise ValueError(f"IA nao retornou JSON valido: {str(e)}")
 
     def _format_conversation(self, conversation: List[Dict]) -> str:
         """
@@ -1160,11 +1160,11 @@ Specification:
 
         # Validate interview mode
         if interview.interview_mode != "task_focused":
-            raise ValueError(f"Interview {interview.id} is not task-focused (mode: {interview.interview_mode})")
+            raise ValueError(f"Entrevista {interview.id} nao e focada em tarefa (modo: {interview.interview_mode})")
 
         conversation = interview.conversation_data
         if not conversation or len(conversation) == 0:
-            raise ValueError(f"Interview {interview.id} has no conversation data")
+            raise ValueError(f"Entrevista {interview.id} nao possui dados de conversa")
 
         # Extract task type from interview
         task_type = interview.task_type_selection or "feature"
@@ -1239,7 +1239,7 @@ Return ONLY valid JSON in this format:
             task_data = json.loads(content)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse task JSON: {content[:200]}")
-            raise ValueError(f"AI returned invalid JSON: {str(e)}")
+            raise ValueError(f"IA retornou JSON invalido: {str(e)}")
 
         # PROMPT #94 FASE 4 - Check for modification attempts (>90% similarity)
         from app.services.similarity_detector import detect_modification_attempt

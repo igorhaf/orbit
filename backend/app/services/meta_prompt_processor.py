@@ -101,22 +101,22 @@ class MetaPromptProcessor:
         # 1. Validate interview
         interview = self.db.query(Interview).filter(Interview.id == interview_id).first()
         if not interview:
-            raise ValueError(f"Interview {interview_id} not found")
+            raise ValueError(f"Entrevista {interview_id} nao encontrada")
 
         # PROMPT #92/94 - Accept both meta_prompt and orchestrator interviews
         if interview.interview_mode not in ["meta_prompt", "orchestrator"]:
-            raise ValueError(f"Interview {interview_id} cannot generate hierarchy (mode: {interview.interview_mode}). Only 'meta_prompt' and 'orchestrator' modes supported.")
+            raise ValueError(f"Entrevista {interview_id} nao pode gerar hierarquia (modo: {interview.interview_mode}). Apenas modos 'meta_prompt' e 'orchestrator' sao suportados.")
 
         # PROMPT #92/94 - Different minimum messages for each mode
         # Orchestrator interviews: 5-8 fixed questions + AI questions (min 10 messages)
         # Meta prompt: 17 fixed questions + AI questions (min 18 messages)
         min_messages = 10 if interview.interview_mode == "orchestrator" else 18
         if not interview.conversation_data or len(interview.conversation_data) < min_messages:
-            raise ValueError(f"Interview {interview_id} is incomplete (needs at least {min_messages//2} questions answered)")
+            raise ValueError(f"Entrevista {interview_id} esta incompleta (necessita pelo menos {min_messages//2} perguntas respondidas)")
 
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Project {project_id} not found")
+            raise ValueError(f"Projeto {project_id} nao encontrado")
 
         logger.info(f"🎯 Processing {interview.interview_mode} interview {interview_id} for project {project.name}")
         logger.info(f"   Focus topics: {interview.focus_topics}")
@@ -465,7 +465,7 @@ Analise TODAS as respostas abaixo e gere a hierarquia completa."""
                 }
         except Exception as e:
             logger.error(f"❌ AI call failed: {e}", exc_info=True)
-            raise ValueError(f"Failed to generate hierarchy: {str(e)}")
+            raise ValueError(f"Falha ao gerar hierarquia: {str(e)}")
 
         # Parse AI response
         try:
@@ -483,7 +483,7 @@ Analise TODAS as respostas abaixo e gere a hierarquia completa."""
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
             logger.error(f"AI response: {result.get('response', '')[:1000]}")
-            raise ValueError(f"AI did not return valid JSON: {str(e)}")
+            raise ValueError(f"IA nao retornou JSON valido: {str(e)}")
 
     async def _create_epic(
         self,

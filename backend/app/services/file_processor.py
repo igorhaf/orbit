@@ -214,7 +214,7 @@ class FileProcessor:
             elif file_ext in {".tar", ".tar.gz", ".tgz"}:
                 self._extract_tar(file_path, extract_path)
             else:
-                raise ValueError(f"Unsupported archive type: {file_ext}")
+                raise ValueError(f"Tipo de arquivo nao suportado: {file_ext}")
 
             # Check total extracted size
             total_size = self._get_dir_size(extract_path)
