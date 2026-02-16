@@ -476,20 +476,18 @@ class JobManager:
         self.update_progress(parent_job_id, pct, msg)
 
     def complete_child_job(self, child_job_id: UUID, result: Dict[str, Any]) -> None:
-        """Complete a child job and update parent progress. Auto-completes parent when all children are done."""
+        """Complete a child job and update parent progress."""
         child = self.get_job(child_job_id)
         self.complete_job(child_job_id, result)
         if child and child.parent_job_id:
             self.update_parent_progress(child.parent_job_id)
-            self._check_parent_completion(child.parent_job_id)
 
     def fail_child_job(self, child_job_id: UUID, error: str) -> None:
-        """Fail a child job and update parent progress. Auto-completes parent when all children are done."""
+        """Fail a child job and update parent progress."""
         child = self.get_job(child_job_id)
         self.fail_job(child_job_id, error)
         if child and child.parent_job_id:
             self.update_parent_progress(child.parent_job_id)
-            self._check_parent_completion(child.parent_job_id)
 
     def _check_parent_completion(self, parent_job_id: UUID) -> None:
         """If all children are finished, complete or fail the parent job."""

@@ -151,7 +151,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
         try:
             from app.services.continuous_rag_service import ContinuousRAGService
             rag_service = ContinuousRAGService(db)
-            rag_result = await rag_service.run_full_cycle(project_id)
+            rag_result = await rag_service.run_full_cycle(project_id, job_id=job_id)
             logger.info(f"RAG scan done for '{project_name}'")
         except Exception as e:
             logger.warning(f"RAG scan failed (non-blocking): {e}")
@@ -328,7 +328,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         try:
             from app.services.continuous_rag_service import ContinuousRAGService
             rag_service = ContinuousRAGService(db)
-            process_result = await rag_service.process_pending_files(project_id, batch_size=batch_size)
+            process_result = await rag_service.process_pending_files(project_id, batch_size=batch_size, parent_job_id=job_id)
             actual = process_result.get('processed', 0)
             remaining = process_result.get('pending_remaining', 0)
             rules = process_result.get('rules_extracted', 0)
