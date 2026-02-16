@@ -3,7 +3,7 @@
 PROMPT #298 - Sub-Jobs: Granularizacao de Operacoes
 
 Revision ID: 20260216_parent_job
-Revises: 20260215_add_async_jobs_indexes
+Revises: prompt288_job_indexes
 Create Date: 2026-02-16
 """
 from alembic import op
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers
 revision = '20260216_parent_job'
-down_revision = '20260215_add_async_jobs_indexes'
+down_revision = 'prompt288_job_indexes'
 branch_labels = None
 depends_on = None
 
