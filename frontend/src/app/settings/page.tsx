@@ -985,7 +985,7 @@ export default function SettingsPage() {
                         <code className="text-sm font-semibold text-gray-900">{setting.key}</code>
                         <Badge variant="default" className="text-xs">{typeof setting.value}</Badge>
                       </div>
-                      <div className="text-sm text-gray-600 font-mono truncate">{String(setting.value)}</div>
+                      <div className="text-sm text-gray-600 font-mono truncate">{typeof setting.value === 'object' ? JSON.stringify(setting.value) : String(setting.value)}</div>
                       {setting.description && (
                         <p className="text-xs text-gray-400 mt-1">{setting.description}</p>
                       )}
