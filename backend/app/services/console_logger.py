@@ -40,6 +40,7 @@ class LogCategory(str, Enum):
     JOB_EVENT = "job_event"
     MEMORY_SCAN = "memory_scan"
     CACHE_EVENT = "cache_event"
+    PERFORMANCE = "performance"  # PROMPT #296 - Operation timing and diagnostics
     SYSTEM = "system"
     ERROR = "error"
 
@@ -58,6 +59,14 @@ class ConsoleLogEntry:
     job_id: Optional[str] = None  # UUID as string
     duration_ms: Optional[int] = None
     tokens_used: Optional[int] = None
+    # PROMPT #296 - Observability fields
+    trace_id: Optional[str] = None        # Groups related events into one operation
+    operation_name: Optional[str] = None   # e.g. "Memory Scan"
+    phase_name: Optional[str] = None       # e.g. "Detecção de Stack"
+    cost_usd: Optional[float] = None       # Estimated cost in USD
+    model_name: Optional[str] = None       # AI model used
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
 
     def to_dict(self) -> Dict:
         return asdict(self)
@@ -105,7 +114,15 @@ class ConsoleLogger:
         project_id: Optional[str] = None,
         job_id: Optional[str] = None,
         duration_ms: Optional[int] = None,
-        tokens_used: Optional[int] = None
+        tokens_used: Optional[int] = None,
+        # PROMPT #296 - Observability fields
+        trace_id: Optional[str] = None,
+        operation_name: Optional[str] = None,
+        phase_name: Optional[str] = None,
+        cost_usd: Optional[float] = None,
+        model_name: Optional[str] = None,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None
     ) -> ConsoleLogEntry:
         """
         Add a log entry and notify all subscribers
@@ -121,7 +138,14 @@ class ConsoleLogger:
             project_id=project_id,
             job_id=job_id,
             duration_ms=duration_ms,
-            tokens_used=tokens_used
+            tokens_used=tokens_used,
+            trace_id=trace_id,
+            operation_name=operation_name,
+            phase_name=phase_name,
+            cost_usd=cost_usd,
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
         )
 
         # PROMPT #217 - Streaming chunks are ephemeral: only sent to SSE subscribers,
@@ -234,7 +258,8 @@ class ConsoleLogger:
         prompt_preview: str,
         full_prompt: Optional[str] = None,
         project_id: Optional[str] = None,
-        job_id: Optional[str] = None
+        job_id: Optional[str] = None,
+        trace_id: Optional[str] = None
     ):
         """Log an AI prompt being sent"""
         await self.log(
@@ -249,7 +274,9 @@ class ConsoleLogger:
                 "full_prompt": (full_prompt or prompt_preview)[:5000]  # Limit to 5K chars
             },
             project_id=project_id,
-            job_id=job_id
+            job_id=job_id,
+            trace_id=trace_id,
+            model_name=model
         )
 
     async def log_ai_response(
@@ -261,7 +288,11 @@ class ConsoleLogger:
         duration_ms: Optional[int] = None,
         project_id: Optional[str] = None,
         job_id: Optional[str] = None,
-        cache_hit: bool = False
+        cache_hit: bool = False,
+        trace_id: Optional[str] = None,
+        cost_usd: Optional[float] = None,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None
     ):
         """Log an AI response received"""
         title = f"AI Response ← {model}"
@@ -282,7 +313,12 @@ class ConsoleLogger:
             project_id=project_id,
             job_id=job_id,
             duration_ms=duration_ms,
-            tokens_used=tokens_used
+            tokens_used=tokens_used,
+            trace_id=trace_id,
+            model_name=model,
+            cost_usd=cost_usd,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
         )
 
     async def log_ai_streaming_chunk(
@@ -378,7 +414,8 @@ class ConsoleLogger:
         status: str,
         message: str,
         progress: Optional[int] = None,
-        project_id: Optional[str] = None
+        project_id: Optional[str] = None,
+        trace_id: Optional[str] = None
     ):
         """Log a job event"""
         level = LogLevel.SUCCESS if status == "completed" else (
@@ -396,7 +433,8 @@ class ConsoleLogger:
                 "progress": progress
             },
             project_id=project_id,
-            job_id=job_id
+            job_id=job_id,
+            trace_id=trace_id
         )
 
     async def log_memory_scan(
@@ -405,7 +443,8 @@ class ConsoleLogger:
         message: str,
         files_processed: Optional[int] = None,
         project_id: Optional[str] = None,
-        job_id: Optional[str] = None
+        job_id: Optional[str] = None,
+        trace_id: Optional[str] = None
     ):
         """Log memory scan progress"""
         await self.log(
@@ -418,7 +457,8 @@ class ConsoleLogger:
                 "files_processed": files_processed
             },
             project_id=project_id,
-            job_id=job_id
+            job_id=job_id,
+            trace_id=trace_id
         )
 
     async def log_error(
@@ -427,7 +467,8 @@ class ConsoleLogger:
         message: str,
         stack_trace: Optional[str] = None,
         project_id: Optional[str] = None,
-        job_id: Optional[str] = None
+        job_id: Optional[str] = None,
+        trace_id: Optional[str] = None
     ):
         """Log an error"""
         await self.log(
@@ -440,7 +481,8 @@ class ConsoleLogger:
                 "stack_trace": stack_trace
             },
             project_id=project_id,
-            job_id=job_id
+            job_id=job_id,
+            trace_id=trace_id
         )
 
     async def log_cache_event(
@@ -463,6 +505,129 @@ class ConsoleLogger:
                 "hit": hit
             },
             project_id=project_id
+        )
+
+    # PROMPT #296 - Operation tracing methods
+
+    async def log_operation_start(
+        self,
+        trace_id: str,
+        operation_name: str,
+        phase_name: str,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+        model_name: Optional[str] = None
+    ):
+        """Log the start of an operation phase"""
+        await self.log(
+            level=LogLevel.INFO,
+            category=LogCategory.PERFORMANCE,
+            title=f"[INÍCIO] {operation_name} > {phase_name}",
+            message=f"Fase iniciada: {phase_name}",
+            details={
+                "event_type": "phase_start",
+                "operation_name": operation_name,
+                "phase_name": phase_name,
+            },
+            project_id=project_id,
+            job_id=job_id,
+            trace_id=trace_id,
+            operation_name=operation_name,
+            phase_name=phase_name,
+            model_name=model_name
+        )
+
+    async def log_operation_end(
+        self,
+        trace_id: str,
+        operation_name: str,
+        phase_name: str,
+        duration_ms: int,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+        tokens_used: Optional[int] = None,
+        cost_usd: Optional[float] = None,
+        model_name: Optional[str] = None,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None
+    ):
+        """Log the end of an operation phase with metrics"""
+        parts = [f"Duração: {duration_ms}ms"]
+        if tokens_used:
+            parts.append(f"Tokens: {tokens_used}")
+        if cost_usd:
+            parts.append(f"Custo: ${cost_usd:.4f}")
+        if model_name:
+            parts.append(f"Modelo: {model_name}")
+
+        await self.log(
+            level=LogLevel.SUCCESS,
+            category=LogCategory.PERFORMANCE,
+            title=f"[FIM] {operation_name} > {phase_name}",
+            message=" | ".join(parts),
+            details={
+                "event_type": "phase_end",
+                "operation_name": operation_name,
+                "phase_name": phase_name,
+                "duration_ms": duration_ms,
+            },
+            project_id=project_id,
+            job_id=job_id,
+            duration_ms=duration_ms,
+            tokens_used=tokens_used,
+            trace_id=trace_id,
+            operation_name=operation_name,
+            phase_name=phase_name,
+            cost_usd=cost_usd,
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+
+    async def log_operation_summary(
+        self,
+        trace_id: str,
+        operation_name: str,
+        total_duration_ms: int,
+        phases: List[Dict[str, Any]],
+        total_tokens: Optional[int] = None,
+        total_cost: Optional[float] = None,
+        bottleneck: Optional[str] = None,
+        diagnostics: Optional[List[str]] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None
+    ):
+        """Log an operation summary with breakdown and diagnostics"""
+        parts = [f"Duração total: {total_duration_ms}ms"]
+        if total_tokens:
+            parts.append(f"Tokens totais: {total_tokens}")
+        if total_cost:
+            parts.append(f"Custo total: ${total_cost:.4f}")
+        if bottleneck:
+            parts.append(f"Gargalo: {bottleneck}")
+
+        await self.log(
+            level=LogLevel.INFO,
+            category=LogCategory.PERFORMANCE,
+            title=f"[RESUMO] {operation_name}",
+            message=" | ".join(parts),
+            details={
+                "event_type": "operation_summary",
+                "operation_name": operation_name,
+                "total_duration_ms": total_duration_ms,
+                "phases": phases,
+                "total_tokens": total_tokens,
+                "total_cost": total_cost,
+                "bottleneck": bottleneck,
+                "diagnostics": diagnostics or [],
+            },
+            project_id=project_id,
+            job_id=job_id,
+            duration_ms=total_duration_ms,
+            tokens_used=total_tokens,
+            trace_id=trace_id,
+            operation_name=operation_name,
+            cost_usd=total_cost
         )
 
 

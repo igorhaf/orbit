@@ -15,6 +15,7 @@
  */
 
 import React, { useEffect, useState, useRef, useCallback } from 'react';
+import TimelineView from '@/components/console/TimelineView';
 
 // Log entry type matching backend ConsoleLogEntry
 interface LogEntry {
@@ -29,7 +30,17 @@ interface LogEntry {
   job_id?: string;
   duration_ms?: number;
   tokens_used?: number;
+  // PROMPT #296 - Observability fields
+  trace_id?: string;
+  operation_name?: string;
+  phase_name?: string;
+  cost_usd?: number;
+  model_name?: string;
+  input_tokens?: number;
+  output_tokens?: number;
 }
+
+type ViewMode = 'terminal' | 'timeline';
 
 // PROMPT #217 - Active streaming response tracker
 interface ActiveStream {
@@ -98,6 +109,7 @@ export default function ConsolePage() {
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [activeStreams, setActiveStreams] = useState<Map<string, ActiveStream>>(new Map());
+  const [viewMode, setViewMode] = useState<ViewMode>('terminal');
 
   const logsEndRef = useRef<HTMLDivElement>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
@@ -320,6 +332,30 @@ export default function ConsolePage() {
           <span className="text-gray-500 text-xs">
             {filteredLogs.length}/{logs.length} logs
           </span>
+
+          {/* PROMPT #296 - View mode toggle */}
+          <div className="flex bg-gray-800 rounded overflow-hidden border border-gray-700">
+            <button
+              onClick={() => setViewMode('terminal')}
+              className={`px-2 py-0.5 text-xs transition-colors ${
+                viewMode === 'terminal'
+                  ? 'bg-gray-700 text-white'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              Terminal
+            </button>
+            <button
+              onClick={() => setViewMode('timeline')}
+              className={`px-2 py-0.5 text-xs transition-colors ${
+                viewMode === 'timeline'
+                  ? 'bg-gray-700 text-white'
+                  : 'text-gray-500 hover:text-gray-300'
+              }`}
+            >
+              Timeline
+            </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -400,54 +436,60 @@ export default function ConsolePage() {
         </div>
       </div>
 
-      {/* Console output */}
-      <div
-        ref={consoleRef}
-        className="flex-1 overflow-auto p-2 select-text cursor-text"
-        style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 #111827' }}
-        onScroll={handleConsoleScroll}
-      >
-        {filteredLogs.length === 0 && activeStreams.size === 0 ? (
-          <div className="text-gray-600">
-            <p>$ waiting for logs...</p>
-            <p className="animate-pulse">_</p>
-          </div>
-        ) : (
-          <pre className="whitespace-pre-wrap break-all">
-            {filteredLogs.map((log) => (
-              <div key={log.id} className="hover:bg-gray-900/50">
-                <span className={LEVEL_COLORS[log.level]}>
-                  {formatLogLine(log)}
-                </span>
-                {log.details && (
-                  <span className="text-gray-600">
-                    {'\n' + formatDetails(log.details)}
+      {/* Console output - PROMPT #296: Terminal or Timeline view */}
+      {viewMode === 'timeline' ? (
+        <div className="flex-1 overflow-hidden">
+          <TimelineView logs={logs} />
+        </div>
+      ) : (
+        <div
+          ref={consoleRef}
+          className="flex-1 overflow-auto p-2 select-text cursor-text"
+          style={{ scrollbarWidth: 'thin', scrollbarColor: '#374151 #111827' }}
+          onScroll={handleConsoleScroll}
+        >
+          {filteredLogs.length === 0 && activeStreams.size === 0 ? (
+            <div className="text-gray-600">
+              <p>$ waiting for logs...</p>
+              <p className="animate-pulse">_</p>
+            </div>
+          ) : (
+            <pre className="whitespace-pre-wrap break-all">
+              {filteredLogs.map((log) => (
+                <div key={log.id} className="hover:bg-gray-900/50">
+                  <span className={LEVEL_COLORS[log.level]}>
+                    {formatLogLine(log)}
                   </span>
-                )}
-                {'\n'}
-              </div>
-            ))}
-            {/* PROMPT #217 - Active streaming responses */}
-            {Array.from(activeStreams.values()).map((stream) => (
-              <div key={stream.streamId} className="border-l-2 border-cyan-500 pl-2 my-1 py-1">
-                <span className="text-cyan-400">
-                  {'[STREAMING] '}AI Response {'<-'} {stream.model}
-                </span>
-                <span className="text-gray-500 text-xs ml-2">
-                  ({((Date.now() - stream.startTime) / 1000).toFixed(1)}s)
-                </span>
-                {'\n'}
-                <span className="text-green-300">
-                  {stream.fullText}
-                </span>
-                <span className="animate-pulse text-green-400">{'\u2588'}</span>
-                {'\n'}
-              </div>
-            ))}
-            <div ref={logsEndRef} />
-          </pre>
-        )}
-      </div>
+                  {log.details && (
+                    <span className="text-gray-600">
+                      {'\n' + formatDetails(log.details)}
+                    </span>
+                  )}
+                  {'\n'}
+                </div>
+              ))}
+              {/* PROMPT #217 - Active streaming responses */}
+              {Array.from(activeStreams.values()).map((stream) => (
+                <div key={stream.streamId} className="border-l-2 border-cyan-500 pl-2 my-1 py-1">
+                  <span className="text-cyan-400">
+                    {'[STREAMING] '}AI Response {'<-'} {stream.model}
+                  </span>
+                  <span className="text-gray-500 text-xs ml-2">
+                    ({((Date.now() - stream.startTime) / 1000).toFixed(1)}s)
+                  </span>
+                  {'\n'}
+                  <span className="text-green-300">
+                    {stream.fullText}
+                  </span>
+                  <span className="animate-pulse text-green-400">{'\u2588'}</span>
+                  {'\n'}
+                </div>
+              ))}
+              <div ref={logsEndRef} />
+            </pre>
+          )}
+        </div>
+      )}
 
       {/* Status bar */}
       <div className="flex-shrink-0 bg-gray-900 border-t border-gray-800 px-4 py-1 flex items-center justify-between text-xs text-gray-500">

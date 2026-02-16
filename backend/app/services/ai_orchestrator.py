@@ -776,7 +776,9 @@ class AIOrchestrator:
         enable_rag: bool = False,  # Feature flag - opt-in for now
         rag_filter: Optional[Dict] = None,
         rag_top_k: int = 3,
-        rag_similarity_threshold: float = 0.7
+        rag_similarity_threshold: float = 0.7,
+        # PROMPT #296 - Observability
+        trace_id: Optional[str] = None
     ) -> Dict:
         """
         Executa chamada de IA usando modelo e configurações do banco
@@ -1423,7 +1425,8 @@ class AIOrchestrator:
                     tokens_used=0,
                     duration_ms=0,
                     project_id=project_id if project_id else None,
-                    cache_hit=True
+                    cache_hit=True,
+                    trace_id=trace_id
                 ))
 
                 # Return cached result in same format as execute() response
@@ -1476,7 +1479,8 @@ class AIOrchestrator:
             usage_type=usage_type,
             prompt_preview=prompt_preview,
             full_prompt=json.dumps(_effective_messages, ensure_ascii=False)[:5000],
-            project_id=project_id if project_id else None
+            project_id=project_id if project_id else None,
+            trace_id=trace_id
         ))
 
         # PROMPT #207 - Resolve timeout using hierarchy: diagram node → model → settings
@@ -1584,6 +1588,16 @@ class AIOrchestrator:
             if not _streamed_ok:
                 response_content = result.get("content", "")
                 execution_time_ms_console = int((time.time() - start_time) * 1000)
+                # PROMPT #296 - Calculate cost for observability
+                _in_tok = result.get("usage", {}).get("input_tokens", 0)
+                _out_tok = result.get("usage", {}).get("output_tokens", 0)
+                _cost = None
+                try:
+                    from app.utils.pricing import calculate_cost
+                    _cost_info = calculate_cost(_in_tok, _out_tok, model_name)
+                    _cost = _cost_info.get("total_cost")
+                except Exception:
+                    pass
                 asyncio.create_task(console.log_ai_response(
                     model=f"{provider}/{model_name}",
                     response_preview=response_content[:300] if response_content else "No response",
@@ -1591,7 +1605,11 @@ class AIOrchestrator:
                     tokens_used=result.get("usage", {}).get("total_tokens"),
                     duration_ms=execution_time_ms_console,
                     project_id=project_id if project_id else None,
-                    cache_hit=False
+                    cache_hit=False,
+                    trace_id=trace_id,
+                    cost_usd=_cost,
+                    input_tokens=_in_tok,
+                    output_tokens=_out_tok
                 ))
 
             # PROMPT #54 - Log successful execution to database

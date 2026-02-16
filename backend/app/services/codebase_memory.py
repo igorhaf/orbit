@@ -752,10 +752,27 @@ class CodebaseMemoryService:
         # PROMPT #168 - Console logging for real-time visibility
         console = get_console_logger()
         import asyncio
+
+        # PROMPT #296 - Observability: trace_id + per-phase timing
+        import time as _time
+        scan_trace_id = str(uuid4())
+        scan_start_time = _time.time()
+        phase_metrics = []  # Collect timing for each phase
+        pid_str = str(project_id) if project_id else None
+        op_name = "Memory Scan"
+
+        asyncio.create_task(console.log_operation_start(
+            trace_id=scan_trace_id,
+            operation_name=op_name,
+            phase_name="Inicialização",
+            project_id=pid_str
+        ))
+
         asyncio.create_task(console.log_memory_scan(
             phase="start",
             message=f"Starting {scan_depth} scan for {path.name}",
-            project_id=str(project_id) if project_id else None
+            project_id=pid_str,
+            trace_id=scan_trace_id
         ))
 
         result = {
@@ -782,17 +799,34 @@ class CodebaseMemoryService:
             asyncio.create_task(console.log_memory_scan(
                 phase=f"{int(percent)}%",
                 message=message,
-                project_id=str(project_id) if project_id else None
+                project_id=pid_str,
+                trace_id=scan_trace_id
             ))
 
-        # Step 1: Detect technology stack
+        # --- Step 1: Detect technology stack ---
+        phase1_name = "Detecção de Stack"
+        phase1_start = _time.time()
+        asyncio.create_task(console.log_operation_start(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase1_name, project_id=pid_str
+        ))
         logger.info("📊 Step 1: Detecting technology stack...")
-        await report_progress(15.0, "Detectando stack tecnologica...")
+        await report_progress(15.0, "Detectando stack tecnológica...")
         stack_info = self.stack_detector.detect(path)
         result["stack_info"] = stack_info
         logger.info(f"   Detected stack: {stack_info.get('detected_stack', 'unknown')}")
+        phase1_ms = int((_time.time() - phase1_start) * 1000)
+        phase_metrics.append({"phase": phase1_name, "duration_ms": phase1_ms})
+        asyncio.create_task(console.log_operation_end(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase1_name,
+            duration_ms=phase1_ms, project_id=pid_str
+        ))
 
-        # Step 2: Scan and collect file information
+        # --- Step 2: Scan and collect file information ---
+        phase2_name = "Varredura de Arquivos"
+        phase2_start = _time.time()
+        asyncio.create_task(console.log_operation_start(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase2_name, project_id=pid_str
+        ))
         logger.info("📂 Step 2: Scanning codebase structure...")
         await report_progress(20.0, "Escaneando estrutura do codebase...")
         scan_data = await self._scan_codebase(path)
@@ -803,14 +837,24 @@ class CodebaseMemoryService:
             "config_files_found": scan_data["config_files"]
         }
         logger.info(f"   Found {scan_data['total_files']} files, {scan_data['code_files']} code files")
+        phase2_ms = int((_time.time() - phase2_start) * 1000)
+        phase_metrics.append({"phase": phase2_name, "duration_ms": phase2_ms})
+        asyncio.create_task(console.log_operation_end(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase2_name,
+            duration_ms=phase2_ms, project_id=pid_str
+        ))
 
-        # Step 3: Index files in RAG (if project_id provided)
+        # --- Step 3: Index files in RAG (if project_id provided) ---
+        phase3_name = "Indexação RAG"
+        phase3_start = _time.time()
+        asyncio.create_task(console.log_operation_start(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase3_name, project_id=pid_str
+        ))
         if project_id:
             logger.info("💾 Step 3: Indexing files in RAG...")
             await report_progress(30.0, "Indexando arquivos no RAG...")
             try:
                 indexer = CodebaseIndexer(self.db)
-                # Create a temporary project reference for indexing
                 indexing_result = await self._index_for_memory(indexer, project_id, path)
                 result["files_indexed"] = indexing_result.get("files_indexed", 0)
                 logger.info(f"   Indexed {result['files_indexed']} files")
@@ -819,16 +863,36 @@ class CodebaseMemoryService:
                 result["files_indexed"] = 0
         else:
             logger.info("   Skipping RAG indexing (no project_id yet)")
+        phase3_ms = int((_time.time() - phase3_start) * 1000)
+        phase_metrics.append({"phase": phase3_name, "duration_ms": phase3_ms})
+        asyncio.create_task(console.log_operation_end(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase3_name,
+            duration_ms=phase3_ms, project_id=pid_str
+        ))
 
-        # Step 4: Extract representative code samples for AI analysis
-        # PROMPT #163 - Use scan_depth config for limits
+        # --- Step 4: Extract code samples ---
+        phase4_name = "Extração de Amostras"
+        phase4_start = _time.time()
+        asyncio.create_task(console.log_operation_start(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase4_name, project_id=pid_str
+        ))
         logger.info("🔍 Step 4: Extracting code samples for analysis...")
         await report_progress(40.0, "Extraindo amostras de código...")
         code_samples = self._extract_code_samples(path, scan_data, config)
         logger.info(f"   Extracted {len(code_samples)} code samples")
+        phase4_ms = int((_time.time() - phase4_start) * 1000)
+        phase_metrics.append({"phase": phase4_name, "duration_ms": phase4_ms})
+        asyncio.create_task(console.log_operation_end(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase4_name,
+            duration_ms=phase4_ms, project_id=pid_str
+        ))
 
-        # Step 5: Use AI to analyze and extract insights
-        # PROMPT #163 - Use multi-phase analysis for better results
+        # --- Step 5: AI analysis ---
+        phase5_name = "Análise IA"
+        phase5_start = _time.time()
+        asyncio.create_task(console.log_operation_start(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase5_name, project_id=pid_str
+        ))
         logger.info(f"🤖 Step 5: AI analysis ({scan_depth} mode)...")
         await report_progress(50.0, f"Análise de IA iniciada (modo {scan_depth})...")
         ai_analysis = await self._ai_analyze_codebase_phased(
@@ -845,13 +909,32 @@ class CodebaseMemoryService:
         result["key_features"] = ai_analysis.get("key_features", [])
         result["interview_context"] = ai_analysis.get("interview_context", "")
         result["phases_completed"] = ai_analysis.get("phases_completed", 1)
+        phase5_ms = int((_time.time() - phase5_start) * 1000)
+        phase5_tokens = ai_analysis.get("total_tokens", 0)
+        phase5_cost = ai_analysis.get("total_cost", 0.0)
+        phase5_model = ai_analysis.get("model_used", "")
+        phase_metrics.append({
+            "phase": phase5_name, "duration_ms": phase5_ms,
+            "tokens": phase5_tokens, "cost_usd": phase5_cost, "model": phase5_model
+        })
+        asyncio.create_task(console.log_operation_end(
+            trace_id=scan_trace_id, operation_name=op_name, phase_name=phase5_name,
+            duration_ms=phase5_ms, project_id=pid_str,
+            tokens_used=phase5_tokens or None, cost_usd=phase5_cost or None,
+            model_name=phase5_model or None
+        ))
 
         await report_progress(85.0, "Processando resultados de análise de IA...")
 
-        # Step 5.5: Extract and analyze git commit history (PROMPT #184)
+        # --- Step 5.5: Git commit analysis ---
         if scan_depth != "local":
+            phase55_name = "Análise Git"
+            phase55_start = _time.time()
             commits = self._extract_git_commits(path)
             if commits:
+                asyncio.create_task(console.log_operation_start(
+                    trace_id=scan_trace_id, operation_name=op_name, phase_name=phase55_name, project_id=pid_str
+                ))
                 logger.info(f"📝 Step 5.5: Analyzing {len(commits)} git commits for business rules...")
                 await report_progress(87.0, f"Analisando {len(commits)} commits git...")
                 try:
@@ -865,19 +948,104 @@ class CodebaseMemoryService:
                         logger.info(f"   Found {len(git_rules)} business rules from git history")
                 except Exception as e:
                     logger.warning(f"Git commit analysis failed (non-fatal): {e}")
+                phase55_ms = int((_time.time() - phase55_start) * 1000)
+                phase_metrics.append({"phase": phase55_name, "duration_ms": phase55_ms})
+                asyncio.create_task(console.log_operation_end(
+                    trace_id=scan_trace_id, operation_name=op_name, phase_name=phase55_name,
+                    duration_ms=phase55_ms, project_id=pid_str
+                ))
             else:
                 logger.info("📝 No git history found, skipping commit analysis")
 
-        # Step 6: Store business rules in RAG for future reference
+        # --- Step 6: Store business rules ---
+        phase6_name = "Armazenamento de Regras"
+        phase6_start = _time.time()
         if project_id and result["business_rules"]:
+            asyncio.create_task(console.log_operation_start(
+                trace_id=scan_trace_id, operation_name=op_name, phase_name=phase6_name, project_id=pid_str
+            ))
             logger.info("💾 Step 6: Storing business rules in RAG...")
-            await report_progress(90.0, f"Armazenando {len(result['business_rules'])} regras de negocio...")
+            await report_progress(90.0, f"Armazenando {len(result['business_rules'])} regras de negócio...")
             await self._store_business_rules(project_id, result["business_rules"])
             logger.info(f"   Stored {len(result['business_rules'])} business rules")
+            phase6_ms = int((_time.time() - phase6_start) * 1000)
+            phase_metrics.append({"phase": phase6_name, "duration_ms": phase6_ms})
+            asyncio.create_task(console.log_operation_end(
+                trace_id=scan_trace_id, operation_name=op_name, phase_name=phase6_name,
+                duration_ms=phase6_ms, project_id=pid_str
+            ))
+
+        # PROMPT #296 - Final summary with diagnostics
+        total_scan_ms = int((_time.time() - scan_start_time) * 1000)
+        total_tokens = sum(p.get("tokens", 0) for p in phase_metrics)
+        total_cost = sum(p.get("cost_usd", 0.0) for p in phase_metrics)
+
+        # Identify bottleneck
+        bottleneck = None
+        if phase_metrics:
+            slowest = max(phase_metrics, key=lambda p: p["duration_ms"])
+            pct = int(slowest["duration_ms"] / total_scan_ms * 100) if total_scan_ms > 0 else 0
+            if pct > 40:
+                bottleneck = f"{slowest['phase']} consumiu {pct}% do tempo total"
+
+        # Generate diagnostics
+        diagnostics = self._generate_scan_diagnostics(phase_metrics, total_scan_ms, total_tokens, total_cost)
+
+        asyncio.create_task(console.log_operation_summary(
+            trace_id=scan_trace_id,
+            operation_name=op_name,
+            total_duration_ms=total_scan_ms,
+            phases=phase_metrics,
+            total_tokens=total_tokens or None,
+            total_cost=total_cost or None,
+            bottleneck=bottleneck,
+            diagnostics=diagnostics,
+            project_id=pid_str
+        ))
 
         await report_progress(95.0, "Finalizando resultados...")
         logger.info("✅ Codebase memory scan complete!")
         return result
+
+    def _generate_scan_diagnostics(
+        self,
+        phases: List[Dict[str, Any]],
+        total_ms: int,
+        total_tokens: int,
+        total_cost: float
+    ) -> List[str]:
+        """PROMPT #296 - Generate diagnostic suggestions based on scan metrics."""
+        diagnostics = []
+        if not phases or total_ms == 0:
+            return diagnostics
+
+        # Bottleneck detection
+        for p in phases:
+            pct = int(p["duration_ms"] / total_ms * 100)
+            if pct > 50:
+                diagnostics.append(
+                    f"A fase '{p['phase']}' consumiu {pct}% do tempo ({p['duration_ms']}ms de {total_ms}ms)"
+                )
+
+        # Slow scan
+        if total_ms > 60000:
+            diagnostics.append(
+                f"Scan total levou {total_ms // 1000}s. Considere usar scan_depth='quick' para projetos grandes"
+            )
+
+        # Token usage
+        if total_tokens > 50000:
+            diagnostics.append(
+                f"Total de {total_tokens} tokens usados. Considere um modelo mais econômico"
+            )
+
+        # Cost analysis
+        if total_cost > 0.10:
+            diagnostics.append(
+                f"Custo total: ${total_cost:.4f}. Haiku seria ~70% mais barato para análise de código"
+            )
+
+        return diagnostics
 
     async def _scan_codebase(self, root_path: Path) -> Dict[str, Any]:
         """
