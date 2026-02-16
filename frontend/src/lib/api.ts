@@ -1011,6 +1011,10 @@ export interface JobResponse {
   interview_id?: string | null;
   // PROMPT #120 - Job priority system
   priority?: number | null;
+  // PROMPT #298 - Sub-job hierarchy
+  parent_job_id?: string | null;
+  phase_label?: string | null;
+  children_count?: number;
 }
 
 // Jobs API (PROMPT #65 - Async Job System)
@@ -1116,6 +1120,10 @@ export const jobsApi = {
     request<{ deleted_count: number; cutoff_days: number; message: string }>(`/api/v1/jobs/cleanup?days=${days}`, {
       method: 'POST',
     }),
+
+  // PROMPT #298 - Get children of a parent job
+  getChildren: (jobId: string) =>
+    request<{ children: JobResponse[] }>(`/api/v1/jobs/${jobId}/children`),
 
   // PROMPT #243 - Executor pause/resume
   pauseExecutor: () =>

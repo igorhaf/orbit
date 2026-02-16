@@ -38,10 +38,12 @@ async def list_all_jobs(
     limit: int = Query(50, ge=1, le=500, description="Number of jobs to return"),
     offset: int = Query(0, ge=0, description="Number of jobs to skip"),
     sort_by: str = Query("created_at", description="Field to sort by"),
-    sort_order: str = Query("desc", description="Sort order (asc or desc)")
+    sort_order: str = Query("desc", description="Sort order (asc or desc)"),
+    root_only: bool = Query(True, description="PROMPT #298 - Show only root jobs (no parent)")
 ):
     """
     PROMPT #135 - List all jobs with filtering and pagination.
+    PROMPT #298 - By default shows only root jobs (parent_job_id IS NULL).
 
     Used by the Job Queue Manager page to display all jobs.
 
@@ -53,6 +55,7 @@ async def list_all_jobs(
         offset: Number of jobs to skip
         sort_by: Field to sort by (created_at, started_at, completed_at)
         sort_order: Sort order (asc or desc)
+        root_only: If True, only return root jobs (no parent). Default: True
 
     Returns:
         {
@@ -63,6 +66,10 @@ async def list_all_jobs(
         }
     """
     query = db.query(AsyncJob)
+
+    # PROMPT #298 - Filter root jobs by default
+    if root_only:
+        query = query.filter(AsyncJob.parent_job_id.is_(None))
 
     # Apply filters
     if status:
@@ -399,6 +406,32 @@ async def get_job_logs(
     }
 
 
+# PROMPT #298 - Sub-job hierarchy: list children of a parent job
+@router.get("/{job_id}/children")
+async def get_job_children(
+    job_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #298 - Return sub-jobs of a parent job, ordered by created_at.
+
+    Returns:
+        {"children": [...]}
+    """
+    parent = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+    if not parent:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Job {job_id} nao encontrado"
+        )
+
+    children = db.query(AsyncJob).filter(
+        AsyncJob.parent_job_id == job_id
+    ).order_by(AsyncJob.created_at).all()
+
+    return {"children": [c.to_dict() for c in children]}
+
+
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job(
     job_id: UUID,
@@ -479,17 +512,17 @@ async def cancel_job(
             detail=f"Job {job_id} não encontrado"
         )
 
-    # Attempt to cancel
-    success = job_manager.cancel_job(job_id)
+    # PROMPT #298 - Cancel job and all children
+    success = job_manager.cancel_with_children(job_id)
 
     if not success:
         # Job couldn't be cancelled (already completed/failed/cancelled)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Não é possível cancelar job com status '{job.status.value}'. Apenas jobs pendentes ou em execução podem ser cancelados."
+            detail=f"Nao e possivel cancelar job com status '{job.status.value}'. Apenas jobs pendentes ou em execucao podem ser cancelados."
         )
 
-    logger.info(f"Job {job_id} cancelled successfully")
+    logger.info(f"Job {job_id} cancelled successfully (with children)")
 
     return {
         "id": str(job_id),

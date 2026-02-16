@@ -633,7 +633,8 @@ class CodebaseMemoryService:
         code_path: str,
         project_id: Optional[UUID] = None,
         scan_depth: ScanDepth = "normal",
-        progress_callback: Optional[callable] = None  # PROMPT #168 - Progress callback
+        progress_callback: Optional[callable] = None,  # PROMPT #168 - Progress callback
+        job_id: Optional[UUID] = None,  # PROMPT #298 - Parent job for sub-job hierarchy
     ) -> Dict[str, Any]:
         """
         Perform initial codebase scan and memorization.
@@ -788,6 +789,13 @@ class CodebaseMemoryService:
             "scan_depth": scan_depth  # PROMPT #163
         }
 
+        # PROMPT #298 - Sub-job hierarchy
+        jm = None
+        if job_id:
+            from app.services.job_manager import JobManager
+            from app.models.async_job import JobType
+            jm = JobManager(self.db)
+
         # PROMPT #168 - Helper function for progress callbacks
         async def report_progress(percent: float, message: str):
             if progress_callback:
@@ -809,11 +817,28 @@ class CodebaseMemoryService:
         asyncio.create_task(console.log_operation_start(
             trace_id=scan_trace_id, operation_name=op_name, phase_name=phase1_name, project_id=pid_str
         ))
+        # PROMPT #298 - Sub-job
+        child1_id = None
+        if jm:
+            child1 = jm.create_child_job(
+                parent_job_id=job_id, job_type=JobType.MEMORY_SCAN,
+                input_data={"phase": phase1_name, "code_path": code_path},
+                phase_label=f"Fase 1: {phase1_name}",
+            )
+            child1_id = child1.id
+            jm.start_job(child1_id)
         logger.info("📊 Step 1: Detecting technology stack...")
         await report_progress(15.0, "Detectando stack tecnológica...")
-        stack_info = self.stack_detector.detect(path)
-        result["stack_info"] = stack_info
-        logger.info(f"   Detected stack: {stack_info.get('detected_stack', 'unknown')}")
+        try:
+            stack_info = self.stack_detector.detect(path)
+            result["stack_info"] = stack_info
+            logger.info(f"   Detected stack: {stack_info.get('detected_stack', 'unknown')}")
+            if jm and child1_id:
+                jm.complete_child_job(child1_id, {"detected_stack": stack_info.get("detected_stack", "unknown")})
+        except Exception as e:
+            if jm and child1_id:
+                jm.fail_child_job(child1_id, str(e))
+            raise
         phase1_ms = int((_time.time() - phase1_start) * 1000)
         phase_metrics.append({"phase": phase1_name, "duration_ms": phase1_ms})
         asyncio.create_task(console.log_operation_end(
@@ -827,16 +852,33 @@ class CodebaseMemoryService:
         asyncio.create_task(console.log_operation_start(
             trace_id=scan_trace_id, operation_name=op_name, phase_name=phase2_name, project_id=pid_str
         ))
+        # PROMPT #298 - Sub-job
+        child2_id = None
+        if jm:
+            child2 = jm.create_child_job(
+                parent_job_id=job_id, job_type=JobType.MEMORY_SCAN,
+                input_data={"phase": phase2_name, "code_path": code_path},
+                phase_label=f"Fase 2: {phase2_name}",
+            )
+            child2_id = child2.id
+            jm.start_job(child2_id)
         logger.info("📂 Step 2: Scanning codebase structure...")
         await report_progress(20.0, "Escaneando estrutura do codebase...")
-        scan_data = await self._scan_codebase(path)
-        result["scan_summary"] = {
-            "total_files": scan_data["total_files"],
-            "code_files": scan_data["code_files"],
-            "languages": scan_data["languages"],
-            "config_files_found": scan_data["config_files"]
-        }
-        logger.info(f"   Found {scan_data['total_files']} files, {scan_data['code_files']} code files")
+        try:
+            scan_data = await self._scan_codebase(path)
+            result["scan_summary"] = {
+                "total_files": scan_data["total_files"],
+                "code_files": scan_data["code_files"],
+                "languages": scan_data["languages"],
+                "config_files_found": scan_data["config_files"]
+            }
+            logger.info(f"   Found {scan_data['total_files']} files, {scan_data['code_files']} code files")
+            if jm and child2_id:
+                jm.complete_child_job(child2_id, {"total_files": scan_data["total_files"], "code_files": scan_data["code_files"]})
+        except Exception as e:
+            if jm and child2_id:
+                jm.fail_child_job(child2_id, str(e))
+            raise
         phase2_ms = int((_time.time() - phase2_start) * 1000)
         phase_metrics.append({"phase": phase2_name, "duration_ms": phase2_ms})
         asyncio.create_task(console.log_operation_end(
@@ -850,6 +892,16 @@ class CodebaseMemoryService:
         asyncio.create_task(console.log_operation_start(
             trace_id=scan_trace_id, operation_name=op_name, phase_name=phase3_name, project_id=pid_str
         ))
+        # PROMPT #298 - Sub-job
+        child3_id = None
+        if jm:
+            child3 = jm.create_child_job(
+                parent_job_id=job_id, job_type=JobType.MEMORY_SCAN,
+                input_data={"phase": phase3_name, "code_path": code_path},
+                phase_label=f"Fase 3: {phase3_name}",
+            )
+            child3_id = child3.id
+            jm.start_job(child3_id)
         if project_id:
             logger.info("💾 Step 3: Indexing files in RAG...")
             await report_progress(30.0, "Indexando arquivos no RAG...")
@@ -858,11 +910,17 @@ class CodebaseMemoryService:
                 indexing_result = await self._index_for_memory(indexer, project_id, path)
                 result["files_indexed"] = indexing_result.get("files_indexed", 0)
                 logger.info(f"   Indexed {result['files_indexed']} files")
+                if jm and child3_id:
+                    jm.complete_child_job(child3_id, {"files_indexed": result["files_indexed"]})
             except Exception as e:
                 logger.warning(f"   RAG indexing skipped: {e}")
                 result["files_indexed"] = 0
+                if jm and child3_id:
+                    jm.fail_child_job(child3_id, str(e))
         else:
             logger.info("   Skipping RAG indexing (no project_id yet)")
+            if jm and child3_id:
+                jm.complete_child_job(child3_id, {"skipped": True, "reason": "no project_id"})
         phase3_ms = int((_time.time() - phase3_start) * 1000)
         phase_metrics.append({"phase": phase3_name, "duration_ms": phase3_ms})
         asyncio.create_task(console.log_operation_end(
@@ -876,10 +934,27 @@ class CodebaseMemoryService:
         asyncio.create_task(console.log_operation_start(
             trace_id=scan_trace_id, operation_name=op_name, phase_name=phase4_name, project_id=pid_str
         ))
+        # PROMPT #298 - Sub-job
+        child4_id = None
+        if jm:
+            child4 = jm.create_child_job(
+                parent_job_id=job_id, job_type=JobType.MEMORY_SCAN,
+                input_data={"phase": phase4_name, "code_path": code_path},
+                phase_label=f"Fase 4: {phase4_name}",
+            )
+            child4_id = child4.id
+            jm.start_job(child4_id)
         logger.info("🔍 Step 4: Extracting code samples for analysis...")
         await report_progress(40.0, "Extraindo amostras de código...")
-        code_samples = self._extract_code_samples(path, scan_data, config)
-        logger.info(f"   Extracted {len(code_samples)} code samples")
+        try:
+            code_samples = self._extract_code_samples(path, scan_data, config)
+            logger.info(f"   Extracted {len(code_samples)} code samples")
+            if jm and child4_id:
+                jm.complete_child_job(child4_id, {"samples_extracted": len(code_samples)})
+        except Exception as e:
+            if jm and child4_id:
+                jm.fail_child_job(child4_id, str(e))
+            raise
         phase4_ms = int((_time.time() - phase4_start) * 1000)
         phase_metrics.append({"phase": phase4_name, "duration_ms": phase4_ms})
         asyncio.create_task(console.log_operation_end(
@@ -893,22 +968,43 @@ class CodebaseMemoryService:
         asyncio.create_task(console.log_operation_start(
             trace_id=scan_trace_id, operation_name=op_name, phase_name=phase5_name, project_id=pid_str
         ))
+        # PROMPT #298 - Sub-job
+        child5_id = None
+        if jm:
+            child5 = jm.create_child_job(
+                parent_job_id=job_id, job_type=JobType.MEMORY_SCAN,
+                input_data={"phase": phase5_name, "code_path": code_path, "scan_depth": scan_depth},
+                phase_label=f"Fase 5: {phase5_name}",
+            )
+            child5_id = child5.id
+            jm.start_job(child5_id)
         logger.info(f"🤖 Step 5: AI analysis ({scan_depth} mode)...")
         await report_progress(50.0, f"Análise de IA iniciada (modo {scan_depth})...")
-        ai_analysis = await self._ai_analyze_codebase_phased(
-            code_samples=code_samples,
-            stack_info=stack_info,
-            scan_summary=result["scan_summary"],
-            root_path=path,
-            project_id=project_id,
-            scan_depth=scan_depth
-        )
+        try:
+            ai_analysis = await self._ai_analyze_codebase_phased(
+                code_samples=code_samples,
+                stack_info=stack_info,
+                scan_summary=result["scan_summary"],
+                root_path=path,
+                project_id=project_id,
+                scan_depth=scan_depth
+            )
 
-        result["suggested_title"] = ai_analysis.get("suggested_title", "")
-        result["business_rules"] = ai_analysis.get("business_rules", [])
-        result["key_features"] = ai_analysis.get("key_features", [])
-        result["interview_context"] = ai_analysis.get("interview_context", "")
-        result["phases_completed"] = ai_analysis.get("phases_completed", 1)
+            result["suggested_title"] = ai_analysis.get("suggested_title", "")
+            result["business_rules"] = ai_analysis.get("business_rules", [])
+            result["key_features"] = ai_analysis.get("key_features", [])
+            result["interview_context"] = ai_analysis.get("interview_context", "")
+            result["phases_completed"] = ai_analysis.get("phases_completed", 1)
+            if jm and child5_id:
+                jm.complete_child_job(child5_id, {
+                    "phases_completed": result["phases_completed"],
+                    "rules_found": len(result["business_rules"]),
+                    "features_found": len(result["key_features"]),
+                })
+        except Exception as e:
+            if jm and child5_id:
+                jm.fail_child_job(child5_id, str(e))
+            raise
         phase5_ms = int((_time.time() - phase5_start) * 1000)
         phase5_tokens = ai_analysis.get("total_tokens", 0)
         phase5_cost = ai_analysis.get("total_cost", 0.0)
@@ -935,6 +1031,16 @@ class CodebaseMemoryService:
                 asyncio.create_task(console.log_operation_start(
                     trace_id=scan_trace_id, operation_name=op_name, phase_name=phase55_name, project_id=pid_str
                 ))
+                # PROMPT #298 - Sub-job
+                child55_id = None
+                if jm:
+                    child55 = jm.create_child_job(
+                        parent_job_id=job_id, job_type=JobType.MEMORY_SCAN,
+                        input_data={"phase": phase55_name, "commits_count": len(commits)},
+                        phase_label=f"Fase 6: {phase55_name}",
+                    )
+                    child55_id = child55.id
+                    jm.start_job(child55_id)
                 logger.info(f"📝 Step 5.5: Analyzing {len(commits)} git commits for business rules...")
                 await report_progress(87.0, f"Analisando {len(commits)} commits git...")
                 try:
@@ -946,8 +1052,15 @@ class CodebaseMemoryService:
                         result["git_commits_analyzed"] = len(commits)
                         result["git_rules_found"] = len(git_rules)
                         logger.info(f"   Found {len(git_rules)} business rules from git history")
+                    if jm and child55_id:
+                        jm.complete_child_job(child55_id, {
+                            "commits_analyzed": len(commits),
+                            "rules_found": len(git_rules) if git_rules else 0,
+                        })
                 except Exception as e:
                     logger.warning(f"Git commit analysis failed (non-fatal): {e}")
+                    if jm and child55_id:
+                        jm.fail_child_job(child55_id, str(e))
                 phase55_ms = int((_time.time() - phase55_start) * 1000)
                 phase_metrics.append({"phase": phase55_name, "duration_ms": phase55_ms})
                 asyncio.create_task(console.log_operation_end(
@@ -964,10 +1077,27 @@ class CodebaseMemoryService:
             asyncio.create_task(console.log_operation_start(
                 trace_id=scan_trace_id, operation_name=op_name, phase_name=phase6_name, project_id=pid_str
             ))
+            # PROMPT #298 - Sub-job
+            child6_id = None
+            if jm:
+                child6 = jm.create_child_job(
+                    parent_job_id=job_id, job_type=JobType.MEMORY_SCAN,
+                    input_data={"phase": phase6_name, "rules_count": len(result["business_rules"])},
+                    phase_label=f"Fase 7: {phase6_name}",
+                )
+                child6_id = child6.id
+                jm.start_job(child6_id)
             logger.info("💾 Step 6: Storing business rules in RAG...")
             await report_progress(90.0, f"Armazenando {len(result['business_rules'])} regras de negócio...")
-            await self._store_business_rules(project_id, result["business_rules"])
-            logger.info(f"   Stored {len(result['business_rules'])} business rules")
+            try:
+                await self._store_business_rules(project_id, result["business_rules"])
+                logger.info(f"   Stored {len(result['business_rules'])} business rules")
+                if jm and child6_id:
+                    jm.complete_child_job(child6_id, {"rules_stored": len(result["business_rules"])})
+            except Exception as e:
+                if jm and child6_id:
+                    jm.fail_child_job(child6_id, str(e))
+                raise
             phase6_ms = int((_time.time() - phase6_start) * 1000)
             phase_metrics.append({"phase": phase6_name, "duration_ms": phase6_ms})
             asyncio.create_task(console.log_operation_end(

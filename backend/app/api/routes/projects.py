@@ -477,11 +477,13 @@ async def _process_memory_scan_async(
 
         # PROMPT #163 - Pass scan_depth to memory service
         # PROMPT #168 - Pass progress callback for granular updates
+        # PROMPT #298 - Pass job_id for sub-job hierarchy
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
             project_id=project_id,
             scan_depth=scan_depth,
-            progress_callback=progress_callback
+            progress_callback=progress_callback,
+            job_id=job_id
         )
 
         # PROMPT #284 - Write scan result back to project.initial_memory_context
@@ -748,10 +750,12 @@ async def _process_quick_create_scan(
         job_manager.update_progress(job_id, 30.0, "Analisando código e extraindo padrões...")
 
         # PROMPT #163 - Pass scan_depth for configurable analysis depth
+        # PROMPT #298 - Pass job_id for sub-job hierarchy
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
             project_id=project_id,
-            scan_depth=scan_depth
+            scan_depth=scan_depth,
+            job_id=job_id
         )
 
         job_manager.update_progress(job_id, 80.0, "Atualizando projeto com achados...")
@@ -978,10 +982,12 @@ async def _process_project_pipeline(
 
         job_manager.update_progress(job_id, 15.0, "Analisando estrutura de código...")
 
+        # PROMPT #298 - Pass job_id for sub-job hierarchy
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
             project_id=project_id,
-            scan_depth=scan_depth
+            scan_depth=scan_depth,
+            job_id=job_id
         )
 
         job_manager.update_progress(job_id, 70.0, "Scan concluido. Salvando resultados...")

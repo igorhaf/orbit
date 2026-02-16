@@ -73,7 +73,8 @@ async def trigger_rag_scan(
             jm.start_job(job_id)
 
             service = ContinuousRAGService(db_session)
-            result = await service.run_full_cycle(proj_id)
+            # PROMPT #298 - Pass job_id for per-file sub-jobs
+            result = await service.run_full_cycle(proj_id, job_id=job_id)
 
             jm.complete_job(job_id, result)
         except Exception as e:

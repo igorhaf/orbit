@@ -2180,6 +2180,7 @@ async def _execute_batch_async(
     """
     from app.database import SessionLocal
     from app.services.job_manager import JobManager
+    from app.models.async_job import JobType  # PROMPT #298
 
     db = SessionLocal()
 
@@ -2189,9 +2190,24 @@ async def _execute_batch_async(
         total = len(task_ids)
         logger.info(f"🚀 Starting batch execution job {job_id} for {total} tasks")
 
-        job_manager.update_progress(job_id, 5.0, f"Iniciando execução em lote de {total} tarefas...")
+        job_manager.update_progress(job_id, 5.0, f"Iniciando execucao em lote de {total} tarefas...")
 
         executor = TaskExecutor(db)
+
+        # PROMPT #298 - Create child jobs upfront for each task
+        child_job_ids = {}
+        for i, tid in enumerate(task_ids, 1):
+            # Fetch task title for a meaningful phase_label
+            task_obj = db.query(Task).filter(Task.id == tid).first()
+            task_title = task_obj.title[:60] if task_obj else str(tid)
+            child = job_manager.create_child_job(
+                parent_job_id=job_id,
+                job_type=JobType.TASK_EXECUTION,
+                input_data={"task_id": str(tid)},
+                phase_label=f"Task {i}/{total}: {task_title}",
+                task_id=tid,
+            )
+            child_job_ids[str(tid)] = child.id
 
         # Execute with progress updates
         results = []
@@ -2204,6 +2220,11 @@ async def _execute_batch_async(
                 logger.info(f"⚠️ Batch execution job {job_id} was cancelled at task {i+1}/{total}")
                 break
 
+            # PROMPT #298 - Start child job
+            _child_id = child_job_ids.get(str(task_id))
+            if _child_id:
+                job_manager.start_job(_child_id)
+
             try:
                 result = await executor.execute_task(
                     task_id=task_id,
@@ -2211,8 +2232,16 @@ async def _execute_batch_async(
                     max_attempts=3
                 )
                 results.append(result)
+                # PROMPT #298 - Complete child job
+                if _child_id:
+                    job_manager.complete_child_job(_child_id, {
+                        "validation_passed": getattr(result, 'validation_passed', None),
+                    })
             except Exception as task_error:
                 logger.error(f"Task {task_id} failed: {task_error}")
+                # PROMPT #298 - Fail child job
+                if _child_id:
+                    job_manager.fail_child_job(_child_id, str(task_error))
                 # Continue with other tasks even if one fails
 
         job_manager.update_progress(job_id, 95.0, "Finalizando resultados do lote...")

@@ -179,6 +179,11 @@ export default function JobsPage() {
     days: number;
   }>({ open: false, days: 0 });
 
+  // PROMPT #298 - Sub-job hierarchy: expanded children
+  const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
+  const [childrenMap, setChildrenMap] = useState<Map<string, JobResponse[]>>(new Map());
+  const [loadingChildren, setLoadingChildren] = useState<Set<string>>(new Set());
+
   // PROMPT #286 - Expandable job detail with log viewer
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [jobLogs, setJobLogs] = useState<Record<string, Array<{ id: string; timestamp: string; level: string; message: string; progress_percent: number | null }>>>({});
@@ -594,6 +599,28 @@ export default function JobsPage() {
     }
   };
 
+  // PROMPT #298 - Toggle children expand/collapse
+  const handleToggleChildren = async (e: React.MouseEvent, jobId: string) => {
+    e.stopPropagation();
+    if (expandedChildren.has(jobId)) {
+      setExpandedChildren(prev => { const n = new Set(prev); n.delete(jobId); return n; });
+    } else {
+      if (!childrenMap.has(jobId)) {
+        setLoadingChildren(prev => new Set(prev).add(jobId));
+        try {
+          const res = await jobsApi.getChildren(jobId);
+          setChildrenMap(prev => new Map(prev).set(jobId, res.children));
+        } catch (error) {
+          console.error('Error fetching children:', error);
+          setChildrenMap(prev => new Map(prev).set(jobId, []));
+        } finally {
+          setLoadingChildren(prev => { const n = new Set(prev); n.delete(jobId); return n; });
+        }
+      }
+      setExpandedChildren(prev => new Set(prev).add(jobId));
+    }
+  };
+
   // Format date
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return '-';
@@ -1002,6 +1029,9 @@ export default function JobsPage() {
                             Título
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
+                            Fases
+                          </th>
+                          <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
                             Progresso
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
@@ -1086,6 +1116,21 @@ export default function JobsPage() {
                                   })()}
                                 </div>
                               </td>
+                              {/* PROMPT #298 - Children count / expand */}
+                              <td className="px-4 py-3">
+                                {(job.children_count || 0) > 0 ? (
+                                  <button
+                                    onClick={(e) => handleToggleChildren(e, job.id)}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors"
+                                    title="Ver sub-jobs"
+                                  >
+                                    <ChevronDown className={`w-3 h-3 transition-transform ${expandedChildren.has(job.id) ? '' : '-rotate-90'}`} />
+                                    {job.children_count} {job.children_count === 1 ? 'fase' : 'fases'}
+                                  </button>
+                                ) : (
+                                  <span className="text-sm text-gray-400">-</span>
+                                )}
+                              </td>
                               <td className="px-4 py-3">
                                 {job.progress_percent !== null ? (
                                   <div className="w-32">
@@ -1166,10 +1211,79 @@ export default function JobsPage() {
                               </td>
                             </tr>
 
+                            {/* PROMPT #298 - Children rows (sub-jobs) */}
+                            {expandedChildren.has(job.id) && (
+                              loadingChildren.has(job.id) ? (
+                                <tr>
+                                  <td colSpan={9} className="p-0">
+                                    <div className="pl-12 py-2 text-xs text-gray-500 bg-purple-50/50">Carregando sub-jobs...</div>
+                                  </td>
+                                </tr>
+                              ) : (childrenMap.get(job.id) || []).map((child) => {
+                                const childDuration = child.started_at && child.completed_at
+                                  ? (new Date(child.completed_at).getTime() - new Date(child.started_at).getTime()) / 1000
+                                  : child.started_at
+                                  ? (Date.now() - new Date(child.started_at).getTime()) / 1000
+                                  : null;
+                                return (
+                                  <tr key={child.id} className="bg-purple-50/30 hover:bg-purple-50/60 border-l-2 border-purple-300">
+                                    <td className="px-4 py-2 pl-10">
+                                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[child.status]}`}>
+                                        {STATUS_ICONS[child.status]}
+                                        {child.status}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <span className="text-xs text-gray-400">-</span>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <span className="text-xs text-gray-500">{child.job_type.replace(/_/g, ' ')}</span>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <div className="max-w-xs">
+                                        <p className="text-xs font-medium text-gray-700 truncate">
+                                          {child.phase_label || child.notification_title || '-'}
+                                        </p>
+                                        {child.error && (
+                                          <p className="text-xs text-red-500 truncate">{child.error}</p>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <span className="text-xs text-gray-400">-</span>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      {child.progress_percent !== null ? (
+                                        <div className="w-24">
+                                          <div className="flex items-center gap-1">
+                                            <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                              <div className="h-full bg-purple-400 rounded-full" style={{ width: `${child.progress_percent}%` }} />
+                                            </div>
+                                            <span className="text-xs text-gray-500">{Math.round(child.progress_percent)}%</span>
+                                          </div>
+                                        </div>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">-</span>
+                                      )}
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <span className="text-xs text-gray-500">{formatDate(child.created_at)}</span>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      <span className="text-xs text-gray-500">
+                                        {childDuration !== null ? formatDuration(childDuration) : '-'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-2"></td>
+                                  </tr>
+                                );
+                              })
+                            )}
+
                             {/* PROMPT #286 - Expandable job detail with log viewer */}
                             {isExpanded && (
                               <tr>
-                                <td colSpan={8} className="p-0">
+                                <td colSpan={9} className="p-0">
                                   <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
                                     {/* Job Detail Header */}
                                     <div className="flex items-center justify-between mb-3">

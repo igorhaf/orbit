@@ -5,8 +5,9 @@ PROMPT #65 - Async Job System
 Tracks status of asynchronous operations like AI calls, provisioning, backlog generation.
 """
 
-from sqlalchemy import Column, String, Text, Enum as SQLEnum, DateTime, JSON, Float, Integer
+from sqlalchemy import Column, String, Text, Enum as SQLEnum, DateTime, JSON, Float, Integer, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship, backref
 from datetime import datetime
 from uuid import uuid4
 import enum
@@ -183,6 +184,13 @@ class AsyncJob(Base):
     deep_link = Column(String(500), nullable=True)  # URL to navigate when notification clicked
     notification_title = Column(String(200), nullable=True)  # Title for notification display
 
+    # PROMPT #298: Sub-job hierarchy
+    parent_job_id = Column(UUID(as_uuid=True), ForeignKey('async_jobs.id', ondelete='CASCADE'), nullable=True, index=True)
+    phase_label = Column(String(200), nullable=True)  # Ex: "Fase 3/6: Indexacao RAG"
+
+    # Relationship: parent ↔ children
+    children = relationship("AsyncJob", backref=backref("parent", remote_side="AsyncJob.id"), cascade="all, delete-orphan")
+
     def __repr__(self):
         return f"<AsyncJob {self.id} {self.job_type} {self.status}>"
 
@@ -205,5 +213,8 @@ class AsyncJob(Base):
             "task_id": str(self.task_id) if self.task_id else None,  # PROMPT #133
             "deep_link": self.deep_link,  # PROMPT #133
             "notification_title": self.notification_title,  # PROMPT #133
-            "priority": self.priority  # PROMPT #120
+            "priority": self.priority,  # PROMPT #120
+            "parent_job_id": str(self.parent_job_id) if self.parent_job_id else None,  # PROMPT #298
+            "phase_label": self.phase_label,  # PROMPT #298
+            "children_count": len(self.children) if self.children else 0,  # PROMPT #298
         }

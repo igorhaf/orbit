@@ -81,7 +81,9 @@ class JobManager:
         task_id: Optional[UUID] = None,  # PROMPT #133
         deep_link: Optional[str] = None,  # PROMPT #133
         notification_title: Optional[str] = None,  # PROMPT #133
-        priority: Optional[int] = None  # PROMPT #120: Job priority
+        priority: Optional[int] = None,  # PROMPT #120: Job priority
+        parent_job_id: Optional[UUID] = None,  # PROMPT #298: Sub-job hierarchy
+        phase_label: Optional[str] = None,  # PROMPT #298: Phase label
     ) -> AsyncJob:
         """
         Create a new pending job.
@@ -114,6 +116,8 @@ class JobManager:
             deep_link=deep_link,  # PROMPT #133
             notification_title=notification_title,  # PROMPT #133
             priority=priority,  # PROMPT #120
+            parent_job_id=parent_job_id,  # PROMPT #298
+            phase_label=phase_label,  # PROMPT #298
             created_at=datetime.utcnow()
         )
 
@@ -358,3 +362,117 @@ class JobManager:
             return False
 
         return job.status == JobStatus.CANCELLED
+
+    # ──────────────────────────────────────────────
+    # PROMPT #298 - Sub-Job Hierarchy Methods
+    # ──────────────────────────────────────────────
+
+    def create_child_job(
+        self,
+        parent_job_id: UUID,
+        job_type: JobType,
+        input_data: Dict[str, Any],
+        phase_label: str,
+        **kwargs
+    ) -> AsyncJob:
+        """
+        Create a child job linked to a parent. Inherits project_id and priority from parent.
+
+        Args:
+            parent_job_id: UUID of the parent job
+            job_type: Type of job
+            input_data: Parameters for the job
+            phase_label: Human-readable label (e.g. "Fase 3/6: Indexacao RAG")
+            **kwargs: Additional fields (task_id, deep_link, etc.)
+
+        Returns:
+            AsyncJob instance with parent_job_id set
+        """
+        parent = self.get_job(parent_job_id)
+        if not parent:
+            raise ValueError(f"Job pai {parent_job_id} nao encontrado")
+
+        return self.create_job(
+            job_type=job_type,
+            input_data=input_data,
+            project_id=parent.project_id,
+            priority=parent.priority,
+            parent_job_id=parent_job_id,
+            phase_label=phase_label,
+            notification_title=phase_label,
+            **kwargs
+        )
+
+    def update_parent_progress(self, parent_job_id: UUID) -> None:
+        """Recalculate parent progress based on children completion."""
+        children = self.db.query(AsyncJob).filter(
+            AsyncJob.parent_job_id == parent_job_id
+        ).all()
+        if not children:
+            return
+
+        finished_statuses = [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]
+        completed = sum(1 for c in children if c.status in finished_statuses)
+        total = len(children)
+        pct = (completed / total) * 100
+
+        failed = sum(1 for c in children if c.status == JobStatus.FAILED)
+        msg = f"{completed}/{total} fases concluidas"
+        if failed:
+            msg += f" ({failed} com erro)"
+
+        self.update_progress(parent_job_id, pct, msg)
+
+    def complete_child_job(self, child_job_id: UUID, result: Dict[str, Any]) -> None:
+        """Complete a child job and update parent progress. Auto-completes parent when all children are done."""
+        child = self.get_job(child_job_id)
+        self.complete_job(child_job_id, result)
+        if child and child.parent_job_id:
+            self.update_parent_progress(child.parent_job_id)
+            self._check_parent_completion(child.parent_job_id)
+
+    def fail_child_job(self, child_job_id: UUID, error: str) -> None:
+        """Fail a child job and update parent progress. Auto-completes parent when all children are done."""
+        child = self.get_job(child_job_id)
+        self.fail_job(child_job_id, error)
+        if child and child.parent_job_id:
+            self.update_parent_progress(child.parent_job_id)
+            self._check_parent_completion(child.parent_job_id)
+
+    def _check_parent_completion(self, parent_job_id: UUID) -> None:
+        """If all children are finished, complete or fail the parent job."""
+        children = self.db.query(AsyncJob).filter(
+            AsyncJob.parent_job_id == parent_job_id
+        ).all()
+
+        finished_statuses = [JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED]
+        all_done = all(c.status in finished_statuses for c in children)
+        if not all_done:
+            return
+
+        failed = [c for c in children if c.status == JobStatus.FAILED]
+        if failed:
+            errors = [f"{c.phase_label or 'fase'}: {c.error}" for c in failed[:3]]
+            self.fail_job(parent_job_id, f"{len(failed)} fase(s) falharam: " + "; ".join(errors))
+        else:
+            results = {str(c.id): c.result for c in children if c.result}
+            self.complete_job(parent_job_id, {
+                "children_completed": len(children),
+                "children_results": results
+            })
+
+    def cancel_with_children(self, job_id: UUID) -> bool:
+        """Cancel a job and all its pending/running children."""
+        children = self.db.query(AsyncJob).filter(
+            AsyncJob.parent_job_id == job_id,
+            AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+        ).all()
+        for child in children:
+            self.cancel_job(child.id)
+        return self.cancel_job(job_id)
+
+    def get_children(self, parent_job_id: UUID) -> list:
+        """Return children ordered by created_at."""
+        return self.db.query(AsyncJob).filter(
+            AsyncJob.parent_job_id == parent_job_id
+        ).order_by(AsyncJob.created_at).all()

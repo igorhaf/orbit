@@ -88,10 +88,11 @@ class ContinuousRAGService:
     # Public API
     # =========================================================================
 
-    async def run_full_cycle(self, project_id: UUID) -> Dict[str, Any]:
+    async def run_full_cycle(self, project_id: UUID, job_id: UUID = None) -> Dict[str, Any]:
         """
         Execute a complete scan-process-cleanup cycle for a project.
 
+        PROMPT #298 - Accepts job_id for sub-job hierarchy.
         Returns combined statistics from all phases.
         """
         console = _get_console_logger()
@@ -109,7 +110,8 @@ class ContinuousRAGService:
         delete_result = await self.process_deleted_files(project_id)
 
         # Phase 3: Process new/modified files
-        process_result = await self.process_pending_files(project_id)
+        # PROMPT #298 - Pass job_id for per-file sub-jobs
+        process_result = await self.process_pending_files(project_id, parent_job_id=job_id)
 
         # PROMPT #243 - Realtime wiki enrichment: update wiki immediately when new rules found
         # PROMPT #252 - Use boolean return to track actual enrichment success
@@ -322,10 +324,14 @@ class ContinuousRAGService:
     async def process_pending_files(
         self,
         project_id: UUID,
-        batch_size: int = 50
+        batch_size: int = 50,
+        parent_job_id: UUID = None,  # PROMPT #298 - Parent job for per-file sub-jobs
     ) -> Dict[str, Any]:
         """
         Process pending files using AI to extract business rules.
+
+        PROMPT #298 - When parent_job_id is provided, creates a child job per file
+        for granular traceability.
 
         Uses asyncio.Semaphore for parallel AI extraction (up to MAX_PARALLEL_EXTRACTIONS
         concurrent requests to Ollama/cloud models).
@@ -365,6 +371,23 @@ class ContinuousRAGService:
 
         _parallel = 1 if _is_ollama else MAX_PARALLEL_EXTRACTIONS
         semaphore = asyncio.Semaphore(_parallel)
+
+        # PROMPT #298 - Create child jobs per file upfront
+        jm = None
+        child_job_map = {}  # state_id → child_job_id
+        if parent_job_id:
+            from app.services.job_manager import JobManager
+            from app.models.async_job import JobType
+            jm = JobManager(self.db)
+            for i, state in enumerate(pending_states, 1):
+                child = jm.create_child_job(
+                    parent_job_id=parent_job_id,
+                    job_type=JobType.RAG_CONTINUOUS_SCAN,
+                    input_data={"file_path": state.file_path},
+                    phase_label=f"Arquivo {i}/{total_count}: {state.file_path}",
+                )
+                child_job_map[state.id] = child.id
+                jm.start_job(child.id)
 
         # Shared counters (accessed sequentially after gather)
         results = []
@@ -496,9 +519,14 @@ class ContinuousRAGService:
             if not state:
                 continue
 
+            # PROMPT #298 - Resolve child job for this file
+            _child_id = child_job_map.get(state.id) if jm else None
+
             if result["status"] == "deleted":
                 state.status = FileProcessingStatus.DELETED
                 self.db.commit()
+                if jm and _child_id:
+                    jm.complete_child_job(_child_id, {"status": "deleted"})
                 continue
 
             # PROMPT #224 - Mark skipped files as completed (no rules to extract)
@@ -509,6 +537,8 @@ class ContinuousRAGService:
                 state.error_message = None
                 self.db.commit()
                 processed += 1
+                if jm and _child_id:
+                    jm.complete_child_job(_child_id, {"status": "skipped"})
                 continue
 
             if result["status"] == "error":
@@ -517,6 +547,8 @@ class ContinuousRAGService:
                 self.db.commit()
                 errors += 1
                 logger.error(f"Failed to process {result.get('file_path')}: {result.get('error')}")
+                if jm and _child_id:
+                    jm.fail_child_job(_child_id, result.get("error", "Erro desconhecido"))
                 continue
 
             # Success — update RAG
@@ -560,6 +592,10 @@ class ContinuousRAGService:
 
             processed += 1
             total_rules += len(new_doc_ids)
+
+            # PROMPT #298 - Complete child job for this file
+            if jm and _child_id:
+                jm.complete_child_job(_child_id, {"rules_extracted": len(new_doc_ids)})
 
             logger.info(
                 f"{state.file_path}: {len(new_doc_ids)} rules extracted"
