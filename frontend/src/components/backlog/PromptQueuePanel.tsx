@@ -217,7 +217,7 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
 
       {/* Sort controls */}
       <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg">
-        <span className="text-sm font-medium text-gray-700">Estrategia:</span>
+        <span className="text-sm font-medium text-gray-700">Estratégia:</span>
         <Select
           value={sortStrategy}
           onChange={(e) => setSortStrategy(e.target.value)}
@@ -225,7 +225,7 @@ export default function PromptQueuePanel({ projectId }: PromptQueuePanelProps) {
             { value: 'balanced', label: 'Balanceado' },
             { value: 'hierarchy_first', label: 'Hierarquia Primeiro' },
             { value: 'priority_first', label: 'Prioridade Primeiro' },
-            { value: 'dependency_first', label: 'Dependencia Primeiro' },
+            { value: 'dependency_first', label: 'Dependência Primeiro' },
             { value: 'age_first', label: 'Idade Primeiro' },
           ]}
           className="w-44"

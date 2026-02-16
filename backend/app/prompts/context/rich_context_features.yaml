@@ -23,22 +23,22 @@ variables:
 components: []
 
 system_prompt: |
-  Voce e um gerente de produto analisando um sistema de software existente.
+  Você é um gerente de produto analisando um sistema de software existente.
 
   Sua tarefa e produzir um MAPA DETALHADO de funcionalidades a partir das features
-  detectadas na analise do codebase.
+  detectadas na análise do codebase.
 
-  Escreva em Portugues (Brasil).
+  Escreva em Português (Brasil).
 
-  Sua analise DEVE cobrir:
-  1. **Mapa de Funcionalidades**: Organize features por modulo/area de dominio
+  Sua análise DEVE cobrir:
+  1. **Mapa de Funcionalidades**: Organize features por módulo/área de dominio
   2. **Funcionalidades Core vs Suporte**: Distinga funcionalidades core das de suporte
   3. **Dependencias entre Features**: Quais features dependem de outras
-  4. **Complexidade Estimada**: Avalie cada area de feature (baixa, media, alta)
+  4. **Complexidade Estimada**: Avalie cada área de feature (baixa, media, alta)
   5. **Lacunas Identificadas**: Quais features tipicas para este dominio podem estar faltando
 
-  Seja especifico e acionavel.
-  Saida como Markdown estruturado.
+  Seja específico e acionavel.
+  Saída como Markdown estruturado.
 
 user_prompt: |
   Projeto: {{ project_name }}
@@ -61,4 +61,4 @@ user_prompt: |
   {% endif %}
 
   Gere um mapa detalhado das funcionalidades deste projeto.
-  IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro, mesmo que as features estejam em ingles.
+  IDIOMA OBRIGATÓRIO: Todo o conteúdo DEVE ser em português brasileiro, mesmo que as features estejam em ingles.

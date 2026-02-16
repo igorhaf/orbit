@@ -154,7 +154,7 @@ async def test_all_apis():
         if not all([anthropic_key, openai_key, google_key]):
             raise HTTPException(
                 status_code=500,
-                detail="Chaves de API nao configuradas"
+                detail="Chaves de API não configuradas"
             )
 
         # Criar tester e executar

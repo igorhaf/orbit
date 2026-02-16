@@ -560,7 +560,7 @@ Gere uma pergunta DIFERENTE das acima.
                 "type": "single",
                 "choices": [
                     {"id": "requisitos", "label": "Requisitos técnicos e funcionais", "value": "requisitos"},
-                    {"id": "usuarios", "label": "Perfil dos usuários e permissões", "value": "usuarios"},
+                    {"id": "usuários", "label": "Perfil dos usuários e permissões", "value": "usuários"},
                     {"id": "integracoes", "label": "Integrações com outros sistemas", "value": "integracoes"},
                     {"id": "cronograma", "label": "Cronograma e prioridades", "value": "cronograma"}
                 ]
@@ -635,7 +635,7 @@ async def generate_first_question(
     parent_context = ""
     if parent_task:
         parent_context = f"""
-Voce esta criando um item dentro de "{parent_task.title}" ({parent_task.item_type}).
+Você esta criando um item dentro de "{parent_task.title}" ({parent_task.item_type}).
 Contextualize sua primeira pergunta com base no card pai.
 """
 
@@ -645,7 +645,7 @@ Contextualize sua primeira pergunta com base no card pai.
         "interviews/first_question",
         {
             "project_name": project.name or 'Novo Projeto',
-            "project_description": project.description or 'Nao definida',
+            "project_description": project.description or 'Não definida',
             "parent_context": parent_context
         }
     )
@@ -768,9 +768,9 @@ Contextualize sua primeira pergunta com base no card pai.
             "options": {
                 "type": "single",
                 "choices": [
-                    {"id": "autenticacao", "label": "Sistema de autenticação e controle de acesso", "value": "autenticacao"},
+                    {"id": "autenticação", "label": "Sistema de autenticação e controle de acesso", "value": "autenticação"},
                     {"id": "gerenciamento_dados", "label": "Interface para gerenciamento de dados", "value": "gerenciamento_dados"},
-                    {"id": "integracao", "label": "Integração com sistemas externos", "value": "integracao"},
+                    {"id": "integração", "label": "Integração com sistemas externos", "value": "integração"},
                     {"id": "processamento", "label": "Processamento e análise de informações", "value": "processamento"}
                 ]
             },

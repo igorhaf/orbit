@@ -547,10 +547,10 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
     const messages = interviewData.conversation_data;
 
-    // PROMPT #82 - Fixed answer indices (was reading from wrong messages!)
+    // PROMPT #82 - Fixed answer índices (was reading from wrong messages!)
     // Message structure:
     // 0: Initial | 1: User start | 2: Q1 | 3: A1 | 4: Q2 | 5: A2 | 6: Q3 | 7: A3 | 8: Q4 | 9: A4 | 10: Q5 | 11: A5 | 12: Q6 | 13: A6 | 14: Q7 | 15: A7 | 16: Q8
-    // We need at least 16 messages (indices 0-15) to have all 7 answers
+    // We need at least 16 messages (índices 0-15) to have all 7 answers
     // Or 17 messages if Q8 has been sent
     if (messages.length < 16 || messages.length > 17) return;
 
@@ -562,8 +562,8 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
     const backendQuestion = aiMessages[2]?.content || '';  // Q3 is the 3rd AI message (index 2)
     if (!backendQuestion.includes('backend') && !backendQuestion.includes('Backend')) return;
 
-    // Extract user answers - PROMPT #82 - CRITICAL FIX: Correct indices!
-    // Stack answers are at indices 7, 9, 11, 13, 15 (A3, A4, A5, A6, A7)
+    // Extract user answers - PROMPT #82 - CRITICAL FIX: Correct índices!
+    // Stack answers are at índices 7, 9, 11, 13, 15 (A3, A4, A5, A6, A7)
     const backendAnswer = messages[7]?.content || '';    // Answer to Q3 (Backend) - was [5] (WRONG!)
     const databaseAnswer = messages[9]?.content || '';   // Answer to Q4 (Database) - was [7] (WRONG!)
     const frontendAnswer = messages[11]?.content || '';   // Answer to Q5 (Frontend) - was [9] (WRONG!)
@@ -682,11 +682,11 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
 
     const hasMessages = interview.conversation_data && interview.conversation_data.length > 0;
     if (!hasMessages) {
-      alert('Nao e possivel gerar prompts de uma entrevista vazia. Adicione algumas mensagens primeiro.');
+      alert('Não é possível gerar prompts de uma entrevista vazia. Adicione algumas mensagens primeiro.');
       return;
     }
 
-    if (!confirm('Gerar Backlog (Epic, Stories, Tasks) a partir desta entrevista usando IA?\n\nIsso pode levar 2-5 minutos. Voce vera atualizacoes de progresso em tempo real.')) {
+    if (!confirm('Gerar Backlog (Epic, Stories, Tasks) a partir desta entrevista usando IA?\n\nIsso pode levar 2-5 minutos. Você vera atualizacoes de progresso em tempo real.')) {
       return;
     }
 
@@ -712,7 +712,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       }, 100);
     } catch (error: any) {
       console.error('❌ Failed to create backlog generation job:', error);
-      const errorDetail = error.response?.data?.detail || error.message || 'Falha ao iniciar geracao de backlog.';
+      const errorDetail = error.response?.data?.detail || error.message || 'Falha ao iniciar geração de backlog.';
       alert(`❌ Error:\n\n${errorDetail}`);
     }
   };
@@ -749,11 +749,11 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               />
             </svg>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {notFound ? 'Entrevista Nao Encontrada' : 'Falha ao Carregar Entrevista'}
+              {notFound ? 'Entrevista Não Encontrada' : 'Falha ao Carregar Entrevista'}
             </h3>
             <p className="text-gray-600 mb-6">
               {notFound
-                ? 'A entrevista que voce procura nao existe ou pode ter sido excluida.'
+                ? 'A entrevista que você procura não existe ou pode ter sido excluida.'
                 : 'Ocorreu um erro inesperado ao carregar a entrevista.'}
             </p>
           </div>
@@ -792,7 +792,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
       {/* Header */}
       <div className="border-b p-4 flex justify-between items-center bg-gray-50 rounded-t-lg">
         <div className="flex items-center gap-3">
-          <h2 className="text-xl font-bold text-gray-900">Sessao de Entrevista</h2>
+          <h2 className="text-xl font-bold text-gray-900">Sessão de Entrevista</h2>
           <Badge
             variant={
               interview.status === 'active'
@@ -909,7 +909,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         </div>
       )}
 
-      {/* Messages Area */}
+      {/* Messages Área */}
       <div className="flex-1 overflow-y-auto p-6 bg-gradient-to-b from-gray-50 to-white">
         {interview.conversation_data.length === 0 ? (
           <div className="text-center text-gray-400 py-12">
@@ -927,7 +927,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               />
             </svg>
             <p className="text-lg mb-2 font-medium">Inicializando IA...</p>
-            <p className="text-sm">O assistente de IA ira cumprimentar voce em breve</p>
+            <p className="text-sm">O assistente de IA ira cumprimentar você em breve</p>
           </div>
         ) : (
           <>
@@ -988,7 +988,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
               status={generatePromptsJob.status}
             />
             <p className="text-xs text-green-700 mt-2">
-              Isso pode levar 2-5 minutos. Voce pode continuar trabalhando enquanto geramos seus Epic, Stories e Tasks.
+              Isso pode levar 2-5 minutos. Você pode continuar trabalhando enquanto geramos seus Epic, Stories e Tasks.
             </p>
           </div>
         )}
@@ -1025,7 +1025,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         )}
       </div>
 
-      {/* Input Area */}
+      {/* Input Área */}
       <div className="border-t p-4 bg-gray-50 rounded-b-lg">
         {isActive ? (
           <div className="flex flex-col gap-2">
@@ -1041,7 +1041,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
                 <button
                   onClick={() => setSelectedOptions([])}
                   className="ml-auto text-blue-600 hover:text-blue-800"
-                  title="Limpar selecao"
+                  title="Limpar seleção"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1093,7 +1093,7 @@ export function ChatInterface({ interviewId, onStatusChange }: Props) {
         ) : (
           <div className="text-center text-gray-400 py-4 bg-gray-100 rounded-lg">
             <p className="text-sm font-medium">
-              Esta entrevista esta {interview.status}. Nao e possivel enviar mensagens.
+              Esta entrevista esta {interview.status}. Não é possível enviar mensagens.
             </p>
           </div>
         )}

@@ -180,7 +180,7 @@ class ContractMigrator:
             target_path = self._get_target_path(source_path)
             if target_path is None:
                 result["status"] = "skipped"
-                result["error"] = "Nao foi possivel determinar o caminho destino"
+                result["error"] = "Não foi possível determinar o caminho destino"
                 return result
 
             result["target"] = str(target_path.relative_to(self.contracts_dir))

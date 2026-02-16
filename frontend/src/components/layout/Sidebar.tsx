@@ -230,7 +230,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onToggle })
               'flex items-center px-3 py-2 rounded-md text-sm font-medium text-gray-300 hover:bg-gray-800 hover:text-white transition-colors',
               collapsed ? 'justify-center' : 'space-x-3'
             )}
-            title={collapsed ? 'Configuracoes' : undefined}
+            title={collapsed ? 'Configurações' : undefined}
           >
             <svg
               className="w-5 h-5 flex-shrink-0"
@@ -251,7 +251,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ collapsed = false, onToggle })
                 d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
               />
             </svg>
-            {!collapsed && <span>Configuracoes</span>}
+            {!collapsed && <span>Configurações</span>}
           </Link>
         </div>
 

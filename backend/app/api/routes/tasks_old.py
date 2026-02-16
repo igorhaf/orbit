@@ -437,7 +437,7 @@ async def get_kanban_board(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     # Get all tasks for the project ordered by status and order
@@ -531,7 +531,7 @@ async def execute_task(
     task = db.query(Task).filter(Task.id == task_id).first()
 
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     # Create job
     job_manager = JobManager(db)
@@ -557,7 +557,7 @@ async def execute_task(
     return ExecuteJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Execucao de tarefa iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
+        message=f"Execução de tarefa iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -625,7 +625,7 @@ async def execute_all_tasks(
     return ExecuteJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Execucao em lote iniciada para {len(task_ids)} tarefas. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
+        message=f"Execução em lote iniciada para {len(task_ids)} tarefas. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -650,7 +650,7 @@ async def get_task_result(
     result = db.query(TaskResult).filter(TaskResult.task_id == task_id).first()
 
     if not result:
-        raise HTTPException(status_code=404, detail="Resultado nao encontrado. A tarefa pode nao ter sido executada ainda.")
+        raise HTTPException(status_code=404, detail="Resultado não encontrado. A tarefa pode não ter sido executada ainda.")
 
     return result
 
@@ -673,7 +673,7 @@ async def get_task_children(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     children = db.query(Task).filter(Task.parent_id == task_id).order_by(Task.order).all()
 
@@ -694,7 +694,7 @@ async def get_task_descendants(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     hierarchy_service = TaskHierarchyService(db)
     descendants = hierarchy_service.get_all_descendants(task_id)
@@ -716,7 +716,7 @@ async def get_task_ancestors(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     hierarchy_service = TaskHierarchyService(db)
     ancestors = hierarchy_service.get_all_ancestors(task_id)
@@ -743,7 +743,7 @@ async def move_task_in_hierarchy(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     hierarchy_service = TaskHierarchyService(db)
 
@@ -784,7 +784,7 @@ async def validate_hierarchy(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     hierarchy_service = TaskHierarchyService(db)
     valid = hierarchy_service.validate_hierarchy_rules(child_type, task.item_type)
@@ -833,9 +833,9 @@ async def create_relationship(
     target_task = db.query(Task).filter(Task.id == relationship_data.target_task_id).first()
 
     if not source_task:
-        raise HTTPException(status_code=404, detail=f"Tarefa de origem {relationship_data.source_task_id} nao encontrada")
+        raise HTTPException(status_code=404, detail=f"Tarefa de origem {relationship_data.source_task_id} não encontrada")
     if not target_task:
-        raise HTTPException(status_code=404, detail=f"Tarefa de destino {relationship_data.target_task_id} nao encontrada")
+        raise HTTPException(status_code=404, detail=f"Tarefa de destino {relationship_data.target_task_id} não encontrada")
 
     # Check for existing relationship
     existing = db.query(TaskRelationship).filter(
@@ -878,7 +878,7 @@ async def get_task_relationships(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     # Get relationships where task is source OR target
     relationships = db.query(TaskRelationship).filter(
@@ -904,7 +904,7 @@ async def delete_relationship(
     relationship = db.query(TaskRelationship).filter(TaskRelationship.id == relationship_id).first()
 
     if not relationship:
-        raise HTTPException(status_code=404, detail="Relacionamento nao encontrado")
+        raise HTTPException(status_code=404, detail="Relacionamento não encontrado")
 
     db.delete(relationship)
     db.commit()
@@ -937,7 +937,7 @@ async def create_comment(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     from uuid import uuid4
     comment = TaskComment(
@@ -973,7 +973,7 @@ async def get_task_comments(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     query = db.query(TaskComment).filter(TaskComment.task_id == task_id)
 
@@ -1002,7 +1002,7 @@ async def update_comment(
     comment = db.query(TaskComment).filter(TaskComment.id == comment_id).first()
 
     if not comment:
-        raise HTTPException(status_code=404, detail="Comentario nao encontrado")
+        raise HTTPException(status_code=404, detail="Comentário não encontrado")
 
     if comment_data.content is not None:
         comment.content = comment_data.content
@@ -1032,7 +1032,7 @@ async def delete_comment(
     comment = db.query(TaskComment).filter(TaskComment.id == comment_id).first()
 
     if not comment:
-        raise HTTPException(status_code=404, detail="Comentario nao encontrado")
+        raise HTTPException(status_code=404, detail="Comentário não encontrado")
 
     db.delete(comment)
     db.commit()
@@ -1061,7 +1061,7 @@ async def transition_task_status(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     workflow_validator = WorkflowValidator(db)
 
@@ -1098,7 +1098,7 @@ async def get_task_transitions(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     transitions = db.query(StatusTransition).filter(
         StatusTransition.task_id == task_id
@@ -1122,7 +1122,7 @@ async def get_valid_transitions(
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     workflow_validator = WorkflowValidator(db)
     current_status = task.workflow_state or "backlog"
@@ -1224,7 +1224,7 @@ async def create_interview_from_task(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Tarefa {task_id} nao encontrada"
+            detail=f"Tarefa {task_id} não encontrada"
         )
 
     # Build initial context message
@@ -1783,7 +1783,7 @@ async def activate_suggested_item(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Item {task_id} nao encontrado"
+            detail=f"Item {task_id} não encontrado"
         )
 
     # Determine job type based on item type
@@ -1848,13 +1848,13 @@ async def generate_children(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Item {task_id} nao encontrado"
+            detail=f"Item {task_id} não encontrado"
         )
 
     if task.item_type == ItemType.SUBTASK:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Subtarefas sao nos folha e nao podem ter filhos"
+            detail="Subtarefas são nos folha e não podem ter filhos"
         )
 
     default_counts = {
@@ -1885,7 +1885,7 @@ async def generate_children(
         project_id=task.project_id,
         task_id=task_id,  # PROMPT #181 - Required for persistent loading state via WebSocket
         deep_link=f"/projects/{task.project_id}?task={task_id}",
-        notification_title=f"Geracao concluida: {count} {child_type} para {task.title[:50]}"
+        notification_title=f"Geração concluida: {count} {child_type} para {task.title[:50]}"
     )
 
     logger.info(f"Created children generation job {job.id}: {count} {child_type} for {task.item_type.value} {task_id}")
@@ -2021,10 +2021,10 @@ async def _activate_item_async(
         # Now activate the target item
         target_progress = 10.0 + (len(unactivated_ancestors) * progress_per_step)
         item_type_messages = {
-            ItemType.EPIC: "Gerando conteudo do epic...",
-            ItemType.STORY: "Gerando conteudo da story...",
-            ItemType.TASK: "Gerando conteudo da tarefa...",
-            ItemType.SUBTASK: "Gerando conteudo da subtarefa...",
+            ItemType.EPIC: "Gerando conteúdo do epic...",
+            ItemType.STORY: "Gerando conteúdo da story...",
+            ItemType.TASK: "Gerando conteúdo da tarefa...",
+            ItemType.SUBTASK: "Gerando conteúdo da subtarefa...",
         }
         start_msg = item_type_messages.get(item_type, "Processando...")
 
@@ -2106,7 +2106,7 @@ async def _generate_children_async(
         context_service = ContextGeneratorService(db)
         result = await context_service.generate_children(parent_id=parent_id, count=count)
 
-        job_manager.update_progress(job_id, 90.0, "Geracao concluida!")
+        job_manager.update_progress(job_id, 90.0, "Geração concluida!")
 
         children_count = result.get("children_generated", 0)
         logger.info(f"✅ Children generation job {job_id} completed: {children_count} {child_type}")
@@ -2152,7 +2152,7 @@ async def _execute_task_async(
             max_attempts=max_attempts
         )
 
-        job_manager.update_progress(job_id, 90.0, "Execucao concluida!")
+        job_manager.update_progress(job_id, 90.0, "Execução concluida!")
 
         logger.info(f"✅ Task execution job {job_id} completed for task {task_id}")
 
@@ -2189,7 +2189,7 @@ async def _execute_batch_async(
         total = len(task_ids)
         logger.info(f"🚀 Starting batch execution job {job_id} for {total} tasks")
 
-        job_manager.update_progress(job_id, 5.0, f"Iniciando execucao em lote de {total} tarefas...")
+        job_manager.update_progress(job_id, 5.0, f"Iniciando execução em lote de {total} tarefas...")
 
         executor = TaskExecutor(db)
 
@@ -2278,7 +2278,7 @@ async def run_card_inference(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Tarefa {task_id} nao encontrada"
+            detail=f"Tarefa {task_id} não encontrada"
         )
 
     # Fetch interview
@@ -2286,7 +2286,7 @@ async def run_card_inference(
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Entrevista {request.interview_id} nao encontrada"
+            detail=f"Entrevista {request.interview_id} não encontrada"
         )
 
     # Build conversation text
@@ -2300,7 +2300,7 @@ async def run_card_inference(
     if not conversation_text.strip():
         return CardInferenceResponse(
             success=False,
-            message="Entrevista nao possui dados de conversa",
+            message="Entrevista não possui dados de conversa",
             updated_fields=None
         )
 
@@ -2309,7 +2309,7 @@ async def run_card_inference(
         orchestrator = AIOrchestrator(db)
 
         system_prompt = """Você é um Product Owner especialista em análise de requisitos.
-Analise a conversa de entrevista abaixo e extraia informações para enriquecer o card.
+Análise a conversa de entrevista abaixo e extraia informações para enriquecer o card.
 
 Retorne um JSON com os seguintes campos (apenas os que puderem ser inferidos):
 {
@@ -2352,7 +2352,7 @@ Extraia informações relevantes para enriquecer este card."""
             logger.warning(f"Could not parse JSON from inference response: {response_text[:200]}")
             return CardInferenceResponse(
                 success=False,
-                message="Nao foi possivel interpretar a resposta da IA",
+                message="Não foi possível interpretar a resposta da IA",
                 updated_fields=None
             )
 
@@ -2404,7 +2404,7 @@ Extraia informações relevantes para enriquecer este card."""
         else:
             return CardInferenceResponse(
                 success=True,
-                message="Nenhuma informacao nova para adicionar",
+                message="Nenhuma informação nova para adicionar",
                 updated_fields={}
             )
 

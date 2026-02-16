@@ -58,7 +58,7 @@ def _fallback_response_rules():
     ]
     refusal_patterns = [
         re.compile(r"^I(?:'m| am) (?:sorry|unable|not able)", re.IGNORECASE),
-        re.compile(r"^(?:Desculpe|Nao posso|Nao consigo|Infelizmente)", re.IGNORECASE),
+        re.compile(r"^(?:Desculpe|Não posso|Não consigo|Infelizmente)", re.IGNORECASE),
         re.compile(r"I (?:cannot|can't|am unable to) (?:help|assist|provide|generate|create)", re.IGNORECASE),
     ]
     pt_markers = {

@@ -211,19 +211,19 @@ class TaskHierarchyService:
         """
         task = self.db.query(Task).filter(Task.id == task_id).first()
         if not task:
-            raise ValueError(f"Tarefa {task_id} nao encontrada")
+            raise ValueError(f"Tarefa {task_id} não encontrada")
 
         # If setting a parent, validate
         if new_parent_id:
             # Check for cycles
             if self.would_create_cycle(task_id, new_parent_id):
-                raise ValueError("Nao e possivel mover tarefa: criaria um ciclo")
+                raise ValueError("Não é possível mover tarefa: criaria um ciclo")
 
             # Validate hierarchy rules if requested
             if validate_rules:
                 parent = self.db.query(Task).filter(Task.id == new_parent_id).first()
                 if not parent:
-                    raise ValueError(f"Tarefa pai {new_parent_id} nao encontrada")
+                    raise ValueError(f"Tarefa pai {new_parent_id} não encontrada")
 
                 if not self.validate_hierarchy_rules(task.item_type, parent.item_type):
                     raise ValueError(

@@ -534,7 +534,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       } else if (errorLower.includes('authentication') || errorLower.includes('api key') || errorLower.includes('invalid x-api-key') || errorLower.includes('unauthorized')) {
         setAiError({
           type: 'auth',
-          message: 'API key invalida ou expirada. Configure uma API key valida nas configuracoes.',
+          message: 'API key inválida ou expirada. Configure uma API key válida nas configurações.',
           provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
                    errorLower.includes('openai') ? 'OpenAI (GPT)' :
                    errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
@@ -572,8 +572,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     if (validLabels.length === 0) {
       setNotificationDialog({
         open: true,
-        title: 'Opcao invalida',
-        message: 'Por favor, selecione uma opcao valida ou digite sua resposta no campo de texto.',
+        title: 'Opcao inválida',
+        message: 'Por favor, selecione uma opcao válida ou digite sua resposta no campo de texto.',
         type: 'warning'
       });
       return;
@@ -626,7 +626,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       } else if (errorLower.includes('authentication') || errorLower.includes('api key') || errorLower.includes('invalid x-api-key') || errorLower.includes('unauthorized')) {
         setAiError({
           type: 'auth',
-          message: 'API key invalida ou expirada. Configure uma API key valida nas configuracoes.',
+          message: 'API key inválida ou expirada. Configure uma API key válida nas configurações.',
           provider: errorLower.includes('anthropic') ? 'Anthropic (Claude)' :
                    errorLower.includes('openai') ? 'OpenAI (GPT)' :
                    errorLower.includes('google') || errorLower.includes('gemini') ? 'Google (Gemini)' : undefined
@@ -662,10 +662,10 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
     const messages = interviewData.conversation_data;
 
-    // PROMPT #82 - Fixed answer indices (was reading from wrong messages!)
+    // PROMPT #82 - Fixed answer índices (was reading from wrong messages!)
     // Message structure:
     // 0: Initial | 1: User start | 2: Q1 | 3: A1 | 4: Q2 | 5: A2 | 6: Q3 | 7: A3 | 8: Q4 | 9: A4 | 10: Q5 | 11: A5 | 12: Q6 | 13: A6 | 14: Q7 | 15: A7 | 16: Q8
-    // We need at least 16 messages (indices 0-15) to have all 7 answers
+    // We need at least 16 messages (índices 0-15) to have all 7 answers
     // Or 17 messages if Q8 has been sent
     if (messages.length < 16 || messages.length > 17) return;
 
@@ -677,8 +677,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     const backendQuestion = aiMessages[2]?.content || '';  // Q3 is the 3rd AI message (index 2)
     if (!backendQuestion.includes('backend') && !backendQuestion.includes('Backend')) return;
 
-    // Extract user answers - PROMPT #82 - CRITICAL FIX: Correct indices!
-    // Stack answers are at indices 7, 9, 11, 13, 15 (A3, A4, A5, A6, A7)
+    // Extract user answers - PROMPT #82 - CRITICAL FIX: Correct índices!
+    // Stack answers are at índices 7, 9, 11, 13, 15 (A3, A4, A5, A6, A7)
     const backendAnswer = messages[7]?.content || '';    // Answer to Q3 (Backend) - was [5] (WRONG!)
     const databaseAnswer = messages[9]?.content || '';   // Answer to Q4 (Database) - was [7] (WRONG!)
     const frontendAnswer = messages[11]?.content || '';   // Answer to Q5 (Frontend) - was [9] (WRONG!)
@@ -774,7 +774,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       open: true,
       title: isCardInference ? 'Completar e Atualizar Card' : 'Completar Entrevista',
       message: isCardInference
-        ? 'Completar esta entrevista e atualizar o card com as informacoes coletadas?'
+        ? 'Completar esta entrevista e atualizar o card com as informações coletadas?'
         : 'Marcar esta entrevista como completa?',
       type: 'info',
       confirmLabel: isCardInference ? 'Completar e Atualizar' : 'Completar',
@@ -816,7 +816,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     // PROMPT #118 - Use ConfirmDialog instead of native confirm()
     const isContextInterview = interview?.interview_mode === 'context';
     const confirmMessage = isContextInterview
-      ? 'Cancelar esta entrevista? O projeto sera excluido pois ainda nao tem contexto definido.'
+      ? 'Cancelar esta entrevista? O projeto sera excluido pois ainda não tem contexto definido.'
       : 'Cancelar esta entrevista?';
 
     setConfirmDialog({
@@ -871,7 +871,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
     const hasMessages = interview.conversation_data && interview.conversation_data.length > 0;
     if (!hasMessages) {
-      setEpicResult({ error: 'Nao e possivel gerar Epic de uma entrevista vazia. Adicione algumas mensagens primeiro.' });
+      setEpicResult({ error: 'Não é possível gerar Epic de uma entrevista vazia. Adicione algumas mensagens primeiro.' });
       setShowEpicErrorModal(true);
       return;
     }
@@ -896,7 +896,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       const data = generateResponse.data || generateResponse;
 
       if (!data.suggestions || data.suggestions.length === 0) {
-        throw new Error('Nenhuma sugestao de Epic foi gerada');
+        throw new Error('Nenhuma sugestão de Epic foi gerada');
       }
 
       const epicSuggestion = data.suggestions[0];
@@ -957,11 +957,11 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
               />
             </svg>
             <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              {notFound ? 'Entrevista Nao Encontrada' : 'Falha ao Carregar Entrevista'}
+              {notFound ? 'Entrevista Não Encontrada' : 'Falha ao Carregar Entrevista'}
             </h3>
             <p className="text-gray-600 mb-6">
               {notFound
-                ? 'A entrevista que voce procura nao existe ou pode ter sido excluida.'
+                ? 'A entrevista que você procura não existe ou pode ter sido excluida.'
                 : 'Ocorreu um erro inesperado ao carregar a entrevista.'}
             </p>
           </div>
@@ -1155,7 +1155,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                 'text-orange-900'
               }`}>
                 {aiError.type === 'credits' ? 'Creditos Esgotados' :
-                 aiError.type === 'auth' ? 'Erro de Autenticacao' :
+                 aiError.type === 'auth' ? 'Erro de Autenticação' :
                  'Limite de Requisicoes Excedido'}
                 {aiError.provider && ` - ${aiError.provider}`}
               </h3>
@@ -1189,7 +1189,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         </div>
       )}
 
-      {/* Messages Area - PROMPT #127 - Improved spacing and layout */}
+      {/* Messages Área - PROMPT #127 - Improved spacing and layout */}
       <div className={`flex-1 overflow-y-auto ${
         embedded
           ? 'px-3 py-2 bg-white'
@@ -1212,7 +1212,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
               />
             </svg>
             <p className="text-base mb-1 font-medium">Iniciando IA...</p>
-            <p className="text-sm">O assistente ira cumprimentar voce em breve</p>
+            <p className="text-sm">O assistente ira cumprimentar você em breve</p>
           </div>
         ) : (
           <>
@@ -1312,8 +1312,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         </div>
       </div>
 
-      {/* Input Area - PROMPT #127 - Improved spacing */}
-      {/* PROMPT #130 - Hide input area in readOnly mode */}
+      {/* Input Área - PROMPT #127 - Improved spacing */}
+      {/* PROMPT #130 - Hide input área in readOnly mode */}
       {/* PROMPT #131 - flex-shrink-0 to prevent shrinking */}
       {!readOnly && (
       <div className={`border-t bg-white flex-shrink-0 ${
@@ -1336,7 +1336,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                 <button
                   onClick={() => setSelectedOptions([])}
                   className="ml-auto text-blue-600 hover:text-blue-800"
-                  title="Limpar selecao"
+                  title="Limpar seleção"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1388,7 +1388,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         ) : (
           <div className="text-center text-gray-400 py-4 bg-gray-100 rounded-lg">
             <p className="text-sm font-medium">
-              Esta entrevista esta {interview.status === 'completed' ? 'completa' : interview.status === 'cancelled' ? 'cancelada' : interview.status}. Nao e possivel enviar mensagens.
+              Esta entrevista esta {interview.status === 'completed' ? 'completa' : interview.status === 'cancelled' ? 'cancelada' : interview.status}. Não é possível enviar mensagens.
             </p>
           </div>
         )}
@@ -1451,7 +1451,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
                 {epicResult?.title}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Agora voce pode decompor em Stories na pagina de Backlog.
+                Agora você pode decompor em Stories na página de Backlog.
               </p>
             </div>
           </div>

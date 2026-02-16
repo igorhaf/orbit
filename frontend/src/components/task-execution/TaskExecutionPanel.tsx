@@ -295,7 +295,7 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
         <div className="p-4">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-gray-700">
-              Progresso da Execucao
+              Progresso da Execução
             </span>
             <span className="text-sm font-bold text-gray-900">
               {metrics.progress.toFixed(1)}%
@@ -381,10 +381,10 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
       {/* Execution Logs */}
       <Card>
         <div className="p-4">
-          <h3 className="text-lg font-semibold mb-3">Logs de Execucao</h3>
+          <h3 className="text-lg font-semibold mb-3">Logs de Execução</h3>
           <div className="bg-gray-900 text-green-400 font-mono text-xs p-4 rounded-lg h-64 overflow-y-auto">
             {logs.length === 0 ? (
-              <div className="text-gray-500">Sem logs ainda. Inicie a execucao para ver atualizacoes ao vivo.</div>
+              <div className="text-gray-500">Sem logs ainda. Inicie a execução para ver atualizacoes ao vivo.</div>
             ) : (
               <>
                 {logs.map((log, index) => (

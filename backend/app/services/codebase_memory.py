@@ -338,7 +338,7 @@ class CodebaseMemoryService:
         return {"directories": [], "file_patterns": []}
 
     def _save_blocklist_suggestions(self, new_dirs: List[str], rationale: Dict, project_name: str) -> None:
-        """Salva sugestoes de bloqueio detectadas pela IA."""
+        """Salva sugestões de bloqueio detectadas pela IA."""
         from app.models.system_settings import SystemSettings
         try:
             blocklist = self._load_global_blocklist()
@@ -363,7 +363,7 @@ class CodebaseMemoryService:
                         "path": d,
                         "type": "directory",
                         "source_project": project_name,
-                        "rationale": rationale.get(d, "Detectado pela IA como nao sendo codigo de negocio"),
+                        "rationale": rationale.get(d, "Detectado pela IA como não sendo código de negocio"),
                     })
 
             if new_suggestions:
@@ -375,13 +375,13 @@ class CodebaseMemoryService:
                     self.db.add(SystemSettings(
                         key="blocklist_suggestions",
                         value=all_suggestions,
-                        description="Sugestoes pendentes para lista de bloqueio global",
+                        description="Sugestões pendentes para lista de bloqueio global",
                         updated_at=__import__("datetime").datetime.utcnow(),
                     ))
                 self.db.commit()
-                logger.info(f"💡 {len(new_suggestions)} novas sugestoes de bloqueio salvas de '{project_name}'")
+                logger.info(f"💡 {len(new_suggestions)} novas sugestões de bloqueio salvas de '{project_name}'")
         except Exception as e:
-            logger.warning(f"Falha ao salvar sugestoes de bloqueio: {e}")
+            logger.warning(f"Falha ao salvar sugestões de bloqueio: {e}")
 
     def _load_gitignore_patterns(self, root_path: Path) -> Set[str]:
         """
@@ -669,10 +669,10 @@ class CodebaseMemoryService:
         path = Path(code_path)
 
         if not path.exists():
-            raise ValueError(f"Caminho do codigo nao existe: {code_path}")
+            raise ValueError(f"Caminho do código não existe: {code_path}")
 
         if not path.is_dir():
-            raise ValueError(f"Caminho do codigo nao e um diretorio: {code_path}")
+            raise ValueError(f"Caminho do código não é um diretório: {code_path}")
 
         # PROMPT #163 - Store scan settings
         self.current_folder_name = path.name
@@ -823,14 +823,14 @@ class CodebaseMemoryService:
         # Step 4: Extract representative code samples for AI analysis
         # PROMPT #163 - Use scan_depth config for limits
         logger.info("🔍 Step 4: Extracting code samples for analysis...")
-        await report_progress(40.0, "Extraindo amostras de codigo...")
+        await report_progress(40.0, "Extraindo amostras de código...")
         code_samples = self._extract_code_samples(path, scan_data, config)
         logger.info(f"   Extracted {len(code_samples)} code samples")
 
         # Step 5: Use AI to analyze and extract insights
         # PROMPT #163 - Use multi-phase analysis for better results
         logger.info(f"🤖 Step 5: AI analysis ({scan_depth} mode)...")
-        await report_progress(50.0, f"Analise de IA iniciada (modo {scan_depth})...")
+        await report_progress(50.0, f"Análise de IA iniciada (modo {scan_depth})...")
         ai_analysis = await self._ai_analyze_codebase_phased(
             code_samples=code_samples,
             stack_info=stack_info,
@@ -846,7 +846,7 @@ class CodebaseMemoryService:
         result["interview_context"] = ai_analysis.get("interview_context", "")
         result["phases_completed"] = ai_analysis.get("phases_completed", 1)
 
-        await report_progress(85.0, "Processando resultados de analise de IA...")
+        await report_progress(85.0, "Processando resultados de análise de IA...")
 
         # Step 5.5: Extract and analyze git commit history (PROMPT #184)
         if scan_depth != "local":
@@ -1942,13 +1942,13 @@ class CodebaseMemoryService:
         except Exception:
             symbol_text = content[:1500]
 
-        system_prompt = "Voce e um analista de codigo. Responda APENAS em JSON valido, sem markdown. IDIOMA: portugues brasileiro."
+        system_prompt = "Você é um analista de código. Responda APENAS em JSON válido, sem markdown. IDIOMA: português brasileiro."
 
         user_prompt = f"""Arquivo: {filename}
 
 {symbol_text}
 
-Analise este arquivo e responda em JSON:
+Análise este arquivo e responda em JSON:
 {{
   "purpose": "O que este arquivo faz (1 frase)",
   "business_rules": ["regra1", "regra2"],
@@ -1959,10 +1959,10 @@ Analise este arquivo e responda em JSON:
 
 REGRAS:
 - business_rules: validacoes, restricoes, calculos, permissoes, fluxos de negocio encontrados. Liste TODAS que encontrar. Se nenhuma, lista vazia.
-- features: funcionalidades que o arquivo implementa (ex: "autenticacao JWT", "upload de arquivos")
-- entities: modelos/tabelas/dados principais (ex: "Usuario", "Pedido", "Produto")
+- features: funcionalidades que o arquivo implementa (ex: "autenticação JWT", "upload de arquivos")
+- entities: modelos/tabelas/dados principais (ex: "Usuário", "Pedido", "Produto")
 - system_hint: se encontrar <title>XXX</title> ou dominio .gov.br/.com.br, escreva aqui
-- TUDO em portugues brasileiro"""
+- TUDO em português brasileiro"""
 
         try:
             response = await asyncio.wait_for(
@@ -2090,7 +2090,7 @@ REGRAS:
         hints_text = "\n".join([f"  - {h}" for h in system_hints]) if system_hints else ""
         summaries_text = "\n".join(summaries[:15])
 
-        system_prompt = "Voce e um arquiteto de software. Responda APENAS em JSON valido, sem markdown. IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro."
+        system_prompt = "Você é um arquiteto de software. Responda APENAS em JSON válido, sem markdown. IDIOMA OBRIGATÓRIO: Todo o conteúdo DEVE ser em português brasileiro."
 
         user_prompt = f"""Pasta do projeto: {self.current_folder_name}
 Stack: {stack_name}
@@ -2107,21 +2107,21 @@ RESUMO DOS ARQUIVOS:
 {summaries_text}
 {f"DICAS DE SISTEMA: {chr(10).join(system_hints)}" if hints_text else ""}
 
-Com base nessas informacoes REAIS extraidas do codigo, gere o JSON final:
+Com base nessas informações REAIS extraidas do código, gere o JSON final:
 {{
-  "suggested_title": "Titulo descritivo do sistema (5-8 palavras)",
+  "suggested_title": "Título descritivo do sistema (5-8 palavras)",
   "business_rules": ["lista COMPLETA de regras de negocio - inclua TODAS as regras acima + adicione se encontrar mais"],
   "key_features": ["lista COMPLETA de funcionalidades - inclua TODAS acima + adicione se encontrar mais"],
   "entities": ["lista de entidades/modelos principais"],
   "interview_context": "Paragrafo de 100-200 palavras descrevendo o proposito, stack, funcionalidades e regras principais do sistema"
 }}
 
-INSTRUCOES:
-1. MANTENHA todas as regras e features ja extraidas - NAO descarte nenhuma
-2. Se possivel, adicione mais regras inferidas dos resumos dos arquivos
-3. interview_context deve ser um texto RICO e DETALHADO, nao apenas 1 frase
-4. Titulo deve refletir o dominio do negocio, NAO a tecnologia
-5. TUDO em portugues brasileiro"""
+INSTRUÇÕES:
+1. MANTENHA todas as regras e features ja extraidas - NÃO descarte nenhuma
+2. Se possível, adicione mais regras inferidas dos resumos dos arquivos
+3. interview_context deve ser um texto RICO e DETALHADO, não apenas 1 frase
+4. Título deve refletir o dominio do negocio, NÃO a tecnologia
+5. TUDO em português brasileiro"""
 
         try:
             response = await self.orchestrator.execute(
@@ -2275,7 +2275,7 @@ Sua tarefa é EXTRAIR PROFUNDAMENTE as regras de negócio e entender o propósit
    - Exemplos RUINS: "Laravel Project", "PHP Application", "Sistema Web"
 
 2. **Extrair Regras de Negócio** (MÍNIMO 5-10 regras):
-   Analise CADA arquivo de código e extraia regras como:
+   Análise CADA arquivo de código e extraia regras como:
    - Validações de dados (ex: "CPF deve ser válido", "Valor mínimo de R$ 10")
    - Restrições de acesso (ex: "Apenas admin pode excluir", "Usuário só vê seus próprios dados")
    - Cálculos e fórmulas (ex: "Desconto de 10% para pagamento à vista", "Juros de 2% ao mês")
@@ -2526,7 +2526,7 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
             # Check for interface/template markers
             if any(marker in rule.upper() for marker in ["SISTEMA:", "DOMÍNIO:", "<TITLE>", ".GOV.BR", ".COM.BR"]):
                 source = "interface"
-            elif any(marker in rule.lower() for marker in ["validação", "validator", "required", "minimo", "máximo", "obrigatório"]):
+            elif any(marker in rule.lower() for marker in ["validação", "validator", "required", "mínimo", "máximo", "obrigatório"]):
                 source = "validation"
             elif any(marker in rule.lower() for marker in ["modelo", "entidade", "tabela", "coluna", "campo"]):
                 source = "model"

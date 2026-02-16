@@ -174,7 +174,7 @@ export default function RagPage() {
                 </div>
               </div>
               <p className="text-xs text-gray-500 mt-4 text-center">
-                Especificacoes de frameworks e documentacao PROMPT sao conhecimento compartilhado disponivel para todos os projetos.
+                Especificações de frameworks e documentação PROMPT são conhecimento compartilhado disponível para todos os projetos.
               </p>
             </CardContent>
           </Card>
@@ -196,7 +196,7 @@ export default function RagPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FolderOpen className="w-5 h-5 text-blue-600" />
-                Comparacao RAG dos Projetos
+                Comparação RAG dos Projetos
                 <span className="text-sm font-normal text-gray-500 ml-2">({projectsStats.projects.length} projetos)</span>
               </CardTitle>
             </CardHeader>
@@ -215,7 +215,7 @@ export default function RagPage() {
                       <th className="text-center py-3 px-2 font-medium text-gray-700">
                         <div className="flex flex-col items-center">
                           <Code className="w-4 h-4 text-blue-600 mb-1" />
-                          <span className="text-xs">Codigo</span>
+                          <span className="text-xs">Código</span>
                         </div>
                       </th>
                       <th className="text-center py-3 px-2 font-medium text-gray-700">
@@ -242,7 +242,7 @@ export default function RagPage() {
                           <span className="text-xs">Docs</span>
                         </div>
                       </th>
-                      <th className="text-center py-3 px-2 font-medium text-gray-700">Acoes</th>
+                      <th className="text-center py-3 px-2 font-medium text-gray-700">Ações</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -341,7 +341,7 @@ export default function RagPage() {
                 <div className="flex flex-wrap gap-4 text-xs text-gray-500">
                   <div className="flex items-center gap-1">
                     <Code className="w-3 h-3 text-blue-600" />
-                    <span>Codigo = Arquivos de codigo indexados</span>
+                    <span>Código = Arquivos de código indexados</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Tags className="w-3 h-3 text-green-600" />
@@ -373,7 +373,7 @@ export default function RagPage() {
               <div>
                 <h4 className="font-medium text-blue-900">Sobre RAG no ORBIT</h4>
                 <p className="text-sm text-blue-700 mt-1">
-                  Cada projeto tem sua propria base de conhecimento RAG (Retrieval-Augmented Generation) isolada.
+                  Cada projeto tem sua própria base de conhecimento RAG (Retrieval-Augmented Generation) isolada.
                   O ORBIT orquestra esses RAGs por projeto para fornecer respostas de IA com contexto.
                   Conhecimento global (specs de frameworks, docs PROMPT) e compartilhado entre todos os projetos.
                 </p>

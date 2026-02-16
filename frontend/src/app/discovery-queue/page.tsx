@@ -177,8 +177,8 @@ export default function DiscoveryQueuePage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Fila de Descoberta</h1>
           <p className="mt-2 text-gray-600">
-            Projetos aguardando descoberta de padroes. Quando a execucao de tarefas acontece sem specs,
-            os projetos sao enfileirados aqui para validacao manual e descoberta de padroes.
+            Projetos aguardando descoberta de padrões. Quando a execução de tarefas acontece sem specs,
+            os projetos são enfileirados aqui para validação manual e descoberta de padrões.
           </p>
         </div>
 
@@ -267,7 +267,7 @@ export default function DiscoveryQueuePage() {
                 <FolderSearch className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500">Nenhum item na fila</p>
                 <p className="text-sm text-gray-400 mt-1">
-                  Projetos sem specs aparecerao aqui durante a execucao de tarefas
+                  Projetos sem specs aparecerao aqui durante a execução de tarefas
                 </p>
               </div>
             ) : (
@@ -291,7 +291,7 @@ export default function DiscoveryQueuePage() {
                         Criado
                       </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Acoes
+                        Ações
                       </th>
                     </tr>
                   </thead>
@@ -314,7 +314,7 @@ export default function DiscoveryQueuePage() {
                           </td>
                           <td className="px-6 py-4">
                             <div className="text-sm text-gray-600 max-w-xs truncate">
-                              {item.reason || 'Nenhuma spec encontrada durante a execucao de tarefas'}
+                              {item.reason || 'Nenhuma spec encontrada durante a execução de tarefas'}
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
@@ -415,12 +415,12 @@ export default function DiscoveryQueuePage() {
               <Search className="w-6 h-6 text-blue-600 flex-shrink-0" />
               <div className="flex-1">
                 <h3 className="font-semibold text-blue-900 mb-1">
-                  Como Funciona a Descoberta de Padroes
+                  Como Funciona a Descoberta de Padrões
                 </h3>
                 <p className="text-sm text-blue-800">
                   Quando uma tarefa e executada para um projeto sem specs descobertas, o projeto e adicionado a esta fila.
-                  Clique em "Descobrir" para analisar o codebase do projeto usando RAG e extrair padroes de codigo.
-                  Padroes descobertos sao salvos como specs especificas do projeto e usados para execucao futura de tarefas.
+                  Clique em "Descobrir" para analisar o codebase do projeto usando RAG e extrair padrões de código.
+                  Padrões descobertos são salvos como specs especificas do projeto e usados para execução futura de tarefas.
                 </p>
               </div>
             </div>

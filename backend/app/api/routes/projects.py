@@ -144,7 +144,7 @@ async def browse_folders(
             "current_path": "/projects",
             "parent_path": None,
             "folders": [],
-            "error": "Pasta de projetos nao montada"
+            "error": "Pasta de projetos não montada"
         }
 
     # Build full path (sanitize to prevent directory traversal)
@@ -161,24 +161,24 @@ async def browse_folders(
         if not str(full_path).startswith(str(PROJECTS_BASE_PATH.resolve())):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Caminho invalido: deve estar dentro de /projects"
+                detail="Caminho inválido: deve estar dentro de /projects"
             )
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Caminho invalido"
+            detail="Caminho inválido"
         )
 
     if not full_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Caminho nao encontrado: {path}"
+            detail=f"Caminho não encontrado: {path}"
         )
 
     if not full_path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Caminho nao e um diretorio"
+            detail="Caminho não é um diretório"
         )
 
     # List directories only (not files)
@@ -202,7 +202,7 @@ async def browse_folders(
     except PermissionError:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Permissao negada para ler diretorio"
+            detail="Permissão negada para ler diretório"
         )
 
     # Calculate parent path
@@ -237,7 +237,7 @@ async def browse_files(
             "parent_path": None,
             "folders": [],
             "files": [],
-            "error": "Pasta de projetos nao montada"
+            "error": "Pasta de projetos não montada"
         }
 
     if path:
@@ -251,24 +251,24 @@ async def browse_files(
         if not str(full_path).startswith(str(PROJECTS_BASE_PATH.resolve())):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Caminho invalido: deve estar dentro de /projects"
+                detail="Caminho inválido: deve estar dentro de /projects"
             )
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Caminho invalido"
+            detail="Caminho inválido"
         )
 
     if not full_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Caminho nao encontrado: {path}"
+            detail=f"Caminho não encontrado: {path}"
         )
 
     if not full_path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Caminho nao e um diretorio"
+            detail="Caminho não é um diretório"
         )
 
     folders = []
@@ -294,7 +294,7 @@ async def browse_files(
     except PermissionError:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Permissao negada para ler diretorio"
+            detail="Permissão negada para ler diretório"
         )
 
     if full_path == PROJECTS_BASE_PATH:
@@ -357,7 +357,7 @@ async def scan_codebase_memory(
     {
         "job_id": "uuid-of-job",
         "status": "pending",
-        "message": "Scan de memoria iniciado...",
+        "message": "Scan de memória iniciado...",
         "deep_link": "/projects/new?projectId=xxx&step=1",
         "scan_depth": "normal"
     }
@@ -373,19 +373,19 @@ async def scan_codebase_memory(
     if scan_depth not in valid_depths:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"scan_depth invalido '{scan_depth}'. Deve ser um de: {', '.join(valid_depths)}"
+            detail=f"scan_depth inválido '{scan_depth}'. Deve ser um de: {', '.join(valid_depths)}"
         )
     # Validate code_path
     path = Path(code_path)
     if not path.exists():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo nao existe: {code_path}"
+            detail=f"Caminho do código não existe: {code_path}"
         )
     if not path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo nao e um diretorio: {code_path}"
+            detail=f"Caminho do código não é um diretório: {code_path}"
         )
 
     # PROMPT #285 - Concurrent scan guard: reject if scan already running for this project
@@ -400,7 +400,7 @@ async def scan_codebase_memory(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Um scan ja esta em andamento para este projeto (job {running_scan.id}). "
-                       f"Aguarde a conclusao antes de iniciar um novo scan."
+                       f"Aguarde a conclusão antes de iniciar um novo scan."
             )
 
     # PROMPT #133 - Create background job for memory scan
@@ -425,7 +425,7 @@ async def scan_codebase_memory(
         },
         project_id=project_id,
         deep_link=deep_link,
-        notification_title=f"Analisando codigo em '{folder_name}' ({scan_depth})..."
+        notification_title=f"Analisando código em '{folder_name}' ({scan_depth})..."
     )
 
     # Start background task via priority queue
@@ -436,7 +436,7 @@ async def scan_codebase_memory(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": f"Scan de memoria iniciado (modo {scan_depth}). Voce pode navegar livremente - uma notificacao aparecera quando concluir.",
+        "message": f"Scan de memória iniciado (modo {scan_depth}). Você pode navegar livremente - uma notificação aparecera quando concluir.",
         "deep_link": deep_link,
         "notification_title": job.notification_title,
         "scan_depth": scan_depth
@@ -554,7 +554,7 @@ async def _process_memory_scan_async(
         if project_id:
             effective_max = _effective_max_patterns(db, project_id)
             if effective_max > 0:
-                job_manager.update_progress(job_id, 90.0, "Descobrindo padroes de codigo e gerando specs...")
+                job_manager.update_progress(job_id, 90.0, "Descobrindo padrões de código e gerando specs...")
                 try:
                     discovery_service = PatternDiscoveryService(db)
                     discovered_patterns = await discovery_service.discover_patterns(
@@ -580,7 +580,7 @@ async def _process_memory_scan_async(
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
             suggested_title = result.get("suggested_title", folder_name)
-            job.notification_title = f"✅ Analise concluida: '{suggested_title}'"
+            job.notification_title = f"✅ Análise concluida: '{suggested_title}'"
             db.commit()
 
         job_manager.complete_job(job_id, result)
@@ -594,7 +594,7 @@ async def _process_memory_scan_async(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"❌ Erro na analise: {error_msg}"
+                job.notification_title = f"❌ Erro na análise: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -636,7 +636,7 @@ async def quick_create_project(
         "project": { ... project data ... },
         "job_id": "uuid-of-memory-scan-job",
         "status": "created",
-        "message": "Projeto criado. Scan de memoria rodando em segundo plano."
+        "message": "Projeto criado. Scan de memória rodando em segundo plano."
     }
     ```
     """
@@ -645,12 +645,12 @@ async def quick_create_project(
     if not path.exists():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo nao existe: {code_path}"
+            detail=f"Caminho do código não existe: {code_path}"
         )
     if not path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo nao e um diretorio: {code_path}"
+            detail=f"Caminho do código não é um diretório: {code_path}"
         )
 
     # Use folder name as temporary title
@@ -714,7 +714,7 @@ async def quick_create_project(
         },
         "job_id": str(job.id),
         "status": "created",
-        "message": "Projeto criado. Scan de memoria rodando em segundo plano."
+        "message": "Projeto criado. Scan de memória rodando em segundo plano."
     }
 
 
@@ -741,11 +741,11 @@ async def _process_quick_create_scan(
 
         folder_name = Path(code_path).name
 
-        job_manager.update_progress(job_id, 10.0, "Escaneando estrutura de codigo...")
+        job_manager.update_progress(job_id, 10.0, "Escaneando estrutura de código...")
 
         memory_service = CodebaseMemoryService(db)
 
-        job_manager.update_progress(job_id, 30.0, "Analisando codigo e extraindo padroes...")
+        job_manager.update_progress(job_id, 30.0, "Analisando código e extraindo padrões...")
 
         # PROMPT #163 - Pass scan_depth for configurable analysis depth
         result = await memory_service.scan_and_memorize(
@@ -777,7 +777,7 @@ async def _process_quick_create_scan(
         # PROMPT #202 - Discover specs and sync to RAG after memory scan
         effective_max = _effective_max_patterns(db, project_id)
         if effective_max > 0:
-            job_manager.update_progress(job_id, 85.0, "Descobrindo padroes de codigo e gerando specs...")
+            job_manager.update_progress(job_id, 85.0, "Descobrindo padrões de código e gerando specs...")
             try:
                 discovery_service = PatternDiscoveryService(db)
                 discovered_patterns = await discovery_service.discover_patterns(
@@ -839,7 +839,7 @@ async def _process_quick_create_scan(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"❌ Erro na analise: {error_msg}"
+                job.notification_title = f"❌ Erro na análise: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -876,7 +876,7 @@ async def create_and_process_project(
     if scan_depth not in valid_depths:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"scan_depth invalido '{scan_depth}'. Deve ser um de: {', '.join(valid_depths)}"
+            detail=f"scan_depth inválido '{scan_depth}'. Deve ser um de: {', '.join(valid_depths)}"
         )
 
     # Validate code_path
@@ -884,12 +884,12 @@ async def create_and_process_project(
     if not path.exists():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo nao existe: {code_path}"
+            detail=f"Caminho do código não existe: {code_path}"
         )
     if not path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo nao e um diretorio: {code_path}"
+            detail=f"Caminho do código não é um diretório: {code_path}"
         )
 
     # Use folder name as temporary title
@@ -976,7 +976,7 @@ async def _process_project_pipeline(
 
         memory_service = CodebaseMemoryService(db)
 
-        job_manager.update_progress(job_id, 15.0, "Analisando estrutura de codigo...")
+        job_manager.update_progress(job_id, 15.0, "Analisando estrutura de código...")
 
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
@@ -1010,7 +1010,7 @@ async def _process_project_pipeline(
                     langs = scan_info.get("languages", {})
                     lang_str = ", ".join(f"{k} ({v})" for k, v in sorted(langs.items(), key=lambda x: -x[1])[:5]) if langs else "N/A"
                     summary = (
-                        f"Codebase com {scan_info.get('code_files', 0)} arquivos de codigo "
+                        f"Codebase com {scan_info.get('code_files', 0)} arquivos de código "
                         f"({scan_info.get('total_files', 0)} total). "
                         f"Linguagens: {lang_str}."
                     )
@@ -1197,7 +1197,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             if ss.get("total_files"):
                 parts.append(f"Total de arquivos: {ss['total_files']}")
             if ss.get("code_files"):
-                parts.append(f"Arquivos de codigo: {ss['code_files']}")
+                parts.append(f"Arquivos de código: {ss['code_files']}")
             langs = ss.get("languages", {})
             if langs and isinstance(langs, dict):
                 lang_str = ", ".join(f"{k} ({v})" for k, v in sorted(langs.items(), key=lambda x: -x[1])[:8])
@@ -1337,10 +1337,10 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             # This raw catalog is a supplementary reference with ALL extracted rules.
             if rules:
                 rules_md_parts = [
-                    "## Catalogo de Referencia - Regras Brutas\n",
+                    "## Catálogo de Referência - Regras Brutas\n",
                     f"Total de regras extraidas do codebase: **{len(rules)}**\n",
-                    "Estas sao as regras brutas extraidas automaticamente do codigo-fonte.",
-                    "A pagina principal de Regras de Negocio contem a versao enriquecida e organizada.\n",
+                    "Estas são as regras brutas extraidas automaticamente do código-fonte.",
+                    "A página principal de Regras de Negocio contém a versão enriquecida e organizada.\n",
                 ]
                 for i, rule in enumerate(rules, 1):
                     rule_text = rule[:500] if len(rule) > 500 else rule
@@ -1354,8 +1354,8 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                     .first()
                 )
                 _upsert_wiki_page(
-                    db, project_id, "regras-catalogo-bruto",
-                    "Catalogo de Referencia - Regras Brutas", rules_md,
+                    db, project_id, "regras-catálogo-bruto",
+                    "Catálogo de Referência - Regras Brutas", rules_md,
                     12, "ai_generated",
                     parent_id=regras_parent.id if regras_parent else None,
                 )
@@ -1371,11 +1371,11 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                 _build_business_rules_wiki_pages,
             )
             page_builders = [
-                ("padroes-arquitetura", "Padroes de Arquitetura", _build_architecture_patterns_page, 6),
-                ("convencoes-codigo", "Convencoes de Codigo", _build_code_conventions_page, 7),
+                ("padrões-arquitetura", "Padrões de Arquitetura", _build_architecture_patterns_page, 6),
+                ("convencoes-código", "Convencoes de Código", _build_code_conventions_page, 7),
                 ("componentes-interface", "Componentes e Interface", _build_ui_components_page, 8),
-                ("estrutura-codigo", "Estrutura de Codigo", _build_code_structure_page, 9),
-                ("historico-desenvolvimento", "Historico de Desenvolvimento", _build_git_history_page, 10),
+                ("estrutura-código", "Estrutura de Código", _build_code_structure_page, 9),
+                ("histórico-desenvolvimento", "Histórico de Desenvolvimento", _build_git_history_page, 10),
             ]
             rag_pages_count = 0
             for slug, title, builder, order in page_builders:
@@ -1444,7 +1444,7 @@ async def _process_cards_from_memory_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Card generation started for project {project_id}")
 
-        job_manager.update_progress(job_id, 5.0, "Preparando geracao de cards...")
+        job_manager.update_progress(job_id, 5.0, "Preparando geração de cards...")
 
         context_service = ContextGeneratorService(db)
 
@@ -1492,7 +1492,7 @@ async def _process_cards_from_memory_async(
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"❌ Erro na geracao de cards: {error_msg}"
+                job.notification_title = f"❌ Erro na geração de cards: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -1565,12 +1565,12 @@ async def create_project(
     if not code_path.exists():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo nao existe: {project.code_path}"
+            detail=f"Caminho do código não existe: {project.code_path}"
         )
     if not code_path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo nao e um diretorio: {project.code_path}"
+            detail=f"Caminho do código não é um diretório: {project.code_path}"
         )
 
     # PROMPT #127 - Determine initial status based on memory scan results
@@ -1835,7 +1835,7 @@ async def get_project_context(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     return {
@@ -1879,7 +1879,7 @@ async def lock_project_context(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     if project.context_locked:
@@ -1891,7 +1891,7 @@ async def lock_project_context(
     if not project.context_semantic:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Nao e possivel bloquear contexto: nenhum contexto foi gerado ainda"
+            detail="Não é possível bloquear contexto: nenhum contexto foi gerado ainda"
         )
 
     try:
@@ -1961,7 +1961,7 @@ async def get_consistency_report(
     # Verify project exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     validator = ConsistencyValidator(db)
     report = validator.generate_report(str(project_id))
@@ -1995,7 +1995,7 @@ async def index_project_code(
     {
         "job_id": "uuid",
         "status": "pending",
-        "message": "Indexacao de codigo iniciada"
+        "message": "Indexação de código iniciada"
     }
     ```
 
@@ -2015,12 +2015,12 @@ async def index_project_code(
     # Verify project exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     if not project.project_folder:
         raise HTTPException(
             status_code=400,
-            detail="Projeto nao tem project_folder configurado. Nao e possivel indexar codigo."
+            detail="Projeto não tem project_folder configurado. Não é possível indexar código."
         )
 
     # Create background job
@@ -2058,13 +2058,13 @@ async def index_project_code(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Indexacao de codigo falhou: {str(e)}"
+            detail=f"Indexação de código falhou: {str(e)}"
         )
 
     return {
         "job_id": str(job.id),
         "status": "completed",
-        "message": "Indexacao de codigo concluida",
+        "message": "Indexação de código concluida",
         "result": result
     }
 
@@ -2097,7 +2097,7 @@ async def get_code_indexing_stats(
     # Verify project exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     indexer = CodebaseIndexer(db)
     stats = await indexer.get_indexing_stats(project_id)
@@ -2146,13 +2146,13 @@ async def discover_project_specs(
     # Verify project exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     # Check if project has code_path configured
     if not project.code_path:
         raise HTTPException(
             status_code=400,
-            detail="code_path do projeto nao configurado. Configure o code_path antes de executar a descoberta."
+            detail="code_path do projeto não configurado. Configure o code_path antes de executar a descoberta."
         )
 
     # Verify code_path exists
@@ -2160,7 +2160,7 @@ async def discover_project_specs(
     if not code_path.exists():
         raise HTTPException(
             status_code=400,
-            detail=f"Caminho do codigo nao existe: {project.code_path}"
+            detail=f"Caminho do código não existe: {project.code_path}"
         )
 
     # Delete existing specs if requested
@@ -2184,7 +2184,7 @@ async def discover_project_specs(
             "project_id": str(project_id),
             "discovered_count": 0,
             "patterns": [],
-            "message": f"Projeto ja possui {MAX_SPECS_PER_PROJECT} specs (maximo atingido)"
+            "message": f"Projeto ja possui {MAX_SPECS_PER_PROJECT} specs (máximo atingido)"
         }
 
     # Run pattern discovery
@@ -2228,7 +2228,7 @@ async def discover_project_specs(
         logger.error(f"Pattern discovery failed for project {project_id}: {e}")
         raise HTTPException(
             status_code=500,
-            detail=f"Descoberta de padroes falhou: {str(e)}"
+            detail=f"Descoberta de padrões falhou: {str(e)}"
         )
 
 
@@ -2274,7 +2274,7 @@ async def get_project_specs(
     # Verify project exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     # Build query
     query = db.query(Spec).filter(
@@ -2339,7 +2339,7 @@ async def toggle_spec_active(
     # Verify project exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     # Find spec
     spec = db.query(Spec).filter(
@@ -2348,7 +2348,7 @@ async def toggle_spec_active(
     ).first()
 
     if not spec:
-        raise HTTPException(status_code=404, detail="Spec nao encontrada")
+        raise HTTPException(status_code=404, detail="Spec não encontrada")
 
     # Toggle active status
     spec.is_active = not spec.is_active
@@ -2380,14 +2380,14 @@ async def enrich_wiki(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     try:
         result = await _enrich_context_from_rag(db, project_id)
         if result:
-            return {"status": "enriched", "message": "Paginas wiki regeneradas a partir dos dados RAG"}
+            return {"status": "enriched", "message": "Páginas wiki regeneradas a partir dos dados RAG"}
         else:
-            return {"status": "skipped", "message": "Nenhum dado RAG disponivel para enriquecimento"}
+            return {"status": "skipped", "message": "Nenhum dado RAG disponível para enriquecimento"}
     except Exception as e:
         logger.error(f"Wiki enrichment failed for {project_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Enriquecimento wiki falhou: {str(e)[:200]}")
@@ -2424,7 +2424,7 @@ async def generate_cards_from_memory(
     {
         "job_id": "uuid",
         "status": "pending",
-        "message": "Geracao de cards iniciada em segundo plano"
+        "message": "Geração de cards iniciada em segundo plano"
     }
     ```
 
@@ -2444,13 +2444,13 @@ async def generate_cards_from_memory(
     # Verify project exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     # Check if project has memory context
     if not project.initial_memory_context:
         raise HTTPException(
             status_code=400,
-            detail="Projeto nao tem contexto de memoria. Execute um scan de memoria primeiro."
+            detail="Projeto não tem contexto de memória. Execute um scan de memória primeiro."
         )
 
     # Extract epic_count from request body (default: 10)
@@ -2481,7 +2481,7 @@ async def generate_cards_from_memory(
     return {
         "job_id": str(job.id),
         "status": "pending",
-        "message": "Geracao de cards iniciada em segundo plano. Uma notificacao aparecera quando concluir.",
+        "message": "Geração de cards iniciada em segundo plano. Uma notificação aparecera quando concluir.",
         "deep_link": f"/projects/{project_id}/backlog"
     }
 

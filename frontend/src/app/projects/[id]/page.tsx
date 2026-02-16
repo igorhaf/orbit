@@ -359,7 +359,7 @@ export default function ProjectDetailsPage() {
       await loadProjectData();
     } catch (error) {
       console.error('Error saving description:', error);
-      showError('Falha ao salvar descricao. Tente novamente.');
+      showError('Falha ao salvar descrição. Tente novamente.');
     }
   };
 
@@ -383,10 +383,10 @@ export default function ProjectDetailsPage() {
       <Layout>
         <div className="text-center py-12">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            Projeto Nao Encontrado
+            Projeto Não Encontrado
           </h2>
           <p className="text-gray-600 mb-4">
-            O projeto que voce esta procurando nao existe.
+            O projeto que você esta procurando não existe.
           </p>
           <Link href="/projects">
             <Button variant="primary">Voltar para Projetos</Button>
@@ -556,7 +556,7 @@ export default function ProjectDetailsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">
-                  Visao hierarquica de Epicos, Stories, Tasks e Bugs
+                  Visao hierárquica de Epicos, Stories, Tasks e Bugs
                 </p>
               </div>
               <Button
@@ -696,8 +696,8 @@ export default function ProjectDetailsPage() {
                 ) : (
                   <Card>
                     <CardContent className="py-12 text-center text-gray-500">
-                      <p>Nenhum dado RAG disponivel ainda</p>
-                      <p className="text-sm mt-2">Indexe seu codigo abaixo para habilitar operacoes de IA aprimoradas por RAG</p>
+                      <p>Nenhum dado RAG disponível ainda</p>
+                      <p className="text-sm mt-2">Indexe seu código abaixo para habilitar operações de IA aprimoradas por RAG</p>
                     </CardContent>
                   </Card>
                 )}
@@ -721,7 +721,7 @@ export default function ProjectDetailsPage() {
                         </div>
                         <div className="bg-blue-50 rounded-lg p-4 text-center">
                           <div className="text-2xl font-bold text-blue-700">{knowledgeStats.code_files_count}</div>
-                          <div className="text-xs text-blue-600">Arquivos de Codigo</div>
+                          <div className="text-xs text-blue-600">Arquivos de Código</div>
                         </div>
                         <div className="bg-yellow-50 rounded-lg p-4 text-center">
                           <div className="text-2xl font-bold text-yellow-700">{knowledgeStats.interview_answers_count}</div>
@@ -786,7 +786,7 @@ export default function ProjectDetailsPage() {
           <div className="space-y-6">
             {/* Time Period Selector */}
             <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-900">Analise do Sistema de Bloqueios</h3>
+              <h3 className="text-lg font-semibold text-gray-900">Análise do Sistema de Bloqueios</h3>
               <div className="flex gap-2">
                 {[7, 30, 90, 365].map((days) => (
                   <Button
@@ -795,7 +795,7 @@ export default function ProjectDetailsPage() {
                     size="sm"
                     onClick={() => setAnalyticsDays(days)}
                   >
-                    {days === 365 ? 'Todo Periodo' : `${days}d`}
+                    {days === 365 ? 'Todo Período' : `${days}d`}
                   </Button>
                 ))}
               </div>
@@ -821,7 +821,7 @@ export default function ProjectDetailsPage() {
                         <span className="text-3xl font-bold text-red-600">{analyticsData.total_blocked}</span>
                         <span className="ml-2 text-sm text-gray-500">tarefas</span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">Pendente de aprovacao do usuario</p>
+                      <p className="text-xs text-gray-400 mt-1">Pendente de aprovacao do usuário</p>
                     </CardContent>
                   </Card>
 
@@ -859,7 +859,7 @@ export default function ProjectDetailsPage() {
                       <div className="flex items-baseline">
                         <span className="text-3xl font-bold text-blue-600">{(analyticsData.avg_similarity_score * 100).toFixed(1)}%</span>
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">Precisao de deteccao da IA</p>
+                      <p className="text-xs text-gray-400 mt-1">Precisao de detecção da IA</p>
                     </CardContent>
                   </Card>
                 </div>
@@ -906,7 +906,7 @@ export default function ProjectDetailsPage() {
                   {/* Approval vs Rejection Rate */}
                   <Card>
                     <CardHeader>
-                      <CardTitle>Taxa de Resolucao</CardTitle>
+                      <CardTitle>Taxa de Resolução</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
@@ -975,8 +975,8 @@ export default function ProjectDetailsPage() {
             ) : (
               <Card>
                 <CardContent className="py-12 text-center text-gray-500">
-                  <p>Nenhuma analise de bloqueios disponivel ainda</p>
-                  <p className="text-sm mt-2">Analises aparecerao apos a IA sugerir modificacoes nas tarefas</p>
+                  <p>Nenhuma análise de bloqueios disponível ainda</p>
+                  <p className="text-sm mt-2">Análises aparecerao apos a IA sugerir modificacoes nas tarefas</p>
                 </CardContent>
               </Card>
             )}
@@ -989,7 +989,7 @@ export default function ProjectDetailsPage() {
             <div className="border-b border-gray-200">
               <nav className="-mb-px flex space-x-8">
                 {[
-                  { id: 'description', label: 'Descricao do Projeto' },
+                  { id: 'description', label: 'Descrição do Projeto' },
                   { id: 'statistics', label: 'Estatisticas' },
                 ].map((sub) => (
                   <button
@@ -1016,7 +1016,7 @@ export default function ProjectDetailsPage() {
               {/* PROMPT #272 - Wiki stats moved to Wiki tab */}
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Descricao do Projeto</CardTitle>
+                  <CardTitle>Descrição do Projeto</CardTitle>
                   <div className="flex gap-2">
                     {isFormattingDescription && (
                       <span className="text-xs text-gray-500 italic">Formatando para Markdown...</span>
@@ -1062,7 +1062,7 @@ export default function ProjectDetailsPage() {
                         value={editedDescription}
                         onChange={(e) => setEditedDescription(e.target.value)}
                         className="w-full min-h-[300px] p-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                        placeholder="Digite a descricao do projeto em formato Markdown..."
+                        placeholder="Digite a descrição do projeto em formato Markdown..."
                       />
                     ) : (
                       <div className="prose prose-sm max-w-none">
@@ -1075,7 +1075,7 @@ export default function ProjectDetailsPage() {
                       </div>
                     )
                   ) : (
-                    <p className="text-gray-500 text-sm italic">Nenhuma descricao ainda. Clique em Editar para adicionar uma.</p>
+                    <p className="text-gray-500 text-sm italic">Nenhuma descrição ainda. Clique em Editar para adicionar uma.</p>
                   )}
                 </CardContent>
               </Card>
@@ -1168,12 +1168,12 @@ export default function ProjectDetailsPage() {
         open={showEpicCountDialog}
         onClose={() => setShowEpicCountDialog(false)}
         title="Gerar Epicos"
-        description="Escolha quantos epicos voce quer gerar para este projeto."
+        description="Escolha quantos epicos você quer gerar para este projeto."
         size="sm"
       >
         <div className="py-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Numero de Epicos
+            Número de Epicos
           </label>
           <input
             type="number"
@@ -1206,14 +1206,14 @@ export default function ProjectDetailsPage() {
                 if (res.ok) {
                   const data = await res.json();
                   if (data.job_id) {
-                    showSuccess(`Geracao de ${epicCount} epicos iniciada em segundo plano. Verifique a pagina de Jobs para acompanhar o progresso.`, 'Epicos');
+                    showSuccess(`Geração de ${epicCount} epicos iniciada em segundo plano. Verifique a página de Jobs para acompanhar o progresso.`, 'Epicos');
                   }
                 } else {
                   const err = await res.json();
                   showError(err.detail || 'Falha ao gerar epicos');
                 }
               } catch (e) {
-                showError('Falha ao iniciar geracao de epic');
+                showError('Falha ao iniciar geração de epic');
               }
             }}
           >

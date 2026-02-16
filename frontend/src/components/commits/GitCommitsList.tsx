@@ -138,7 +138,7 @@ export function GitCommitsList({ projectId }: Props) {
   const loadRepoInfo = useCallback(async () => {
     try {
       const response = await fetch(`http://localhost:8000/api/v1/projects/${projectId}/git/info`);
-      if (!response.ok) throw new Error('Falha ao carregar informacoes do repositorio');
+      if (!response.ok) throw new Error('Falha ao carregar informações do repositório');
       const data: GitRepoInfo = await response.json();
       setRepoInfo(data);
       return data;
@@ -302,7 +302,7 @@ export function GitCommitsList({ projectId }: Props) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || 'Operacao falhou');
+        throw new Error(data.detail || 'Operação falhou');
       }
 
       setOperationResult({ success: true, message: data.message });
@@ -314,7 +314,7 @@ export function GitCommitsList({ projectId }: Props) {
 
       return true;
     } catch (err: any) {
-      setOperationResult({ success: false, message: err.message || 'Operacao falhou' });
+      setOperationResult({ success: false, message: err.message || 'Operação falhou' });
       return false;
     } finally {
       setOperationLoading(false);
@@ -433,9 +433,9 @@ export function GitCommitsList({ projectId }: Props) {
       <Card>
         <CardContent className="py-12 text-center">
           <AlertCircle className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Nao e um Repositorio Git</h3>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Não é um Repositório Git</h3>
           <p className="text-gray-500 mb-4">
-            A pasta do projeto nao esta inicializada como um repositorio Git.
+            A pasta do projeto não esta inicializada como um repositório Git.
           </p>
           {repoInfo.path && (
             <p className="text-sm text-gray-400 font-mono">{repoInfo.path}</p>
@@ -547,13 +547,13 @@ export function GitCommitsList({ projectId }: Props) {
           {repoInfo?.has_uncommitted_changes && (
             <div className="flex items-center gap-2">
               <Badge variant="warning" className="text-xs">
-                Alteracoes nao commitadas
+                Alterações não commitadas
               </Badge>
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => executeGitOperation('stash')}
-                title="Guardar alteracoes"
+                title="Guardar alterações"
               >
                 <Archive className="w-4 h-4" />
               </Button>
@@ -566,7 +566,7 @@ export function GitCommitsList({ projectId }: Props) {
             size="sm"
             variant="ghost"
             onClick={() => executeGitOperation('stash/pop')}
-            title="Restaurar alteracoes"
+            title="Restaurar alterações"
           >
             <ArchiveRestore className="w-4 h-4" />
           </Button>
@@ -597,7 +597,7 @@ export function GitCommitsList({ projectId }: Props) {
             <p className="text-sm mt-2">
               {searchQuery
                 ? 'Tente um termo de busca diferente'
-                : 'Esta branch ainda nao tem commits'}
+                : 'Esta branch ainda não tem commits'}
             </p>
           </CardContent>
         </Card>
@@ -653,7 +653,7 @@ export function GitCommitsList({ projectId }: Props) {
                           <button
                             onClick={(e) => openActionMenu(commit, e)}
                             className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                            title="Acoes"
+                            title="Ações"
                           >
                             <MoreVertical className="w-4 h-4" />
                           </button>
@@ -908,7 +908,7 @@ export function GitCommitsList({ projectId }: Props) {
                 />
                 <div>
                   <span className="font-medium">Soft</span>
-                  <p className="text-xs text-gray-500">Manter alteracoes staged</p>
+                  <p className="text-xs text-gray-500">Manter alterações staged</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 p-2 border rounded hover:bg-gray-50 cursor-pointer">
@@ -921,7 +921,7 @@ export function GitCommitsList({ projectId }: Props) {
                 />
                 <div>
                   <span className="font-medium">Mixed</span>
-                  <p className="text-xs text-gray-500">Manter alteracoes unstaged (padrao)</p>
+                  <p className="text-xs text-gray-500">Manter alterações unstaged (padrão)</p>
                 </div>
               </label>
               <label className="flex items-center gap-2 p-2 border border-red-200 rounded hover:bg-red-50 cursor-pointer">
@@ -934,7 +934,7 @@ export function GitCommitsList({ projectId }: Props) {
                 />
                 <div>
                   <span className="font-medium text-red-600">Hard</span>
-                  <p className="text-xs text-red-500">Descartar TODAS as alteracoes (perigoso!)</p>
+                  <p className="text-xs text-red-500">Descartar TODAS as alterações (perigoso!)</p>
                 </div>
               </label>
             </div>
@@ -942,7 +942,7 @@ export function GitCommitsList({ projectId }: Props) {
             {resetMode === 'hard' && (
               <div className="p-3 bg-red-50 border border-red-200 rounded mb-4">
                 <p className="text-sm text-red-700">
-                  Hard reset descartara permanentemente todas as alteracoes nao commitadas. Esta acao nao pode ser desfeita!
+                  Hard reset descartara permanentemente todas as alterações não commitadas. Esta ação não pode ser desfeita!
                 </p>
               </div>
             )}

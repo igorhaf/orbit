@@ -35,7 +35,7 @@ export const TaskStatusBadge: React.FC<TaskStatusBadgeProps> = ({
     },
     in_progress: {
       variant: 'info' as const,
-      label: 'Em execucao',
+      label: 'Em execução',
       icon: <IconPlay className="w-3.5 h-3.5" />,
       animation: animated ? 'animate-pulse' : '',
     },

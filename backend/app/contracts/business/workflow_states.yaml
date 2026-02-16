@@ -2,8 +2,8 @@
 # PROMPT #256 - Externalizar Contratos Hardcoded
 #
 # Fonte: backend/app/services/workflow_validator.py (linhas 23-101)
-# Define estados validos e transicoes para cada tipo de item.
-# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
+# Define estados validos e transições para cada tipo de item.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em português.
 
 name: workflow_states
 version: 1
@@ -20,13 +20,13 @@ governance:
     - version: 1
       date: "2026-02-13"
       author: "Claude"
-      changes: "Externalizado do workflow_validator.py - dicts hardcoded de estados e transicoes"
+      changes: "Externalizado do workflow_validator.py - dicts hardcoded de estados e transições"
 
 tags:
   - regra-de-negocio
   - workflow
   - maquina-de-estado
-  - transicoes
+  - transições
 
 data:
   workflows:
@@ -98,7 +98,7 @@ data:
 rules:
   constraints:
     - id: C1
-      description: "Estados terminais nao possuem transicoes de saida"
+      description: "Estados terminais não possuem transições de saída"
       applies_to: [done, closed]
       condition: "transitions[state] == []"
     - id: C2

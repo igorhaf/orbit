@@ -104,7 +104,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
 
   const handleSave = async () => {
     if (!formData.title.trim()) {
-      alert('Titulo e obrigatorio');
+      alert('Título e obrigatório');
       return;
     }
 
@@ -217,7 +217,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
       });
     } catch (error) {
       console.error('Failed to add comment:', error);
-      alert('Falha ao adicionar comentario');
+      alert('Falha ao adicionar comentário');
       setComments(comments);
     }
   };
@@ -232,7 +232,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
       });
     } catch (error) {
       console.error('Failed to delete comment:', error);
-      alert('Falha ao excluir comentario');
+      alert('Falha ao excluir comentário');
       setComments(comments);
     }
   };
@@ -261,7 +261,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
               <Input
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                placeholder="Titulo da tarefa"
+                placeholder="Título da tarefa"
                 autoFocus
                 className="text-xl font-semibold"
               />
@@ -278,19 +278,19 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
             {/* Description */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Descricao
+                Descrição
               </label>
               {isEditing ? (
                 <Textarea
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  placeholder="Adicione uma descricao..."
+                  placeholder="Adicione uma descrição..."
                   rows={6}
                 />
               ) : (
                 <div className="text-gray-700 whitespace-pre-wrap min-h-[120px] p-4 bg-gray-50 rounded-lg border border-gray-200">
                   {task.description || (
-                    <span className="text-gray-400 italic">Nenhuma descricao fornecida</span>
+                    <span className="text-gray-400 italic">Nenhuma descrição fornecida</span>
                   )}
                 </div>
               )}
@@ -299,7 +299,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
             {/* Acceptance Criteria */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Criterios de Aceitacao
+                Critérios de Aceitação
               </label>
               {isEditing ? (
                 <div className="space-y-2">
@@ -320,7 +320,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
                     <Input
                       value={newCriteria}
                       onChange={(e) => setNewCriteria(e.target.value)}
-                      placeholder="Adicione criterios de aceitacao..."
+                      placeholder="Adicione critérios de aceitação..."
                       onKeyPress={(e) => e.key === 'Enter' && handleAddCriteria()}
                     />
                     <Button type="button" variant="outline" onClick={handleAddCriteria}>
@@ -338,7 +338,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
                       </div>
                     ))
                   ) : (
-                    <span className="text-gray-400 italic text-sm">Nenhum criterio de aceitacao definido</span>
+                    <span className="text-gray-400 italic text-sm">Nenhum critério de aceitação definido</span>
                   )}
                 </div>
               )}
@@ -410,7 +410,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
               {/* Assignee */}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">
-                  Responsavel
+                  Responsável
                 </label>
                 {isEditing ? (
                   <Input
@@ -428,7 +428,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
                         <span className="text-sm text-gray-900">{assignee}</span>
                       </>
                     ) : (
-                      <span className="text-sm text-gray-400 italic">Nao atribuido</span>
+                      <span className="text-sm text-gray-400 italic">Não atribuido</span>
                     )}
                   </div>
                 )}
@@ -538,7 +538,7 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
                   isLoading={loading}
                   disabled={loading}
                 >
-                  Salvar Alteracoes
+                  Salvar Alterações
                 </Button>
                 <Button variant="ghost" onClick={handleCancel} disabled={loading}>
                   Cancelar
@@ -599,9 +599,9 @@ export function TaskDetailModal({ task, isOpen, onClose, onUpdated, onDeleted }:
               <div className="flex items-start gap-3">
                 <div className="text-red-600 text-2xl">⚠️</div>
                 <div>
-                  <h4 className="font-semibold text-red-900 mb-1">Atencao: Esta acao nao pode ser desfeita!</h4>
+                  <h4 className="font-semibold text-red-900 mb-1">Atenção: Esta ação não pode ser desfeita!</h4>
                   <p className="text-sm text-red-800">
-                    A tarefa "{task.title}" e todos os dados associados (comentarios, metadados) serao excluidos permanentemente.
+                    A tarefa "{task.title}" e todos os dados associados (comentários, metadados) serao excluidos permanentemente.
                   </p>
                 </div>
               </div>

@@ -43,7 +43,7 @@ system_prompt: |
   - Uma pergunta por vez
   - Construa contexto com respostas anteriores
   - Após 5-8 perguntas, conclua
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use emojis ou símbolos especiais nas respostas
 
   Continue com a próxima pergunta relevante!
 

@@ -1,17 +1,17 @@
 # Prompt: Enriquecimento Individual de Regra de Negocio para Wiki
-# PROMPT #270 - Paginas Wiki Ricas por Regra Individual
+# PROMPT #270 - Páginas Wiki Ricas por Regra Individual
 
 name: wiki_rule_enrichment
 version: 1
 category: context
-description: Gera conteudo rico e dissertativo para uma pagina wiki individual de regra de negocio
+description: Gera conteúdo rico e dissertativo para uma página wiki individual de regra de negocio
 usage_type: memory
 estimated_tokens: 2000
 tags:
   - wiki
   - regra
   - enriquecimento
-  - portugues
+  - português
 
 variables:
   required:
@@ -26,50 +26,50 @@ variables:
 components: []
 
 system_prompt: |
-  Voce e um redator tecnico especialista em documentacao de software.
+  Você é um redator técnico especialista em documentação de software.
 
-  Sua tarefa: receber uma regra de negocio extraida de codigo-fonte e produzir uma
-  pagina wiki RICA e DISSERTATIVA sobre essa regra.
+  Sua tarefa: receber uma regra de negocio extraida de código-fonte e produzir uma
+  página wiki RICA e DISSERTATIVA sobre essa regra.
 
   REGRAS:
-  1. TODO o conteudo DEVE ser em portugues
-  2. NUNCA use emojis ou simbolos especiais
+  1. TODO o conteúdo DEVE ser em português
+  2. NUNCA use emojis ou símbolos especiais
   3. O texto deve ser dissertativo, explicativo e profissional
-  4. Explique o POR QUE da regra, nao apenas o QUE ela faz
+  4. Explique o POR QUE da regra, não apenas o QUE ela faz
   5. Contextualize a regra no dominio de negocio
   6. Discuta implicacoes praticas e casos de uso
   7. Se houver regras relacionadas, mencione conexoes entre elas
-  8. Use formatacao Markdown limpa (headers, listas, negrito)
-  9. Minimo de 300 palavras, maximo de 800 palavras
+  8. Use formatação Markdown limpa (headers, listas, negrito)
+  9. Mínimo de 300 palavras, máximo de 800 palavras
 
-  ESTRUTURA OBRIGATORIA da pagina:
+  ESTRUTURA OBRIGATÓRIA da página:
 
-  ## [Titulo da Regra]
+  ## [Título da Regra]
 
-  ### Descricao
+  ### Descrição
   Paragrafo dissertativo explicando o que a regra faz, como funciona,
   e qual seu papel no sistema.
 
   ### Justificativa
   Por que essa regra existe? Qual problema de negocio ela resolve?
-  Quais seriam as consequencias se ela nao existisse?
+  Quais seriam as consequencias se ela não existisse?
 
   ### Comportamento
-  Detalhes tecnicos de como a regra se manifesta no sistema.
-  Condicoes de ativacao, dados envolvidos, fluxo de execucao.
+  Detalhes técnicos de como a regra se manifesta no sistema.
+  Condições de ativacao, dados envolvidos, fluxo de execução.
 
   ### Impacto no Sistema
-  Como essa regra afeta outras partes do sistema, outros modulos,
-  a experiencia do usuario, performance, seguranca.
+  Como essa regra afeta outras partes do sistema, outros módulos,
+  a experiência do usuário, performance, seguranca.
 
   ### Exemplos Praticos
-  Cenarios reais onde essa regra se aplica. Use exemplos concretos
+  Cenários reais onde essa regra se aplica. Use exemplos concretos
   que ilustrem o comportamento esperado.
 
 user_prompt: |
   Regra de Negocio para documentar:
 
-  **Conteudo da Regra:**
+  **Conteúdo da Regra:**
   {{ rule_content }}
 
   **Dominio:** {{ domain_name }}
@@ -90,8 +90,8 @@ user_prompt: |
   {% endif %}
 
   ---
-  Produza a pagina wiki RICA e DISSERTATIVA sobre esta regra de negocio.
-  O conteudo deve ser em portugues, profissional e detalhado.
-  Siga a estrutura obrigatoria (Descricao, Justificativa, Comportamento, Impacto, Exemplos).
-  IDIOMA OBRIGATORIO: TODO o conteudo DEVE ser em portugues brasileiro.
-  Mesmo que a regra original esteja em ingles, TRADUZA e escreva tudo em portugues.
+  Produza a página wiki RICA e DISSERTATIVA sobre esta regra de negocio.
+  O conteúdo deve ser em português, profissional e detalhado.
+  Siga a estrutura obrigatória (Descrição, Justificativa, Comportamento, Impacto, Exemplos).
+  IDIOMA OBRIGATÓRIO: TODO o conteúdo DEVE ser em português brasileiro.
+  Mesmo que a regra original esteja em ingles, TRADUZA e escreva tudo em português.

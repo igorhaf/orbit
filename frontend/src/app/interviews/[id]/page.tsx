@@ -45,7 +45,7 @@ export default function InterviewLegacyRedirectPage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Entrevista Nao Encontrada</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Entrevista Não Encontrada</h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
             onClick={() => router.push('/projects')}

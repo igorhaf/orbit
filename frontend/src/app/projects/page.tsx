@@ -310,7 +310,7 @@ export default function ProjectsPage() {
                           onClick={(e) => handleCancelCreation(e, project, jobInfo?.jobId)}
                           disabled={cancellingProject === project.id}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                          title="Cancelar criacao do projeto"
+                          title="Cancelar criação do projeto"
                         >
                           {cancellingProject === project.id ? (
                             <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-600" />
@@ -327,7 +327,7 @@ export default function ProjectsPage() {
                   <>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <p className="text-sm text-gray-600 line-clamp-3">
-                      {project.description ? stripMarkdown(project.description) : 'Sem descricao'}
+                      {project.description ? stripMarkdown(project.description) : 'Sem descrição'}
                     </p>
                     {/* PROMPT #128 - Show AI model icon if project has AI-generated context */}
                     {project.context_human && (
@@ -401,7 +401,7 @@ export default function ProjectsPage() {
               <div className="flex items-start gap-3">
                 <div className="text-red-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
                 <div>
-                  <h4 className="font-semibold text-red-900 mb-1">Atencao: Esta acao nao pode ser desfeita!</h4>
+                  <h4 className="font-semibold text-red-900 mb-1">Atenção: Esta ação não pode ser desfeita!</h4>
                   <p className="text-sm text-red-800">
                     O projeto &quot;{projectToDelete?.name}&quot; e todos os dados associados (tarefas, entrevistas, wiki, jobs, documentos RAG) serao permanentemente excluidos.
                   </p>

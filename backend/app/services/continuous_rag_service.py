@@ -159,11 +159,11 @@ class ContinuousRAGService:
         """
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path:
-            return {"error": "Projeto nao encontrado ou sem code_path", "new_files": 0, "modified_files": 0, "deleted_files": 0}
+            return {"error": "Projeto não encontrado ou sem code_path", "new_files": 0, "modified_files": 0, "deleted_files": 0}
 
         code_path = Path(project.code_path)
         if not code_path.exists():
-            return {"error": f"Caminho do codigo nao encontrado: {code_path}", "new_files": 0, "modified_files": 0, "deleted_files": 0}
+            return {"error": f"Caminho do código não encontrado: {code_path}", "new_files": 0, "modified_files": 0, "deleted_files": 0}
 
         # Load .gitignore patterns (reuse from CodebaseMemoryService)
         self._memory._gitignore_patterns = self._memory._load_gitignore_patterns(code_path)

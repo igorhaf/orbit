@@ -50,29 +50,29 @@ system_prompt: |
   4. Estime story points para cada Task (1-3, Fibonacci)
   5. Mantenha a prioridade da Story
 
-  **GRADIENTE DE CONTEUDO - NIVEL TASK (Balanceado Funcional + Tecnico):**
-  A Task e o nivel de EQUILIBRIO entre funcional e tecnico na hierarquia de cards.
+  **GRADIENTE DE CONTEÚDO - NÍVEL TASK (Balanceado Funcional + Técnico):**
+  A Task e o nível de EQUILIBRIO entre funcional e técnico na hierarquia de cards.
   - Descreva O QUE precisa ser construido (perspectiva funcional)
-  - Indique COMO sera construido em linhas gerais (perspectiva tecnica)
-  - Mencione componentes, endpoints, modulos envolvidos sem detalhar codigo
-  - Equilibre linguagem de negocio com linguagem tecnica
-  - NAO seja puramente tecnico (isso e para Subtask) nem puramente funcional (isso e para Story)
+  - Indique COMO sera construido em linhas gerais (perspectiva técnica)
+  - Mencione componentes, endpoints, módulos envolvidos sem detalhar código
+  - Equilibre linguagem de negocio com linguagem técnica
+  - NÃO seja puramente técnico (isso e para Subtask) nem puramente funcional (isso e para Story)
 
   IMPORTANTE:
   - Uma Task é um passo concreto de implementação (o que precisa ser construído)
   - Seja ESPECÍFICO: use identificadores como "Implementar E10 (CRUD de N1)" não genérico "Criar backend"
-  - Foque em O QUE precisa ser feito (funcional) com indicacoes de COMO (tecnico)
+  - Foque em O QUE precisa ser feito (funcional) com indicacoes de COMO (técnico)
   - Tasks devem ter critérios de aceitação claros (resultados testáveis)
   - Use identificadores semânticos em TODO o texto (títulos podem ser mais descritivos, mas descriptions devem usar identificadores)
-  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS - titulos, descricoes, criterios, TUDO em portugues. NUNCA escreva em ingles.
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS - títulos, descricoes, critérios, TUDO em português. NUNCA escreva em ingles.
+  - NUNCA use emojis ou símbolos especiais nas respostas
 
   **LIMITES OBRIGATORIOS:**
-  - O semantic_map deve ter NO MAXIMO 10 identificadores por task. Seja conciso e relevante.
-  - A description_markdown deve ter NO MAXIMO 8 paragrafos. Seja direto e objetivo.
+  - O semantic_map deve ter NO MÁXIMO 10 identificadores por task. Seja conciso e relevante.
+  - A description_markdown deve ter NO MÁXIMO 8 paragrafos. Seja direto e objetivo.
   - NUNCA invente regras de negocio (RN/C). Use APENAS as regras fornecidas no contexto.
-  - Se nenhuma regra de negocio foi fornecida, NAO crie identificadores RN ou C.
-  - Acceptance criteria: maximo 5 por task. Cada um deve ser TESTAVEL.
+  - Se nenhuma regra de negocio foi fornecida, NÃO crie identificadores RN ou C.
+  - Acceptance criteria: máximo 5 por task. Cada um deve ser TESTAVEL.
 
   Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
   [

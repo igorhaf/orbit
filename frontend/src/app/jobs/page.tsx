@@ -185,7 +185,7 @@ export default function JobsPage() {
   const [loadingLogs, setLoadingLogs] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  // PROMPT #286 - Auto-scroll log area when new entries arrive for running jobs
+  // PROMPT #286 - Auto-scroll log área when new entries arrive for running jobs
   useEffect(() => {
     if (expandedJobId && logEndRef.current) {
       const expandedJob = jobs.find(j => j.id === expandedJobId);
@@ -460,7 +460,7 @@ export default function JobsPage() {
               message: event === 'job_progress' ? (data.progress_message || `Progresso: ${data.progress_percent}%`)
                 : event === 'job_completed' ? 'Job concluido com sucesso'
                 : event === 'job_failed' ? (data.error || 'Job falhou')
-                : event === 'job_cancelled' ? 'Job cancelado pelo usuario'
+                : event === 'job_cancelled' ? 'Job cancelado pelo usuário'
                 : event === 'job_started' ? 'Job iniciado'
                 : data.progress_message || 'Processando...',
               progress_percent: data.progress_percent ?? null,
@@ -903,7 +903,7 @@ export default function JobsPage() {
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">Duracao Media</span>
+                    <span className="text-sm text-gray-600">Duração Media</span>
                     <span className="font-medium">
                       {formatDuration(stats.avg_duration_seconds)}
                     </span>
@@ -999,7 +999,7 @@ export default function JobsPage() {
                             Tipo
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
-                            Titulo
+                            Título
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
                             Progresso
@@ -1008,10 +1008,10 @@ export default function JobsPage() {
                             Criado
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
-                            Duracao
+                            Duração
                           </th>
                           <th className="text-right px-4 py-3 text-sm font-medium text-gray-500">
-                            Acoes
+                            Ações
                           </th>
                         </tr>
                       </thead>
@@ -1176,13 +1176,13 @@ export default function JobsPage() {
                                       <div className="flex items-center gap-4 text-xs text-gray-500">
                                         <span><strong>ID:</strong> {job.id.slice(0, 8)}...</span>
                                         <span><strong>Tipo:</strong> {job.job_type.replace(/_/g, ' ')}</span>
-                                        {job.started_at && <span><strong>Inicio:</strong> {new Date(job.started_at).toLocaleTimeString()}</span>}
+                                        {job.started_at && <span><strong>Início:</strong> {new Date(job.started_at).toLocaleTimeString()}</span>}
                                         {job.completed_at && <span><strong>Fim:</strong> {new Date(job.completed_at).toLocaleTimeString()}</span>}
-                                        {duration !== null && <span><strong>Duracao:</strong> {formatDuration(duration)}</span>}
+                                        {duration !== null && <span><strong>Duração:</strong> {formatDuration(duration)}</span>}
                                       </div>
                                     </div>
 
-                                    {/* Log Area - Terminal Style */}
+                                    {/* Log Área - Terminal Style */}
                                     <div className="bg-gray-900 rounded-lg overflow-hidden">
                                       <div className="px-3 py-1.5 bg-gray-800 border-b border-gray-700 flex items-center justify-between">
                                         <span className="text-xs text-gray-400 font-mono">Log do Job</span>
@@ -1197,7 +1197,7 @@ export default function JobsPage() {
                                         {loadingLogs ? (
                                           <div className="text-gray-500 py-4 text-center">Carregando logs...</div>
                                         ) : (jobLogs[job.id] || []).length === 0 ? (
-                                          <div className="text-gray-500 py-4 text-center">Nenhuma entrada de log disponivel para este job</div>
+                                          <div className="text-gray-500 py-4 text-center">Nenhuma entrada de log disponível para este job</div>
                                         ) : (
                                           (jobLogs[job.id] || []).map((entry) => {
                                             const ts = new Date(entry.timestamp).toLocaleTimeString('pt-BR', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1264,7 +1264,7 @@ export default function JobsPage() {
                         <ChevronLeft className="w-4 h-4" />
                       </Button>
                       <span className="text-sm text-gray-600">
-                        Pagina {currentPage} de {totalPages}
+                        Página {currentPage} de {totalPages}
                       </span>
                       <Button
                         variant="outline"
@@ -1291,8 +1291,8 @@ export default function JobsPage() {
         title="Limpar Jobs"
         message={
           cleanupConfirm.days === 0
-            ? 'Tem certeza que deseja excluir TODOS os jobs concluidos, com falha e cancelados? Esta acao nao pode ser desfeita.'
-            : `Tem certeza que deseja excluir todos os jobs concluidos e com falha com mais de ${cleanupConfirm.days} dia${cleanupConfirm.days > 1 ? 's' : ''}? Esta acao nao pode ser desfeita.`
+            ? 'Tem certeza que deseja excluir TODOS os jobs concluidos, com falha e cancelados? Esta ação não pode ser desfeita.'
+            : `Tem certeza que deseja excluir todos os jobs concluidos e com falha com mais de ${cleanupConfirm.days} dia${cleanupConfirm.days > 1 ? 's' : ''}? Esta ação não pode ser desfeita.`
         }
         confirmLabel="Excluir Jobs"
         cancelLabel="Cancelar"

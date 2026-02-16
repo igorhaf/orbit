@@ -177,7 +177,7 @@ async def add_to_queue(
     # Check task exists
     task = db.query(Task).filter(Task.id == item.task_id, Task.project_id == project_id).first()
     if not task:
-        raise HTTPException(status_code=404, detail="Tarefa nao encontrada neste projeto")
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada neste projeto")
 
     # Check not already in queue
     existing = db.query(PromptQueue).filter(
@@ -267,7 +267,7 @@ async def remove_from_queue(
         PromptQueue.project_id == project_id
     ).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Item da fila nao encontrado")
+        raise HTTPException(status_code=404, detail="Item da fila não encontrado")
 
     removed_pos = item.position
     db.delete(item)
@@ -500,11 +500,11 @@ async def update_item_status(
         PromptQueue.project_id == project_id
     ).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Item da fila nao encontrado")
+        raise HTTPException(status_code=404, detail="Item da fila não encontrado")
 
     valid_statuses = ["pending", "ready", "skipped", "blocked"]
     if new_status not in valid_statuses:
-        raise HTTPException(status_code=400, detail=f"Status invalido. Deve ser um dos: {valid_statuses}")
+        raise HTTPException(status_code=400, detail=f"Status inválido. Deve ser um dos: {valid_statuses}")
 
     item.status = QueueItemStatus(new_status)
     item.updated_at = datetime.utcnow()

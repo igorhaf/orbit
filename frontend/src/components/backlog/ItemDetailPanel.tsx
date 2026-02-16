@@ -363,7 +363,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           false,
           item.id // task_id for persistent loading state
         );
-        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificacoes.');
+        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificações.');
         return;
       } else {
         // Legacy flow (synchronous response)
@@ -416,7 +416,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           false,
           item.id // PROMPT #176 - Track which task is generating children for persistent loading
         );
-        showSuccess(`Geracao de ${count} ${childType} iniciada! Acompanhe o progresso nas notificacoes.`);
+        showSuccess(`Geração de ${count} ${childType} iniciada! Acompanhe o progresso nas notificações.`);
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
@@ -450,7 +450,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('❌ Failed to save description:', error);
-      showError(`Falha ao salvar descricao: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao salvar descrição: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsSavingDescription(false);
     }
@@ -486,7 +486,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('Failed to save title:', error);
-      showError(`Falha ao salvar titulo: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao salvar título: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsSavingTitle(false);
     }
@@ -518,7 +518,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       }
     } catch (error: any) {
       console.error('Failed to suggest title:', error);
-      showError('Sugestao da IA falhou. Tente novamente.');
+      showError('Sugestão da IA falhou. Tente novamente.');
     } finally {
       setIsGeneratingTitle(false);
       titleInputRef.current?.focus();
@@ -541,17 +541,17 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         addJob(
           result.job_id,
           jobType,
-          `Gerando conteudo: ${item.title.substring(0, 30)}...`,
+          `Gerando conteúdo: ${item.title.substring(0, 30)}...`,
           item.title,
           false,
           item.id
         );
-        showSuccess('Geracao de conteudo iniciada! Acompanhe o progresso nas notificacoes.');
+        showSuccess('Geração de conteúdo iniciada! Acompanhe o progresso nas notificações.');
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('Failed to generate content:', error);
-      showError(`Falha na geracao de conteudo IA: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha na geração de conteúdo IA: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsGeneratingContent(false);
     }
@@ -567,7 +567,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       setIsAddingCriterion(false);
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      showError(`Falha ao adicionar criterio: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao adicionar critério: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -577,7 +577,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       await tasksApi.update(item.id, { acceptance_criteria: updated });
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      showError(`Falha ao excluir criterio: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao excluir critério: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -591,7 +591,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       setEditingCriterionText('');
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      showError(`Falha ao atualizar criterio: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao atualizar critério: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -729,11 +729,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const tabs: Array<{ id: string; label: string; icon: React.ReactNode; count?: number; hasPrompt?: boolean }> = [
     { id: 'overview', label: 'Visao Geral', icon: <IconClipboard className="w-4 h-4" /> },
     { id: 'hierarchy', label: 'Hierarquia', icon: <IconTree className="w-4 h-4" /> },
-    { id: 'comments', label: 'Comentarios', icon: <IconChat className="w-4 h-4" />, count: comments.length },
-    { id: 'transitions', label: 'Historico', icon: <IconChart className="w-4 h-4" />, count: transitions.length },
+    { id: 'comments', label: 'Comentários', icon: <IconChat className="w-4 h-4" />, count: comments.length },
+    { id: 'transitions', label: 'Histórico', icon: <IconChart className="w-4 h-4" />, count: transitions.length },
     ...(!isFromCode ? [{ id: 'interview', label: 'Entrevista', icon: <IconMicrophone className="w-4 h-4" />, count: cardInterviews.length }] : []),
     { id: 'prompt', label: 'Prompt', icon: <IconPencil className="w-4 h-4" />, hasPrompt: !!item.generated_prompt },
-    { id: 'acceptance', label: 'Criterios', icon: <IconCheckCircle className="w-4 h-4" />, count: item.acceptance_criteria?.length || 0 },
+    { id: 'acceptance', label: 'Critérios', icon: <IconCheckCircle className="w-4 h-4" />, count: item.acceptance_criteria?.length || 0 },
   ];
 
   // PROMPT #131 - Check if we're in interview chat mode (needs flex layout)
@@ -804,7 +804,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       handleSuggestTitle();
                     }}
                     disabled={!editedTitle.trim() || isGeneratingTitle}
-                    title="Sugerir um titulo melhor com IA"
+                    title="Sugerir um título melhor com IA"
                     className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isGeneratingTitle ? (
@@ -825,7 +825,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 <h2
                   className="text-2xl font-bold text-gray-900 cursor-pointer hover:bg-gray-100 rounded px-1 -mx-1 transition-colors"
                   onClick={handleTitleClick}
-                  title="Clique para editar titulo"
+                  title="Clique para editar título"
                 >
                   {item.title}
                 </h2>
@@ -934,14 +934,14 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   {/* Description - PROMPT #97: Inline editable with Markdown toolbar */}
                   <div ref={descriptionEditorRef}>
                     <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-semibold text-gray-900">Descricao</h3>
+                      <h3 className="text-sm font-semibold text-gray-900">Descrição</h3>
                       <div className="flex items-center gap-2">
                         {/* PROMPT #254 - AI content generation button (reuses activate pipeline) */}
                         <button
                           type="button"
                           onClick={handleGenerateContent}
                           disabled={isGeneratingContent || isApproving}
-                          title="Gerar descricao detalhada com IA"
+                          title="Gerar descrição detalhada com IA"
                           className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           {(isGeneratingContent || isApproving) ? (
@@ -988,7 +988,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               type="button"
                               onClick={formatCode}
                               className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm"
-                              title="Codigo Inline"
+                              title="Código Inline"
                             >
                               {'</>'}
                             </button>
@@ -1000,7 +1000,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               type="button"
                               onClick={formatHeading1}
                               className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold"
-                              title="Titulo 1"
+                              title="Título 1"
                             >
                               H1
                             </button>
@@ -1008,7 +1008,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               type="button"
                               onClick={formatHeading2}
                               className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold"
-                              title="Titulo 2"
+                              title="Título 2"
                             >
                               H2
                             </button>
@@ -1016,7 +1016,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               type="button"
                               onClick={formatHeading3}
                               className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold"
-                              title="Titulo 3"
+                              title="Título 3"
                             >
                               H3
                             </button>
@@ -1062,7 +1062,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                               type="button"
                               onClick={formatCodeBlock}
                               className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono"
-                              title="Bloco de Codigo"
+                              title="Bloco de Código"
                             >
                               {'```'}
                             </button>
@@ -1099,7 +1099,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                           value={editedDescription}
                           onChange={(e) => setEditedDescription(e.target.value)}
                           className="w-full p-4 min-h-[300px] text-sm text-gray-900 font-mono focus:outline-none resize-y"
-                          placeholder="Digite a descricao usando Markdown..."
+                          placeholder="Digite a descrição usando Markdown..."
                           onKeyDown={(e) => {
                             // Ctrl+B for bold
                             if (e.ctrlKey && e.key === 'b') {
@@ -1170,7 +1170,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                           </div>
                         ) : (
                           <p className="text-sm text-gray-400 italic py-4 text-center border-2 border-dashed border-gray-200 rounded-lg">
-                            Clique duplo para adicionar uma descricao...
+                            Clique duplo para adicionar uma descrição...
                           </p>
                         )}
                         {/* PROMPT #127 - Show AI model icon if content was generated by AI */}
@@ -1368,7 +1368,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                     <textarea
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Adicionar um comentario..."
+                      placeholder="Adicionar um comentário..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                       rows={3}
                     />
@@ -1380,7 +1380,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                         isLoading={isAddingComment}
                         disabled={!newComment.trim()}
                       >
-                        Adicionar Comentario
+                        Adicionar Comentário
                       </Button>
                     </div>
                   </div>
@@ -1389,7 +1389,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   <div className="space-y-3">
                     {comments.length === 0 ? (
                       <p className="text-sm text-gray-500 italic text-center py-8">
-                        Nenhum comentario ainda. Seja o primeiro a comentar!
+                        Nenhum comentário ainda. Seja o primeiro a comentar!
                       </p>
                     ) : (
                       comments.map((comment) => (
@@ -1445,7 +1445,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   {/* Status History */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                      Historico de Status ({transitions.length})
+                      Histórico de Status ({transitions.length})
                     </h3>
 
                     {transitions.length === 0 ? (
@@ -1599,10 +1599,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                         /* PROMPT #131 - Empty state with AI Suggestions call-to-action */
                         <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg bg-gray-50">
                           <span className="mb-3 block"><IconCpu className="w-10 h-10 mx-auto text-gray-400" /></span>
-                          <p className="text-sm text-gray-700 font-medium mb-2">Sugestoes da IA</p>
+                          <p className="text-sm text-gray-700 font-medium mb-2">Sugestões da IA</p>
                           <p className="text-xs text-gray-500 mb-4 max-w-sm mx-auto">
-                            Inicie uma entrevista do card para obter sugestoes da IA para melhorar este card,
-                            decompor em subtasks ou refinar criterios de aceitacao.
+                            Inicie uma entrevista do card para obter sugestões da IA para melhorar este card,
+                            decompor em subtasks ou refinar critérios de aceitação.
                           </p>
                           <Button
                             size="sm"
@@ -1714,7 +1714,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                     {item.generated_prompt ? (
                       <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Prompt Atomico</span>
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Prompt Atômico</span>
                           <div className="flex items-center gap-2">
                             {/* PROMPT #127 - Show AI model icon if prompt was generated by AI */}
                             {item.created_by_ai_model && (
@@ -1749,9 +1749,9 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       <h3 className="text-sm font-semibold text-gray-900 mb-3">Detalhes do Prompt</h3>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Orcamento de Tokens</span>
+                          <span className="text-xs font-semibold text-gray-500 uppercase">Orçamento de Tokens</span>
                           <p className="text-sm text-gray-900 mt-1">
-                            {item.token_budget ? `${item.token_budget.toLocaleString()} tokens` : 'Nao definido'}
+                            {item.token_budget ? `${item.token_budget.toLocaleString()} tokens` : 'Não definido'}
                           </p>
                         </div>
                         {item.actual_tokens_used && (
@@ -1774,7 +1774,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                         <div>
                           <span className="text-xs font-semibold text-gray-500 uppercase">Modelo de IA Alvo</span>
                           <p className="text-sm text-gray-900 mt-1">
-                            {item.target_ai_model_id || 'Selecao automatica'}
+                            {item.target_ai_model_id || 'Seleção automática'}
                           </p>
                         </div>
                       </div>
@@ -1788,13 +1788,13 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-gray-900">
-                      Criterios de Aceitacao ({item.acceptance_criteria?.length || 0})
+                      Critérios de Aceitação ({item.acceptance_criteria?.length || 0})
                     </h3>
                     <Button size="sm" variant="outline" onClick={() => setIsAddingCriterion(true)}>
                       <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                       </svg>
-                      Adicionar Criterio
+                      Adicionar Critério
                     </Button>
                   </div>
 
@@ -1809,7 +1809,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                           if (e.key === 'Enter') handleAddCriterion();
                           if (e.key === 'Escape') { setIsAddingCriterion(false); setNewCriterion(''); }
                         }}
-                        placeholder="Descreva o criterio de aceitacao..."
+                        placeholder="Descreva o critério de aceitação..."
                         className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         autoFocus
                       />
@@ -1823,7 +1823,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   )}
 
                   {!item.acceptance_criteria || item.acceptance_criteria.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">Nenhum criterio de aceitacao definido</p>
+                    <p className="text-sm text-gray-500 italic">Nenhum critério de aceitação definido</p>
                   ) : (
                     <ul className="space-y-2">
                       {item.acceptance_criteria.map((criterion, idx) => {
@@ -1928,7 +1928,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 Excluir &quot;{item.title}&quot;?
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Isso excluira permanentemente este {item.item_type} e todas as entrevistas relacionadas. Esta acao nao pode ser desfeita.
+                Isso excluira permanentemente este {item.item_type} e todas as entrevistas relacionadas. Esta ação não pode ser desfeita.
               </p>
             </div>
           </div>

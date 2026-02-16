@@ -199,7 +199,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           false,
           task.id // task_id for persistent loading state
         );
-        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificacoes.');
+        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificações.');
         return;
       } else {
         // Legacy flow (synchronous response)
@@ -264,7 +264,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
             {/* Title */}
             <div className="flex-1">
               <CardTitle className={`text-lg font-semibold ${isSuggested ? 'text-gray-500' : 'text-gray-900'}`}>
-                {isSuggested && <span className="text-xs font-normal text-gray-400 mr-2">[Sugestao]</span>}
+                {isSuggested && <span className="text-xs font-normal text-gray-400 mr-2">[Sugestão]</span>}
                 {task.title}
               </CardTitle>
               {task.description && (
@@ -305,7 +305,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         {task.acceptance_criteria && task.acceptance_criteria.length > 0 && (
           <div className="mb-4">
             <h4 className="text-sm font-semibold text-gray-700 mb-2">
-              <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-4 h-4" /> Criterios de Aceitacao:</span>
+              <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-4 h-4" /> Critérios de Aceitação:</span>
             </h4>
             <ul className="list-disc list-inside space-y-1">
               {task.acceptance_criteria.map((criterion, idx) => (
@@ -470,7 +470,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
               }}
               disabled={activatingEpic || rejectingEpic}
               className="px-3 py-1.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-              title="Aprovar sugestao"
+              title="Aprovar sugestão"
             >
               {activatingEpic ? (
                 <>
@@ -494,7 +494,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
               }}
               disabled={activatingEpic || rejectingEpic}
               className="px-3 py-1.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded border border-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-              title="Rejeitar sugestao"
+              title="Rejeitar sugestão"
             >
               {rejectingEpic ? (
                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
@@ -514,7 +514,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         onClose={() => setShowRejectConfirm(false)}
         onConfirm={confirmRejectEpic}
         title="Rejeitar Item"
-        message={`Tem certeza que deseja rejeitar e excluir "${task.title}"? Esta acao nao pode ser desfeita.`}
+        message={`Tem certeza que deseja rejeitar e excluir "${task.title}"? Esta ação não pode ser desfeita.`}
         type="danger"
         confirmLabel="Rejeitar"
         cancelLabel="Cancelar"

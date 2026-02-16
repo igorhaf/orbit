@@ -139,7 +139,7 @@ async def get_spec(
     if not spec:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Spec {spec_id} nao encontrada"
+            detail=f"Spec {spec_id} não encontrada"
         )
 
     return spec
@@ -199,7 +199,7 @@ async def update_spec(
     if not spec:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Spec {spec_id} nao encontrada"
+            detail=f"Spec {spec_id} não encontrada"
         )
 
     # PROMPT #117: Save current state to history before updating
@@ -269,7 +269,7 @@ async def get_spec_history(
     if not spec:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Spec {spec_id} nao encontrada"
+            detail=f"Spec {spec_id} não encontrada"
         )
 
     history = db.query(SpecHistory).filter(
@@ -296,7 +296,7 @@ async def delete_spec(
     if not spec:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Spec {spec_id} nao encontrada"
+            detail=f"Spec {spec_id} não encontrada"
         )
 
     db.delete(spec)
@@ -362,14 +362,14 @@ async def discover_patterns(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {request.project_id} nao encontrado"
+            detail=f"Projeto {request.project_id} não encontrado"
         )
 
     # Validate code_path is configured
     if not project.code_path:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="code_path do projeto nao configurado. Configure o code_path nas configuracoes do projeto."
+            detail="code_path do projeto não configurado. Configure o code_path nas configurações do projeto."
         )
 
     # Validate code_path exists
@@ -377,13 +377,13 @@ async def discover_patterns(
     if not project_path.exists():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo do projeto nao existe: {project.code_path}"
+            detail=f"Caminho do código do projeto não existe: {project.code_path}"
         )
 
     if not project_path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do codigo do projeto nao e um diretorio: {project.code_path}"
+            detail=f"Caminho do código do projeto não é um diretório: {project.code_path}"
         )
 
     # Run pattern discovery
@@ -424,7 +424,7 @@ async def discover_patterns(
         logger.error(f"Pattern discovery failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Falha na descoberta de padroes: {str(e)}"
+            detail=f"Falha na descoberta de padrões: {str(e)}"
         )
 
 
@@ -455,7 +455,7 @@ async def save_discovered_pattern(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {request.project_id} nao encontrado"
+            detail=f"Projeto {request.project_id} não encontrado"
         )
 
     # Determine scope based on AI decision
@@ -534,7 +534,7 @@ async def get_project_specs(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     # Query project-specific specs
@@ -571,7 +571,7 @@ async def get_project_discovered_frameworks(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     # Query framework specs with discovery_metadata
@@ -625,7 +625,7 @@ async def sync_specs_to_rag(
     results = sync_service.sync_all_framework_specs()
 
     return {
-        "message": "Sincronizacao RAG concluida",
+        "message": "Sincronização RAG concluida",
         "results": results
     }
 
@@ -732,7 +732,7 @@ async def sync_single_spec_to_rag(
     if not spec:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Spec {spec_id} nao encontrada"
+            detail=f"Spec {spec_id} não encontrada"
         )
 
     sync_service = SpecRAGSync(db)
@@ -776,7 +776,7 @@ async def sync_project_specs_to_rag(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     # Find all specs for this project
@@ -834,7 +834,7 @@ async def sync_project_specs_to_rag(
     logger.info(f"Sync complete: {synced_count}/{len(project_specs)} specs synced for project {project_id}")
 
     return {
-        "message": "Sincronizacao concluida",
+        "message": "Sincronização concluida",
         "project_id": str(project_id),
         "total_specs": len(project_specs),
         "synced": synced_count

@@ -36,4 +36,4 @@ content: |
   - ERRADO: { campo: "valor" } (chave sem aspas)
 
   REGRA GERAL:
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use emojis ou símbolos especiais nas respostas

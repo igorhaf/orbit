@@ -67,11 +67,11 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
     setIsScanning(true);
     try {
       const result = await ragApi.continuousScan(projectId);
-      showSuccess(`Verificacao RAG iniciada (Job: ${result.job_id})`);
+      showSuccess(`Verificação RAG iniciada (Job: ${result.job_id})`);
       // Start polling
       setTimeout(loadStats, 2000);
     } catch (error: any) {
-      showError('Falha ao iniciar verificacao RAG: ' + (error.message || 'Erro desconhecido'));
+      showError('Falha ao iniciar verificação RAG: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsScanning(false);
     }
@@ -210,7 +210,7 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
             {/* Last processed */}
             {stats!.last_processed_at && (
               <p className="text-xs text-gray-400">
-                Ultimo processamento: {new Date(stats!.last_processed_at).toLocaleString()}
+                Último processamento: {new Date(stats!.last_processed_at).toLocaleString()}
               </p>
             )}
 
@@ -220,7 +220,7 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
                 <div className="flex items-center gap-2">
                   <RefreshCw className="w-4 h-4 text-blue-600 animate-spin" />
                   <span className="text-sm font-medium text-blue-800">
-                    Verificacao em andamento...
+                    Verificação em andamento...
                   </span>
                   {stats!.active_job.progress_percent > 0 && (
                     <Badge variant="outline" className="ml-auto">
@@ -238,7 +238,7 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
           <div className="text-center py-8 text-gray-500">
             <Database className="w-12 h-12 mx-auto mb-2 text-gray-300" />
             <p>Nenhum dado de RAG continuo ainda</p>
-            <p className="text-sm mt-1">Clique em "Verificar Agora" para comecar a extrair regras de negocio do codigo</p>
+            <p className="text-sm mt-1">Clique em "Verificar Agora" para comecar a extrair regras de negocio do código</p>
           </div>
         )}
       </CardContent>

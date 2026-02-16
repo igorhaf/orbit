@@ -96,7 +96,7 @@ export function InterviewList({
     // Find the target project to check its context
     const targetProject = projectProp || projects.find(p => p.id === targetProjectId);
     if (targetProject && !targetProject.context_locked && !targetProject.context_human) {
-      showWarning('Complete a Entrevista de Contexto antes de criar Epics. Va para a pagina do projeto e clique em "Configurar Contexto".');
+      showWarning('Complete a Entrevista de Contexto antes de criar Epics. Va para a página do projeto e clique em "Configurar Contexto".');
       setIsCreateOpen(false);
       return;
     }
@@ -257,7 +257,7 @@ export function InterviewList({
             </h3>
             <p className="mt-1 text-sm text-gray-500">
               {interviews.length === 0
-                ? 'Comece criando uma nova sessao de entrevista.'
+                ? 'Comece criando uma nova sessão de entrevista.'
                 : `Nenhuma entrevista com status "${statusFilter}". Tente mudar o filtro ou crie uma nova entrevista.`
               }
             </p>
@@ -344,8 +344,8 @@ export function InterviewList({
         onClose={() => setIsCreateOpen(false)}
         title="Criar Nova Entrevista"
         description={projectId
-          ? "Iniciar nova sessao de entrevista IA para este projeto"
-          : "Iniciar nova sessao de entrevista IA para um projeto"
+          ? "Iniciar nova sessão de entrevista IA para este projeto"
+          : "Iniciar nova sessão de entrevista IA para um projeto"
         }
       >
         <div className="space-y-4">
@@ -362,7 +362,7 @@ export function InterviewList({
 
               {(projects || []).length === 0 && (
                 <div className="text-sm text-amber-600 bg-amber-50 p-3 rounded">
-                  Nenhum projeto disponivel. Crie um projeto primeiro.
+                  Nenhum projeto disponível. Crie um projeto primeiro.
                 </div>
               )}
             </>
@@ -382,10 +382,10 @@ export function InterviewList({
           {/* Show Context Interview info if project doesn't have context yet */}
           {projectProp && !projectProp.context_locked ? (
             <div className="text-sm text-gray-600 bg-amber-50 p-4 rounded border border-amber-200">
-              <p className="font-medium text-gray-900 mb-1">Entrevista de Contexto (Primeiro Passo Obrigatorio)</p>
+              <p className="font-medium text-gray-900 mb-1">Entrevista de Contexto (Primeiro Passo Obrigatório)</p>
               <p className="text-xs text-gray-600">
                 Esta entrevista estabelecera o contexto fundamental do seu projeto.
-                Apos concluir, o contexto sera travado e voce podera criar Epics.
+                Apos concluir, o contexto sera travado e você podera criar Epics.
               </p>
             </div>
           ) : (
@@ -393,7 +393,7 @@ export function InterviewList({
               <p className="font-medium text-gray-900 mb-1">Entrevista de Epic</p>
               <p className="text-xs text-gray-600">
                 Esta entrevista criara um Epic para seu projeto.
-                Modo focado em cards (com tipos de motivacao) esta disponivel para entrevistas hierarquicas
+                Modo focado em cards (com tipos de motivacao) esta disponível para entrevistas hierarquicas
                 (Stories, Tasks, Subtasks) criadas a partir deste Epic.
               </p>
             </div>
@@ -444,7 +444,7 @@ export function InterviewList({
                 Excluir esta entrevista?
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Isso excluira permanentemente a entrevista e todas as suas mensagens. Esta acao nao pode ser desfeita.
+                Isso excluira permanentemente a entrevista e todas as suas mensagens. Esta ação não pode ser desfeita.
               </p>
             </div>
           </div>

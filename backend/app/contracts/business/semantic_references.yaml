@@ -8,7 +8,7 @@ name: semantic_references
 version: 1
 domain: business
 category: business
-description: Metodologia de Referencias Semanticas para geracao de conteudo por IA
+description: Metodologia de Referências Semanticas para geração de conteúdo por IA
 usage_type: business_rule
 
 governance:
@@ -19,42 +19,42 @@ governance:
     - version: 1
       date: "2026-02-04"
       author: "Claude"
-      changes: "Versao inicial documentando metodologia de referencias semanticas"
+      changes: "Versão inicial documentando metodologia de referências semanticas"
 
 semantic_map:
-  # Meta: Este contrato usa sua propria metodologia para se documentar
+  # Meta: Este contrato usa sua própria metodologia para se documentar
 
   # Categorias de Identificadores
   N1: "Identificador Substantivo - Representa entidades, objetos, atores"
-  P1: "Identificador de Processo - Representa acoes, fluxos, operacoes"
+  P1: "Identificador de Processo - Representa ações, fluxos, operações"
   E1: "Identificador de Endpoint - Representa endpoints de API"
   D1: "Identificador de Dados - Representa estruturas de dados, schemas"
-  S1: "Identificador de Servico - Representa servicos externos, integracoes"
-  C1: "Identificador de Restricao - Representa regras de negocio, validacoes"
-  AC1: "Identificador de Criterio de Aceitacao - Representa condicoes de verificacao"
+  S1: "Identificador de Serviço - Representa serviços externos, integracoes"
+  C1: "Identificador de Restrição - Representa regras de negocio, validacoes"
+  AC1: "Identificador de Critério de Aceitação - Representa condições de verificação"
   R1: "Identificador de Requisito - Representa requisitos funcionais"
   F1: "Identificador de Feature - Representa funcionalidades do produto"
-  M1: "Identificador de Modulo - Representa modulos do sistema"
+  M1: "Identificador de Módulo - Representa modulos do sistema"
 
   # Conceitos Centrais
-  N2: "Mapa Semantico - Dicionario de identificador -> significado"
-  N3: "Prompt Gerado - Saida da IA com identificadores semanticos"
-  N4: "Descricao Humana - Texto convertido com significados"
+  N2: "Mapa Semântico - Dicionario de identificador -> significado"
+  N3: "Prompt Gerado - Saída da IA com identificadores semânticos"
+  N4: "Descrição Humana - Texto convertido com significados"
 
   # Processos
   P2: "Atribuicao de Identificadores - IA atribui identificadores unicos"
-  P3: "Conversao Semantica - Converter identificadores para texto humano"
+  P3: "Conversao Semântica - Converter identificadores para texto humano"
   P4: "Heranca - Cards filhos herdam identificadores do pai"
 
 rules:
   validations:
     - id: V1
-      description: "Identificadores devem seguir padrao: Letra + Numero"
+      description: "Identificadores devem seguir padrão: Letra + Número"
       expression: "identifier matches /^[A-Z]+[0-9]+$/"
       severity: error
 
     - id: V2
-      description: "Cada identificador deve ter significado unico no mapa semantico"
+      description: "Cada identificador deve ter significado único no mapa semântico"
       expression: "semantic_map.values().are_unique()"
       severity: error
 
@@ -65,14 +65,14 @@ rules:
 
   constraints:
     - id: C1
-      description: "Categorias de identificadores sao predefinidas"
+      description: "Categorias de identificadores são predefinidas"
       applies_to: [N1, P1, E1, D1, S1, C1, AC1, R1, F1, M1]
       condition: "Letras de categoria: N, P, E, D, S, C, AC, R, F, M"
 
     - id: C2
-      description: "Identificadores sao imutaveis uma vez atribuidos"
+      description: "Identificadores são imutaveis uma vez atribuidos"
       applies_to: [N2]
-      condition: "Uma vez que N1='Usuario' e definido, N1 sempre significa 'Usuario' naquele contexto"
+      condition: "Uma vez que N1='Usuário' e definido, N1 sempre significa 'Usuário' naquele contexto"
 
     - id: C3
       description: "Cards filhos reutilizam identificadores do pai"

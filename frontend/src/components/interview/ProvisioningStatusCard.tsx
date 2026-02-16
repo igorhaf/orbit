@@ -51,9 +51,9 @@ export function ProvisioningStatusCard({ provisioning, projectName, onClose }: P
 Credenciais do Banco de Dados para ${projectName}:
 ================================
 Banco de Dados: ${provisioning.credentials.database}
-Usuario: ${provisioning.credentials.username}
+Usuário: ${provisioning.credentials.username}
 Senha: ${provisioning.credentials.password}
-Porta da Aplicacao: ${provisioning.credentials.application_port}
+Porta da Aplicação: ${provisioning.credentials.application_port}
 Porta do Banco: ${provisioning.credentials.database_port}
 Porta do Adminer: ${provisioning.credentials.adminer_port}
 
@@ -75,12 +75,12 @@ ${provisioning.next_steps?.join('\n')}
           </div>
           <div className="ml-3 flex-1">
             <h3 className="text-sm font-medium text-yellow-800">
-              Provisionamento Nao Disponivel
+              Provisionamento Não Disponível
             </h3>
             <div className="mt-2 text-sm text-yellow-700">
-              <p>{provisioning.error || 'O provisionamento do projeto nao esta disponivel para esta combinacao de stack.'}</p>
+              <p>{provisioning.error || 'O provisionamento do projeto não esta disponível para esta combinacao de stack.'}</p>
               <p className="mt-2">
-                Stack salvo com sucesso, mas o provisionamento automatico nao pode ser concluido.
+                Stack salvo com sucesso, mas o provisionamento automático não pode ser concluido.
               </p>
             </div>
           </div>
@@ -181,7 +181,7 @@ ${provisioning.next_steps?.join('\n')}
                       <span className="text-gray-900 font-semibold">{provisioning.credentials.database}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Usuario:</span>
+                      <span className="text-gray-600">Usuário:</span>
                       <span className="text-gray-900 font-semibold">{provisioning.credentials.username}</span>
                     </div>
                     <div className="flex justify-between">
@@ -190,7 +190,7 @@ ${provisioning.next_steps?.join('\n')}
                     </div>
                     <div className="border-t border-gray-200 my-2"></div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Porta da Aplicacao:</span>
+                      <span className="text-gray-600">Porta da Aplicação:</span>
                       <span className="text-gray-900">{provisioning.credentials.application_port}</span>
                     </div>
                     <div className="flex justify-between">
@@ -224,7 +224,7 @@ ${provisioning.next_steps?.join('\n')}
           {/* Location */}
           {provisioning.project_path && (
             <div className="mt-3 text-xs text-green-600">
-              <strong>Localizacao:</strong> <code className="bg-green-100 px-1 py-0.5 rounded">{provisioning.project_path}</code>
+              <strong>Localização:</strong> <code className="bg-green-100 px-1 py-0.5 rounded">{provisioning.project_path}</code>
             </div>
           )}
         </div>

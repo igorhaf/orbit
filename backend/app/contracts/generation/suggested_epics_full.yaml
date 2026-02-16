@@ -59,10 +59,10 @@ system_prompt: |
   - Cubra TODAS as áreas mencionadas no contexto
   - Inclua épicos implícitos (toda aplicação precisa de autenticação, configurações, etc.)
   - Retorne APENAS o JSON, sem texto adicional
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use emojis ou símbolos especiais nas respostas
 
 user_prompt: |
-  Analise o seguinte contexto de projeto e gere a lista completa de Épicos:
+  Análise o seguinte contexto de projeto e gere a lista completa de Épicos:
 
   ## CONTEXTO DO PROJETO
   {{ context_human }}

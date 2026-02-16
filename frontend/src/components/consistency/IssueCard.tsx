@@ -119,7 +119,7 @@ export function IssueCard({ issue, onUpdateIssue }: Props) {
                 {expanded && issue.suggested_fix && (
                   <div className="mt-3">
                     <p className="text-sm font-medium text-gray-900 mb-2">
-                      Sugestao de Correcao:
+                      Sugestão de Correção:
                     </p>
                     <div className="bg-gray-900 rounded-lg p-3 font-mono text-sm text-gray-100 overflow-auto">
                       <pre className="whitespace-pre-wrap">{issue.suggested_fix}</pre>
@@ -135,7 +135,7 @@ export function IssueCard({ issue, onUpdateIssue }: Props) {
                       size="sm"
                       onClick={() => setExpanded(!expanded)}
                     >
-                      {expanded ? 'Ocultar' : 'Ver'} Sugestao de Correcao
+                      {expanded ? 'Ocultar' : 'Ver'} Sugestão de Correção
                     </Button>
                   )}
 

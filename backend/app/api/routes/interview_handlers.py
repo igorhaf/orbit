@@ -848,7 +848,7 @@ def _extract_focus_topics(user_answer: str) -> list:
             "performance": "performance",
             "escalabilidade": "performance",
             "integração": "integrations",
-            "integracao": "integrations",
+            "integração": "integrations",
             "api": "integrations",
             "workflow": "workflows",
             "processo": "workflows",
@@ -1203,7 +1203,7 @@ async def _handle_ai_meta_contextual_question(
     except Exception as e:
         logger.warning(f"⚠️  RAG retrieval failed for contextual questions: {e}")
 
-    # Build focus area text based on selected topics
+    # Build focus área text based on selected topics
     topic_labels = {
         "business_rules": "Regras de Negócio",
         "design_ux": "Design e UX/UI",
@@ -1967,7 +1967,7 @@ async def _handle_card_focused_ai_question(
         logger.error(f"❌ AIOrchestrator failed: {response.get('error')}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Falha na geracao de resposta da IA: {response.get('error')}"
+            detail=f"Falha na geração de resposta da IA: {response.get('error')}"
         )
 
     ai_response = response['response']

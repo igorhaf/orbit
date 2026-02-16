@@ -51,7 +51,7 @@ system_prompt: |
   - Construa contexto com respostas anteriores
   - Após 5-8 perguntas, conclua com resumo
   - Se resposta for genérica/vaga, peça especificidade
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use emojis ou símbolos especiais nas respostas
 
   Continue com a próxima pergunta relevante para definir o ENHANCEMENT!
 

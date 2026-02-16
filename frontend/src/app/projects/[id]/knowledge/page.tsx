@@ -47,27 +47,27 @@ interface KnowledgeStats {
 type Category = 'validation' | 'workflow' | 'calculation' | 'permission' | 'integration';
 
 const CATEGORIES: { value: Category; label: string; description: string }[] = [
-  { value: 'validation', label: 'Validacao', description: 'Email unico, CPF valido, senha minima' },
+  { value: 'validation', label: 'Validação', description: 'Email único, CPF válido, senha mínima' },
   { value: 'workflow', label: 'Fluxo de Trabalho', description: 'Fluxos de aprovacao, processos de pedido' },
   { value: 'calculation', label: 'Calculo', description: 'Limites de desconto, calculo de frete' },
-  { value: 'permission', label: 'Permissao', description: 'Apenas admin, acesso do proprietario' },
-  { value: 'integration', label: 'Integracao', description: 'APIs externas, webhooks' },
+  { value: 'permission', label: 'Permissão', description: 'Apenas admin, acesso do proprietario' },
+  { value: 'integration', label: 'Integração', description: 'APIs externas, webhooks' },
 ];
 
 const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
   manual: { label: 'Manual', color: 'bg-blue-100 text-blue-800' },
-  code_scan: { label: 'Scan de Codigo', color: 'bg-green-100 text-green-800' },
+  code_scan: { label: 'Scan de Código', color: 'bg-green-100 text-green-800' },
   interview: { label: 'Entrevista', color: 'bg-purple-100 text-purple-800' },
   document: { label: 'Documento', color: 'bg-orange-100 text-orange-800' },
   unknown: { label: 'Desconhecido', color: 'bg-gray-100 text-gray-800' },
 };
 
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
-  validation: { label: 'Validacao', color: 'bg-red-100 text-red-800' },
+  validation: { label: 'Validação', color: 'bg-red-100 text-red-800' },
   workflow: { label: 'Fluxo de Trabalho', color: 'bg-yellow-100 text-yellow-800' },
   calculation: { label: 'Calculo', color: 'bg-cyan-100 text-cyan-800' },
-  permission: { label: 'Permissao', color: 'bg-pink-100 text-pink-800' },
-  integration: { label: 'Integracao', color: 'bg-indigo-100 text-indigo-800' },
+  permission: { label: 'Permissão', color: 'bg-pink-100 text-pink-800' },
+  integration: { label: 'Integração', color: 'bg-indigo-100 text-indigo-800' },
 };
 
 export default function KnowledgePage() {
@@ -165,7 +165,7 @@ export default function KnowledgePage() {
   // Add rule handler
   const handleAddRule = async () => {
     if (!newRule.title.trim() || !newRule.description.trim()) {
-      showError('Titulo e descricao sao obrigatorios');
+      showError('Título e descrição são obrigatorios');
       return;
     }
 
@@ -314,7 +314,7 @@ export default function KnowledgePage() {
             </Card>
             <Card className="p-4">
               <div className="text-2xl font-bold text-green-600">{stats.code_files_count}</div>
-              <div className="text-sm text-gray-500">Arquivos de Codigo</div>
+              <div className="text-sm text-gray-500">Arquivos de Código</div>
             </Card>
             <Card className="p-4">
               <div className="text-2xl font-bold text-orange-600">{stats.documents_count}</div>
@@ -376,7 +376,7 @@ export default function KnowledgePage() {
               >
                 <option value="">Todas as Fontes</option>
                 <option value="manual">Manual</option>
-                <option value="code_scan">Scan de Codigo</option>
+                <option value="code_scan">Scan de Código</option>
                 <option value="interview">Entrevista</option>
                 <option value="document">Documento</option>
               </select>
@@ -455,7 +455,7 @@ export default function KnowledgePage() {
                 </div>
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum documento enviado</h3>
                 <p className="text-gray-500 mb-4">
-                  Envie arquivos de documentacao (MD, TXT, YAML) para adicionar conhecimento ao RAG.
+                  Envie arquivos de documentação (MD, TXT, YAML) para adicionar conhecimento ao RAG.
                 </p>
                 <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
                   Enviar Documento
@@ -562,20 +562,20 @@ export default function KnowledgePage() {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Titulo
+                    Título
                   </label>
                   <input
                     type="text"
                     value={newRule.title}
                     onChange={(e) => setNewRule({ ...newRule, title: e.target.value })}
-                    placeholder="Ex.: Email deve ser unico por tenant"
+                    placeholder="Ex.: Email deve ser único por tenant"
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Descricao
+                    Descrição
                   </label>
                   <textarea
                     value={newRule.description}

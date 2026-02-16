@@ -70,7 +70,7 @@ async def list_discovery_queue(
         except ValueError:
             raise HTTPException(
                 status_code=400,
-                detail=f"Status invalido. Deve ser um dos: {[s.value for s in DiscoveryQueueStatus]}"
+                detail=f"Status inválido. Deve ser um dos: {[s.value for s in DiscoveryQueueStatus]}"
             )
 
     # Get total count before pagination
@@ -116,7 +116,7 @@ async def get_queue_item(
     """
     item = db.query(DiscoveryQueue).filter(DiscoveryQueue.id == item_id).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Item da fila nao encontrado")
+        raise HTTPException(status_code=404, detail="Item da fila não encontrado")
 
     return {
         "id": str(item.id),
@@ -161,31 +161,31 @@ async def process_queue_item(
     # Find queue item
     item = db.query(DiscoveryQueue).filter(DiscoveryQueue.id == item_id).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Item da fila nao encontrado")
+        raise HTTPException(status_code=404, detail="Item da fila não encontrado")
 
     if item.status != DiscoveryQueueStatus.PENDING:
         raise HTTPException(
             status_code=400,
-            detail=f"Item da fila nao esta pendente. Status atual: {item.status.value}"
+            detail=f"Item da fila não esta pendente. Status atual: {item.status.value}"
         )
 
     # Get project
     project = item.project
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto associado nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto associado não encontrado")
 
     # Check code_path
     if not project.code_path:
         raise HTTPException(
             status_code=400,
-            detail="Projeto nao tem code_path configurado"
+            detail="Projeto não tem code_path configurado"
         )
 
     code_path = Path(project.code_path)
     if not code_path.exists():
         raise HTTPException(
             status_code=400,
-            detail=f"Caminho do codigo nao existe: {project.code_path}"
+            detail=f"Caminho do código não existe: {project.code_path}"
         )
 
     # Read default from system_settings if not provided
@@ -238,7 +238,7 @@ async def process_queue_item(
 
         raise HTTPException(
             status_code=500,
-            detail=f"Falha na descoberta de padroes: {str(e)}"
+            detail=f"Falha na descoberta de padrões: {str(e)}"
         )
 
 
@@ -263,12 +263,12 @@ async def dismiss_queue_item(
     # Find queue item
     item = db.query(DiscoveryQueue).filter(DiscoveryQueue.id == item_id).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Item da fila nao encontrado")
+        raise HTTPException(status_code=404, detail="Item da fila não encontrado")
 
     if item.status not in [DiscoveryQueueStatus.PENDING, DiscoveryQueueStatus.FAILED]:
         raise HTTPException(
             status_code=400,
-            detail=f"Nao e possivel dispensar item com status: {item.status.value}"
+            detail=f"Não é possível dispensar item com status: {item.status.value}"
         )
 
     # Mark as dismissed
@@ -303,7 +303,7 @@ async def delete_queue_item(
     # Find queue item
     item = db.query(DiscoveryQueue).filter(DiscoveryQueue.id == item_id).first()
     if not item:
-        raise HTTPException(status_code=404, detail="Item da fila nao encontrado")
+        raise HTTPException(status_code=404, detail="Item da fila não encontrado")
 
     db.delete(item)
     db.commit()

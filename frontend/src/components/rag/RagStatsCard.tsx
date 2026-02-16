@@ -73,7 +73,7 @@ export function RagStatsCard({ stats }: RagStatsCardProps) {
         title="Latencia Media"
         value={`${stats.avg_retrieval_time_ms.toFixed(0)}ms`}
         icon={<Clock className="w-6 h-6 text-purple-600" />}
-        subtitle="Velocidade de recuperacao"
+        subtitle="Velocidade de recuperação"
         color="purple"
       />
 

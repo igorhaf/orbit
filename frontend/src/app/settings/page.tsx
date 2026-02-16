@@ -51,12 +51,12 @@ import { useNotification } from '@/hooks';
 
 const MODEL_CONFIGS = [
   { key: 'interview', label: 'Entrevistas', usageType: AIModelUsageType.INTERVIEW, icon: MessageSquare, color: 'text-blue-600 bg-blue-50', description: 'Perguntas de entrevista de contexto e focadas em cards' },
-  { key: 'prompt_generation', label: 'Geracao de Prompts', usageType: AIModelUsageType.PROMPT_GENERATION, icon: Zap, color: 'text-purple-600 bg-purple-50', description: 'Gerando prompts e conteudo de cards' },
-  { key: 'commit_generation', label: 'Geracao de Commits', usageType: AIModelUsageType.COMMIT_GENERATION, icon: GitCommit, color: 'text-green-600 bg-green-50', description: 'Geracao de mensagens de commit Git' },
-  { key: 'task_execution', label: 'Execucao de Tarefas', usageType: AIModelUsageType.TASK_EXECUTION, icon: Cpu, color: 'text-orange-600 bg-orange-50', description: 'Executando prompts de tarefas e geracao de codigo' },
-  { key: 'pattern_discovery', label: 'Descoberta de Padroes', usageType: AIModelUsageType.PATTERN_DISCOVERY, icon: Search, color: 'text-cyan-600 bg-cyan-50', description: 'Descoberta de padroes de codigo e specs por IA' },
-  { key: 'queue_orchestration', label: 'Orquestracao de Fila', usageType: AIModelUsageType.QUEUE_ORCHESTRATION, icon: Layers, color: 'text-pink-600 bg-pink-50', description: 'Execucao de prompts da fila de orquestracao' },
-  { key: 'general', label: 'Geral', usageType: AIModelUsageType.GENERAL, icon: Globe, color: 'text-gray-600 bg-gray-100', description: 'Modelo fallback para todas as outras operacoes' },
+  { key: 'prompt_generation', label: 'Geração de Prompts', usageType: AIModelUsageType.PROMPT_GENERATION, icon: Zap, color: 'text-purple-600 bg-purple-50', description: 'Gerando prompts e conteúdo de cards' },
+  { key: 'commit_generation', label: 'Geração de Commits', usageType: AIModelUsageType.COMMIT_GENERATION, icon: GitCommit, color: 'text-green-600 bg-green-50', description: 'Geração de mensagens de commit Git' },
+  { key: 'task_execution', label: 'Execução de Tarefas', usageType: AIModelUsageType.TASK_EXECUTION, icon: Cpu, color: 'text-orange-600 bg-orange-50', description: 'Executando prompts de tarefas e geração de código' },
+  { key: 'pattern_discovery', label: 'Descoberta de Padrões', usageType: AIModelUsageType.PATTERN_DISCOVERY, icon: Search, color: 'text-cyan-600 bg-cyan-50', description: 'Descoberta de padrões de código e specs por IA' },
+  { key: 'queue_orchestration', label: 'Orquestracao de Fila', usageType: AIModelUsageType.QUEUE_ORCHESTRATION, icon: Layers, color: 'text-pink-600 bg-pink-50', description: 'Execução de prompts da fila de orquestracao' },
+  { key: 'general', label: 'Geral', usageType: AIModelUsageType.GENERAL, icon: Globe, color: 'text-gray-600 bg-gray-100', description: 'Modelo fallback para todas as outras operações' },
 ];
 
 type TabId = 'models' | 'queue' | 'blocklist' | 'general';
@@ -154,7 +154,7 @@ export default function SettingsPage() {
       }
     } catch (err: unknown) {
       console.error('Failed to load settings:', err);
-      setError((err as Error).message || 'Falha ao carregar configuracoes');
+      setError((err as Error).message || 'Falha ao carregar configurações');
     } finally {
       setLoading(false);
     }
@@ -162,7 +162,7 @@ export default function SettingsPage() {
 
   const handleAddSetting = async () => {
     if (!newKey.trim()) {
-      showWarning('Insira uma chave de configuracao');
+      showWarning('Insira uma chave de configuração');
       return;
     }
 
@@ -172,9 +172,9 @@ export default function SettingsPage() {
       setNewValue('');
       setNewDescription('');
       await loadData();
-      setSaveSuccess('Configuracao adicionada');
+      setSaveSuccess('Configuração adicionada');
     } catch (err: any) {
-      showError(`Falha ao adicionar configuracao: ${err.message}`);
+      showError(`Falha ao adicionar configuração: ${err.message}`);
     }
   };
 
@@ -193,7 +193,7 @@ export default function SettingsPage() {
       setSettingToDelete(null);
       await loadData();
     } catch (err: any) {
-      showError(`Falha ao excluir configuracao: ${err.message}`);
+      showError(`Falha ao excluir configuração: ${err.message}`);
     } finally {
       setIsDeleting(false);
     }
@@ -209,9 +209,9 @@ export default function SettingsPage() {
 
       await settingsApi.bulk(updates);
       await loadData();
-      setSaveSuccess('Modelos padrao salvos');
+      setSaveSuccess('Modelos padrão salvos');
     } catch (err: any) {
-      showError(`Falha ao salvar modelos padrao: ${err.message}`);
+      showError(`Falha ao salvar modelos padrão: ${err.message}`);
     } finally {
       setSaving(false);
     }
@@ -227,9 +227,9 @@ export default function SettingsPage() {
     try {
       await settingsApi.bulk(queueSettings);
       await loadData();
-      setSaveSuccess('Configuracoes da fila salvas');
+      setSaveSuccess('Configurações da fila salvas');
     } catch (err: any) {
-      showError(`Falha ao salvar configuracoes da fila: ${err.message}`);
+      showError(`Falha ao salvar configurações da fila: ${err.message}`);
     } finally {
       setSavingQueue(false);
     }
@@ -274,15 +274,15 @@ export default function SettingsPage() {
 
   const handleAddBlockPattern = async (patName?: string) => {
     const pat = (patName || newBlockPattern).trim();
-    if (!pat) { showWarning('Insira o padrao de arquivo'); return; }
-    if (blocklist.file_patterns.includes(pat)) { showWarning('Padrao ja esta na lista'); return; }
+    if (!pat) { showWarning('Insira o padrão de arquivo'); return; }
+    if (blocklist.file_patterns.includes(pat)) { showWarning('Padrão ja esta na lista'); return; }
     const updated = { ...blocklist, file_patterns: [...blocklist.file_patterns, pat].sort() };
     setSavingBlocklist(true);
     try {
       const result = await settingsApi.saveBlocklist(updated);
       setBlocklist(result);
       setNewBlockPattern('');
-      setSaveSuccess('Padrao adicionado a lista de bloqueio');
+      setSaveSuccess('Padrão adicionado a lista de bloqueio');
     } catch (err: any) { showError(`Falha ao salvar: ${err?.message || err?.detail || String(err)}`); }
     finally { setSavingBlocklist(false); }
   };
@@ -301,7 +301,7 @@ export default function SettingsPage() {
     try {
       const result = await settingsApi.saveBlocklist(updated);
       setBlocklist(result);
-      setSaveSuccess('Padrao removido');
+      setSaveSuccess('Padrão removido');
     } catch (err: any) { showError(`Falha ao remover: ${err?.message || err?.detail || String(err)}`); }
   };
 
@@ -323,7 +323,7 @@ export default function SettingsPage() {
       const result = await settingsApi.approveBlocklistSuggestions([suggestion]);
       setBlocklist(result.blocklist);
       setBlocklistSuggestions(prev => prev.filter(s => s.path !== suggestion.path));
-      setSaveSuccess('Sugestao aprovada');
+      setSaveSuccess('Sugestão aprovada');
     } catch (err: any) { showError(`Falha ao aprovar: ${err.message}`); }
   };
 
@@ -331,7 +331,7 @@ export default function SettingsPage() {
     try {
       await settingsApi.rejectBlocklistSuggestions([suggestion]);
       setBlocklistSuggestions(prev => prev.filter(s => s.path !== suggestion.path));
-      setSaveSuccess('Sugestao rejeitada');
+      setSaveSuccess('Sugestão rejeitada');
     } catch (err: any) { showError(`Falha ao rejeitar: ${err.message}`); }
   };
 
@@ -342,7 +342,7 @@ export default function SettingsPage() {
       const result = await settingsApi.approveBlocklistSuggestions(items);
       setBlocklist(result.blocklist);
       setBlocklistSuggestions([]);
-      setSaveSuccess('Todas as sugestoes aprovadas');
+      setSaveSuccess('Todas as sugestões aprovadas');
     } catch (err: any) { showError(`Falha ao aprovar: ${err.message}`); }
   };
 
@@ -352,7 +352,7 @@ export default function SettingsPage() {
       const items = blocklistSuggestions.map(s => ({ path: s.path, type: s.type }));
       await settingsApi.rejectBlocklistSuggestions(items);
       setBlocklistSuggestions([]);
-      setSaveSuccess('Todas as sugestoes rejeitadas');
+      setSaveSuccess('Todas as sugestões rejeitadas');
     } catch (err: any) { showError(`Falha ao rejeitar: ${err.message}`); }
   };
 
@@ -389,9 +389,9 @@ export default function SettingsPage() {
               <SettingsIcon className="w-7 h-7 text-gray-700" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Configuracoes</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
               <p className="text-sm text-gray-500 mt-0.5">
-                Configuracao do sistema e preferencias padrao
+                Configuração do sistema e preferencias padrão
               </p>
             </div>
           </div>
@@ -466,11 +466,11 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Selecione qual modelo IA gerencia cada tipo de operacao. Modelos devem estar configurados e ativos na pagina Modelos IA.
+                Selecione qual modelo IA gerencia cada tipo de operação. Modelos devem estar configurados e ativos na página Modelos IA.
               </p>
               <Button onClick={handleSaveDefaultModels} disabled={saving}>
                 <Save className="w-4 h-4 mr-2" />
-                {saving ? 'Salvando...' : 'Salvar Alteracoes'}
+                {saving ? 'Salvando...' : 'Salvar Alterações'}
               </Button>
             </div>
 
@@ -506,7 +506,7 @@ export default function SettingsPage() {
                           value={defaultModels[config.key] || ''}
                           onChange={(e) => setDefaultModels({ ...defaultModels, [config.key]: e.target.value })}
                           options={[
-                            { value: '', label: availableModels.length === 0 ? 'Nenhum modelo disponivel' : 'Nenhum modelo padrao' },
+                            { value: '', label: availableModels.length === 0 ? 'Nenhum modelo disponível' : 'Nenhum modelo padrão' },
                             ...availableModels.map(m => ({
                               value: m.id,
                               label: m.name,
@@ -525,7 +525,7 @@ export default function SettingsPage() {
               <div className="flex items-center gap-3 px-4 py-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                 <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
                 <p className="text-sm text-yellow-800">
-                  O modelo <strong>General</strong> age como fallback para todas as operacoes. Recomenda-se configura-lo.
+                  O modelo <strong>General</strong> age como fallback para todas as operações. Recomenda-se configura-lo.
                 </p>
               </div>
             )}
@@ -537,11 +537,11 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Controle como a fila de orquestracao de prompts processa e ordena a execucao.
+                Controle como a fila de orquestracao de prompts processa e ordena a execução.
               </p>
               <Button onClick={handleSaveQueueSettings} disabled={savingQueue}>
                 <Save className="w-4 h-4 mr-2" />
-                {savingQueue ? 'Salvando...' : 'Salvar Alteracoes'}
+                {savingQueue ? 'Salvando...' : 'Salvar Alterações'}
               </Button>
             </div>
 
@@ -553,17 +553,17 @@ export default function SettingsPage() {
                       <ListOrdered className="w-4 h-4 text-blue-600" />
                     </div>
                     <div className="flex-1">
-                      <Label htmlFor="queue-strategy" className="text-sm font-medium text-gray-900">Estrategia de Ordenacao Automatica</Label>
-                      <p className="text-xs text-gray-500 mt-0.5 mb-2">Determina como os cards sao ordenados automaticamente na fila de execucao</p>
+                      <Label htmlFor="queue-strategy" className="text-sm font-medium text-gray-900">Estratégia de Ordenacao Automática</Label>
+                      <p className="text-xs text-gray-500 mt-0.5 mb-2">Determina como os cards são ordenados automaticamente na fila de execução</p>
                       <Select
                         id="queue-strategy"
                         value={queueSettings.queue_auto_sort_strategy}
                         onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_sort_strategy: e.target.value })}
                         options={[
-                          { value: 'balanced', label: 'Balanceado (35% hierarquia, 30% prioridade, 25% dependencia, 10% idade)' },
+                          { value: 'balanced', label: 'Balanceado (35% hierarquia, 30% prioridade, 25% dependência, 10% idade)' },
                           { value: 'hierarchy_first', label: 'Hierarquia Primeiro (epics > stories > tasks > subtasks)' },
                           { value: 'priority_first', label: 'Prioridade Primeiro (critico > alto > medio > baixo)' },
-                          { value: 'dependency_first', label: 'Dependencia Primeiro (resolver dependencias primeiro)' },
+                          { value: 'dependency_first', label: 'Dependência Primeiro (resolver dependencias primeiro)' },
                           { value: 'age_first', label: 'Idade Primeiro (cards mais antigos primeiro)' },
                         ]}
                       />
@@ -629,7 +629,7 @@ export default function SettingsPage() {
         {activeTab === 'blocklist' && (
           <div className="space-y-6">
             <p className="text-sm text-gray-500">
-              Pastas e padroes de arquivos que serao ignorados em todos os projetos durante analise de codigo.
+              Pastas e padrões de arquivos que serao ignorados em todos os projetos durante análise de código.
             </p>
 
             {/* Suggestions Section */}
@@ -642,8 +642,8 @@ export default function SettingsPage() {
                         <Lightbulb className="w-4 h-4 text-amber-600" />
                       </div>
                       <div>
-                        <span className="text-sm font-medium text-gray-900">Sugestoes Pendentes</span>
-                        <p className="text-xs text-gray-500">Detectadas automaticamente pela IA durante analise de projetos</p>
+                        <span className="text-sm font-medium text-gray-900">Sugestões Pendentes</span>
+                        <p className="text-xs text-gray-500">Detectadas automaticamente pela IA durante análise de projetos</p>
                       </div>
                       <Badge variant="warning" className="text-xs ml-2">{blocklistSuggestions.length}</Badge>
                     </div>
@@ -678,7 +678,7 @@ export default function SettingsPage() {
                                     ? 'bg-blue-100 text-blue-700'
                                     : 'bg-orange-100 text-orange-700'
                                 }`}>
-                                  {sug.type === 'directory' ? 'Pasta' : 'Padrao'}
+                                  {sug.type === 'directory' ? 'Pasta' : 'Padrão'}
                                 </span>
                               </div>
                               {sug.rationale && (
@@ -808,18 +808,18 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900">Padroes de Arquivos Bloqueados</span>
+                      <span className="text-sm font-medium text-gray-900">Padrões de Arquivos Bloqueados</span>
                       {blocklist.file_patterns.length > 0 && (
                         <Badge variant="default" className="text-xs">{blocklist.file_patterns.length}</Badge>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5">Arquivos correspondentes a esses padroes serao ignorados</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Arquivos correspondentes a esses padrões serao ignorados</p>
                   </div>
                 </div>
 
                 {/* Presets (estilo scan depth cards) */}
                 <div className="mb-4">
-                  <p className="text-xs text-gray-500 mb-2">Padroes comuns:</p>
+                  <p className="text-xs text-gray-500 mb-2">Padrões comuns:</p>
                   <div className="flex flex-wrap gap-2">
                     {[
                       { pattern: '*.log', label: 'Logs' },
@@ -853,7 +853,7 @@ export default function SettingsPage() {
                     value={newBlockPattern}
                     onChange={(e) => setNewBlockPattern(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleAddBlockPattern()}
-                    placeholder="Padrao personalizado (ex: *.sqlite, *.env.*, *.old)..."
+                    placeholder="Padrão personalizado (ex: *.sqlite, *.env.*, *.old)..."
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm font-mono"
                   />
                   <Button
@@ -874,8 +874,8 @@ export default function SettingsPage() {
                 {blocklist.file_patterns.length === 0 ? (
                   <div className="border border-gray-200 rounded-lg p-8 text-center text-gray-500">
                     <FileX className="w-10 h-10 mx-auto mb-2 text-gray-300" />
-                    <p className="text-sm">Nenhum padrao bloqueado</p>
-                    <p className="text-xs mt-1">Selecione padroes comuns acima ou adicione manualmente</p>
+                    <p className="text-sm">Nenhum padrão bloqueado</p>
+                    <p className="text-xs mt-1">Selecione padrões comuns acima ou adicione manualmente</p>
                   </div>
                 ) : (
                   <div className="border border-gray-200 rounded-lg overflow-hidden max-h-[250px] overflow-y-auto">
@@ -920,14 +920,14 @@ export default function SettingsPage() {
         {activeTab === 'general' && (
           <div className="space-y-4">
             <p className="text-sm text-gray-500">
-              Pares chave-valor personalizados para configuracao avancada do sistema.
+              Pares chave-valor personalizados para configuração avancada do sistema.
             </p>
 
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center gap-2 mb-4">
                   <Plus className="w-4 h-4 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-900">Adicionar Configuracao</span>
+                  <span className="text-sm font-medium text-gray-900">Adicionar Configuração</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
@@ -949,10 +949,10 @@ export default function SettingsPage() {
                     />
                   </div>
                   <div>
-                    <Label htmlFor="new-desc" className="text-xs text-gray-500 mb-1">Descricao</Label>
+                    <Label htmlFor="new-desc" className="text-xs text-gray-500 mb-1">Descrição</Label>
                     <Input
                       id="new-desc"
-                      placeholder="Descricao opcional"
+                      placeholder="Descrição opcional"
                       value={newDescription}
                       onChange={(e) => setNewDescription(e.target.value)}
                     />
@@ -970,8 +970,8 @@ export default function SettingsPage() {
             {generalSettings.length === 0 ? (
               <div className="text-center py-16 text-gray-400">
                 <Sliders className="w-10 h-10 mx-auto mb-3 opacity-50" />
-                <p className="text-sm">Nenhuma configuracao personalizada</p>
-                <p className="text-xs mt-1">Adicione uma configuracao acima para comecar</p>
+                <p className="text-sm">Nenhuma configuração personalizada</p>
+                <p className="text-xs mt-1">Adicione uma configuração acima para comecar</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -1015,8 +1015,8 @@ export default function SettingsPage() {
         open={showDeleteDialog}
         onClose={() => setShowDeleteDialog(false)}
         onConfirm={confirmDeleteSetting}
-        title="Excluir Configuracao"
-        message={`Tem certeza que deseja excluir "${settingToDelete}"? Esta acao nao pode ser desfeita.`}
+        title="Excluir Configuração"
+        message={`Tem certeza que deseja excluir "${settingToDelete}"? Esta ação não pode ser desfeita.`}
         type="danger"
         confirmLabel="Excluir"
         cancelLabel="Cancelar"

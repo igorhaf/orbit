@@ -98,7 +98,7 @@ export default function AIExecutionsPage() {
       setSelectedExecution(detail);
     } catch (err: any) {
       console.error('Failed to load execution detail:', err);
-      showError('Falha ao carregar detalhes da execucao');
+      showError('Falha ao carregar detalhes da execução');
     }
   };
 
@@ -124,9 +124,9 @@ export default function AIExecutionsPage() {
 
   const getUsageTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
-      'prompt_generation': 'Geracao de Prompts',
-      'task_execution': 'Execucao de Tarefas',
-      'commit_generation': 'Geracao de Commits',
+      'prompt_generation': 'Geração de Prompts',
+      'task_execution': 'Execução de Tarefas',
+      'commit_generation': 'Geração de Commits',
       'interview': 'Entrevista',
       'general': 'Geral'
     };
@@ -155,7 +155,7 @@ export default function AIExecutionsPage() {
             <div>
               <h1 className="text-3xl font-bold text-gray-900">Execucoes IA</h1>
               <p className="text-gray-600 mt-1">
-                Monitore e analise logs de execucao de modelos IA
+                Monitore e análise logs de execução de modelos IA
               </p>
             </div>
           </div>
@@ -241,9 +241,9 @@ export default function AIExecutionsPage() {
                   className="w-full border border-gray-300 rounded-md px-3 py-2"
                 >
                   <option value="">Todos os Tipos</option>
-                  <option value="prompt_generation">Geracao de Prompts</option>
-                  <option value="task_execution">Execucao de Tarefas</option>
-                  <option value="commit_generation">Geracao de Commits</option>
+                  <option value="prompt_generation">Geração de Prompts</option>
+                  <option value="task_execution">Execução de Tarefas</option>
+                  <option value="commit_generation">Geração de Commits</option>
                   <option value="interview">Entrevista</option>
                   <option value="general">Geral</option>
                 </select>
@@ -301,7 +301,7 @@ export default function AIExecutionsPage() {
         {/* Executions Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Historico de Execucoes ({executions.length})</CardTitle>
+            <CardTitle>Histórico de Execucoes ({executions.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -312,7 +312,7 @@ export default function AIExecutionsPage() {
             ) : executions.length === 0 ? (
               <div className="text-center py-12">
                 <Activity className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600">Nenhuma execucao encontrada</p>
+                <p className="text-gray-600">Nenhuma execução encontrada</p>
                 <p className="text-sm text-gray-500 mt-1">
                   Execucoes aparecerao aqui conforme os modelos IA forem usados
                 </p>
@@ -341,7 +341,7 @@ export default function AIExecutionsPage() {
                         Status
                       </th>
                       <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Acoes
+                        Ações
                       </th>
                     </tr>
                   </thead>
@@ -418,7 +418,7 @@ export default function AIExecutionsPage() {
             <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-y-auto">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-2xl font-bold text-gray-900">Detalhes da Execucao</h2>
+                  <h2 className="text-2xl font-bold text-gray-900">Detalhes da Execução</h2>
                   <Button variant="outline" onClick={() => setSelectedExecution(null)}>
                     Fechar
                   </Button>
@@ -448,7 +448,7 @@ export default function AIExecutionsPage() {
                       <p className="text-sm text-gray-900">{selectedExecution.model_name}</p>
                     </div>
                     <div>
-                      <label className="text-sm font-medium text-gray-500">Tempo de Execucao</label>
+                      <label className="text-sm font-medium text-gray-500">Tempo de Execução</label>
                       <p className="text-sm text-gray-900">
                         {selectedExecution.execution_time_ms ? `${selectedExecution.execution_time_ms}ms` : 'N/A'}
                       </p>
@@ -464,7 +464,7 @@ export default function AIExecutionsPage() {
                         <p className="text-2xl font-bold text-blue-900">{formatNumber(selectedExecution.input_tokens)}</p>
                       </div>
                       <div className="bg-green-50 p-4 rounded-lg">
-                        <p className="text-sm text-green-600 font-medium">Tokens de Saida</p>
+                        <p className="text-sm text-green-600 font-medium">Tokens de Saída</p>
                         <p className="text-2xl font-bold text-green-900">{formatNumber(selectedExecution.output_tokens)}</p>
                       </div>
                       <div className="bg-purple-50 p-4 rounded-lg">

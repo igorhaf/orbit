@@ -29,7 +29,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
   const isCurrentVersion = (versionId: string) => versionId === currentVersionId;
 
   const getVersionChangeSummary = (version: Prompt, previousVersion?: Prompt) => {
-    if (!previousVersion) return 'Versao inicial';
+    if (!previousVersion) return 'Versão inicial';
 
     const changes: string[] = [];
 
@@ -48,7 +48,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
 
     return changes.length > 0
       ? `Atualizado ${changes.join(', ')}`
-      : 'Nenhuma alteracao detectada';
+      : 'Nenhuma alteração detectada';
   };
 
   return (
@@ -57,7 +57,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <GitBranch className="w-5 h-5 text-gray-600" />
-            <CardTitle>Historico de Versoes</CardTitle>
+            <CardTitle>Histórico de Versoes</CardTitle>
           </div>
           <Badge variant="default">{sortedVersions.length} versoes</Badge>
         </div>
@@ -66,7 +66,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
         {sortedVersions.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <GitBranch className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>Nenhum historico de versao disponivel</p>
+            <p>Nenhum histórico de versão disponível</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -89,7 +89,7 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
                       {/* Version Header */}
                       <div className="flex items-center gap-2 mb-2">
                         <span className="font-semibold text-gray-900">
-                          Versao {version.version}
+                          Versão {version.version}
                         </span>
                         {isCurrent && (
                           <Badge variant="success">Atual</Badge>

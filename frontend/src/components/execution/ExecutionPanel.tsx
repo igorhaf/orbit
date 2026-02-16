@@ -127,7 +127,7 @@ export function ExecutionPanel({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
-            <CardTitle>Execucao de Tarefas</CardTitle>
+            <CardTitle>Execução de Tarefas</CardTitle>
             <p className="text-sm text-gray-600 mt-1">
               {isExecuting
                 ? 'Executando tarefas em tempo real...'
@@ -157,7 +157,7 @@ export function ExecutionPanel({
                 }
               />
             </svg>
-            {isExecuting ? 'Executando...' : 'Iniciar Execucao'}
+            {isExecuting ? 'Executando...' : 'Iniciar Execução'}
           </Button>
         </CardHeader>
         <CardContent>
@@ -185,7 +185,7 @@ export function ExecutionPanel({
         <CardContent>
           {tasks.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
-              <p>Nenhuma tarefa disponivel para execucao</p>
+              <p>Nenhuma tarefa disponível para execução</p>
               <p className="text-sm mt-2">Crie tarefas para comecar</p>
             </div>
           ) : (

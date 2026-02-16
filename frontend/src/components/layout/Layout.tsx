@@ -1,6 +1,6 @@
 /**
  * Main Layout Component
- * Combines Navbar and Sidebar with content area
+ * Combines Navbar and Sidebar with content área
  * PROMPT #250 - Collapsible sidebar with localStorage persistence
  */
 

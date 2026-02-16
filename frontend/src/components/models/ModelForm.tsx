@@ -30,9 +30,9 @@ const PROVIDERS = [
 
 const USAGE_TYPES = [
   { value: AIModelUsageType.INTERVIEW, label: 'Entrevistas' },
-  { value: AIModelUsageType.PROMPT_GENERATION, label: 'Geracao de Prompts' },
-  { value: AIModelUsageType.COMMIT_GENERATION, label: 'Geracao de Commits' },
-  { value: AIModelUsageType.TASK_EXECUTION, label: 'Execucao de Tarefas' },
+  { value: AIModelUsageType.PROMPT_GENERATION, label: 'Geração de Prompts' },
+  { value: AIModelUsageType.COMMIT_GENERATION, label: 'Geração de Commits' },
+  { value: AIModelUsageType.TASK_EXECUTION, label: 'Execução de Tarefas' },
   { value: AIModelUsageType.GENERAL, label: 'Geral' },
 ];
 
@@ -136,7 +136,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
   };
 
   const addConfigField = () => {
-    const key = prompt('Insira a chave de configuracao:');
+    const key = prompt('Insira a chave de configuração:');
     if (key && !formData.config[key]) {
       updateConfigField(key, '');
     }
@@ -148,7 +148,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
         {/* Basic Information */}
         <Card>
           <CardHeader>
-            <CardTitle>Informacoes Basicas</CardTitle>
+            <CardTitle>Informações Basicas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -162,7 +162,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
                 className="mt-1"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Um nome descritivo para esta configuracao de modelo
+                Um nome descritivo para esta configuração de modelo
               </p>
             </div>
 
@@ -240,7 +240,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Configuracao (Opcional)</CardTitle>
+              <CardTitle>Configuração (Opcional)</CardTitle>
               <Button
                 type="button"
                 variant="outline"
@@ -254,7 +254,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
           <CardContent>
             {Object.keys(formData.config).length === 0 ? (
               <p className="text-sm text-gray-500">
-                Sem campos de configuracao. Clique em "Adicionar Campo" para adicionar configuracoes personalizadas.
+                Sem campos de configuração. Clique em "Adicionar Campo" para adicionar configurações personalizadas.
               </p>
             ) : (
               <div className="space-y-3">

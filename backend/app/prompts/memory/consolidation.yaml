@@ -73,7 +73,7 @@ system_prompt: |
   - Este é o resultado FINAL - seja completo e detalhado
   - O título DEVE refletir o domínio de negócio
   - Responda APENAS em JSON válido
-  - IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro. Titulos, regras, features, entidades, contexto - TUDO em portugues. Mesmo que o codigo-fonte analisado esteja em ingles.
+  - IDIOMA OBRIGATÓRIO: Todo o conteúdo DEVE ser em português brasileiro. Títulos, regras, features, entidades, contexto - TUDO em português. Mesmo que o código-fonte analisado esteja em ingles.
 
 user_prompt: |
   ## INFORMAÇÕES DO PROJETO:
@@ -102,4 +102,4 @@ user_prompt: |
   5. Liste funcionalidades específicas e detalhadas
 
   Responda em JSON válido.
-  IDIOMA: Todo o conteudo DEVE ser em portugues brasileiro, sem excecao.
+  IDIOMA: Todo o conteúdo DEVE ser em português brasileiro, sem exceção.

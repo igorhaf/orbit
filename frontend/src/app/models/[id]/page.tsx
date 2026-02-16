@@ -110,7 +110,7 @@ export default function EditModelPage() {
                 Falha ao Carregar Modelo
               </h3>
               <p className="text-red-800 mb-4">
-                {error || 'Modelo nao encontrado'}
+                {error || 'Modelo não encontrado'}
               </p>
               <Link href="/models">
                 <Button variant="outline">
@@ -153,7 +153,7 @@ export default function EditModelPage() {
                 )}
               </div>
               <p className="text-gray-600 mt-1">
-                Editar configuracao do modelo IA
+                Editar configuração do modelo IA
               </p>
             </div>
           </div>
@@ -180,7 +180,7 @@ export default function EditModelPage() {
                 <ul className="text-sm text-yellow-800 space-y-1 list-disc list-inside">
                   <li>Alterar o tipo de uso pode afetar fluxos de trabalho existentes</li>
                   <li>Desativar este modelo impedira que ele seja usado</li>
-                  <li>Alteracoes na chave API entram em vigor imediatamente</li>
+                  <li>Alterações na chave API entram em vigor imediatamente</li>
                 </ul>
               </div>
             </div>
@@ -203,7 +203,7 @@ export default function EditModelPage() {
               Excluir Modelo
             </h3>
             <p className="text-gray-600 mb-4">
-              Tem certeza que deseja excluir &quot;{model?.name}&quot;? Esta acao nao pode ser desfeita.
+              Tem certeza que deseja excluir &quot;{model?.name}&quot;? Esta ação não pode ser desfeita.
             </p>
             <div className="flex justify-end gap-3">
               <Button

@@ -125,7 +125,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
   if (validTransitions.length === 0) {
     return (
       <div className="text-sm text-gray-500 italic">
-        Nenhuma transicao disponivel a partir do status atual
+        Nenhuma transicao disponível a partir do status atual
       </div>
     );
   }
@@ -181,7 +181,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
             <textarea
               value={transitionReason}
               onChange={(e) => setTransitionReason(e.target.value)}
-              placeholder="Por que voce esta fazendo esta mudanca?"
+              placeholder="Por que você esta fazendo esta mudanca?"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={2}
             />

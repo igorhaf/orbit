@@ -112,7 +112,7 @@ async def search_project_knowledge(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     try:
@@ -370,7 +370,7 @@ async def get_project_knowledge_stats(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     try:
@@ -436,7 +436,7 @@ async def list_business_rules(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     try:
@@ -506,7 +506,7 @@ async def add_business_rule(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     try:
@@ -557,7 +557,7 @@ async def delete_business_rule(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     try:
@@ -570,7 +570,7 @@ async def delete_business_rule(
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Regra de negocio {rule_id} nao encontrada"
+                detail=f"Regra de negocio {rule_id} não encontrada"
             )
 
     except HTTPException:
@@ -650,7 +650,7 @@ async def upload_document(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     # Validate file type
@@ -661,7 +661,7 @@ async def upload_document(
     if ext not in allowed_extensions:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Tipo de arquivo nao permitido. Permitidos: {', '.join(allowed_extensions)}"
+            detail=f"Tipo de arquivo não permitido. Permitidos: {', '.join(allowed_extensions)}"
         )
 
     try:
@@ -725,7 +725,7 @@ async def list_documents(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     try:
@@ -778,7 +778,7 @@ async def delete_document(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     try:
@@ -807,7 +807,7 @@ async def delete_document(
         else:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Documento '{filename}' nao encontrado"
+                detail=f"Documento '{filename}' não encontrado"
             )
 
     except HTTPException:
@@ -841,7 +841,7 @@ async def get_full_knowledge_stats(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     try:
@@ -931,7 +931,7 @@ async def sync_prompt_docs(db: Session = Depends(get_db)):
         logger.error(f"PROMPT doc sync failed: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Falha na sincronizacao de documentos PROMPT: {str(e)}"
+            detail=f"Falha na sincronização de documentos PROMPT: {str(e)}"
         )
 
 
@@ -954,13 +954,13 @@ async def sync_git_commits(
     if not project:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Projeto {project_id} nao encontrado"
+            detail=f"Projeto {project_id} não encontrado"
         )
 
     if not project.code_path:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Projeto nao tem code_path configurado"
+            detail="Projeto não tem code_path configurado"
         )
 
     try:
@@ -972,5 +972,5 @@ async def sync_git_commits(
         logger.error(f"Git commit sync failed for project {project_id}: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Falha na sincronizacao de commits git: {str(e)}"
+            detail=f"Falha na sincronização de commits git: {str(e)}"
         )

@@ -169,13 +169,13 @@ def approve_modification(
     task = db.query(Task).filter(Task.id == task_id).first()
 
     if not task:
-        raise ValueError(f"Tarefa {task_id} nao encontrada")
+        raise ValueError(f"Tarefa {task_id} não encontrada")
 
     if task.status != TaskStatus.BLOCKED:
-        raise ValueError(f"Tarefa {task_id} nao esta bloqueada (status: {task.status})")
+        raise ValueError(f"Tarefa {task_id} não esta bloqueada (status: {task.status})")
 
     if not task.pending_modification:
-        raise ValueError(f"Tarefa {task_id} nao possui modificacao pendente")
+        raise ValueError(f"Tarefa {task_id} não possui modificacao pendente")
 
     # Get proposed modification data
     modification = task.pending_modification
@@ -291,13 +291,13 @@ def reject_modification(
     task = db.query(Task).filter(Task.id == task_id).first()
 
     if not task:
-        raise ValueError(f"Tarefa {task_id} nao encontrada")
+        raise ValueError(f"Tarefa {task_id} não encontrada")
 
     if task.status != TaskStatus.BLOCKED:
-        raise ValueError(f"Tarefa {task_id} nao esta bloqueada (status: {task.status})")
+        raise ValueError(f"Tarefa {task_id} não esta bloqueada (status: {task.status})")
 
     if not task.pending_modification:
-        raise ValueError(f"Tarefa {task_id} nao possui modificacao pendente")
+        raise ValueError(f"Tarefa {task_id} não possui modificacao pendente")
 
     # Determine previous status (likely BACKLOG)
     previous_status = TaskStatus.BACKLOG

@@ -189,7 +189,7 @@ export default function SetupContextPage() {
     return (
       <Layout>
         <div className="text-center py-12">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Projeto Nao Encontrado</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Projeto Não Encontrado</h2>
           <Button variant="primary" onClick={() => router.push('/projects')}>
             Voltar para Projetos
           </Button>
@@ -290,7 +290,7 @@ export default function SetupContextPage() {
               <div className="space-y-6">
                 {/* Human-readable context */}
                 <div>
-                  <h4 className="font-semibold text-gray-900 mb-2">Descricao do Projeto</h4>
+                  <h4 className="font-semibold text-gray-900 mb-2">Descrição do Projeto</h4>
                   <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                     <div className="prose prose-sm max-w-none">
                       {contextHuman ? (
@@ -333,11 +333,11 @@ export default function SetupContextPage() {
                     <svg className="w-4 h-4 transform group-open:rotate-90 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
-                    Ver Contexto Semantico (para IA)
+                    Ver Contexto Semântico (para IA)
                   </summary>
                   <div className="mt-2 bg-gray-900 rounded-lg p-4 border border-gray-700">
                     <pre className="text-xs text-gray-300 whitespace-pre-wrap overflow-x-auto">
-                      {contextSemantic || 'Nenhum contexto semantico gerado'}
+                      {contextSemantic || 'Nenhum contexto semântico gerado'}
                     </pre>
                   </div>
                 </details>

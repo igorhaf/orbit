@@ -48,13 +48,13 @@ system_prompt: |
   5. Stories devem ser estimadas em story points (1-8, Fibonacci)
   6. Herde a prioridade do Epic (ajuste se necessário)
 
-  **GRADIENTE DE CONTEUDO - NIVEL STORY (Regras de Negocio Contextuais):**
-  A Story e o nivel de REGRAS DE NEGOCIO CONTEXTUAIS na hierarquia de cards.
-  - Descreva COMO a regra de negocio se aplica ao usuario final
+  **GRADIENTE DE CONTEÚDO - NÍVEL STORY (Regras de Negocio Contextuais):**
+  A Story e o nível de REGRAS DE NEGOCIO CONTEXTUAIS na hierarquia de cards.
+  - Descreva COMO a regra de negocio se aplica ao usuário final
   - Detalhe QUAIS restricoes a regra impoe ao comportamento do sistema
   - Explique QUAIS fluxos de negocio a regra governa
-  - O conteudo deve ser predominantemente sobre REGRAS e COMPORTAMENTO esperado
-  - Evite detalhes tecnicos de implementacao - isso e para os niveis Task e Subtask
+  - O conteúdo deve ser predominantemente sobre REGRAS e COMPORTAMENTO esperado
+  - Evite detalhes técnicos de implementação - isso e para os níveis Task e Subtask
 
   IMPORTANTE:
   - Uma Story representa uma funcionalidade para o usuário (pode ser completada em 1-2 semanas)
@@ -62,15 +62,15 @@ system_prompt: |
   - Use identificadores semânticos na description_markdown
   - Cada Story deve ter critérios de aceitação claros (AC1, AC2, AC3...)
   - Stories devem ser independentes (mínimas dependências)
-  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS - titulos, descricoes, criterios, TUDO em portugues. NUNCA escreva em ingles.
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS - títulos, descricoes, critérios, TUDO em português. NUNCA escreva em ingles.
+  - NUNCA use emojis ou símbolos especiais nas respostas
 
   **LIMITES OBRIGATORIOS:**
-  - O semantic_map deve ter NO MAXIMO 12 identificadores por story. Seja conciso e relevante.
-  - A description_markdown deve ter NO MAXIMO 10 paragrafos. Seja direto e objetivo.
+  - O semantic_map deve ter NO MÁXIMO 12 identificadores por story. Seja conciso e relevante.
+  - A description_markdown deve ter NO MÁXIMO 10 paragrafos. Seja direto e objetivo.
   - NUNCA invente regras de negocio. Use APENAS as regras fornecidas no contexto.
-  - Se nenhuma regra de negocio foi fornecida, NAO crie identificadores C ou RN.
-  - Acceptance criteria: maximo 5 por story.
+  - Se nenhuma regra de negocio foi fornecida, NÃO crie identificadores C ou RN.
+  - Acceptance criteria: máximo 5 por story.
 
   Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
   [

@@ -112,9 +112,9 @@ export default function ConsistencyPage() {
         <div className="mb-8">
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Relatorio de Consistencia</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Relatório de Consistencia</h1>
               <p className="text-gray-600 mt-2">
-                Problemas de qualidade e consistencia de codigo detectados no seu projeto
+                Problemas de qualidade e consistencia de código detectados no seu projeto
               </p>
             </div>
             <Button
@@ -122,7 +122,7 @@ export default function ConsistencyPage() {
               onClick={handleAnalyze}
               disabled={analyzing}
             >
-              {analyzing ? 'Analisando...' : 'Executar Analise'}
+              {analyzing ? 'Analisando...' : 'Executar Análise'}
             </Button>
           </div>
         </div>

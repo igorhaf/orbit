@@ -84,13 +84,13 @@ export default function DebugPage() {
       <div className="container mx-auto py-8 max-w-4xl">
         <h1 className="text-3xl font-bold mb-2">Console de Debug ORBIT</h1>
       <p className="text-gray-600 mb-8">
-        Use esta pagina para diagnosticar problemas de conexao entre frontend e backend
+        Use esta página para diagnosticar problemas de conexão entre frontend e backend
       </p>
 
       {/* Configuration */}
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Configuracao Atual</CardTitle>
+          <CardTitle>Configuração Atual</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex justify-between items-center">
@@ -133,7 +133,7 @@ export default function DebugPage() {
       {/* Tests */}
       <Card>
         <CardHeader>
-          <CardTitle>Testes de Conexao</CardTitle>
+          <CardTitle>Testes de Conexão</CardTitle>
         </CardHeader>
         <CardContent>
           <Button
@@ -167,7 +167,7 @@ export default function DebugPage() {
                   d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
                 />
               </svg>
-              <p>Clique em &quot;Executar Todos os Testes&quot; para iniciar diagnostico</p>
+              <p>Clique em &quot;Executar Todos os Testes&quot; para iniciar diagnóstico</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -254,7 +254,7 @@ export default function DebugPage() {
           {Object.keys(results).length > 0 && (
             <Card className="mt-6">
               <CardContent className="pt-6">
-                <h4 className="font-semibold mb-3">Diagnostico:</h4>
+                <h4 className="font-semibold mb-3">Diagnóstico:</h4>
                 {Object.values(results).every((r: any) => r.status === 'pass') ? (
                   <div className="flex items-start gap-3 p-3 bg-green-50 border border-green-200 rounded">
                     <svg
@@ -273,7 +273,7 @@ export default function DebugPage() {
                     <div>
                       <p className="font-semibold text-green-900">Todos os testes passaram!</p>
                       <p className="text-sm text-green-700 mt-1">
-                        Backend esta rodando e acessivel. Se voce ainda esta vendo
+                        Backend esta rodando e acessível. Se você ainda esta vendo
                         problemas de carregamento, verifique o console do navegador para erros.
                       </p>
                     </div>
@@ -294,12 +294,12 @@ export default function DebugPage() {
                       />
                     </svg>
                     <div>
-                      <p className="font-semibold text-red-900">Problemas de conexao detectados</p>
+                      <p className="font-semibold text-red-900">Problemas de conexão detectados</p>
                       <ul className="text-sm text-red-700 mt-2 space-y-1 list-disc list-inside">
                         {Object.values(results).some((r: any) =>
                           r.message.includes('fetch')
                         ) && (
-                          <li>Backend nao esta rodando ou nao esta acessivel</li>
+                          <li>Backend não esta rodando ou não esta acessível</li>
                         )}
                         {Object.values(results).some((r: any) =>
                           r.message.includes('CORS') || r.status === 'fail'

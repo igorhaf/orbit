@@ -125,7 +125,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
                 </Button>
                 <Button onClick={handleSave} disabled={saving}>
                   <Save className="w-4 h-4 mr-2" />
-                  {saving ? 'Salvando...' : 'Salvar Alteracoes'}
+                  {saving ? 'Salvando...' : 'Salvar Alterações'}
                 </Button>
               </>
             ) : (
@@ -175,7 +175,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       {/* Type and Reusable Settings */}
       <Card>
         <CardHeader>
-          <CardTitle>Configuracoes</CardTitle>
+          <CardTitle>Configurações</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div>
@@ -200,7 +200,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
             <Label htmlFor="is-reusable" className="cursor-pointer">
-              Marcar como reutilizavel (pode ser usado em varios projetos)
+              Marcar como reutilizavel (pode ser usado em vários projetos)
             </Label>
           </div>
         </CardContent>
@@ -254,7 +254,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
       {/* Content Editor */}
       <Card>
         <CardHeader>
-          <CardTitle>Conteudo</CardTitle>
+          <CardTitle>Conteúdo</CardTitle>
         </CardHeader>
         <CardContent>
           {editing ? (
@@ -262,7 +262,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               value={content}
               onChange={(e) => setContent(e.target.value)}
               className="w-full h-96 p-4 font-mono text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-              placeholder="Insira o conteudo do prompt..."
+              placeholder="Insira o conteúdo do prompt..."
             />
           ) : (
             <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg">

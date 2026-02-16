@@ -2,7 +2,7 @@
 Card-Focused AI Prompts - PROMPT #98
 Tailored AI prompts for different card motivation types.
 
-Each prompt focuses on relevant areas for bug/feature/design/documentation/etc card types.
+Each prompt focuses on relevant áreas for bug/feature/design/documentation/etc card types.
 Prompts are contextualized with motivation type, parent card (Epic/Story/Task), and previous answers.
 
 PROMPT #132 - Enhanced to include full hierarchy context (Epic → Story → Task → Subtask)
@@ -332,7 +332,7 @@ Se o card já possui conteúdo (descrição, critérios de aceitação, etc.), v
 - "Falta especificar o comportamento quando Y acontece. Como deve funcionar?"
 
 **Regras:**
-- ANALISE o conteúdo existente antes de perguntar
+- ANÁLISE o conteúdo existente antes de perguntar
 - Faça SUGESTÕES específicas quando apropriado
 - Após 4-6 interações, PROPONHA um resumo das melhorias sugeridas
 - Se o card estiver bem definido, CONFIRME e sugira próximos passos
@@ -454,7 +454,7 @@ Se o card já possui conteúdo (descrição, critérios de aceitação, etc.), v
 - "Falta especificar o que acontece com dados existentes..."
 
 **Regras:**
-- ANALISE o conteúdo existente antes de perguntar
+- ANÁLISE o conteúdo existente antes de perguntar
 - Faça SUGESTÕES específicas quando apropriado
 - Após 4-6 interações, PROPONHA um resumo das melhorias
 - Se estiver bem definido, CONFIRME e sugira próximos passos
@@ -501,7 +501,7 @@ Você está coletando informações para adicionar testes ou melhorar cobertura.
 1. **Cobertura Atual**: Qual é a cobertura atual? Que áreas faltam testes?
 2. **Gaps**: Que cenários críticos não têm testes?
 3. **Estratégia**: Que tipo de testes adicionar? (unit, integration, e2e)
-4. **Criterios**: Qual é o nível de cobertura alvo?
+4. **Critérios**: Qual é o nível de cobertura alvo?
 5. **Tipos de Teste**: Unit, integration, e2e, performance?
 6. **Dados de Teste**: Que dados/fixtures são necessários?
 7. **Automação**: Como serão executados? (CI/CD, manual)

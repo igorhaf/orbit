@@ -185,7 +185,7 @@ async def upload_project(
     if project_id:
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+            raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     # Create analysis record
     analysis_id = uuid4()
@@ -294,7 +294,7 @@ async def get_analysis(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analise nao encontrada")
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
 
     return analysis
 
@@ -325,18 +325,18 @@ async def generate_orchestrator(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analise nao encontrada")
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
 
     if analysis.status != "completed":
         raise HTTPException(
             status_code=400,
-            detail=f"Analise deve ser concluida primeiro (status atual: {analysis.status})"
+            detail=f"Análise deve ser concluida primeiro (status atual: {analysis.status})"
         )
 
     if analysis.orchestrator_generated:
         raise HTTPException(
             status_code=400,
-            detail="Orquestrador ja foi gerado para esta analise"
+            detail="Orquestrador ja foi gerado para esta análise"
         )
 
     # Generate orchestrator key
@@ -414,7 +414,7 @@ async def register_orchestrator(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analise nao encontrada")
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
 
     if not analysis.orchestrator_generated:
         raise HTTPException(
@@ -452,12 +452,12 @@ async def get_orchestrator_code(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analise nao encontrada")
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
 
     if not analysis.orchestrator_generated:
         raise HTTPException(
             status_code=404,
-            detail="Orquestrador nao gerado para esta analise"
+            detail="Orquestrador não gerado para esta análise"
         )
 
     # Extract class name from code
@@ -494,7 +494,7 @@ async def delete_analysis(
     ).first()
 
     if not analysis:
-        raise HTTPException(status_code=404, detail="Analise nao encontrada")
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
 
     # Unregister orchestrator if exists
     if analysis.orchestrator_key:

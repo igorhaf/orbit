@@ -38,9 +38,9 @@ MODELS = [
 ]
 
 # System prompt (same as continuous_rag_extract.yaml)
-SYSTEM_PROMPT = """Voce e um analista senior de software especializado em extrair regras de negocio de codigo-fonte.
+SYSTEM_PROMPT = """Você é um analista senior de software especializado em extrair regras de negocio de código-fonte.
 
-Sua tarefa e analisar UM arquivo de codigo e identificar TODAS as regras de negocio implicitas e explicitas.
+Sua tarefa e analisar UM arquivo de código e identificar TODAS as regras de negocio implicitas e explicitas.
 
 REGRAS DE NEGOCIO incluem:
 - Validacoes de dados (campos obrigatorios, formatos, limites)
@@ -53,13 +53,13 @@ REGRAS DE NEGOCIO incluem:
 - Integracoes com sistemas externos
 - Regras de UI/UX (campos visiveis, estados de tela)
 
-NAO sao regras de negocio:
-- Configuracoes tecnicas (ports, hosts, timeouts)
+NÃO são regras de negocio:
+- Configurações tecnicas (ports, hosts, timeouts)
 - Imports e dependencias
 - Logging e debugging
-- Codigo boilerplate/framework
+- Código boilerplate/framework
 
-Responda APENAS em JSON valido, sem markdown, sem explicacoes adicionais."""
+Responda APENAS em JSON válido, sem markdown, sem explicacoes adicionais."""
 
 USER_PROMPT_TEMPLATE = """Arquivo: {filename}
 Linguagem: PHP
@@ -74,17 +74,17 @@ Responda em JSON com este formato exato:
 {{
   "business_rules": [
     {{
-      "rule_text": "Descricao clara da regra de negocio em portugues",
+      "rule_text": "Descrição clara da regra de negocio em português",
       "rule_type": "domain|validation|constraint|workflow|permission|calculation",
       "confidence": "high|medium|low",
-      "source_context": "trecho relevante do codigo (max 100 chars)"
+      "source_context": "trecho relevante do código (max 100 chars)"
     }}
   ],
   "entities_found": ["Entidade1", "Entidade2"],
-  "file_purpose": "Breve descricao do proposito do arquivo (1 frase)"
+  "file_purpose": "Breve descrição do proposito do arquivo (1 frase)"
 }}
 
-Se nao houver regras de negocio, retorne: {{"business_rules": [], "entities_found": [], "file_purpose": "..."}}"""
+Se não houver regras de negocio, retorne: {{"business_rules": [], "entities_found": [], "file_purpose": "..."}}"""
 
 
 def load_test_file() -> str:

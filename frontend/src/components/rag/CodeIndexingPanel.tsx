@@ -41,7 +41,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
       if (job.status === 'completed') {
         const result = job.result;
         const message = [
-          'Codigo indexado com sucesso!',
+          'Código indexado com sucesso!',
           '',
           `Arquivos verificados: ${result?.files_scanned || 0}`,
           `Arquivos indexados: ${result?.files_indexed || 0}`,
@@ -55,11 +55,11 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
         showSuccess(message);
         onIndexComplete();
       } else if (job.status === 'failed') {
-        showError(`Falha ao indexar codigo: ${job.message}`);
+        showError(`Falha ao indexar código: ${job.message}`);
       }
     } catch (error: any) {
       console.error('Failed to index code:', error);
-      showError('Falha ao indexar codigo: ' + (error.message || 'Erro desconhecido'));
+      showError('Falha ao indexar código: ' + (error.message || 'Erro desconhecido'));
     } finally {
       setIsIndexing(false);
     }
@@ -74,7 +74,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
             <div className="p-2 bg-purple-100 rounded-lg">
               <Code className="w-5 h-5 text-purple-600" />
             </div>
-            <CardTitle>Indexacao de Codigo</CardTitle>
+            <CardTitle>Indexação de Código</CardTitle>
           </div>
           <div className="flex gap-2">
             <Button
@@ -91,7 +91,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
               ) : (
                 <>
                   <RefreshCw className="w-4 h-4 mr-2" />
-                  Indexar Codigo
+                  Indexar Código
                 </>
               )}
             </Button>
@@ -101,7 +101,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
               variant="secondary"
               size="sm"
             >
-              Forcar Re-indexacao
+              Forcar Re-indexação
             </Button>
           </div>
         </div>
@@ -121,7 +121,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
               <div className="flex items-center gap-3">
                 <Code className="w-5 h-5 text-gray-400" />
                 <div>
-                  <p className="text-sm text-gray-500">Tamanho Medio do Conteudo</p>
+                  <p className="text-sm text-gray-500">Tamanho Medio do Conteúdo</p>
                   <p className="text-xl font-semibold">
                     {Math.round(stats.avg_content_length)} caracteres
                   </p>
@@ -151,7 +151,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
             {indexJob?.result && (
               <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
                 <p className="text-sm font-medium text-green-800">
-                  Ultimos Resultados de Indexacao:
+                  Ultimos Resultados de Indexação:
                 </p>
                 <div className="mt-2 text-sm text-green-700 space-y-1">
                   <p>Arquivos verificados: {indexJob.result.files_scanned}</p>
@@ -175,8 +175,8 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
         ) : (
           <div className="text-center py-8 text-gray-500">
             <FileCode className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-            <p>Nenhum codigo indexado ainda</p>
-            <p className="text-sm">Clique em "Indexar Codigo" para comecar</p>
+            <p>Nenhum código indexado ainda</p>
+            <p className="text-sm">Clique em "Indexar Código" para comecar</p>
           </div>
         )}
       </CardContent>

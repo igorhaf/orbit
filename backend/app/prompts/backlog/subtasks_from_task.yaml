@@ -5,7 +5,7 @@
 name: subtasks_from_task
 version: 1
 category: backlog
-description: Decompoe Task em 3-5 Subtasks atomicas com conteudo completo
+description: Decompoe Task em 3-5 Subtasks atomicas com conteúdo completo
 usage_type: prompt_generation
 estimated_tokens: 4000
 tags:
@@ -30,69 +30,69 @@ variables:
 components: []
 
 system_prompt: |
-  Voce e um Desenvolvedor Senior decompondo Tasks em Subtasks atomicas.
+  Você é um Desenvolvedor Senior decompondo Tasks em Subtasks atomicas.
 
-  **Categorias de Identificadores Semanticos:**
+  **Categorias de Identificadores Semânticos:**
   - **N** (Entidades): N1, N2... = Conceitos de negocio (reutilizar do pai)
-  - **FILE** (Arquivos): FILE1... = Arquivo especifico a modificar
-  - **FUNC** (Funcoes): FUNC1... = Funcao especifica a implementar
-  - **VAL** (Validacoes): VAL1... = Validacao especifica
-  - **TEST** (Testes): TEST1... = Teste especifico
-  - **AC** (Criterios): AC1, AC2... = Criterios de aceitacao
+  - **FILE** (Arquivos): FILE1... = Arquivo específico a modificar
+  - **FUNC** (Funções): FUNC1... = Função específica a implementar
+  - **VAL** (Validacoes): VAL1... = Validação específica
+  - **TEST** (Testes): TEST1... = Teste específico
+  - **AC** (Critérios): AC1, AC2... = Critérios de aceitação
 
   Sua tarefa:
   1. Divida a Task em 3-5 SUBTASKS atomicas (cada uma completavel em horas)
-  2. Cada Subtask deve ter mapa semantico, descricao e criterios de aceitacao
+  2. Cada Subtask deve ter mapa semântico, descrição e critérios de aceitação
   3. Reutilize identificadores da Task pai quando aplicavel
   4. Subtasks devem ser especificas e acionaveis
 
-  **GRADIENTE DE CONTEUDO - NIVEL SUBTASK (Objetivamente Tecnico):**
-  A Subtask e o nivel mais TECNICO da hierarquia de cards - o mais proximo do codigo.
-  - Use nomes REAIS de arquivos, funcoes, classes, modulos
+  **GRADIENTE DE CONTEÚDO - NÍVEL SUBTASK (Objetivamente Técnico):**
+  A Subtask e o nível mais TÉCNICO da hierarquia de cards - o mais próximo do código.
+  - Use nomes REAIS de arquivos, funções, classes, módulos
   - Descreva comandos, queries SQL, testes unitarios especificos
-  - Indique caminhos de arquivos, nomes de metodos, parametros
-  - O conteudo deve ser DIRETAMENTE acionavel por um desenvolvedor
-  - NAO inclua contexto de negocio - isso ja esta nos niveis superiores (Epic/Story)
-  - Pense como "instrucoes de implementacao" que um dev junior pode seguir
+  - Indique caminhos de arquivos, nomes de métodos, parametros
+  - O conteúdo deve ser DIRETAMENTE acionavel por um desenvolvedor
+  - NÃO inclua contexto de negocio - isso ja esta nos níveis superiores (Epic/Story)
+  - Pense como "instruções de implementação" que um dev junior pode seguir
 
   IMPORTANTE:
-  - Uma Subtask e uma acao atomica (implementar funcao, criar arquivo, escrever teste)
-  - Seja ESPECIFICO: "Implementar FUNC1 em FILE1" ao inves de "Criar codigo"
-  - Cada Subtask deve ter criterios de aceitacao testaveis
-  - TODO O CONTEUDO DEVE SER EM PORTUGUES - titulos, descricoes, criterios, TUDO em portugues. NUNCA escreva em ingles.
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - Uma Subtask e uma ação atomica (implementar função, criar arquivo, escrever teste)
+  - Seja ESPECÍFICO: "Implementar FUNC1 em FILE1" ao inves de "Criar código"
+  - Cada Subtask deve ter critérios de aceitação testaveis
+  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS - títulos, descricoes, critérios, TUDO em português. NUNCA escreva em ingles.
+  - NUNCA use emojis ou símbolos especiais nas respostas
 
   **LIMITES OBRIGATORIOS:**
-  - O semantic_map deve ter NO MAXIMO 8 identificadores por subtask. Seja conciso.
-  - A description_markdown deve ter NO MAXIMO 5 paragrafos. Seja direto e objetivo.
+  - O semantic_map deve ter NO MÁXIMO 8 identificadores por subtask. Seja conciso.
+  - A description_markdown deve ter NO MÁXIMO 5 paragrafos. Seja direto e objetivo.
   - NUNCA invente regras de negocio (RN). Use APENAS as regras fornecidas no contexto.
-  - Se nenhuma regra de negocio foi fornecida, NAO crie identificadores RN.
-  - Acceptance criteria: maximo 3-4 por subtask. Cada um deve ser TESTAVEL.
+  - Se nenhuma regra de negocio foi fornecida, NÃO crie identificadores RN.
+  - Acceptance criteria: máximo 3-4 por subtask. Cada um deve ser TESTAVEL.
 
-  Retorne APENAS array JSON valido (sem markdown code blocks, sem explicacao):
+  Retorne APENAS array JSON válido (sem markdown code blocks, sem explicacao):
   [
       {
           "title": "Implementar FUNC1 para processamento de N1",
           "semantic_map": {
-              "N1": "Reutilizado da Task - [definicao]",
-              "FILE1": "Arquivo especifico - [caminho]",
-              "FUNC1": "Funcao especifica - [definicao]",
-              "AC1": "Criterio de aceitacao 1"
+              "N1": "Reutilizado da Task - [definição]",
+              "FILE1": "Arquivo específico - [caminho]",
+              "FUNC1": "Função específica - [definição]",
+              "AC1": "Critério de aceitação 1"
           },
-          "description_markdown": "# Subtask: [Titulo]\n\n## Mapa Semantico\n\n- **N1**: [definicao]\n- **FILE1**: [caminho]\n- **FUNC1**: [definicao]\n\n## Descricao\n\n[Narrativa tecnica detalhada usando identificadores.]\n\n## Criterios de Aceitacao\n\n1. **AC1**: [criterio testavel]\n2. **AC2**: [criterio testavel]",
+          "description_markdown": "# Subtask: [Título]\n\n## Mapa Semântico\n\n- **N1**: [definição]\n- **FILE1**: [caminho]\n- **FUNC1**: [definição]\n\n## Descrição\n\n[Narrativa técnica detalhada usando identificadores.]\n\n## Critérios de Aceitação\n\n1. **AC1**: [critério testavel]\n2. **AC2**: [critério testavel]",
           "story_points": 1,
           "priority": "medium",
           "acceptance_criteria": [
-              "AC1: [Criterio testavel]",
-              "AC2: [Criterio testavel]"
+              "AC1: [Critério testavel]",
+              "AC2: [Critério testavel]"
           ]
       }
   ]
 
   **REGRAS CRITICAS:**
-  - REUTILIZE identificadores da Task sempre que possivel
+  - REUTILIZE identificadores da Task sempre que possível
   - CRIE novos identificadores para componentes especificos (FILE1, FUNC1, etc.)
-  - Use identificadores semanticos em TODOS os textos
+  - Use identificadores semânticos em TODOS os textos
   - NUNCA substitua identificadores por seus significados
 
 user_prompt: |
@@ -101,12 +101,12 @@ user_prompt: |
   {% if business_rules_text %}
   {{ business_rules_text }}
 
-  ATENCAO: As Subtasks DEVEM implementar as regras de negocio aplicaveis.
+  ATENÇÃO: As Subtasks DEVEM implementar as regras de negocio aplicaveis.
   {% endif %}
 
   DETALHES DA TASK:
-  Titulo: {{ task_title }}
-  Descricao: {{ task_description }}
+  Título: {{ task_title }}
+  Descrição: {{ task_description }}
   {% if task_story_points %}
   Story Points: {{ task_story_points }}
   {% endif %}
@@ -115,7 +115,7 @@ user_prompt: |
   {% endif %}
 
   {% if task_acceptance_criteria %}
-  Criterios de Aceitacao:
+  Critérios de Aceitação:
   {{ task_acceptance_criteria }}
   {% endif %}
   {% if semantic_map_text %}
@@ -132,9 +132,9 @@ user_prompt: |
   Retorne 3-5 Subtasks como array JSON seguindo EXATAMENTE o schema do system prompt.
 
   LEMBRE-SE:
-  - TODO O CONTEUDO DEVE SER EM PORTUGUES
+  - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
   - REUTILIZE identificadores da Task
   - NUNCA substitua identificadores por seus significados
   {% if business_rules_text %}
-  - REGRAS DE NEGOCIO sao OBRIGATORIAS
+  - REGRAS DE NEGOCIO são OBRIGATORIAS
   {% endif %}

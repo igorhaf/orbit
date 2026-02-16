@@ -70,14 +70,14 @@ async def list_all_jobs(
             status_enum = JobStatus(status)
             query = query.filter(AsyncJob.status == status_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Status invalido: {status}")
+            raise HTTPException(status_code=400, detail=f"Status inválido: {status}")
 
     if job_type:
         try:
             job_type_enum = JobType(job_type)
             query = query.filter(AsyncJob.job_type == job_type_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Tipo de job invalido: {job_type}")
+            raise HTTPException(status_code=400, detail=f"Tipo de job inválido: {job_type}")
 
     if project_id:
         query = query.filter(AsyncJob.project_id == project_id)
@@ -357,7 +357,7 @@ async def get_job_status(
         logger.error(f"Job {job_id} not found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} nao encontrado"
+            detail=f"Job {job_id} não encontrado"
         )
 
     return job.to_dict()
@@ -381,7 +381,7 @@ async def get_job_logs(
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} nao encontrado"
+            detail=f"Job {job_id} não encontrado"
         )
 
     total = db.query(func.count(JobLogEntry.id)).filter(
@@ -420,14 +420,14 @@ async def delete_job(
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} nao encontrado"
+            detail=f"Job {job_id} não encontrado"
         )
 
     # Only allow deletion of completed/failed/cancelled jobs
     if job.status in (JobStatus.PENDING, JobStatus.RUNNING):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Nao e possivel excluir um job que ainda esta pendente ou em execucao. Cancele primeiro se necessario."
+            detail="Não é possível excluir um job que ainda esta pendente ou em execução. Cancele primeiro se necessário."
         )
 
     db.delete(job)
@@ -476,7 +476,7 @@ async def cancel_job(
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} nao encontrado"
+            detail=f"Job {job_id} não encontrado"
         )
 
     # Attempt to cancel
@@ -486,7 +486,7 @@ async def cancel_job(
         # Job couldn't be cancelled (already completed/failed/cancelled)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Nao e possivel cancelar job com status '{job.status.value}'. Apenas jobs pendentes ou em execucao podem ser cancelados."
+            detail=f"Não é possível cancelar job com status '{job.status.value}'. Apenas jobs pendentes ou em execução podem ser cancelados."
         )
 
     logger.info(f"Job {job_id} cancelled successfully")
@@ -619,17 +619,17 @@ async def bulk_delete_jobs(
         try:
             status_enum = JobStatus(status)
             if status_enum in [JobStatus.PENDING, JobStatus.RUNNING]:
-                raise HTTPException(status_code=400, detail="Nao e possivel excluir em massa jobs pendentes ou em execucao")
+                raise HTTPException(status_code=400, detail="Não é possível excluir em massa jobs pendentes ou em execução")
             query = query.filter(AsyncJob.status == status_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Status invalido: {status}")
+            raise HTTPException(status_code=400, detail=f"Status inválido: {status}")
 
     if job_type:
         try:
             job_type_enum = JobType(job_type)
             query = query.filter(AsyncJob.job_type == job_type_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Tipo de job invalido: {job_type}")
+            raise HTTPException(status_code=400, detail=f"Tipo de job inválido: {job_type}")
 
     if older_than_hours:
         cutoff = datetime.utcnow() - timedelta(hours=older_than_hours)

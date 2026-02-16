@@ -60,9 +60,9 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   };
 
   const defaultTitles = {
-    warning: 'Confirmacao',
-    danger: 'Atencao',
-    info: 'Confirmacao',
+    warning: 'Confirmação',
+    danger: 'Atenção',
+    info: 'Confirmação',
   };
 
   const confirmButtonVariant = type === 'danger' ? 'danger' : 'primary';

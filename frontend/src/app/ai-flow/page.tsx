@@ -66,11 +66,11 @@ import type {
 
 const USAGE_TYPE_OPTIONS = [
   { value: 'interview', label: 'Entrevista' },
-  { value: 'task_execution', label: 'Execucao de Tarefas' },
-  { value: 'prompt_generation', label: 'Geracao de Prompts' },
-  { value: 'commit_generation', label: 'Geracao de Commits' },
-  { value: 'pattern_discovery', label: 'Descoberta de Padroes' },
-  { value: 'memory', label: 'Memoria (Scan de Codebase)' },
+  { value: 'task_execution', label: 'Execução de Tarefas' },
+  { value: 'prompt_generation', label: 'Geração de Prompts' },
+  { value: 'commit_generation', label: 'Geração de Commits' },
+  { value: 'pattern_discovery', label: 'Descoberta de Padrões' },
+  { value: 'memory', label: 'Memória (Scan de Codebase)' },
   { value: 'general', label: 'Geral' },
 ];
 
@@ -314,7 +314,7 @@ function ModelNode({ data }: { data: any }) {
         {data.position_label && (
           <div className="mt-1.5 flex items-center gap-1.5">
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-              data.position_label === 'Primario'
+              data.position_label === 'Primário'
                 ? 'bg-blue-100 text-blue-700'
                 : 'bg-amber-100 text-amber-700'
             }`}>
@@ -382,13 +382,13 @@ function CacheNode({ data }: { data: any }) {
           <UtilityNodeIcon type="cache" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Cache'}</div>
-            <div className="text-xs text-violet-600">Verificacao de Cache Redis</div>
+            <div className="text-xs text-violet-600">Verificação de Cache Redis</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-violet-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
           <div className="text-[10px] text-gray-500">TTL: <span className="font-semibold text-gray-700">{data.config?.ttl_seconds || 86400}s</span></div>
-          <div className="text-[10px] text-gray-500">Nivel: <span className="font-semibold text-gray-700">{data.config?.cache_level || 'exact'}</span></div>
+          <div className="text-[10px] text-gray-500">Nível: <span className="font-semibold text-gray-700">{data.config?.cache_level || 'exact'}</span></div>
         </div>
       </div>
       {data.onRemove && (
@@ -411,7 +411,7 @@ function RAGContextNode({ data }: { data: any }) {
           <UtilityNodeIcon type="rag_context" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Contexto RAG'}</div>
-            <div className="text-xs text-cyan-600">Enriquecimento Semantico</div>
+            <div className="text-xs text-cyan-600">Enriquecimento Semântico</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-cyan-500' : 'bg-gray-400'}`} />
         </div>
@@ -474,7 +474,7 @@ function RouterNode({ data }: { data: any }) {
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-emerald-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="text-[10px] text-gray-500">Condicao: <span className="font-semibold text-gray-700">{data.config?.condition || 'complexity'}</span></div>
+          <div className="text-[10px] text-gray-500">Condição: <span className="font-semibold text-gray-700">{data.config?.condition || 'complexity'}</span></div>
           <div className="text-[10px] text-gray-500">Limiar: <span className="font-semibold text-gray-700">{data.config?.threshold || 'medium'}</span></div>
         </div>
       </div>
@@ -527,13 +527,13 @@ function ValidatorNode({ data }: { data: any }) {
           <UtilityNodeIcon type="validator" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Validador'}</div>
-            <div className="text-xs text-green-600">Validacao de Saida</div>
+            <div className="text-xs text-green-600">Validação de Saída</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-green-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
           <div className="text-[10px] text-gray-500">Tipo: <span className="font-semibold text-gray-700">{data.config?.validation_type || 'json'}</span></div>
-          <div className="text-[10px] text-gray-500">Retry: <span className="font-semibold text-gray-700">{data.config?.retry_on_fail !== false ? 'Sim' : 'Nao'}</span></div>
+          <div className="text-[10px] text-gray-500">Retry: <span className="font-semibold text-gray-700">{data.config?.retry_on_fail !== false ? 'Sim' : 'Não'}</span></div>
         </div>
       </div>
       {data.onRemove && (
@@ -556,7 +556,7 @@ function CostGuardNode({ data }: { data: any }) {
           <UtilityNodeIcon type="cost_guard" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Controle de Custo'}</div>
-            <div className="text-xs text-red-600">Limitador de Orcamento</div>
+            <div className="text-xs text-red-600">Limitador de Orçamento</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-red-500' : 'bg-gray-400'}`} />
         </div>
@@ -671,12 +671,12 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('ttl_seconds', parseInt(e.target.value) || 86400)}
             />
             <Select
-              label="Nivel de Cache"
+              label="Nível de Cache"
               value={config.cache_level ?? 'exact'}
               onChange={(e) => updateConfig('cache_level', e.target.value)}
               options={[
                 { value: 'exact', label: 'Correspondencia Exata' },
-                { value: 'semantic', label: 'Correspondencia Semantica' },
+                { value: 'semantic', label: 'Correspondencia Semântica' },
                 { value: 'template', label: 'Cache de Template' },
               ]}
             />
@@ -714,7 +714,7 @@ function EditUtilityNodeDialog({
               <label htmlFor="include-metadata" className="text-sm text-gray-700">Incluir Metadados</label>
             </div>
             <div className="border-t border-gray-200 pt-3 mt-3">
-              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">PROMPT #229 - Otimizacao RAG</p>
+              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">PROMPT #229 - Otimização RAG</p>
             </div>
             <Input
               label="Filtrar Tipos (separados por virgula)"
@@ -750,12 +750,12 @@ function EditUtilityNodeDialog({
               helperText="Comprimir contexto para este tamanho antes de enviar ao LLM."
             />
             <Select
-              label="Estrategia de Compressao"
+              label="Estratégia de Compressao"
               value={config.compression_strategy ?? 'key_sentences'}
               onChange={(e) => updateConfig('compression_strategy', e.target.value)}
               options={[
-                { value: 'key_sentences', label: 'Frases-Chave (pontuacao por posicao + tamanho)' },
-                { value: 'extractive', label: 'Extrativa (primeira + ultima + melhores do meio)' },
+                { value: 'key_sentences', label: 'Frases-Chave (pontuacao por posição + tamanho)' },
+                { value: 'extractive', label: 'Extrativa (primeira + última + melhores do meio)' },
                 { value: 'truncate', label: 'Truncar (corte simples no max de caracteres)' },
               ]}
             />
@@ -766,7 +766,7 @@ function EditUtilityNodeDialog({
               max="20"
               value={config.rerank_top_k ?? 3}
               onChange={(e) => updateConfig('rerank_top_k', parseInt(e.target.value) || 3)}
-              helperText="Apos a recuperacao inicial, manter apenas os K documentos mais relevantes."
+              helperText="Apos a recuperação inicial, manter apenas os K documentos mais relevantes."
             />
           </>
         );
@@ -781,7 +781,7 @@ function EditUtilityNodeDialog({
               options={[
                 { value: 'compress', label: 'Comprimir (truncar mensagens longas)' },
                 { value: 'summarize_context', label: 'Resumir Contexto (manter ultimos N)' },
-                { value: 'add_instructions', label: 'Adicionar Instrucoes' },
+                { value: 'add_instructions', label: 'Adicionar Instruções' },
               ]}
             />
             <Input
@@ -795,10 +795,10 @@ function EditUtilityNodeDialog({
               label="Sobrescrever Max Tokens"
               type="number"
               min="0"
-              placeholder="Deixe vazio para usar padrao do modelo"
+              placeholder="Deixe vazio para usar padrão do modelo"
               value={config.override_max_tokens ?? ''}
               onChange={(e) => updateConfig('override_max_tokens', e.target.value ? parseInt(e.target.value) : null)}
-              helperText="Limitado pelo max_tokens do modelo. Deixe vazio para nao sobrescrever."
+              helperText="Limitado pelo max_tokens do modelo. Deixe vazio para não sobrescrever."
             />
             <Input
               label="Sobrescrever Temperature"
@@ -806,10 +806,10 @@ function EditUtilityNodeDialog({
               min="0"
               max="2"
               step="0.1"
-              placeholder="Deixe vazio para usar padrao do modelo"
+              placeholder="Deixe vazio para usar padrão do modelo"
               value={config.override_temperature ?? ''}
               onChange={(e) => updateConfig('override_temperature', e.target.value ? parseFloat(e.target.value) : null)}
-              helperText="Valor livre (0.0-2.0). Deixe vazio para nao sobrescrever."
+              helperText="Valor livre (0.0-2.0). Deixe vazio para não sobrescrever."
             />
           </>
         );
@@ -818,7 +818,7 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Select
-              label="Condicao"
+              label="Condição"
               value={config.condition ?? 'complexity'}
               onChange={(e) => updateConfig('condition', e.target.value)}
               options={[
@@ -877,7 +877,7 @@ function EditUtilityNodeDialog({
               />
               <label htmlFor="skip-permanent-errors" className="text-sm text-gray-700">Ignorar Erros Permanentes (401, 404)</label>
             </div>
-            <p className="text-xs text-gray-500 ml-6">Quando ativado, erros permanentes nunca sao retentados - passa direto para o fallback da cadeia.</p>
+            <p className="text-xs text-gray-500 ml-6">Quando ativado, erros permanentes nunca são retentados - passa direto para o fallback da cadeia.</p>
           </>
         );
 
@@ -885,18 +885,18 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Select
-              label="Tipo de Validacao"
+              label="Tipo de Validação"
               value={config.validation_type ?? 'json'}
               onChange={(e) => updateConfig('validation_type', e.target.value)}
               options={[
                 { value: 'json', label: 'Parsing JSON' },
-                { value: 'length', label: 'Verificacao de Tamanho' },
+                { value: 'length', label: 'Verificação de Tamanho' },
                 { value: 'keywords', label: 'Palavras-chave Obrigatorias' },
-                { value: 'not_empty', label: 'Nao Vazio' },
+                { value: 'not_empty', label: 'Não Vazio' },
               ]}
             />
             <Input
-              label="Tamanho Maximo (0 = sem limite)"
+              label="Tamanho Máximo (0 = sem limite)"
               type="number"
               min="0"
               value={config.max_length ?? 0}
@@ -916,7 +916,7 @@ function EditUtilityNodeDialog({
                 checked={config.retry_on_fail ?? true}
                 onChange={(e) => updateConfig('retry_on_fail', e.target.checked)}
               />
-              <label htmlFor="retry-on-fail" className="text-sm text-gray-700">Retentar em Falha de Validacao</label>
+              <label htmlFor="retry-on-fail" className="text-sm text-gray-700">Retentar em Falha de Validação</label>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -928,7 +928,7 @@ function EditUtilityNodeDialog({
               />
               <label htmlFor="auto-repair-json" className="text-sm text-gray-700">Auto-reparar JSON</label>
             </div>
-            <p className="text-xs text-gray-500 ml-6">Tentar corrigir JSON malformado (virgulas finais, aspas simples, blocos de codigo) antes de acionar retry.</p>
+            <p className="text-xs text-gray-500 ml-6">Tentar corrigir JSON malformado (virgulas finais, aspas simples, blocos de código) antes de acionar retry.</p>
           </>
         );
 
@@ -936,7 +936,7 @@ function EditUtilityNodeDialog({
         return (
           <>
             <Input
-              label="Custo Maximo por Chamada ($)"
+              label="Custo Máximo por Chamada ($)"
               type="number"
               min="0.01"
               step="0.01"
@@ -944,7 +944,7 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('max_cost_per_call', parseFloat(e.target.value) || 0.10)}
             />
             <Input
-              label="Orcamento Diario ($)"
+              label="Orçamento Diario ($)"
               type="number"
               min="0"
               step="0.50"
@@ -952,7 +952,7 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('daily_budget', parseFloat(e.target.value) || 10.0)}
             />
             <Input
-              label="Orcamento Mensal ($)"
+              label="Orçamento Mensal ($)"
               type="number"
               min="0"
               step="1"
@@ -960,7 +960,7 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('monthly_budget', parseFloat(e.target.value) || 100.0)}
             />
             <Select
-              label="Acao ao Exceder"
+              label="Ação ao Exceder"
               value={config.action_on_exceed ?? 'block'}
               onChange={(e) => updateConfig('action_on_exceed', e.target.value)}
               options={[
@@ -989,7 +989,7 @@ function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('window_seconds', parseInt(e.target.value) || 60)}
             />
             <Select
-              label="Acao ao Exceder"
+              label="Ação ao Exceder"
               value={config.action_on_exceed ?? 'queue'}
               onChange={(e) => updateConfig('action_on_exceed', e.target.value)}
               options={[
@@ -1008,12 +1008,12 @@ function EditUtilityNodeDialog({
             min="1"
             value={config.timeout_seconds ?? 120}
             onChange={(e) => updateConfig('timeout_seconds', parseInt(e.target.value) || 120)}
-            helperText="Sobrescreve o timeout do Modelo de IA e o padrao das Configuracoes do Sistema."
+            helperText="Sobrescreve o timeout do Modelo de IA e o padrão das Configurações do Sistema."
           />
         );
 
       default:
-        return <p className="text-sm text-gray-500">Nenhuma configuracao editavel para este tipo de no.</p>;
+        return <p className="text-sm text-gray-500">Nenhuma configuração editavel para este tipo de no.</p>;
     }
   };
 
@@ -1049,7 +1049,7 @@ function EditUtilityNodeDialog({
 
         {/* Type-specific fields */}
         <div className="space-y-3">
-          <h4 className="text-sm font-semibold text-gray-900">Configuracao</h4>
+          <h4 className="text-sm font-semibold text-gray-900">Configuração</h4>
           {renderFields()}
         </div>
 
@@ -1125,7 +1125,7 @@ function EditModelNodeDialog({
 
         {/* Info */}
         <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-          Sobrescrever padroes do modelo para esta posicao especifica do fluxo. Deixe campos vazios para usar as configuracoes globais do modelo.
+          Sobrescrever padrões do modelo para esta posição específica do fluxo. Deixe campos vazios para usar as configurações globais do modelo.
         </div>
 
         {/* Override fields */}
@@ -1138,46 +1138,46 @@ function EditModelNodeDialog({
             min="0"
             max="2"
             step="0.1"
-            placeholder={`Padrao: ${model.config?.temperature ?? 'padrao do modelo'}`}
+            placeholder={`Padrão: ${model.config?.temperature ?? 'padrão do modelo'}`}
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
-            helperText="0.0 = deterministico, 2.0 = muito criativo. Vazio = usar padrao do modelo."
+            helperText="0.0 = deterministico, 2.0 = muito criativo. Vazio = usar padrão do modelo."
           />
 
           <Input
             label="Max Tokens"
             type="number"
             min="1"
-            placeholder={`Padrao: ${model.config?.max_tokens ?? 'padrao do modelo'}`}
+            placeholder={`Padrão: ${model.config?.max_tokens ?? 'padrão do modelo'}`}
             value={maxTokens}
             onChange={(e) => setMaxTokens(e.target.value)}
-            helperText="Tamanho maximo da resposta. Vazio = usar padrao do modelo."
+            helperText="Tamanho máximo da resposta. Vazio = usar padrão do modelo."
           />
 
           <Input
             label="Timeout (segundos)"
             type="number"
             min="1"
-            placeholder="Padrao: padrao do modelo/sistema"
+            placeholder="Padrão: padrão do modelo/sistema"
             value={timeoutSeconds}
             onChange={(e) => setTimeoutSeconds(e.target.value)}
-            helperText="Timeout da chamada API. Vazio = usar padrao do modelo."
+            helperText="Timeout da chamada API. Vazio = usar padrão do modelo."
           />
 
           <Input
             label="Max Requisicoes Simultaneas"
             type="number"
             min="1"
-            placeholder={`Padrao: ${model.max_concurrent_requests || 'Ilimitado'}`}
+            placeholder={`Padrão: ${model.max_concurrent_requests || 'Ilimitado'}`}
             value={maxConcurrent}
             onChange={(e) => setMaxConcurrent(e.target.value)}
-            helperText="Max chamadas API em paralelo. Vazio = usar padrao do modelo."
+            helperText="Max chamadas API em paralelo. Vazio = usar padrão do modelo."
           />
         </div>
 
         {/* Current global settings (read-only) */}
         <div className="space-y-1 pt-2 border-t border-gray-200">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase">Configuracoes Globais do Modelo</h4>
+          <h4 className="text-xs font-semibold text-gray-500 uppercase">Configurações Globais do Modelo</h4>
           <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
             <div>Max Tokens: <span className="font-medium text-gray-900">{model.config?.max_tokens || 'N/A'}</span></div>
             <div>Temperature: <span className="font-medium text-gray-900">{model.config?.temperature ?? 'N/A'}</span></div>
@@ -1387,7 +1387,7 @@ function buildFlowFromChain(
       type: 'modelNode',
       data: {
         ...model,
-        position_label: index === 0 ? 'Primario' : `Fallback ${index}`,
+        position_label: index === 0 ? 'Primário' : `Fallback ${index}`,
         onRemove: onRemove ? () => onRemove(model.id) : undefined,
         metrics: metricsMap?.[model.id],
         animation: animationsMap?.[nodeId] || 'idle',
@@ -1544,7 +1544,7 @@ function AnalyticsPanel({
   if (!analytics) {
     return (
       <div className="text-center py-6 text-sm text-gray-400">
-        Nenhum dado analitico disponivel. Execucoes da cadeia aparecerao aqui.
+        Nenhum dado analitico disponível. Execucoes da cadeia aparecerao aqui.
       </div>
     );
   }
@@ -1571,7 +1571,7 @@ function AnalyticsPanel({
           )}
         </div>
         <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-          <div className="text-xs text-purple-600 font-medium">Periodo</div>
+          <div className="text-xs text-purple-600 font-medium">Período</div>
           <div className="text-lg font-bold text-purple-900">{analytics.lookback_days}d</div>
         </div>
       </div>
@@ -1582,10 +1582,10 @@ function AnalyticsPanel({
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">Operacao</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600">Operação</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Execucoes</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Taxa de Fallback</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Sucesso Primario</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Sucesso Primário</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Prof. Media</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Custo Total</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Economia</th>
@@ -1656,7 +1656,7 @@ function OptimizeDialog({
     } catch (err: any) {
       const msg = err?.message || 'Falha ao otimizar';
       if (msg.includes('No chain configured')) {
-        setError('Nenhuma cadeia configurada para esta operacao. Adicione modelos a cadeia primeiro.');
+        setError('Nenhuma cadeia configurada para esta operação. Adicione modelos a cadeia primeiro.');
       } else {
         setError(msg);
       }
@@ -1689,7 +1689,7 @@ function OptimizeDialog({
         <div className="p-5 space-y-4">
           {/* Strategy selector */}
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Estrategia</label>
+            <label className="text-sm font-medium text-gray-700 block mb-2">Estratégia</label>
             <div className="grid grid-cols-2 gap-2">
               {[
                 { value: 'balanced', label: 'Equilibrado', desc: 'Melhor geral' },
@@ -2176,14 +2176,14 @@ export default function AIFlowPage() {
     if (template.utility_nodes && template.utility_nodes.length > 0) {
       setWorkingUtilityNodes(template.utility_nodes);
     }
-    showSuccess(`Template "${template.name}" aplicado (nao salvo)`);
+    showSuccess(`Template "${template.name}" aplicado (não salvo)`);
   };
 
   // PROMPT #124 - Apply optimize result
   const handleApplyOptimize = (order: string[]) => {
     setWorkingChain(order);
     setShowOptimize(false);
-    showSuccess('Ordem otimizada aplicada (nao salvo)');
+    showSuccess('Ordem otimizada aplicada (não salvo)');
   };
 
   if (loading) {
@@ -2212,7 +2212,7 @@ export default function AIFlowPage() {
         {/* Controls bar */}
         <div className="flex items-center justify-between px-3 py-2 bg-white border rounded-lg mb-3 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-700">Operacao:</label>
+            <label className="text-sm font-medium text-gray-700">Operação:</label>
             <select
               value={selectedUsageType}
               onChange={(e) => setSelectedUsageType(e.target.value)}
@@ -2232,7 +2232,7 @@ export default function AIFlowPage() {
               </span>
             )}
             {hasUnsavedChanges && (
-              <span className="text-xs text-amber-600 font-medium">Alteracoes nao salvas</span>
+              <span className="text-xs text-amber-600 font-medium">Alterações não salvas</span>
             )}
           </div>
 
@@ -2320,7 +2320,7 @@ export default function AIFlowPage() {
           <div className="w-72 border rounded-lg bg-white overflow-hidden flex flex-col flex-shrink-0">
             {/* PROMPT #124 - Quick Actions */}
             <div className="border-b p-3">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Acoes Rapidas</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Ações Rapidas</h3>
               <div className="space-y-1.5">
                 <button
                   onClick={() => setShowOptimize(true)}
@@ -2353,7 +2353,7 @@ export default function AIFlowPage() {
                     </button>
                   ))
                 ) : (
-                  <div className="text-[10px] text-gray-400 italic">Nenhum template para esta operacao</div>
+                  <div className="text-[10px] text-gray-400 italic">Nenhum template para esta operação</div>
                 )}
               </div>
             </div>
@@ -2408,7 +2408,7 @@ export default function AIFlowPage() {
               )}
             </div>
 
-            {/* Scrollable area: Available models + Flow Nodes */}
+            {/* Scrollable área: Available models + Flow Nodes */}
             <div className="flex-1 overflow-y-auto">
               {/* Available models */}
               <div className="border-b p-3">
@@ -2510,7 +2510,7 @@ export default function AIFlowPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span>
-            Os modelos sao testados em ordem. Se um falhar, o proximo e usado automaticamente.
+            Os modelos são testados em ordem. Se um falhar, o próximo e usado automaticamente.
             Adicione nos utilitarios (Cache, RAG, Validador, etc.) para pre/pos-processamento.
             Metricas atualizam a cada 30s.
             {' '}<a href="/ai-models" className="underline font-medium">Gerenciar modelos</a>

@@ -30,7 +30,7 @@ GENERATION_KEYWORDS: Set[str] = {
 ANALYSIS_KEYWORDS: Set[str] = {
     "analyze", "review", "evaluate", "assess", "examine", "inspect",
     "investigate", "diagnose", "audit", "compare", "benchmark",
-    "analise", "avalie", "examine", "revise", "investigue", "compare",
+    "análise", "avalie", "examine", "revise", "investigue", "compare",
     "diagnostique", "inspecione",
 }
 
@@ -61,14 +61,14 @@ REASONING_PATTERNS = [
     re.compile(r"\b(?:why|por\s?que|como|how\s+would|explain|compare|trade.?off|pros?\s+(?:and|e)\s+cons?)\b", re.IGNORECASE),
     re.compile(r"\b(?:what\s+(?:are|is)\s+the\s+(?:best|ideal|recommended|optimal))\b", re.IGNORECASE),
     re.compile(r"\b(?:qual\s+(?:a\s+melhor|o\s+melhor|seria))\b", re.IGNORECASE),
-    re.compile(r"\b(?:descreva|detalhe|explique|justifique|analise)\b", re.IGNORECASE),
+    re.compile(r"\b(?:descreva|detalhe|explique|justifique|análise)\b", re.IGNORECASE),
     re.compile(r"\b(?:describe|detail|justify|analyze|evaluate|assess)\b", re.IGNORECASE),
 ]
 
 MULTI_STEP_PATTERNS = [
     re.compile(r"\b(?:step\s+by\s+step|passo\s+a\s+passo)\b", re.IGNORECASE),
     re.compile(r"\b(?:first|then|next|finally|depois|primeiro|segundo|terceiro)\b", re.IGNORECASE),
-    re.compile(r"\b(?:multiple|several|various|diversos|varios|multiplos)\b", re.IGNORECASE),
+    re.compile(r"\b(?:multiple|several|various|diversos|vários|multiplos)\b", re.IGNORECASE),
 ]
 
 # Token estimates per complexity level

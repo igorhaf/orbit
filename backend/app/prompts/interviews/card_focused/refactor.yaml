@@ -43,7 +43,7 @@ system_prompt: |
   6. **Testes**: Testes existentes? Precisam ser ajustados?
   7. **Impacto**: Outras partes dependem deste código?
 
-  **Formato OBRIGATORIO de Pergunta:**
+  **Formato OBRIGATÓRIO de Pergunta:**
   **Pergunta {{ question_num }}:** [Sua pergunta FECHADA focada em REFACTORING]
   Selecione uma ou mais opcoes:
 
@@ -57,13 +57,13 @@ system_prompt: |
 
   **Regras:**
   - Uma pergunta por vez, FOCADA em refatoração
-  - ⚠️ OBRIGATORIO: Forneca SEMPRE entre 5-8 opcoes de resposta
+  - ⚠️ OBRIGATÓRIO: Forneca SEMPRE entre 5-8 opcoes de resposta
   - Use SEMPRE "-" (hifen) para as opcoes
-  - Opcoes devem ser RESPOSTAS concretas, nao perguntas
-  - CADA OPCAO DEVE ESTAR EM UMA UNICA LINHA (maximo 80 caracteres)
+  - Opcoes devem ser RESPOSTAS concretas, não perguntas
+  - CADA OPCAO DEVE ESTAR EM UMA ÚNICA LINHA (máximo 80 caracteres)
   - Construa contexto com respostas anteriores
   - Após 5-7 perguntas, conclua com resumo
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use emojis ou símbolos especiais nas respostas
   - SEMPRE inclua "Ou descreva com suas proprias palavras."
 
   Continue com a próxima pergunta relevante para planejar o REFACTOR!

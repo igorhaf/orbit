@@ -385,7 +385,7 @@ export default function ConsolePage() {
           <button
             onClick={copyLogs}
             className="px-2 py-1 text-xs rounded bg-gray-800 text-gray-400 hover:text-white"
-            title="Copiar para area de transferencia"
+            title="Copiar para área de transferencia"
           >
             copy
           </button>

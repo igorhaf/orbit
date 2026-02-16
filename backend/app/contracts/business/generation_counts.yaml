@@ -1,15 +1,15 @@
-# Contrato de Negocio: Contagens de Geracao de Cards
+# Contrato de Negocio: Contagens de Geração de Cards
 # PROMPT #256 - Externalizar Contratos Hardcoded
 #
 # Fontes: context_generator.py, watchdog.py, card_hierarchy.yaml
-# Quantos filhos sao gerados em cada nivel da hierarquia ao ativar um card.
-# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
+# Quantos filhos são gerados em cada nível da hierarquia ao ativar um card.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em português.
 
 name: generation_counts
 version: 1
 domain: business
 category: business
-description: Contagens padrao de geracao para cada nivel da hierarquia de cards
+description: Contagens padrão de geração para cada nível da hierarquia de cards
 usage_type: business_rule
 
 governance:
@@ -24,18 +24,18 @@ governance:
 
 tags:
   - regra-de-negocio
-  - geracao
+  - geração
   - hierarquia
   - contagens
 
 data:
-  # Contagem padrao de filhos por tipo de pai (usado na geracao de drafts)
+  # Contagem padrão de filhos por tipo de pai (usado na geração de drafts)
   default_children_count:
     epic: 15       # Epic gera 15-20 Stories
     story: 8       # Story gera 5-8 Tasks
     task: 5        # Task gera 3-5 Subtasks
 
-  # Faixas de geracao (para documentacao e instrucoes de prompt)
+  # Faixas de geração (para documentação e instruções de prompt)
   children_range:
     epic:
       min: 15

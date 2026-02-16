@@ -159,7 +159,7 @@ async def get_ai_execution(
     if not execution:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Execucao de IA com id '{execution_id}' nao encontrada"
+            detail=f"Execução de IA com id '{execution_id}' não encontrada"
         )
 
     return execution
@@ -180,7 +180,7 @@ async def delete_ai_execution(
     if not execution:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Execucao de IA com id '{execution_id}' nao encontrada"
+            detail=f"Execução de IA com id '{execution_id}' não encontrada"
         )
 
     db.delete(execution)

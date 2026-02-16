@@ -128,7 +128,7 @@ async def upsert_chain(
         if not model:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Modelo de IA '{model_id}' nao encontrado",
+                detail=f"Modelo de IA '{model_id}' não encontrado",
             )
 
     existing = db.query(AIFlowChain).filter(AIFlowChain.usage_type == usage_type).first()
@@ -701,8 +701,8 @@ async def get_chain_templates(
         templates.append(
             ChainTemplate(
                 id="nave",
-                name="Nave (Qualidade Maxima)",
-                description="Qualidade maxima, apenas Ollama local, tempo ilimitado, custo zero",
+                name="Nave (Qualidade Máxima)",
+                description="Qualidade máxima, apenas Ollama local, tempo ilimitado, custo zero",
                 chain=[str(m.id) for m in nave_sorted],
                 models=[model_info(m) for m in nave_sorted],
                 utility_nodes=TEMPLATE_UTILITY_NODES["nave"],
@@ -720,7 +720,7 @@ UTILITY_NODE_CATALOG = {
     "cache": {
         "type": "cache",
         "label": "Cache",
-        "description": "Verifica cache Redis antes de chamar modelos de IA. Retorna resposta em cache se disponivel.",
+        "description": "Verifica cache Redis antes de chamar modelos de IA. Retorna resposta em cache se disponível.",
         "icon": "database",
         "color": "#8b5cf6",
         "default_config": {
@@ -732,7 +732,7 @@ UTILITY_NODE_CATALOG = {
     "rag_context": {
         "type": "rag_context",
         "label": "RAG Context",
-        "description": "Enriquece o prompt com contexto semantico do RAG vector store. PROMPT #229: filtragem por tipo, deduplicacao, compressao de contexto e reranking.",
+        "description": "Enriquece o prompt com contexto semântico do RAG vector store. PROMPT #229: filtragem por tipo, deduplicacao, compressao de contexto e reranking.",
         "icon": "search",
         "color": "#06b6d4",
         "default_config": {
@@ -764,7 +764,7 @@ UTILITY_NODE_CATALOG = {
     "router": {
         "type": "router",
         "label": "Router",
-        "description": "Roteia requisicoes para diferentes cadeias de modelos baseado em condicoes (complexidade, custo, topico). PROMPT #231: le query_classification dos metadados para pular modelos baratos em consultas complexas.",
+        "description": "Roteia requisicoes para diferentes cadeias de modelos baseado em condições (complexidade, custo, tópico). PROMPT #231: le query_classification dos metadados para pular modelos baratos em consultas complexas.",
         "icon": "git-branch",
         "color": "#10b981",
         "default_config": {
@@ -780,7 +780,7 @@ UTILITY_NODE_CATALOG = {
     "retry": {
         "type": "retry",
         "label": "Retry",
-        "description": "Tenta novamente o mesmo modelo com backoff exponencial em falhas transitorias. Pulo inteligente: erros permanentes (401, 404) nunca sao tentados novamente.",
+        "description": "Tenta novamente o mesmo modelo com backoff exponencial em falhas transitorias. Pulo inteligente: erros permanentes (401, 404) nunca são tentados novamente.",
         "icon": "refresh-cw",
         "color": "#3b82f6",
         "default_config": {
@@ -794,7 +794,7 @@ UTILITY_NODE_CATALOG = {
     "validator": {
         "type": "validator",
         "label": "Validator",
-        "description": "Valida saida de IA contra regras (JSON schema, comprimento, palavras-chave, formato). Auto-reparo: tenta corrigir JSON antes de acionar retry. PROMPT #231: tipo interview_score com pontuacao estrutural 0.0-1.0.",
+        "description": "Válida saída de IA contra regras (JSON schema, comprimento, palavras-chave, formato). Auto-reparo: tenta corrigir JSON antes de acionar retry. PROMPT #231: tipo interview_score com pontuacao estrutural 0.0-1.0.",
         "icon": "check-circle",
         "color": "#22c55e",
         "default_config": {
@@ -810,7 +810,7 @@ UTILITY_NODE_CATALOG = {
     "cost_guard": {
         "type": "cost_guard",
         "label": "Cost Guard",
-        "description": "Bloqueia requisicoes que excederiam um limite de orcamento (por chamada ou cumulativo).",
+        "description": "Bloqueia requisicoes que excederiam um limite de orçamento (por chamada ou cumulativo).",
         "icon": "shield",
         "color": "#ef4444",
         "default_config": {
@@ -823,7 +823,7 @@ UTILITY_NODE_CATALOG = {
     "rate_limiter": {
         "type": "rate_limiter",
         "label": "Rate Limiter",
-        "description": "Limita o numero de requisicoes por janela de tempo usando um algoritmo de janela deslizante.",
+        "description": "Limita o número de requisicoes por janela de tempo usando um algoritmo de janela deslizante.",
         "icon": "clock",
         "color": "#ec4899",
         "default_config": {
@@ -835,7 +835,7 @@ UTILITY_NODE_CATALOG = {
     "timeout": {
         "type": "timeout",
         "label": "Timeout",
-        "description": "Define timeout de chamada de API em segundos. Sobrescreve padroes do modelo e do sistema. Hierarquia: No Timeout → AI Model timeout → System Settings padrao.",
+        "description": "Define timeout de chamada de API em segundos. Sobrescreve padrões do modelo e do sistema. Hierarquia: No Timeout → AI Model timeout → System Settings padrão.",
         "icon": "timer",
         "color": "#f97316",
         "default_config": {
@@ -845,7 +845,7 @@ UTILITY_NODE_CATALOG = {
     "prompt_queue": {
         "type": "prompt_queue",
         "label": "Prompt Queue",
-        "description": "Fila de prioridade de orquestracao. Ordena prompts por hierarquia, prioridade, dependencias e idade. Garante que cards pais executem antes dos filhos para consistencia de codigo.",
+        "description": "Fila de prioridade de orquestracao. Ordena prompts por hierarquia, prioridade, dependencias e idade. Garante que cards pais executem antes dos filhos para consistencia de código.",
         "icon": "list-ordered",
         "color": "#8b5cf6",
         "default_config": {

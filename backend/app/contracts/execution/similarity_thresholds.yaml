@@ -1,16 +1,16 @@
-# Contrato de Execucao: Limiares de Similaridade
+# Contrato de Execução: Limiares de Similaridade
 # PROMPT #256 - Externalizar Contratos Hardcoded
 #
 # Fontes: ai_orchestrator.py, similarity_detector.py, context_generator.py,
 #          continuous_rag_service.py, interview_handlers.py, backlog_generator.py
-# Limiares de similaridade semantica para diferentes operacoes.
-# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
+# Limiares de similaridade semântica para diferentes operações.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em português.
 
 name: similarity_thresholds
 version: 1
 domain: business
 category: execution
-description: Limiares de similaridade para deduplicacao, cache e pontuacao de relevancia
+description: Limiares de similaridade para deduplicacao, cache e pontuação de relevancia
 usage_type: business_rule
 
 governance:
@@ -24,17 +24,17 @@ governance:
       changes: "Externalizado de 9+ arquivos com limiares de similaridade hardcoded"
 
 tags:
-  - execucao
+  - execução
   - similaridade
   - limiar
   - deduplicacao
 
 data:
   thresholds:
-    # Cache: correspondencia semantica exata (ai_orchestrator.py)
+    # Cache: correspondencia semântica exata (ai_orchestrator.py)
     exact_match_cache: 0.95
 
-    # Deteccao de modificacao: >90% = modificar existente (similarity_detector.py)
+    # Detecção de modificacao: >90% = modificar existente (similarity_detector.py)
     modification_detection: 0.90
 
     # Deduplicacao de cards: evitar criar cards duplicados (context_generator.py, watchdog.py)
@@ -46,7 +46,7 @@ data:
     # Deduplicacao de backlog/entrevista (backlog_generator.py, interview_handlers.py)
     backlog_deduplication: 0.60
 
-    # Busca geral em memoria (codebase_memory.py)
+    # Busca geral em memória (codebase_memory.py)
     memory_search: 0.50
 
     # Sem filtragem - obter todos os resultados (interview_handlers.py)

@@ -105,7 +105,7 @@ export function ModificationApprovalModal({
               Modificacao Sugerida pela IA
             </h3>
             <p className="text-sm text-gray-600 mt-1">
-              Revise as alteracoes e aprove ou rejeite a modificacao
+              Revise as alterações e aprove ou rejeite a modificacao
             </p>
           </div>
           <SimilarityBadge score={modification.similarity_score} className="text-base px-3 py-1.5" />
@@ -126,12 +126,12 @@ export function ModificationApprovalModal({
 
         {/* Diff view */}
         <div className="space-y-4">
-          {/* Titulo diff */}
-          {renderDiff('Titulo', modification.original_title || task.title, modification.title)}
+          {/* Título diff */}
+          {renderDiff('Título', modification.original_title || task.title, modification.title)}
 
-          {/* Descricao diff */}
+          {/* Descrição diff */}
           {renderDiff(
-            'Descricao',
+            'Descrição',
             modification.original_description || task.description || undefined,
             modification.description
           )}
@@ -155,7 +155,7 @@ export function ModificationApprovalModal({
           {/* Acceptance criteria diff (if exists) */}
           {modification.acceptance_criteria && modification.acceptance_criteria.length > 0 && (
             <div className="mb-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">Criterios de Aceitacao</h4>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Critérios de Aceitação</h4>
               <div className="grid grid-cols-2 gap-4">
                 {/* Original */}
                 <div className="border rounded-lg p-3 bg-red-50 border-red-200">

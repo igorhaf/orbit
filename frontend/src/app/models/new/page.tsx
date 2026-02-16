@@ -66,13 +66,13 @@ export default function NewModelPage() {
               <div className="text-blue-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg></div>
               <div className="flex-1">
                 <h3 className="font-semibold text-blue-900 mb-1">
-                  Dicas de Configuracao
+                  Dicas de Configuração
                 </h3>
                 <ul className="text-sm text-blue-800 space-y-1 list-disc list-inside">
                   <li>Escolha o tipo de uso correto para performance otima</li>
                   <li>Use Claude para entrevistas e raciocinio complexo</li>
-                  <li>Use GPT-4 Turbo para execucao rapida de tarefas</li>
-                  <li>Mantenha as chaves API seguras - elas sao criptografadas em repouso</li>
+                  <li>Use GPT-4 Turbo para execução rápida de tarefas</li>
+                  <li>Mantenha as chaves API seguras - elas são criptografadas em repouso</li>
                 </ul>
               </div>
             </div>

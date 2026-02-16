@@ -2,7 +2,7 @@
  * Contracts Page
  * Full CRUD for YAML contract management
  *
- * PROMPT #104 - Contracts Area (Initial)
+ * PROMPT #104 - Contracts Área (Initial)
  * PROMPT #114 - Fix YAML display and add editing
  * PROMPT #164 - Full CRUD with domain/status/version support
  */
@@ -104,7 +104,7 @@ const DEFAULT_CONTRACT_YAML = `name: new_contract
 version: 1
 domain: generation
 category: generation
-description: "Descricao do contrato"
+description: "Descrição do contrato"
 usage_type: general
 
 governance:
@@ -115,7 +115,7 @@ governance:
     - version: 1
       date: "${new Date().toISOString().split('T')[0]}"
       author: "Autor"
-      changes: "Versao inicial"
+      changes: "Versão inicial"
 
 variables:
   required: []
@@ -125,7 +125,7 @@ system_prompt: |
   Seu prompt de sistema aqui...
 
 user_prompt: |
-  Seu prompt de usuario aqui...
+  Seu prompt de usuário aqui...
 
 tags:
   - tag1
@@ -236,7 +236,7 @@ export default function ContractsPage() {
       console.error('Failed to load contract content:', error);
       setSelectedContract({
         ...contract,
-        content: '# Erro ao carregar conteudo YAML'
+        content: '# Erro ao carregar conteúdo YAML'
       });
     } finally {
       setLoadingYaml(false);
@@ -327,7 +327,7 @@ export default function ContractsPage() {
       );
 
       if (!response.ok) {
-        throw new Error('Falha ao restaurar versao');
+        throw new Error('Falha ao restaurar versão');
       }
 
       // Reload contract content
@@ -603,16 +603,16 @@ export default function ContractsPage() {
                         Nome
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Descricao
+                        Descrição
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Versao
+                        Versão
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Acoes
+                        Ações
                       </th>
                     </tr>
                   </thead>
@@ -755,7 +755,7 @@ export default function ContractsPage() {
                 }`}
               >
                 <Eye className="w-4 h-4 inline mr-2" />
-                Conteudo
+                Conteúdo
               </button>
               <button
                 onClick={() => handleTabChange('versions')}
@@ -777,7 +777,7 @@ export default function ContractsPage() {
                 }`}
               >
                 <Map className="w-4 h-4 inline mr-2" />
-                Mapa Semantico
+                Mapa Semântico
               </button>
             </div>
 
@@ -830,7 +830,7 @@ export default function ContractsPage() {
                   ) : versions.length === 0 ? (
                     <div className="text-center py-12 text-gray-500">
                       <History className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                      <p>Nenhuma versao de backup disponivel</p>
+                      <p>Nenhuma versão de backup disponível</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -868,7 +868,7 @@ export default function ContractsPage() {
                       return (
                         <div className="text-center py-12 text-gray-500">
                           <Map className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                          <p>Nenhum mapa semantico definido neste contrato</p>
+                          <p>Nenhum mapa semântico definido neste contrato</p>
                         </div>
                       );
                     }
@@ -886,12 +886,12 @@ export default function ContractsPage() {
                       'P': 'Processos (P)',
                       'E': 'Endpoints (E)',
                       'D': 'Dados (D)',
-                      'S': 'Servicos (S)',
+                      'S': 'Serviços (S)',
                       'C': 'Restricoes (C)',
-                      'AC': 'Criterios de Aceitacao (AC)',
+                      'AC': 'Critérios de Aceitação (AC)',
                       'R': 'Requisitos (R)',
                       'F': 'Funcionalidades (F)',
-                      'M': 'Modulos (M)',
+                      'M': 'Módulos (M)',
                     };
 
                     return (
@@ -946,7 +946,7 @@ export default function ContractsPage() {
                   onChange={(e) => setNewContractPath(e.target.value)}
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Formato: categoria/nome (sem extensao .yaml)
+                  Formato: categoria/nome (sem extensão .yaml)
                 </p>
               </div>
 
@@ -973,7 +973,7 @@ export default function ContractsPage() {
                       <AlertCircle className="w-5 h-5 text-red-600" />
                     )}
                     <span className={`font-medium ${validation.valid ? 'text-green-800' : 'text-red-800'}`}>
-                      {validation.valid ? 'YAML Valido' : 'YAML Invalido'}
+                      {validation.valid ? 'YAML Válido' : 'YAML Inválido'}
                     </span>
                   </div>
                   {validation.errors.length > 0 && (
@@ -1020,13 +1020,13 @@ export default function ContractsPage() {
               </div>
               <div>
                 <h3 className="text-lg font-semibold text-gray-900">Excluir Contrato</h3>
-                <p className="text-sm text-gray-500">Esta acao nao pode ser desfeita</p>
+                <p className="text-sm text-gray-500">Esta ação não pode ser desfeita</p>
               </div>
             </div>
 
             <p className="text-gray-700 mb-6">
               Tem certeza que deseja excluir <strong>{contractToDelete.name}</strong>?
-              Um backup sera criado antes da exclusao.
+              Um backup sera criado antes da exclusão.
             </p>
 
             <div className="flex justify-end gap-2">

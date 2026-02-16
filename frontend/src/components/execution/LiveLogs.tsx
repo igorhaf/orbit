@@ -47,7 +47,7 @@ export function LiveLogs({ logs }: Props) {
         {logs.length === 0 ? (
           <div className="text-center py-8 text-gray-500">
             <p>Sem logs ainda</p>
-            <p className="text-sm mt-1">Logs aparecerao aqui durante a execucao</p>
+            <p className="text-sm mt-1">Logs aparecerao aqui durante a execução</p>
           </div>
         ) : (
           <div className="bg-gray-900 rounded-lg p-4 font-mono text-sm overflow-auto max-h-96">

@@ -138,7 +138,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
 
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path or not project.initial_scan_complete:
-            jm.complete_job(job_id, {"skipped": True, "reason": "Projeto nao esta pronto"})
+            jm.complete_job(job_id, {"skipped": True, "reason": "Projeto não esta pronto"})
             return  # Don't re-queue if project is gone or invalid
 
         code_path = project.code_path
@@ -146,7 +146,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
         logger.info(f"Watchdog cycle started for '{project_name}'")
 
         # --- Step 1: RAG file scan ---
-        jm.update_progress(job_id, 10.0, "Escaneando arquivos por alteracoes...")
+        jm.update_progress(job_id, 10.0, "Escaneando arquivos por alterações...")
         rag_result = {}
         try:
             from app.services.continuous_rag_service import ContinuousRAGService
@@ -168,7 +168,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             logger.warning(f"Git sync failed (non-blocking): {e}")
 
         # --- Step 3: Pattern discovery + spec sync ---
-        jm.update_progress(job_id, 50.0, "Descobrindo padroes de codigo...")
+        jm.update_progress(job_id, 50.0, "Descobrindo padrões de código...")
         try:
             from app.services.pattern_discovery import PatternDiscoveryService
             from app.api.routes.projects import _effective_max_patterns
@@ -316,14 +316,14 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
 
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path or not project.initial_scan_complete:
-            jm.complete_job(job_id, {"skipped": True, "reason": "Projeto nao esta pronto"})
+            jm.complete_job(job_id, {"skipped": True, "reason": "Projeto não esta pronto"})
             return
 
         project_name = project.name or str(project_id)[:8]
         logger.info(f"Batch processing cycle for '{project_name}' (batch_size={batch_size})")
 
         # --- Step 1: Process next batch of pending files ---
-        jm.update_progress(job_id, 10.0, f"Processando proximo lote ({batch_size} arquivos max)...")
+        jm.update_progress(job_id, 10.0, f"Processando próximo lote ({batch_size} arquivos max)...")
         process_result = {}
         try:
             from app.services.continuous_rag_service import ContinuousRAGService
@@ -569,7 +569,7 @@ def _classify_rule_domain(source_file: str):
     _DOMAIN_MAP = [
         ("Aluno/", "Aluno", "aluno"), ("aluno/", "Aluno", "aluno"),
         ("Aulas/", "Aulas", "aulas"), ("aulas/", "Aulas", "aulas"),
-        ("Auth/", "Autenticacao", "autenticacao"), ("auth/", "Autenticacao", "autenticacao"),
+        ("Auth/", "Autenticação", "autenticação"), ("auth/", "Autenticação", "autenticação"),
         ("Categorias/", "Categorias", "categorias"), ("categorias/", "Categorias", "categorias"),
         ("Cursos/", "Cursos", "cursos"), ("cursos/", "Cursos", "cursos"),
         ("Instrutor/", "Instrutor", "instrutor"), ("instrutor/", "Instrutor", "instrutor"),
@@ -581,17 +581,17 @@ def _classify_rule_domain(source_file: str):
         ("certificado", "Certificados", "certificados"), ("Certificado", "Certificados", "certificados"),
         ("Certificate", "Certificados", "certificados"),
         ("mensagens/", "Mensagens", "mensagens"),
-        ("notificacoes/", "Notificacoes", "notificacoes"), ("Notification", "Notificacoes", "notificacoes"),
+        ("notificações/", "Notificações", "notificações"), ("Notification", "Notificações", "notificações"),
         ("checkout", "Pagamentos", "pagamentos"),
         ("Enrollment", "Inscricoes", "inscricoes"), ("inscricao", "Inscricoes", "inscricoes"),
         ("inscricoes", "Inscricoes", "inscricoes"),
         ("ajuda/", "Ajuda", "ajuda"),
         ("Models/", "Modelos", "modelos"), ("Observers/", "Modelos", "modelos"),
         ("Policies/", "Modelos", "modelos"),
-        ("Requests/", "Validacao", "validacao"),
-        ("config/", "Configuracao", "configuracao"), ("bootstrap/", "Configuracao", "configuracao"),
-        ("docker-", "Configuracao", "configuracao"), ("composer.", "Configuracao", "configuracao"),
-        ("package.", "Configuracao", "configuracao"),
+        ("Requests/", "Validação", "validação"),
+        ("config/", "Configuração", "configuração"), ("bootstrap/", "Configuração", "configuração"),
+        ("docker-", "Configuração", "configuração"), ("composer.", "Configuração", "configuração"),
+        ("package.", "Configuração", "configuração"),
         ("routes/", "Rotas", "rotas"),
     ]
     if not source_file:

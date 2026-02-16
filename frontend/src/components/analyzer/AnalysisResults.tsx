@@ -46,7 +46,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
       case 'uploaded':
         return (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <p className="text-gray-700">Arquivo enviado com sucesso. Aguardando inicio da analise...</p>
+            <p className="text-gray-700">Arquivo enviado com sucesso. Aguardando início da análise...</p>
           </div>
         );
       case 'analyzing':
@@ -64,7 +64,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
       case 'failed':
         return (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-            <p className="text-red-700 font-medium">Analise falhou</p>
+            <p className="text-red-700 font-medium">Análise falhou</p>
             <p className="text-sm text-red-600 mt-1">
               Tente enviar novamente ou entre em contato com o suporte se o problema persistir.
             </p>
@@ -79,7 +79,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Status da Analise</CardTitle>
+          <CardTitle>Status da Análise</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
@@ -151,7 +151,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
             { id: 'overview', label: 'Visao Geral' },
             { id: 'structure', label: 'Estrutura de Arquivos' },
             { id: 'conventions', label: 'Convencoes' },
-            { id: 'patterns', label: 'Padroes' },
+            { id: 'patterns', label: 'Padrões' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -174,7 +174,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
           {activeTab === 'overview' && (
             <div className="space-y-6">
               <div>
-                <h3 className="font-semibold text-gray-900 mb-3">Resumo da Analise</h3>
+                <h3 className="font-semibold text-gray-900 mb-3">Resumo da Análise</h3>
                 <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Stack Detectada:</span>
@@ -212,14 +212,14 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
                   <pre>{JSON.stringify(analysis.file_structure, null, 2)}</pre>
                 </div>
               ) : (
-                <p className="text-gray-500">Nenhum dado de estrutura de arquivo disponivel</p>
+                <p className="text-gray-500">Nenhum dado de estrutura de arquivo disponível</p>
               )}
             </div>
           )}
 
           {activeTab === 'conventions' && (
             <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Convencoes de Codigo</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Convencoes de Código</h3>
               {analysis.conventions ? (
                 <div className="space-y-4">
                   {Object.entries(analysis.conventions).map(([key, value]) => (
@@ -234,14 +234,14 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500">Nenhum dado de convencoes disponivel</p>
+                <p className="text-gray-500">Nenhum dado de convencoes disponível</p>
               )}
             </div>
           )}
 
           {activeTab === 'patterns' && (
             <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Padroes de Codigo</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Padrões de Código</h3>
               {analysis.patterns ? (
                 <div className="space-y-4">
                   {Object.entries(analysis.patterns).map(([key, value]) => (
@@ -256,7 +256,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500">Nenhum dado de padroes disponivel</p>
+                <p className="text-gray-500">Nenhum dado de padrões disponível</p>
               )}
             </div>
           )}

@@ -31,12 +31,12 @@ export default function TestDragPage() {
 
       <div className="mb-4 p-4 bg-blue-50 rounded">
         <p className="text-sm">
-          <strong>Instrucoes:</strong>
+          <strong>Instruções:</strong>
         </p>
         <ol className="text-sm list-decimal list-inside space-y-1 mt-2">
           <li>Passe o mouse sobre um item - cursor deve mudar para "grab"</li>
           <li>Clique e segure - cursor deve mudar para "grabbing"</li>
-          <li>Arraste para uma nova posicao</li>
+          <li>Arraste para uma nova posição</li>
           <li>Solte - o item deve mover</li>
           <li>Verifique o console para erros</li>
         </ol>
@@ -82,7 +82,7 @@ export default function TestDragPage() {
       </DragDropContext>
 
       <div className="mt-6 p-4 bg-yellow-50 rounded">
-        <p className="text-sm font-medium mb-2">Informacoes de Depuracao:</p>
+        <p className="text-sm font-medium mb-2">Informações de Depuracao:</p>
         <ul className="text-xs space-y-1">
           <li>✓ DragDropContext: Initialized</li>
           <li>✓ Droppable: droppableId="test-droppable"</li>

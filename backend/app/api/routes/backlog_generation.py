@@ -89,7 +89,7 @@ async def generate_epic_from_interview(
     return BacklogJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Geracao de epicos iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
+        message=f"Geração de epicos iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -119,7 +119,7 @@ async def generate_stories_from_epic(
     # Verify epic exists
     epic = db.query(Task).filter(Task.id == epic_id).first()
     if not epic:
-        raise HTTPException(status_code=404, detail=f"Epic {epic_id} nao encontrado")
+        raise HTTPException(status_code=404, detail=f"Epic {epic_id} não encontrado")
 
     # Create job
     job_manager = JobManager(db)
@@ -144,7 +144,7 @@ async def generate_stories_from_epic(
     return BacklogJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Geracao de stories iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
+        message=f"Geração de stories iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -174,7 +174,7 @@ async def generate_tasks_from_story(
     # Verify story exists
     story = db.query(Task).filter(Task.id == story_id).first()
     if not story:
-        raise HTTPException(status_code=404, detail=f"Story {story_id} nao encontrada")
+        raise HTTPException(status_code=404, detail=f"Story {story_id} não encontrada")
 
     # Create job
     job_manager = JobManager(db)
@@ -199,7 +199,7 @@ async def generate_tasks_from_story(
     return BacklogJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Geracao de tarefas iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
+        message=f"Geração de tarefas iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -516,7 +516,7 @@ async def migrate_semantic_to_human_descriptions(
         logger.error(f"Migration failed: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Falha na migracao: {str(e)}"
+            detail=f"Falha na migração: {str(e)}"
         )
 
 
@@ -551,7 +551,7 @@ async def _generate_epic_async(
             project_id=project_id
         )
 
-        job_manager.update_progress(job_id, 90.0, "Geracao de epico concluida!")
+        job_manager.update_progress(job_id, 90.0, "Geração de epico concluida!")
 
         logger.info(f"✅ Epic generation job {job_id} completed")
 

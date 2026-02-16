@@ -101,7 +101,7 @@ export default function PromptDetailPage() {
                 Falha ao Carregar Prompt
               </h3>
               <p className="text-red-800 mb-4">
-                {error || 'Prompt nao encontrado'}
+                {error || 'Prompt não encontrado'}
               </p>
               <Link href="/prompts">
                 <Button variant="outline">
@@ -135,7 +135,7 @@ export default function PromptDetailPage() {
               variant="outline"
               onClick={() => setShowVersionHistory(!showVersionHistory)}
             >
-              {showVersionHistory ? 'Ocultar' : 'Mostrar'} Historico de Versoes ({versions.length})
+              {showVersionHistory ? 'Ocultar' : 'Mostrar'} Histórico de Versoes ({versions.length})
             </Button>
           </div>
         )}
@@ -173,7 +173,7 @@ export default function PromptDetailPage() {
                     Gerado a partir de Entrevista
                   </h3>
                   <p className="text-sm text-blue-800 mb-3">
-                    Este prompt foi gerado automaticamente a partir de uma sessao de entrevista.
+                    Este prompt foi gerado automaticamente a partir de uma sessão de entrevista.
                   </p>
                   <Link href={`/projects/${prompt.project_id}/interviews/${prompt.created_from_interview_id}`}>
                     <Button variant="outline" size="sm">

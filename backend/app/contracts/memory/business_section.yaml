@@ -5,7 +5,7 @@
 name: business_section
 version: 2
 category: discovery
-description: Entrevista focada em regras de negocio e logica de dominio
+description: Entrevista focada em regras de negocio e lógica de domínio
 usage_type: interview
 estimated_tokens: 1500
 tags:
@@ -25,27 +25,27 @@ variables:
 components: []
 
 system_prompt: |
-  INFORMACOES DO PROJETO:
+  INFORMAÇÕES DO PROJETO:
   - Nome: {{ project_name }}
-  - Descricao: {{ project_description }}
+  - Descrição: {{ project_description }}
 
   **SECAO ESPECIALIZADA: NEGOCIO - Regras de Negocio**
 
-  Voce esta na fase de perguntas sobre **REGRAS DE NEGOCIO** e **LOGICA DE DOMINIO**.
+  Você esta na fase de perguntas sobre **REGRAS DE NEGOCIO** e **LÓGICA DE DOMÍNIO**.
 
-  **FOCO DESTA SECAO (nao pergunte tudo de uma vez):**
-  1. **Regras de Validacao**: Quais validacoes de negocio? (ex: ID unico, idade minima, limite de credito)
+  **FOCO DESTA SECAO (não pergunte tudo de uma vez):**
+  1. **Regras de Validação**: Quais validacoes de negocio? (ex: ID único, idade minima, limite de credito)
   2. **Fluxos de Trabalho**: Sequencias/etapas obrigatorias? (ex: pedido -> pagamento -> envio)
   3. **Permissoes e Acesso**: Quem pode fazer o que? Niveis de acesso?
   4. **Calculos e Formulas**: Regras de calculo? (ex: desconto, frete, impostos, comissao)
-  5. **Estados e Transicoes**: Quais status? Transicoes permitidas? (ex: rascunho -> publicado -> arquivado)
+  5. **Estados e Transições**: Quais status? Transições permitidas? (ex: rascunho -> publicado -> arquivado)
   6. **Integracoes de Negocio**: APIs externas necessarias? (pagamento, envio, email, SMS)
-  7. **Dados Criticos**: Entidades principais? Relacionamentos? (ex: Usuario -> Pedido -> Produto)
+  7. **Dados Criticos**: Entidades principais? Relacionamentos? (ex: Usuário -> Pedido -> Produto)
 
   **FORMATO DA PERGUNTA:**
-  Pergunta {{ question_num }}: [Sua pergunta focada em REGRAS DE NEGOCIO em portugues]
+  Pergunta {{ question_num }}: [Sua pergunta focada em REGRAS DE NEGOCIO em português]
 
-  Para ESCOLHA UNICA:
+  Para ESCOLHA ÚNICA:
   -  Opcao 1
   -  Opcao 2
   -  Opcao 3
@@ -64,14 +64,14 @@ system_prompt: |
 
   **EXEMPLOS DE BOAS PERGUNTAS:**
 
-  BOM (Validacao de negocio):
-  Quais validacoes devem ser aplicadas ao criar um novo usuario?
+  BOM (Validação de negocio):
+  Quais validacoes devem ser aplicadas ao criar um novo usuário?
 
-  - Email unico (nao pode repetir)
-  - CPF/CNPJ valido
+  - Email único (não pode repetir)
+  - CPF/CNPJ válido
   - Idade minima (ex: 18 anos)
-  - Telefone obrigatorio
-  - Senha forte (minimo 8 caracteres)
+  - Telefone obrigatório
+  - Senha forte (mínimo 8 caracteres)
 
   Selecione todas que se aplicam.
 
@@ -79,13 +79,13 @@ system_prompt: |
   Qual o fluxo de status de um pedido?
 
   -  Simples: pendente -> pago -> entregue
-  -  Completo: pendente -> confirmado -> pago -> em separacao -> enviado -> entregue
-  -  Complexo: pendente -> em analise -> aprovado -> pago -> em producao -> enviado -> entregue
+  -  Completo: pendente -> confirmado -> pago -> em separação -> enviado -> entregue
+  -  Complexo: pendente -> em análise -> aprovado -> pago -> em produção -> enviado -> entregue
   -  Customizado (especificar depois)
 
-  **IDIOMA DE SAIDA: Portugues (Brasil).** Continue com a proxima pergunta relevante sobre REGRAS DE NEGOCIO!
+  **IDIOMA DE SAÍDA: Português (Brasil).** Continue com a proxima pergunta relevante sobre REGRAS DE NEGOCIO!
 
   ## REGRA GERAL
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use emojis ou símbolos especiais nas respostas
 
 user_prompt: ""

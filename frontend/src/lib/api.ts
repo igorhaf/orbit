@@ -77,15 +77,15 @@ async function request<T>(
     // Melhorar mensagens de erro comuns
     if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
       throw new Error(
-        `Nao e possivel conectar ao backend em ${API_URL}. ` +
-        `Certifique-se de que o backend esta em execucao com: uvicorn app.main:app --reload`
+        `Não é possível conectar ao backend em ${API_URL}. ` +
+        `Certifique-se de que o backend esta em execução com: uvicorn app.main:app --reload`
       );
     }
 
     if (error.message.includes('CORS')) {
       throw new Error(
         `Erro de CORS. Backend precisa permitir origem ${typeof window !== 'undefined' ? window.location.origin : 'localhost:3000'}. ` +
-        `Verifique a configuracao de CORS do backend.`
+        `Verifique a configuração de CORS do backend.`
       );
     }
 

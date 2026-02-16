@@ -1,10 +1,10 @@
 """
-Seed AI Flow Chains - Preset: Custo Minimo (Ollama-first)
+Seed AI Flow Chains - Preset: Custo Mínimo (Ollama-first)
 Configure all Ollama models with top_p/top_k and create optimal AI Flow chains
 for all 8 usage types with performance utility nodes.
 
-Preset: CUSTO MINIMO - Prioriza modelos locais (Ollama) para zero custo de API.
-Modelos cloud ficam como fallback final apenas se necessario.
+Preset: CUSTO MÍNIMO - Prioriza modelos locais (Ollama) para zero custo de API.
+Modelos cloud ficam como fallback final apenas se necessário.
 
 Strategy per operation (cost-optimized):
 - interview:           Gemma3 12B → Qwen3 8B
@@ -590,7 +590,7 @@ def _build_utility_nodes(usage_key: str) -> list:
 
 
 # ============================================================================
-# Exact node positions from user-arranged layout (Custo Minimo preset)
+# Exact node positions from user-arranged layout (Custo Mínimo preset)
 # "fixed" = non-model nodes (start, error, response, utility nodes)
 # "models" = ordered list of positions for chain models [0]=first, [1]=second, etc.
 # ============================================================================
@@ -721,7 +721,7 @@ CHAIN_POSITIONS = {
 
 
 def seed_ai_flow_chains():
-    logger.info("Starting AI Flow Chains seed (Custo Minimo preset)...")
+    logger.info("Starting AI Flow Chains seed (Custo Mínimo preset)...")
 
     engine = create_engine(settings.database_url)
     SessionLocal = sessionmaker(bind=engine)
@@ -825,7 +825,7 @@ def seed_ai_flow_chains():
                 logger.warning(f"  Skipping {usage_key}: no models resolved")
                 continue
 
-            # Use manually-arranged node positions (Custo Minimo preset)
+            # Use manually-arranged node positions (Custo Mínimo preset)
             layout = CHAIN_POSITIONS.get(usage_key, {})
             positions = dict(layout.get("fixed", {}))
             # Map model positions by chain index → model-{uuid}

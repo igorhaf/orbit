@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class ImportValidator:
     """
-    Valida consistência de imports/exports
+    Válida consistência de imports/exports
 
     Detecta:
     - Classes importadas mas não exportadas
@@ -18,7 +18,7 @@ class ImportValidator:
 
     def validate(self, task_results: List) -> List[Dict]:
         """
-        Valida imports/exports
+        Válida imports/exports
         """
 
         issues = []
@@ -134,7 +134,7 @@ class ImportValidator:
         exports: Dict
     ) -> List[Dict]:
         """
-        Valida que tudo que é importado foi exportado
+        Válida que tudo que é importado foi exportado
         """
 
         issues = []

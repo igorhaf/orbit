@@ -104,7 +104,7 @@ def _save_blocklist(db: Session, data: Dict[str, Any]) -> None:
         db.add(SystemSettings(
             key=BLOCKLIST_KEY,
             value=data,
-            description="Lista de bloqueio global - pastas e padroes ignorados em todos os projetos",
+            description="Lista de bloqueio global - pastas e padrões ignorados em todos os projetos",
             updated_at=datetime.utcnow(),
         ))
     db.commit()
@@ -127,7 +127,7 @@ def _save_suggestions(db: Session, data: List[Dict[str, Any]]) -> None:
         db.add(SystemSettings(
             key=SUGGESTIONS_KEY,
             value=data,
-            description="Sugestoes pendentes para lista de bloqueio global",
+            description="Sugestões pendentes para lista de bloqueio global",
             updated_at=datetime.utcnow(),
         ))
     db.commit()
@@ -150,7 +150,7 @@ def _save_rejected(db: Session, data: List[str]) -> None:
         db.add(SystemSettings(
             key=REJECTED_KEY,
             value=data,
-            description="Itens rejeitados da lista de bloqueio (nao sugerir novamente)",
+            description="Itens rejeitados da lista de bloqueio (não sugerir novamente)",
             updated_at=datetime.utcnow(),
         ))
     db.commit()
@@ -178,7 +178,7 @@ async def update_blocklist(
 
 @router.get("/blocklist/suggestions")
 async def get_blocklist_suggestions(db: Session = Depends(get_db)):
-    """Retorna sugestoes pendentes para a lista de bloqueio."""
+    """Retorna sugestões pendentes para a lista de bloqueio."""
     return _get_suggestions(db)
 
 
@@ -187,7 +187,7 @@ async def approve_blocklist_suggestions(
     action: BlocklistSuggestionAction,
     db: Session = Depends(get_db),
 ):
-    """Aprova sugestoes e move para a lista de bloqueio global."""
+    """Aprova sugestões e move para a lista de bloqueio global."""
     blocklist = _get_blocklist(db)
     suggestions = _get_suggestions(db)
     approved_paths = {item["path"] for item in action.items}
@@ -218,7 +218,7 @@ async def reject_blocklist_suggestions(
     action: BlocklistSuggestionAction,
     db: Session = Depends(get_db),
 ):
-    """Rejeita sugestoes (nao serao sugeridas novamente)."""
+    """Rejeita sugestões (não serao sugeridas novamente)."""
     suggestions = _get_suggestions(db)
     rejected = _get_rejected(db)
     rejected_paths = {item["path"] for item in action.items}

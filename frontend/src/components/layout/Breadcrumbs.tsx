@@ -42,13 +42,13 @@ export const Breadcrumbs: React.FC = () => {
     'prompts': 'Prompts',
     'projects': 'Projetos',
     'interviews': 'Entrevistas',
-    'settings': 'Configuracoes',
+    'settings': 'Configurações',
     'debug': 'Debug',
     'new': 'Novo',
     'edit': 'Editar',
     'generate': 'Gerar',
     'analyze': 'Analisar',
-    'consistency': 'Verificacao de Consistencia',
+    'consistency': 'Verificação de Consistencia',
     'wiki': 'Wiki',
     'execute': 'Executar',
     'models': 'Modelos',
@@ -78,7 +78,7 @@ export const Breadcrumbs: React.FC = () => {
   const pathSegments = pathname.split('/').filter(Boolean);
 
   const breadcrumbs: BreadcrumbItem[] = [
-    { name: 'Inicio', href: '/' },
+    { name: 'Início', href: '/' },
     ...pathSegments
       .map((segment, index) => {
         const href = '/' + pathSegments.slice(0, index + 1).join('/');

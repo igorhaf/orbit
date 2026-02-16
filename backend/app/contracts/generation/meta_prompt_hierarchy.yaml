@@ -31,7 +31,7 @@ system_prompt: |
   {{ focus_text | default('') }}
 
   **SUA TAREFA:**
-  Analise TODAS as respostas do meta prompt e gere a hierarquia completa:
+  Análise TODAS as respostas do meta prompt e gere a hierarquia completa:
 
   1. **1 EPIC** - Objetivo principal do projeto (valor de negócio de alto nível)
   2. **3-7 STORIES** - Funcionalidades principais quebrando o Epic
@@ -110,10 +110,10 @@ system_prompt: |
     }
   }
 
-  Analise TODAS as respostas abaixo e gere a hierarquia completa.
+  Análise TODAS as respostas abaixo e gere a hierarquia completa.
 
   ## REGRA GERAL
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use emojis ou símbolos especiais nas respostas
 
 user_prompt: |
   **RESPOSTAS DO META PROMPT:**

@@ -68,7 +68,7 @@ async def list_wiki_pages(
     """List all wiki pages for a project, optionally filtered by parent."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     query = db.query(WikiPage).filter(WikiPage.project_id == project_id)
 
@@ -87,7 +87,7 @@ async def get_wiki_tree(
     """Get the full wiki page tree for a project."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     all_pages = (
         db.query(WikiPage)
@@ -165,7 +165,7 @@ async def generate_wiki_from_context(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     created_pages = []
 
@@ -207,10 +207,10 @@ async def generate_wiki_from_context(
 
     if all_rules:
         rules_parts = [
-            "## Catalogo de Referencia - Regras Brutas\n",
+            "## Catálogo de Referência - Regras Brutas\n",
             f"Total de regras extraidas do codebase: **{len(all_rules)}**\n",
-            "Estas sao as regras brutas extraidas automaticamente do codigo-fonte.",
-            "A pagina principal de [Regras de Negocio](wiki:regras-de-negocio) contem a versao enriquecida e organizada.\n",
+            "Estas são as regras brutas extraidas automaticamente do código-fonte.",
+            "A página principal de [Regras de Negocio](wiki:regras-de-negocio) contém a versão enriquecida e organizada.\n",
         ]
         for i, rule in enumerate(all_rules, 1):
             if isinstance(rule, dict):
@@ -226,8 +226,8 @@ async def generate_wiki_from_context(
         # PROMPT #277 - Set parent_id to regras-de-negocio to avoid appearing as root in sidebar
         regras_parent = next((p for p in created_pages if p and p.slug == "regras-de-negocio"), None)
         created_pages.append(_upsert_wiki_page(
-            db, project_id, "regras-catalogo-bruto",
-            "Catalogo de Referencia - Regras Brutas",
+            db, project_id, "regras-catálogo-bruto",
+            "Catálogo de Referência - Regras Brutas",
             rules_content, 12, "ai_generated",
             parent_id=regras_parent.id if regras_parent else None,
         ))
@@ -267,19 +267,19 @@ async def generate_wiki_from_context(
         ))
 
     # PROMPT #267 - Generate wiki pages from ALL RAG data types
-    # 7. Padroes de Arquitetura - from RAG discovered patterns (architecture)
+    # 7. Padrões de Arquitetura - from RAG discovered patterns (architecture)
     arch_content = _build_architecture_patterns_page(db, project_id)
     if arch_content:
         created_pages.append(_upsert_wiki_page(
-            db, project_id, "padroes-arquitetura", "Padroes de Arquitetura",
+            db, project_id, "padrões-arquitetura", "Padrões de Arquitetura",
             arch_content, 6, "ai_generated"
         ))
 
-    # 8. Convencoes de Codigo - from RAG discovered patterns (naming/class/import)
+    # 8. Convencoes de Código - from RAG discovered patterns (naming/class/import)
     conv_content = _build_code_conventions_page(db, project_id)
     if conv_content:
         created_pages.append(_upsert_wiki_page(
-            db, project_id, "convencoes-codigo", "Convencoes de Codigo",
+            db, project_id, "convencoes-código", "Convencoes de Código",
             conv_content, 7, "ai_generated"
         ))
 
@@ -291,19 +291,19 @@ async def generate_wiki_from_context(
             ui_content, 8, "ai_generated"
         ))
 
-    # 10. Estrutura de Codigo - aggregated from RAG code files
+    # 10. Estrutura de Código - aggregated from RAG code files
     struct_content = _build_code_structure_page(db, project_id)
     if struct_content:
         created_pages.append(_upsert_wiki_page(
-            db, project_id, "estrutura-codigo", "Estrutura de Codigo",
+            db, project_id, "estrutura-código", "Estrutura de Código",
             struct_content, 9, "ai_generated"
         ))
 
-    # 11. Historico de Desenvolvimento - from RAG git commits
+    # 11. Histórico de Desenvolvimento - from RAG git commits
     git_content = _build_git_history_page(db, project_id)
     if git_content:
         created_pages.append(_upsert_wiki_page(
-            db, project_id, "historico-desenvolvimento", "Historico de Desenvolvimento",
+            db, project_id, "histórico-desenvolvimento", "Histórico de Desenvolvimento",
             git_content, 10, "ai_generated"
         ))
 
@@ -344,7 +344,7 @@ async def generate_wiki_from_context(
 
     total_pages = len([p for p in created_pages if p])
     result = {
-        "detail": f"{total_pages} paginas wiki geradas ({linked_count} paginas com links semanticos)",
+        "detail": f"{total_pages} páginas wiki geradas ({linked_count} páginas com links semânticos)",
         "pages": [p.slug for p in created_pages if p],
     }
     if enrichment_job_id:
@@ -364,10 +364,10 @@ async def relink_wiki_pages(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     linked_count = _apply_semantic_links_to_project(db, project_id)
-    return {"detail": f"{linked_count} paginas atualizadas com links semanticos"}
+    return {"detail": f"{linked_count} páginas atualizadas com links semânticos"}
 
 
 @router.post("/{project_id}/wiki", response_model=WikiPageResponse, status_code=201)
@@ -379,7 +379,7 @@ async def create_wiki_page(
     """Create a new wiki page."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     slug = _ensure_unique_slug(db, project_id, _slugify(data.slug or data.title))
 
@@ -417,7 +417,7 @@ async def get_wiki_page(
         .first()
     )
     if not page:
-        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
+        raise HTTPException(status_code=404, detail="Página wiki não encontrada")
     return page
 
 
@@ -435,7 +435,7 @@ async def update_wiki_page(
         .first()
     )
     if not page:
-        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
+        raise HTTPException(status_code=404, detail="Página wiki não encontrada")
 
     if data.title is not None:
         page.title = data.title
@@ -471,7 +471,7 @@ async def delete_wiki_page(
         .first()
     )
     if not page:
-        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
+        raise HTTPException(status_code=404, detail="Página wiki não encontrada")
 
     db.delete(page)
     db.commit()
@@ -480,7 +480,7 @@ async def delete_wiki_page(
     _apply_semantic_links_to_project(db, project_id)
 
     logger.info(f"Wiki page deleted: {page.title} ({slug})")
-    return {"detail": "Pagina wiki excluida", "slug": slug}
+    return {"detail": "Página wiki excluida", "slug": slug}
 
 
 def _upsert_wiki_page(
@@ -676,7 +676,7 @@ def _build_scan_page(scan_summary: dict) -> str:
     languages = scan_summary.get("languages", [])
 
     lines.append(f"- **Total de arquivos:** {total_files}")
-    lines.append(f"- **Arquivos de codigo:** {code_files}")
+    lines.append(f"- **Arquivos de código:** {code_files}")
 
     if languages:
         lines.append(f"- **Linguagens:** {', '.join(str(l) for l in languages)}")
@@ -692,20 +692,20 @@ def _translate_spec_type(spec_type: str) -> str:
         "graph_hub_spoke": "Grafo Hub-Spoke",
         "rest_api": "API REST",
         "graph_paired_imports": "Imports Pareados",
-        "configuration_file": "Arquivo de Configuracao",
+        "configuration_file": "Arquivo de Configuração",
         "naming_convention": "Convencao de Nomenclatura",
         "class_hierarchy": "Hierarquia de Classes",
-        "import_pattern": "Padrao de Imports",
-        "function_signature": "Assinatura de Funcoes",
-        "decorator_pattern": "Padrao de Decorators",
+        "import_pattern": "Padrão de Imports",
+        "function_signature": "Assinatura de Funções",
+        "decorator_pattern": "Padrão de Decorators",
         "ui_component": "Componente de Interface",
         "ui_blueprint": "Blueprint de Interface",
-        "ui_component_documentation": "Documentacao de Componente",
-        "css_configuration": "Configuracao CSS",
+        "ui_component_documentation": "Documentação de Componente",
+        "css_configuration": "Configuração CSS",
         "css_template": "Template CSS",
         "stylesheet": "Folha de Estilo",
-        "documentation_blueprint": "Blueprint de Documentacao",
-        "markdown_documentation": "Documentacao Markdown",
+        "documentation_blueprint": "Blueprint de Documentação",
+        "markdown_documentation": "Documentação Markdown",
     }
     return SPEC_PT.get(spec_type, spec_type.replace("_", " ").title())
 
@@ -716,12 +716,12 @@ def _translate_category(category: str) -> str:
         "model": "Modelos",
         "controller": "Controladores",
         "test": "Testes",
-        "service": "Servicos",
+        "service": "Serviços",
         "general": "Geral",
         "architecture": "Arquitetura",
         "component": "Componentes",
         "api": "APIs",
-        "documentation": "Documentacao",
+        "documentation": "Documentação",
         "css": "Estilos CSS",
         "ui_component": "Componentes de Interface",
         "backup": "Backup",
@@ -753,8 +753,8 @@ def _build_architecture_patterns_page(db, project_id: UUID) -> Optional[str]:
         return None
 
     lines = [
-        "## Padroes de Arquitetura\n",
-        f"Total de padroes arquiteturais descobertos: **{len(rows)}**\n",
+        "## Padrões de Arquitetura\n",
+        f"Total de padrões arquiteturais descobertos: **{len(rows)}**\n",
     ]
     current_spec = None
     for row in rows:
@@ -798,7 +798,7 @@ def _build_code_conventions_page(db, project_id: UUID) -> Optional[str]:
         return None
 
     lines = [
-        "## Convencoes de Codigo\n",
+        "## Convencoes de Código\n",
         f"Total de convencoes descobertas: **{len(rows)}**\n",
     ]
     current_category = None
@@ -845,7 +845,7 @@ def _build_ui_components_page(db, project_id: UUID) -> Optional[str]:
 
     lines = [
         "## Componentes e Interface\n",
-        f"Total de padroes de UI descobertos: **{len(rows)}**\n",
+        f"Total de padrões de UI descobertos: **{len(rows)}**\n",
     ]
     for i, row in enumerate(rows, 1):
         content = row[0]
@@ -895,7 +895,7 @@ def _build_code_structure_page(db, project_id: UUID) -> Optional[str]:
     total_langs = len(lang_dirs)
 
     lines = [
-        "## Estrutura de Codigo\n",
+        "## Estrutura de Código\n",
         f"Total de arquivos indexados: **{total_files}** em **{total_langs}** linguagens\n",
     ]
 
@@ -934,9 +934,9 @@ def _build_git_history_page(db, project_id: UUID) -> Optional[str]:
         return None
 
     lines = [
-        "## Historico de Desenvolvimento\n",
+        "## Histórico de Desenvolvimento\n",
         f"Total de commits analisados: **{len(rows)}**\n",
-        "Historico dos commits mais recentes do repositorio.\n",
+        "Histórico dos commits mais recentes do repositório.\n",
     ]
     for i, row in enumerate(rows, 1):
         content = row[0]
@@ -1107,10 +1107,10 @@ def _build_business_rules_wiki_pages(
                 all_source_files.add(rule["source_file"])
 
     index_lines = [
-        "## Regras de Negocio - Indice por Dominio\n",
+        "## Regras de Negocio - Índice por Dominio\n",
         f"Total de regras extraidas: **{total_rules}** em **{total_domains}** dominios "
         f"a partir de **{len(all_source_files)}** arquivos fonte.\n",
-        "Clique em um dominio para ver todas as regras daquela area.\n",
+        "Clique em um dominio para ver todas as regras daquela área.\n",
         "---\n",
         "### Resumo\n",
         "| Dominio | Regras | Arquivos Fonte |",
@@ -1149,8 +1149,8 @@ def _build_business_rules_wiki_pages(
         )
 
     index_page = _upsert_wiki_page(
-        db, project_id, "regras-indice",
-        "Regras de Negocio - Indice",
+        db, project_id, "regras-índice",
+        "Regras de Negocio - Índice",
         "\n".join(index_lines),
         20, "ai_generated",
         parent_id=parent_id,
@@ -1217,14 +1217,14 @@ def _build_business_rules_wiki_pages(
                 f"**Dominio:** {domain_name}  \n"
                 f"**Arquivo Fonte:** `{source_display}`\n\n"
                 f"---\n\n"
-                f"### Descricao\n\n"
+                f"### Descrição\n\n"
                 f"{rule['content']}\n\n"
                 f"---\n\n"
                 f"### Contexto\n\n"
                 f"Regra de negocio extraida automaticamente do arquivo "
-                f"`{source_display}`, parte do modulo **{domain_name}**.\n\n"
-                f"Esta regra foi identificada durante a analise do codigo-fonte "
-                f"e representa um comportamento ou restricao implementada no sistema.\n"
+                f"`{source_display}`, parte do módulo **{domain_name}**.\n\n"
+                f"Esta regra foi identificada durante a análise do código-fonte "
+                f"e representa um comportamento ou restrição implementada no sistema.\n"
             )
 
             rule_page = _upsert_wiki_page(
@@ -1295,7 +1295,7 @@ async def enrich_business_rule_pages(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     from sqlalchemy import text as sql_text
 
@@ -1319,16 +1319,16 @@ async def enrich_business_rule_pages(
 
     if rule_count == 0:
         detail = (
-            "Todas as paginas de regras ja foram enriquecidas. Use force=true para re-enriquecer."
+            "Todas as páginas de regras ja foram enriquecidas. Use force=true para re-enriquecer."
             if not force
-            else "Nenhuma pagina de regra de negocio encontrada. Execute generate-from-context primeiro."
+            else "Nenhuma página de regra de negocio encontrada. Execute generate-from-context primeiro."
         )
         raise HTTPException(status_code=400, detail=detail)
 
     job_id = await _trigger_rule_enrichment_job(db, project_id, rule_count, force=force)
 
     return {
-        "detail": f"Enriquecimento iniciado para {rule_count} paginas de regras" + (" (re-enriquecimento forcado)" if force else ""),
+        "detail": f"Enriquecimento iniciado para {rule_count} páginas de regras" + (" (re-enriquecimento forcado)" if force else ""),
         "job_id": str(job_id),
         "rule_count": rule_count,
     }
@@ -1438,7 +1438,7 @@ async def _enrich_rules_background(
                             domain_name = line.replace("**Dominio:**", "").replace("**Domain:**", "").strip()
                         elif line.startswith("**Arquivo Fonte:**") or line.startswith("**Source File:**"):
                             source_file = line.replace("**Arquivo Fonte:**", "").replace("**Source File:**", "").strip().strip("`")
-                    for desc_marker in ("### Descricao", "### Description"):
+                    for desc_marker in ("### Descrição", "### Description"):
                         if desc_marker in page.content:
                             parts = page.content.split(desc_marker, 1)
                             if len(parts) > 1:
@@ -1548,7 +1548,7 @@ async def _enrich_rules_background(
 
 
 # ---------------------------------------------------------------------------
-# PROMPT #274 - Hypertext Linking Semantico (estilo Wikipedia)
+# PROMPT #274 - Hypertext Linking Semântico (estilo Wikipedia)
 # ---------------------------------------------------------------------------
 
 def _add_semantic_links_to_content(

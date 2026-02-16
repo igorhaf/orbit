@@ -1,15 +1,15 @@
-# Contrato de Execucao: Orcamentos de Tokens
+# Contrato de Execução: Orcamentos de Tokens
 # PROMPT #256 - Externalizar Contratos Hardcoded
 #
 # Fonte: backend/app/services/task_execution/budget_manager.py (linhas 47-78)
-# Alocacao de orcamento de tokens baseado em story points e tipo de item.
-# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
+# Alocacao de orçamento de tokens baseado em story points e tipo de item.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em português.
 
 name: token_budgets
 version: 1
 domain: business
 category: execution
-description: Alocacao de orcamento de tokens por story points e tipo de item
+description: Alocacao de orçamento de tokens por story points e tipo de item
 usage_type: business_rule
 
 governance:
@@ -20,19 +20,19 @@ governance:
     - version: 1
       date: "2026-02-13"
       author: "Claude"
-      changes: "Externalizado do budget_manager.py - dicts hardcoded de orcamento"
+      changes: "Externalizado do budget_manager.py - dicts hardcoded de orçamento"
 
 tags:
-  - execucao
+  - execução
   - tokens
-  - orcamento
+  - orçamento
   - custo
 
 data:
-  # Orcamento base padrao quando nenhum outro criterio se aplica
+  # Orçamento base padrão quando nenhum outro critério se aplica
   default_budget: 2500
 
-  # Story Points → Orcamento de tokens (escala Fibonacci)
+  # Story Points → Orçamento de tokens (escala Fibonacci)
   story_point_budgets:
     1: 2000
     2: 2000
@@ -42,7 +42,7 @@ data:
     13: 5000
     21: 6000
 
-  # Tipo de Item → Orcamento de tokens
+  # Tipo de Item → Orçamento de tokens
   type_budgets:
     subtask: 1500
     task: 2500
@@ -50,15 +50,15 @@ data:
     story: 4000
     epic: 6000
 
-  # Orcamento usa max(story_point_budget, type_budget, default_budget)
+  # Orçamento usa max(story_point_budget, type_budget, default_budget)
 
 rules:
   constraints:
     - id: C1
-      description: "Orcamento e sempre o maximo entre story_point e type_budget"
+      description: "Orçamento e sempre o máximo entre story_point e type_budget"
       condition: "budget = max(story_point_budget, type_budget, default_budget)"
     - id: C2
-      description: "Story points usam o numero Fibonacci mais proximo"
+      description: "Story points usam o número Fibonacci mais próximo"
       condition: "closest = min(fibonacci_keys, key=lambda x: abs(x - story_points))"
 
 variables:

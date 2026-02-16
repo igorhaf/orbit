@@ -371,14 +371,14 @@ class PatternDiscoveryService:
             List of dicts with 'path' and 'content'
         """
         if len(file_paths) <= max_samples:
-            indices = range(len(file_paths))
+            índices = range(len(file_paths))
         else:
             # Evenly distributed samples
             step = len(file_paths) // max_samples
-            indices = [i * step for i in range(max_samples)]
+            índices = [i * step for i in range(max_samples)]
 
         samples = []
-        for i in indices:
+        for i in índices:
             file_path = project_path / file_paths[i]
             try:
                 with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:

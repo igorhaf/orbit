@@ -120,7 +120,7 @@ function NewProjectContent() {
   // Start pipeline
   const handleGenerate = async () => {
     if (!codePath) {
-      showWarning('Selecione uma pasta de codigo primeiro');
+      showWarning('Selecione uma pasta de código primeiro');
       return;
     }
 
@@ -173,7 +173,7 @@ function NewProjectContent() {
       router.push('/projects');
     } catch (error) {
       console.error('Error cancelling project creation:', error);
-      showError('Falha ao cancelar criacao do projeto.');
+      showError('Falha ao cancelar criação do projeto.');
     } finally {
       setCancelling(false);
     }
@@ -208,20 +208,20 @@ function NewProjectContent() {
           /* --- Selection Form --- */
           <Card>
             <CardHeader>
-              <CardTitle>Selecionar Pasta de Codigo</CardTitle>
+              <CardTitle>Selecionar Pasta de Código</CardTitle>
               <p className="text-sm text-gray-600 mt-1">
-                Escolha sua pasta de codigo existente e a profundidade de analise. O ORBIT escaneara o codebase, gerara um contexto rico e preparara seu projeto.
+                Escolha sua pasta de código existente e a profundidade de análise. O ORBIT escaneara o codebase, gerara um contexto rico e preparara seu projeto.
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Folder Picker */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Caminho da Pasta de Codigo *</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Caminho da Pasta de Código *</label>
                 <div className="flex gap-2">
                   <input
                     value={codePath}
                     onChange={(e) => setCodePath(e.target.value)}
-                    placeholder="/projetos/meu-codigo-existente"
+                    placeholder="/projetos/meu-código-existente"
                     className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
                     autoFocus
                   />
@@ -237,23 +237,23 @@ function NewProjectContent() {
                   </Button>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Selecione o caminho para sua pasta de codigo existente.
-                  <strong className="block text-gray-600 mt-1">Este caminho nao pode ser alterado apos a criacao do projeto.</strong>
+                  Selecione o caminho para sua pasta de código existente.
+                  <strong className="block text-gray-600 mt-1">Este caminho não pode ser alterado apos a criação do projeto.</strong>
                 </p>
 
                 <FolderPicker
                   open={showFolderPicker}
                   onClose={() => setShowFolderPicker(false)}
                   onSelect={handleFolderSelect}
-                  title="Selecionar Pasta de Codigo"
+                  title="Selecionar Pasta de Código"
                 />
               </div>
 
               {/* Scan Depth Selector */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Profundidade de Analise</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Profundidade de Análise</label>
                 <p className="text-xs text-gray-500 mb-3">
-                  Escolha a profundidade com que a IA deve analisar seu codebase. Analise mais profunda fornece melhores resultados, mas demora mais.
+                  Escolha a profundidade com que a IA deve analisar seu codebase. Análise mais profunda fornece melhores resultados, mas demora mais.
                 </p>
                 <div className="grid grid-cols-3 gap-3">
                   <button
@@ -265,7 +265,7 @@ function NewProjectContent() {
                         : 'border-gray-200 hover:border-gray-300'
                     }`}
                   >
-                    <div className="font-medium text-sm">Rapida</div>
+                    <div className="font-medium text-sm">Rápida</div>
                     <div className="text-xs text-gray-500 mt-1">30 arquivos, ~2 min</div>
                   </button>
 
@@ -405,7 +405,7 @@ function NewProjectContent() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <p className="text-sm text-gray-600">
-                    Voce pode sair desta pagina. O processamento continuara em segundo plano e voce sera notificado quando estiver completo.
+                    Você pode sair desta página. O processamento continuara em segundo plano e você sera notificado quando estiver completo.
                   </p>
                 </div>
               </div>
@@ -417,7 +417,7 @@ function NewProjectContent() {
                   disabled={cancelling}
                   isLoading={cancelling}
                 >
-                  Cancelar Criacao
+                  Cancelar Criação
                 </Button>
                 <Button
                   variant="outline"

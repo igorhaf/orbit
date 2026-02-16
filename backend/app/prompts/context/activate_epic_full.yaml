@@ -63,7 +63,7 @@ system_prompt: |
   - **FILTRO** (Filtros): FILTRO1... = Filtros disponíveis (Ex: FILTRO1=por status)
 
   **Integrações:**
-  - **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuarios)
+  - **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuários)
   - **S** (Serviços): S1, S2... = Serviços externos (Ex: S1=serviço de email)
   - **EVENTO** (Eventos): EVENTO1... = Eventos do sistema (Ex: EVENTO1=usuario_criado)
 
@@ -73,7 +73,7 @@ system_prompt: |
   - **SEG** (Segurança): SEG1... = Requisitos de segurança
 
   Sua tarefa:
-  1. Analise o contexto do projeto e o épico sugerido
+  1. Análise o contexto do projeto e o épico sugerido
   2. Crie um **Mapa Semântico EXTENSO** com MÍNIMO 25-35 identificadores
   3. DETALHE especificamente:
      - TODOS os campos/atributos com seus TIPOS DE DADOS
@@ -200,7 +200,7 @@ system_prompt: |
   - TUDO EM PORTUGUÊS
 
   ## REGRA GERAL
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use emojis ou símbolos especiais nas respostas
 
 user_prompt: |
   Gere a ESPECIFICAÇÃO TÉCNICA COMPLETA para este Epic/Módulo.

@@ -14,11 +14,11 @@ export default function TestDndPage() {
 
   return (
     <div className="p-8">
-      <h1 className="text-2xl font-bold mb-4">Testando importacao @hello-pangea/dnd</h1>
+      <h1 className="text-2xl font-bold mb-4">Testando importação @hello-pangea/dnd</h1>
 
       <div className="space-y-4">
         <div className="bg-green-100 p-4 rounded">
-          <p className="font-medium">Status de Importacao do Modulo:</p>
+          <p className="font-medium">Status de Importação do Módulo:</p>
           <ul className="mt-2 space-y-1">
             <li>DragDropContext: {DragDropContext ? '✅ Importado' : '❌ Falhou'}</li>
             <li>Droppable: {Droppable ? '✅ Importado' : '❌ Falhou'}</li>
@@ -56,11 +56,11 @@ export default function TestDndPage() {
         </DragDropContext>
 
         <div className="bg-yellow-100 p-4 rounded">
-          <p className="font-medium">Instrucoes:</p>
+          <p className="font-medium">Instruções:</p>
           <ol className="mt-2 space-y-1 list-decimal list-inside">
-            <li>Se voce ver ✅ para todas as importacoes, o modulo esta funcionando!</li>
+            <li>Se você ver ✅ para todas as importacoes, o módulo esta funcionando!</li>
             <li>Tente arrastar a caixa "Arraste-me!" acima</li>
-            <li>Se funcionar aqui, o Kanban tambem deve funcionar</li>
+            <li>Se funcionar aqui, o Kanban também deve funcionar</li>
           </ol>
         </div>
       </div>

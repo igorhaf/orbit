@@ -60,7 +60,7 @@ export const ErrorDialog: React.FC<ErrorDialogProps> = ({
   const defaultTitles = {
     error: 'Erro',
     warning: 'Aviso',
-    info: 'Informacao',
+    info: 'Informação',
     success: 'Sucesso',
   };
 
@@ -83,7 +83,7 @@ export const ErrorDialog: React.FC<ErrorDialogProps> = ({
             {details && (
               <details className="mt-2">
                 <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
-                  Detalhes tecnicos
+                  Detalhes técnicos
                 </summary>
                 <pre className="mt-2 p-2 bg-gray-100 rounded text-xs text-gray-600 overflow-x-auto">
                   {details}

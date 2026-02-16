@@ -21,9 +21,9 @@ interface ModelsListProps {
 const USAGE_TYPES = [
   { value: 'all', label: 'Todos os Tipos de Uso' },
   { value: AIModelUsageType.INTERVIEW, label: 'Entrevistas' },
-  { value: AIModelUsageType.PROMPT_GENERATION, label: 'Geracao de Prompts' },
-  { value: AIModelUsageType.COMMIT_GENERATION, label: 'Geracao de Commits' },
-  { value: AIModelUsageType.TASK_EXECUTION, label: 'Execucao de Tarefas' },
+  { value: AIModelUsageType.PROMPT_GENERATION, label: 'Geração de Prompts' },
+  { value: AIModelUsageType.COMMIT_GENERATION, label: 'Geração de Commits' },
+  { value: AIModelUsageType.TASK_EXECUTION, label: 'Execução de Tarefas' },
   { value: AIModelUsageType.GENERAL, label: 'Geral' },
 ];
 

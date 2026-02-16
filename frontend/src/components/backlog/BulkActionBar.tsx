@@ -204,7 +204,7 @@ export default function BulkActionBar({
                       Excluir {selectedCount} {selectedCount !== 1 ? 'itens' : 'item'}?
                     </div>
                     <p className="text-xs text-gray-600 mb-3">
-                      Esta acao nao pode ser desfeita.
+                      Esta ação não pode ser desfeita.
                     </p>
                     <div className="flex gap-2">
                       <Button

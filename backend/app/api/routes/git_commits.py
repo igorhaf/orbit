@@ -213,16 +213,16 @@ async def list_git_commits(
     # Get project
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} não encontrado")
 
     if not project.code_path:
-        raise HTTPException(status_code=400, detail="Projeto nao tem code_path configurado")
+        raise HTTPException(status_code=400, detail="Projeto não tem code_path configurado")
 
     if not os.path.isdir(project.code_path):
-        raise HTTPException(status_code=400, detail=f"Caminho do codigo nao existe: {project.code_path}")
+        raise HTTPException(status_code=400, detail=f"Caminho do código não existe: {project.code_path}")
 
     if not is_git_repository(project.code_path):
-        raise HTTPException(status_code=400, detail=f"Caminho do codigo nao e um repositorio Git: {project.code_path}")
+        raise HTTPException(status_code=400, detail=f"Caminho do código não é um repositório Git: {project.code_path}")
 
     # Build git log command
     # Format: hash|short_hash|author_name|author_email|date|relative_date|subject
@@ -297,10 +297,10 @@ async def get_git_commit_detail(
     # Get project
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} não encontrado")
 
     if not project.code_path or not is_git_repository(project.code_path):
-        raise HTTPException(status_code=400, detail="Projeto nao e um repositorio Git")
+        raise HTTPException(status_code=400, detail="Projeto não é um repositório Git")
 
     # Get commit details
     format_str = "%H|%h|%an|%ae|%aI|%ar|%s|%b"
@@ -310,7 +310,7 @@ async def get_git_commit_detail(
     )
 
     if not success or not output:
-        raise HTTPException(status_code=404, detail=f"Commit {commit_hash} nao encontrado")
+        raise HTTPException(status_code=404, detail=f"Commit {commit_hash} não encontrado")
 
     parts = output.split("|", 7)
     if len(parts) < 7:
@@ -364,10 +364,10 @@ async def list_git_branches(
     # Get project
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} não encontrado")
 
     if not project.code_path or not is_git_repository(project.code_path):
-        raise HTTPException(status_code=400, detail="Projeto nao e um repositorio Git")
+        raise HTTPException(status_code=400, detail="Projeto não é um repositório Git")
 
     # Get current branch
     success, current_branch = run_git_command(project.code_path, ["rev-parse", "--abbrev-ref", "HEAD"])
@@ -431,7 +431,7 @@ async def get_git_repo_info(
     # Get project
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} não encontrado")
 
     if not project.code_path:
         return GitRepoInfo(
@@ -497,10 +497,10 @@ def get_project_repo(project_id: UUID, db: Session) -> tuple[Project, str]:
     """Helper to get project and validate it's a git repo."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail=f"Projeto {project_id} nao encontrado")
+        raise HTTPException(status_code=404, detail=f"Projeto {project_id} não encontrado")
 
     if not project.code_path or not is_git_repository(project.code_path):
-        raise HTTPException(status_code=400, detail="Projeto nao e um repositorio Git")
+        raise HTTPException(status_code=400, detail="Projeto não é um repositório Git")
 
     return project, project.code_path
 
@@ -521,7 +521,7 @@ async def get_commit_diff(
     format_str = "%H|%h|%s|%an|%ae|%aI|%b"
     success, output = run_git_command(code_path, ["log", "-1", f"--format={format_str}", commit_hash])
     if not success or not output:
-        raise HTTPException(status_code=404, detail=f"Commit {commit_hash} nao encontrado")
+        raise HTTPException(status_code=404, detail=f"Commit {commit_hash} não encontrado")
 
     parts = output.split("|", 6)
     if len(parts) < 6:
@@ -624,7 +624,7 @@ async def checkout_commit(
     if success and status:
         raise HTTPException(
             status_code=400,
-            detail="Nao e possivel fazer checkout: voce tem alteracoes nao commitadas. Faca commit ou stash primeiro."
+            detail="Não é possível fazer checkout: você tem alterações não commitadas. Faça commit ou stash primeiro."
         )
 
     success, output = run_git_command(code_path, ["checkout", request.commit_hash])
@@ -651,11 +651,11 @@ async def create_branch_from_commit(
     project, code_path = get_project_repo(project_id, db)
 
     if not request.branch_name:
-        raise HTTPException(status_code=400, detail="Nome da branch e obrigatorio")
+        raise HTTPException(status_code=400, detail="Nome da branch é obrigatório")
 
     # Validate branch name
     if " " in request.branch_name or ".." in request.branch_name:
-        raise HTTPException(status_code=400, detail="Nome da branch invalido")
+        raise HTTPException(status_code=400, detail="Nome da branch inválido")
 
     success, output = run_git_command(
         code_path,
@@ -688,7 +688,7 @@ async def revert_commit(
     if success and status:
         raise HTTPException(
             status_code=400,
-            detail="Nao e possivel reverter: voce tem alteracoes nao commitadas. Faca commit ou stash primeiro."
+            detail="Não é possível reverter: você tem alterações não commitadas. Faça commit ou stash primeiro."
         )
 
     success, output = run_git_command(
@@ -729,7 +729,7 @@ async def cherry_pick_commit(
     if success and status:
         raise HTTPException(
             status_code=400,
-            detail="Nao e possivel fazer cherry-pick: voce tem alteracoes nao commitadas. Faca commit ou stash primeiro."
+            detail="Não é possível fazer cherry-pick: você tem alterações não commitadas. Faça commit ou stash primeiro."
         )
 
     success, output = run_git_command(
@@ -771,7 +771,7 @@ async def reset_to_commit(
 
     mode = request.reset_mode or "mixed"
     if mode not in ["soft", "mixed", "hard"]:
-        raise HTTPException(status_code=400, detail="Modo de reset invalido. Use: soft, mixed ou hard")
+        raise HTTPException(status_code=400, detail="Modo de reset inválido. Use: soft, mixed ou hard")
 
     # Extra warning for hard reset
     if mode == "hard":
@@ -812,7 +812,7 @@ async def stash_changes(
     if success:
         return GitOperationResponse(
             success=True,
-            message="Alteracoes guardadas com sucesso",
+            message="Alterações guardadas com sucesso",
             details={"output": output}
         )
     else:

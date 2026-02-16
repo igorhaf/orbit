@@ -334,7 +334,7 @@ class AIOrchestrator:
             else:
                 logger.warning(
                     f"⚠️  Skipping model {model_id} in chain: "
-                    f"{'nao encontrado ou inativo' if not db_model else 'provedor nao inicializado'}"
+                    f"{'não encontrado ou inativo' if not db_model else 'provedor não inicializado'}"
                 )
 
         result = model_configs if model_configs else None
@@ -567,7 +567,7 @@ class AIOrchestrator:
             else:
                 logger.warning(
                     f"⚠️  Model '{db_model.name}' configured for {usage_type} but "
-                    f"provedor '{provider}' nao inicializado"
+                    f"provedor '{provider}' não inicializado"
                 )
 
         # 2. Fallback: buscar modelo GENERAL como padrão
@@ -623,7 +623,7 @@ class AIOrchestrator:
         # 4. Nenhum modelo disponível
         raise ValueError(
             f"Nenhum modelo de IA ativo configurado para '{usage_type}'. "
-            f"Configure um modelo de IA na pagina /ai-models."
+            f"Configure um modelo de IA na página /ai-models."
         )
 
     def _get_default_model(self, provider: str) -> str:
@@ -1931,7 +1931,7 @@ class AIOrchestrator:
 
         raise Exception(
             f"Todos os {len(chain_models)} modelos na cadeia de fluxo para '{usage_type}' falharam. "
-            f"Ultimo erro: {last_error}"
+            f"Último erro: {last_error}"
         )
 
     async def _execute_with_config(
@@ -2274,7 +2274,7 @@ class AIOrchestrator:
             # Check for safety blocks or other issues
             prompt_feedback = data.get("promptFeedback", {})
             block_reason = prompt_feedback.get("blockReason", "Unknown")
-            raise Exception(f"Gemini nao retornou candidatos. Motivo do bloqueio: {block_reason}")
+            raise Exception(f"Gemini não retornou candidatos. Motivo do bloqueio: {block_reason}")
 
         # Extract content from response
         candidate = candidates[0]
@@ -2283,7 +2283,7 @@ class AIOrchestrator:
 
         if not parts:
             finish_reason = candidate.get("finishReason", "Unknown")
-            raise Exception(f"Gemini retornou conteudo vazio. Motivo da conclusao: {finish_reason}")
+            raise Exception(f"Gemini retornou conteúdo vazio. Motivo da conclusão: {finish_reason}")
 
         content = parts[0].get("text", "")
 

@@ -303,7 +303,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                               {/* User Prompt / Input */}
                               <div>
                                 <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                  Entrada (Prompt do Usuario)
+                                  Entrada (Prompt do Usuário)
                                 </h4>
                                 <div className="bg-white rounded-lg p-4 border border-gray-200">
                                   <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
@@ -315,7 +315,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                               {/* Response / Output */}
                               <div>
                                 <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                  Saida (Resposta da IA)
+                                  Saída (Resposta da IA)
                                 </h4>
                                 <div className="bg-white rounded-lg p-4 border border-gray-200">
                                   {prompt.status === 'error' ? (
@@ -337,7 +337,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                               {prompt.execution_metadata && Object.keys(prompt.execution_metadata).length > 0 && (
                                 <div>
                                   <h4 className="text-sm font-semibold text-gray-900 mb-2">
-                                    Metadados de Execucao
+                                    Metadados de Execução
                                   </h4>
                                   <div className="bg-white rounded-lg p-4 border border-gray-200">
                                     <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
@@ -356,7 +356,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                                   </div>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border border-gray-200">
-                                  <div className="text-xs text-gray-500 mb-1">Tokens de Saida</div>
+                                  <div className="text-xs text-gray-500 mb-1">Tokens de Saída</div>
                                   <div className="text-lg font-semibold text-gray-900">
                                     {(prompt.output_tokens || 0).toLocaleString()}
                                   </div>
@@ -368,7 +368,7 @@ export const PromptsList: React.FC<PromptsListProps> = ({
                                   </div>
                                 </div>
                                 <div className="bg-white rounded-lg p-3 border border-gray-200">
-                                  <div className="text-xs text-gray-500 mb-1">Tempo de Execucao</div>
+                                  <div className="text-xs text-gray-500 mb-1">Tempo de Execução</div>
                                   <div className="text-lg font-semibold text-gray-900">
                                     {formatTime(prompt.execution_time_ms)}
                                   </div>

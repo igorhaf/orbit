@@ -243,7 +243,7 @@ async def send_message_and_execute(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sessao de chat {session_id} nao encontrada"
+            detail=f"Sessão de chat {session_id} não encontrada"
         )
 
     # Executar task com a mensagem do usuário usando AI Orchestrator
@@ -308,7 +308,7 @@ async def execute_task_direct(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sessao de chat {session_id} nao encontrada"
+            detail=f"Sessão de chat {session_id} não encontrada"
         )
 
     # Executar task diretamente usando AI Orchestrator

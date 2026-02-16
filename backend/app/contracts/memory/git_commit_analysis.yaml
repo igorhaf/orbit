@@ -83,7 +83,7 @@ user_prompt: |
 
   ---
 
-  TAREFA: Analise o histórico de commits acima e extraia regras de negócio,
+  TAREFA: Análise o histórico de commits acima e extraia regras de negócio,
   decisões de feature e conhecimento do domínio.
 
   Foque em commits que revelam LÓGICA DE NEGÓCIO e REGRAS DO DOMÍNIO,

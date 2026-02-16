@@ -447,7 +447,7 @@ export default function BacklogListView({
           false,
           item.id // task_id for persistent loading state
         );
-        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificacoes.');
+        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificações.');
         return;
       }
 
@@ -463,7 +463,7 @@ export default function BacklogListView({
     setConfirmDialog({
       open: true,
       title: 'Rejeitar Item',
-      message: `Tem certeza que deseja rejeitar e excluir "${item.title}"? Esta acao nao pode ser desfeita.`,
+      message: `Tem certeza que deseja rejeitar e excluir "${item.title}"? Esta ação não pode ser desfeita.`,
       type: 'danger',
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -490,7 +490,7 @@ export default function BacklogListView({
     setConfirmDialog({
       open: true,
       title: 'Excluir Itens',
-      message: `Tem certeza que deseja excluir ${count} item(ns)? Esta acao nao pode ser desfeita.`,
+      message: `Tem certeza que deseja excluir ${count} item(ns)? Esta ação não pode ser desfeita.`,
       type: 'danger',
       onConfirm: async () => {
         setConfirmDialog(prev => ({ ...prev, open: false }));
@@ -704,7 +704,7 @@ export default function BacklogListView({
                 }}
                 disabled={isItemActivating(item.id) || rejectingId === item.id}
                 className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 hover:bg-green-200 rounded border border-green-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                title="Aprovar sugestao"
+                title="Aprovar sugestão"
               >
                 {isItemActivating(item.id) ? (
                   <>
@@ -728,7 +728,7 @@ export default function BacklogListView({
                 }}
                 disabled={isItemActivating(item.id) || rejectingId === item.id}
                 className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 rounded border border-red-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                title="Rejeitar sugestao"
+                title="Rejeitar sugestão"
               >
                 {rejectingId === item.id ? (
                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-700"></div>
@@ -945,7 +945,7 @@ export default function BacklogListView({
                         ? 'bg-white text-blue-600 shadow-sm'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
-                    title="Visualizacao em Arvore"
+                    title="Visualização em Árvore"
                   >
                     <span className="inline-flex items-center gap-1"><IconTree className="w-3 h-3" /> Tree</span>
                   </button>
@@ -956,7 +956,7 @@ export default function BacklogListView({
                         ? 'bg-white text-blue-600 shadow-sm'
                         : 'text-gray-600 hover:text-gray-800'
                     }`}
-                    title="Visualizacao em Cards"
+                    title="Visualização em Cards"
                   >
                     <span className="inline-flex items-center gap-1"><IconCards className="w-3 h-3" /> Cards</span>
                   </button>
@@ -1006,7 +1006,7 @@ export default function BacklogListView({
                 onClick={handleClearSelection}
                 className="px-2 py-1 text-xs font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
               >
-                Limpar Selecao
+                Limpar Seleção
               </button>
             </div>
           </div>

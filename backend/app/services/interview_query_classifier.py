@@ -30,7 +30,7 @@ TECHNICAL_KEYWORDS = {
     "serverless", "lambda", "cdn", "dns", "ssl", "tls", "firewall",
     "backup", "disaster recovery", "high availability", "failover",
     "algoritmo", "arquitetura", "banco de dados", "seguranca", "desempenho",
-    "escalabilidade", "infraestrutura", "autenticacao", "autorizacao",
+    "escalabilidade", "infraestrutura", "autenticação", "autorizacao",
     "implantacao", "monitoramento",
 }
 
@@ -38,7 +38,7 @@ REASONING_PATTERNS = [
     re.compile(r"\b(?:why|por\s?que|como|how\s+would|explain|compare|trade.?off|pros?\s+(?:and|e)\s+cons?)\b", re.IGNORECASE),
     re.compile(r"\b(?:what\s+(?:are|is)\s+the\s+(?:best|ideal|recommended|optimal))\b", re.IGNORECASE),
     re.compile(r"\b(?:qual\s+(?:a\s+melhor|o\s+melhor|seria))\b", re.IGNORECASE),
-    re.compile(r"\b(?:descreva|detalhe|explique|justifique|analise)\b", re.IGNORECASE),
+    re.compile(r"\b(?:descreva|detalhe|explique|justifique|análise)\b", re.IGNORECASE),
     re.compile(r"\b(?:describe|detail|justify|analyze|evaluate|assess)\b", re.IGNORECASE),
 ]
 

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 class ConsistencyValidator:
     """
-    Valida consistência entre tasks após batch execution
+    Válida consistência entre tasks após batch execution
 
     Features:
     - Coordena validators especializados
@@ -34,7 +34,7 @@ class ConsistencyValidator:
         task_result_ids: List[str]
     ) -> Dict:
         """
-        Valida consistência de um batch de tasks
+        Válida consistência de um batch de tasks
 
         Args:
             project_id: ID do projeto (UUID string)

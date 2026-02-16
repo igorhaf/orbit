@@ -68,7 +68,7 @@ function AISuggestButton({
         onClick();
       }}
       disabled={disabled || isGenerating}
-      title="Sugerir um titulo melhor com IA"
+      title="Sugerir um título melhor com IA"
       className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
     >
       {isGenerating ? (
@@ -167,7 +167,7 @@ export default function InlineCardCreator({
       }
     } catch (err) {
       console.error('Failed to suggest title:', err);
-      setError('Sugestao da IA falhou. Tente novamente.');
+      setError('Sugestão da IA falhou. Tente novamente.');
     } finally {
       setIsGenerating(false);
       inputRef.current?.focus();
@@ -230,7 +230,7 @@ export default function InlineCardCreator({
                   onChange={(e) => setTitle(e.target.value)}
                   onKeyDown={handleKeyDown}
                   onBlur={handleBlur}
-                  placeholder={`Novo titulo de ${label}...`}
+                  placeholder={`Novo título de ${label}...`}
                   className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
                 />
                 <div data-ai-suggest>
@@ -275,7 +275,7 @@ export default function InlineCardCreator({
                 onChange={(e) => setTitle(e.target.value)}
                 onKeyDown={handleKeyDown}
                 onBlur={handleBlur}
-                placeholder={`Novo titulo de ${label}...`}
+                placeholder={`Novo título de ${label}...`}
                 className="flex-1 px-3 py-1.5 text-sm border border-blue-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
               />
               <div data-ai-suggest>

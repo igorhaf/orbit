@@ -106,7 +106,7 @@ export function CommitHistory({ projectId }: Props) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900">Historico de Commits</h3>
+        <h3 className="text-lg font-semibold text-gray-900">Histórico de Commits</h3>
         <span className="text-sm text-gray-500">{commits.length} commits</span>
       </div>
 

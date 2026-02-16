@@ -103,7 +103,7 @@ class PromptDocRAGSync:
         for path in prompt_files:
             prompt_number = self._extract_prompt_number(path.name)
             if prompt_number is None:
-                result["errors"].append({"file": path.name, "error": "Nao foi possivel analisar numero do prompt"})
+                result["errors"].append({"file": path.name, "error": "Não foi possível analisar número do prompt"})
                 continue
 
             # Use filename as unique key so different PROMPT_42_*.md files are
@@ -207,7 +207,7 @@ class GitCommitRAGSync:
         result: Dict = {"total_read": 0, "synced": 0, "skipped": 0, "errors": []}
 
         if not os.path.isdir(self.code_path):
-            result["errors"].append({"error": f"code_path nao existe: {self.code_path}"})
+            result["errors"].append({"error": f"code_path não existe: {self.code_path}"})
             return result
 
         # format: hash\x1fsubject\x1fbody\x1erecord separator between commits
@@ -222,7 +222,7 @@ class GitCommitRAGSync:
         ])
 
         if output is None:
-            result["errors"].append({"error": "git log falhou ou nao e um repositorio git"})
+            result["errors"].append({"error": "git log falhou ou não é um repositório git"})
             return result
 
         already_indexed = self._get_indexed_hashes()

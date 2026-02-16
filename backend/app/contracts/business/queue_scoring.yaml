@@ -1,15 +1,15 @@
-# Contrato de Negocio: Pontuacao da Fila de Prompts
+# Contrato de Negocio: Pontuação da Fila de Prompts
 # PROMPT #256 - Externalizar Contratos Hardcoded
 #
 # Fonte: backend/app/api/routes/prompt_queue.py (linhas 38-96)
-# Sistema de pontuacao para ordenacao de prompts na fila de execucao.
-# IMPORTANTE: Todas as saidas deste contrato devem ser em portugues.
+# Sistema de pontuação para ordenação de prompts na fila de execução.
+# IMPORTANTE: Todas as saidas deste contrato devem ser em português.
 
 name: queue_scoring
 version: 1
 domain: business
 category: business
-description: Pesos e estrategias de pontuacao para ordenacao da fila de prompts
+description: Pesos e estratégias de pontuação para ordenação da fila de prompts
 usage_type: business_rule
 
 governance:
@@ -20,16 +20,16 @@ governance:
     - version: 1
       date: "2026-02-13"
       author: "Claude"
-      changes: "Externalizado do prompt_queue.py - dicts de pontuacao hardcoded"
+      changes: "Externalizado do prompt_queue.py - dicts de pontuação hardcoded"
 
 tags:
   - regra-de-negocio
   - fila
-  - pontuacao
+  - pontuação
   - prioridade
 
 data:
-  # Pontuacao por tipo de item na hierarquia (epics primeiro)
+  # Pontuação por tipo de item na hierarquia (epics primeiro)
   hierarchy_scores:
     epic: 100
     story: 75
@@ -37,7 +37,7 @@ data:
     subtask: 25
     bug: 60
 
-  # Pontuacao por nivel de prioridade (maior = mais urgente)
+  # Pontuação por nível de prioridade (maior = mais urgente)
   priority_scores:
     critical: 100
     high: 80
@@ -45,8 +45,8 @@ data:
     low: 25
     trivial: 10
 
-  # Pesos das estrategias para calculo do score total
-  # Cada estrategia ajusta o peso de cada fator (devem somar ~1.0)
+  # Pesos das estratégias para calculo do score total
+  # Cada estratégia ajusta o peso de cada fator (devem somar ~1.0)
   strategy_weights:
     balanced:
       hierarchy: 0.35
@@ -74,16 +74,16 @@ data:
       age: 0.05
       dependency: 0.60
 
-  # Limite maximo de idade para calculo de pontuacao
+  # Limite máximo de idade para calculo de pontuação
   max_age_days: 100
 
-  # Formula de dependencia: max(0, 100 - num_deps * penalidade)
+  # Formula de dependência: max(0, 100 - num_deps * penalidade)
   dependency_penalty_per_dep: 20
 
 rules:
   constraints:
     - id: C1
-      description: "Todos os pesos de cada estrategia devem somar aproximadamente 1.0"
+      description: "Todos os pesos de cada estratégia devem somar aproximadamente 1.0"
       applies_to: [balanced, hierarchy_first, priority_first, age_first, dependency_first]
       condition: "sum(weights) ~= 1.0"
 

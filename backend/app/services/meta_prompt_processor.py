@@ -101,11 +101,11 @@ class MetaPromptProcessor:
         # 1. Validate interview
         interview = self.db.query(Interview).filter(Interview.id == interview_id).first()
         if not interview:
-            raise ValueError(f"Entrevista {interview_id} nao encontrada")
+            raise ValueError(f"Entrevista {interview_id} não encontrada")
 
         # PROMPT #92/94 - Accept both meta_prompt and orchestrator interviews
         if interview.interview_mode not in ["meta_prompt", "orchestrator"]:
-            raise ValueError(f"Entrevista {interview_id} nao pode gerar hierarquia (modo: {interview.interview_mode}). Apenas modos 'meta_prompt' e 'orchestrator' sao suportados.")
+            raise ValueError(f"Entrevista {interview_id} não pode gerar hierarquia (modo: {interview.interview_mode}). Apenas modos 'meta_prompt' e 'orchestrator' são suportados.")
 
         # PROMPT #92/94 - Different minimum messages for each mode
         # Orchestrator interviews: 5-8 fixed questions + AI questions (min 10 messages)
@@ -116,7 +116,7 @@ class MetaPromptProcessor:
 
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Projeto {project_id} nao encontrado")
+            raise ValueError(f"Projeto {project_id} não encontrado")
 
         logger.info(f"🎯 Processing {interview.interview_mode} interview {interview_id} for project {project.name}")
         logger.info(f"   Focus topics: {interview.focus_topics}")
@@ -315,7 +315,7 @@ Descrição: {project.description or 'N/A'}
 {focus_text}
 
 **SUA TAREFA:**
-Analise TODAS as respostas do meta prompt e gere a hierarquia completa:
+Análise TODAS as respostas do meta prompt e gere a hierarquia completa:
 
 1. **1 EPIC** - Objetivo principal do projeto (valor de negócio de alto nível)
 2. **3-7 STORIES** - Funcionalidades principais quebrando o Epic
@@ -394,7 +394,7 @@ Retorne APENAS JSON válido (sem markdown):
   }}
 }}
 
-Analise TODAS as respostas abaixo e gere a hierarquia completa."""
+Análise TODAS as respostas abaixo e gere a hierarquia completa."""
 
         # Build user prompt with all Q&A
         user_prompt = f"""**RESPOSTAS DO META PROMPT:**
@@ -483,7 +483,7 @@ Analise TODAS as respostas abaixo e gere a hierarquia completa."""
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
             logger.error(f"AI response: {result.get('response', '')[:1000]}")
-            raise ValueError(f"IA nao retornou JSON valido: {str(e)}")
+            raise ValueError(f"IA não retornou JSON válido: {str(e)}")
 
     async def _create_epic(
         self,

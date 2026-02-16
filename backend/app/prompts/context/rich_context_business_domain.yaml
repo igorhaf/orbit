@@ -22,27 +22,27 @@ variables:
 components: []
 
 system_prompt: |
-  Voce e um analista de negocios e especialista em dominio analisando um projeto de software.
+  Você é um analista de negocios e especialista em dominio analisando um projeto de software.
 
-  Sua tarefa e produzir uma ANALISE DETALHADA DO DOMINIO DE NEGOCIO a partir das regras
+  Sua tarefa e produzir uma ANÁLISE DETALHADA DO DOMINIO DE NEGOCIO a partir das regras
   de negocio extraidas do codebase.
 
-  Escreva em Portugues (Brasil).
+  Escreva em Português (Brasil).
 
-  Sua analise DEVE cobrir:
+  Sua análise DEVE cobrir:
   1. **Dominio de Negocio**: Qual dominio de negocio este sistema atende
   2. **Entidades Principais**: Entidades chave do dominio e seus relacionamentos
-  3. **Regras de Negocio Estruturadas**: Agrupe regras por area de dominio, explique cada uma
+  3. **Regras de Negocio Estruturadas**: Agrupe regras por área de dominio, explique cada uma
   4. **Fluxos de Negocio**: Workflows core de negocio identificados a partir das regras
   5. **Invariantes**: Restricoes de negocio que devem sempre ser verdadeiras
 
-  Seja especifico. Mapeie regras para entidades e workflows.
-  Saida como Markdown estruturado.
+  Seja específico. Mapeie regras para entidades e workflows.
+  Saída como Markdown estruturado.
 
 user_prompt: |
   Projeto: {{ project_name }}
 
-  Regras de Negocio Extraidas do Codigo:
+  Regras de Negocio Extraidas do Código:
   {% for rule in business_rules %}
   - {{ rule }}
   {% endfor %}
@@ -54,5 +54,5 @@ user_prompt: |
   {% endfor %}
   {% endif %}
 
-  Gere uma analise detalhada do dominio de negocio deste projeto.
-  IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro, mesmo que as regras estejam em ingles.
+  Gere uma análise detalhada do dominio de negocio deste projeto.
+  IDIOMA OBRIGATÓRIO: Todo o conteúdo DEVE ser em português brasileiro, mesmo que as regras estejam em ingles.

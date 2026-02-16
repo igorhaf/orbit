@@ -37,7 +37,7 @@ export function TaskForm({ projectId, onSuccess, onCancel }: Props) {
     e.preventDefault();
 
     if (!formData.title.trim()) {
-      setError('Titulo e obrigatorio');
+      setError('Título e obrigatório');
       return;
     }
 
@@ -62,19 +62,19 @@ export function TaskForm({ projectId, onSuccess, onCancel }: Props) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Titulo */}
+      {/* Título */}
       <Input
-        label="Titulo"
-        placeholder="Titulo da tarefa"
+        label="Título"
+        placeholder="Título da tarefa"
         required
         value={formData.title}
         onChange={(e) => setFormData({ ...formData, title: e.target.value })}
       />
 
-      {/* Descricao */}
+      {/* Descrição */}
       <Textarea
-        label="Descricao"
-        placeholder="Descricao da tarefa (opcional)"
+        label="Descrição"
+        placeholder="Descrição da tarefa (opcional)"
         value={formData.description}
         onChange={(e) => setFormData({ ...formData, description: e.target.value })}
         rows={4}
@@ -93,7 +93,7 @@ export function TaskForm({ projectId, onSuccess, onCancel }: Props) {
         <div className="text-sm text-red-500 bg-red-50 p-3 rounded">{error}</div>
       )}
 
-      {/* Acoes */}
+      {/* Ações */}
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancelar

@@ -583,12 +583,12 @@ class ContextGeneratorService:
         # 1. Validate interview
         interview = self.db.query(Interview).filter(Interview.id == interview_id).first()
         if not interview:
-            raise ValueError(f"Entrevista {interview_id} nao encontrada")
+            raise ValueError(f"Entrevista {interview_id} não encontrada")
 
         # Accept both "context" and "meta_prompt" modes for compatibility
         if interview.interview_mode not in ["context", "meta_prompt"]:
             raise ValueError(
-                f"Entrevista {interview_id} nao e uma entrevista de contexto "
+                f"Entrevista {interview_id} não é uma entrevista de contexto "
                 f"(modo: {interview.interview_mode}). Apenas modo 'context' suportado."
             )
 
@@ -597,7 +597,7 @@ class ContextGeneratorService:
         # with minimal conversation (just the AI greeting is enough)
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Projeto {project_id} nao encontrado")
+            raise ValueError(f"Projeto {project_id} não encontrado")
 
         has_memory_context = bool(project.initial_memory_context)
         message_count = len(interview.conversation_data or [])
@@ -825,14 +825,14 @@ FORMATO DE RESPOSTA (JSON):
 ```
 
 IMPORTANTE:
-- O context_semantic DEVE SER UMA STRING de texto markdown, NAO um objeto/dicionario JSON
-- O context_semantic deve ser rico e detalhado (minimo 500 caracteres)
-- Use portugues brasileiro
+- O context_semantic DEVE SER UMA STRING de texto markdown, NÃO um objeto/dicionario JSON
+- O context_semantic deve ser rico e detalhado (mínimo 500 caracteres)
+- Use português brasileiro
 - Os identificadores devem ser concisos (2-3 caracteres)
-- O Mapa Semantico deve estar DENTRO do context_semantic no final
+- O Mapa Semântico deve estar DENTRO do context_semantic no final
 - Retorne APENAS o JSON, sem texto adicional
-- NUNCA use blocos de codigo markdown (```json)
-- NUNCA use emojis, icones ou simbolos especiais Unicode (nenhum emoji como casa, estrela, foguete, etc)
+- NUNCA use blocos de código markdown (```json)
+- NUNCA use emojis, icones ou símbolos especiais Unicode (nenhum emoji como casa, estrela, foguete, etc)
 - Comece a resposta diretamente com { e termine com }"""
 
         # PROMPT #120 - Include business rules from memory scan in context
@@ -874,7 +874,7 @@ IMPORTANTE:
             for i, rule in enumerate(business_rules, 1):
                 business_rules_section += f"{i}. {rule}\n"
 
-        user_prompt = f"""Analise a seguinte entrevista de contexto para o projeto "{project.name}":
+        user_prompt = f"""Análise a seguinte entrevista de contexto para o projeto "{project.name}":
 
 {conversation_summary}
 {business_rules_section}
@@ -986,18 +986,18 @@ Gere o contexto semântico estruturado, o mapa semântico e os insights conforme
         if existing_features or existing_business_rules:
             existing_section = """
 
-ATENCAO - FUNCIONALIDADES JA EXISTENTES NO CODIGO:
-As seguintes funcionalidades JA FORAM IMPLEMENTADAS e verificadas no codigo-fonte.
-NAO gere epicos para estas features - elas ja existem e estao documentadas como cards fechados.
+ATENÇÃO - FUNCIONALIDADES JA EXISTENTES NO CÓDIGO:
+As seguintes funcionalidades JA FORAM IMPLEMENTADAS e verificadas no código-fonte.
+NÃO gere epicos para estas features - elas ja existem e estao documentadas como cards fechados.
 Sugira apenas funcionalidades NOVAS que ainda precisam ser desenvolvidas."""
 
             if existing_features:
-                existing_section += "\n\nFEATURES JA IMPLEMENTADAS (nao sugerir epicos para estas):"
+                existing_section += "\n\nFEATURES JA IMPLEMENTADAS (não sugerir epicos para estas):"
                 for f in existing_features:
                     existing_section += f"\n- [JA EXISTE] {f}"
 
             if existing_business_rules:
-                existing_section += "\n\nREGRAS DE NEGOCIO JA IMPLEMENTADAS (nao sugerir epicos para estas):"
+                existing_section += "\n\nREGRAS DE NEGOCIO JA IMPLEMENTADAS (não sugerir epicos para estas):"
                 for rule in existing_business_rules[:5]:  # Limit to first 5 for brevity
                     existing_section += f"\n- [JA EXISTE] {rule[:100]}..."
 
@@ -1038,7 +1038,7 @@ IMPORTANTE:
 - Pode retornar lista vazia se todas as features principais já existem
 - NÃO repita funcionalidades existentes com nomes diferentes
 - Retorne APENAS o JSON, sem texto adicional
-- NUNCA use emojis ou simbolos especiais nos títulos ou descrições"""
+- NUNCA use emojis ou símbolos especiais nos títulos ou descrições"""
 
         # Build user prompt with context
         key_features = interview_insights.get("key_features", [])
@@ -1047,7 +1047,7 @@ IMPORTANTE:
         features_text = "\n".join([f"- {f}" for f in key_features]) if key_features else "Não especificadas"
         users_text = "\n".join([f"- {u}" for u in target_users]) if target_users else "Não especificados"
 
-        user_prompt = f"""Analise o seguinte contexto de projeto e gere épicos apenas para NOVAS funcionalidades:
+        user_prompt = f"""Análise o seguinte contexto de projeto e gere épicos apenas para NOVAS funcionalidades:
 
 ## CONTEXTO DO PROJETO
 {context_human}
@@ -1320,7 +1320,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
         for i, node in enumerate(nodes):
             item_type = DEPTH_TO_TYPE.get(depth, ItemType.SUBTASK)
-            title = node.get("title", "Sem titulo")[:200]
+            title = node.get("title", "Sem título")[:200]
             description = node.get("description", "")
 
             card = Task(
@@ -1376,7 +1376,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             id=uuid4(),
             project_id=project_id,
             title="Regras de Negocio Documentadas",
-            description=f"Regras de negocio verificadas no codigo-fonte. Total: {len(business_rules)}",
+            description=f"Regras de negocio verificadas no código-fonte. Total: {len(business_rules)}",
             item_type=ItemType.EPIC,
             status=TaskStatus.DONE,
             priority=PriorityLevel.HIGH,
@@ -1448,7 +1448,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         """
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Projeto {project_id} nao encontrado")
+            raise ValueError(f"Projeto {project_id} não encontrado")
 
         if project.context_locked:
             logger.warning(f"Project {project_id} context is already locked")
@@ -1456,7 +1456,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
         if not project.context_semantic:
             raise ValueError(
-                f"Nao e possivel travar contexto do projeto {project_id}: nenhum contexto gerado ainda"
+                f"Não é possível travar contexto do projeto {project_id}: nenhum contexto gerado ainda"
             )
 
         project.context_locked = True
@@ -1551,7 +1551,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         # 1. Fetch item
         epic = self.db.query(Task).filter(Task.id == epic_id).first()
         if not epic:
-            raise ValueError(f"Item {epic_id} nao encontrado")
+            raise ValueError(f"Item {epic_id} não encontrado")
 
         # Check if it's a suggested item
         is_suggested = (
@@ -1560,18 +1560,18 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
         if not is_suggested:
             raise ValueError(
-                f"Item {epic_id} nao e um item sugerido. "
+                f"Item {epic_id} não é um item sugerido. "
                 "Pode ja ter sido ativado."
             )
 
         # 2. Fetch project and context
         project = self.db.query(Project).filter(Project.id == epic.project_id).first()
         if not project:
-            raise ValueError(f"Projeto {epic.project_id} nao encontrado")
+            raise ValueError(f"Projeto {epic.project_id} não encontrado")
 
         if not project.context_semantic:
             raise ValueError(
-                f"Projeto {project.id} nao tem contexto. "
+                f"Projeto {project.id} não tem contexto. "
                 "Por favor, complete a Entrevista de Contexto primeiro."
             )
 
@@ -1729,11 +1729,11 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         """
         parent = self.db.query(Task).filter(Task.id == parent_id).first()
         if not parent:
-            raise ValueError(f"Item {parent_id} nao encontrado")
+            raise ValueError(f"Item {parent_id} não encontrado")
 
         project = self.db.query(Project).filter(Project.id == parent.project_id).first()
         if not project:
-            raise ValueError(f"Projeto {parent.project_id} nao encontrado")
+            raise ValueError(f"Projeto {parent.project_id} não encontrado")
 
         if parent.item_type == ItemType.EPIC:
             children = await self._generate_draft_stories(parent, project, count=count)
@@ -1742,7 +1742,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         elif parent.item_type == ItemType.TASK:
             children = await self._generate_draft_subtasks(parent, project, count=count)
         else:
-            raise ValueError(f"Nao e possivel gerar filhos para item_type={parent.item_type.value}")
+            raise ValueError(f"Não é possível gerar filhos para item_type={parent.item_type.value}")
 
         child_type = {
             ItemType.EPIC: "stories",
@@ -1962,7 +1962,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                 context_semantic = (
                     f"# Projeto: {project_name}\n\n"
                     f"Contexto gerado automaticamente. "
-                    f"Informacoes insuficientes da entrevista para gerar contexto detalhado.\n\n"
+                    f"Informações insuficientes da entrevista para gerar contexto detalhado.\n\n"
                     f"*Edite para adicionar detalhes.*"
                 )
                 logger.info("  Restructured: context_semantic built from fallback")
@@ -2054,7 +2054,7 @@ METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
 - **FILTRO** (Filtros): FILTRO1... = Filtros disponíveis (Ex: FILTRO1=por status)
 
 **Integrações:**
-- **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuarios)
+- **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuários)
 - **S** (Serviços): S1, S2... = Serviços externos (Ex: S1=serviço de email)
 - **EVENTO** (Eventos): EVENTO1... = Eventos do sistema (Ex: EVENTO1=usuario_criado)
 
@@ -2064,7 +2064,7 @@ METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
 - **SEG** (Segurança): SEG1... = Requisitos de segurança
 
 Sua tarefa:
-1. Analise o contexto do projeto e o épico sugerido
+1. Análise o contexto do projeto e o épico sugerido
 2. Crie um **Mapa Semântico EXTENSO** com MÍNIMO 25-35 identificadores
 3. DETALHE especificamente:
    - TODOS os campos/atributos com seus TIPOS DE DADOS
@@ -2294,9 +2294,9 @@ Use a estrutura EXATA especificada no system prompt:
 ## EXEMPLO DE NÍVEL DE DETALHE ESPERADO
 
 Para um módulo de "Cadastro de Imóveis", esperamos ver:
-- ATTR1: titulo: string(100) - Título do anúncio, obrigatório
-- ATTR2: descricao: text - Descrição detalhada, obrigatório, mínimo 50 caracteres
-- ATTR3: preco: decimal(10,2) - Valor do imóvel em reais
+- ATTR1: título: string(100) - Título do anúncio, obrigatório
+- ATTR2: descrição: text - Descrição detalhada, obrigatório, mínimo 50 caracteres
+- ATTR3: preço: decimal(10,2) - Valor do imóvel em reais
 - ATTR4: tipo: enum[casa,apartamento,terreno,comercial] - Tipo do imóvel
 - ATTR5: quartos: integer - Número de quartos, 0-10
 - ATTR6: banheiros: integer - Número de banheiros, 0-10
@@ -2839,7 +2839,7 @@ Para completar a especificação deste módulo, é necessário definir:
 - Telas e componentes de interface
 - Endpoints da API
 
-NOTA: Esta e uma especificacao preliminar. A geracao automatica de conteudo detalhado falhou.
+NOTA: Esta e uma especificação preliminar. A geração automática de conteúdo detalhado falhou.
 Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
 """
 
@@ -2929,7 +2929,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         # Fetch item
         epic = self.db.query(Task).filter(Task.id == epic_id).first()
         if not epic:
-            raise ValueError(f"Item {epic_id} nao encontrado")
+            raise ValueError(f"Item {epic_id} não encontrado")
 
         # Check if it's a suggested item
         is_suggested = (
@@ -2938,7 +2938,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
 
         if not is_suggested:
             raise ValueError(
-                f"Item {epic_id} nao e um item sugerido. "
+                f"Item {epic_id} não é um item sugerido. "
                 "Apenas itens sugeridos podem ser rejeitados."
             )
 
@@ -2987,7 +2987,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
 
         semantic_map_text = ""
         if epic_semantic_map:
-            semantic_map_text = "\nMAPA SEMANTICO DO EPIC:\n"
+            semantic_map_text = "\nMAPA SEMÂNTICO DO EPIC:\n"
             semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
 
         # PROMPT #257 - Fetch business rules from RAG for context injection
@@ -3009,7 +3009,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
                 "backlog/stories_from_epic",
                 {
                     "epic_title": epic.title,
-                    "epic_description": (epic.description or "Nao especificada")[:5000],
+                    "epic_description": (epic.description or "Não especificada")[:5000],
                     "epic_story_points": epic.story_points or 13,
                     "epic_priority": epic.priority.value if epic.priority else "medium",
                     "epic_acceptance_criteria": "\n".join(epic.acceptance_criteria or []),
@@ -3238,7 +3238,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         combined_semantic_map = {**epic_semantic_map, **story_semantic_map}
         semantic_map_text = ""
         if combined_semantic_map:
-            semantic_map_text = "\nMAPA SEMANTICO DO EPIC/STORY:\n"
+            semantic_map_text = "\nMAPA SEMÂNTICO DO EPIC/STORY:\n"
             semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
 
         # PROMPT #257 - Fetch business rules from RAG
@@ -3260,7 +3260,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
                 "backlog/tasks_from_story",
                 {
                     "story_title": story.title,
-                    "story_description": (story.description or "Nao especificada")[:5000],
+                    "story_description": (story.description or "Não especificada")[:5000],
                     "story_story_points": story.story_points or 8,
                     "story_priority": story.priority.value if story.priority else "medium",
                     "story_acceptance_criteria": "\n".join(story.acceptance_criteria or []),
@@ -3449,7 +3449,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
 
         semantic_map_text = ""
         if task_semantic_map:
-            semantic_map_text = "\nMAPA SEMANTICO DA TASK:\n"
+            semantic_map_text = "\nMAPA SEMÂNTICO DA TASK:\n"
             semantic_map_text += json.dumps(task_semantic_map, indent=2, ensure_ascii=False)
 
         # PROMPT #257 - Fetch business rules from RAG
@@ -3471,7 +3471,7 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
                 "backlog/subtasks_from_task",
                 {
                     "task_title": task.title,
-                    "task_description": (task.description or "Nao especificada")[:3000],
+                    "task_description": (task.description or "Não especificada")[:3000],
                     "task_story_points": task.story_points or 3,
                     "task_priority": task.priority.value if task.priority else "medium",
                     "task_acceptance_criteria": "\n".join(task.acceptance_criteria or []),
@@ -3640,20 +3640,20 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         # Fetch story
         story = self.db.query(Task).filter(Task.id == story_id).first()
         if not story:
-            raise ValueError(f"Story {story_id} nao encontrada")
+            raise ValueError(f"Story {story_id} não encontrada")
 
         if story.item_type != ItemType.STORY:
-            raise ValueError(f"Item {story_id} nao e uma Story (tipo: {story.item_type})")
+            raise ValueError(f"Item {story_id} não é uma Story (tipo: {story.item_type})")
 
         # Check if suggested
         is_suggested = (story.labels and "suggested" in story.labels) or story.workflow_state == "draft"
         if not is_suggested:
-            raise ValueError(f"Story {story_id} nao e um item sugerido")
+            raise ValueError(f"Story {story_id} não é um item sugerido")
 
         # Fetch project
         project = self.db.query(Project).filter(Project.id == story.project_id).first()
         if not project:
-            raise ValueError(f"Projeto {story.project_id} nao encontrado")
+            raise ValueError(f"Projeto {story.project_id} não encontrado")
 
         # Generate full story content
         story_content = await self._generate_full_story_content(story, project)
@@ -3783,7 +3783,7 @@ METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
 - **FILTRO** (Filtros): FILTRO1... = Filtros disponíveis (Ex: FILTRO1=por status)
 
 **Integrações:**
-- **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuarios)
+- **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuários)
 - **S** (Serviços): S1, S2... = Serviços externos (Ex: S1=serviço de email)
 - **EVENTO** (Eventos): EVENTO1... = Eventos do sistema (Ex: EVENTO1=usuario_criado)
 
@@ -3956,10 +3956,10 @@ Os critérios de aceitação devem ser ESPECÍFICOS para esta Story, não genér
 - "AC4: Após cadastro bem-sucedido, usuário recebe email de confirmação"
 - "AC5: Usuário não confirmado não consegue fazer login"
 
-## EXEMPLO DE CRITERIOS GENERICOS (NAO USE):
+## EXEMPLO DE CRITÉRIOS GENERICOS (NÃO USE):
 - "Funcionalidade implementada" [RUIM]
 - "Testes passam" [RUIM]
-- "Codigo revisado" [RUIM]
+- "Código revisado" [RUIM]
 
 Retorne APENAS o JSON, sem explicações."""
 
@@ -4101,20 +4101,20 @@ Retorne APENAS o JSON, sem explicações."""
         # Fetch task
         task = self.db.query(Task).filter(Task.id == task_id).first()
         if not task:
-            raise ValueError(f"Task {task_id} nao encontrada")
+            raise ValueError(f"Task {task_id} não encontrada")
 
         if task.item_type != ItemType.TASK:
-            raise ValueError(f"Item {task_id} nao e uma Task (tipo: {task.item_type})")
+            raise ValueError(f"Item {task_id} não é uma Task (tipo: {task.item_type})")
 
         # Check if suggested
         is_suggested = (task.labels and "suggested" in task.labels) or task.workflow_state == "draft"
         if not is_suggested:
-            raise ValueError(f"Task {task_id} nao e um item sugerido")
+            raise ValueError(f"Task {task_id} não é um item sugerido")
 
         # Fetch project
         project = self.db.query(Project).filter(Project.id == task.project_id).first()
         if not project:
-            raise ValueError(f"Projeto {task.project_id} nao encontrado")
+            raise ValueError(f"Projeto {task.project_id} não encontrado")
 
         # Fetch parent story and grandparent epic for full context
         parent_story = None
@@ -4564,20 +4564,20 @@ Retorne APENAS o JSON, sem explicações."""
         # Fetch subtask
         subtask = self.db.query(Task).filter(Task.id == subtask_id).first()
         if not subtask:
-            raise ValueError(f"Subtask {subtask_id} nao encontrada")
+            raise ValueError(f"Subtask {subtask_id} não encontrada")
 
         if subtask.item_type != ItemType.SUBTASK:
-            raise ValueError(f"Item {subtask_id} nao e uma Subtask (tipo: {subtask.item_type})")
+            raise ValueError(f"Item {subtask_id} não é uma Subtask (tipo: {subtask.item_type})")
 
         # Check if suggested
         is_suggested = (subtask.labels and "suggested" in subtask.labels) or subtask.workflow_state == "draft"
         if not is_suggested:
-            raise ValueError(f"Subtask {subtask_id} nao e um item sugerido")
+            raise ValueError(f"Subtask {subtask_id} não é um item sugerido")
 
         # Fetch project
         project = self.db.query(Project).filter(Project.id == subtask.project_id).first()
         if not project:
-            raise ValueError(f"Projeto {subtask.project_id} nao encontrado")
+            raise ValueError(f"Projeto {subtask.project_id} não encontrado")
 
         # Fetch full hierarchy for complete context
         parent_task = None
@@ -5073,11 +5073,11 @@ Retorne APENAS o JSON, sem explicações."""
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
             logger.error(f"❌ Project {project_id} not found for card generation")
-            return {"success": False, "error": "Projeto nao encontrado"}
+            return {"success": False, "error": "Projeto não encontrado"}
 
         if not project.initial_memory_context:
             logger.warning(f"⚠️ Project {project_id} has no memory context for card generation")
-            return {"success": False, "error": "Nenhum contexto de memoria disponivel"}
+            return {"success": False, "error": "Nenhum contexto de memória disponível"}
 
         logger.info(f"🎯 Starting card generation from memory for project: {project.name}")
 
@@ -5185,7 +5185,7 @@ Retorne APENAS o JSON, sem explicações."""
         """
         memory_ctx = project.initial_memory_context
         if not memory_ctx:
-            raise ValueError("Nenhum contexto de memoria disponivel")
+            raise ValueError("Nenhum contexto de memória disponível")
 
         # Build a summary from memory scan
         stack_info = memory_ctx.get("stack_info", {})
@@ -5735,11 +5735,11 @@ IMPORTANTE:
 
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
-            raise ValueError(f"Projeto {project_id} nao encontrado")
+            raise ValueError(f"Projeto {project_id} não encontrado")
 
         memory_ctx = project.initial_memory_context
         if not memory_ctx:
-            raise ValueError(f"Nenhum contexto de memoria para o projeto {project_id}")
+            raise ValueError(f"Nenhum contexto de memória para o projeto {project_id}")
 
         loader = PromptLoader()
 
@@ -5759,7 +5759,7 @@ IMPORTANTE:
             stack_text_parts.append(f"Frameworks: {', '.join(stack_info['frameworks'])}")
         if stack_info.get("databases"):
             stack_text_parts.append(f"Bancos de Dados: {', '.join(stack_info['databases'])}")
-        stack_text = "\n".join(stack_text_parts) if stack_text_parts else "Nao detectada"
+        stack_text = "\n".join(stack_text_parts) if stack_text_parts else "Não detectada"
 
         async def report_progress(percent, message):
             if progress_callback:
@@ -5774,7 +5774,7 @@ IMPORTANTE:
                 {
                     "project_name": project.name,
                     "stack_info": stack_text,
-                    "scan_summary": scan_summary or "Resumo nao disponivel"
+                    "scan_summary": scan_summary or "Resumo não disponível"
                 }
             )
             response = await asyncio.wait_for(
@@ -5792,10 +5792,10 @@ IMPORTANTE:
             logger.info(f"Architecture analysis complete for {project.name}")
         except asyncio.TimeoutError:
             logger.warning(f"Architecture analysis timed out after {ai_timeout}s for {project.name}")
-            architecture_analysis = "Analise arquitetural indisponivel: timeout"
+            architecture_analysis = "Análise arquitetural indisponivel: timeout"
         except Exception as e:
             logger.error(f"Architecture analysis failed: {e}")
-            architecture_analysis = f"Analise arquitetural indisponivel: {str(e)}"
+            architecture_analysis = f"Análise arquitetural indisponivel: {str(e)}"
 
         # --- Step 2: Business Domain Analysis (55-70%) ---
         await report_progress(55, "Analyzing business domain...")
@@ -5825,10 +5825,10 @@ IMPORTANTE:
                 logger.info(f"Business domain analysis complete for {project.name}")
             except asyncio.TimeoutError:
                 logger.warning(f"Business domain analysis timed out after {ai_timeout}s for {project.name}")
-                business_domain_analysis = "Analise de dominio indisponivel: timeout"
+                business_domain_analysis = "Análise de dominio indisponivel: timeout"
             except Exception as e:
                 logger.error(f"Business domain analysis failed: {e}")
-                business_domain_analysis = f"Analise de dominio indisponivel: {str(e)}"
+                business_domain_analysis = f"Análise de dominio indisponivel: {str(e)}"
         else:
             business_domain_analysis = "Nenhuma regra de negocio detectada no codebase."
 

@@ -249,8 +249,8 @@ async def get_orchestration_status(
             "strategies": strategies,
             "usage_types": {
                 "prompt_generation": "Usa o melhor modelo para analisar entrevistas e gerar prompts",
-                "task_execution": "Usa o melhor modelo para executar codigo e tarefas tecnicas",
-                "commit_generation": "Usa modelo rapido e economico para mensagens de commit",
+                "task_execution": "Usa o melhor modelo para executar código e tarefas tecnicas",
+                "commit_generation": "Usa modelo rápido e economico para mensagens de commit",
                 "interview": "Usa modelo conversacional para entrevistas tecnicas",
                 "general": "Usa modelo economico para consultas gerais"
             }

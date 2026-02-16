@@ -282,9 +282,9 @@ export function ProjectSpecsList({ projectId }: Props) {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Titulo *</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Título *</label>
           <Input
-            placeholder="Titulo legivel"
+            placeholder="Título legivel"
             value={formData.title}
             onChange={(e) => setFormData({ ...formData, title: e.target.value })}
             required
@@ -295,7 +295,7 @@ export function ProjectSpecsList({ projectId }: Props) {
       {/* Language and Version */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Linguagem de Programacao</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Linguagem de Programação</label>
           <Input
             placeholder="e.g., PHP, TypeScript, Python"
             value={formData.language}
@@ -303,7 +303,7 @@ export function ProjectSpecsList({ projectId }: Props) {
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Versao do Framework</label>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Versão do Framework</label>
           <Input
             placeholder="e.g., 10.x, 14.x"
             value={formData.framework_version}
@@ -314,11 +314,11 @@ export function ProjectSpecsList({ projectId }: Props) {
 
       {/* Description */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Descricao</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Descrição</label>
         <textarea
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           rows={2}
-          placeholder="Breve descricao desta especificacao"
+          placeholder="Breve descrição desta especificação"
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
         />
@@ -326,11 +326,11 @@ export function ProjectSpecsList({ projectId }: Props) {
 
       {/* Content */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Conteudo da Especificacao *</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Conteúdo da Especificação *</label>
         <textarea
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
           rows={8}
-          placeholder="Insira o conteudo/template da especificacao aqui"
+          placeholder="Insira o conteúdo/template da especificação aqui"
           value={formData.content}
           onChange={(e) => setFormData({ ...formData, content: e.target.value })}
           required
@@ -339,7 +339,7 @@ export function ProjectSpecsList({ projectId }: Props) {
 
       {/* File Extensions */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Extensoes de Arquivo (separadas por virgula)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Extensões de Arquivo (separadas por virgula)</label>
         <Input
           placeholder="e.g., .php, .tsx, .py"
           value={formData.file_extensions.join(', ')}
@@ -352,7 +352,7 @@ export function ProjectSpecsList({ projectId }: Props) {
 
       {/* Ignore Patterns */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">Padroes para Ignorar (separados por virgula)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Padrões para Ignorar (separados por virgula)</label>
         <Input
           placeholder="e.g., node_modules, vendor, .git"
           value={formData.ignore_patterns.join(', ')}
@@ -373,7 +373,7 @@ export function ProjectSpecsList({ projectId }: Props) {
           onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
         />
         <label htmlFor="spec-is-active" className="ml-2 text-sm text-gray-700">
-          Ativo (tornar esta spec disponivel em entrevistas)
+          Ativo (tornar esta spec disponível em entrevistas)
         </label>
       </div>
     </>
@@ -395,7 +395,7 @@ export function ProjectSpecsList({ projectId }: Props) {
             size="sm"
             onClick={handleDiscoverSpecs}
             disabled={discovering || specs.length >= 50}
-            title={specs.length >= 50 ? 'Limite de 50 specs atingido' : 'Descobrir padroes do codebase usando IA'}
+            title={specs.length >= 50 ? 'Limite de 50 specs atingido' : 'Descobrir padrões do codebase usando IA'}
           >
             <RefreshCw className={`w-4 h-4 mr-2 ${discovering ? 'animate-spin' : ''}`} />
             {discovering ? 'Descobrindo...' : 'Descobrir Specs'}
@@ -466,14 +466,14 @@ export function ProjectSpecsList({ projectId }: Props) {
       ) : (
         <Card>
           <CardHeader>
-            <CardTitle>Especificacoes ({filteredSpecs.length})</CardTitle>
+            <CardTitle>Especificações ({filteredSpecs.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {filteredSpecs.length === 0 ? (
               <div className="text-center py-12">
                 <FileCode className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-500">Nenhuma spec encontrada para este projeto</p>
-                <p className="text-sm text-gray-400 mt-1">Use &quot;Descobrir Specs&quot; para auto-detectar padroes ou adicione specs manualmente</p>
+                <p className="text-sm text-gray-400 mt-1">Use &quot;Descobrir Specs&quot; para auto-detectar padrões ou adicione specs manualmente</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -483,12 +483,12 @@ export function ProjectSpecsList({ projectId }: Props) {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Categoria</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Framework</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tipo</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Titulo</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Título</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Linguagem</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Versao</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Versão</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Uso</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Acoes</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -606,7 +606,7 @@ export function ProjectSpecsList({ projectId }: Props) {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Excluir Spec?</h3>
-            <p className="text-sm text-gray-600 mb-4">Tem certeza que deseja excluir esta especificacao?</p>
+            <p className="text-sm text-gray-600 mb-4">Tem certeza que deseja excluir esta especificação?</p>
 
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
               <div className="flex items-start gap-3">
@@ -616,7 +616,7 @@ export function ProjectSpecsList({ projectId }: Props) {
                   </svg>
                 </div>
                 <div>
-                  <h4 className="font-semibold text-red-900 mb-1">Atencao: Esta acao nao pode ser desfeita!</h4>
+                  <h4 className="font-semibold text-red-900 mb-1">Atenção: Esta ação não pode ser desfeita!</h4>
                   <p className="text-sm text-red-800">
                     Spec &quot;{specToDelete?.title}&quot; sera excluida permanentemente.
                   </p>

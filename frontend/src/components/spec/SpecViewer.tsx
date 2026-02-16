@@ -42,9 +42,9 @@ export function SpecViewer({ specification, onEdit, readOnly = false }: Props) {
                 d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
               />
             </svg>
-            <p className="text-lg font-medium">Nenhuma especificacao disponivel</p>
+            <p className="text-lg font-medium">Nenhuma especificação disponível</p>
             <p className="text-sm mt-2">
-              Crie uma especificacao para definir os requisitos do seu projeto
+              Crie uma especificação para definir os requisitos do seu projeto
             </p>
           </div>
         </CardContent>
@@ -90,9 +90,9 @@ export function SpecViewer({ specification, onEdit, readOnly = false }: Props) {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Especificacao do Projeto</CardTitle>
+              <CardTitle>Especificação do Projeto</CardTitle>
               <p className="text-sm text-gray-600 mt-1">
-                Ultima atualizacao: {new Date(specification.updated_at).toLocaleString()}
+                Última atualização: {new Date(specification.updated_at).toLocaleString()}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -224,7 +224,7 @@ export function SpecViewer({ specification, onEdit, readOnly = false }: Props) {
       {viewMode === 'formatted' && sections.length > 3 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Indice</CardTitle>
+            <CardTitle className="text-base">Índice</CardTitle>
           </CardHeader>
           <CardContent>
             <nav className="space-y-1">

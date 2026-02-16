@@ -35,10 +35,10 @@ async def trigger_rag_scan(
     # Verify project exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     if not project.code_path:
-        raise HTTPException(status_code=400, detail="Projeto nao tem code_path configurado")
+        raise HTTPException(status_code=400, detail="Projeto não tem code_path configurado")
 
     # Check for existing pending/running scan
     existing = db.query(AsyncJob).filter(
@@ -103,7 +103,7 @@ async def get_rag_status(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     service = ContinuousRAGService(db)
     stats = await service.get_project_stats(project_id)
@@ -140,7 +140,7 @@ async def list_rag_files(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     query = db.query(RAGFileState).filter(RAGFileState.project_id == project_id)
 
@@ -149,7 +149,7 @@ async def list_rag_files(
             status_enum = FileProcessingStatus(status)
             query = query.filter(RAGFileState.status == status_enum)
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Status invalido: {status}")
+            raise HTTPException(status_code=400, detail=f"Status inválido: {status}")
 
     total = query.count()
     files = (
@@ -180,7 +180,7 @@ async def reset_rag_state(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     service = ContinuousRAGService(db)
     result = await service.reset_project(project_id)
@@ -202,7 +202,7 @@ async def get_enrichment_status(
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     active_jobs = db.query(AsyncJob).filter(
         AsyncJob.project_id == project_id,

@@ -28,7 +28,7 @@ system_prompt: |
   {% if phase_name == "documentation" %}
   ## FASE: DOCUMENTAÇÃO
 
-  Analise a DOCUMENTAÇÃO e CONFIGURAÇÃO.
+  Análise a DOCUMENTAÇÃO e CONFIGURAÇÃO.
   Extraia: propósito do sistema, dependências, estrutura, domínio de negócio.
 
   {% elif phase_name == "domain" %}
@@ -69,8 +69,8 @@ system_prompt: |
   - Se vir validate/calculate/permission nas funções, descreva a regra por trás
   - Responda APENAS em JSON válido
 
-  IDIOMA OBRIGATORIO: TODO o conteudo DEVE ser em portugues brasileiro.
-  Titulo, regras, features, entidades - TUDO em portugues. NUNCA escreva em ingles.
+  IDIOMA OBRIGATÓRIO: TODO o conteúdo DEVE ser em português brasileiro.
+  Título, regras, features, entidades - TUDO em português. NUNCA escreva em ingles.
 
 user_prompt: |
   ## FASE: {{ phase_name }}
@@ -90,7 +90,7 @@ user_prompt: |
 
   ---
 
-  TAREFA: Analise o mapa de símbolos acima e extraia regras de negócio, entidades e funcionalidades.
+  TAREFA: Análise o mapa de símbolos acima e extraia regras de negócio, entidades e funcionalidades.
   Sugira um título baseado no DOMÍNIO (não na tecnologia).
   Responda em JSON válido.
-  IDIOMA OBRIGATORIO: TODO o conteudo DEVE ser em portugues brasileiro. Titulo, regras, features - TUDO em portugues. NUNCA escreva em ingles.
+  IDIOMA OBRIGATÓRIO: TODO o conteúdo DEVE ser em português brasileiro. Título, regras, features - TUDO em português. NUNCA escreva em ingles.

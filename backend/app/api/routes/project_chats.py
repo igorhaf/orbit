@@ -43,7 +43,7 @@ async def list_chats(project_id: UUID, db: Session = Depends(get_db)):
     """List all chat sessions for a project, ordered by most recent."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     chats = (
         db.query(ProjectChat)
@@ -74,7 +74,7 @@ async def create_chat(
     """Create a new chat session for a project."""
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     chat = ProjectChat(
         project_id=project_id,
@@ -98,7 +98,7 @@ async def get_chat(project_id: UUID, chat_id: UUID, db: Session = Depends(get_db
         .first()
     )
     if not chat:
-        raise HTTPException(status_code=404, detail="Chat nao encontrado")
+        raise HTTPException(status_code=404, detail="Chat não encontrado")
 
     return chat
 
@@ -117,7 +117,7 @@ async def update_chat(
         .first()
     )
     if not chat:
-        raise HTTPException(status_code=404, detail="Chat nao encontrado")
+        raise HTTPException(status_code=404, detail="Chat não encontrado")
 
     chat.title = data.title
     db.commit()
@@ -134,7 +134,7 @@ async def delete_chat(project_id: UUID, chat_id: UUID, db: Session = Depends(get
         .first()
     )
     if not chat:
-        raise HTTPException(status_code=404, detail="Chat nao encontrado")
+        raise HTTPException(status_code=404, detail="Chat não encontrado")
 
     db.delete(chat)
     db.commit()
@@ -181,11 +181,11 @@ async def send_message(
         .first()
     )
     if not chat:
-        raise HTTPException(status_code=404, detail="Chat nao encontrado")
+        raise HTTPException(status_code=404, detail="Chat não encontrado")
 
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
-        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
     user_content = data.content.strip()
     now = datetime.now(timezone.utc).isoformat()
@@ -280,7 +280,7 @@ async def _process_chat_message_async(
         project = db.query(Project).filter(Project.id == project_id).first()
 
         if not chat or not project:
-            job_manager.fail_job(job_id, "Chat ou projeto nao encontrado")
+            job_manager.fail_job(job_id, "Chat ou projeto não encontrado")
             return
 
         # 1. Query RAG for relevant knowledge
@@ -316,7 +316,7 @@ async def _process_chat_message_async(
                 project_id=project_id,
             )
 
-            ai_content = response.get("content", "Desculpe, nao consegui processar sua pergunta.")
+            ai_content = response.get("content", "Desculpe, não consegui processar sua pergunta.")
             ai_model = response.get("model", "unknown")
 
         except Exception as e:
@@ -333,7 +333,7 @@ async def _process_chat_message_async(
         db.expire_all()
         chat = db.query(ProjectChat).filter(ProjectChat.id == chat_id).first()
         if not chat:
-            job_manager.fail_job(job_id, "Chat nao encontrado apos chamada de IA")
+            job_manager.fail_job(job_id, "Chat não encontrado apos chamada de IA")
             return
 
         current_messages = list(chat.messages or [])

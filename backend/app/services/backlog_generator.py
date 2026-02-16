@@ -112,7 +112,7 @@ def _convert_semantic_to_human(semantic_markdown: str, semantic_map: Dict[str, s
 
     # PROMPT #86 - FIRST: Remove the entire "## Mapa Semântico" section BEFORE replacements
     # This prevents redundant output like "**Recepcionista**: Recepcionista"
-    # Pattern matches: ## Mapa Semântico (or Mapa Semantico) followed by definition lines
+    # Pattern matches: ## Mapa Semântico (or Mapa Semântico) followed by definition lines
     # until next ## heading or end of section
     human_text = re.sub(
         r'##\s*Mapa\s*Sem[aâ]ntico\s*\n+(?:[-*]\s*\*\*[^*]+\*\*:[^\n]*\n*)*',
@@ -204,11 +204,11 @@ class BacklogGeneratorService:
         # 1. Fetch interview
         interview = self.db.query(Interview).filter(Interview.id == interview_id).first()
         if not interview:
-            raise ValueError(f"Entrevista {interview_id} nao encontrada")
+            raise ValueError(f"Entrevista {interview_id} não encontrada")
 
         conversation = interview.conversation_data
         if not conversation or len(conversation) == 0:
-            raise ValueError(f"Entrevista {interview_id} nao possui dados de conversa")
+            raise ValueError(f"Entrevista {interview_id} não possui dados de conversa")
 
         # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
         system_prompt = """Você é um Product Owner especialista analisando conversas de entrevistas para extrair requisitos de nível Epic.
@@ -242,7 +242,7 @@ Esta metodologia funciona da seguinte forma:
 - Garantir rastreabilidade entre texto e implementação
 
 Sua tarefa:
-1. Analise toda a conversa e identifique o EPIC principal (objetivo de negócio de alto nível)
+1. Análise toda a conversa e identifique o EPIC principal (objetivo de negócio de alto nível)
 2. Crie um **Mapa Semântico** definindo TODOS os identificadores usados
 3. Escreva a narrativa do Epic usando APENAS esses identificadores
 4. Extraia critérios de aceitação (usando identificadores AC1, AC2, AC3...)
@@ -308,7 +308,7 @@ Retorne APENAS JSON válido (sem markdown code blocks, sem explicação):
         # Fallback: if conversation wasn't compressed (short), format raw
         _conversation_text = _ctx.conversation_summary or self._format_conversation(conversation)
 
-        user_prompt = f"""Analise esta conversa de entrevista e extraia o Epic principal usando a Metodologia de Referências Semânticas.
+        user_prompt = f"""Análise esta conversa de entrevista e extraia o Epic principal usando a Metodologia de Referências Semânticas.
 
 {_ctx.business_rules}
 {f'ATENÇÃO: O Epic gerado DEVE respeitar TODAS as regras de negócio listadas acima.' if _ctx.business_rules else ''}
@@ -415,7 +415,7 @@ LEMBRE-SE:
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
             logger.error(f"AI response: {result.get('response', result.get('content', ''))}")
-            raise ValueError(f"IA nao retornou JSON valido: {str(e)}")
+            raise ValueError(f"IA não retornou JSON válido: {str(e)}")
 
     async def decompose_epic_to_stories(
         self,
@@ -460,7 +460,7 @@ LEMBRE-SE:
         ).first()
 
         if not epic:
-            raise ValueError(f"Epic {epic_id} nao encontrado ou nao e um Epic")
+            raise ValueError(f"Epic {epic_id} não encontrado ou não é um Epic")
 
         # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
         system_prompt = """Você é um Product Owner especialista decompondo Epics em Stories.
@@ -681,7 +681,7 @@ LEMBRE-SE:
             stories_suggestions = json.loads(clean_json)
 
             if not isinstance(stories_suggestions, list):
-                raise ValueError("Resposta da IA nao e uma lista")
+                raise ValueError("Resposta da IA não é uma lista")
 
             # Add metadata and parent_id to each Story
             for story in stories_suggestions:
@@ -726,7 +726,7 @@ LEMBRE-SE:
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
             logger.error(f"AI response: {result.get('response', result.get('content', ''))}")
-            raise ValueError(f"IA nao retornou JSON valido: {str(e)}")
+            raise ValueError(f"IA não retornou JSON válido: {str(e)}")
 
     async def decompose_story_to_tasks(
         self,
@@ -774,7 +774,7 @@ LEMBRE-SE:
         ).first()
 
         if not story:
-            raise ValueError(f"Story {story_id} nao encontrada ou nao e uma Story")
+            raise ValueError(f"Story {story_id} não encontrada ou não é uma Story")
 
         # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
         # PROMPT #54.2 - FIX: Specs removed from decomposition (only for execution)
@@ -994,7 +994,7 @@ LEMBRE-SE:
             tasks_suggestions = json.loads(clean_json)
 
             if not isinstance(tasks_suggestions, list):
-                raise ValueError("Resposta da IA nao e uma lista")
+                raise ValueError("Resposta da IA não é uma lista")
 
             # Add metadata and parent_id to each Task
             for task in tasks_suggestions:
@@ -1039,7 +1039,7 @@ LEMBRE-SE:
         except json.JSONDecodeError as e:
             logger.error(f"❌ Failed to parse AI response as JSON: {e}")
             logger.error(f"AI response: {result.get('response', result.get('content', ''))}")
-            raise ValueError(f"IA nao retornou JSON valido: {str(e)}")
+            raise ValueError(f"IA não retornou JSON válido: {str(e)}")
 
     def _format_conversation(self, conversation: List[Dict]) -> str:
         """
@@ -1160,11 +1160,11 @@ Specification:
 
         # Validate interview mode
         if interview.interview_mode != "task_focused":
-            raise ValueError(f"Entrevista {interview.id} nao e focada em tarefa (modo: {interview.interview_mode})")
+            raise ValueError(f"Entrevista {interview.id} não é focada em tarefa (modo: {interview.interview_mode})")
 
         conversation = interview.conversation_data
         if not conversation or len(conversation) == 0:
-            raise ValueError(f"Entrevista {interview.id} nao possui dados de conversa")
+            raise ValueError(f"Entrevista {interview.id} não possui dados de conversa")
 
         # Extract task type from interview
         task_type = interview.task_type_selection or "feature"
@@ -1239,7 +1239,7 @@ Return ONLY valid JSON in this format:
             task_data = json.loads(content)
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse task JSON: {content[:200]}")
-            raise ValueError(f"IA retornou JSON invalido: {str(e)}")
+            raise ValueError(f"IA retornou JSON inválido: {str(e)}")
 
         # PROMPT #94 FASE 4 - Check for modification attempts (>90% similarity)
         from app.services.similarity_detector import detect_modification_attempt

@@ -70,7 +70,7 @@ export default function WikiPageView() {
       setEditTitle(pageData.title);
     } catch (error) {
       console.error('Failed to load wiki page:', error);
-      showError('Pagina nao encontrada');
+      showError('Página não encontrada');
       router.push(`/projects/${projectId}/wiki`);
     } finally {
       setLoading(false);
@@ -90,7 +90,7 @@ export default function WikiPageView() {
       if (editContent !== page.content) updates.content = editContent;
 
       await wikiApi.update(projectId, slug, updates);
-      showSuccess('Pagina salva');
+      showSuccess('Página salva');
       setEditing(false);
       loadData();
     } catch (error: any) {
@@ -102,11 +102,11 @@ export default function WikiPageView() {
 
   const handleDelete = async () => {
     if (!page) return;
-    if (!confirm(`Deletar pagina "${page.title}"?`)) return;
+    if (!confirm(`Deletar página "${page.title}"?`)) return;
 
     try {
       await wikiApi.delete(projectId, slug);
-      showSuccess('Pagina deletada');
+      showSuccess('Página deletada');
       router.push(`/projects/${projectId}/wiki`);
     } catch (error: any) {
       showError(error.message || 'Falha ao deletar');
@@ -166,7 +166,7 @@ export default function WikiPageView() {
         <div className="w-64 flex-shrink-0 hidden lg:block">
           <Card className="p-3 sticky top-4">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Paginas</h2>
+              <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Páginas</h2>
               <button
                 onClick={() => router.push(`/projects/${projectId}/wiki`)}
                 className="text-xs text-blue-600 hover:text-blue-800"
@@ -225,7 +225,7 @@ export default function WikiPageView() {
                   <button
                     onClick={handleDelete}
                     className="p-2 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors"
-                    title="Deletar pagina"
+                    title="Deletar página"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -253,7 +253,7 @@ export default function WikiPageView() {
                   value={editContent}
                   onChange={(e) => setEditContent(e.target.value)}
                   className="w-full min-h-[400px] p-4 border border-gray-200 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
-                  placeholder="Conteudo em Markdown..."
+                  placeholder="Conteúdo em Markdown..."
                 />
                 {/* Live preview */}
                 <div className="border-t pt-4">
@@ -358,7 +358,7 @@ export default function WikiPageView() {
           {/* Related pages */}
           {!editing && tree.length > 1 && (
             <div className="mt-6">
-              <h3 className="text-sm font-medium text-gray-500 mb-3">Outras paginas</h3>
+              <h3 className="text-sm font-medium text-gray-500 mb-3">Outras páginas</h3>
               <div className="flex flex-wrap gap-2">
                 {tree
                   .filter((p) => p.slug !== slug)

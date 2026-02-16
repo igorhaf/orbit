@@ -252,7 +252,7 @@ export function ProjectChatPanel({ projectId }: Props) {
                       onClick={(e) => { e.stopPropagation(); setDeleteConfirm(null); }}
                       className="text-gray-400 hover:text-gray-600 text-xs"
                     >
-                      Nao
+                      Não
                     </button>
                   </div>
                 ) : (
@@ -272,7 +272,7 @@ export function ProjectChatPanel({ projectId }: Props) {
         </div>
       </div>
 
-      {/* Right area - Chat messages */}
+      {/* Right área - Chat messages */}
       <div className="flex-1 flex flex-col">
         {!activeSession ? (
           /* Empty state */
@@ -285,14 +285,14 @@ export function ProjectChatPanel({ projectId }: Props) {
           </div>
         ) : (
           <>
-            {/* Messages area */}
+            {/* Messages área */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
               {(!activeSession.messages || activeSession.messages.length === 0) ? (
                 <div className="flex flex-col items-center justify-center h-full text-gray-400">
                   <svg className="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
-                  <p className="text-sm">Faca uma pergunta sobre seu projeto...</p>
+                  <p className="text-sm">Faça uma pergunta sobre seu projeto...</p>
                 </div>
               ) : (
                 activeSession.messages.map((msg, idx) => (
@@ -319,7 +319,7 @@ export function ProjectChatPanel({ projectId }: Props) {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input area */}
+            {/* Input área */}
             <div className="border-t border-gray-200 p-3 bg-white">
               <div className="flex gap-2">
                 <textarea

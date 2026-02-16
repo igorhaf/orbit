@@ -88,13 +88,13 @@ const JOB_TYPE_TITLES: Record<string, string> = {
   'task_activation': 'Ativando Tarefa',
   'subtask_activation': 'Ativando Subtarefa',
   'task_execution': 'Executando Tarefa',
-  'batch_execution': 'Execucao em Lote',
+  'batch_execution': 'Execução em Lote',
   'commit_generation': 'Gerando Commit',
   'context_generation': 'Gerando Contexto',
   // PROMPT #133 - New job types
   'interview_question': 'Gerando Pergunta',
-  'memory_scan': 'Analisando Codigo',
-  'project_title': 'Gerando Titulo',
+  'memory_scan': 'Analisando Código',
+  'project_title': 'Gerando Título',
   'suggested_epics': 'Gerando Epics',
 };
 

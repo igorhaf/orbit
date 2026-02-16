@@ -8,7 +8,7 @@ name: project_creation
 version: 1
 domain: business
 category: business
-description: Regras de negocio que governam o fluxo de criacao de projetos no ORBIT
+description: Regras de negocio que governam o fluxo de criação de projetos no ORBIT
 usage_type: business_rule
 
 governance:
@@ -19,21 +19,21 @@ governance:
     - version: 1
       date: "2026-02-04"
       author: "Claude"
-      changes: "Versao inicial documentando regras de criacao de projeto"
+      changes: "Versão inicial documentando regras de criação de projeto"
 
 semantic_map:
   # Entidades
   N1: "Projeto - A entidade principal sendo criada"
-  N2: "Usuario - Pessoa criando o projeto"
+  N2: "Usuário - Pessoa criando o projeto"
   N3: "CodePath - Caminho para pasta de codebase existente"
   N4: "Contexto - Contexto do projeto a partir de entrevista"
   N5: "EpicosSugeridos - Epicos iniciais gerados por IA"
 
   # Processos
-  P1: "Fluxo do Wizard - Wizard de criacao de projeto em 4 passos"
-  P2: "Scan de Memoria - Analise do codebase por IA"
+  P1: "Fluxo do Wizard - Wizard de criação de projeto em 4 passos"
+  P2: "Scan de Memória - Análise do codebase por IA"
   P3: "Entrevista de Contexto - Coleta de contexto guiada por IA"
-  P4: "Geracao de Epicos - Geracao automatica de epicos sugeridos"
+  P4: "Geração de Epicos - Geração automática de epicos sugeridos"
 
   # Dados
   D1: "DadosProjeto - nome, code_path, contexto_humano, contexto_semantico"
@@ -41,26 +41,26 @@ semantic_map:
   D3: "DadosEntrevista - perguntas, respostas, output de contexto"
 
   # Restricoes
-  C1: "code_path e OBRIGATORIO e IMUTAVEL"
+  C1: "code_path e OBRIGATÓRIO e IMUTAVEL"
   C2: "Contexto e TRAVADO apos primeira ativacao de Epico"
-  C3: "Wizards abandonados disparam limpeza automatica"
-  C4: "Projeto so existe apos conclusao do wizard"
+  C3: "Wizards abandonados disparam limpeza automática"
+  C4: "Projeto so existe apos conclusão do wizard"
 
-  # Criterios de Aceitacao
-  AC1: "Usuario pode selecionar pasta de codigo existente"
-  AC2: "IA sugere titulo do projeto a partir da analise do codebase"
-  AC3: "Entrevista de contexto gera saida dupla (humano + semantico)"
+  # Critérios de Aceitação
+  AC1: "Usuário pode selecionar pasta de código existente"
+  AC2: "IA sugere título do projeto a partir da análise do codebase"
+  AC3: "Entrevista de contexto gera saída dupla (humano + semântico)"
   AC4: "Epicos sugeridos aparecem como rascunhos apos entrevista de contexto"
 
 rules:
   validations:
     - id: V1
-      description: "code_path deve apontar para diretorio existente"
+      description: "code_path deve apontar para diretório existente"
       expression: "N3.exists() AND N3.is_directory()"
       severity: error
 
     - id: V2
-      description: "Nome do projeto nao pode ser vazio"
+      description: "Nome do projeto não pode ser vazio"
       expression: "N1.name.length > 0"
       severity: error
 
@@ -71,23 +71,23 @@ rules:
 
   constraints:
     - id: C1
-      description: "code_path nao pode ser alterado apos criacao do projeto"
+      description: "code_path não pode ser alterado apos criação do projeto"
       applies_to: [N1, N3]
       condition: "N3 e imutavel apos N1.created_at"
 
     - id: C2
       description: "Contexto e travado apos primeiro Epico ser ativado"
       applies_to: [N1, N4]
-      condition: "N1.context_locked == true implica que N4 nao pode ser modificado"
+      condition: "N1.context_locked == true implica que N4 não pode ser modificado"
 
     - id: C3
       description: "Wizard incompleto dispara limpeza"
       applies_to: [N1, N2]
-      condition: "Se P1 nao foi completado, deletar N1 ao sair da pagina"
+      condition: "Se P1 não foi completado, deletar N1 ao sair da página"
 
   access_control:
     - id: AC1
-      description: "Qualquer usuario pode criar projetos"
+      description: "Qualquer usuário pode criar projetos"
       roles: [user, admin]
       action: write
 
@@ -100,7 +100,7 @@ variables:
   required: []
   optional: []
 
-# Sem prompts para contratos de negocio - apenas documentacao
+# Sem prompts para contratos de negocio - apenas documentação
 system_prompt: ""
 user_prompt: ""
 

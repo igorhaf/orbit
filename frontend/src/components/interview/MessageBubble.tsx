@@ -110,7 +110,7 @@ export function MessageBubble({
         {/* Role Badge with AI Model indicator */}
         <div className={`text-xs ${compact ? 'mb-1' : 'mb-1.5'} flex items-center gap-1.5 ${isUser ? 'justify-end' : 'justify-start'}`}>
           <Badge variant={isUser ? 'info' : 'default'} size="sm">
-            {isUser ? 'Voce' : 'Assistente IA'}
+            {isUser ? 'Você' : 'Assistente IA'}
           </Badge>
           {/* PROMPT #128 - Show AI model icon for assistant messages */}
           {!isUser && <AIModelBadge model="interview" usage_type="interview" decorative />}
@@ -214,7 +214,7 @@ export function MessageBubble({
                       </div>
                       <div className="relative flex justify-center">
                         <span className="bg-gray-50 px-4 py-1 text-xs font-medium text-gray-600 rounded-full border border-gray-300">
-                          ou digite sua propria resposta abaixo
+                          ou digite sua própria resposta abaixo
                         </span>
                       </div>
                     </div>

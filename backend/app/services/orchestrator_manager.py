@@ -4,7 +4,7 @@ Manages dynamic loading and registration of custom orchestrators
 """
 
 import logging
-import importlib.util
+import importlib.útil
 import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -47,16 +47,16 @@ class OrchestratorManager:
         ).first()
 
         if not analysis:
-            raise ValueError(f"Analise nao encontrada: {analysis_id}")
+            raise ValueError(f"Análise não encontrada: {analysis_id}")
 
         if not analysis.orchestrator_generated:
-            raise ValueError("Orquestrador ainda nao gerado para esta analise")
+            raise ValueError("Orquestrador ainda não gerado para esta análise")
 
         if not analysis.orchestrator_key:
             raise ValueError("Chave do orquestrador ausente")
 
         if not analysis.orchestrator_code:
-            raise ValueError("Codigo do orquestrador ausente")
+            raise ValueError("Código do orquestrador ausente")
 
         # Get file path
         file_path = self.orchestrators_dir / f"{analysis.orchestrator_key}.py"
@@ -93,7 +93,7 @@ class OrchestratorManager:
 
         try:
             # Load module dynamically
-            spec = importlib.util.spec_from_file_location(
+            spec = importlib.útil.spec_from_file_location(
                 f"custom_orchestrators.{orchestrator_key}",
                 file_path
             )
@@ -101,7 +101,7 @@ class OrchestratorManager:
             if not spec or not spec.loader:
                 raise ImportError(f"Falha ao carregar spec de {file_path}")
 
-            module = importlib.util.module_from_spec(spec)
+            module = importlib.útil.module_from_spec(spec)
             sys.modules[spec.name] = module
             spec.loader.exec_module(module)
 
@@ -116,7 +116,7 @@ class OrchestratorManager:
                     break
 
             if not orchestrator_class:
-                raise ImportError("Nenhuma classe de orquestrador encontrada no modulo")
+                raise ImportError("Nenhuma classe de orquestrador encontrada no módulo")
 
             # Register in registry
             OrchestratorRegistry.register(orchestrator_key, orchestrator_class)

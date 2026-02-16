@@ -190,8 +190,8 @@ export function FileUploader({
             <p className="font-semibold mb-1">Envie seu projeto existente</p>
             <ul className="list-disc list-inside space-y-1">
               <li>Comprima seu projeto como .zip ou .tar.gz</li>
-              <li>Inclua codigo-fonte, configs e dependencias</li>
-              <li>Analisaremos estrutura, padroes e convencoes</li>
+              <li>Inclua código-fonte, configs e dependencias</li>
+              <li>Analisaremos estrutura, padrões e convencoes</li>
             </ul>
           </div>
         </div>

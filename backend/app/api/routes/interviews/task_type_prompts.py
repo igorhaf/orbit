@@ -3,7 +3,7 @@ Task-Specific AI Prompts
 PROMPT #69 - Refactor interviews.py
 
 Tailored AI prompts for different task types in task-focused interviews.
-Each prompt focuses on relevant areas for bug/feature/refactor/enhancement tasks.
+Each prompt focuses on relevant áreas for bug/feature/refactor/enhancement tasks.
 """
 
 from app.models.project import Project

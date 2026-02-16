@@ -105,7 +105,7 @@ class FileProcessor:
         if file_ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(
                 status_code=400,
-                detail=f"Tipo de arquivo invalido. Permitidos: {', '.join(ALLOWED_EXTENSIONS)}"
+                detail=f"Tipo de arquivo inválido. Permitidos: {', '.join(ALLOWED_EXTENSIONS)}"
             )
 
         # Read file content for validation
@@ -116,7 +116,7 @@ class FileProcessor:
         if file_size > self.max_upload_bytes:
             raise HTTPException(
                 status_code=413,
-                detail=f"Arquivo muito grande. Tamanho maximo: {settings.max_upload_size_mb}MB"
+                detail=f"Arquivo muito grande. Tamanho máximo: {settings.max_upload_size_mb}MB"
             )
 
         if file_size == 0:
@@ -127,7 +127,7 @@ class FileProcessor:
         if mime_type not in ALLOWED_MIME_TYPES:
             raise HTTPException(
                 status_code=400,
-                detail=f"Tipo de arquivo invalido detectado: {mime_type}"
+                detail=f"Tipo de arquivo inválido detectado: {mime_type}"
             )
 
         # Reset file position for later reading
@@ -214,7 +214,7 @@ class FileProcessor:
             elif file_ext in {".tar", ".tar.gz", ".tgz"}:
                 self._extract_tar(file_path, extract_path)
             else:
-                raise ValueError(f"Tipo de arquivo nao suportado: {file_ext}")
+                raise ValueError(f"Tipo de arquivo não suportado: {file_ext}")
 
             # Check total extracted size
             total_size = self._get_dir_size(extract_path)
@@ -245,7 +245,7 @@ class FileProcessor:
                 if self._is_path_traversal(member):
                     raise HTTPException(
                         status_code=400,
-                        detail="Arquivo contem tentativa de travessia de caminho"
+                        detail="Arquivo contém tentativa de travessia de caminho"
                     )
 
             # Extract all
@@ -262,7 +262,7 @@ class FileProcessor:
                 if self._is_path_traversal(member.name):
                     raise HTTPException(
                         status_code=400,
-                        detail="Arquivo contem tentativa de travessia de caminho"
+                        detail="Arquivo contém tentativa de travessia de caminho"
                     )
 
             # Extract all

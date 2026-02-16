@@ -24,11 +24,11 @@ async def integrity_error_handler(request: Request, exc: IntegrityError) -> JSON
     if "duplicate key" in error_msg.lower():
         detail = "Um registro com este valor ja existe"
     elif "foreign key" in error_msg.lower():
-        detail = "Registro referenciado nao existe"
+        detail = "Registro referenciado não existe"
     elif "not null" in error_msg.lower():
-        detail = "Campo obrigatorio esta faltando"
+        detail = "Campo obrigatório esta faltando"
     else:
-        detail = "Violacao de restricao do banco de dados"
+        detail = "Violação de restrição do banco de dados"
 
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -49,7 +49,7 @@ async def validation_error_handler(request: Request, exc: ValidationError) -> JS
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={
-            "detail": "Erro de validacao",
+            "detail": "Erro de validação",
             "error_type": "validation_error",
             "errors": exc.errors()
         }

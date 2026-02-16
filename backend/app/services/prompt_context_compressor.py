@@ -203,7 +203,7 @@ class PromptContextCompressor:
             # First child level: include full parent map
             if parent_map:
                 return (
-                    "## MAPA SEMANTICO DO EPIC (REUTILIZE E ESTENDA):\n"
+                    "## MAPA SEMÂNTICO DO EPIC (REUTILIZE E ESTENDA):\n"
                     + json.dumps(parent_map, indent=2, ensure_ascii=False)
                 )
             return ""
@@ -230,7 +230,7 @@ class PromptContextCompressor:
 
         elif parent_map:
             return (
-                "## MAPA SEMANTICO:\n"
+                "## MAPA SEMÂNTICO:\n"
                 + json.dumps(parent_map, indent=2, ensure_ascii=False)
             )
 
@@ -259,7 +259,7 @@ class PromptContextCompressor:
         Epic: full rules. Story: filtered top-5. Task/Subtask: reference only.
         """
         if item_type in ("task", "subtask"):
-            return "[Regras de negocio foram fornecidas no nivel do Epic. Consulte o contexto pai.]"
+            return "[Regras de negocio foram fornecidas no nível do Epic. Consulte o contexto pai.]"
 
         try:
             from app.services.rag_service import RAGService
@@ -368,7 +368,7 @@ class PromptContextCompressor:
         for msg in turns:
             role = msg.get("role", "user")
             content = msg.get("content", "")
-            prefix = "Entrevistador" if role == "assistant" else "Usuario"
+            prefix = "Entrevistador" if role == "assistant" else "Usuário"
             lines.append(f"**{prefix}:** {content}")
         return "\n\n".join(lines)
 

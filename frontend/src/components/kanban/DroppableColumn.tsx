@@ -52,7 +52,7 @@ export function DroppableColumn({
         </span>
       </div>
 
-      {/* Droppable Area */}
+      {/* Droppable Área */}
       <SortableContext
         id={columnId}
         items={tasks.map((task) => task.id)}

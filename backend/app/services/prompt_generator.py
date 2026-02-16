@@ -384,10 +384,10 @@ class PromptGenerator:
         ).first()
 
         if not interview:
-            raise ValueError(f"Entrevista {interview_id} nao encontrada")
+            raise ValueError(f"Entrevista {interview_id} não encontrada")
 
         if not interview.conversation_data or len(interview.conversation_data) == 0:
-            raise ValueError("Entrevista nao possui dados de conversa")
+            raise ValueError("Entrevista não possui dados de conversa")
 
         project_id = interview.project_id
         logger.info(f"📋 Interview found for project {project_id}")
@@ -550,13 +550,13 @@ class PromptGenerator:
             for msg in conversation
         ])
 
-        return f"""Analise esta entrevista sobre um projeto de software e gere tarefas estruturadas para o Kanban board.
+        return f"""Análise esta entrevista sobre um projeto de software e gere tarefas estruturadas para o Kanban board.
 
 CONVERSA DA ENTREVISTA:
 {conversation_text}
 
 TAREFA:
-Analise a conversa e gere tarefas (tasks) FUNCIONAIS e detalhadas para implementar o projeto descrito.
+Análise a conversa e gere tarefas (tasks) FUNCIONAIS e detalhadas para implementar o projeto descrito.
 
 IMPORTANTE:
 - Foque no QUE precisa ser feito, não COMO implementar
@@ -651,7 +651,7 @@ Retorne APENAS o JSON válido, sem texto adicional antes ou depois."""
             # Validar estrutura básica
             for task in tasks:
                 if "title" not in task and "name" not in task:
-                    raise ValueError("Tarefa sem campo obrigatorio 'title' ou 'name'")
+                    raise ValueError("Tarefa sem campo obrigatório 'title' ou 'name'")
                 if "description" not in task and "content" not in task:
                     task["description"] = task.get("name", task.get("title", ""))
                 if "type" not in task:
@@ -664,4 +664,4 @@ Retorne APENAS o JSON válido, sem texto adicional antes ou depois."""
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse AI response as JSON: {e}")
             logger.error(f"Response text: {response_text[:500]}")
-            raise ValueError(f"Resposta JSON invalida da IA: {str(e)}")
+            raise ValueError(f"Resposta JSON inválida da IA: {str(e)}")

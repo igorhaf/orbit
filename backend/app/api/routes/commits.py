@@ -225,7 +225,7 @@ async def auto_generate_commit(
     if not session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Sessao de chat {chat_session_id} nao encontrada"
+            detail=f"Sessão de chat {chat_session_id} não encontrada"
         )
 
     # Create job
@@ -251,7 +251,7 @@ async def auto_generate_commit(
     return CommitJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Geracao de commit iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
+        message=f"Geração de commit iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -286,7 +286,7 @@ async def generate_manual_commit(
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Tarefa {task_id} nao encontrada"
+            detail=f"Tarefa {task_id} não encontrada"
         )
 
     # Create job
@@ -312,7 +312,7 @@ async def generate_manual_commit(
     return CommitJobResponse(
         job_id=str(job.id),
         status="pending",
-        message=f"Geracao de commit iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
+        message=f"Geração de commit iniciada. Use GET /api/v1/jobs/{job.id} para acompanhar progresso."
     )
 
 
@@ -340,7 +340,7 @@ async def _generate_commit_auto_async(
         job_manager.start_job(job_id)
         logger.info(f"🚀 Starting commit generation job {job_id} for chat session {chat_session_id}")
 
-        job_manager.update_progress(job_id, 10.0, "Analisando sessao de chat...")
+        job_manager.update_progress(job_id, 10.0, "Analisando sessão de chat...")
 
         generator = CommitGenerator()
         commit = await generator.generate_from_task_completion(

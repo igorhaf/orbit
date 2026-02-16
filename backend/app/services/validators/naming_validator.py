@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class NamingValidator:
     """
-    Valida consistência de naming entre tasks
+    Válida consistência de naming entre tasks
 
     Detecta:
     - Class names diferentes (Book vs Books)
@@ -25,7 +25,7 @@ class NamingValidator:
 
     def validate(self, task_results: List) -> List[Dict]:
         """
-        Valida naming entre tasks
+        Válida naming entre tasks
 
         Returns:
             Lista de issues encontrados
@@ -95,7 +95,7 @@ class NamingValidator:
 
     def _validate_class_names(self, entities: Dict, task_results: List) -> List[Dict]:
         """
-        Valida que class names são consistentes
+        Válida que class names são consistentes
 
         Exemplo de issue:
         - Task 1 define "Book"
@@ -148,7 +148,7 @@ class NamingValidator:
 
     def _validate_method_names(self, task_results: List) -> List[Dict]:
         """
-        Valida que métodos são chamados com nomes corretos
+        Válida que métodos são chamados com nomes corretos
 
         Exemplo:
         - Repository define "findById()"
@@ -223,7 +223,7 @@ class NamingValidator:
 
     def _validate_field_names(self, task_results: List) -> List[Dict]:
         """
-        Valida que field names são consistentes
+        Válida que field names são consistentes
 
         Exemplo:
         - Model define "created_at" (snake_case)

@@ -110,7 +110,7 @@ class ContractLoader:
         try:
             return yaml.safe_load(content) or {}
         except yaml.YAMLError as e:
-            raise ValueError(f"YAML invalido: {e}")
+            raise ValueError(f"YAML inválido: {e}")
 
     def _load_component(self, component_name: str) -> str:
         """

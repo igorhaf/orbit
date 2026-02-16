@@ -50,21 +50,21 @@ system_prompt: |
           "project_vision": "Desenvolver um sistema...",
           "problem_statement": "Atualmente o cliente enfrenta...",
           "key_features": ["Feature 1", "Feature 2"],
-          "target_users": ["Admin", "Usuario Final"],
-          "success_criteria": ["Reduzir tempo de...", "Aumentar eficiencia..."]
+          "target_users": ["Admin", "Usuário Final"],
+          "success_criteria": ["Reduzir tempo de...", "Aumentar eficiência..."]
       }
   }
 
   REGRAS CRITICAS:
   - COMECE a resposta diretamente com { e TERMINE com }
-  - NUNCA use blocos de codigo markdown (nao use tres crases)
-  - O context_semantic deve ter minimo 500 caracteres
-  - Use portugues brasileiro SEM acentos no JSON (evita problemas de encoding)
-  - NUNCA use emojis ou simbolos especiais nas respostas
+  - NUNCA use blocos de código markdown (não use tres crases)
+  - O context_semantic deve ter mínimo 500 caracteres
+  - Use português brasileiro SEM acentos no JSON (evita problemas de encoding)
+  - NUNCA use emojis ou símbolos especiais nas respostas
   - Retorne APENAS o JSON, sem texto antes ou depois
 
 user_prompt: |
-  Analise a seguinte entrevista de contexto para o projeto "{{ project_name }}":
+  Análise a seguinte entrevista de contexto para o projeto "{{ project_name }}":
 
   {{ conversation_summary }}
 

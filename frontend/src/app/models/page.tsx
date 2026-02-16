@@ -85,8 +85,8 @@ export default function ModelsPage() {
                   Sobre Modelos IA
                 </h3>
                 <p className="text-sm text-indigo-800">
-                  Modelos IA sao configurados por tipo de uso (entrevistas, geracao de prompts,
-                  execucao de tarefas, etc.). Certifique-se de definir modelos diferentes para
+                  Modelos IA são configurados por tipo de uso (entrevistas, geração de prompts,
+                  execução de tarefas, etc.). Certifique-se de definir modelos diferentes para
                   diferentes propositos para otimizar custo e performance.
                 </p>
               </div>
@@ -131,7 +131,7 @@ export default function ModelsPage() {
                 </h3>
                 <p className="text-gray-600 mb-4 max-w-md mx-auto">
                   Adicione seu primeiro modelo IA para comecar a usar os recursos inteligentes do ORBIT.
-                  Voce pode configurar modelos do Anthropic, OpenAI, Google ou Ollama local.
+                  Você pode configurar modelos do Anthropic, OpenAI, Google ou Ollama local.
                 </p>
                 <Link href="/models/new">
                   <Button>

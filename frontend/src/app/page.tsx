@@ -182,7 +182,7 @@ export default function Home() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Painel</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Custos de execucao IA, desempenho de cache e analiticos de uso de tokens
+              Custos de execução IA, desempenho de cache e analiticos de uso de tokens
             </p>
           </div>
 
@@ -222,7 +222,7 @@ export default function Home() {
 
               <Card>
                 <div className="p-6">
-                  <div className="text-sm font-medium text-gray-500">Custo Medio/Execucao</div>
+                  <div className="text-sm font-medium text-gray-500">Custo Medio/Execução</div>
                   <div className="mt-2 text-3xl font-bold text-gray-900">
                     {formatCost(analytics.summary.avg_cost_per_execution)}
                   </div>
@@ -274,7 +274,7 @@ export default function Home() {
 
                   {!cacheStats.enabled ? (
                     <div className="text-sm text-gray-500">
-                      {cacheStats.message || 'Cache nao esta habilitado'}
+                      {cacheStats.message || 'Cache não esta habilitado'}
                     </div>
                   ) : cacheStats.statistics && (
                     <>
@@ -304,7 +304,7 @@ export default function Home() {
                             {formatNumber(cacheStats.statistics.total.tokens_saved)}
                           </div>
                           <div className="text-xs text-gray-500 mt-1">
-                            Nao enviados para IA
+                            Não enviados para IA
                           </div>
                         </div>
                         <div>
@@ -320,7 +320,7 @@ export default function Home() {
 
                       {/* Multi-Level Cache Breakdown */}
                       <div className="border-t pt-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Niveis de Cache</h3>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Níveis de Cache</h3>
                         <div className="space-y-3">
                           {/* L1 - Exact Match */}
                           <div className="flex items-center justify-between">
@@ -350,7 +350,7 @@ export default function Home() {
                           <div className="flex items-center justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-900">L2 - Semantico</span>
+                                <span className="text-sm font-medium text-gray-900">L2 - Semântico</span>
                                 <span className="text-xs text-gray-500">(95% similaridade, 1 dia TTL)</span>
                                 {!cacheStats.statistics.l2_semantic.enabled && (
                                   <span className="text-xs text-orange-600">(requer Redis)</span>

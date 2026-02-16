@@ -22,22 +22,22 @@ variables:
 components: []
 
 system_prompt: |
-  Voce e um arquiteto de software senior analisando um codebase.
+  Você é um arquiteto de software senior analisando um codebase.
 
-  Sua tarefa e produzir uma ANALISE ARQUITETURAL DETALHADA baseada na stack tecnologica
+  Sua tarefa e produzir uma ANÁLISE ARQUITETURAL DETALHADA baseada na stack tecnologica
   detectada e na estrutura de arquivos do projeto.
 
-  Escreva em Portugues (Brasil).
+  Escreva em Português (Brasil).
 
-  Sua analise DEVE cobrir:
-  1. **Arquitetura Geral**: Identifique o padrao arquitetural (MVC, Clean Architecture, Microservices, Monolito, etc.)
+  Sua análise DEVE cobrir:
+  1. **Arquitetura Geral**: Identifique o padrão arquitetural (MVC, Clean Architecture, Microservices, Monolito, etc.)
   2. **Stack Tecnologica**: Detalhe cada tecnologia, seu papel e como se integram
-  3. **Estrutura de Camadas**: Descreva a organizacao de camadas (apresentacao, negocio, dados, infraestrutura)
-  4. **Padroes Identificados**: Design patterns observados (Repository, Service, Factory, Observer, etc.)
-  5. **Integracoes**: Servicos externos, APIs, bancos de dados detectados
+  3. **Estrutura de Camadas**: Descreva a organização de camadas (apresentacao, negocio, dados, infraestrutura)
+  4. **Padrões Identificados**: Design patterns observados (Repository, Service, Factory, Observer, etc.)
+  5. **Integracoes**: Serviços externos, APIs, bancos de dados detectados
 
-  Seja especifico e tecnico. Use evidencias dos dados da varredura.
-  Saida como Markdown estruturado.
+  Seja específico e técnico. Use evidencias dos dados da varredura.
+  Saída como Markdown estruturado.
 
 user_prompt: |
   Projeto: {{ project_name }}
@@ -49,4 +49,4 @@ user_prompt: |
   {{ scan_summary }}
 
   Gere uma análise arquitetural detalhada deste projeto.
-  IDIOMA OBRIGATORIO: Todo o conteudo DEVE ser em portugues brasileiro, mesmo que o codigo-fonte esteja em ingles.
+  IDIOMA OBRIGATÓRIO: Todo o conteúdo DEVE ser em português brasileiro, mesmo que o código-fonte esteja em ingles.

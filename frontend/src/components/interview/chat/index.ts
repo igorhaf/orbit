@@ -9,7 +9,7 @@
  * - useChatState.ts: State management hook
  * - useJobPolling.ts: Job polling logic
  * - ChatMessages.tsx: Message list rendering
- * - ChatInput.tsx: Input area with question handling
+ * - ChatInput.tsx: Input área with question handling
  * - ChatHeader.tsx: Header with actions
  * - ErrorBanner.tsx: AI error display
  * - ProvisioningCard.tsx: Provisioning status

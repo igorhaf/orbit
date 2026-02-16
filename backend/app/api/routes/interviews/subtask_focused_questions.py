@@ -205,7 +205,7 @@ For MULTIPLE CHOICE:
 ☐ Option 3
 ☑️ [Select all that apply]
 
-**FOCUS AREAS (use as guide, don't ask everything):**
+**FOCUS ÁREAS (use as guide, don't ask everything):**
 1. **Specific Scope**: What EXACT part of the task? (database/API/UI/logic/validation)
 2. **Granularity**: More detail? (e.g.: "create endpoint" → separate GET/POST/PUT/DELETE)
 3. **Dependencies**: What must be done BEFORE? (e.g.: migration before model)

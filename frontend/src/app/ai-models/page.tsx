@@ -230,7 +230,7 @@ export default function AIModelsPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Modelos IA</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Gerencie configuracoes de modelos IA e monitore uso
+              Gerencie configurações de modelos IA e monitore uso
             </p>
           </div>
           <Button
@@ -274,12 +274,12 @@ export default function AIModelsPage() {
                 </h3>
                 <div className="mt-2 text-sm text-yellow-700">
                   <p>
-                    Voce nao tem um modelo ativo com <strong>Usage Type: General</strong>.
-                    Este tipo serve como fallback quando nenhum modelo especifico esta configurado para uma tarefa.
-                    Sem ele, o sistema pode falhar se um modelo necessario nao estiver disponivel.
+                    Você não tem um modelo ativo com <strong>Usage Type: General</strong>.
+                    Este tipo serve como fallback quando nenhum modelo específico esta configurado para uma tarefa.
+                    Sem ele, o sistema pode falhar se um modelo necessário não estiver disponível.
                   </p>
                   <p className="mt-2">
-                    <strong>Recomendacao:</strong> Crie ou ative um modelo General para garantir confiabilidade do sistema.
+                    <strong>Recomendação:</strong> Crie ou ative um modelo General para garantir confiabilidade do sistema.
                   </p>
                 </div>
               </div>
@@ -310,7 +310,7 @@ export default function AIModelsPage() {
               </svg>
               <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhum modelo IA</h3>
               <p className="mt-1 text-sm text-gray-500">
-                Comece adicionando uma configuracao de modelo IA.
+                Comece adicionando uma configuração de modelo IA.
               </p>
               <div className="mt-6">
                 <Button
@@ -494,15 +494,15 @@ export default function AIModelsPage() {
           <CardContent>
             <div className="text-sm text-gray-600 space-y-2">
               <p>
-                Modelos IA sao usados em toda a aplicacao para diferentes propositos:
+                Modelos IA são usados em toda a aplicação para diferentes propositos:
               </p>
               <ul className="list-disc list-inside space-y-1 ml-2">
                 <li><strong>Entrevistas:</strong> Modelos conversacionais para entrevistas tecnicas</li>
                 <li><strong>Prompts:</strong> Modelos para analisar entrevistas e gerar tarefas</li>
-                <li><strong>Codigo:</strong> Modelos para executar tarefas e escrever codigo</li>
+                <li><strong>Código:</strong> Modelos para executar tarefas e escrever código</li>
               </ul>
               <p className="pt-2">
-                Orbit seleciona automaticamente o melhor modelo para cada tarefa com base na configuracao e disponibilidade.
+                Orbit seleciona automaticamente o melhor modelo para cada tarefa com base na configuração e disponibilidade.
               </p>
             </div>
           </CardContent>
@@ -580,11 +580,11 @@ export default function AIModelsPage() {
                   required
                 >
                   <option value={AIModelUsageType.INTERVIEW}>Entrevista</option>
-                  <option value={AIModelUsageType.PROMPT_GENERATION}>Geracao de Prompts</option>
-                  <option value={AIModelUsageType.TASK_EXECUTION}>Execucao de Tarefas</option>
-                  <option value={AIModelUsageType.COMMIT_GENERATION}>Geracao de Commits</option>
-                  <option value={AIModelUsageType.PATTERN_DISCOVERY}>Descoberta de Padroes</option>
-                  <option value={AIModelUsageType.MEMORY}>Memoria (Scan de Codebase)</option>
+                  <option value={AIModelUsageType.PROMPT_GENERATION}>Geração de Prompts</option>
+                  <option value={AIModelUsageType.TASK_EXECUTION}>Execução de Tarefas</option>
+                  <option value={AIModelUsageType.COMMIT_GENERATION}>Geração de Commits</option>
+                  <option value={AIModelUsageType.PATTERN_DISCOVERY}>Descoberta de Padrões</option>
+                  <option value={AIModelUsageType.MEMORY}>Memória (Scan de Codebase)</option>
                   <option value={AIModelUsageType.GENERAL}>Geral</option>
                 </select>
               </div>
@@ -692,7 +692,7 @@ export default function AIModelsPage() {
                   }
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Deixe vazio para usar padrao do sistema. Substituido pelo No de Timeout no diagrama AI Flow.
+                  Deixe vazio para usar padrão do sistema. Substituido pelo No de Timeout no diagrama AI Flow.
                 </p>
               </div>
 
@@ -757,7 +757,7 @@ export default function AIModelsPage() {
           open={showEditDialog}
           onClose={() => setShowEditDialog(false)}
           title="Editar Modelo IA"
-          description="Atualizar configuracao do modelo IA"
+          description="Atualizar configuração do modelo IA"
         >
           <form onSubmit={handleUpdateModel}>
             <div className="space-y-4">
@@ -820,11 +820,11 @@ export default function AIModelsPage() {
                   }
                 >
                   <option value={AIModelUsageType.INTERVIEW}>Entrevista</option>
-                  <option value={AIModelUsageType.PROMPT_GENERATION}>Geracao de Prompts</option>
-                  <option value={AIModelUsageType.TASK_EXECUTION}>Execucao de Tarefas</option>
-                  <option value={AIModelUsageType.COMMIT_GENERATION}>Geracao de Commits</option>
-                  <option value={AIModelUsageType.PATTERN_DISCOVERY}>Descoberta de Padroes</option>
-                  <option value={AIModelUsageType.MEMORY}>Memoria (Scan de Codebase)</option>
+                  <option value={AIModelUsageType.PROMPT_GENERATION}>Geração de Prompts</option>
+                  <option value={AIModelUsageType.TASK_EXECUTION}>Execução de Tarefas</option>
+                  <option value={AIModelUsageType.COMMIT_GENERATION}>Geração de Commits</option>
+                  <option value={AIModelUsageType.PATTERN_DISCOVERY}>Descoberta de Padrões</option>
+                  <option value={AIModelUsageType.MEMORY}>Memória (Scan de Codebase)</option>
                   <option value={AIModelUsageType.GENERAL}>Geral</option>
                 </select>
               </div>
@@ -932,7 +932,7 @@ export default function AIModelsPage() {
                   }
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Deixe vazio para usar padrao do sistema. Substituido pelo No de Timeout no diagrama AI Flow.
+                  Deixe vazio para usar padrão do sistema. Substituido pelo No de Timeout no diagrama AI Flow.
                 </p>
               </div>
 
@@ -997,7 +997,7 @@ export default function AIModelsPage() {
           open={showDeleteDialog}
           onClose={() => setShowDeleteDialog(false)}
           title="Excluir Modelo IA"
-          description="Tem certeza que deseja excluir este modelo? Esta acao nao pode ser desfeita."
+          description="Tem certeza que deseja excluir este modelo? Esta ação não pode ser desfeita."
         >
           {selectedModel && (
             <div className="space-y-4">

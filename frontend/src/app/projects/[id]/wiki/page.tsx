@@ -74,7 +74,7 @@ export default function WikiIndexPage() {
 
   const handleCreate = async () => {
     if (!newPage.title.trim()) {
-      showError('Titulo obrigatorio');
+      showError('Título obrigatório');
       return;
     }
     setCreating(true);
@@ -88,15 +88,15 @@ export default function WikiIndexPage() {
       await wikiApi.create(projectId, {
         title: newPage.title,
         slug,
-        content: newPage.content || `## ${newPage.title}\n\nConteudo da pagina.`,
+        content: newPage.content || `## ${newPage.title}\n\nConteudo da página.`,
         source: 'manual',
       });
-      showSuccess('Pagina criada');
+      showSuccess('Página criada');
       setShowCreateDialog(false);
       setNewPage({ title: '', content: '' });
       loadData();
     } catch (error: any) {
-      showError(error.message || 'Falha ao criar pagina');
+      showError(error.message || 'Falha ao criar página');
     } finally {
       setCreating(false);
     }
@@ -140,7 +140,7 @@ export default function WikiIndexPage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Wiki</h1>
             <p className="text-gray-500 mt-1">
-              Documentacao estruturada do projeto {project?.name}
+              Documentação estruturada do projeto {project?.name}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -152,7 +152,7 @@ export default function WikiIndexPage() {
               {generating ? 'Gerando...' : 'Gerar a partir do Contexto'}
             </Button>
             <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
-              Nova Pagina
+              Nova Página
             </Button>
           </div>
         </div>
@@ -167,14 +167,14 @@ export default function WikiIndexPage() {
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">Wiki vazia</h3>
             <p className="text-gray-500 mb-6 max-w-md mx-auto">
-              Crie paginas manualmente ou gere automaticamente a partir do contexto do projeto (scan, entrevista, regras de negocio).
+              Crie páginas manualmente ou gere automaticamente a partir do contexto do projeto (scan, entrevista, regras de negocio).
             </p>
             <div className="flex items-center justify-center gap-3">
               <Button variant="outline" onClick={handleGenerate} disabled={generating}>
                 {generating ? 'Gerando...' : 'Gerar a partir do Contexto'}
               </Button>
               <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
-                Nova Pagina
+                Nova Página
               </Button>
             </div>
           </Card>
@@ -200,7 +200,7 @@ export default function WikiIndexPage() {
                   )}
                 </div>
                 {page.children && page.children.length > 0 && (
-                  <p className="text-xs text-gray-400">{page.children.length} sub-paginas</p>
+                  <p className="text-xs text-gray-400">{page.children.length} sub-páginas</p>
                 )}
               </Card>
             ))}
@@ -210,7 +210,7 @@ export default function WikiIndexPage() {
         {/* Sidebar tree (shown below on mobile, beside on desktop) */}
         {tree.length > 0 && (
           <Card className="p-4">
-            <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider">Indice</h2>
+            <h2 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wider">Índice</h2>
             <div className="space-y-0.5">
               {tree.map((item) => renderTreeItem(item))}
             </div>
@@ -223,10 +223,10 @@ export default function WikiIndexPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
             <div className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Nova Pagina Wiki</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Nova Página Wiki</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Titulo</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Título</label>
                   <input
                     type="text"
                     value={newPage.title}
@@ -237,11 +237,11 @@ export default function WikiIndexPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Conteudo inicial (Markdown)</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Conteúdo inicial (Markdown)</label>
                   <textarea
                     value={newPage.content}
                     onChange={(e) => setNewPage({ ...newPage, content: e.target.value })}
-                    placeholder="## Titulo&#10;&#10;Conteudo da pagina em Markdown..."
+                    placeholder="## Título&#10;&#10;Conteúdo da página em Markdown..."
                     rows={5}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
                   />
@@ -252,7 +252,7 @@ export default function WikiIndexPage() {
                   Cancelar
                 </Button>
                 <Button variant="primary" onClick={handleCreate} disabled={creating || !newPage.title.trim()}>
-                  {creating ? 'Criando...' : 'Criar Pagina'}
+                  {creating ? 'Criando...' : 'Criar Página'}
                 </Button>
               </div>
             </div>

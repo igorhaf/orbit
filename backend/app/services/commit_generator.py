@@ -55,7 +55,7 @@ class CommitGenerator:
         # 1. Buscar task
         task = db.query(Task).filter(Task.id == UUID(task_id)).first()
         if not task:
-            raise ValueError(f"Tarefa {task_id} nao encontrada")
+            raise ValueError(f"Tarefa {task_id} não encontrada")
 
         # 2. Buscar chat session para extrair contexto
         session = db.query(ChatSession).filter(
@@ -158,7 +158,7 @@ class CommitGenerator:
         # Buscar task
         task = db.query(Task).filter(Task.id == UUID(task_id)).first()
         if not task:
-            raise ValueError(f"Tarefa {task_id} nao encontrada")
+            raise ValueError(f"Tarefa {task_id} não encontrada")
 
         # PROMPT #233 - Diff complexity analysis for model routing
         complexity = analyze_commit_complexity(

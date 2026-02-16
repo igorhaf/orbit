@@ -45,7 +45,7 @@ export function IssuesList({ issues, onUpdateIssue }: Props) {
         </svg>
         <p className="text-lg font-medium text-gray-700">Nenhum problema encontrado</p>
         <p className="text-sm text-gray-500 mt-2">
-          Seu codigo esta otimo! Execute uma nova analise para verificar atualizacoes.
+          Seu código esta otimo! Execute uma nova análise para verificar atualizacoes.
         </p>
       </div>
     );

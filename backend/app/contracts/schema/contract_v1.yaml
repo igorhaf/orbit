@@ -1,47 +1,47 @@
 # Schema de Contratos v1.0
 # PROMPT #164 - Arquitetura de Contratos: Unificacao e Governanca
 #
-# Esta e a definicao de schema mestre para contratos ORBIT.
+# Esta e a definição de schema mestre para contratos ORBIT.
 # Todos os contratos devem seguir esta estrutura.
 
 name: contract_schema
 version: 1
 domain: component
 category: schema
-description: Definicao de schema mestre para contratos ORBIT
+description: Definição de schema mestre para contratos ORBIT
 
 # =============================================================================
-# ESPECIFICACAO DO SCHEMA DE CONTRATOS
+# ESPECIFICAÇÃO DO SCHEMA DE CONTRATOS
 # =============================================================================
 
 schema_version: "1.0"
 
 # -----------------------------------------------------------------------------
-# SECAO DE METADADOS (Obrigatoria)
+# SECAO DE METADADOS (Obrigatória)
 # -----------------------------------------------------------------------------
-# name: string (obrigatorio)
-#   - Identificador unico do contrato
+# name: string (obrigatório)
+#   - Identificador único do contrato
 #   - Usar snake_case
 #   - Exemplo: "epic_from_interview", "project_creation"
 #
-# version: integer (obrigatorio)
-#   - Numero de versao do contrato, comeca em 1
+# version: integer (obrigatório)
+#   - Número de versão do contrato, comeca em 1
 #   - Incrementar ao fazer mudancas incompativeis
 #
-# domain: string (obrigatorio)
+# domain: string (obrigatório)
 #   - Um de: business, interview, generation, memory, component
 #   - business: Regras e processos de negocio centrais
 #   - interview: Definicoes de fluxo de entrevista
-#   - generation: Contratos de geracao de conteudo
-#   - memory: Contratos de analise de codebase
+#   - generation: Contratos de geração de conteúdo
+#   - memory: Contratos de análise de codebase
 #   - component: Componentes reutilizaveis
 #
-# category: string (obrigatorio)
+# category: string (obrigatório)
 #   - Nome da pasta onde o contrato reside
 #   - Exemplos: business, generation, interviews, memory, commits, components
 #
 # description: string (opcional)
-#   - Descricao legivel do proposito do contrato
+#   - Descrição legivel do proposito do contrato
 #
 # usage_type: string (opcional)
 #   - Tipo de uso de IA para roteamento do orquestrador
@@ -53,11 +53,11 @@ schema_version: "1.0"
 # governance:
 #   status: draft | active | deprecated
 #     - draft: Contrato em desenvolvimento
-#     - active: Contrato em uso em producao
-#     - deprecated: Contrato agendado para remocao
+#     - active: Contrato em uso em produção
+#     - deprecated: Contrato agendado para remoção
 #
 #   owner: string
-#     - Equipe ou individuo responsavel pelo contrato
+#     - Equipe ou individuo responsável pelo contrato
 #
 #   effective_date: string (data ISO)
 #     - Quando o contrato entrou em vigor
@@ -72,26 +72,26 @@ schema_version: "1.0"
 #       changes: string
 
 # -----------------------------------------------------------------------------
-# SECAO DE MAPA SEMANTICO (Opcional, para metodologia PROMPT #83)
+# SECAO DE MAPA SEMÂNTICO (Opcional, para metodologia PROMPT #83)
 # -----------------------------------------------------------------------------
 # semantic_map:
-#   N1: "Descricao da entidade primaria"
-#   N2: "Descricao da entidade secundaria"
-#   P1: "Descricao do processo principal"
-#   E1: "Descricao do endpoint de API"
-#   D1: "Descricao da estrutura de dados"
-#   S1: "Descricao do servico"
-#   C1: "Descricao da restricao"
-#   AC1: "Descricao do criterio de aceitacao"
+#   N1: "Descrição da entidade primaria"
+#   N2: "Descrição da entidade secundária"
+#   P1: "Descrição do processo principal"
+#   E1: "Descrição do endpoint de API"
+#   D1: "Descrição da estrutura de dados"
+#   S1: "Descrição do serviço"
+#   C1: "Descrição da restrição"
+#   AC1: "Descrição do critério de aceitação"
 #
 # Categorias de Identificadores:
 #   N = Substantivos (entidades, objetos)
-#   P = Processos (acoes, fluxos)
+#   P = Processos (ações, fluxos)
 #   E = Endpoints (APIs)
 #   D = Dados (schemas, estruturas)
-#   S = Servicos (integracoes)
+#   S = Serviços (integracoes)
 #   C = Restricoes (regras de negocio)
-#   AC = Criterios de Aceitacao (condicoes de verificacao)
+#   AC = Critérios de Aceitação (condições de verificação)
 #   R = Requisitos (requisitos funcionais)
 
 # -----------------------------------------------------------------------------
@@ -101,7 +101,7 @@ schema_version: "1.0"
 #   validations:
 #     - id: string (ex., "V1")
 #       description: string
-#       expression: string (logica de validacao)
+#       expression: string (lógica de validação)
 #       severity: error | warning | info
 #
 #   constraints:
@@ -117,7 +117,7 @@ schema_version: "1.0"
 #       action: read | write | delete | execute
 
 # -----------------------------------------------------------------------------
-# SECAO DE VARIAVEIS (Obrigatoria se prompts usam variaveis)
+# SECAO DE VARIAVEIS (Obrigatória se prompts usam variaveis)
 # -----------------------------------------------------------------------------
 # variables:
 #   required:
@@ -138,22 +138,22 @@ schema_version: "1.0"
 #   - component_name
 #   - another_component
 #
-# Componentes sao carregados da pasta contracts/components/
+# Componentes são carregados da pasta contracts/components/
 # Referencie em prompts usando {{ components.component_name }}
 
 # -----------------------------------------------------------------------------
-# SECAO DE PROMPTS (Obrigatoria para contratos de geracao)
+# SECAO DE PROMPTS (Obrigatória para contratos de geração)
 # -----------------------------------------------------------------------------
 # system_prompt: |
 #   Template Jinja2 multi-linha para mensagem de sistema.
 #   Pode referenciar:
 #   - {{ variable_name }} - Variaveis da secao variables
-#   - {{ components.component_name }} - Conteudo de componente carregado
-#   - {{ semantic_map.N1 }} - Valores do mapa semantico
+#   - {{ components.component_name }} - Conteúdo de componente carregado
+#   - {{ semantic_map.N1 }} - Valores do mapa semântico
 #
 # user_prompt: |
-#   Template Jinja2 multi-linha para mensagem do usuario.
-#   Mesmas referencias de variaveis que system_prompt.
+#   Template Jinja2 multi-linha para mensagem do usuário.
+#   Mesmas referências de variaveis que system_prompt.
 
 # -----------------------------------------------------------------------------
 # SECAO DE VALIDADORES (Opcional)
@@ -172,7 +172,7 @@ schema_version: "1.0"
 #     message: "Campo deve comecar com letra maiuscula"
 #
 #   - type: semantic_check
-#     rule: "Todos os identificadores semanticos devem estar definidos no semantic_map"
+#     rule: "Todos os identificadores semânticos devem estar definidos no semantic_map"
 #
 #   - type: length
 #     field: field_name
@@ -183,26 +183,26 @@ schema_version: "1.0"
 #     required: [field1, field2]
 
 # -----------------------------------------------------------------------------
-# SECAO DE EXECUCAO (Opcional)
+# SECAO DE EXECUÇÃO (Opcional)
 # -----------------------------------------------------------------------------
 # execution:
 #   estimated_tokens: integer
 #     - Uso esperado de tokens para este contrato
 #
 #   max_tokens: integer
-#     - Maximo de tokens permitido (padrao: 4000)
+#     - Máximo de tokens permitido (padrão: 4000)
 #
 #   recommended_model: string
 #     - Modelo sugerido (ex., "claude-sonnet-4")
 #
 #   temperature: float
-#     - Temperatura do modelo (padrao: 0.7)
+#     - Temperatura do modelo (padrão: 0.7)
 #
 #   cache_enabled: boolean
-#     - Se deve cachear respostas (padrao: true)
+#     - Se deve cachear respostas (padrão: true)
 #
 #   cache_ttl: integer
-#     - TTL do cache em segundos (padrao: 86400 = 24h)
+#     - TTL do cache em segundos (padrão: 86400 = 24h)
 
 # -----------------------------------------------------------------------------
 # SECAO DE TAGS (Opcional)
@@ -233,25 +233,25 @@ example:
       - version: 1
         date: "2026-02-04"
         author: "Claude"
-        changes: "Versao inicial"
+        changes: "Versão inicial"
 
   semantic_map:
-    N1: "Usuario"
+    N1: "Usuário"
     N2: "Projeto"
-    P1: "Processo de criacao"
-    D1: "Dados do usuario"
-    C1: "Email deve ser unico"
-    AC1: "Usuario pode criar projetos"
+    P1: "Processo de criação"
+    D1: "Dados do usuário"
+    C1: "Email deve ser único"
+    AC1: "Usuário pode criar projetos"
 
   rules:
     validations:
       - id: V1
-        description: "Email deve ter formato valido"
+        description: "Email deve ter formato válido"
         expression: "N1.email matches email regex"
         severity: error
     constraints:
       - id: C1
-        description: "Usuario deve estar autenticado"
+        description: "Usuário deve estar autenticado"
         applies_to: [N1]
         condition: "N1.is_authenticated == true"
 
@@ -259,23 +259,23 @@ example:
     required:
       - name: user_name
         type: string
-        description: "Nome do usuario"
+        description: "Nome do usuário"
     optional:
       - name: project_count
         type: number
         default: 0
-        description: "Numero de projetos existentes"
+        description: "Número de projetos existentes"
 
   components:
     - json_output_rules
 
   system_prompt: |
-    Voce e um assistente ajudando com {{ semantic_map.N2 }}.
+    Você é um assistente ajudando com {{ semantic_map.N2 }}.
 
     {{ components.json_output_rules }}
 
   user_prompt: |
-    Usuario: {{ user_name }}
+    Usuário: {{ user_name }}
     Projetos: {{ project_count | default(0) }}
 
   validators:
@@ -296,4 +296,4 @@ example:
 
   tags:
     - exemplo
-    - documentacao
+    - documentação

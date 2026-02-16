@@ -136,7 +136,7 @@ export default function AnalyzePage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Analisador de Projeto</h1>
           <p className="text-gray-600 mt-2">
-            Envie um projeto existente para analisar sua estrutura, convencoes e padroes
+            Envie um projeto existente para analisar sua estrutura, convencoes e padrões
           </p>
         </div>
 
@@ -161,14 +161,14 @@ export default function AnalyzePage() {
             {/* Analysis History */}
             <Card>
               <CardHeader>
-                <CardTitle>Historico de Analises</CardTitle>
+                <CardTitle>Histórico de Análises</CardTitle>
               </CardHeader>
               <CardContent>
                 {loading ? (
                   <div className="text-center py-4 text-gray-500">Carregando...</div>
                 ) : analyses.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
-                    <p>Nenhuma analise ainda</p>
+                    <p>Nenhuma análise ainda</p>
                     <p className="text-sm mt-1">Envie um projeto para comecar</p>
                   </div>
                 ) : (
@@ -226,9 +226,9 @@ export default function AnalyzePage() {
                         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
                       />
                     </svg>
-                    <p className="text-lg font-medium">Nenhuma analise selecionada</p>
+                    <p className="text-lg font-medium">Nenhuma análise selecionada</p>
                     <p className="text-sm mt-2">
-                      Envie um projeto ou selecione do historico para ver resultados
+                      Envie um projeto ou selecione do histórico para ver resultados
                     </p>
                   </div>
                 </CardContent>
