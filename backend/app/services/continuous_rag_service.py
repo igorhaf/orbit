@@ -369,7 +369,11 @@ class ContinuousRAGService:
             _is_ollama = False
             _model_cfg = {}
 
-        _parallel = 1 if _is_ollama else MAX_PARALLEL_EXTRACTIONS
+        # PROMPT #300 - Respect OLLAMA_NUM_PARALLEL (GPU supports parallel requests)
+        if _is_ollama:
+            _parallel = int(os.getenv("OLLAMA_NUM_PARALLEL", "1"))
+        else:
+            _parallel = MAX_PARALLEL_EXTRACTIONS
         semaphore = asyncio.Semaphore(_parallel)
 
         # PROMPT #298 - Create child jobs per file upfront
@@ -509,7 +513,7 @@ class ContinuousRAGService:
         # Build state lookup for quick access
         state_lookup = {state.id: state for state in pending_states}
 
-        for result in results:
+        for idx, result in enumerate(results):
             if isinstance(result, Exception):
                 errors += 1
                 logger.error(f"Unexpected error in parallel processing: {result}")
@@ -524,9 +528,10 @@ class ContinuousRAGService:
 
             if result["status"] == "deleted":
                 state.status = FileProcessingStatus.DELETED
-                self.db.commit()
                 if jm and _child_id:
                     jm.complete_child_job(_child_id, {"status": "deleted"})
+                elif (idx + 1) % 10 == 0:
+                    self.db.commit()
                 continue
 
             # PROMPT #224 - Mark skipped files as completed (no rules to extract)
@@ -535,20 +540,22 @@ class ContinuousRAGService:
                 state.last_processed_at = datetime.utcnow()
                 state.rules_extracted = 0
                 state.error_message = None
-                self.db.commit()
                 processed += 1
                 if jm and _child_id:
                     jm.complete_child_job(_child_id, {"status": "skipped"})
+                elif (idx + 1) % 10 == 0:
+                    self.db.commit()
                 continue
 
             if result["status"] == "error":
                 state.status = FileProcessingStatus.FAILED
                 state.error_message = result.get("error", "Erro desconhecido")
-                self.db.commit()
                 errors += 1
                 logger.error(f"Failed to process {result.get('file_path')}: {result.get('error')}")
                 if jm and _child_id:
                     jm.fail_child_job(_child_id, result.get("error", "Erro desconhecido"))
+                elif (idx + 1) % 10 == 0:
+                    self.db.commit()
                 continue
 
             # Success — update RAG
@@ -588,7 +595,6 @@ class ContinuousRAGService:
             state.rag_document_ids = new_doc_ids
             state.rules_extracted = len(new_doc_ids)
             state.error_message = None
-            self.db.commit()
 
             processed += 1
             total_rules += len(new_doc_ids)
@@ -596,10 +602,15 @@ class ContinuousRAGService:
             # PROMPT #298 - Complete child job for this file
             if jm and _child_id:
                 jm.complete_child_job(_child_id, {"rules_extracted": len(new_doc_ids)})
+            elif (idx + 1) % 10 == 0:
+                self.db.commit()
 
             logger.info(
                 f"{state.file_path}: {len(new_doc_ids)} rules extracted"
             )
+
+        # PROMPT #300 - Final batch commit for remaining uncommitted changes
+        self.db.commit()
 
         return {
             "processed": processed,

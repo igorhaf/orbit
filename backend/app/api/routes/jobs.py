@@ -13,7 +13,7 @@ Added comprehensive endpoints for job queue visualization and management.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, subqueryload
 from sqlalchemy import func, desc, and_
 from typing import Optional, List
 from uuid import UUID
@@ -65,7 +65,8 @@ async def list_all_jobs(
             "offset": 0
         }
     """
-    query = db.query(AsyncJob)
+    # PROMPT #300 - Eager load children to avoid N+1 queries in to_dict()
+    query = db.query(AsyncJob).options(subqueryload(AsyncJob.children))
 
     # PROMPT #298 - Filter root jobs by default
     if root_only:
