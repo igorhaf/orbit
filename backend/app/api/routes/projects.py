@@ -861,17 +861,14 @@ async def create_and_process_project(
     db: Session = Depends(get_db)
 ):
     """
-    Create project and run full pipeline: scan + rich context + title.
+    Create project and start background enrichment jobs.
 
-    PROMPT #121 - Project Creation Redesign
+    PROMPT #301 - Non-blocking progressive project creation.
 
-    Pipeline steps:
-    1. Validate code_path, create project with status=processing
-    2. Background job runs:
-       - 0-40%: CodebaseMemoryService.scan_and_memorize()
-       - 40-85%: ContextGenerator.generate_rich_context_from_memory()
-       - 85-95%: Title refinement from memory
-       - 95-100%: Finalize → status=active
+    1. Creates project immediately with status=active (folder name as title)
+    2. Submits MEMORY_SCAN job in background
+    3. When scan completes, submits wiki/cards/batch jobs individually
+    4. Project is immediately navigable; data fills in progressively
 
     **POST** `/api/v1/projects/create-and-process?code_path=/projects/my-app&scan_depth=normal`
     """
@@ -900,14 +897,15 @@ async def create_and_process_project(
     folder_name = path.name
     temp_name = folder_name.replace("-", " ").replace("_", " ").title()
 
-    # Create project with processing status
+    # PROMPT #301 - Create project as ACTIVE immediately
     from app.models.project import ProjectStatus
 
     db_project = Project(
         name=temp_name,
         code_path=code_path,
         context_locked=False,
-        status=ProjectStatus.processing,
+        status=ProjectStatus.active,
+        scan_depth=scan_depth,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )
@@ -916,13 +914,13 @@ async def create_and_process_project(
     db.commit()
     db.refresh(db_project)
 
-    logger.info(f"Created project '{temp_name}' (ID: {db_project.id}) status=processing")
+    logger.info(f"Created project '{temp_name}' (ID: {db_project.id}) status=active (PROMPT #301)")
 
-    # Create single pipeline job
+    # Submit MEMORY_SCAN as individual job (not monolithic pipeline)
     job_manager = JobManager(db)
 
     job = job_manager.create_job(
-        job_type=JobType.PROJECT_PIPELINE,
+        job_type=JobType.MEMORY_SCAN,
         input_data={
             "code_path": code_path,
             "project_id": str(db_project.id),
@@ -930,59 +928,59 @@ async def create_and_process_project(
         },
         project_id=db_project.id,
         deep_link=f"/projects/{db_project.id}",
-        notification_title=f"Processando '{folder_name}'..."
+        notification_title=f"Escaneando '{folder_name}'..."
     )
 
-    # Launch pipeline in background
+    # Launch scan in background - completion triggers dependent jobs
     from app.services.job_executor import PriorityJobExecutor
     executor = PriorityJobExecutor.get_instance()
-    await executor.submit(job.priority, _process_project_pipeline, job.id, db_project.id, code_path, scan_depth)
+    await executor.submit(job.priority, _process_initial_scan, job.id, db_project.id, code_path, scan_depth)
 
     return {
         "project": {
             "id": str(db_project.id),
             "name": db_project.name,
             "code_path": db_project.code_path,
-            "status": "processing",
+            "status": "active",
             "created_at": db_project.created_at.isoformat() if db_project.created_at else None,
         },
         "job_id": str(job.id),
-        "status": "processing",
-        "message": "Projeto criado. Pipeline rodando em segundo plano."
+        "status": "active",
+        "message": "Projeto criado. Enriquecimento rodando em segundo plano."
     }
 
 
-async def _process_project_pipeline(
+async def _process_initial_scan(
     job_id: UUID,
     project_id: UUID,
     code_path: str,
     scan_depth: str = "normal"
 ):
     """
-    Background pipeline: scan codebase → activate → start watchdog.
+    PROMPT #301 - Non-blocking initial scan.
 
-    PROMPT #241 - Fast project creation. Rich context deferred to watchdog.
+    Runs memory scan, updates project progressively, then submits
+    independent follow-up jobs (wiki, cards, batch processing).
+    Project is already active - this just enriches it.
     """
     from app.database import SessionLocal
-    from app.models.project import ProjectStatus
 
     db = SessionLocal()
 
     try:
         job_manager = JobManager(db)
         job_manager.start_job(job_id)
-        logger.info(f"Pipeline started for project {project_id}")
+        logger.info(f"Initial scan started for project {project_id}")
 
         folder_name = Path(code_path).name
 
-        # === Step A: Memory Scan (0-80%) ===
+        # === Step A: Memory Scan ===
         job_manager.update_progress(job_id, 5.0, "Iniciando scan do codebase...")
 
         memory_service = CodebaseMemoryService(db)
 
-        job_manager.update_progress(job_id, 15.0, "Analisando estrutura de código...")
+        job_manager.update_progress(job_id, 15.0, "Analisando estrutura de codigo...")
 
-        # PROMPT #298 - Pass job_id for sub-job hierarchy
         result = await memory_service.scan_and_memorize(
             code_path=code_path,
             project_id=project_id,
@@ -990,13 +988,14 @@ async def _process_project_pipeline(
             job_id=job_id
         )
 
-        job_manager.update_progress(job_id, 70.0, "Scan concluido. Salvando resultados...")
+        job_manager.update_progress(job_id, 80.0, "Scan concluido. Salvando resultados...")
 
-        # Update project with scan results
+        # === Step B: Update project with scan results ===
         project = db.query(Project).filter(Project.id == project_id).first()
         if not project:
             raise ValueError(f"Project {project_id} not found")
 
+        # Update title if scan found a better one
         suggested_title = result.get("suggested_title")
         folder_based_name = folder_name.replace("-", " ").replace("_", " ").title()
         if suggested_title and project.name == folder_based_name:
@@ -1005,129 +1004,108 @@ async def _process_project_pipeline(
 
         project.initial_memory_context = result
         project.initial_scan_complete = True
-        # PROMPT #241: Set initial description from scan summary
+
+        # Set initial description from scan summary
         if not project.description:
-            # interview_context is AI-generated text; scan_summary is a dict (stats only)
             summary = (result.get("interview_context") or "").strip()
             if not summary:
-                # Build readable description from scan_summary dict
                 scan_info = result.get("scan_summary", {})
                 if isinstance(scan_info, dict) and scan_info:
                     langs = scan_info.get("languages", {})
                     lang_str = ", ".join(f"{k} ({v})" for k, v in sorted(langs.items(), key=lambda x: -x[1])[:5]) if langs else "N/A"
                     summary = (
-                        f"Codebase com {scan_info.get('code_files', 0)} arquivos de código "
+                        f"Codebase com {scan_info.get('code_files', 0)} arquivos de codigo "
                         f"({scan_info.get('total_files', 0)} total). "
                         f"Linguagens: {lang_str}."
                     )
             if summary:
                 project.description = summary[:2000]
-        # PROMPT #245 - Save scan_depth for batch processing across restarts
-        project.scan_depth = scan_depth
+
         project.updated_at = datetime.utcnow()
         db.commit()
 
-        # PROMPT #245 - Register ALL remaining files for batch processing
-        if scan_depth != "deep":
-            try:
-                from app.services.continuous_rag_service import ContinuousRAGService
-                rag_service = ContinuousRAGService(db)
-                await rag_service.scan_for_changes(project_id)
-                logger.info(f"Registered remaining files for batch processing (scan_depth={scan_depth})")
-            except Exception as e:
-                logger.warning(f"Failed to register files for batch processing (non-blocking): {e}")
+        # Complete scan job
+        job_manager.complete_job(job_id, {
+            "success": True,
+            "project_id": str(project_id),
+            "project_name": project.name,
+            "scan_depth": scan_depth
+        })
 
-        # PROMPT #243 - Enrich wiki immediately after initial scan
-        job_manager.update_progress(job_id, 82.0, "Enriquecendo wiki do projeto a partir dos achados do scan...")
+        # Update notification
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Scan concluido: '{project.name}'"
+            db.commit()
+
+        logger.info(f"Initial scan completed for project {project_id}")
+
+        # === Step C: Submit independent follow-up jobs ===
+        from app.services.job_executor import PriorityJobExecutor
+        executor = PriorityJobExecutor.get_instance()
+
+        # C1: Wiki enrichment as independent job
         try:
-            await _enrich_context_from_rag(db, project_id)
-            logger.info(f"Initial wiki enrichment done for project {project_id}")
+            wiki_job = job_manager.create_job(
+                job_type=JobType.WIKI_RULE_ENRICHMENT,
+                input_data={"project_id": str(project_id)},
+                project_id=project_id,
+                deep_link=f"/projects/{project_id}",
+                notification_title=f"Enriquecendo wiki de '{project.name}'..."
+            )
+            await executor.submit(wiki_job.priority, _enrich_wiki_job, wiki_job.id, project_id)
+            logger.info(f"Wiki enrichment job {wiki_job.id} submitted for project {project_id}")
         except Exception as e:
-            logger.warning(f"Initial wiki enrichment failed (non-blocking): {e}")
+            logger.warning(f"Wiki enrichment job submission failed (non-blocking): {e}")
 
-        # === Step B: Generate initial cards from business rules (PROMPT #260) ===
-        job_manager.update_progress(job_id, 85.0, "Gerando cards iniciais a partir das regras de negocio...")
+        # C2: Card generation as independent job (if business rules found)
         try:
             has_rules = bool(
-                project.initial_memory_context
-                and isinstance(project.initial_memory_context, dict)
-                and project.initial_memory_context.get("business_rules")
+                result and isinstance(result, dict) and result.get("business_rules")
             )
             if has_rules:
-                logger.info(f"Triggering card generation for project {project_id}")
                 cards_job = job_manager.create_job(
                     job_type=JobType.CARDS_FROM_MEMORY,
                     input_data={"project_id": str(project_id)},
                     project_id=project_id,
                     deep_link=f"/projects/{project_id}",
-                    notification_title=f"Gerando cards para '{project.name if project else 'projeto'}'..."
+                    notification_title=f"Gerando cards para '{project.name}'..."
                 )
-                from app.services.job_executor import PriorityJobExecutor as CardExec
-                card_executor = CardExec.get_instance()
-                await card_executor.submit(cards_job.priority, _process_cards_from_memory_async, cards_job.id, project_id)
+                await executor.submit(cards_job.priority, _process_cards_from_memory_async, cards_job.id, project_id)
                 logger.info(f"Card generation job {cards_job.id} submitted for project {project_id}")
             else:
-                logger.info(f"No business rules found for {project_id}, skipping initial card generation")
+                logger.info(f"No business rules for {project_id}, skipping card generation")
         except Exception as e:
             logger.warning(f"Card generation trigger failed (non-blocking): {e}")
 
-        # === Step C: Finalize (90-95%) ===
-        job_manager.update_progress(job_id, 92.0, "Finalizando projeto...")
-
-        project.status = ProjectStatus.active
-        project.updated_at = datetime.utcnow()
-        db.commit()
-
-        # Update notification title
-        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
-        if job:
-            final_title = project.name if project else folder_name
-            job.notification_title = f"Projeto pronto: '{final_title}'"
-            db.commit()
-
-        job_manager.complete_job(job_id, {
-            "success": True,
-            "project_id": str(project_id),
-            "project_name": project.name if project else folder_name,
-            "scan_depth": scan_depth
-        })
-
-        logger.info(f"Pipeline completed for project {project_id}")
-
-        # === Step C: Start batch processing or watchdog (PROMPT #245) ===
+        # C3: Register remaining files and start batch processing / watchdog
         try:
-            if scan_depth == "deep":
+            if scan_depth != "deep":
+                from app.services.continuous_rag_service import ContinuousRAGService
+                rag_service = ContinuousRAGService(db)
+                await rag_service.scan_for_changes(project_id)
+                logger.info(f"Registered remaining files for batch processing")
+
+                from app.services.watchdog import submit_batch_processing_cycle
+                batch_size = {"quick": 15, "normal": 30}.get(scan_depth, 20)
+                submit_batch_processing_cycle(db, project_id, batch_size=batch_size)
+                logger.info(f"Batch processing started (batch_size={batch_size})")
+            else:
                 from app.services.watchdog import submit_watchdog_cycle
                 submit_watchdog_cycle(db, project_id)
                 logger.info(f"Watchdog started for project {project_id} (deep scan)")
-            else:
-                from app.services.watchdog import submit_batch_processing_cycle
-                # PROMPT #260 - Reduced batch sizes: quick=15, normal=30
-                # Previous values (30/100) were too aggressive and flooded the queue
-                batch_size = {"quick": 15, "normal": 30}.get(scan_depth, 20)
-                submit_batch_processing_cycle(db, project_id, batch_size=batch_size)
-                logger.info(f"Batch processing started for project {project_id} (batch_size={batch_size})")
         except Exception as e:
-            logger.warning(f"Post-pipeline job start failed (non-blocking): {e}")
+            logger.warning(f"Post-scan job start failed (non-blocking): {e}")
 
     except Exception as e:
-        logger.error(f"Pipeline failed for project {project_id}: {str(e)}", exc_info=True)
-
-        # Set project back to draft on failure
-        try:
-            project = db.query(Project).filter(Project.id == project_id).first()
-            if project:
-                project.status = ProjectStatus.draft
-                db.commit()
-        except Exception:
-            pass
+        logger.error(f"Initial scan failed for project {project_id}: {str(e)}", exc_info=True)
 
         # Update notification title for failure
         try:
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job:
                 error_msg = str(e)[:80]
-                job.notification_title = f"Erro de pipeline: {error_msg}"
+                job.notification_title = f"Erro no scan: {error_msg}"
                 db.commit()
         except Exception:
             pass
@@ -1138,7 +1116,46 @@ async def _process_project_pipeline(
         db.close()
 
 
-    # PROMPT #241: _run_post_pipeline_enrichment removed - replaced by watchdog service
+async def _enrich_wiki_job(job_id: UUID, project_id: UUID):
+    """
+    PROMPT #301 - Wiki enrichment as independent job.
+    Wraps _enrich_context_from_rag in a job for granular tracking.
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        job_manager.update_progress(job_id, 10.0, "Enriquecendo wiki do projeto...")
+
+        enriched = await _enrich_context_from_rag(db, project_id)
+
+        if enriched:
+            job_manager.complete_job(job_id, {"enriched": True})
+            # Update notification
+            project = db.query(Project).filter(Project.id == project_id).first()
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job and project:
+                job.notification_title = f"Wiki enriquecida: '{project.name}'"
+                db.commit()
+            logger.info(f"Wiki enrichment job completed for project {project_id}")
+        else:
+            job_manager.complete_job(job_id, {"enriched": False, "reason": "Sem dados suficientes"})
+            logger.info(f"Wiki enrichment skipped for {project_id} - no data")
+
+    except Exception as e:
+        logger.error(f"Wiki enrichment job failed for {project_id}: {e}", exc_info=True)
+        try:
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                job.notification_title = f"Erro na wiki: {str(e)[:80]}"
+                db.commit()
+        except Exception:
+            pass
+        job_manager.fail_job(job_id, str(e))
+    finally:
+        db.close()
 
 
 async def _enrich_context_from_rag(db, project_id: UUID) -> bool:

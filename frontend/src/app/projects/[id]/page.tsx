@@ -118,17 +118,24 @@ export default function ProjectDetailsPage() {
     loadProjectData();
   }, [loadProjectData]);
 
-  // PROMPT #239 - Poll enrichment status and auto-refresh when enrichment completes
+  // PROMPT #301 - Poll enrichment status and auto-refresh project data while enriching
+  // This covers initial scan, wiki enrichment, card generation, and watchdog
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
 
     const checkEnrichment = async () => {
       try {
         const status = await ragApi.enrichmentStatus(projectId);
+        const wasEnriching = prevEnrichingRef.current;
         setIsEnriching(status.is_enriching);
 
-        // When enrichment transitions from active to done, refresh project data
-        if (prevEnrichingRef.current && !status.is_enriching) {
+        // While enriching, refresh project data every poll (catches title/description updates)
+        if (status.is_enriching) {
+          loadProjectData();
+        }
+
+        // When enrichment transitions from active to done, do a final refresh
+        if (wasEnriching && !status.is_enriching) {
           loadProjectData();
         }
         prevEnrichingRef.current = status.is_enriching;
@@ -138,32 +145,12 @@ export default function ProjectDetailsPage() {
     };
 
     checkEnrichment();
-    interval = setInterval(checkEnrichment, 10000); // Poll every 10s
+    interval = setInterval(checkEnrichment, 5000); // Poll every 5s for faster updates
 
     return () => {
       if (interval) clearInterval(interval);
     };
   }, [projectId, loadProjectData]);
-
-  // PROMPT #249 - Auto-refresh while project is processing (pipeline running)
-  useEffect(() => {
-    if (!project || project.status !== 'processing') return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await projectsApi.get(projectId);
-        const data = res.data || res;
-        setProject(data);
-        if (data.status !== 'processing') {
-          loadProjectData();
-        }
-      } catch {
-        // Ignore errors
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [project?.status, projectId, loadProjectData]);
 
   // PROMPT #155 - Listen for incremental epic batch creation events
   useEffect(() => {
@@ -459,31 +446,19 @@ export default function ProjectDetailsPage() {
           {/* PROMPT #273 - Interview/Consistency buttons moved to tabs */}
         </div>
 
-        {/* PROMPT #121 banner removed - context interview replaced by Chat tab */}
-
-        {/* PROMPT #121 - Processing banner */}
-        {project && project.status === 'processing' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+        {/* PROMPT #301 - Enrichment active banner (scan, wiki, cards, watchdog) */}
+        {isEnriching && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
             <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600" />
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
               <div>
-                <h4 className="font-medium text-blue-900">Projeto esta sendo processado</h4>
-                <p className="text-sm text-blue-700">
-                  O codebase esta sendo analisado. Isso pode levar alguns minutos.
+                <span className="text-sm font-medium text-blue-900">
+                  Enriquecendo projeto em segundo plano
+                </span>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  O codebase esta sendo analisado e o conhecimento do projeto esta sendo atualizado automaticamente.
                 </p>
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* PROMPT #241 - Watchdog active banner */}
-        {isEnriching && project.status !== 'processing' && (
-          <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
-            <div className="flex items-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500" />
-              <span className="text-sm text-gray-600">
-                Watchdog ativo — descobrindo e atualizando conhecimento do projeto continuamente
-              </span>
             </div>
           </div>
         )}

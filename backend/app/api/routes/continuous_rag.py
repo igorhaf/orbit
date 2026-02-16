@@ -199,16 +199,18 @@ async def get_enrichment_status(
 ):
     """
     PROMPT #239 - Get background enrichment status for a project.
+    PROMPT #301 - Expanded to check ALL active job types (not just RAG_CONTINUOUS_SCAN).
     Used by the frontend to show enrichment progress indicator.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
+    # PROMPT #301 - Check ALL active jobs for this project (scan, wiki, cards, RAG, etc.)
     active_jobs = db.query(AsyncJob).filter(
         AsyncJob.project_id == project_id,
-        AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
         AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+        AsyncJob.parent_job_id.is_(None),  # Only top-level jobs
     ).all()
 
     # PROMPT #241 - Count auto-discovered cards

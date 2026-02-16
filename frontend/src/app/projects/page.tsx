@@ -18,7 +18,7 @@ import {
   Dialog,
   AIModelBadge,
 } from '@/components/ui';
-import { projectsApi, jobsApi } from '@/lib/api';
+import { projectsApi } from '@/lib/api';
 import { Project } from '@/lib/types';
 
 /**
@@ -41,12 +41,7 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
-// PROMPT #121 - Track pipeline job progress per processing project
-interface ProcessingJobInfo {
-  jobId: string;
-  progress: number;
-  message: string;
-}
+// PROMPT #301 - Processing state removed; projects are now always active from creation
 
 export default function ProjectsPage() {
   const router = useRouter();
@@ -56,30 +51,7 @@ export default function ProjectsPage() {
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // PROMPT #121 - Processing job progress map: projectId -> job info
-  const [processingJobs, setProcessingJobs] = useState<Record<string, ProcessingJobInfo>>({});
-  const [cancellingProject, setCancellingProject] = useState<string | null>(null);
-
-  // PROMPT #190 - Cancel project creation (cancel job + delete project)
-  const handleCancelCreation = async (e: React.MouseEvent, project: Project, jobId?: string) => {
-    e.stopPropagation(); // Prevent card click navigation
-    if (cancellingProject) return;
-
-    setCancellingProject(project.id);
-    try {
-      // Cancel the pipeline job if running
-      if (jobId) {
-        try { await jobsApi.cancel(jobId); } catch { /* job may already be done */ }
-      }
-      // Delete the project
-      await projectsApi.delete(project.id);
-      fetchProjects();
-    } catch (error) {
-      console.error('Error cancelling project creation:', error);
-    } finally {
-      setCancellingProject(null);
-    }
-  };
+  // PROMPT #301 - Removed processing job tracking (projects are always active now)
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -104,51 +76,7 @@ export default function ProjectsPage() {
     init();
   }, [fetchProjects]);
 
-  // PROMPT #121 - Poll job progress for processing projects
-  useEffect(() => {
-    const processingProjects = projects.filter(p => p.status === 'processing');
-    if (processingProjects.length === 0) return;
-
-    // Fetch active pipeline jobs for each processing project
-    const fetchJobProgress = async () => {
-      const newJobs: Record<string, ProcessingJobInfo> = {};
-
-      for (const project of processingProjects) {
-        try {
-          const jobsRes = await jobsApi.list({
-            project_id: project.id,
-            job_type: 'project_pipeline',
-            limit: 1,
-            sort_by: 'created_at',
-            sort_order: 'desc',
-          });
-          const jobList = jobsRes.jobs || [];
-
-          if (jobList.length > 0) {
-            const job = jobList[0];
-            newJobs[project.id] = {
-              jobId: job.id,
-              progress: job.progress_percent || 0,
-              message: job.progress_message || 'Processando...',
-            };
-
-            // If job completed/failed, refresh projects to get updated status
-            if (job.status === 'completed' || job.status === 'failed') {
-              fetchProjects();
-            }
-          }
-        } catch (e) {
-          // Silently ignore job fetch errors
-        }
-      }
-
-      setProcessingJobs(newJobs);
-    };
-
-    fetchJobProgress();
-    const interval = setInterval(fetchJobProgress, 3000);
-    return () => clearInterval(interval);
-  }, [projects, fetchProjects]);
+  // PROMPT #301 - Removed processing job polling (projects are always active now)
 
   const handleDeleteProject = async (project: Project) => {
     setProjectToDelete(project);
@@ -236,29 +164,18 @@ export default function ProjectsPage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {projects.map((project) => {
-              const isProcessing = project.status === 'processing';
-              const jobInfo = processingJobs[project.id];
-              const folderName = project.code_path?.split('/').pop() || project.name;
-
               return (
               <Card
                 key={project.id}
                 variant="bordered"
-                className={isProcessing ? 'cursor-pointer hover:shadow-md transition-shadow border-blue-200 border-dashed' : ''}
-                onClick={isProcessing ? () => router.push(`/projects/new?projectId=${project.id}&jobId=${jobInfo?.jobId || ''}`) : undefined}
               >
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle className={isProcessing ? 'text-gray-500' : ''}>
-                      {isProcessing ? folderName : project.name}
+                    <CardTitle>
+                      {project.name}
                     </CardTitle>
-                    {/* PROMPT #121 - Project lifecycle status badge with processing state */}
-                    {isProcessing ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600 mr-1" />
-                        Processando
-                      </span>
-                    ) : project.status === 'active' ? (
+                    {/* PROMPT #301 - Simplified status badge (no more processing state) */}
+                    {project.status === 'active' ? (
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
                         <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
@@ -273,58 +190,6 @@ export default function ProjectsPage() {
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {isProcessing ? (
-                    /* PROMPT #189 - Clickable processing card with live progress bar */
-                    <div className="space-y-3">
-                      {/* Folder path */}
-                      {project.code_path && (
-                        <div className="text-xs text-gray-500 font-mono truncate" title={project.code_path}>
-                          {project.code_path}
-                        </div>
-                      )}
-
-                      {/* Progress bar */}
-                      <div>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-xs text-gray-500">
-                            {jobInfo?.message || 'Inicializando...'}
-                          </span>
-                          <span className="text-xs font-medium text-blue-600">
-                            {Math.round(jobInfo?.progress || 0)}%
-                          </span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div
-                            className="bg-blue-600 h-2 rounded-full transition-all duration-700"
-                            style={{ width: `${jobInfo?.progress || 0}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-blue-500 font-medium">
-                          Clique para detalhes
-                        </span>
-                        <button
-                          onClick={(e) => handleCancelCreation(e, project, jobInfo?.jobId)}
-                          disabled={cancellingProject === project.id}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
-                          title="Cancelar criação do projeto"
-                        >
-                          {cancellingProject === project.id ? (
-                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-600" />
-                          ) : (
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          )}
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                  <>
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <p className="text-sm text-gray-600 line-clamp-3">
                       {project.description ? stripMarkdown(project.description) : 'Sem descrição'}
@@ -380,8 +245,6 @@ export default function ProjectsPage() {
                       </svg>
                     </Button>
                   </div>
-                  </>
-                  )}
                 </CardContent>
               </Card>
               );
