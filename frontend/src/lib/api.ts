@@ -1011,6 +1011,8 @@ export interface JobResponse {
   interview_id?: string | null;
   // PROMPT #120 - Job priority system
   priority?: number | null;
+  // PROMPT #299 - AI model name
+  ai_model_name?: string | null;
   // PROMPT #298 - Sub-job hierarchy
   parent_job_id?: string | null;
   phase_label?: string | null;

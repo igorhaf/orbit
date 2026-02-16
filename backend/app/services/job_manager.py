@@ -18,6 +18,7 @@ import asyncio
 
 from app.models.async_job import AsyncJob, JobStatus, JobType, JOB_TYPE_DEFAULT_PRIORITY, JobPriority
 from app.models.job_log_entry import JobLogEntry
+from app.models.ai_model import AIModel, AIModelUsageType
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +129,53 @@ class JobManager:
         logger.info(f"Created job {job.id} ({job_type.value}) priority={priority}")
         return job
 
+    # PROMPT #299 - Mapping from JobType to AIModelUsageType for model lookup
+    _JOB_TYPE_USAGE_MAP = {
+        JobType.INTERVIEW_MESSAGE: AIModelUsageType.INTERVIEW,
+        JobType.INTERVIEW_QUESTION: AIModelUsageType.INTERVIEW,
+        JobType.CHAT_MESSAGE: AIModelUsageType.INTERVIEW,
+        JobType.BACKLOG_GENERATION: AIModelUsageType.PROMPT_GENERATION,
+        JobType.TASK_GENERATION: AIModelUsageType.PROMPT_GENERATION,
+        JobType.EPIC_ACTIVATION: AIModelUsageType.PROMPT_GENERATION,
+        JobType.STORY_ACTIVATION: AIModelUsageType.PROMPT_GENERATION,
+        JobType.TASK_ACTIVATION: AIModelUsageType.PROMPT_GENERATION,
+        JobType.SUBTASK_ACTIVATION: AIModelUsageType.PROMPT_GENERATION,
+        JobType.SUGGESTED_EPICS: AIModelUsageType.PROMPT_GENERATION,
+        JobType.CARDS_FROM_MEMORY: AIModelUsageType.PROMPT_GENERATION,
+        JobType.CHILDREN_GENERATION: AIModelUsageType.PROMPT_GENERATION,
+        JobType.TASK_EXECUTION: AIModelUsageType.TASK_EXECUTION,
+        JobType.BATCH_EXECUTION: AIModelUsageType.TASK_EXECUTION,
+        JobType.COMMIT_GENERATION: AIModelUsageType.COMMIT_GENERATION,
+        JobType.MEMORY_SCAN: AIModelUsageType.MEMORY,
+        JobType.RAG_CONTINUOUS_SCAN: AIModelUsageType.MEMORY,
+        JobType.CONTEXT_GENERATION: AIModelUsageType.GENERAL,
+        JobType.PROJECT_TITLE: AIModelUsageType.GENERAL,
+        JobType.PROJECT_PIPELINE: AIModelUsageType.GENERAL,
+        JobType.PROJECT_PROVISIONING: AIModelUsageType.GENERAL,
+        JobType.WIKI_RULE_ENRICHMENT: AIModelUsageType.GENERAL,
+    }
+
+    def _resolve_ai_model_name(self, job_type: JobType) -> Optional[str]:
+        """PROMPT #299 - Look up active AI model name for a job type."""
+        usage_type = self._JOB_TYPE_USAGE_MAP.get(job_type)
+        if not usage_type:
+            return None
+        try:
+            model = self.db.query(AIModel).filter(
+                AIModel.usage_type == usage_type,
+                AIModel.is_active == True
+            ).order_by(AIModel.updated_at.desc()).first()
+            if model:
+                return model.name
+            # Fallback to GENERAL
+            model = self.db.query(AIModel).filter(
+                AIModel.usage_type == AIModelUsageType.GENERAL,
+                AIModel.is_active == True
+            ).first()
+            return model.name if model else None
+        except Exception:
+            return None
+
     def start_job(self, job_id: UUID) -> None:
         """
         Mark job as running.
@@ -142,6 +190,10 @@ class JobManager:
 
         job.status = JobStatus.RUNNING
         job.started_at = datetime.utcnow()
+
+        # PROMPT #299 - Auto-set AI model name if not already set
+        if not job.ai_model_name:
+            job.ai_model_name = self._resolve_ai_model_name(job.job_type)
 
         # PROMPT #286 - Insert log entry
         self.db.add(JobLogEntry(job_id=job_id, level="info", message="Job started", progress_percent=0))

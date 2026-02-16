@@ -1026,6 +1026,9 @@ export default function JobsPage() {
                             Tipo
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
+                            Modelo
+                          </th>
+                          <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
                             Título
                           </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
@@ -1094,6 +1097,15 @@ export default function JobsPage() {
                                 <span className="text-sm text-gray-600">
                                   {job.job_type.replace(/_/g, ' ')}
                                 </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                {job.ai_model_name ? (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 truncate max-w-[160px]" title={job.ai_model_name}>
+                                    {job.ai_model_name}
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-gray-400">-</span>
+                                )}
                               </td>
                               <td className="px-4 py-3">
                                 <div className="max-w-xs">
@@ -1215,7 +1227,7 @@ export default function JobsPage() {
                             {expandedChildren.has(job.id) && (
                               loadingChildren.has(job.id) ? (
                                 <tr>
-                                  <td colSpan={9} className="p-0">
+                                  <td colSpan={10} className="p-0">
                                     <div className="pl-12 py-2 text-xs text-gray-500 bg-purple-50/50">Carregando sub-jobs...</div>
                                   </td>
                                 </tr>
@@ -1238,6 +1250,15 @@ export default function JobsPage() {
                                     </td>
                                     <td className="px-4 py-2">
                                       <span className="text-xs text-gray-500">{child.job_type.replace(/_/g, ' ')}</span>
+                                    </td>
+                                    <td className="px-4 py-2">
+                                      {child.ai_model_name ? (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-indigo-50 text-indigo-600 truncate max-w-[140px]" title={child.ai_model_name}>
+                                          {child.ai_model_name}
+                                        </span>
+                                      ) : (
+                                        <span className="text-xs text-gray-400">-</span>
+                                      )}
                                     </td>
                                     <td className="px-4 py-2">
                                       <div className="max-w-xs">
@@ -1283,7 +1304,7 @@ export default function JobsPage() {
                             {/* PROMPT #286 - Expandable job detail with log viewer */}
                             {isExpanded && (
                               <tr>
-                                <td colSpan={9} className="p-0">
+                                <td colSpan={10} className="p-0">
                                   <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
                                     {/* Job Detail Header */}
                                     <div className="flex items-center justify-between mb-3">

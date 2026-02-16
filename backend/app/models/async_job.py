@@ -184,6 +184,9 @@ class AsyncJob(Base):
     deep_link = Column(String(500), nullable=True)  # URL to navigate when notification clicked
     notification_title = Column(String(200), nullable=True)  # Title for notification display
 
+    # PROMPT #299: AI model used by this job
+    ai_model_name = Column(String(200), nullable=True)  # Ex: "Claude Sonnet 4.5"
+
     # PROMPT #298: Sub-job hierarchy
     parent_job_id = Column(UUID(as_uuid=True), ForeignKey('async_jobs.id', ondelete='CASCADE'), nullable=True, index=True)
     phase_label = Column(String(200), nullable=True)  # Ex: "Fase 3/6: Indexacao RAG"
@@ -214,6 +217,7 @@ class AsyncJob(Base):
             "deep_link": self.deep_link,  # PROMPT #133
             "notification_title": self.notification_title,  # PROMPT #133
             "priority": self.priority,  # PROMPT #120
+            "ai_model_name": self.ai_model_name,  # PROMPT #299
             "parent_job_id": str(self.parent_job_id) if self.parent_job_id else None,  # PROMPT #298
             "phase_label": self.phase_label,  # PROMPT #298
             "children_count": len(self.children) if self.children else 0,  # PROMPT #298
