@@ -11,9 +11,12 @@ Captures and streams:
 """
 
 import logging
+import logging.handlers
 import asyncio
 import json
+import os
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Any, Callable
 from collections import deque
 from enum import Enum
@@ -101,8 +104,63 @@ class ConsoleLogger:
         # Lock for thread-safe operations
         self._buffer_lock = asyncio.Lock()
 
+        # PROMPT #296 - File-based logging with rotation (5 files max, 2MB each)
+        self._file_logger = self._setup_file_logger()
+
         self._initialized = True
         logger.info("📋 ConsoleLogger initialized")
+
+    def _setup_file_logger(self) -> Optional[logging.Logger]:
+        """Set up rotating file logger. Keeps 5 files max (2MB each)."""
+        try:
+            log_dir = Path(__file__).parent.parent.parent / "logs"
+            log_dir.mkdir(exist_ok=True)
+            log_path = log_dir / "console.log"
+
+            file_logger = logging.getLogger("orbit.console.file")
+            file_logger.setLevel(logging.DEBUG)
+            file_logger.propagate = False
+
+            # Remove existing handlers to avoid duplicates on re-init
+            file_logger.handlers.clear()
+
+            handler = logging.handlers.RotatingFileHandler(
+                str(log_path),
+                maxBytes=2 * 1024 * 1024,  # 2MB per file
+                backupCount=4,             # Keep 5 total (console.log + .1 .2 .3 .4)
+                encoding="utf-8"
+            )
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            file_logger.addHandler(handler)
+
+            logger.info(f"📁 Console file logging: {log_path}")
+            return file_logger
+        except Exception as e:
+            logger.warning(f"Could not set up console file logging: {e}")
+            return None
+
+    def _format_log_line(self, entry: ConsoleLogEntry) -> str:
+        """Format a log entry as a single readable line for the .log file."""
+        ts = entry.timestamp[:23].replace("T", " ")
+        lvl = entry.level.value.upper().ljust(7)
+        cat = entry.category.value
+
+        line = f"[{ts}] [{lvl}] [{cat}] {entry.title} - {entry.message}"
+
+        if entry.duration_ms:
+            line += f" ({entry.duration_ms}ms)"
+        if entry.tokens_used:
+            line += f" [{entry.tokens_used} tokens]"
+        if entry.cost_usd:
+            line += f" [${entry.cost_usd:.4f}]"
+        if entry.model_name:
+            line += f" model={entry.model_name}"
+        if entry.trace_id:
+            line += f" trace={entry.trace_id[:8]}"
+        if entry.project_id:
+            line += f" project={entry.project_id[:8]}"
+
+        return line
 
     async def log(
         self,
@@ -159,6 +217,13 @@ class ConsoleLogger:
         if not is_streaming_chunk:
             async with self._buffer_lock:
                 self.buffer.append(entry)
+
+            # PROMPT #296 - Write to .log file (skip streaming chunks)
+            if self._file_logger:
+                try:
+                    self._file_logger.info(self._format_log_line(entry))
+                except Exception:
+                    pass
 
         # Notify all subscribers (including streaming chunks)
         await self._notify_subscribers(entry)
