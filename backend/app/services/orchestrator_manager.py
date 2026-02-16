@@ -4,7 +4,7 @@ Manages dynamic loading and registration of custom orchestrators
 """
 
 import logging
-import importlib.útil
+import importlib.util
 import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -93,7 +93,7 @@ class OrchestratorManager:
 
         try:
             # Load module dynamically
-            spec = importlib.útil.spec_from_file_location(
+            spec = importlib.util.spec_from_file_location(
                 f"custom_orchestrators.{orchestrator_key}",
                 file_path
             )
@@ -101,7 +101,7 @@ class OrchestratorManager:
             if not spec or not spec.loader:
                 raise ImportError(f"Falha ao carregar spec de {file_path}")
 
-            module = importlib.útil.module_from_spec(spec)
+            module = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = module
             spec.loader.exec_module(module)
 
