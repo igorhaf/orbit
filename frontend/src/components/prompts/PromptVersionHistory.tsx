@@ -10,6 +10,7 @@ import { Prompt } from '@/lib/types';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { AIModelBadge } from '@/components/ui/AIModelBadge';
 import { GitBranch, Clock, Eye, Tag } from 'lucide-react';
 
 interface PromptVersionHistoryProps {
@@ -113,6 +114,15 @@ export const PromptVersionHistory: React.FC<PromptVersionHistoryProps> = ({
                           <Clock className="w-3 h-3" />
                           {new Date(version.created_at).toLocaleString()}
                         </span>
+                        {version.ai_model_used && (
+                          <AIModelBadge
+                            model={version.ai_model_used}
+                            usage_type="prompt_generation"
+                            tokens_used={version.input_tokens && version.output_tokens ? version.input_tokens + version.output_tokens : undefined}
+                            cost={version.total_cost_usd}
+                            latency_ms={version.execution_time_ms}
+                          />
+                        )}
                         {version.type && (
                           <span className="px-2 py-0.5 bg-gray-100 rounded">
                             {version.type}

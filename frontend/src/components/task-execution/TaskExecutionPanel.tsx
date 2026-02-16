@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { clsx } from 'clsx';
 import { Card, Button } from '@/components/ui';
+import { AIModelBadge } from '@/components/ui/AIModelBadge';
 import { TaskStatusBadge, TaskStatus } from './TaskStatusBadge';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { WebSocketMessage } from '@/lib/websocket';
@@ -364,11 +365,11 @@ export const TaskExecutionPanel: React.FC<TaskExecutionPanelProps> = ({
               >
                 <div className="flex-1">
                   <div className="font-medium text-gray-900">{task.title}</div>
-                  <div className="text-sm text-gray-500">
-                    {task.type}
-                    {task.model && ` • ${task.model}`}
-                    {task.cost && ` • $${task.cost.toFixed(4)}`}
-                    {task.executionTime && ` • ${task.executionTime.toFixed(2)}s`}
+                  <div className="text-sm text-gray-500 flex items-center gap-1.5 flex-wrap">
+                    <span>{task.type}</span>
+                    {task.model && <AIModelBadge model={task.model} usage_type="task_execution" cost={task.cost} latency_ms={task.executionTime ? task.executionTime * 1000 : undefined} />}
+                    {task.cost !== undefined && <span>• ${task.cost.toFixed(4)}</span>}
+                    {task.executionTime !== undefined && <span>• {task.executionTime.toFixed(2)}s</span>}
                   </div>
                 </div>
                 <TaskStatusBadge status={task.status} />

@@ -113,7 +113,7 @@ export function MessageBubble({
             {isUser ? 'Você' : 'Assistente IA'}
           </Badge>
           {/* PROMPT #128 - Show AI model icon for assistant messages */}
-          {!isUser && <AIModelBadge model="interview" usage_type="interview" decorative />}
+          {!isUser && message.model && <AIModelBadge model={message.model} usage_type="interview" />}
         </div>
 
         {/* Message Card - PROMPT #56: Using div instead of Card to avoid bg-white override */}

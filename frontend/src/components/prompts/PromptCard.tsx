@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Prompt } from '@/lib/types';
+import { AIModelBadge } from '@/components/ui/AIModelBadge';
 import { FileText, Tag, History } from 'lucide-react';
 
 interface PromptCardProps {
@@ -75,9 +76,19 @@ export const PromptCard: React.FC<PromptCardProps> = ({ prompt }) => {
               <History className="w-3 h-3" />
               {new Date(prompt.created_at).toLocaleDateString()}
             </span>
-            {prompt.created_from_interview_id && (
-              <span className="text-blue-600">From Interview</span>
-            )}
+            <div className="flex items-center gap-2">
+              {prompt.ai_model_used && (
+                <AIModelBadge
+                  model={prompt.ai_model_used}
+                  usage_type="prompt_generation"
+                  tokens_used={prompt.input_tokens && prompt.output_tokens ? prompt.input_tokens + prompt.output_tokens : undefined}
+                  cost={prompt.total_cost_usd}
+                />
+              )}
+              {prompt.created_from_interview_id && (
+                <span className="text-blue-600">Da Entrevista</span>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -11,6 +11,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { projectChatsApi, jobsApi } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
+import { AIModelBadge } from '@/components/ui/AIModelBadge';
 import ReactMarkdown from 'react-markdown';
 
 interface ChatSession {
@@ -387,9 +388,7 @@ function MessageItem({ message }: { message: ChatMessage }) {
             {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           </span>
           {message.model && message.model !== 'error' && (
-            <span className={`${isUser ? 'text-blue-200' : 'text-gray-400'}`}>
-              {message.model}
-            </span>
+            <AIModelBadge model={message.model} usage_type="rag" />
           )}
         </div>
       </div>
