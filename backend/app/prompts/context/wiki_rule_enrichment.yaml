@@ -1,4 +1,4 @@
-# Prompt: Enriquecimento Individual de Regra de Negocio para Wiki
+# Prompt: Expansao Individual de Regra de Negocio para Wiki
 # PROMPT #270 - Páginas Wiki Ricas por Regra Individual
 
 name: wiki_rule_enrichment
@@ -10,7 +10,7 @@ estimated_tokens: 2000
 tags:
   - wiki
   - regra
-  - enriquecimento
+  - expansao
   - português
 
 variables:

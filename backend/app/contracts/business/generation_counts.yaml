@@ -51,7 +51,7 @@ data:
   # PROMPT #228 - Increased from 5→10 for faster card coverage
   max_cards_per_cycle: 10
 
-  # Cards stub auto-enriquecidos por ciclo (quando ocioso)
+  # Cards stub auto-expandidos por ciclo (quando ocioso)
   max_enrich_per_cycle: 2
 
 rules:

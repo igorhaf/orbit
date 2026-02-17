@@ -411,7 +411,7 @@ function RAGContextNode({ data }: { data: any }) {
           <UtilityNodeIcon type="rag_context" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Contexto RAG'}</div>
-            <div className="text-xs text-cyan-600">Enriquecimento Semântico</div>
+            <div className="text-xs text-cyan-600">Contexto Semântico</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-cyan-500' : 'bg-gray-400'}`} />
         </div>

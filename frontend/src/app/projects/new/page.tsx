@@ -86,7 +86,7 @@ export default function NewProjectPage() {
           <CardHeader>
             <CardTitle>Selecionar Pasta de Codigo</CardTitle>
             <p className="text-sm text-gray-600 mt-1">
-              Escolha sua pasta de codigo existente e a profundidade de analise. O ORBIT escaneara o codebase e enriquecera o projeto automaticamente em segundo plano.
+              Escolha sua pasta de codigo existente e a profundidade de analise. O ORBIT escaneara o codebase e expandira o projeto automaticamente em segundo plano.
             </p>
           </CardHeader>
           <CardContent className="space-y-6">

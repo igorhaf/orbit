@@ -732,7 +732,7 @@ UTILITY_NODE_CATALOG = {
     "rag_context": {
         "type": "rag_context",
         "label": "RAG Context",
-        "description": "Enriquece o prompt com contexto semântico do RAG vector store. PROMPT #229: filtragem por tipo, deduplicacao, compressao de contexto e reranking.",
+        "description": "Expande o prompt com contexto semântico do RAG vector store. PROMPT #229: filtragem por tipo, deduplicacao, compressao de contexto e reranking.",
         "icon": "search",
         "color": "#06b6d4",
         "default_config": {

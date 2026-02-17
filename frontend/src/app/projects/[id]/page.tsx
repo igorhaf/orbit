@@ -453,7 +453,7 @@ export default function ProjectDetailsPage() {
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
               <div>
                 <span className="text-sm font-medium text-blue-900">
-                  Enriquecendo projeto em segundo plano
+                  Expandindo projeto em segundo plano
                 </span>
                 <p className="text-xs text-blue-700 mt-0.5">
                   O codebase esta sendo analisado e o conhecimento do projeto esta sendo atualizado automaticamente.

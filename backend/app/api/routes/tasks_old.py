@@ -2338,7 +2338,7 @@ async def run_card_inference(
         orchestrator = AIOrchestrator(db)
 
         system_prompt = """Você é um Product Owner especialista em análise de requisitos.
-Análise a conversa de entrevista abaixo e extraia informações para enriquecer o card.
+Análise a conversa de entrevista abaixo e extraia informações para expandir o card.
 
 Retorne um JSON com os seguintes campos (apenas os que puderem ser inferidos):
 {
@@ -2358,7 +2358,7 @@ Descrição atual: {task.description or 'Nenhuma'}
 Conversa da entrevista:
 {conversation_text}
 
-Extraia informações relevantes para enriquecer este card."""
+Extraia informações relevantes para expandir este card."""
 
         response = await orchestrator.execute(
             usage_type="general",

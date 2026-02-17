@@ -210,7 +210,7 @@ async def generate_wiki_from_context(
             "## Catálogo de Referência - Regras Brutas\n",
             f"Total de regras extraidas do codebase: **{len(all_rules)}**\n",
             "Estas são as regras brutas extraidas automaticamente do código-fonte.",
-            "A página principal de [Regras de Negocio](wiki:regras-de-negocio) contém a versão enriquecida e organizada.\n",
+            "A página principal de [Regras de Negocio](wiki:regras-de-negocio) contém a versão expandida e organizada.\n",
         ]
         for i, rule in enumerate(all_rules, 1):
             if isinstance(rule, dict):
@@ -349,7 +349,7 @@ async def generate_wiki_from_context(
     }
     if enrichment_job_id:
         result["enrichment_job_id"] = str(enrichment_job_id)
-        result["detail"] += f". Enriquecimento iniciado para {rule_page_count} regras."
+        result["detail"] += f". Expansao iniciada para {rule_page_count} regras."
     return result
 
 
@@ -1262,7 +1262,7 @@ async def _trigger_rule_enrichment_job(
             "force": force,
         },
         project_id=project_id,
-        notification_title=f"Enriquecendo {rule_count} regras wiki",
+        notification_title=f"Expandindo {rule_count} regras wiki",
         deep_link=f"/projects/{project_id}/knowledge",
     )
     db.commit()
@@ -1319,7 +1319,7 @@ async def enrich_business_rule_pages(
 
     if rule_count == 0:
         detail = (
-            "Todas as páginas de regras ja foram enriquecidas. Use force=true para re-enriquecer."
+            "Todas as páginas de regras ja foram expandidas. Use force=true para re-expandir."
             if not force
             else "Nenhuma página de regra de negocio encontrada. Execute generate-from-context primeiro."
         )
@@ -1328,7 +1328,7 @@ async def enrich_business_rule_pages(
     job_id = await _trigger_rule_enrichment_job(db, project_id, rule_count, force=force)
 
     return {
-        "detail": f"Enriquecimento iniciado para {rule_count} páginas de regras" + (" (re-enriquecimento forcado)" if force else ""),
+        "detail": f"Expansao iniciada para {rule_count} páginas de regras" + (" (re-expansao forcada)" if force else ""),
         "job_id": str(job_id),
         "rule_count": rule_count,
     }
@@ -1375,7 +1375,7 @@ async def _enrich_rules_background(
             job_manager.complete_job(job_id, {"enriched": 0, "total": 0})
             return
 
-        job_manager.update_progress(job_id, 5.0, f"Preparando {total} regras para enriquecimento...")
+        job_manager.update_progress(job_id, 5.0, f"Preparando {total} regras para expansao...")
 
         # PROMPT #288 - Batch-load all parent pages in ONE query (fixes N+1)
         parent_ids = set(p.parent_id for p in rule_pages if p.parent_id)
@@ -1420,7 +1420,7 @@ async def _enrich_rules_background(
             progress = 5.0 + (i / total) * 90.0
             job_manager.update_progress(
                 job_id, progress,
-                f"Enriquecendo regra {i + 1}/{total}: {page.title[:60]}..."
+                f"Expandindo regra {i + 1}/{total}: {page.title[:60]}..."
             )
 
             try:

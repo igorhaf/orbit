@@ -104,7 +104,7 @@ function formatJobResult(result: any): string | null {
     parts.push(`${result.cards_created} cards criados`);
   }
   if (result.cards_enriched !== undefined && result.cards_enriched > 0) {
-    parts.push(`${result.cards_enriched} cards enriquecidos`);
+    parts.push(`${result.cards_enriched} cards expandidos`);
   }
   if (result.rules_extracted !== undefined && result.rules_extracted > 0) {
     parts.push(`${result.rules_extracted} regras extraidas`);

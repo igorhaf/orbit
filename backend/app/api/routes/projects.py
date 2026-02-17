@@ -520,7 +520,7 @@ async def _process_memory_scan_async(
                 )
 
                 # PROMPT #284 - Enrich wiki from updated RAG data (like quick-create does)
-                job_manager.update_progress(job_id, 82.0, "Enriquecendo wiki do projeto a partir dos achados do scan...")
+                job_manager.update_progress(job_id, 82.0, "Expandindo wiki do projeto a partir dos achados do scan...")
                 try:
                     await _enrich_context_from_rag(db, project_id)
                     logger.info(f"Wiki enrichment done for project {project_id}")
@@ -947,7 +947,7 @@ async def create_and_process_project(
         },
         "job_id": str(job.id),
         "status": "active",
-        "message": "Projeto criado. Enriquecimento rodando em segundo plano."
+        "message": "Projeto criado. Expansao rodando em segundo plano."
     }
 
 
@@ -1052,7 +1052,7 @@ async def _process_initial_scan(
                 input_data={"project_id": str(project_id)},
                 project_id=project_id,
                 deep_link=f"/projects/{project_id}",
-                notification_title=f"Enriquecendo wiki de '{project.name}'..."
+                notification_title=f"Expandindo wiki de '{project.name}'..."
             )
             await executor.submit(wiki_job.priority, _enrich_wiki_job, wiki_job.id, project_id)
             logger.info(f"Wiki enrichment job {wiki_job.id} submitted for project {project_id}")
@@ -1128,7 +1128,7 @@ async def _enrich_wiki_job(job_id: UUID, project_id: UUID):
     try:
         job_manager = JobManager(db)
         job_manager.start_job(job_id)
-        job_manager.update_progress(job_id, 10.0, "Enriquecendo wiki do projeto...")
+        job_manager.update_progress(job_id, 10.0, "Expandindo wiki do projeto...")
 
         enriched = await _enrich_context_from_rag(db, project_id)
 
@@ -1138,7 +1138,7 @@ async def _enrich_wiki_job(job_id: UUID, project_id: UUID):
             project = db.query(Project).filter(Project.id == project_id).first()
             job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
             if job and project:
-                job.notification_title = f"Wiki enriquecida: '{project.name}'"
+                job.notification_title = f"Wiki expandida: '{project.name}'"
                 db.commit()
             logger.info(f"Wiki enrichment job completed for project {project_id}")
         else:
@@ -1365,7 +1365,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                     "## Catálogo de Referência - Regras Brutas\n",
                     f"Total de regras extraidas do codebase: **{len(rules)}**\n",
                     "Estas são as regras brutas extraidas automaticamente do código-fonte.",
-                    "A página principal de Regras de Negocio contém a versão enriquecida e organizada.\n",
+                    "A página principal de Regras de Negocio contém a versão expandida e organizada.\n",
                 ]
                 for i, rule in enumerate(rules, 1):
                     rule_text = rule[:500] if len(rule) > 500 else rule
@@ -2412,10 +2412,10 @@ async def enrich_wiki(
         if result:
             return {"status": "enriched", "message": "Páginas wiki regeneradas a partir dos dados RAG"}
         else:
-            return {"status": "skipped", "message": "Nenhum dado RAG disponível para enriquecimento"}
+            return {"status": "skipped", "message": "Nenhum dado RAG disponivel para expansao"}
     except Exception as e:
         logger.error(f"Wiki enrichment failed for {project_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Enriquecimento wiki falhou: {str(e)[:200]}")
+        raise HTTPException(status_code=500, detail=f"Expansao wiki falhou: {str(e)[:200]}")
 
 
 # ============================================================================
