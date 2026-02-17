@@ -1495,8 +1495,9 @@ async def _enrich_rules_background(
                 )
 
                 # Call AI
+                # PROMPT #228 - Changed to "general" for qwen3:14b (quality text)
                 response = await orchestrator.execute(
-                    usage_type="memory",
+                    usage_type="general",
                     messages=[{"role": "user", "content": usr_prompt}],
                     system_prompt=sys_prompt,
                     max_tokens=2000,

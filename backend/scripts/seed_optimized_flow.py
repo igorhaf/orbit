@@ -1,7 +1,7 @@
 """
 Seed Optimized AI Flow - Hardware-Aware Configuration
 =====================================================
-PROMPT #227
+PROMPT #227 + PROMPT #228
 
 Configures ORBIT's AI Flow chains optimized for:
   - i9 CPU + 32GB RAM + 12GB VRAM (NVIDIA)
@@ -9,18 +9,18 @@ Configures ORBIT's AI Flow chains optimized for:
   - ORBIT running on WSL2
 
 Models selected based on real benchmarks:
-  - qwen3:8b    → 46.5 tok/s (100% GPU, 5.2GB) → Fast tasks
-  - qwen3:14b   → 27.6 tok/s (100% GPU, 9.3GB) → Quality tasks
+  - qwen3:8b    → 46.5 tok/s (100% GPU, 5.2GB) → Fast tasks + extraction
+  - qwen3:14b   → 27.6 tok/s (100% GPU, 9.3GB) → Quality tasks + enrichment
   - qwen2.5-coder:14b → ~25 tok/s (100% GPU, 9GB) → Code tasks
   - nomic-embed-text → instant (0.3GB) → RAG embeddings
 
-Strategy per operation:
+Strategy per operation (PROMPT #228 - dual-model for quality+speed):
   - interview:           qwen3:8b (fast, conversational)
   - prompt_generation:   qwen3:14b (quality reasoning)
   - task_execution:      qwen2.5-coder:14b → qwen3:14b (code specialist + fallback)
   - commit_generation:   qwen3:8b (fast, simple output)
   - pattern_discovery:   qwen3:14b → qwen3:8b (analysis + fast fallback)
-  - memory:              qwen3:14b (deep analysis)
+  - memory:              qwen3:8b → qwen3:14b (fast extraction + quality fallback)
   - queue_orchestration: qwen3:8b (fast routing)
   - general:             qwen3:14b → qwen3:8b (quality + fast fallback)
 
@@ -56,6 +56,7 @@ MODELS = {
     "qwen3:8b": {
         "name": "Qwen3 8B (Fast)",
         "usage_type": AIModelUsageType.INTERVIEW,
+        "max_concurrent": 2,  # PROMPT #228 - 5.2GB fits 2 parallel in 12GB VRAM
         "config": {
             "model_id": "qwen3:8b",
             "max_tokens": 8192,
@@ -196,7 +197,7 @@ CHAIN_DEFINITIONS = {
     AIModelUsageType.TASK_EXECUTION: ["qwen2.5-coder:14b", "qwen3:14b"],
     AIModelUsageType.COMMIT_GENERATION: ["qwen3:8b"],
     AIModelUsageType.PATTERN_DISCOVERY: ["qwen3:14b", "qwen3:8b"],
-    AIModelUsageType.MEMORY: ["qwen3:14b"],
+    AIModelUsageType.MEMORY: ["qwen3:8b", "qwen3:14b"],  # PROMPT #228 - fast extraction + quality fallback
     AIModelUsageType.QUEUE_ORCHESTRATION: ["qwen3:8b"],
     AIModelUsageType.GENERAL: ["qwen3:14b", "qwen3:8b"],
 }
@@ -209,7 +210,7 @@ def seed():
 
     try:
         logger.info("=" * 70)
-        logger.info("SEED OPTIMIZED AI FLOW - PROMPT #227")
+        logger.info("SEED OPTIMIZED AI FLOW - PROMPT #227 + #228")
         logger.info("Hardware: i9 + 32GB RAM + 12GB VRAM")
         logger.info("=" * 70)
 
@@ -246,14 +247,17 @@ def seed():
                     found = m
                     break
 
+            max_concurrent = model_def.get("max_concurrent", 1)
+
             if found:
                 # Update config
                 found.name = model_def["name"]
                 found.config = model_def["config"]
                 found.is_active = True
                 found.usage_type = model_def["usage_type"]
+                found.max_concurrent_requests = max_concurrent
                 model_id_map[model_key] = str(found.id)
-                logger.info(f"  Updated: {model_def['name']} ({model_key})")
+                logger.info(f"  Updated: {model_def['name']} ({model_key}) [max_concurrent={max_concurrent}]")
             else:
                 new_model = AIModel(
                     id=uuid4(),
@@ -266,7 +270,7 @@ def seed():
                     timeout_seconds=300,
                     rate_limit_requests=100,
                     rate_limit_window_seconds=60,
-                    max_concurrent_requests=1,
+                    max_concurrent_requests=max_concurrent,
                 )
                 db.add(new_model)
                 db.flush()
@@ -378,7 +382,7 @@ def seed():
         logger.info("    nomic-embed-text  → instant     (100% GPU, 0.3GB)")
         logger.info("")
         logger.info("  RECOMMENDED OLLAMA ENV (Windows):")
-        logger.info("    OLLAMA_NUM_PARALLEL=1")
+        logger.info("    OLLAMA_NUM_PARALLEL=2")
         logger.info("    OLLAMA_FLASH_ATTENTION=1")
         logger.info("    OLLAMA_KV_CACHE_TYPE=q8_0")
         logger.info("=" * 70)

@@ -94,7 +94,8 @@ CYCLE_COOLDOWN = 60          # When there's active work
 IDLE_COOLDOWN = 300           # PROMPT #259 - 5 min when no work detected
 ERROR_COOLDOWN = 120
 # PROMPT #245 - Aggressive cooldown for batch processing
-BATCH_COOLDOWN = 5
+# PROMPT #228 - Reduced from 5→2 for faster indexing throughput
+BATCH_COOLDOWN = 2
 
 
 def _load_generation_counts():
@@ -782,15 +783,15 @@ async def _auto_discover_cards(db: Session, project_id: UUID, max_cards: int = 0
     from collections import defaultdict
     from app.models.task import Task, ItemType, TaskStatus, PriorityLevel
 
-    # Get recent business rules from RAG (last 24 hours) WITH source_file for domain classification
+    # PROMPT #228 - Extended from 24h→7d and limit 20→50 for complete initial indexing
     result = db.execute(sql_text("""
         SELECT content, COALESCE(metadata->>'source_file', '') as source_file
         FROM rag_documents
         WHERE project_id = :pid
         AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
-        AND created_at > NOW() - INTERVAL '24 hours'
+        AND created_at > NOW() - INTERVAL '7 days'
         ORDER BY created_at DESC
-        LIMIT 20
+        LIMIT 50
     """), {"pid": str(project_id)})
     recent_rules = [{"content": row[0], "source_file": row[1]} for row in result.fetchall()]
 

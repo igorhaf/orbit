@@ -1275,8 +1275,9 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
     # --- 6. Call AI to enrich ---
     orchestrator = AIOrchestrator(db)
     # PROMPT #268 - Increased from 6000 to 12000 to allow richer rule coverage
+    # PROMPT #228 - Changed to "general" for qwen3:14b (quality text generation)
     response = await orchestrator.execute(
-        usage_type="memory",
+        usage_type="general",
         messages=[{"role": "user", "content": usr_prompt}],
         system_prompt=sys_prompt,
         max_tokens=12000,

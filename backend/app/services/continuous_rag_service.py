@@ -451,11 +451,13 @@ class ContinuousRAGService:
                     language = self.indexer._detect_language(file_full_path) or "unknown"
 
                     # PROMPT #224 - Use cached provider detection (from batch level)
-                    max_content = 3000 if _is_ollama else 15000
+                    # PROMPT #228 - Increased from 3000→8000 for Ollama (qwen3:8b has 32K context)
+                    max_content = 8000 if _is_ollama else 15000
                     if len(content) > max_content:
                         content = content[:max_content]
 
-                    _resp_tokens = 1024 if _is_ollama else 4096
+                    # PROMPT #228 - Increased from 1024→2048 for more detailed extraction
+                    _resp_tokens = 2048 if _is_ollama else 4096
 
                     # Extract business rules via AI (this is the slow part)
                     rules = await self._extract_rules_from_file(

@@ -48,7 +48,8 @@ data:
       max: 5
 
   # Limites de auto-descoberta do Watchdog
-  max_cards_per_cycle: 5
+  # PROMPT #228 - Increased from 5→10 for faster card coverage
+  max_cards_per_cycle: 10
 
   # Cards stub auto-enriquecidos por ciclo (quando ocioso)
   max_enrich_per_cycle: 2

@@ -727,22 +727,19 @@ class CodebaseMemoryService:
             except Exception as e:
                 logger.warning(f"AI ignore detection skipped (non-blocking): {e}")
 
-        # PROMPT #165 / PROMPT #236 - Auto-detect local model (Ollama)
-        # Uses chain prompting (small prompts per file) instead of batch phases
+        # PROMPT #228 - Removed auto-switch to "local" for Ollama.
+        # With qwen3:8b at 46.5 tok/s (100% GPU), no need to limit scan depth.
+        # The override was created for qwen2.5:32b (2.6 tok/s) which was removed in PROMPT #227.
         try:
             from app.models.ai_model import AIModelUsageType
             model_config = self.orchestrator.choose_model(AIModelUsageType.MEMORY)
-            if model_config.get("provider") == "ollama":
-                original_depth = scan_depth
-                scan_depth = "local"
-                logger.info(
-                    f"Detected Ollama provider for 'memory' usage type. "
-                    f"Scan mode: {original_depth} -> local (chain prompting, 2K/file). "
-                    f"Model: {model_config.get('db_model_name', 'unknown')}"
-                )
+            logger.info(
+                f"Memory model provider: {model_config.get('provider', 'unknown')}, "
+                f"model: {model_config.get('db_model_name', 'unknown')}, "
+                f"scan_depth: {scan_depth} (preserved)"
+            )
         except Exception as e:
             logger.debug(f"Could not detect model provider: {e}")
-            # Continue with original scan_depth
 
         self.current_scan_depth = scan_depth
         config = self.SCAN_DEPTH_CONFIG.get(scan_depth, self.SCAN_DEPTH_CONFIG["normal"])
