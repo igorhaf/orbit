@@ -69,7 +69,14 @@ ensure_dirs() {
 }
 
 get_windows_ip() {
-    grep -m1 nameserver /etc/resolv.conf 2>/dev/null | awk '{print $2}' || echo "localhost"
+    # Prefer default gateway (more reliable for WSL2 → Windows communication)
+    local gw
+    gw=$(ip route show default 2>/dev/null | awk '{print $3}')
+    if [[ -n "$gw" ]]; then
+        echo "$gw"
+    else
+        grep -m1 nameserver /etc/resolv.conf 2>/dev/null | awk '{print $2}' || echo "localhost"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -432,7 +439,7 @@ start_backend() {
 
     # Kill any orphan process on port 8000
     local orphan_pid
-    orphan_pid=$(ss -tlnp 2>/dev/null | grep ":8000 " | grep -oP 'pid=\K[0-9]+' | head -1)
+    orphan_pid=$(ss -tlnp 2>/dev/null | grep ":8000 " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
     if [[ -n "$orphan_pid" ]]; then
         warn "Killing orphan process on port 8000 (PID $orphan_pid)"
         kill "$orphan_pid" 2>/dev/null || true
@@ -448,6 +455,7 @@ start_backend() {
         set +a
     fi
 
+    export PATH="$HOME/.local/bin:$PATH"
     cd "${BACKEND_DIR}"
     nohup poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload \
         > "$BACKEND_LOG" 2>&1 &
@@ -471,7 +479,7 @@ start_frontend() {
 
     # Kill any orphan process on port 3000
     local orphan_pid
-    orphan_pid=$(ss -tlnp 2>/dev/null | grep ":3000 " | grep -oP 'pid=\K[0-9]+' | head -1)
+    orphan_pid=$(ss -tlnp 2>/dev/null | grep ":3000 " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
     if [[ -n "$orphan_pid" ]]; then
         warn "Killing orphan process on port 3000 (PID $orphan_pid)"
         kill "$orphan_pid" 2>/dev/null || true
@@ -834,6 +842,7 @@ cmd_help() {
     echo -e "    ${GREEN}logs${NC}    <service>    Tail logs (backend|frontend)"
     echo -e "    ${GREEN}db:migrate${NC}           Run Alembic migrations"
     echo -e "    ${GREEN}db:reset${NC}             Drop + recreate database + run migrations"
+    echo -e "    ${GREEN}nuke${NC}                 Kill everything hard + restart all services"
     echo ""
     echo -e "  ${BOLD}Services:${NC}"
     echo -e "    postgres (pg, db)    PostgreSQL 16 + pgvector"
@@ -853,6 +862,62 @@ cmd_help() {
 }
 
 # =============================================================================
+# NUKE (kill everything hard + restart)
+# =============================================================================
+cmd_nuke() {
+    header "ORBIT Nuke - Hard Reset"
+
+    # Kill processes by port (safe - won't kill self)
+    info "Killing all ORBIT processes..."
+    local pids_to_kill=""
+    local p
+
+    p=$(ss -tlnp 2>/dev/null | grep ":8000 " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
+    [[ -n "$p" ]] && pids_to_kill="$pids_to_kill $p"
+    p=$(ss -tlnp 2>/dev/null | grep ":3000 " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
+    [[ -n "$p" ]] && pids_to_kill="$pids_to_kill $p"
+
+    # Also get child processes (uvicorn workers, next-server)
+    for pid in $pids_to_kill; do
+        local children
+        children=$(pgrep -P "$pid" 2>/dev/null || true)
+        pids_to_kill="$pids_to_kill $children"
+    done
+
+    for pid in $pids_to_kill; do
+        kill -9 "$pid" 2>/dev/null || true
+    done
+    rm -f "$BACKEND_PID" "$FRONTEND_PID"
+
+    sleep 2
+    success "All processes killed"
+
+    # Restart everything
+    start_postgres
+    start_redis
+    start_backend
+
+    # Wait for backend to fully load (embeddings model etc)
+    info "Waiting for backend to be ready..."
+    local tries=0
+    while ! curl -sf http://localhost:8000/health >/dev/null 2>&1; do
+        tries=$((tries + 1))
+        if [[ $tries -ge 30 ]]; then
+            error "Backend did not start in 30s. Check: orbit logs backend"
+            break
+        fi
+        sleep 1
+    done
+    if [[ $tries -lt 30 ]]; then
+        success "Backend ready"
+    fi
+
+    start_frontend
+    echo ""
+    cmd_status
+}
+
+# =============================================================================
 # MAIN
 # =============================================================================
 main() {
@@ -869,6 +934,7 @@ main() {
         logs)       cmd_logs "$@" ;;
         db:migrate) cmd_db_migrate "$@" ;;
         db:reset)   cmd_db_reset "$@" ;;
+        nuke)       cmd_nuke "$@" ;;
         help|--help|-h)
             cmd_help
             ;;

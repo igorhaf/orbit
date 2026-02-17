@@ -59,6 +59,9 @@ class Settings(BaseSettings):
         alias="USE_EXTERNAL_PROMPTS"
     )
 
+    # Projects base path (Docker: /projects, Native: configurable)
+    projects_base_path: str = Field(default="/projects", alias="PROJECTS_BASE_PATH")
+
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 

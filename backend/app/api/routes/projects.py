@@ -118,8 +118,9 @@ def _effective_max_patterns(db: Session, project_id) -> int:
     return max(0, min(max_patterns, MAX_SPECS_PER_PROJECT - existing_count))
 
 
-# PROMPT #111 - Base path for mounted projects folder
-PROJECTS_BASE_PATH = Path("/projects")
+# PROMPT #111 - Base path for projects folder (configurable via PROJECTS_BASE_PATH env var)
+from app.config import settings as app_settings
+PROJECTS_BASE_PATH = Path(app_settings.projects_base_path)
 
 
 @router.get("/browse-folders")
