@@ -934,6 +934,12 @@ export const settingsApi = {
       method: 'POST',
       body: JSON.stringify({ items }),
     }),
+
+  addFileToBlocklist: (filePath: string) =>
+    request<{ directories: string[]; file_patterns: string[] }>('/api/v1/settings/blocklist/add-file', {
+      method: 'POST',
+      body: JSON.stringify({ file_path: filePath }),
+    }),
 };
 
 // Project Analyzers API
@@ -1017,6 +1023,7 @@ export interface JobResponse {
   parent_job_id?: string | null;
   phase_label?: string | null;
   children_count?: number;
+  input_data?: any | null;
 }
 
 // Jobs API (PROMPT #65 - Async Job System)

@@ -232,6 +232,27 @@ async def reject_blocklist_suggestions(
     return {"remaining_suggestions": len(remaining)}
 
 
+class BlocklistAddFile(BaseModel):
+    file_path: str
+
+
+@router.post("/blocklist/add-file")
+async def add_file_to_blocklist(
+    data: BlocklistAddFile,
+    db: Session = Depends(get_db),
+):
+    """Adiciona um arquivo específico à lista de bloqueio global."""
+    blocklist = _get_blocklist(db)
+    file_path = data.file_path.strip()
+    if not file_path:
+        raise HTTPException(status_code=400, detail="file_path não pode ser vazio")
+    if file_path not in blocklist.get("file_patterns", []):
+        blocklist.setdefault("file_patterns", []).append(file_path)
+        blocklist["file_patterns"] = sorted(set(blocklist["file_patterns"]))
+        _save_blocklist(db, blocklist)
+    return blocklist
+
+
 # ──────────────────────────────────────────────────
 # Catch-all /{key} routes - MUST be LAST
 # ──────────────────────────────────────────────────

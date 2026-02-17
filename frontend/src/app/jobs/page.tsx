@@ -23,7 +23,7 @@ import {
   Button,
   Select,
 } from '@/components/ui';
-import { jobsApi, projectsApi, JobResponse } from '@/lib/api';
+import { jobsApi, projectsApi, settingsApi, JobResponse } from '@/lib/api';
 import {
   Activity,
   RefreshCw,
@@ -43,6 +43,7 @@ import {
   ExternalLink,
   Wifi,
   WifiOff,
+  Ban,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -183,6 +184,10 @@ export default function JobsPage() {
   const [expandedChildren, setExpandedChildren] = useState<Set<string>>(new Set());
   const [childrenMap, setChildrenMap] = useState<Map<string, JobResponse[]>>(new Map());
   const [loadingChildren, setLoadingChildren] = useState<Set<string>>(new Set());
+
+  // PROMPT #229 - Blocklist: track files being blocked
+  const [blockingFiles, setBlockingFiles] = useState<Set<string>>(new Set());
+  const [blockedFiles, setBlockedFiles] = useState<Set<string>>(new Set());
 
   // PROMPT #286 - Expandable job detail with log viewer
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
@@ -618,6 +623,21 @@ export default function JobsPage() {
         }
       }
       setExpandedChildren(prev => new Set(prev).add(jobId));
+    }
+  };
+
+  // PROMPT #229 - Add file to blocklist from sub-job row
+  const handleBlockFile = async (child: JobResponse) => {
+    const filePath = child.input_data?.file_path;
+    if (!filePath) return;
+    setBlockingFiles(prev => new Set(prev).add(child.id));
+    try {
+      await settingsApi.addFileToBlocklist(filePath);
+      setBlockedFiles(prev => new Set(prev).add(child.id));
+    } catch (error) {
+      console.error('Error blocking file:', error);
+    } finally {
+      setBlockingFiles(prev => { const n = new Set(prev); n.delete(child.id); return n; });
     }
   };
 
@@ -1295,7 +1315,30 @@ export default function JobsPage() {
                                         {childDuration !== null ? formatDuration(childDuration) : '-'}
                                       </span>
                                     </td>
-                                    <td className="px-4 py-2"></td>
+                                    <td className="px-4 py-2">
+                                      {child.input_data?.file_path && (
+                                        blockedFiles.has(child.id) ? (
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs text-red-600 bg-red-50">
+                                            <Ban className="w-3 h-3" />
+                                            Bloqueado
+                                          </span>
+                                        ) : (
+                                          <button
+                                            onClick={() => handleBlockFile(child)}
+                                            disabled={blockingFiles.has(child.id)}
+                                            className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs text-gray-600 hover:text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+                                            title={`Bloquear: ${child.input_data.file_path}`}
+                                          >
+                                            {blockingFiles.has(child.id) ? (
+                                              <RefreshCw className="w-3 h-3 animate-spin" />
+                                            ) : (
+                                              <Ban className="w-3 h-3" />
+                                            )}
+                                            Bloquear
+                                          </button>
+                                        )
+                                      )}
+                                    </td>
                                   </tr>
                                 );
                               })
