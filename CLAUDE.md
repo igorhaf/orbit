@@ -760,8 +760,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #227 (Fix Job Duration & Wiki Enrichment Timeout)
-**Próximo prompt:** PROMPT #228
+**Último prompt:** PROMPT #228 (Wiki Enrichment as Sub-Jobs)
+**Próximo prompt:** PROMPT #229
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

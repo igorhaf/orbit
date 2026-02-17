@@ -72,6 +72,9 @@ class JobType(str, enum.Enum):
     # PROMPT #270: Enrich individual business rule wiki pages with AI
     WIKI_RULE_ENRICHMENT = "wiki_rule_enrichment"
 
+    # PROMPT #228: Wiki page generation as sub-jobs (like file reading)
+    WIKI_GENERATION = "wiki_generation"
+
     # PROMPT #282: RAG Chat message (user asks, AI answers from RAG)
     CHAT_MESSAGE = "chat_message"
 
@@ -116,6 +119,7 @@ def _load_job_priorities() -> dict:
             JobType.PROJECT_PROVISIONING: JobPriority.LOW,
             JobType.RAG_CONTINUOUS_SCAN: JobPriority.LOW,
             JobType.WIKI_RULE_ENRICHMENT: JobPriority.LOW,
+            JobType.WIKI_GENERATION: JobPriority.NORMAL,
         }
 
 
