@@ -120,6 +120,17 @@ check_port() {
     ss -tlnp 2>/dev/null | grep -q ":$1 " 2>/dev/null
 }
 
+# Recursively kill a process and all its descendants
+_kill_tree() {
+    local parent_pid="$1"
+    local child_pids
+    child_pids=$(pgrep -P "$parent_pid" 2>/dev/null || true)
+    for cpid in $child_pids; do
+        _kill_tree "$cpid"
+    done
+    kill -9 "$parent_pid" 2>/dev/null || true
+}
+
 # =============================================================================
 # INSTALL
 # =============================================================================
@@ -541,9 +552,16 @@ stop_frontend() {
         local pid
         pid=$(cat "$FRONTEND_PID")
         info "Stopping Frontend (PID $pid)..."
-        kill "$pid" 2>/dev/null || true
-        # Also kill child processes (node)
-        pkill -P "$pid" 2>/dev/null || true
+        kill -- -"$pid" 2>/dev/null || true  # kill process group
+        sleep 1
+        _kill_tree "$pid"
+        # Final cleanup: kill anything still on port 3000
+        local orphan_pid
+        orphan_pid=$(ss -tlnp 2>/dev/null | grep ":3000 " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
+        if [[ -n "$orphan_pid" ]]; then
+            warn "Cleaning up orphan on port 3000 (PID $orphan_pid)"
+            _kill_tree "$orphan_pid"
+        fi
         rm -f "$FRONTEND_PID"
         success "Frontend stopped"
     else
@@ -556,9 +574,24 @@ stop_backend() {
         local pid
         pid=$(cat "$BACKEND_PID")
         info "Stopping Backend (PID $pid)..."
-        kill "$pid" 2>/dev/null || true
-        # Also kill child processes (uvicorn workers)
-        pkill -P "$pid" 2>/dev/null || true
+        # Kill entire process tree (uvicorn + reload workers + multiprocessing children)
+        # pkill -P only kills direct children; we need the full tree
+        kill -- -"$pid" 2>/dev/null || true  # kill process group
+        sleep 1
+        # Fallback: find and kill any remaining descendants
+        local descendants
+        descendants=$(pgrep -g "$pid" 2>/dev/null || true)
+        if [[ -z "$descendants" ]]; then
+            # Process group didn't work (not group leader), use recursive pkill
+            _kill_tree "$pid"
+        fi
+        # Final cleanup: kill anything still on port 8000
+        local orphan_pid
+        orphan_pid=$(ss -tlnp 2>/dev/null | grep ":8000 " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
+        if [[ -n "$orphan_pid" ]]; then
+            warn "Cleaning up orphan on port 8000 (PID $orphan_pid)"
+            _kill_tree "$orphan_pid"
+        fi
         rm -f "$BACKEND_PID"
         success "Backend stopped"
     else
