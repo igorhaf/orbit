@@ -133,16 +133,14 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
     """
     PROMPT #228 - Generate wiki pages as individual sub-jobs (like file reading).
 
-    Creates a parent job with child sub-jobs for each wiki page:
-    1. Sub-job: AI enrichment → project description + main sections (Visão Geral, Stack, etc.)
-    2. Sub-jobs: RAG data pages (Architecture, Conventions, Code Structure, etc.)
-    3. Sub-jobs: Business rule pages (hierarchical)
-    4. Sub-job: Semantic linking + rule enrichment trigger
-
-    Each sub-job is visible in the jobs page with progress tracking.
+    Order: fast DB-only pages first, slow AI page last.
+    1-5. RAG data pages (DB queries only — instant)
+    6.   Business rule pages (DB — instant)
+    7.   Semantic linking (DB — instant)
+    8.   Visão Geral via AI (slow — Ollama call)
     """
     from app.models.project import Project
-    from app.models.async_job import JobType
+    from app.models.async_job import AsyncJob, JobType
     from app.services.job_manager import JobManager
 
     db = _get_resilient_session()
@@ -158,26 +156,23 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
         project_name = project.name or str(project_id)[:8]
         logger.info(f"Wiki enrichment job started for '{project_name}'")
 
-        # --- Collect data from RAG ---
+        # --- Check if there are rules in RAG ---
         from sqlalchemy import text as sql_text
-        result = db.execute(sql_text("""
-            SELECT content FROM rag_documents
+        rule_count_result = db.execute(sql_text("""
+            SELECT COUNT(*) FROM rag_documents
             WHERE project_id = :pid
             AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
-            ORDER BY created_at DESC
-            LIMIT 80
         """), {"pid": str(project_id)})
-        rules = [row[0][:300] for row in result.fetchall()]
+        total_rules = rule_count_result.scalar() or 0
 
-        if not rules:
+        if total_rules == 0:
             jm.complete_job(job_id, {"skipped": True, "reason": "Sem regras no RAG"})
             logger.info(f"Wiki enrichment skipped for '{project_name}' (no rules)")
             return
 
-        # --- Plan sub-jobs ---
-        # Page builders that query RAG data (no AI call needed)
+        # --- Imports ---
         from app.api.routes.wiki import (
-            _upsert_wiki_page, _parse_wiki_sections,
+            _upsert_wiki_page,
             _build_architecture_patterns_page,
             _build_code_conventions_page,
             _build_ui_components_page,
@@ -187,6 +182,7 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
             _apply_semantic_links_to_project,
         )
 
+        # --- Plan sub-jobs (DB-first, AI-last) ---
         rag_page_builders = [
             ("padrões-arquitetura", "Padrões de Arquitetura", _build_architecture_patterns_page, 6),
             ("convencoes-código", "Convencoes de Código", _build_code_conventions_page, 7),
@@ -195,14 +191,24 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
             ("histórico-desenvolvimento", "Histórico de Desenvolvimento", _build_git_history_page, 10),
         ]
 
-        # Total sub-jobs: 1 (AI enrichment) + 5 (RAG pages) + 1 (business rules) + 1 (linking)
-        total_subjobs = 1 + len(rag_page_builders) + 1 + 1
+        # Order: 5 RAG pages + 1 business rules + 1 linking + 1 AI
+        total_subjobs = len(rag_page_builders) + 3
         subjob_labels = (
-            ["Visão Geral (IA)"]
-            + [title for _, title, _, _ in rag_page_builders]
+            [title for _, title, _, _ in rag_page_builders]
             + ["Regras de Negócio (hierarquia)"]
             + ["Links semânticos"]
+            + ["Visão Geral (IA)"]
         )
+
+        # Resolve AI model name for display
+        ai_model_name = None
+        try:
+            from app.services.ai_orchestrator import AIOrchestrator
+            orch = AIOrchestrator(db)
+            model_info = await orch.choose_model("general")
+            ai_model_name = model_info.get("db_model_name") if model_info else None
+        except Exception:
+            pass
 
         # Create child jobs upfront
         child_ids = []
@@ -213,82 +219,92 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
                 input_data={"page": label},
                 phase_label=f"Página {i}/{total_subjobs}: {label}",
             )
+            # Set AI model name on the AI sub-job (last one)
+            if i == total_subjobs and ai_model_name:
+                child.ai_model_name = ai_model_name
             child_ids.append(child.id)
+
+        # Set model name on parent job too
+        if ai_model_name:
+            parent_job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if parent_job:
+                parent_job.ai_model_name = ai_model_name
+
         db.commit()
 
         pages_created = 0
+        rule_pages = []
 
-        # --- Sub-job 1: AI enrichment (main wiki sections) ---
-        child_idx = 0
-        jm.start_job(child_ids[child_idx])
-        try:
-            from app.api.routes.projects import _enrich_context_from_rag
-            enriched = await _enrich_context_from_rag(db, project_id)
-            if enriched:
-                pages_created += 1
-                jm.complete_child_job(child_ids[child_idx], {"status": "enriched"})
-                logger.info(f"Wiki sub-job 1/{total_subjobs}: AI enrichment done for '{project_name}'")
-            else:
-                jm.complete_child_job(child_ids[child_idx], {"status": "skipped", "reason": "No enrichment needed"})
-        except Exception as e:
-            logger.warning(f"Wiki AI enrichment failed: {e}")
-            jm.fail_child_job(child_ids[child_idx], str(e))
-
-        if _is_shutting_down():
-            return
-
-        # --- Sub-jobs 2-6: RAG data pages (no AI, just DB queries) ---
+        # --- Sub-jobs 1-5: RAG data pages (DB only — instant) ---
         for i, (slug, title, builder, order) in enumerate(rag_page_builders):
-            child_idx = i + 1
-            jm.start_job(child_ids[child_idx])
+            jm.start_job(child_ids[i])
             try:
                 content = builder(db, project_id)
                 if content:
                     _upsert_wiki_page(db, project_id, slug, title, content, order, "ai_generated")
                     db.commit()
                     pages_created += 1
-                    jm.complete_child_job(child_ids[child_idx], {"status": "created", "chars": len(content)})
-                    logger.info(f"Wiki sub-job {child_idx+1}/{total_subjobs}: {title} created")
+                    jm.complete_child_job(child_ids[i], {"status": "created", "chars": len(content)})
+                    logger.info(f"Wiki {i+1}/{total_subjobs}: {title} ({len(content)} chars)")
                 else:
-                    jm.complete_child_job(child_ids[child_idx], {"status": "skipped", "reason": "No data"})
+                    jm.complete_child_job(child_ids[i], {"status": "skipped", "reason": "No data"})
             except Exception as e:
                 logger.warning(f"Wiki page {title} failed: {e}")
-                jm.fail_child_job(child_ids[child_idx], str(e))
+                jm.fail_child_job(child_ids[i], str(e))
 
             if _is_shutting_down():
                 return
 
-        # --- Sub-job 7: Business rules hierarchy ---
-        child_idx = len(rag_page_builders) + 1
-        jm.start_job(child_ids[child_idx])
+        # --- Sub-job 6: Business rules hierarchy (DB only) ---
+        idx_rules = len(rag_page_builders)
+        jm.start_job(child_ids[idx_rules])
         try:
             rule_pages = _build_business_rules_wiki_pages(db, project_id)
             db.commit()
             rule_count = len(rule_pages) if rule_pages else 0
             if rule_count > 0:
                 pages_created += rule_count
-                jm.complete_child_job(child_ids[child_idx], {"status": "created", "pages": rule_count})
-                logger.info(f"Wiki sub-job {child_idx+1}/{total_subjobs}: {rule_count} business rule pages")
+                jm.complete_child_job(child_ids[idx_rules], {"status": "created", "pages": rule_count})
+                logger.info(f"Wiki {idx_rules+1}/{total_subjobs}: {rule_count} business rule pages")
             else:
-                jm.complete_child_job(child_ids[child_idx], {"status": "skipped", "reason": "No rules"})
+                jm.complete_child_job(child_ids[idx_rules], {"status": "skipped", "reason": "No rules"})
         except Exception as e:
             logger.warning(f"Business rules wiki pages failed: {e}")
-            jm.fail_child_job(child_ids[child_idx], str(e))
+            jm.fail_child_job(child_ids[idx_rules], str(e))
 
         if _is_shutting_down():
             return
 
-        # --- Sub-job 8: Semantic linking ---
-        child_idx = len(rag_page_builders) + 2
-        jm.start_job(child_ids[child_idx])
+        # --- Sub-job 7: Semantic linking (DB only) ---
+        idx_links = len(rag_page_builders) + 1
+        jm.start_job(child_ids[idx_links])
         try:
             _apply_semantic_links_to_project(db, project_id)
             db.commit()
-            jm.complete_child_job(child_ids[child_idx], {"status": "linked"})
-            logger.info(f"Wiki sub-job {child_idx+1}/{total_subjobs}: semantic links applied")
+            jm.complete_child_job(child_ids[idx_links], {"status": "linked"})
+            logger.info(f"Wiki {idx_links+1}/{total_subjobs}: semantic links applied")
         except Exception as e:
             logger.warning(f"Semantic linking failed: {e}")
-            jm.fail_child_job(child_ids[child_idx], str(e))
+            jm.fail_child_job(child_ids[idx_links], str(e))
+
+        if _is_shutting_down():
+            return
+
+        # --- Sub-job 8: AI enrichment (slow — Ollama call, runs LAST) ---
+        idx_ai = len(rag_page_builders) + 2
+        jm.start_job(child_ids[idx_ai])
+        try:
+            from app.api.routes.projects import _enrich_context_from_rag
+            enriched = await _enrich_context_from_rag(db, project_id)
+            if enriched:
+                pages_created += 1
+                jm.complete_child_job(child_ids[idx_ai], {"status": "enriched"})
+                logger.info(f"Wiki {idx_ai+1}/{total_subjobs}: AI enrichment done for '{project_name}'")
+            else:
+                jm.complete_child_job(child_ids[idx_ai], {"status": "skipped", "reason": "No enrichment needed"})
+        except Exception as e:
+            logger.warning(f"Wiki AI enrichment failed: {e}")
+            jm.fail_child_job(child_ids[idx_ai], str(e))
 
         # --- Trigger rule enrichment (separate job) ---
         if rule_pages:
@@ -305,7 +321,7 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
             "pages_created": pages_created,
             "total_subjobs": total_subjobs,
         })
-        logger.info(f"Wiki enrichment completed for '{project_name}': {pages_created} pages created")
+        logger.info(f"Wiki enrichment completed for '{project_name}': {pages_created} pages")
 
     except Exception as e:
         logger.error(f"Wiki enrichment job failed for {project_id}: {e}", exc_info=True)

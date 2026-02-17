@@ -34,17 +34,17 @@ Parent Job: "rag_continuous_scan" (batch processing)
 
 Uses `JobManager.create_child_job()` → `complete_child_job()` → `update_parent_progress()`.
 
-### New Pattern: Wiki Sub-Jobs
+### New Pattern: Wiki Sub-Jobs (DB-first, AI-last)
 ```
-Parent Job: "wiki_generation" (Gerando wiki - 276 regras)
-├── Child Job: "Página 1/8: Visão Geral (IA)" [completed]
-├── Child Job: "Página 2/8: Padrões de Arquitetura" [completed]
-├── Child Job: "Página 3/8: Convencoes de Código" [running]
-├── Child Job: "Página 4/8: Componentes e Interface" [pending]
-├── Child Job: "Página 5/8: Estrutura de Código" [pending]
-├── Child Job: "Página 6/8: Histórico de Desenvolvimento" [pending]
-├── Child Job: "Página 7/8: Regras de Negócio (hierarquia)" [pending]
-└── Child Job: "Página 8/8: Links semânticos" [pending]
+Parent Job: "wiki_generation" (Gerando wiki - 276 regras) [Qwen3 14B (Quality)]
+├── Child Job: "Página 1/8: Padrões de Arquitetura" [completed]     (DB only — instant)
+├── Child Job: "Página 2/8: Convencoes de Código" [completed]       (DB only — instant)
+├── Child Job: "Página 3/8: Componentes e Interface" [completed]    (DB only — instant)
+├── Child Job: "Página 4/8: Estrutura de Código" [completed]        (DB only — instant)
+├── Child Job: "Página 5/8: Histórico de Desenvolvimento" [completed] (DB only — instant)
+├── Child Job: "Página 6/8: Regras de Negócio (hierarquia)" [completed] (DB only)
+├── Child Job: "Página 7/8: Links semânticos" [completed]           (DB only — instant)
+└── Child Job: "Página 8/8: Visão Geral (IA)" [running]            (AI call — slow) [Qwen3 14B]
 ```
 
 ---
@@ -55,13 +55,17 @@ Parent Job: "wiki_generation" (Gerando wiki - 276 regras)
 Added `JobType.WIKI_GENERATION = "wiki_generation"` with NORMAL priority.
 
 ### 2. New Function: `wiki_enrichment_job()`
-Async function that runs as a queued job, creating child sub-jobs for each wiki page:
+Async function that runs as a queued job, creating child sub-jobs for each wiki page.
 
-- **Sub-job 1 (AI):** Calls `_enrich_context_from_rag()` — generates main wiki sections via AI
-- **Sub-jobs 2-6 (DB queries):** RAG data pages — architecture, conventions, UI components, code structure, git history. No AI calls, just DB queries.
-- **Sub-job 7 (DB):** Business rules hierarchy — creates index, domain, and individual rule pages
-- **Sub-job 8 (DB):** Semantic linking across all wiki pages
+**Optimized order: DB-first, AI-last** — instant DB pages complete immediately while the slow AI call runs last:
+
+- **Sub-jobs 1-5 (DB queries):** RAG data pages — architecture, conventions, UI components, code structure, git history. No AI calls, just DB queries. Complete in <1s each.
+- **Sub-job 6 (DB):** Business rules hierarchy — creates index, domain, and individual rule pages
+- **Sub-job 7 (DB):** Semantic linking across all wiki pages
+- **Sub-job 8 (AI):** Calls `_enrich_context_from_rag()` — generates Visão Geral via Ollama (slow, runs LAST)
 - **Post-job:** Triggers separate rule enrichment job for AI enrichment of individual rules
+
+**AI model display:** Parent job and AI sub-job (8/8) show the model name (e.g., "Qwen3 14B (Quality)") resolved from `AIOrchestrator.choose_model("general")`.
 
 ### 3. New Function: `submit_wiki_enrichment()`
 Submission function that:
@@ -114,8 +118,8 @@ Both now call `submit_wiki_enrichment()` instead of `_enrich_context_from_rag()`
 
 ## 💡 Key Insights
 
-### 1. Separation of AI and DB-Only Operations
-Only sub-job 1 (Visão Geral) requires an AI call. Sub-jobs 2-8 are pure database queries that format RAG data into wiki pages. This means most wiki page generation is fast and reliable.
+### 1. DB-First, AI-Last Order
+Only sub-job 8 (Visão Geral) requires an AI call. Sub-jobs 1-7 are pure database queries that format RAG data into wiki pages. By running DB pages first, users see immediate progress (7/8 complete in seconds) while the slow AI call runs last. Previously AI was sub-job 1, blocking all instant pages behind it.
 
 ### 2. Existing Sub-Job Infrastructure is Reusable
 The `JobManager.create_child_job()` / `complete_child_job()` / `update_parent_progress()` pattern works perfectly for wiki pages, just like it does for file reading.
@@ -135,11 +139,15 @@ Wiki enrichment is now decomposed into 8 individual sub-jobs matching the file r
 - ✅ Progress visible in jobs page (Página 1/8, 2/8, etc.)
 - ✅ Non-blocking: runs as separate job from batch processing
 - ✅ Shutdown-aware between each sub-job
+- ✅ DB-first order: instant pages (1-7) complete before slow AI page (8)
+- ✅ AI model name shown on parent job and AI sub-job (e.g., "Qwen3 14B (Quality)")
 
 **Impact:**
 - Wiki generation is now visible and trackable in the jobs page
 - No more monolithic AI calls that timeout
 - Each page failure is isolated (doesn't block other pages)
 - User can see exactly which wiki pages were created and which failed
+- 7 of 8 sub-jobs complete instantly — user sees immediate progress
+- Model column shows which AI model is being used
 
 ---
