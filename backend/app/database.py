@@ -11,12 +11,15 @@ from sqlalchemy.orm import sessionmaker, Session
 from app.config import settings
 
 # Create database engine
+# PROMPT #228 - Disabled SQL echo (was echo=settings.debug).
+# SQL logging floods logs and hides important application messages.
+# Use LOG_LEVEL=DEBUG in .env if you need to debug queries.
 engine = create_engine(
     settings.database_url,
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
-    echo=settings.debug,
+    echo=False,
 )
 
 # Create SessionLocal class

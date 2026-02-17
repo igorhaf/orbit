@@ -12,7 +12,7 @@
 #   stop [service]       Stop all services or a specific one
 #   restart [service]    Restart all services or a specific one
 #   status               Show status of all services
-#   logs <service>       Show logs (backend|frontend)
+#   logs [service]       Show logs (backend|frontend|all, -f for follow)
 #   db:migrate           Run Alembic migrations
 #   db:reset             Drop and recreate database + migrations
 # =============================================================================
@@ -721,30 +721,67 @@ cmd_status() {
 # LOGS
 # =============================================================================
 cmd_logs() {
-    local service="${1:-}"
+    local service="${1:-all}"
+    local lines="${2:-100}"
 
-    if [[ -z "$service" ]]; then
-        error "Usage: orbit logs <backend|frontend>"
-        exit 1
-    fi
+    # Parse flags: orbit logs backend -n 50 | orbit logs -f backend | orbit logs --last 200
+    local follow=false
+    local args=()
+    for arg in "$@"; do
+        case "$arg" in
+            -f|--follow) follow=true ;;
+            -n) ;; # next arg is line count
+            --last) ;; # next arg is line count
+            [0-9]*) lines="$arg" ;;
+            *) args+=("$arg") ;;
+        esac
+    done
+    [[ ${#args[@]} -gt 0 ]] && service="${args[0]}"
 
     case "$service" in
         backend|api)
             if [[ -f "$BACKEND_LOG" ]]; then
-                tail -f "$BACKEND_LOG"
+                if $follow; then
+                    tail -f "$BACKEND_LOG"
+                else
+                    echo -e "${BOLD}${CYAN}━━━ Backend Logs (last $lines lines) ━━━${NC}"
+                    tail -n "$lines" "$BACKEND_LOG"
+                fi
             else
-                error "No backend log file found"
+                error "No backend log found at $BACKEND_LOG"
             fi
             ;;
         frontend|web)
             if [[ -f "$FRONTEND_LOG" ]]; then
-                tail -f "$FRONTEND_LOG"
+                if $follow; then
+                    tail -f "$FRONTEND_LOG"
+                else
+                    echo -e "${BOLD}${CYAN}━━━ Frontend Logs (last $lines lines) ━━━${NC}"
+                    tail -n "$lines" "$FRONTEND_LOG"
+                fi
             else
-                error "No frontend log file found"
+                error "No frontend log found at $FRONTEND_LOG"
             fi
             ;;
+        all)
+            # Show both logs interleaved (like docker-compose logs)
+            echo -e "${BOLD}${CYAN}━━━ ORBIT Logs (last $lines lines per service) ━━━${NC}"
+            echo ""
+            if [[ -f "$BACKEND_LOG" ]]; then
+                echo -e "${BOLD}${GREEN}[backend]${NC}"
+                tail -n "$lines" "$BACKEND_LOG" | grep -v "sqlalchemy.engine.Engine" | tail -n 30
+                echo ""
+            fi
+            if [[ -f "$FRONTEND_LOG" ]]; then
+                echo -e "${BOLD}${YELLOW}[frontend]${NC}"
+                tail -n "$lines" "$FRONTEND_LOG" | tail -n 20
+                echo ""
+            fi
+            echo -e "${CYAN}Tip: orbit logs backend -f   (follow mode, like docker-compose logs -f)${NC}"
+            echo -e "${CYAN}     orbit logs backend 200  (last 200 lines)${NC}"
+            ;;
         *)
-            error "Unknown service: $service. Use: backend or frontend"
+            error "Unknown service: $service. Use: backend, frontend, or all (default)"
             exit 1
             ;;
     esac
@@ -839,7 +876,7 @@ cmd_help() {
     echo -e "    ${GREEN}stop${NC}    [service]    Stop all or specific service"
     echo -e "    ${GREEN}restart${NC} [service]    Restart all or specific service"
     echo -e "    ${GREEN}status${NC}               Show status of all services"
-    echo -e "    ${GREEN}logs${NC}    <service>    Tail logs (backend|frontend)"
+    echo -e "    ${GREEN}logs${NC}    [service]    Show logs (backend|frontend|all, default: all)"
     echo -e "    ${GREEN}db:migrate${NC}           Run Alembic migrations"
     echo -e "    ${GREEN}db:reset${NC}             Drop + recreate database + run migrations"
     echo -e "    ${GREEN}nuke${NC}                 Kill everything hard + restart all services"
@@ -856,7 +893,10 @@ cmd_help() {
     echo -e "    orbit start            # Start all services"
     echo -e "    orbit start backend    # Start only backend"
     echo -e "    orbit status           # Check all services"
-    echo -e "    orbit logs backend     # View backend logs"
+    echo -e "    orbit logs             # View all logs (summary)"
+    echo -e "    orbit logs backend     # Last 100 backend lines"
+    echo -e "    orbit logs backend -f  # Follow mode (like docker-compose logs -f)"
+    echo -e "    orbit logs backend 200 # Last 200 lines"
     echo -e "    orbit stop             # Stop everything"
     echo ""
 }
