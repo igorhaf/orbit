@@ -1,0 +1,883 @@
+#!/usr/bin/env bash
+# =============================================================================
+# ORBIT - Native WSL2 Service Manager
+# =============================================================================
+# Replaces Docker Compose with native Linux services.
+# Usage: orbit <command> [service]
+#
+# Commands:
+#   install              Install all dependencies (PostgreSQL, Redis, Python, Node)
+#   setup                Configure databases, .env, app dependencies, migrations
+#   start [service]      Start all services or a specific one
+#   stop [service]       Stop all services or a specific one
+#   restart [service]    Restart all services or a specific one
+#   status               Show status of all services
+#   logs <service>       Show logs (backend|frontend)
+#   db:migrate           Run Alembic migrations
+#   db:reset             Drop and recreate database + migrations
+# =============================================================================
+
+set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Paths & Constants
+# ---------------------------------------------------------------------------
+ORBIT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BACKEND_DIR="${ORBIT_ROOT}/backend"
+FRONTEND_DIR="${ORBIT_ROOT}/frontend"
+PID_DIR="/tmp/orbit"
+LOG_DIR="/tmp/orbit"
+
+BACKEND_PID="${PID_DIR}/backend.pid"
+FRONTEND_PID="${PID_DIR}/frontend.pid"
+BACKEND_LOG="${LOG_DIR}/backend.log"
+FRONTEND_LOG="${LOG_DIR}/frontend.log"
+
+DB_USER="orbit"
+DB_PASS="orbit_password"
+DB_NAME="orbit"
+DB_NAME_LEGACY="ai_orchestrator"
+
+SUDO_PASS="30102024@Real"
+
+# ---------------------------------------------------------------------------
+# Colors
+# ---------------------------------------------------------------------------
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+info()    { echo -e "${BLUE}ℹ${NC}  $*"; }
+success() { echo -e "${GREEN}✔${NC}  $*"; }
+warn()    { echo -e "${YELLOW}⚠${NC}  $*"; }
+error()   { echo -e "${RED}✖${NC}  $*"; }
+header()  { echo -e "\n${BOLD}${CYAN}━━━ $* ━━━${NC}\n"; }
+
+sudo_run() {
+    echo "$SUDO_PASS" | sudo -S "$@" 2>/dev/null
+}
+
+ensure_dirs() {
+    mkdir -p "$PID_DIR" "$LOG_DIR"
+}
+
+get_windows_ip() {
+    grep -m1 nameserver /etc/resolv.conf 2>/dev/null | awk '{print $2}' || echo "localhost"
+}
+
+# ---------------------------------------------------------------------------
+# Check if a service is running
+# ---------------------------------------------------------------------------
+is_pg_running() {
+    sudo_run service postgresql status >/dev/null 2>&1
+}
+
+is_redis_running() {
+    sudo_run service redis-server status >/dev/null 2>&1
+}
+
+is_backend_running() {
+    if [[ -f "$BACKEND_PID" ]]; then
+        local pid
+        pid=$(cat "$BACKEND_PID")
+        kill -0 "$pid" 2>/dev/null && return 0
+        rm -f "$BACKEND_PID"
+    fi
+    return 1
+}
+
+is_frontend_running() {
+    if [[ -f "$FRONTEND_PID" ]]; then
+        local pid
+        pid=$(cat "$FRONTEND_PID")
+        kill -0 "$pid" 2>/dev/null && return 0
+        rm -f "$FRONTEND_PID"
+    fi
+    return 1
+}
+
+is_ollama_reachable() {
+    local win_ip
+    win_ip=$(get_windows_ip)
+    curl -sf "http://${win_ip}:11434/api/version" >/dev/null 2>&1
+}
+
+check_port() {
+    ss -tlnp 2>/dev/null | grep -q ":$1 " 2>/dev/null
+}
+
+# =============================================================================
+# INSTALL
+# =============================================================================
+cmd_install() {
+    header "ORBIT Install - Native WSL2 Dependencies"
+
+    # Detect distro
+    if [[ ! -f /etc/os-release ]]; then
+        error "Cannot detect Linux distribution. Only Ubuntu/Debian supported."
+        exit 1
+    fi
+    source /etc/os-release
+    if [[ "$ID" != "ubuntu" && "$ID" != "debian" ]]; then
+        warn "Detected $ID - this script is optimized for Ubuntu/Debian. Proceeding anyway..."
+    fi
+
+    info "Updating package lists..."
+    sudo_run apt-get update -qq
+
+    # -- PostgreSQL 16 --------------------------------------------------------
+    header "PostgreSQL 16 + pgvector"
+    if command -v psql >/dev/null 2>&1 && psql --version 2>/dev/null | grep -q "16"; then
+        success "PostgreSQL 16 already installed"
+    else
+        info "Adding PostgreSQL APT repository..."
+        sudo_run apt-get install -y -qq curl ca-certificates gnupg lsb-release >/dev/null
+        curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo_run gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg 2>/dev/null
+        echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo_run tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+        sudo_run apt-get update -qq
+        info "Installing PostgreSQL 16..."
+        sudo_run apt-get install -y -qq postgresql-16 postgresql-client-16 >/dev/null
+        success "PostgreSQL 16 installed"
+    fi
+
+    # pgvector extension
+    if dpkg -l 2>/dev/null | grep -q "postgresql-16-pgvector"; then
+        success "pgvector extension already installed"
+    else
+        info "Installing pgvector extension..."
+        sudo_run apt-get install -y -qq postgresql-16-pgvector >/dev/null
+        success "pgvector extension installed"
+    fi
+
+    # -- Redis 7 --------------------------------------------------------------
+    header "Redis"
+    if command -v redis-server >/dev/null 2>&1; then
+        success "Redis already installed ($(redis-server --version | awk '{print $3}'))"
+    else
+        info "Installing Redis..."
+        sudo_run apt-get install -y -qq redis-server >/dev/null
+        success "Redis installed"
+    fi
+
+    # -- Python 3.11 ----------------------------------------------------------
+    header "Python 3.11"
+    if command -v python3.11 >/dev/null 2>&1; then
+        success "Python 3.11 already installed"
+    else
+        info "Installing Python 3.11..."
+        sudo_run apt-get install -y -qq software-properties-common >/dev/null
+        sudo_run add-apt-repository -y ppa:deadsnakes/ppa >/dev/null 2>&1
+        sudo_run apt-get update -qq
+        sudo_run apt-get install -y -qq python3.11 python3.11-venv python3.11-dev >/dev/null
+        success "Python 3.11 installed"
+    fi
+
+    # -- pip & Poetry ---------------------------------------------------------
+    header "Poetry"
+    if command -v poetry >/dev/null 2>&1; then
+        success "Poetry already installed ($(poetry --version 2>/dev/null))"
+    else
+        info "Installing Poetry..."
+        curl -sSL https://install.python-poetry.org | python3.11 - >/dev/null 2>&1
+        export PATH="$HOME/.local/bin:$PATH"
+        success "Poetry installed"
+    fi
+
+    # -- Node.js 20 -----------------------------------------------------------
+    header "Node.js 20"
+    if command -v node >/dev/null 2>&1 && node --version 2>/dev/null | grep -q "^v2[0-9]"; then
+        success "Node.js already installed ($(node --version))"
+    else
+        info "Installing Node.js 20 via NodeSource..."
+        curl -fsSL https://deb.nodesource.com/setup_20.x | sudo_run bash - >/dev/null 2>&1
+        sudo_run apt-get install -y -qq nodejs >/dev/null
+        success "Node.js $(node --version) installed"
+    fi
+
+    # -- System libraries -----------------------------------------------------
+    header "System Libraries"
+    info "Installing system dependencies..."
+    sudo_run apt-get install -y -qq gcc g++ libmagic1 libpq-dev git wget unzip >/dev/null
+    success "System dependencies installed"
+
+    # -- Summary --------------------------------------------------------------
+    header "Installation Summary"
+    echo -e "  PostgreSQL:  $(psql --version 2>/dev/null | head -1)"
+    echo -e "  pgvector:    $(dpkg -l 2>/dev/null | grep pgvector | awk '{print $3}' | head -1)"
+    echo -e "  Redis:       $(redis-server --version 2>/dev/null | awk '{print $3}')"
+    echo -e "  Python:      $(python3.11 --version 2>/dev/null)"
+    echo -e "  Poetry:      $(poetry --version 2>/dev/null)"
+    echo -e "  Node.js:     $(node --version 2>/dev/null)"
+    echo -e "  npm:         $(npm --version 2>/dev/null)"
+    echo ""
+    success "All dependencies installed! Run ${BOLD}orbit setup${NC} next."
+}
+
+# =============================================================================
+# SETUP
+# =============================================================================
+cmd_setup() {
+    header "ORBIT Setup - Database, Env, Dependencies"
+
+    # -- Start PostgreSQL if not running --------------------------------------
+    if ! is_pg_running; then
+        info "Starting PostgreSQL..."
+        sudo_run service postgresql start
+        sleep 2
+    fi
+    success "PostgreSQL is running"
+
+    # -- Configure Redis for persistence --------------------------------------
+    header "Redis Configuration"
+    if [[ -f /etc/redis/redis.conf ]]; then
+        # Set maxmemory and eviction policy (matching Docker config)
+        if ! grep -q "^maxmemory 512mb" /etc/redis/redis.conf 2>/dev/null; then
+            info "Configuring Redis (512mb, allkeys-lru, appendonly)..."
+            sudo_run bash -c "cat >> /etc/redis/redis.conf << 'REDIS_EOF'
+
+# ORBIT configuration
+maxmemory 512mb
+maxmemory-policy allkeys-lru
+appendonly yes
+REDIS_EOF"
+            sudo_run service redis-server restart
+            sleep 1
+        fi
+    fi
+    success "Redis configured"
+
+    # -- Create PostgreSQL user & databases -----------------------------------
+    header "Database Setup"
+
+    # Create user if not exists
+    if sudo_run -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='${DB_USER}'" 2>/dev/null | grep -q 1; then
+        success "PostgreSQL user '${DB_USER}' exists"
+    else
+        info "Creating PostgreSQL user '${DB_USER}'..."
+        sudo_run -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASS}' CREATEDB SUPERUSER;" 2>/dev/null
+        success "User '${DB_USER}' created"
+    fi
+
+    # Create main database
+    if sudo_run -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME}'" 2>/dev/null | grep -q 1; then
+        success "Database '${DB_NAME}' exists"
+    else
+        info "Creating database '${DB_NAME}'..."
+        sudo_run -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null
+        success "Database '${DB_NAME}' created"
+    fi
+
+    # Create legacy database
+    if sudo_run -u postgres psql -tAc "SELECT 1 FROM pg_database WHERE datname='${DB_NAME_LEGACY}'" 2>/dev/null | grep -q 1; then
+        success "Database '${DB_NAME_LEGACY}' exists"
+    else
+        info "Creating database '${DB_NAME_LEGACY}'..."
+        sudo_run -u postgres psql -c "CREATE DATABASE ${DB_NAME_LEGACY} OWNER ${DB_USER};" 2>/dev/null
+        success "Database '${DB_NAME_LEGACY}' created"
+    fi
+
+    # Enable pgvector extension
+    info "Enabling pgvector extension..."
+    sudo_run -u postgres psql -d "${DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null
+    success "pgvector extension enabled on '${DB_NAME}'"
+
+    # -- Generate .env files --------------------------------------------------
+    header "Environment Files"
+    local win_ip
+    win_ip=$(get_windows_ip)
+
+    # Root .env (used by backend via config.py)
+    if [[ -f "${ORBIT_ROOT}/.env" ]]; then
+        warn ".env already exists - skipping (delete to regenerate)"
+    else
+        info "Generating ${ORBIT_ROOT}/.env ..."
+        cat > "${ORBIT_ROOT}/.env" << ENV_EOF
+# =============================================================================
+# ORBIT - Native WSL2 Configuration
+# Generated by: orbit setup ($(date +%Y-%m-%d))
+# =============================================================================
+
+# Database
+DATABASE_URL=postgresql://${DB_USER}:${DB_PASS}@localhost:5432/${DB_NAME}
+POSTGRES_USER=${DB_USER}
+POSTGRES_PASSWORD=${DB_PASS}
+POSTGRES_DB=${DB_NAME}
+
+# Backend
+SECRET_KEY=dev-secret-key-change-in-production
+ENVIRONMENT=development
+DEBUG=True
+LOG_LEVEL=INFO
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# Ollama (Windows host - auto-detected)
+OLLAMA_HOST=http://${win_ip}:11434
+OLLAMA_TIMEOUT=600
+
+# Frontend
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_APP_NAME=Orbit
+
+# Feature Flags
+PROMPTER_USE_TEMPLATES=true
+PROMPTER_USE_STRUCTURED_TEMPLATES=true
+PROMPTER_USE_CACHE=true
+PROMPTER_USE_BATCHING=true
+
+# Continuous RAG
+RAG_SCAN_INTERVAL_SECONDS=300
+ENV_EOF
+        success ".env created (OLLAMA_HOST → ${win_ip})"
+    fi
+
+    # Frontend .env.local
+    if [[ -f "${FRONTEND_DIR}/.env.local" ]]; then
+        warn "frontend/.env.local already exists - skipping"
+    else
+        info "Generating frontend/.env.local ..."
+        cat > "${FRONTEND_DIR}/.env.local" << FENV_EOF
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_APP_NAME=Orbit
+NODE_ENV=development
+FENV_EOF
+        success "frontend/.env.local created"
+    fi
+
+    # Backend .env (symlink to root)
+    if [[ -f "${BACKEND_DIR}/.env" ]]; then
+        warn "backend/.env already exists - skipping"
+    else
+        info "Symlinking backend/.env → root .env ..."
+        ln -sf "${ORBIT_ROOT}/.env" "${BACKEND_DIR}/.env"
+        success "backend/.env linked"
+    fi
+
+    # -- Install backend dependencies ----------------------------------------
+    header "Backend Dependencies"
+    info "Running poetry install..."
+    cd "${BACKEND_DIR}"
+    poetry install --no-interaction 2>&1 | tail -3
+    success "Backend dependencies installed"
+
+    # -- Install frontend dependencies ---------------------------------------
+    header "Frontend Dependencies"
+    info "Running npm install..."
+    cd "${FRONTEND_DIR}"
+    npm install --silent 2>&1 | tail -3
+    success "Frontend dependencies installed"
+
+    # -- Run database migrations ---------------------------------------------
+    header "Database Migrations"
+    info "Running alembic upgrade head..."
+    cd "${BACKEND_DIR}"
+    poetry run alembic upgrade head 2>&1 | tail -5
+    success "Migrations applied"
+
+    # -- Done ----------------------------------------------------------------
+    echo ""
+    success "Setup complete! Run ${BOLD}orbit start${NC} to launch all services."
+}
+
+# =============================================================================
+# START
+# =============================================================================
+start_postgres() {
+    if is_pg_running; then
+        success "PostgreSQL already running (port 5432)"
+    else
+        info "Starting PostgreSQL..."
+        sudo_run service postgresql start
+        sleep 2
+        if is_pg_running; then
+            success "PostgreSQL started (port 5432)"
+        else
+            error "Failed to start PostgreSQL"
+            return 1
+        fi
+    fi
+}
+
+start_redis() {
+    if is_redis_running; then
+        success "Redis already running (port 6379)"
+    else
+        info "Starting Redis..."
+        sudo_run service redis-server start
+        sleep 1
+        if is_redis_running; then
+            success "Redis started (port 6379)"
+        else
+            error "Failed to start Redis"
+            return 1
+        fi
+    fi
+}
+
+start_backend() {
+    ensure_dirs
+    if is_backend_running; then
+        success "Backend already running (port 8000, PID $(cat "$BACKEND_PID"))"
+        return 0
+    fi
+
+    # Kill any orphan process on port 8000
+    local orphan_pid
+    orphan_pid=$(ss -tlnp 2>/dev/null | grep ":8000 " | grep -oP 'pid=\K[0-9]+' | head -1)
+    if [[ -n "$orphan_pid" ]]; then
+        warn "Killing orphan process on port 8000 (PID $orphan_pid)"
+        kill "$orphan_pid" 2>/dev/null || true
+        sleep 1
+    fi
+
+    info "Starting Backend (FastAPI)..."
+
+    # Source .env for backend
+    if [[ -f "${ORBIT_ROOT}/.env" ]]; then
+        set -a
+        source "${ORBIT_ROOT}/.env"
+        set +a
+    fi
+
+    cd "${BACKEND_DIR}"
+    nohup poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload \
+        > "$BACKEND_LOG" 2>&1 &
+    echo $! > "$BACKEND_PID"
+    sleep 3
+
+    if is_backend_running; then
+        success "Backend started (port 8000, PID $(cat "$BACKEND_PID"))"
+    else
+        error "Backend failed to start. Check logs: orbit logs backend"
+        return 1
+    fi
+}
+
+start_frontend() {
+    ensure_dirs
+    if is_frontend_running; then
+        success "Frontend already running (port 3000, PID $(cat "$FRONTEND_PID"))"
+        return 0
+    fi
+
+    # Kill any orphan process on port 3000
+    local orphan_pid
+    orphan_pid=$(ss -tlnp 2>/dev/null | grep ":3000 " | grep -oP 'pid=\K[0-9]+' | head -1)
+    if [[ -n "$orphan_pid" ]]; then
+        warn "Killing orphan process on port 3000 (PID $orphan_pid)"
+        kill "$orphan_pid" 2>/dev/null || true
+        sleep 1
+    fi
+
+    info "Starting Frontend (Next.js)..."
+    cd "${FRONTEND_DIR}"
+    nohup npm run dev > "$FRONTEND_LOG" 2>&1 &
+    echo $! > "$FRONTEND_PID"
+    sleep 3
+
+    if is_frontend_running; then
+        success "Frontend started (port 3000, PID $(cat "$FRONTEND_PID"))"
+    else
+        error "Frontend failed to start. Check logs: orbit logs frontend"
+        return 1
+    fi
+}
+
+cmd_start() {
+    local service="${1:-all}"
+    header "ORBIT Start"
+
+    case "$service" in
+        all)
+            start_postgres
+            start_redis
+            start_backend
+            start_frontend
+            echo ""
+            cmd_status
+            ;;
+        postgres|pg|db)
+            start_postgres
+            ;;
+        redis)
+            start_redis
+            ;;
+        backend|api)
+            start_backend
+            ;;
+        frontend|web)
+            start_frontend
+            ;;
+        *)
+            error "Unknown service: $service"
+            echo "  Available: postgres, redis, backend, frontend, all"
+            exit 1
+            ;;
+    esac
+}
+
+# =============================================================================
+# STOP
+# =============================================================================
+stop_frontend() {
+    if is_frontend_running; then
+        local pid
+        pid=$(cat "$FRONTEND_PID")
+        info "Stopping Frontend (PID $pid)..."
+        kill "$pid" 2>/dev/null || true
+        # Also kill child processes (node)
+        pkill -P "$pid" 2>/dev/null || true
+        rm -f "$FRONTEND_PID"
+        success "Frontend stopped"
+    else
+        info "Frontend not running"
+    fi
+}
+
+stop_backend() {
+    if is_backend_running; then
+        local pid
+        pid=$(cat "$BACKEND_PID")
+        info "Stopping Backend (PID $pid)..."
+        kill "$pid" 2>/dev/null || true
+        # Also kill child processes (uvicorn workers)
+        pkill -P "$pid" 2>/dev/null || true
+        rm -f "$BACKEND_PID"
+        success "Backend stopped"
+    else
+        info "Backend not running"
+    fi
+}
+
+stop_redis() {
+    if is_redis_running; then
+        info "Stopping Redis..."
+        sudo_run service redis-server stop
+        success "Redis stopped"
+    else
+        info "Redis not running"
+    fi
+}
+
+stop_postgres() {
+    if is_pg_running; then
+        info "Stopping PostgreSQL..."
+        sudo_run service postgresql stop
+        success "PostgreSQL stopped"
+    else
+        info "PostgreSQL not running"
+    fi
+}
+
+cmd_stop() {
+    local service="${1:-all}"
+    header "ORBIT Stop"
+
+    case "$service" in
+        all)
+            stop_frontend
+            stop_backend
+            stop_redis
+            stop_postgres
+            echo ""
+            success "All services stopped"
+            ;;
+        postgres|pg|db)
+            stop_postgres
+            ;;
+        redis)
+            stop_redis
+            ;;
+        backend|api)
+            stop_backend
+            ;;
+        frontend|web)
+            stop_frontend
+            ;;
+        *)
+            error "Unknown service: $service"
+            echo "  Available: postgres, redis, backend, frontend, all"
+            exit 1
+            ;;
+    esac
+}
+
+# =============================================================================
+# RESTART
+# =============================================================================
+cmd_restart() {
+    local service="${1:-all}"
+    header "ORBIT Restart"
+
+    case "$service" in
+        all)
+            stop_frontend
+            stop_backend
+            sleep 1
+            start_postgres
+            start_redis
+            start_backend
+            start_frontend
+            echo ""
+            cmd_status
+            ;;
+        postgres|pg|db)
+            stop_postgres; sleep 1; start_postgres
+            ;;
+        redis)
+            stop_redis; sleep 1; start_redis
+            ;;
+        backend|api)
+            stop_backend; sleep 1; start_backend
+            ;;
+        frontend|web)
+            stop_frontend; sleep 1; start_frontend
+            ;;
+        *)
+            error "Unknown service: $service"
+            exit 1
+            ;;
+    esac
+}
+
+# =============================================================================
+# STATUS
+# =============================================================================
+cmd_status() {
+    header "ORBIT Service Status"
+
+    local status_icon pid_info
+
+    # PostgreSQL
+    if is_pg_running; then
+        status_icon="${GREEN}●${NC}"
+        echo -e "  ${status_icon}  PostgreSQL      running     port 5432"
+    else
+        status_icon="${RED}●${NC}"
+        echo -e "  ${status_icon}  PostgreSQL      stopped     port 5432"
+    fi
+
+    # Redis
+    if is_redis_running; then
+        status_icon="${GREEN}●${NC}"
+        echo -e "  ${status_icon}  Redis           running     port 6379"
+    else
+        status_icon="${RED}●${NC}"
+        echo -e "  ${status_icon}  Redis           stopped     port 6379"
+    fi
+
+    # Backend
+    if is_backend_running; then
+        status_icon="${GREEN}●${NC}"
+        pid_info="PID $(cat "$BACKEND_PID")"
+        echo -e "  ${status_icon}  Backend         running     port 8000   ${pid_info}"
+    else
+        status_icon="${RED}●${NC}"
+        echo -e "  ${status_icon}  Backend         stopped     port 8000"
+    fi
+
+    # Frontend
+    if is_frontend_running; then
+        status_icon="${GREEN}●${NC}"
+        pid_info="PID $(cat "$FRONTEND_PID")"
+        echo -e "  ${status_icon}  Frontend        running     port 3000   ${pid_info}"
+    else
+        status_icon="${RED}●${NC}"
+        echo -e "  ${status_icon}  Frontend        stopped     port 3000"
+    fi
+
+    # Ollama (Windows)
+    local win_ip
+    win_ip=$(get_windows_ip)
+    if is_ollama_reachable; then
+        status_icon="${GREEN}●${NC}"
+        echo -e "  ${status_icon}  Ollama          running     port 11434  Windows: ${win_ip}"
+    else
+        status_icon="${YELLOW}●${NC}"
+        echo -e "  ${status_icon}  Ollama          unknown     port 11434  Windows: ${win_ip}"
+    fi
+
+    echo ""
+}
+
+# =============================================================================
+# LOGS
+# =============================================================================
+cmd_logs() {
+    local service="${1:-}"
+
+    if [[ -z "$service" ]]; then
+        error "Usage: orbit logs <backend|frontend>"
+        exit 1
+    fi
+
+    case "$service" in
+        backend|api)
+            if [[ -f "$BACKEND_LOG" ]]; then
+                tail -f "$BACKEND_LOG"
+            else
+                error "No backend log file found"
+            fi
+            ;;
+        frontend|web)
+            if [[ -f "$FRONTEND_LOG" ]]; then
+                tail -f "$FRONTEND_LOG"
+            else
+                error "No frontend log file found"
+            fi
+            ;;
+        *)
+            error "Unknown service: $service. Use: backend or frontend"
+            exit 1
+            ;;
+    esac
+}
+
+# =============================================================================
+# DATABASE COMMANDS
+# =============================================================================
+cmd_db_migrate() {
+    header "Database Migration"
+
+    if ! is_pg_running; then
+        info "Starting PostgreSQL first..."
+        start_postgres
+    fi
+
+    info "Running alembic upgrade head..."
+    cd "${BACKEND_DIR}"
+
+    if [[ -f "${ORBIT_ROOT}/.env" ]]; then
+        set -a
+        source "${ORBIT_ROOT}/.env"
+        set +a
+    fi
+
+    poetry run alembic upgrade head
+    success "Migrations applied"
+}
+
+cmd_db_reset() {
+    header "Database Reset"
+    warn "This will DROP and recreate the '${DB_NAME}' database!"
+    echo -n "  Are you sure? (y/N): "
+    read -r confirm
+    if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        info "Cancelled"
+        return
+    fi
+
+    if ! is_pg_running; then
+        start_postgres
+    fi
+
+    # Stop backend if running (it holds DB connections)
+    if is_backend_running; then
+        stop_backend
+    fi
+
+    info "Dropping database '${DB_NAME}'..."
+    sudo_run -u postgres psql -c "DROP DATABASE IF EXISTS ${DB_NAME};" 2>/dev/null
+    success "Database dropped"
+
+    info "Creating database '${DB_NAME}'..."
+    sudo_run -u postgres psql -c "CREATE DATABASE ${DB_NAME} OWNER ${DB_USER};" 2>/dev/null
+    success "Database created"
+
+    info "Enabling pgvector..."
+    sudo_run -u postgres psql -d "${DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS vector;" 2>/dev/null
+    success "pgvector enabled"
+
+    info "Running migrations..."
+    cd "${BACKEND_DIR}"
+    if [[ -f "${ORBIT_ROOT}/.env" ]]; then
+        set -a
+        source "${ORBIT_ROOT}/.env"
+        set +a
+    fi
+    poetry run alembic upgrade head
+    success "Database reset complete"
+}
+
+# =============================================================================
+# HELP
+# =============================================================================
+cmd_help() {
+    echo -e "${BOLD}${CYAN}"
+    echo "   ____  _____  ____ _____ _______"
+    echo "  / __ \\|  __ \\|  _ \\_   _|__   __|"
+    echo " | |  | | |__) | |_) || |    | |"
+    echo " | |  | |  _  /|  _ < | |    | |"
+    echo " | |__| | | \\ \\| |_) || |_   | |"
+    echo "  \\____/|_|  \\_\\____/_____|  |_|"
+    echo -e "${NC}"
+    echo -e "  ${BOLD}Native WSL2 Service Manager${NC}"
+    echo ""
+    echo -e "  ${BOLD}Usage:${NC} orbit <command> [service]"
+    echo ""
+    echo -e "  ${BOLD}Commands:${NC}"
+    echo -e "    ${GREEN}install${NC}              Install all dependencies (PostgreSQL, Redis, Python, Node)"
+    echo -e "    ${GREEN}setup${NC}                Configure databases, .env, app dependencies, migrations"
+    echo -e "    ${GREEN}start${NC}   [service]    Start all or specific service"
+    echo -e "    ${GREEN}stop${NC}    [service]    Stop all or specific service"
+    echo -e "    ${GREEN}restart${NC} [service]    Restart all or specific service"
+    echo -e "    ${GREEN}status${NC}               Show status of all services"
+    echo -e "    ${GREEN}logs${NC}    <service>    Tail logs (backend|frontend)"
+    echo -e "    ${GREEN}db:migrate${NC}           Run Alembic migrations"
+    echo -e "    ${GREEN}db:reset${NC}             Drop + recreate database + run migrations"
+    echo ""
+    echo -e "  ${BOLD}Services:${NC}"
+    echo -e "    postgres (pg, db)    PostgreSQL 16 + pgvector"
+    echo -e "    redis                Redis cache"
+    echo -e "    backend (api)        FastAPI backend (port 8000)"
+    echo -e "    frontend (web)       Next.js frontend (port 3000)"
+    echo ""
+    echo -e "  ${BOLD}Examples:${NC}"
+    echo -e "    orbit install          # First-time setup"
+    echo -e "    orbit setup            # Configure everything"
+    echo -e "    orbit start            # Start all services"
+    echo -e "    orbit start backend    # Start only backend"
+    echo -e "    orbit status           # Check all services"
+    echo -e "    orbit logs backend     # View backend logs"
+    echo -e "    orbit stop             # Stop everything"
+    echo ""
+}
+
+# =============================================================================
+# MAIN
+# =============================================================================
+main() {
+    local command="${1:-help}"
+    shift 2>/dev/null || true
+
+    case "$command" in
+        install)    cmd_install "$@" ;;
+        setup)      cmd_setup "$@" ;;
+        start)      cmd_start "$@" ;;
+        stop)       cmd_stop "$@" ;;
+        restart)    cmd_restart "$@" ;;
+        status)     cmd_status "$@" ;;
+        logs)       cmd_logs "$@" ;;
+        db:migrate) cmd_db_migrate "$@" ;;
+        db:reset)   cmd_db_reset "$@" ;;
+        help|--help|-h)
+            cmd_help
+            ;;
+        *)
+            error "Unknown command: $command"
+            cmd_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
