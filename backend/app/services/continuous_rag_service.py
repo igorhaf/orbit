@@ -711,8 +711,8 @@ class ContinuousRAGService:
 
     # PROMPT #224 - Compact prompt for local models (fewer tokens = faster inference)
     _LOCAL_SYSTEM_PROMPT = (
-        "Extract business rules from code. "
-        "Respond ONLY with valid JSON: "
+        "Extraia regras de negocio do codigo. "
+        "Responda APENAS com JSON valido, em portugues brasileiro: "
         '{"business_rules":[{"rule_text":"...","rule_type":"validation|workflow|constraint|domain","confidence":"high|medium"}]}'
     )
 
