@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from pydantic import ValidationError
 import logging
 import os
+import signal
 
 from app.config import settings
 from app.database import init_db
@@ -134,8 +135,35 @@ async def lifespan(app: FastAPI):
 
     yield
 
-    # Shutdown
+    # PROMPT #226 - Graceful shutdown: clean up background resources
     logger.info("Shutting down Orbit API...")
+    try:
+        from app.services.job_executor import PriorityJobExecutor
+        executor = PriorityJobExecutor.get_instance()
+        executor.shutdown()
+        logger.info("Job executor shutdown complete")
+    except Exception as e:
+        logger.warning(f"Job executor shutdown error (non-fatal): {e}")
+
+    # Mark all RUNNING jobs as failed (they won't survive the restart)
+    try:
+        from app.database import SessionLocal
+        from app.models.async_job import AsyncJob, JobStatus
+        shutdown_db = SessionLocal()
+        try:
+            running_jobs = shutdown_db.query(AsyncJob).filter(
+                AsyncJob.status == JobStatus.RUNNING,
+            ).all()
+            for job in running_jobs:
+                job.status = JobStatus.FAILED
+                job.result = {"error": "Servidor reiniciando (graceful shutdown)"}
+            if running_jobs:
+                shutdown_db.commit()
+                logger.info(f"Marked {len(running_jobs)} running jobs as failed during shutdown")
+        finally:
+            shutdown_db.close()
+    except Exception as e:
+        logger.warning(f"Job cleanup during shutdown error (non-fatal): {e}")
 
 
 # Create FastAPI application
@@ -418,5 +446,8 @@ if __name__ == "__main__":
         "app.main:app",
         host=settings.host,
         port=settings.port,
-        reload=settings.debug
+        reload=settings.debug,
+        reload_excludes=[
+            "__pycache__", "*.pyc", "storage/*", "logs/*", "*.log", "*.md"
+        ] if settings.debug else None,
     )

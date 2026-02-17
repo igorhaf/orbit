@@ -760,8 +760,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #225 (AI Flow Diagram Redesign)
-**Próximo prompt:** PROMPT #226
+**Último prompt:** PROMPT #226 (Graceful Shutdown & Reload Stability)
+**Próximo prompt:** PROMPT #227
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

@@ -32,10 +32,22 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
+def _is_shutting_down() -> bool:
+    """PROMPT #226 - Check if the server is shutting down (reload or stop)."""
+    try:
+        from app.services.job_executor import PriorityJobExecutor
+        return PriorityJobExecutor.is_shutting_down()
+    except Exception:
+        return False
+
+
 def _submit_to_executor(executor, priority: int, coro_func, *args):
     """
     PROMPT #255 - Submit a coroutine to the executor, handling both async and sync contexts.
     """
+    if _is_shutting_down():
+        logger.info("Server shutting down, skipping job submission")
+        return
     try:
         loop = asyncio.get_running_loop()
         loop.create_task(executor.submit(priority, coro_func, *args))
@@ -264,7 +276,16 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
 
         cooldown = CYCLE_COOLDOWN if has_work else IDLE_COOLDOWN
         logger.info(f"Watchdog cooldown for '{project_name}': {cooldown}s ({'active' if has_work else 'idle'})")
-        await asyncio.sleep(cooldown)
+
+        # PROMPT #226 - Check for shutdown before sleeping (break sleep into 2s chunks)
+        for _ in range(0, cooldown, 2):
+            if _is_shutting_down():
+                logger.info(f"Server shutting down, skipping watchdog re-queue for '{project_name}'")
+                return
+            await asyncio.sleep(min(2, cooldown))
+
+        if _is_shutting_down():
+            return
         submit_watchdog_cycle(db, project_id)
 
     except Exception as e:
@@ -274,7 +295,11 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
         except Exception:
             pass
         # Re-queue even on failure (with longer cooldown)
+        if _is_shutting_down():
+            return
         await asyncio.sleep(ERROR_COOLDOWN)
+        if _is_shutting_down():
+            return
         # Use a fresh session for re-queuing since the original may be dead
         requeue_db = None
         try:
@@ -391,7 +416,15 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         })
 
         # --- Decide next action ---
+        # PROMPT #226 - Check shutdown before re-queuing
+        if _is_shutting_down():
+            logger.info(f"Server shutting down, skipping batch re-queue for '{project_name}'")
+            return
+
         await asyncio.sleep(BATCH_COOLDOWN)
+
+        if _is_shutting_down():
+            return
 
         if pending_remaining > 0:
             # More files to process - queue another batch cycle
@@ -408,7 +441,11 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         except Exception:
             pass
         # Re-queue even on failure
+        if _is_shutting_down():
+            return
         await asyncio.sleep(ERROR_COOLDOWN)
+        if _is_shutting_down():
+            return
         # Use a fresh session for re-queuing since the original may be dead
         requeue_db = None
         try:
@@ -1001,8 +1038,9 @@ async def bootstrap_watchdog():
             db.commit()
             logger.info(f"Cleaned up {len(zombie_jobs)} zombie running jobs on restart (all types)")
 
-        # PROMPT #259 - Clean up ALL stale pending jobs (>30 min, any type)
-        stale_cutoff = datetime.utcnow() - timedelta(minutes=30)
+        # PROMPT #259 - Clean up ALL stale pending jobs (>5 min, any type)
+        # PROMPT #226 - Reduced from 30min to 5min to handle reload scenarios faster
+        stale_cutoff = datetime.utcnow() - timedelta(minutes=5)
         stale_jobs = db.query(AsyncJob).filter(
             AsyncJob.status == JobStatus.PENDING,
             AsyncJob.created_at < stale_cutoff,

@@ -114,6 +114,43 @@ class PriorityJobExecutor:
         self._pause_event.set()
         logger.info("Regular workers RESUMED - jobs will start processing")
 
+    _shutting_down = False
+
+    def shutdown(self) -> None:
+        """
+        PROMPT #226 - Graceful shutdown: signal workers to stop and clear queues.
+        Called from main.py lifespan shutdown.
+        """
+        PriorityJobExecutor._shutting_down = True
+        logger.info("PriorityJobExecutor shutting down...")
+
+        # Drain queues to prevent new work
+        drained = 0
+        while not self._queue.empty():
+            try:
+                self._queue.get_nowait()
+                drained += 1
+            except asyncio.QueueEmpty:
+                break
+        while not self._critical_queue.empty():
+            try:
+                self._critical_queue.get_nowait()
+                drained += 1
+            except asyncio.QueueEmpty:
+                break
+
+        # Resume paused workers so they can exit their loops
+        self._pause_event.set()
+        self._workers_started = False
+
+        if drained > 0:
+            logger.info(f"Drained {drained} queued jobs during shutdown")
+        logger.info("PriorityJobExecutor shutdown complete")
+
+    @classmethod
+    def is_shutting_down(cls) -> bool:
+        return cls._shutting_down
+
     @property
     def is_paused(self) -> bool:
         return self._paused
@@ -166,7 +203,7 @@ class PriorityJobExecutor:
         3. Resumes regular workers after CRITICAL job completes
         4. Ensures real-time response times for user-facing interactions
         """
-        while True:
+        while not PriorityJobExecutor._shutting_down:
             try:
                 neg_priority, counter, coro_func, args, kwargs = await self._critical_queue.get()
                 priority = -neg_priority
@@ -214,7 +251,7 @@ class PriorityJobExecutor:
 
     async def _worker(self, worker_id: int) -> None:
         """Worker loop: dequeue regular jobs and execute them in separate threads."""
-        while True:
+        while not PriorityJobExecutor._shutting_down:
             try:
                 # Wait if paused (blocks here until resumed or critical job done)
                 await self._pause_event.wait()

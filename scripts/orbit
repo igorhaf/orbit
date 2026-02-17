@@ -468,7 +468,14 @@ start_backend() {
 
     export PATH="$HOME/.local/bin:$PATH"
     cd "${BACKEND_DIR}"
+    # PROMPT #226 - Exclude non-code dirs from reload watcher to reduce spurious restarts
     nohup poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload \
+        --reload-exclude '__pycache__' \
+        --reload-exclude '*.pyc' \
+        --reload-exclude 'storage/*' \
+        --reload-exclude 'logs/*' \
+        --reload-exclude '*.log' \
+        --reload-exclude '*.md' \
         > "$BACKEND_LOG" 2>&1 &
     echo $! > "$BACKEND_PID"
     sleep 3
