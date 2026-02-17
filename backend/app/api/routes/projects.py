@@ -1172,16 +1172,17 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
         return False
 
     # --- 1. Get business rules from RAG ---
-    # PROMPT #266 - Increased from LIMIT 50 to 500 for wiki enrichment
+    # PROMPT #227 - Reduced from 500 to 80 rules to avoid Ollama timeout on local GPU
+    # 80 rules × ~200 chars = ~16K chars input, well within qwen3:8b context
     from sqlalchemy import text as sql_text
     result = db.execute(sql_text("""
         SELECT content FROM rag_documents
         WHERE project_id = :pid
         AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
         ORDER BY created_at DESC
-        LIMIT 500
+        LIMIT 80
     """), {"pid": str(project_id)})
-    rules = [row[0] for row in result.fetchall()]
+    rules = [row[0][:300] for row in result.fetchall()]  # Truncate long rules
 
     # --- 2. Get interview answers from RAG ---
     interview_result = db.execute(sql_text("""
@@ -1274,13 +1275,13 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
 
     # --- 6. Call AI to enrich ---
     orchestrator = AIOrchestrator(db)
-    # PROMPT #268 - Increased from 6000 to 12000 to allow richer rule coverage
-    # PROMPT #228 - Changed to "general" for qwen3:14b (quality text generation)
+    # PROMPT #227 - Reduced from 12000 to 4000 tokens to avoid Ollama timeout
+    # 4000 tokens is enough for structured wiki (sections, rules, features)
     response = await orchestrator.execute(
         usage_type="general",
         messages=[{"role": "user", "content": usr_prompt}],
         system_prompt=sys_prompt,
-        max_tokens=12000,
+        max_tokens=4000,
         project_id=str(project_id),
         metadata={"type": "wiki_enrichment", "skip_context_build": True},
     )
