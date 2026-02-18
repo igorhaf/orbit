@@ -95,6 +95,13 @@ class IncrementalWikiService:
         # Ensure parent page exists
         self._ensure_rules_parent_page(project_id)
 
+        # PROMPT #232 - Limit domains per batch to avoid >30min jobs (stale job cleanup)
+        # Each domain needs 1-2 AI calls (~2-5 min each). 3 domains = ~15 min max.
+        MAX_DOMAINS_PER_BATCH = 3
+        if len(domains) > MAX_DOMAINS_PER_BATCH:
+            logger.info(f"Wiki: {len(domains)} domains found, processing first {MAX_DOMAINS_PER_BATCH} this batch")
+            domains = domains[:MAX_DOMAINS_PER_BATCH]
+
         pages_created = 0
         pages_merged = 0
         errors = 0
