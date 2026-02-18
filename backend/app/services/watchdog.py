@@ -676,21 +676,27 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             except Exception as e:
                 logger.warning(f"Wiki enrichment submit failed (non-blocking): {e}", exc_info=True)
 
-        # --- Step 3: Create cards from new business rules ---
-        # PROMPT #260 - Batch mode uses higher card limit (15) for faster initial coverage
-        # PROMPT #229 - Only create cards when no more files pending (avoids Ollama contention)
+        # --- Step 3: Hierarchical card creation (PROMPT #230 Phase 4) ---
+        # Create Epic -> Story hierarchy at EVERY batch with rules > 0
+        # Stack-agnostic domain classification replaces hardcoded _classify_rule_domain
         card_result = {}
-        if rules_extracted > 0 and pending_remaining == 0:
-            jm.update_progress(job_id, 70.0, "Criando cards a partir de novas descobertas...")
+        if rules_extracted > 0:
+            jm.update_progress(job_id, 70.0, "Criando cards hierarquicos a partir de novas descobertas...")
             try:
-                card_result = await _auto_discover_cards(db, project_id, max_cards=15)
+                from app.services.pipeline_cards import HierarchicalCardService
+                card_service = HierarchicalCardService(db)
+                card_result = await card_service.extend_cards_from_batch(
+                    project_id=project_id,
+                    batch_rules=rules_extracted,
+                    batch_number=batch_num,
+                    rules_by_layer=rules_by_layer,
+                )
                 if card_result.get("created", 0) > 0:
                     epics_msg = f" ({card_result.get('epics_created', 0)} epics)" if card_result.get('epics_created', 0) > 0 else ""
-                    logger.info(f"Auto-discovered {card_result['created']} cards{epics_msg} for '{project_name}'")
+                    stories_msg = f", {card_result.get('stories_created', 0)} stories" if card_result.get('stories_created', 0) > 0 else ""
+                    logger.info(f"Hierarchical cards for '{project_name}'{epics_msg}{stories_msg}")
             except Exception as e:
-                logger.warning(f"Auto card discovery failed (non-blocking): {e}")
-        elif rules_extracted > 0:
-            logger.info(f"Card creation deferred: {pending_remaining} files still pending for '{project_name}'")
+                logger.warning(f"Hierarchical card creation failed (non-blocking): {e}")
 
         # --- Step 4: If idle (no new rules), enrich existing stub cards ---
         enriched_cards = 0
