@@ -27,6 +27,20 @@ class FileProcessingStatus(str, enum.Enum):
     DELETED = "deleted"          # File no longer exists on disk, pending RAG cleanup
 
 
+class FileSemanticLayer(str, enum.Enum):
+    """
+    PROMPT #230 - Stack-agnostic semantic layer classification.
+    Files are classified by their role in the architecture, not by framework.
+    Processing order: schema → routes → logic → presentation → config.
+    """
+    SCHEMA = "schema"                # DB migrations, models, entities, schemas
+    ROUTES = "routes"                # Controllers, endpoints, API routes, handlers
+    LOGIC = "logic"                  # Services, use cases, business logic, jobs
+    PRESENTATION = "presentation"    # Views, components, templates, pages
+    CONFIG = "config"                # Configuration, env, settings, bootstrapping
+    UNKNOWN = "unknown"              # Could not classify
+
+
 class RAGFileState(Base):
     """
     Tracks processing state of individual files for continuous RAG evolution.
@@ -71,6 +85,18 @@ class RAGFileState(Base):
     )
     last_processed_at = Column(DateTime, nullable=True)
 
+    # PROMPT #230 - Semantic layer classification (stack-agnostic)
+    file_layer = Column(
+        SQLEnum(
+            FileSemanticLayer,
+            name="file_semantic_layer",
+            values_callable=lambda x: [e.value for e in x]
+        ),
+        nullable=True,
+        default=FileSemanticLayer.UNKNOWN,
+        index=True
+    )
+
     # RAG document tracking
     rag_document_ids = Column(JSON, nullable=True, default=list)  # Array of RAG doc UUIDs
     rules_extracted = Column(Integer, nullable=False, default=0)
@@ -94,7 +120,8 @@ class RAGFileState(Base):
     )
 
     def __repr__(self):
-        return f"<RAGFileState {self.file_path} [{self.status.value}]>"
+        layer = self.file_layer.value if self.file_layer else "?"
+        return f"<RAGFileState {self.file_path} [{self.status.value}] layer={layer}>"
 
     def to_dict(self):
         return {
@@ -108,6 +135,7 @@ class RAGFileState(Base):
             "last_processed_at": self.last_processed_at.isoformat() if self.last_processed_at else None,
             "rag_document_ids": self.rag_document_ids or [],
             "rules_extracted": self.rules_extracted,
+            "file_layer": self.file_layer.value if self.file_layer else None,
             "error_message": self.error_message,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

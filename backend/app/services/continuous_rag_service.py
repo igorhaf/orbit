@@ -43,7 +43,7 @@ from sqlalchemy.orm import Session
 
 from app.contracts.loader import ContractLoader
 from app.models.project import Project
-from app.models.rag_file_state import FileProcessingStatus, RAGFileState
+from app.models.rag_file_state import FileProcessingStatus, FileSemanticLayer, RAGFileState
 from app.services.ai_orchestrator import AIOrchestrator
 from app.services.codebase_indexer import CodebaseIndexer
 from app.services.codebase_memory import CodebaseMemoryService
@@ -247,9 +247,12 @@ class ContinuousRAGService:
                     state.last_modified = datetime.fromtimestamp(file_stat.st_mtime)
                     state.status = FileProcessingStatus.PENDING
                     state.error_message = None
+                    # PROMPT #230 - Classify layer if not yet set
+                    if not state.file_layer or state.file_layer == FileSemanticLayer.UNKNOWN:
+                        state.file_layer = self._classify_semantic_layer(rel_path)
                     modified_count += 1
             else:
-                # New file
+                # New file — PROMPT #230: classify semantic layer
                 new_state = RAGFileState(
                     project_id=project_id,
                     file_path=rel_path,
@@ -257,6 +260,7 @@ class ContinuousRAGService:
                     file_size=file_stat.st_size,
                     last_modified=datetime.fromtimestamp(file_stat.st_mtime),
                     status=FileProcessingStatus.PENDING,
+                    file_layer=self._classify_semantic_layer(rel_path),
                 )
                 self.db.add(new_state)
                 new_count += 1
@@ -342,11 +346,21 @@ class ContinuousRAGService:
 
         code_path = Path(project.code_path)
 
-        # Get pending files
+        # Get pending files — PROMPT #230: ordered by semantic layer priority
+        # Schema first (DB structure), then Routes, Logic, Presentation, Config last
+        from sqlalchemy import case
+        layer_order = case(
+            (RAGFileState.file_layer == FileSemanticLayer.SCHEMA.value, 1),
+            (RAGFileState.file_layer == FileSemanticLayer.ROUTES.value, 2),
+            (RAGFileState.file_layer == FileSemanticLayer.LOGIC.value, 3),
+            (RAGFileState.file_layer == FileSemanticLayer.PRESENTATION.value, 4),
+            (RAGFileState.file_layer == FileSemanticLayer.CONFIG.value, 5),
+            else_=6,
+        )
         pending_states = self.db.query(RAGFileState).filter(
             RAGFileState.project_id == project_id,
             RAGFileState.status == FileProcessingStatus.PENDING
-        ).limit(batch_size).all()
+        ).order_by(layer_order).limit(batch_size).all()
 
         if not pending_states:
             return {"processed": 0, "rules_extracted": 0, "errors": 0}
@@ -614,14 +628,24 @@ class ContinuousRAGService:
         # PROMPT #300 - Final batch commit for remaining uncommitted changes
         self.db.commit()
 
+        # PROMPT #230 - Count rules by semantic layer
+        rules_by_layer = {}
+        for state in pending_states:
+            if state.status == FileProcessingStatus.COMPLETED and state.rules_extracted > 0:
+                layer_name = state.file_layer.value if state.file_layer else "unknown"
+                rules_by_layer[layer_name] = rules_by_layer.get(layer_name, 0) + state.rules_extracted
+
+        pending_remaining = self.db.query(RAGFileState).filter(
+            RAGFileState.project_id == project_id,
+            RAGFileState.status == FileProcessingStatus.PENDING
+        ).count()
+
         return {
             "processed": processed,
             "rules_extracted": total_rules,
             "errors": errors,
-            "pending_remaining": self.db.query(RAGFileState).filter(
-                RAGFileState.project_id == project_id,
-                RAGFileState.status == FileProcessingStatus.PENDING
-            ).count(),
+            "pending_remaining": pending_remaining,
+            "rules_by_layer": rules_by_layer,
         }
 
     async def get_project_stats(self, project_id: UUID) -> Dict[str, Any]:
@@ -697,6 +721,115 @@ class ContinuousRAGService:
     # Internal Methods
     # =========================================================================
 
+    # PROMPT #230 - Semantic layer priority for batch ordering (lower = processed first)
+    LAYER_PRIORITY = {
+        FileSemanticLayer.SCHEMA: 1,
+        FileSemanticLayer.ROUTES: 2,
+        FileSemanticLayer.LOGIC: 3,
+        FileSemanticLayer.PRESENTATION: 4,
+        FileSemanticLayer.CONFIG: 5,
+        FileSemanticLayer.UNKNOWN: 6,
+    }
+
+    @staticmethod
+    def _classify_semantic_layer(file_path: str) -> FileSemanticLayer:
+        """
+        PROMPT #230 - Stack-agnostic semantic layer classification.
+
+        Classifies files by their architectural role based on path patterns.
+        Works across Laravel, Django, Spring, Next.js, Go, Rails, etc.
+        """
+        fp = file_path.lower().replace("\\", "/")
+
+        # --- SCHEMA layer: DB structure, models, entities ---
+        schema_patterns = [
+            "migration", "migrate",
+            "/models/", "/model/", "/entities/", "/entity/",
+            "/schemas/", "/schema/",
+            "database/", "/orm/",
+            "/domain/", "/domains/",
+            "prisma/", "typeorm/", "sequelize/",
+            ".prisma", ".graphql", ".proto",
+        ]
+        if any(p in fp for p in schema_patterns):
+            return FileSemanticLayer.SCHEMA
+
+        # --- ROUTES layer: API endpoints, controllers, handlers ---
+        routes_patterns = [
+            "/controllers/", "/controller/",
+            "/handlers/", "/handler/",
+            "/routes/", "/route/", "/routing/",
+            "routes/",  # Root-level routes dir (e.g., routes/web.php)
+            "/endpoints/", "/endpoint/",
+            "/api/", "/resources/",
+            "/resolvers/", "/resolver/",
+            "router", "views.py",
+        ]
+        if any(p in fp for p in routes_patterns):
+            return FileSemanticLayer.ROUTES
+
+        # --- LOGIC layer: business logic, services, use cases ---
+        logic_patterns = [
+            "/services/", "/service/",
+            "/usecases/", "/usecase/", "/use_cases/", "/use-cases/",
+            "/actions/", "/action/",
+            "/jobs/", "/job/", "/workers/", "/worker/",
+            "/commands/", "/command/",
+            "/events/", "/event/", "/listeners/", "/listener/",
+            "/policies/", "/policy/",
+            "/rules/", "/rule/",
+            "/interactors/", "/interactor/",
+            "/managers/", "/manager/",
+            "/helpers/", "/helper/", "/utils/", "/util/",
+            "/lib/", "/core/",
+            "/middleware/", "/middlewares/",
+            "/validators/", "/validator/",
+            "/observers/", "/observer/",
+            "/notifications/", "/notification/",
+            "/mail/", "/emails/",
+            "/requests/",  # Form requests / validation (Laravel, etc.)
+        ]
+        if any(p in fp for p in logic_patterns):
+            return FileSemanticLayer.LOGIC
+
+        # --- PRESENTATION layer: UI, views, components, templates ---
+        presentation_patterns = [
+            "/views/", "/view/",
+            "/components/", "/component/",
+            "/templates/", "/template/",
+            "/pages/", "/page/",
+            "/layouts/", "/layout/",
+            "/partials/", "/partial/",
+            "/widgets/", "/widget/",
+            "/screens/", "/screen/",
+            "/ui/",
+            ".blade.php", ".vue", ".jsx", ".tsx",
+            ".ejs", ".pug", ".hbs", ".handlebars",
+            ".twig", ".jinja", ".html",
+        ]
+        if any(p in fp for p in presentation_patterns):
+            return FileSemanticLayer.PRESENTATION
+
+        # --- CONFIG layer: configuration, bootstrapping ---
+        config_patterns = [
+            "/config/", "/configs/", "/configuration/",
+            "config/",  # Root-level config dirs (e.g., config/app.php)
+            "/bootstrap/", "/boot/",
+            "bootstrap/",  # Root-level bootstrap (e.g., bootstrap/app.php)
+            "/providers/", "/provider/",
+            "/initializers/", "/initializer/",
+            "docker", "makefile", "dockerfile",
+            ".env", ".ini", ".toml", ".yaml", ".yml",
+            "package.json", "composer.json", "gemfile",
+            "requirements.txt", "cargo.toml", "go.mod",
+            "webpack", "vite", "babel", "eslint", "prettier",
+            "tsconfig", "jest.config", "phpunit",
+        ]
+        if any(p in fp for p in config_patterns):
+            return FileSemanticLayer.CONFIG
+
+        return FileSemanticLayer.UNKNOWN
+
     def _compute_file_hash(self, file_path: Path) -> Optional[str]:
         """Compute SHA-256 hash of file content."""
         try:
@@ -709,9 +842,14 @@ class ContinuousRAGService:
             logger.warning(f"Failed to hash {file_path}: {e}")
             return None
 
-    # PROMPT #224 - Compact prompt for local models (fewer tokens = faster inference)
+    # PROMPT #224/#230 - Compact prompt for local models (fewer tokens = faster inference)
+    # PROMPT #230 - Rewritten to extract FUNCTIONAL business rules, not technical details
     _LOCAL_SYSTEM_PROMPT = (
-        "Extraia regras de negocio do codigo. "
+        "Voce e um analista de negocios. Extraia APENAS regras de NEGOCIO FUNCIONAIS do codigo. "
+        "FOQUE em: o que o USUARIO pode fazer, permissoes, fluxos, limites, calculos de negocio. "
+        "IGNORE completamente: tipos de campo, configs de framework, drivers, sessoes, "
+        "CSS, logs, booleanos, chaves estrangeiras, detalhes tecnicos de infraestrutura. "
+        "Escreva cada regra como se explicasse para um GERENTE DE PRODUTO, nao para um programador. "
         "Responda APENAS com JSON valido, em portugues brasileiro: "
         '{"business_rules":[{"rule_text":"...","rule_type":"validation|workflow|constraint|domain","confidence":"high|medium"}]}'
     )

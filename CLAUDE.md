@@ -760,8 +760,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #229 (Fix Wiki Pages in English)
-**Próximo prompt:** PROMPT #230
+**Último prompt:** PROMPT #230 (Pipeline Incremental por Lotes - Fase 1: Semantic Layer)
+**Próximo prompt:** PROMPT #231
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

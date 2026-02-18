@@ -2869,6 +2869,13 @@ class AIOrchestrator:
 
         await flush_callback()
 
+        # PROMPT #230 - Strip <think>...</think> tags from qwen3 thinking mode
+        import re
+        cleaned = re.sub(r'<think>[\s\S]*?</think>\s*', '', accumulated).strip()
+        if cleaned != accumulated:
+            logger.info(f"🧠 Stripped thinking tags from Ollama response ({len(accumulated)} → {len(cleaned)} chars)")
+            accumulated = cleaned
+
         return {
             "provider": "ollama",
             "model": model,

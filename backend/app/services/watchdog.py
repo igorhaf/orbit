@@ -616,8 +616,9 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
 
         # --- Step 2: Submit wiki enrichment as separate job with sub-jobs ---
         # PROMPT #228 - Wiki pages are now generated as individual sub-jobs in the queue
+        # PROMPT #229 - Defer enrichment during batch ingestion to avoid Ollama slot contention
         wiki_enriched = False
-        if rules_extracted > 0:
+        if rules_extracted > 0 and pending_remaining == 0:
             jm.update_progress(job_id, 50.0, f"Enfileirando geração de wiki ({rules_extracted} regras)...")
             try:
                 submit_wiki_enrichment(db, project_id, rules_extracted)
@@ -625,11 +626,14 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
                 logger.info(f"Wiki enrichment job queued for '{project_name}'")
             except Exception as e:
                 logger.warning(f"Wiki enrichment submit failed (non-blocking): {e}", exc_info=True)
+        elif rules_extracted > 0:
+            logger.info(f"Wiki enrichment deferred: {pending_remaining} files still pending for '{project_name}'")
 
         # --- Step 3: Create cards from new business rules ---
         # PROMPT #260 - Batch mode uses higher card limit (15) for faster initial coverage
+        # PROMPT #229 - Only create cards when no more files pending (avoids Ollama contention)
         card_result = {}
-        if rules_extracted > 0:
+        if rules_extracted > 0 and pending_remaining == 0:
             jm.update_progress(job_id, 70.0, "Criando cards a partir de novas descobertas...")
             try:
                 card_result = await _auto_discover_cards(db, project_id, max_cards=15)
@@ -638,6 +642,8 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
                     logger.info(f"Auto-discovered {card_result['created']} cards{epics_msg} for '{project_name}'")
             except Exception as e:
                 logger.warning(f"Auto card discovery failed (non-blocking): {e}")
+        elif rules_extracted > 0:
+            logger.info(f"Card creation deferred: {pending_remaining} files still pending for '{project_name}'")
 
         # --- Step 4: If idle (no new rules), enrich existing stub cards ---
         enriched_cards = 0
