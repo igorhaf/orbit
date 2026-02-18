@@ -1088,7 +1088,7 @@ async def _process_initial_scan(
                 logger.info(f"Registered remaining files for batch processing")
 
                 from app.services.watchdog import submit_batch_processing_cycle
-                batch_size = {"quick": 15, "normal": 30}.get(scan_depth, 20)
+                batch_size = {"quick": 8, "normal": 10}.get(scan_depth, 10)
                 submit_batch_processing_cycle(db, project_id, batch_size=batch_size)
                 logger.info(f"Batch processing started (batch_size={batch_size})")
             else:
