@@ -1376,7 +1376,7 @@ async def bootstrap_watchdog():
                 orphan_project_id = UUID(project_id_str)
 
                 if input_data.get("batch_processing"):
-                    batch_size = input_data.get("batch_size", 30)
+                    batch_size = input_data.get("batch_size", 10)
                     await executor.submit(
                         JobPriority.NORMAL,
                         batch_processing_cycle,
