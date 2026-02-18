@@ -453,8 +453,8 @@ start_backend() {
     orphan_pid=$(ss -tlnp 2>/dev/null | grep ":8000 " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
     if [[ -n "$orphan_pid" ]]; then
         warn "Killing orphan process on port 8000 (PID $orphan_pid)"
-        kill "$orphan_pid" 2>/dev/null || true
-        sleep 1
+        _kill_tree "$orphan_pid"
+        sleep 2
     fi
 
     info "Starting Backend (FastAPI)..."
@@ -469,7 +469,7 @@ start_backend() {
     export PATH="$HOME/.local/bin:$PATH"
     cd "${BACKEND_DIR}"
     # PROMPT #226 - Exclude non-code dirs from reload watcher to reduce spurious restarts
-    nohup poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload \
+    PYTHONUNBUFFERED=1 nohup poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload \
         --reload-exclude '__pycache__' \
         --reload-exclude '*.pyc' \
         --reload-exclude 'storage/*' \
@@ -478,10 +478,30 @@ start_backend() {
         --reload-exclude '*.md' \
         > "$BACKEND_LOG" 2>&1 &
     echo $! > "$BACKEND_PID"
-    sleep 3
 
+    # Wait for backend to be fully ready (embedding model + RAG sync takes ~15s)
+    info "Waiting for backend to be ready..."
+    local tries=0
+    local max_wait=30
+    while [[ $tries -lt $max_wait ]]; do
+        # Check if process is still alive
+        if ! kill -0 "$(cat "$BACKEND_PID")" 2>/dev/null; then
+            error "Backend process died during startup. Check logs: orbit logs backend"
+            rm -f "$BACKEND_PID"
+            return 1
+        fi
+        # Check if API is responding
+        if curl -sf http://localhost:8000/api/v1/projects/ >/dev/null 2>&1; then
+            success "Backend started (port 8000, PID $(cat "$BACKEND_PID"))"
+            return 0
+        fi
+        tries=$((tries + 1))
+        sleep 1
+    done
+
+    # Process is alive but API not ready yet — still OK (background loading)
     if is_backend_running; then
-        success "Backend started (port 8000, PID $(cat "$BACKEND_PID"))"
+        success "Backend started (port 8000, PID $(cat "$BACKEND_PID")) — still loading"
     else
         error "Backend failed to start. Check logs: orbit logs backend"
         return 1
@@ -500,18 +520,35 @@ start_frontend() {
     orphan_pid=$(ss -tlnp 2>/dev/null | grep ":3000 " | grep -oP 'pid=\K[0-9]+' | head -1 || true)
     if [[ -n "$orphan_pid" ]]; then
         warn "Killing orphan process on port 3000 (PID $orphan_pid)"
-        kill "$orphan_pid" 2>/dev/null || true
-        sleep 1
+        _kill_tree "$orphan_pid"
+        sleep 2
     fi
 
     info "Starting Frontend (Next.js)..."
     cd "${FRONTEND_DIR}"
     nohup npm run dev > "$FRONTEND_LOG" 2>&1 &
     echo $! > "$FRONTEND_PID"
-    sleep 3
+
+    # Wait for frontend to be ready (~6s for Next.js compilation)
+    info "Waiting for frontend to be ready..."
+    local tries=0
+    local max_wait=20
+    while [[ $tries -lt $max_wait ]]; do
+        if ! kill -0 "$(cat "$FRONTEND_PID")" 2>/dev/null; then
+            error "Frontend process died during startup. Check logs: orbit logs frontend"
+            rm -f "$FRONTEND_PID"
+            return 1
+        fi
+        if curl -sf http://localhost:3000 >/dev/null 2>&1; then
+            success "Frontend started (port 3000, PID $(cat "$FRONTEND_PID"))"
+            return 0
+        fi
+        tries=$((tries + 1))
+        sleep 1
+    done
 
     if is_frontend_running; then
-        success "Frontend started (port 3000, PID $(cat "$FRONTEND_PID"))"
+        success "Frontend started (port 3000, PID $(cat "$FRONTEND_PID")) — still compiling"
     else
         error "Frontend failed to start. Check logs: orbit logs frontend"
         return 1
