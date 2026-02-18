@@ -30,13 +30,58 @@ from app.services.pipeline_validator import validate_wiki_page
 
 logger = logging.getLogger(__name__)
 
-# Boilerplate dirs to skip when classifying domain (from wiki.py)
+# Boilerplate dirs to skip when classifying domain
 _SKIP_DIRS = {
+    # General project structure
     "app", "src", "lib", "backend", "frontend", "server", "client",
     "core", "main", "base", "common", "shared", "internal", "pkg",
     "cmd", "api", "http", "web", "resources", "public", "static",
     "assets", "dist", "build", "out", "bin", "vendor", "node_modules",
+    # Framework structural directories (NOT business domains)
+    "controllers", "models", "views", "policies", "observers",
+    "providers", "middleware", "requests", "migrations",
+    "seeders", "factories", "events", "listeners", "jobs", "mail",
+    "notifications", "rules", "casts", "scopes", "commands",
+    "exceptions", "services", "repositories", "helpers", "utils",
+    "traits", "interfaces", "enums", "config", "routes", "database",
+    "tests", "test", "spec", "specs", "__tests__",
+    "components", "modules", "guards", "interceptors", "pipes",
+    "decorators", "filters", "resolvers", "transformers",
+    "storage", "bootstrap", "lang", "locales", "i18n",
 }
+
+# Class suffixes to strip when extracting entity name from filename
+# Ordered longest-first so "ServiceProvider" matches before "Service"/"Provider"
+_ENTITY_SUFFIXES = [
+    "ServiceProvider",
+    "Controller", "Repository", "Transformer", "Notification",
+    "Middleware", "Validator", "Interface", "Component", "Migration",
+    "Resolver", "Resource", "Observer", "Listener", "Provider",
+    "Factory", "Handler", "Request", "Command", "Service",
+    "Seeder", "Policy", "Router", "Helper", "Module",
+    "Scope", "Trait", "Event", "Model", "Enum", "Cast",
+    "Test", "Spec", "View", "Mail", "Rule", "Util",
+    "Job", "DAO", "DTO",
+]
+
+# Generic filenames that don't carry business entity information
+_GENERIC_FILENAMES = {
+    "index", "main", "app", "server", "kernel", "bootstrap", "home",
+    "views", "models", "urls", "admin", "forms", "serializers",
+    "routes", "web", "api", "console", "channels",
+    "config", "settings", "constants", "helpers", "utils",
+    "middleware", "tests", "conftest", "setup",
+    "__init__", "manage", "artisan",
+    "package", "composer", "webpack", "vite", "mix",
+    "readme", "changelog", "license",
+}
+
+# Infrastructure files → always "Geral"
+_INFRA_RE = re.compile(
+    r"^(docker|makefile|gitignore|env|editorconfig|phpunit|jest|tsconfig|"
+    r"eslint|prettier|babel|stylelint|nginx|supervisord|php)$",
+    re.IGNORECASE,
+)
 
 
 class IncrementalWikiService:
@@ -418,8 +463,17 @@ class IncrementalWikiService:
     @staticmethod
     def _classify_domain(source_file: str) -> Tuple[str, str]:
         """
-        Stack-agnostic domain classification from file path.
-        Extracts the most meaningful directory name.
+        Extract business domain from file path using a hybrid approach:
+        1. First try meaningful subdirectory (e.g. Controllers/Trilhas/ → Trilhas)
+        2. If all dirs are boilerplate, extract entity from filename
+
+        Examples:
+            app/Http/Controllers/Trilhas/ExplorarController.php → ("Trilhas", "trilhas")
+            resources/views/cursos/progresso.blade.php          → ("Cursos", "cursos")
+            app/Models/Course.php                               → ("Course", "course")
+            app/Policies/EnrollmentPolicy.php                   → ("Enrollment", "enrollment")
+            app/Observers/TrilhaObserver.php                    → ("Trilha", "trilha")
+            database/migrations/2023_create_courses_table.php   → ("Geral", "geral")
         """
         if not source_file:
             return ("Geral", "geral")
@@ -434,30 +488,70 @@ class IncrementalWikiService:
                 parts = parts[1:]
             path = "/".join(parts)
 
-        parts = path.split("/")
-        if len(parts) > 1:
-            parts = parts[:-1]  # remove filename
-        else:
-            name = parts[0].rsplit(".", 1)[0] if "." in parts[0] else parts[0]
-            if name:
-                slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-                return (name.replace("_", " ").replace("-", " ").title(), slug or "geral")
-            return ("Geral", "geral")
+        path_parts = path.split("/")
+        dirs = path_parts[:-1]  # everything except filename
+        filename = path_parts[-1]
 
-        for part in parts:
+        # --- Step 1: Try meaningful subdirectory ---
+        # Walk dirs left-to-right, skip boilerplate.
+        # First non-boilerplate dir = business domain (e.g. Trilhas, Cursos, Aluno)
+        for part in dirs:
             clean = part.strip()
             if clean.lower() not in _SKIP_DIRS and len(clean) > 1:
                 slug = re.sub(r"[^a-z0-9]+", "-", clean.lower()).strip("-")
                 name = clean.replace("_", " ").replace("-", " ").title()
                 return (name, slug or "geral")
 
-        # Fallback
-        last = parts[-1].strip() if parts else ""
-        if last:
-            slug = re.sub(r"[^a-z0-9]+", "-", last.lower()).strip("-")
-            return (last.replace("_", " ").replace("-", " ").title(), slug or "geral")
+        # --- Step 2: All dirs are boilerplate → extract from filename ---
+        name_no_ext = filename.rsplit(".", 1)[0] if "." in filename else filename
 
-        return ("Geral", "geral")
+        # Handle double extensions like .blade.php, .spec.ts, .test.js
+        for ext in (".blade", ".spec", ".test", ".stories", ".module", ".component"):
+            if name_no_ext.endswith(ext):
+                name_no_ext = name_no_ext[: -len(ext)]
+                break
+
+        # Date-prefixed files (migrations, etc.) → "Geral"
+        if re.match(r"^\d", name_no_ext):
+            return ("Geral", "geral")
+
+        # Infrastructure files → "Geral"
+        if _INFRA_RE.match(name_no_ext):
+            return ("Geral", "geral")
+
+        # Generic filenames (index, web, app, etc.) → "Geral"
+        if name_no_ext.lower() in _GENERIC_FILENAMES:
+            return ("Geral", "geral")
+
+        # Strip class suffixes: CourseController → Course, AlunoPolicy → Aluno
+        entity = name_no_ext
+        for suffix in _ENTITY_SUFFIXES:
+            if entity.endswith(suffix) and len(entity) > len(suffix):
+                entity = entity[: -len(suffix)]
+                break
+
+        # Try snake_case suffixes: courses_controller → courses
+        if entity == name_no_ext:
+            lower = entity.lower()
+            for suffix in _ENTITY_SUFFIXES:
+                snake_suffix = f"_{suffix.lower()}"
+                if lower.endswith(snake_suffix) and len(lower) > len(snake_suffix):
+                    entity = entity[: len(entity) - len(snake_suffix)]
+                    break
+
+        # If entity is empty or too short after stripping, use original
+        if not entity or len(entity) < 2:
+            entity = name_no_ext
+
+        # Split CamelCase for display: UserProfile → User Profile
+        display_name = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", entity)
+
+        # Handle snake_case/kebab-case for display
+        if "_" in display_name or "-" in display_name:
+            display_name = display_name.replace("_", " ").replace("-", " ").title()
+
+        slug = re.sub(r"[^a-z0-9]+", "-", entity.lower()).strip("-")
+        return (display_name, slug or "geral")
 
     @staticmethod
     def _build_fallback_page(domain_name: str, rules_text: str) -> str:

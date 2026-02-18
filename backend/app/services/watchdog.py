@@ -369,16 +369,17 @@ def submit_wiki_enrichment(db: Session, project_id: UUID, rules_count: int):
 
 async def watchdog_cycle(job_id: UUID, project_id: UUID):
     """
-    One cycle of the living wiki watchdog for a single project.
+    One cycle of the watchdog for a single project (read-only pipeline).
 
+    PROMPT #233 - Pipeline is now 100% read-only:
     Steps:
     1. RAG file scan (detect new/changed/deleted files, extract rules)
     2. Git commit sync (index new commits in RAG)
     3. Pattern discovery + spec sync
-    4. Wiki enrichment (merge RAG findings into project description)
-    5. Auto-discover cards (create suggestions for new findings)
-    6. Enrich existing stub cards when idle (PROMPT #245)
-    7. Sleep then re-queue self
+    4. Sleep then re-queue self
+
+    No auto-generation of wiki, cards, description, or enrichment.
+    All generation is manual via buttons.
 
     Runs at LOW priority, yielding to higher-priority jobs between cycles.
     PROMPT #251 - Resilient DB connection with retry on transient failures.
@@ -412,7 +413,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             logger.warning(f"RAG scan failed (non-blocking): {e}")
 
         # --- Step 2: Git commit sync ---
-        jm.update_progress(job_id, 30.0, "Sincronizando commits git...")
+        jm.update_progress(job_id, 40.0, "Sincronizando commits git...")
         git_result = {}
         try:
             from app.services.prompt_doc_rag_sync import GitCommitRAGSync
@@ -423,7 +424,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             logger.warning(f"Git sync failed (non-blocking): {e}")
 
         # --- Step 3: Pattern discovery + spec sync ---
-        jm.update_progress(job_id, 50.0, "Descobrindo padrões de código...")
+        jm.update_progress(job_id, 70.0, "Descobrindo padrões de código...")
         try:
             from app.services.pattern_discovery import PatternDiscoveryService
             from app.api.routes.projects import _effective_max_patterns
@@ -443,74 +444,18 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
         except Exception as e:
             logger.warning(f"Pattern discovery failed (non-blocking): {e}")
 
-        # --- Step 4: Wiki enrichment (as separate sub-job queue) ---
-        # PROMPT #228 - Wiki pages are now generated as individual sub-jobs
-        already_enriched = False
-        if isinstance(rag_result, dict):
-            already_enriched = rag_result.get("wiki_enriched", False)
-
-        if already_enriched:
-            jm.update_progress(job_id, 70.0, "Wiki ja expandida com novas descobertas")
-            logger.info(f"Wiki enrichment skipped for '{project_name}' (already done in RAG scan)")
-        else:
-            jm.update_progress(job_id, 70.0, "Enfileirando geração de wiki...")
-            try:
-                # Count rules for the notification
-                from sqlalchemy import text as sql_text
-                rule_count_result = db.execute(sql_text("""
-                    SELECT COUNT(*) FROM rag_documents
-                    WHERE project_id = :pid
-                    AND (metadata->>'content_type' = 'business_rule' OR metadata->>'type' = 'business_rule')
-                """), {"pid": str(project_id)})
-                rules_count = rule_count_result.scalar() or 0
-                if rules_count > 0:
-                    submit_wiki_enrichment(db, project_id, rules_count)
-                    logger.info(f"Wiki enrichment job queued for '{project_name}' ({rules_count} rules)")
-                else:
-                    logger.info(f"Wiki enrichment skipped for '{project_name}' (no rules)")
-            except Exception as e:
-                logger.warning(f"Wiki enrichment submit failed (non-blocking): {e}", exc_info=True)
-
-        # --- Step 5: Auto-discover cards ---
-        jm.update_progress(job_id, 85.0, "Verificando novas descobertas...")
-        card_result = {}
-        try:
-            card_result = await _auto_discover_cards(db, project_id)
-            if card_result.get("created", 0) > 0:
-                epics_msg = f" ({card_result.get('epics_created', 0)} epics)" if card_result.get('epics_created', 0) > 0 else ""
-                logger.info(f"Auto-discovered {card_result['created']} cards{epics_msg} for '{project_name}'")
-        except Exception as e:
-            logger.warning(f"Auto card discovery failed (non-blocking): {e}")
-
-        # --- Step 6: Enrich existing stub cards when idle (PROMPT #245) ---
-        enriched_cards = 0
-        new_cards = card_result.get("created", 0) if isinstance(card_result, dict) else 0
-        rag_rules = 0
-        if isinstance(rag_result, dict):
-            processed = rag_result.get("processed", {})
-            if isinstance(processed, dict):
-                rag_rules = processed.get("rules_extracted", 0)
-
-        if new_cards == 0 and rag_rules == 0:
-            jm.update_progress(job_id, 92.0, "Expandindo cards existentes (modo ocioso)...")
-            try:
-                enriched_cards = await _auto_enrich_stub_cards(db, project_id, max_cards=1)
-                if enriched_cards > 0:
-                    logger.info(f"Auto-enriched {enriched_cards} cards in idle mode for '{project_name}'")
-            except Exception as e:
-                logger.warning(f"Idle card enrichment failed (non-blocking): {e}")
+        # PROMPT #233 - No auto-generation: wiki, cards, description, enrichment
+        # are all manual via buttons now. Pipeline only scans and extracts.
 
         jm.complete_job(job_id, {
             "project_id": str(project_id),
             "rag_scan": rag_result.get("processed", {}).get("processed_count", 0) if isinstance(rag_result, dict) else 0,
             "git_commits": git_result.get("new_commits", 0) if isinstance(git_result, dict) else 0,
-            "cards_created": card_result.get("created", 0),
-            "cards_enriched": enriched_cards,
         })
 
         logger.info(f"Watchdog cycle completed for '{project_name}'")
 
-        # PROMPT #259 - Conditional cooldown: check if there's pending work
+        # Conditional cooldown: check if there's pending work
         has_work = False
         try:
             from app.models.rag_file_state import RAGFileState, FileProcessingStatus
@@ -518,7 +463,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
                 RAGFileState.project_id == project_id,
                 RAGFileState.status == FileProcessingStatus.PENDING,
             ).count()
-            has_work = pending_files > 0 or card_result.get("created", 0) > 0 or enriched_cards > 0
+            has_work = pending_files > 0
         except Exception:
             pass
 
@@ -568,13 +513,12 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
 
 async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int = 10):
     """
-    Aggressive batch processing cycle for initial project ingestion.
+    Batch processing cycle for project ingestion (read-only pipeline).
 
-    Unlike watchdog_cycle (60s cooldown, all 5 steps), this:
-    - Processes files in batches of batch_size
-    - After each batch: enriches wiki + creates cards
-    - When all files processed: transitions to normal watchdog
-    - When idle (no new rules): enriches existing stub cards
+    PROMPT #233 - Pipeline is now 100% read-only:
+    - Only reads files and extracts business rules to RAG
+    - NO automatic wiki, description, card, or enrichment generation
+    - All generation (wiki, cards, description) is manual via buttons
     - Short cooldown (5s) between batches
     - Runs at NORMAL priority (higher than watchdog's LOW)
 
@@ -596,7 +540,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         project_name = project.name or str(project_id)[:8]
         logger.info(f"Batch processing cycle for '{project_name}' (batch_size={batch_size})")
 
-        # --- Step 1: Process next batch of pending files ---
+        # --- Step 1: Process next batch of pending files (RAG extraction only) ---
         jm.update_progress(job_id, 10.0, f"Processando próximo lote ({batch_size} arquivos max)...")
         process_result = {}
         try:
@@ -607,120 +551,21 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             remaining = process_result.get('pending_remaining', 0)
             rules = process_result.get('rules_extracted', 0)
             logger.info(f"Batch processed for '{project_name}': {actual} files, {rules} rules")
-            jm.update_progress(job_id, 30.0, f"{actual} arquivos processados, {remaining} restantes, {rules} regras extraidas")
+            jm.update_progress(job_id, 90.0, f"{actual} arquivos processados, {remaining} restantes, {rules} regras extraidas")
         except Exception as e:
             logger.warning(f"Batch processing failed (non-blocking): {e}")
 
         rules_extracted = process_result.get("rules_extracted", 0)
         pending_remaining = process_result.get("pending_remaining", 0)
-        rules_by_layer = process_result.get("rules_by_layer", {})
 
-        # Estimate batch number for incremental steps
-        total_processed = process_result.get("processed", 0)
-        batch_num = max(1, (total_processed + pending_remaining + batch_size - 1) // batch_size - pending_remaining // batch_size)
-
-        # --- Step 1.5: Incremental context update (PROMPT #230 Phase 2) ---
-        # Update project description at EVERY batch with rules > 0 (not just when pending=0)
-        context_updated = False
-        if rules_extracted > 0:
-            jm.update_progress(job_id, 40.0, f"Atualizando contexto do projeto ({rules_extracted} regras)...")
-            try:
-                from app.services.pipeline_context import IncrementalContextService
-                ctx_service = IncrementalContextService(db)
-                ctx_result = await ctx_service.update_context_from_batch(
-                    project_id=project_id,
-                    batch_rules=rules_extracted,
-                    batch_number=batch_num,
-                    rules_by_layer=rules_by_layer,
-                )
-                context_updated = ctx_result.get("updated", False)
-                if context_updated:
-                    logger.info(f"Context updated for '{project_name}' batch #{batch_num}")
-                else:
-                    logger.info(f"Context update skipped for '{project_name}': {ctx_result.get('reason', 'unknown')}")
-            except Exception as e:
-                logger.warning(f"Incremental context update failed (non-blocking): {e}")
-
-        # --- Step 2: Incremental wiki update (PROMPT #230 Phase 3) ---
-        # Update wiki pages at EVERY batch with rules > 0 (domain pages via AI merge)
-        wiki_updated = False
-        wiki_pages_created = 0
-        wiki_pages_merged = 0
-        if rules_extracted > 0:
-            jm.update_progress(job_id, 50.0, f"Atualizando wiki do projeto ({rules_extracted} regras)...")
-            try:
-                from app.services.pipeline_wiki import IncrementalWikiService
-                wiki_service = IncrementalWikiService(db)
-                wiki_result = await wiki_service.update_wiki_from_batch(
-                    project_id=project_id,
-                    batch_rules=rules_extracted,
-                    batch_number=batch_num,
-                    rules_by_layer=rules_by_layer,
-                )
-                wiki_updated = wiki_result.get("updated", False)
-                wiki_pages_created = wiki_result.get("pages_created", 0)
-                wiki_pages_merged = wiki_result.get("pages_merged", 0)
-                if wiki_updated:
-                    logger.info(f"Wiki updated for '{project_name}': {wiki_pages_created} created, {wiki_pages_merged} merged")
-            except Exception as e:
-                logger.warning(f"Incremental wiki update failed (non-blocking): {e}")
-
-        # Full wiki enrichment (heavy job with sub-jobs) only when ALL files are done
-        wiki_enriched = False
-        if rules_extracted > 0 and pending_remaining == 0:
-            jm.update_progress(job_id, 55.0, f"Enfileirando enriquecimento completo de wiki...")
-            try:
-                submit_wiki_enrichment(db, project_id, rules_extracted)
-                wiki_enriched = True
-                logger.info(f"Wiki enrichment job queued for '{project_name}'")
-            except Exception as e:
-                logger.warning(f"Wiki enrichment submit failed (non-blocking): {e}", exc_info=True)
-
-        # --- Step 3: Hierarchical card creation (PROMPT #230 Phase 4) ---
-        # Create Epic -> Story hierarchy at EVERY batch with rules > 0
-        # Stack-agnostic domain classification replaces hardcoded _classify_rule_domain
-        card_result = {}
-        if rules_extracted > 0:
-            jm.update_progress(job_id, 70.0, "Criando cards hierarquicos a partir de novas descobertas...")
-            try:
-                from app.services.pipeline_cards import HierarchicalCardService
-                card_service = HierarchicalCardService(db)
-                card_result = await card_service.extend_cards_from_batch(
-                    project_id=project_id,
-                    batch_rules=rules_extracted,
-                    batch_number=batch_num,
-                    rules_by_layer=rules_by_layer,
-                )
-                if card_result.get("created", 0) > 0:
-                    epics_msg = f" ({card_result.get('epics_created', 0)} epics)" if card_result.get('epics_created', 0) > 0 else ""
-                    stories_msg = f", {card_result.get('stories_created', 0)} stories" if card_result.get('stories_created', 0) > 0 else ""
-                    logger.info(f"Hierarchical cards for '{project_name}'{epics_msg}{stories_msg}")
-            except Exception as e:
-                logger.warning(f"Hierarchical card creation failed (non-blocking): {e}")
-
-        # --- Step 4: If idle (no new rules), enrich existing stub cards ---
-        enriched_cards = 0
-        if rules_extracted == 0 and card_result.get("created", 0) == 0:
-            jm.update_progress(job_id, 80.0, "Expandindo cards existentes...")
-            try:
-                enriched_cards = await _auto_enrich_stub_cards(db, project_id, max_cards=2)
-                if enriched_cards > 0:
-                    logger.info(f"Auto-enriched {enriched_cards} stub cards for '{project_name}'")
-            except Exception as e:
-                logger.warning(f"Card enrichment failed (non-blocking): {e}")
+        # PROMPT #233 - No auto-generation: wiki, cards, description, enrichment
+        # are all manual via buttons now. Pipeline only extracts rules to RAG.
 
         jm.complete_job(job_id, {
             "project_id": str(project_id),
             "batch_processed": process_result.get("processed", 0),
             "rules_extracted": rules_extracted,
             "pending_remaining": pending_remaining,
-            "context_updated": context_updated,
-            "wiki_updated": wiki_updated,
-            "wiki_pages_created": wiki_pages_created,
-            "wiki_pages_merged": wiki_pages_merged,
-            "wiki_enriched": wiki_enriched,
-            "cards_created": card_result.get("created", 0),
-            "cards_enriched": enriched_cards,
         })
 
         # --- Decide next action ---
