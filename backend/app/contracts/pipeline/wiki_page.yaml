@@ -1,5 +1,5 @@
 name: wiki_page_merge
-version: 1
+version: 2
 category: pipeline
 description: Merge incremental de paginas wiki com novas regras de negocio por lote
 usage_type: memory
@@ -29,34 +29,13 @@ system_prompt: |
   REGRAS:
   1. NUNCA remova conteudo existente - apenas ADICIONE novas regras
   2. Cada regra deve ser um bullet point claro em linguagem de NEGOCIO
-  3. Sem termos tecnicos (nao mencionar tabelas, colunas, frameworks)
+  3. Sem termos tecnicos (nao mencionar tabelas, colunas, frameworks, migrations, controllers)
   4. Evidencia obrigatoria: "(origem: [arquivo])" ao final de cada regra
   5. TODO conteudo em portugues brasileiro
   6. Sem emojis ou simbolos especiais
-  7. Minimo 300 palavras por pagina
+  7. Minimo 100 palavras por pagina
   8. Formato Markdown limpo
-
-  SECOES OBRIGATORIAS:
-
-  ## Visao Geral do Dominio
-  Breve descricao do que este dominio representa no sistema.
-
-  ## Regras de Negocio
-  Lista de regras funcionais extraidas do codigo.
-
-  ## Fluxos e Processos
-  Descricao dos fluxos de trabalho identificados.
-
-  ## Entidades Envolvidas
-  Conceitos e entidades de negocio deste dominio.
-
-  ## Restricoes e Validacoes
-  Limites, obrigatoriedades e validacoes do dominio.
-
-  ## Cenarios de Uso
-  Exemplos praticos de como as regras se aplicam.
-
-  Se uma secao nao tem informacao, inclua com "Informacao pendente de analise."
+  9. MANTENHA todos os cabecalhos de secao listados abaixo, mesmo que a secao tenha pouco conteudo
 
 user_prompt: |
   Dominio: {{ domain_name }}
@@ -77,6 +56,24 @@ user_prompt: |
   {% if mode == 'merge' %}
   INTEGRE as novas regras no conteudo existente, mantendo tudo que ja existia.
   {% else %}
-  Crie a pagina wiki completa para este dominio com as 6 secoes obrigatorias.
+  Preencha TODAS as secoes abaixo. NAO remova nenhum cabecalho de secao:
+
+  ## Visao Geral do Dominio
+  Breve descricao do que o dominio {{ domain_name }} representa no sistema.
+
+  ## Regras de Negocio
+  Liste cada regra funcional como bullet point. Cada regra com "(origem: [arquivo])".
+
+  ## Fluxos e Processos
+  Descreva os fluxos de trabalho identificados neste dominio.
+
+  ## Entidades Envolvidas
+  Conceitos e entidades de negocio deste dominio.
+
+  ## Restricoes e Validacoes
+  Limites, obrigatoriedades e validacoes do dominio.
+
+  ## Cenarios de Uso
+  Exemplos praticos de como as regras se aplicam.
   {% endif %}
   Cada regra nova deve ter evidencia: "(origem: [arquivo])"

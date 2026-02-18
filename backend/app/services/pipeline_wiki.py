@@ -108,10 +108,14 @@ class IncrementalWikiService:
                     domain_slug=domain_slug,
                     domain_rules=domain_rules,
                 )
+                # PROMPT #232 - Log each domain result for diagnostics
+                logger.info(f"Wiki domain '{domain_name}' ({len(domain_rules)} rules): {result}")
                 if result.get("created"):
                     pages_created += 1
                 elif result.get("merged"):
                     pages_merged += 1
+                elif result.get("error"):
+                    errors += 1
             except Exception as e:
                 logger.warning(f"Wiki domain '{domain_name}' failed: {e}")
                 errors += 1
@@ -124,8 +128,9 @@ class IncrementalWikiService:
             f"{pages_created} created, {pages_merged} merged, {errors} errors"
         )
 
+        # PROMPT #232 - Only report "updated" when pages were actually created/merged
         return {
-            "updated": True,
+            "updated": pages_created > 0 or pages_merged > 0,
             "pages_created": pages_created,
             "pages_merged": pages_merged,
             "domains_processed": len(domains),
@@ -186,7 +191,7 @@ class IncrementalWikiService:
         domain_slug: str,
         rules_text: str,
     ) -> Dict[str, Any]:
-        """Create a new wiki page for a domain."""
+        """Create a new wiki page for a domain with retry and fallback."""
         try:
             system_prompt, user_prompt = self._contract_loader.render(
                 "pipeline/wiki_page",
@@ -201,6 +206,7 @@ class IncrementalWikiService:
             logger.error(f"Failed to render wiki_page contract for create: {e}")
             return {"error": str(e)}
 
+        content = None
         try:
             response = await self.orchestrator.execute(
                 usage_type="memory",
@@ -221,40 +227,65 @@ class IncrementalWikiService:
             if issues:
                 for issue in issues:
                     logger.warning(f"Wiki create validation for '{domain_name}': {issue}")
+
+            # PROMPT #232 - Retry once with feedback if validation fails
             if not is_valid:
-                logger.warning(f"Wiki create rejected for '{domain_name}': {'; '.join(issues)}")
-                return {"error": f"Validation failed: {'; '.join(issues)}"}
+                logger.info(f"Wiki create retry for '{domain_name}' (issues: {'; '.join(issues)})")
+                retry_prompt = (
+                    f"{user_prompt}\n\n"
+                    f"ATENCAO: Sua resposta anterior foi rejeitada pelos seguintes motivos:\n"
+                    f"{chr(10).join(f'- {i}' for i in issues)}\n"
+                    f"Corrija estes problemas. Inclua TODAS as 6 secoes obrigatorias."
+                )
+                response = await self.orchestrator.execute(
+                    usage_type="memory",
+                    messages=[{"role": "user", "content": retry_prompt}],
+                    system_prompt=system_prompt,
+                    max_tokens=3000,
+                    project_id=str(project_id),
+                    metadata={"type": "wiki_page_create_retry", "domain": domain_name},
+                )
+                content = response.get("content", "") if isinstance(response, dict) else str(response)
+                is_valid, issues = validate_wiki_page(content, mode="create")
 
-            # Find parent page for hierarchy
-            parent = self.db.query(WikiPage).filter(
-                WikiPage.project_id == project_id,
-                WikiPage.slug == "regras-de-negocio",
-            ).first()
-
-            slug = f"regras-{domain_slug}"
-            page = WikiPage(
-                project_id=project_id,
-                slug=slug,
-                title=f"Regras: {domain_name}",
-                content=content,
-                parent_id=parent.id if parent else None,
-                order_index=30,
-                source="ai_generated",
-                batch_source={
-                    "domain": domain_name,
-                    "rules_added": len(domain_rules),
-                    "action": "create",
-                },
-            )
-            self.db.add(page)
-            self.db.flush()
-
-            logger.info(f"Created wiki page '{slug}' for domain '{domain_name}' ({len(content)} chars)")
-            return {"created": True, "slug": slug, "chars": len(content)}
+            if not is_valid:
+                logger.warning(f"Wiki create rejected after retry for '{domain_name}': {'; '.join(issues)}")
+                # PROMPT #232 - Fallback: generate minimal page from raw rules
+                content = self._build_fallback_page(domain_name, rules_text)
+                logger.info(f"Wiki fallback page generated for '{domain_name}' ({len(content)} chars)")
 
         except Exception as e:
             logger.error(f"AI wiki page creation failed for '{domain_name}': {e}")
-            return {"error": str(e)}
+            # Fallback on AI failure too
+            content = self._build_fallback_page(domain_name, rules_text)
+            logger.info(f"Wiki fallback page generated after error for '{domain_name}'")
+
+        # Find parent page for hierarchy
+        parent = self.db.query(WikiPage).filter(
+            WikiPage.project_id == project_id,
+            WikiPage.slug == "regras-de-negocio",
+        ).first()
+
+        slug = f"regras-{domain_slug}"
+        page = WikiPage(
+            project_id=project_id,
+            slug=slug,
+            title=f"Regras: {domain_name}",
+            content=content,
+            parent_id=parent.id if parent else None,
+            order_index=30,
+            source="ai_generated",
+            batch_source={
+                "domain": domain_name,
+                "rules_added": len(rules_text.split("\n")),
+                "action": "create",
+            },
+        )
+        self.db.add(page)
+        self.db.flush()
+
+        logger.info(f"Created wiki page '{slug}' for domain '{domain_name}' ({len(content)} chars)")
+        return {"created": True, "slug": slug, "chars": len(content)}
 
     async def _merge_domain_page(
         self,
@@ -420,6 +451,43 @@ class IncrementalWikiService:
             return (last.replace("_", " ").replace("-", " ").title(), slug or "geral")
 
         return ("Geral", "geral")
+
+    @staticmethod
+    def _build_fallback_page(domain_name: str, rules_text: str) -> str:
+        """
+        PROMPT #232 - Build a minimal wiki page from raw rules without AI.
+        Used when AI generation fails or validation rejects after retry.
+        Ensures data is not lost even if AI can't produce quality content.
+        """
+        lines = [
+            f"## Visao Geral do Dominio",
+            f"Pagina de regras do dominio {domain_name}, gerada automaticamente.",
+            "",
+            f"## Regras de Negocio",
+        ]
+        # Extract bullet points from rules_text
+        for line in rules_text.split("\n"):
+            line = line.strip()
+            if line.startswith("- ") and len(line) > 10:
+                lines.append(line)
+            elif line.startswith("**") and line.endswith(":**"):
+                # Source file header → add as origin reference
+                lines.append(f"\n{line}")
+        lines.extend([
+            "",
+            "## Fluxos e Processos",
+            "Informacao pendente de analise.",
+            "",
+            "## Entidades Envolvidas",
+            "Informacao pendente de analise.",
+            "",
+            "## Restricoes e Validacoes",
+            "Informacao pendente de analise.",
+            "",
+            "## Cenarios de Uso",
+            "Informacao pendente de analise.",
+        ])
+        return "\n".join(lines)
 
     @staticmethod
     def _format_domain_rules(rules: List[Dict[str, str]]) -> str:
