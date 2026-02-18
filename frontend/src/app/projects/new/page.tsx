@@ -29,7 +29,7 @@ export default function NewProjectPage() {
   // Form state
   const [codePath, setCodePath] = useState('');
   const [showFolderPicker, setShowFolderPicker] = useState(false);
-  const [scanDepth, setScanDepth] = useState<'quick' | 'normal' | 'deep'>('normal');
+  const scanDepth = 'normal'; // Fixed - batch size controlled by backend
   const [submitting, setSubmitting] = useState(false);
 
   // Handle folder selection
@@ -127,55 +127,13 @@ export default function NewProjectPage() {
               />
             </div>
 
-            {/* Scan Depth Selector */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Profundidade de Analise</label>
-              <p className="text-xs text-gray-500 mb-3">
-                Escolha a profundidade com que a IA deve analisar seu codebase. Analise mais profunda fornece melhores resultados, mas demora mais.
-              </p>
-              <div className="grid grid-cols-3 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setScanDepth('quick')}
-                  disabled={submitting}
-                  className={`p-3 rounded-lg border-2 text-left transition-all ${
-                    scanDepth === 'quick'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="font-medium text-sm">Rapida</div>
-                  <div className="text-xs text-gray-500 mt-1">30 arquivos, ~2 min</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setScanDepth('normal')}
-                  disabled={submitting}
-                  className={`p-3 rounded-lg border-2 text-left transition-all ${
-                    scanDepth === 'normal'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="font-medium text-sm">Normal</div>
-                  <div className="text-xs text-gray-500 mt-1">100 arquivos, ~5-10 min</div>
-                  <div className="text-xs text-blue-600 font-medium mt-1">Recomendado</div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setScanDepth('deep')}
-                  disabled={submitting}
-                  className={`p-3 rounded-lg border-2 text-left transition-all ${
-                    scanDepth === 'deep'
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="font-medium text-sm">Profunda</div>
-                  <div className="text-xs text-gray-500 mt-1">TODOS os arquivos, ~15-30+ min</div>
-                </button>
+            {/* Scan Info */}
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center gap-2">
+                <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm text-blue-800">O ORBIT analisara todos os arquivos do projeto em lotes de 10, processando continuamente em segundo plano.</span>
               </div>
             </div>
 
