@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.contracts.loader import ContractLoader
 from app.models.wiki_page import WikiPage
 from app.services.ai_orchestrator import AIOrchestrator
+from app.services.pipeline_validator import validate_wiki_page
 
 logger = logging.getLogger(__name__)
 
@@ -215,9 +216,14 @@ class IncrementalWikiService:
 
             content = response.get("content", "") if isinstance(response, dict) else str(response)
 
-            if not content or len(content) < 100:
-                logger.warning(f"AI returned short wiki page for domain '{domain_name}'")
-                return {"error": "AI response too short"}
+            # Validate wiki page content
+            is_valid, issues = validate_wiki_page(content, mode="create")
+            if issues:
+                for issue in issues:
+                    logger.warning(f"Wiki create validation for '{domain_name}': {issue}")
+            if not is_valid:
+                logger.warning(f"Wiki create rejected for '{domain_name}': {'; '.join(issues)}")
+                return {"error": f"Validation failed: {'; '.join(issues)}"}
 
             # Find parent page for hierarchy
             parent = self.db.query(WikiPage).filter(
@@ -234,6 +240,11 @@ class IncrementalWikiService:
                 parent_id=parent.id if parent else None,
                 order_index=30,
                 source="ai_generated",
+                batch_source={
+                    "domain": domain_name,
+                    "rules_added": len(domain_rules),
+                    "action": "create",
+                },
             )
             self.db.add(page)
             self.db.flush()
@@ -287,17 +298,16 @@ class IncrementalWikiService:
 
             new_content = response.get("content", "") if isinstance(response, dict) else str(response)
 
-            if not new_content or len(new_content) < 100:
-                logger.warning(f"AI returned short merge for domain '{domain_name}'")
-                return {"error": "AI merge response too short"}
-
-            # Anti-shrink: merged page should not be smaller than existing
-            if len(new_content) < len(existing_content) * 0.8:
-                logger.warning(
-                    f"Wiki merge would shrink '{existing_page.slug}' "
-                    f"({len(existing_content)} -> {len(new_content)} chars), skipping"
-                )
-                return {"error": "Would shrink page"}
+            # Validate wiki page merge
+            is_valid, issues = validate_wiki_page(
+                new_content, mode="merge", existing_content=existing_content
+            )
+            if issues:
+                for issue in issues:
+                    logger.warning(f"Wiki merge validation for '{domain_name}': {issue}")
+            if not is_valid:
+                logger.warning(f"Wiki merge rejected for '{domain_name}': {'; '.join(issues)}")
+                return {"error": f"Validation failed: {'; '.join(issues)}"}
 
             existing_page.content = new_content
             # Keep source as ai_generated (not changing to enrichment)

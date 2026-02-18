@@ -223,6 +223,11 @@ class Task(Base):
     blocked_reason = Column(String(500), nullable=True)  # Why task is blocked
     pending_modification = Column(JSON, nullable=True, default=None)  # Proposed changes
 
+    # PROMPT #230 Phase 5 - Batch source tracking
+    # Tracks which pipeline batch created/modified this card
+    # Example: {"batch_number": 3, "files_processed": 15, "layer": "logic"}
+    batch_source = Column(JSONB, nullable=True)
+
     # ===== END JIRA TRANSFORMATION FIELDS =====
 
     # Relationships

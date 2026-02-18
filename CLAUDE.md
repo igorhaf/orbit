@@ -760,7 +760,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #230 (Pipeline Incremental por Lotes - Fase 4: Hierarchical Cards)
+**Último prompt:** PROMPT #230 (Pipeline Incremental por Lotes - Fase 5: Validation + Anti-Hallucination)
 **Próximo prompt:** PROMPT #231
 
 **Sequência existente:**

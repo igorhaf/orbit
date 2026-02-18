@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.contracts.loader import ContractLoader
 from app.models.project import Project
 from app.services.ai_orchestrator import AIOrchestrator
+from app.services.pipeline_validator import validate_context
 
 logger = logging.getLogger(__name__)
 
@@ -120,17 +121,17 @@ class IncrementalContextService:
 
             new_description = response.get("content", "") if isinstance(response, dict) else str(response)
 
-            if not new_description or len(new_description) < 50:
-                logger.warning(f"AI returned empty/short context for '{project_name}', keeping current")
-                return {"skipped": True, "reason": "AI response too short"}
+            # Validate using pipeline_validator
+            is_valid, issues = validate_context(current_description, new_description)
+            if issues:
+                for issue in issues:
+                    logger.warning(f"Context validation issue for '{project_name}': {issue}")
 
-            # Validate: new description should not be shorter than current (no content removal)
-            if current_description and len(new_description) < len(current_description) * 0.8:
+            if not is_valid:
                 logger.warning(
-                    f"Context merge would shrink description for '{project_name}' "
-                    f"({desc_len_before} -> {len(new_description)} chars), keeping current"
+                    f"Context merge rejected for '{project_name}': {'; '.join(issues)}"
                 )
-                return {"skipped": True, "reason": "Would shrink description"}
+                return {"skipped": True, "reason": f"Validation failed: {'; '.join(issues)}"}
 
             # Update project description
             project.description = new_description

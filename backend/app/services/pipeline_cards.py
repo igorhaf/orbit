@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from app.contracts.loader import ContractLoader
 from app.models.task import Task, ItemType, TaskStatus, PriorityLevel
 from app.services.ai_orchestrator import AIOrchestrator
+from app.services.pipeline_validator import validate_card, validate_stories_response
 
 logger = logging.getLogger(__name__)
 
@@ -215,6 +216,17 @@ class HierarchicalCardService:
         except Exception as e:
             logger.warning(f"AI Epic generation failed for '{domain_name}': {e}")
 
+        # Validate Epic content
+        is_valid, issues = validate_card(
+            title=epic_title,
+            description=epic_description,
+            item_type="epic",
+            acceptance_criteria=epic_acceptance,
+        )
+        if issues:
+            for issue in issues:
+                logger.warning(f"Epic validation for '{domain_name}': {issue}")
+
         new_epic = Task(
             project_id=project_id,
             title=epic_title,
@@ -226,6 +238,7 @@ class HierarchicalCardService:
             workflow_state="draft",
             reporter="watchdog",
             acceptance_criteria=epic_acceptance,
+            batch_source={"batch_label": batch_label, "domain": domain_name, "type": "epic"},
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
         )
@@ -277,16 +290,13 @@ class HierarchicalCardService:
 
             ai_text = response.get("content", "") if isinstance(response, dict) else str(response)
 
-            # Parse JSON
-            clean = ai_text.strip()
-            if clean.startswith("```"):
-                clean = clean.split("\n", 1)[1] if "\n" in clean else clean[3:]
-                if clean.endswith("```"):
-                    clean = clean[:-3]
-                clean = clean.strip()
-
-            parsed = json.loads(clean)
-            stories_data = parsed.get("stories", [])
+            # Validate AI response structure
+            is_valid, resp_issues, parsed = validate_stories_response(ai_text)
+            if resp_issues:
+                for issue in resp_issues:
+                    logger.warning(f"Stories response validation for '{domain_name}': {issue}")
+            if is_valid and parsed:
+                stories_data = parsed.get("stories", [])
 
         except Exception as e:
             logger.warning(f"AI Story generation failed for '{domain_name}': {e}")
@@ -315,6 +325,15 @@ class HierarchicalCardService:
                 for c in story.get("acceptance_criteria", [])
             ]
 
+            # Validate story content
+            story_valid, story_issues = validate_card(
+                title=title, description=description,
+                item_type="story", acceptance_criteria=acceptance,
+            )
+            if story_issues:
+                for issue in story_issues:
+                    logger.debug(f"Story validation for '{title[:50]}': {issue}")
+
             new_story = Task(
                 project_id=project_id,
                 title=title[:255],
@@ -324,6 +343,7 @@ class HierarchicalCardService:
                 priority=PriorityLevel.LOW,
                 parent_id=epic.id,
                 labels=["suggested", "auto-discovered", batch_label],
+                batch_source={"batch_label": batch_label, "domain": domain_name, "source_file": source_file},
                 workflow_state="draft",
                 reporter="watchdog",
                 acceptance_criteria=acceptance,

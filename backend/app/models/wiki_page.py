@@ -9,7 +9,7 @@ with parent-child relationships and can be linked via markdown references.
 from datetime import datetime
 from uuid import uuid4
 from sqlalchemy import Column, String, Text, Integer, DateTime, ForeignKey, UniqueConstraint, Index
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -55,6 +55,11 @@ class WikiPage(Base):
 
     order_index = Column(Integer, nullable=False, default=0)
     source = Column(String(50), nullable=False, default="manual")
+
+    # PROMPT #230 Phase 5 - Batch source tracking
+    # Tracks which pipeline batch created/modified this page
+    # Example: {"batch_number": 2, "rules_added": 5, "domain": "Pagamentos"}
+    batch_source = Column(JSONB, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(
