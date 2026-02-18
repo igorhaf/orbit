@@ -26,7 +26,7 @@ Usage:
     changes = await service.scan_for_changes(project_id)
 
     # Process pending files
-    result = await service.process_pending_files(project_id, batch_size=50)
+    result = await service.process_pending_files(project_id, batch_size=10)
 """
 
 import asyncio
@@ -328,7 +328,7 @@ class ContinuousRAGService:
     async def process_pending_files(
         self,
         project_id: UUID,
-        batch_size: int = 50,
+        batch_size: int = 10,
         parent_job_id: UUID = None,  # PROMPT #298 - Parent job for per-file sub-jobs
     ) -> Dict[str, Any]:
         """

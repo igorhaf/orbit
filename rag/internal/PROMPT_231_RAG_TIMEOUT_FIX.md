@@ -55,10 +55,12 @@ MAX_PARALLEL_EXTRACTIONS = 3
 MAX_PARALLEL_EXTRACTIONS = int(os.getenv("OLLAMA_NUM_PARALLEL", "2"))
 ```
 
-### 3. batch_size: 30 → 10
+### 3. batch_size: 30/50 → 10 (todos os caminhos)
 - Default em `batch_processing_cycle()`: 30 → 10
 - Default em `submit_batch_processing_cycle()`: 30 → 10
 - Mapa por scan_depth: quick=15→8, normal=30→10
+- Default em `process_pending_files()`: 50 → 10 (causa raiz do "Arquivo X/30")
+- `run_full_cycle()` chamava `process_pending_files()` sem batch_size, usando default 50
 
 ### 4. Limpeza de estado
 - 8 arquivos falhados resetados para `pending`
@@ -71,6 +73,7 @@ MAX_PARALLEL_EXTRACTIONS = int(os.getenv("OLLAMA_NUM_PARALLEL", "2"))
 ### Modified:
 1. **backend/app/services/continuous_rag_service.py**
    - Linha 56: MAX_PARALLEL_EXTRACTIONS = 3 → int(os.getenv("OLLAMA_NUM_PARALLEL", "2"))
+   - Linha 331: process_pending_files default batch_size = 50 → 10
    - Linha 503: PER_FILE_TIMEOUT = 300 → int(os.getenv("RAG_FILE_TIMEOUT_SECONDS", "600"))
 
 2. **backend/app/services/watchdog.py**
@@ -102,7 +105,13 @@ O asyncio.wait_for cancela a coroutine LOCALMENTE mas NÃO cancela a request HTT
 ### 2. Semáforo > Capacidade = Timeout Silencioso
 Com semáforo de 3 e GPU de 2: terceiro arquivo adquire semáforo mas espera GPU. O tempo de espera na fila do GPU conta no timeout do asyncio.wait_for.
 
-### 3. Configurabilidade
+### 3. Dois caminhos de execucao com defaults diferentes
+O `process_pending_files()` era chamado por dois caminhos:
+- `watchdog.batch_processing_cycle()` → passava `batch_size=10` explicitamente
+- `run_full_cycle()` → **nao passava** batch_size, usava default=50
+Resultado: jobs do watchdog continuo mostravam "Arquivo X/30" (30 pending files, default 50 buscava todos). Corrigido default para 10.
+
+### 4. Configurabilidade
 Tornar timeout e paralelismo configuráveis via .env permite ajustar sem redeployar:
 - `RAG_FILE_TIMEOUT_SECONDS=600`
 - `OLLAMA_NUM_PARALLEL=2`
