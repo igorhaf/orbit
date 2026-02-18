@@ -566,7 +566,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
 # PROMPT #245 - Batch Processing Cycle
 # =============================================================================
 
-async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int = 30):
+async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int = 10):
     """
     Aggressive batch processing cycle for initial project ingestion.
 
@@ -768,7 +768,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         db.close()
 
 
-def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int = 30):
+def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int = 10):
     """
     PROMPT #245 - Submit a batch processing cycle.
     PROMPT #252: Cleans up stale jobs (>30min) before checking.
@@ -1414,8 +1414,8 @@ async def bootstrap_watchdog():
 
                 if pending_count > 0:
                     # Still processing initial files - use batch mode
-                    # PROMPT #260 - Reduced batch sizes to avoid flooding
-                    batch_size = {"quick": 15, "normal": 30}.get(project.scan_depth, 20)
+                    # PROMPT #260 / #231 - Smaller batches to reduce queue timeout pressure
+                    batch_size = {"quick": 8, "normal": 10}.get(project.scan_depth, 10)
                     submit_batch_processing_cycle(db, project.id, batch_size=batch_size)
                     logger.info(f"Batch processing resumed for {project.name} ({pending_count} pending)")
                 else:

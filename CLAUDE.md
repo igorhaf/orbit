@@ -760,8 +760,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #230 (Pipeline Incremental por Lotes - Fase 5: Validation + Anti-Hallucination)
-**Próximo prompt:** PROMPT #231
+**Último prompt:** PROMPT #231 (Fix RAG Extraction Timeouts + Performance)
+**Próximo prompt:** PROMPT #232
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

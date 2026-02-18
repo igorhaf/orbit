@@ -52,8 +52,8 @@ from app.services.rag_service import RAGService
 
 logger = logging.getLogger(__name__)
 
-# Concurrent AI requests to Ollama (matches OLLAMA_NUM_PARALLEL)
-MAX_PARALLEL_EXTRACTIONS = 3
+# Concurrent AI requests - match actual GPU parallelism (OLLAMA_NUM_PARALLEL)
+MAX_PARALLEL_EXTRACTIONS = int(os.getenv("OLLAMA_NUM_PARALLEL", "2"))
 
 
 def _get_console_logger():
@@ -499,8 +499,8 @@ class ContinuousRAGService:
                         "error": str(e)[:500],
                     }
 
-        # PROMPT #221 / #224 - Per-file timeout to prevent indefinite hangs
-        PER_FILE_TIMEOUT = 300  # 5 minutes max per file
+        # PROMPT #221 / #224 / #231 - Per-file timeout (configurable, matches OLLAMA_TIMEOUT)
+        PER_FILE_TIMEOUT = int(os.getenv("RAG_FILE_TIMEOUT_SECONDS", "600"))  # 10 min default
 
         async def _process_one_with_timeout(idx: int, state: RAGFileState) -> Dict[str, Any]:
             try:
