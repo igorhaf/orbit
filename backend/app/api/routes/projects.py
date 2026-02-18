@@ -1914,6 +1914,11 @@ async def lock_project_context(
             detail="Contexto ja esta bloqueado"
         )
 
+    # PROMPT #231 - Use project.description as fallback
+    if not project.context_semantic and project.description:
+        project.context_semantic = project.description
+        db.commit()
+
     if not project.context_semantic:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

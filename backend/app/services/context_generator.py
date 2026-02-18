@@ -1454,6 +1454,10 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             logger.warning(f"Project {project_id} context is already locked")
             return True
 
+        # PROMPT #231 - Use project.description as fallback
+        if not project.context_semantic and project.description:
+            project.context_semantic = project.description
+
         if not project.context_semantic:
             raise ValueError(
                 f"Não é possível travar contexto do projeto {project_id}: nenhum contexto gerado ainda"
@@ -1493,7 +1497,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         if not project:
             return False
 
-        return bool(project.context_semantic)
+        return bool(project.context_semantic or project.description)
 
     def is_context_locked(self, project_id: UUID) -> bool:
         """
@@ -1569,10 +1573,15 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         if not project:
             raise ValueError(f"Projeto {epic.project_id} não encontrado")
 
+        # PROMPT #231 - Use project.description as fallback when context_semantic is empty
+        # (Context Interview is no longer required; RAG pipeline populates description)
+        if not project.context_semantic and project.description:
+            project.context_semantic = project.description
+
         if not project.context_semantic:
             raise ValueError(
                 f"Projeto {project.id} não tem contexto. "
-                "Por favor, complete a Entrevista de Contexto primeiro."
+                "Execute um scan de memória ou aguarde o pipeline RAG processar os arquivos."
             )
 
         # 3. Generate full epic content using AI
