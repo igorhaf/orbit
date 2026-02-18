@@ -613,6 +613,32 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
 
         rules_extracted = process_result.get("rules_extracted", 0)
         pending_remaining = process_result.get("pending_remaining", 0)
+        rules_by_layer = process_result.get("rules_by_layer", {})
+
+        # --- Step 1.5: Incremental context update (PROMPT #230 Phase 2) ---
+        # Update project description at EVERY batch with rules > 0 (not just when pending=0)
+        context_updated = False
+        if rules_extracted > 0:
+            jm.update_progress(job_id, 40.0, f"Atualizando contexto do projeto ({rules_extracted} regras)...")
+            try:
+                from app.services.pipeline_context import IncrementalContextService
+                ctx_service = IncrementalContextService(db)
+                # Estimate batch number from total processed vs remaining
+                total_processed = process_result.get("processed", 0)
+                batch_num = max(1, (total_processed + pending_remaining + batch_size - 1) // batch_size - pending_remaining // batch_size)
+                ctx_result = await ctx_service.update_context_from_batch(
+                    project_id=project_id,
+                    batch_rules=rules_extracted,
+                    batch_number=batch_num,
+                    rules_by_layer=rules_by_layer,
+                )
+                context_updated = ctx_result.get("updated", False)
+                if context_updated:
+                    logger.info(f"Context updated for '{project_name}' batch #{batch_num}")
+                else:
+                    logger.info(f"Context update skipped for '{project_name}': {ctx_result.get('reason', 'unknown')}")
+            except Exception as e:
+                logger.warning(f"Incremental context update failed (non-blocking): {e}")
 
         # --- Step 2: Submit wiki enrichment as separate job with sub-jobs ---
         # PROMPT #228 - Wiki pages are now generated as individual sub-jobs in the queue
@@ -661,6 +687,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             "batch_processed": process_result.get("processed", 0),
             "rules_extracted": rules_extracted,
             "pending_remaining": pending_remaining,
+            "context_updated": context_updated,
             "wiki_enriched": wiki_enriched,
             "cards_created": card_result.get("created", 0),
             "cards_enriched": enriched_cards,

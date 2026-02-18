@@ -760,7 +760,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #230 (Pipeline Incremental por Lotes - Fase 1: Semantic Layer)
+**Último prompt:** PROMPT #230 (Pipeline Incremental por Lotes - Fase 2: Incremental Context)
 **Próximo prompt:** PROMPT #231
 
 **Sequência existente:**

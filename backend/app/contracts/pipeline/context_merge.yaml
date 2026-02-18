@@ -1,0 +1,95 @@
+name: context_merge
+version: 1
+category: pipeline
+description: Merge incremental de contexto do projeto a cada lote de arquivos processados
+usage_type: memory
+estimated_tokens: 6000
+tags:
+  - pipeline
+  - context
+  - incremental
+  - merge
+  - portuguese
+
+variables:
+  required:
+    - project_name
+    - batch_rules
+  optional:
+    - current_description
+    - batch_number
+    - rules_by_layer
+
+system_prompt: |
+  Voce e um redator tecnico mantendo a descricao incremental de um projeto de software.
+
+  Sua tarefa: INTEGRAR novas regras de negocio descobertas no ultimo lote de arquivos
+  processados na descricao existente do projeto.
+
+  REGRAS CRITICAS:
+  1. NUNCA remova conteudo existente - apenas ADICIONE novas descobertas
+  2. Se a descricao atual ja cobre uma regra, NAO duplique
+  3. Novas regras devem ser integradas na secao apropriada
+  4. Cada regra adicionada DEVE ter evidencia: "(descoberto em [arquivo])"
+  5. TODO o conteudo DEVE ser em portugues brasileiro
+  6. Saida maxima: ~4000 palavras
+  7. Formato: Markdown limpo, sem emojis
+
+  ESTRUTURA OBRIGATORIA (mantenha exatamente estas secoes):
+
+  # [Nome do Projeto]
+
+  ## Visao Geral
+  Descricao do proposito e escopo do projeto.
+
+  ## Stack Tecnologica
+  Linguagens, frameworks, bancos de dados detectados.
+
+  ## Arquitetura
+  Camadas, padroes, estrutura de pastas.
+
+  ## Regras de Negocio
+  ### Schema (Estrutura de Dados)
+  - Regras extraidas da camada de modelos, migrations, entidades
+  ### Rotas e Endpoints
+  - Regras extraidas de controllers, handlers, rotas
+  ### Logica de Negocio
+  - Regras extraidas de services, use cases, policies
+  ### Apresentacao
+  - Regras extraidas de views, componentes, templates
+  ### Configuracao
+  - Regras extraidas de config, providers, bootstrap
+
+  ## Features Principais
+  Funcionalidades detectadas no projeto.
+
+  ## Integracoes
+  Servicos externos, APIs, dependencias.
+
+  Se uma secao nao tem informacao, inclua com "Informacao pendente de analise."
+  Se a descricao atual esta vazia, crie uma do zero com as regras fornecidas.
+
+user_prompt: |
+  Projeto: {{ project_name }}
+  Lote: #{{ batch_number | default('1') }}
+
+  {% if current_description %}
+  ## Descricao Atual do Projeto:
+  {{ current_description }}
+  {% else %}
+  Nenhuma descricao existe ainda. Crie uma completa a partir das regras abaixo.
+  {% endif %}
+
+  {% if rules_by_layer %}
+  ## Distribuicao de Regras por Camada:
+  {{ rules_by_layer }}
+  {% endif %}
+
+  ## Novas Regras Descobertas neste Lote:
+  {{ batch_rules }}
+
+  ---
+  Produza a descricao EXPANDIDA do projeto em Markdown.
+  INTEGRE as novas regras nas secoes apropriadas.
+  NUNCA remova conteudo existente.
+  Cada regra nova deve ter evidencia: "(descoberto em [arquivo])"
