@@ -615,6 +615,10 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
         pending_remaining = process_result.get("pending_remaining", 0)
         rules_by_layer = process_result.get("rules_by_layer", {})
 
+        # Estimate batch number for incremental steps
+        total_processed = process_result.get("processed", 0)
+        batch_num = max(1, (total_processed + pending_remaining + batch_size - 1) // batch_size - pending_remaining // batch_size)
+
         # --- Step 1.5: Incremental context update (PROMPT #230 Phase 2) ---
         # Update project description at EVERY batch with rules > 0 (not just when pending=0)
         context_updated = False
@@ -623,9 +627,6 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             try:
                 from app.services.pipeline_context import IncrementalContextService
                 ctx_service = IncrementalContextService(db)
-                # Estimate batch number from total processed vs remaining
-                total_processed = process_result.get("processed", 0)
-                batch_num = max(1, (total_processed + pending_remaining + batch_size - 1) // batch_size - pending_remaining // batch_size)
                 ctx_result = await ctx_service.update_context_from_batch(
                     project_id=project_id,
                     batch_rules=rules_extracted,
@@ -640,20 +641,40 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             except Exception as e:
                 logger.warning(f"Incremental context update failed (non-blocking): {e}")
 
-        # --- Step 2: Submit wiki enrichment as separate job with sub-jobs ---
-        # PROMPT #228 - Wiki pages are now generated as individual sub-jobs in the queue
-        # PROMPT #229 - Defer enrichment during batch ingestion to avoid Ollama slot contention
+        # --- Step 2: Incremental wiki update (PROMPT #230 Phase 3) ---
+        # Update wiki pages at EVERY batch with rules > 0 (domain pages via AI merge)
+        wiki_updated = False
+        wiki_pages_created = 0
+        wiki_pages_merged = 0
+        if rules_extracted > 0:
+            jm.update_progress(job_id, 50.0, f"Atualizando wiki do projeto ({rules_extracted} regras)...")
+            try:
+                from app.services.pipeline_wiki import IncrementalWikiService
+                wiki_service = IncrementalWikiService(db)
+                wiki_result = await wiki_service.update_wiki_from_batch(
+                    project_id=project_id,
+                    batch_rules=rules_extracted,
+                    batch_number=batch_num,
+                    rules_by_layer=rules_by_layer,
+                )
+                wiki_updated = wiki_result.get("updated", False)
+                wiki_pages_created = wiki_result.get("pages_created", 0)
+                wiki_pages_merged = wiki_result.get("pages_merged", 0)
+                if wiki_updated:
+                    logger.info(f"Wiki updated for '{project_name}': {wiki_pages_created} created, {wiki_pages_merged} merged")
+            except Exception as e:
+                logger.warning(f"Incremental wiki update failed (non-blocking): {e}")
+
+        # Full wiki enrichment (heavy job with sub-jobs) only when ALL files are done
         wiki_enriched = False
         if rules_extracted > 0 and pending_remaining == 0:
-            jm.update_progress(job_id, 50.0, f"Enfileirando geração de wiki ({rules_extracted} regras)...")
+            jm.update_progress(job_id, 55.0, f"Enfileirando enriquecimento completo de wiki...")
             try:
                 submit_wiki_enrichment(db, project_id, rules_extracted)
                 wiki_enriched = True
                 logger.info(f"Wiki enrichment job queued for '{project_name}'")
             except Exception as e:
                 logger.warning(f"Wiki enrichment submit failed (non-blocking): {e}", exc_info=True)
-        elif rules_extracted > 0:
-            logger.info(f"Wiki enrichment deferred: {pending_remaining} files still pending for '{project_name}'")
 
         # --- Step 3: Create cards from new business rules ---
         # PROMPT #260 - Batch mode uses higher card limit (15) for faster initial coverage
@@ -688,6 +709,9 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             "rules_extracted": rules_extracted,
             "pending_remaining": pending_remaining,
             "context_updated": context_updated,
+            "wiki_updated": wiki_updated,
+            "wiki_pages_created": wiki_pages_created,
+            "wiki_pages_merged": wiki_pages_merged,
             "wiki_enriched": wiki_enriched,
             "cards_created": card_result.get("created", 0),
             "cards_enriched": enriched_cards,
