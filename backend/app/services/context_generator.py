@@ -644,10 +644,7 @@ class ContextGeneratorService:
         # 4.5. PROMPT #175 - Validate context content before saving
         context_result = self._validate_context_content(context_result, project.name)
 
-        # 5. Save to project - PROMPT #186: Final emoji strip before DB save
-        project.context_semantic = _strip_emojis(context_result["context_semantic"])
-        project.context_human = _strip_emojis(context_result["context_human"])
-        # PROMPT #247 - Description is always manual, never auto-generated
+        # PROMPT #247 - All project fields are manual, no auto-generation
 
         # 6. Mark interview as completed
         interview.status = InterviewStatus.COMPLETED
@@ -1487,10 +1484,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             logger.warning(f"Project {project_id} context is already locked")
             return True
 
-        # PROMPT #231 - Use project.description as fallback
-        if not project.context_semantic and project.description:
-            project.context_semantic = project.description
-
+        # PROMPT #247 - context_semantic is manual, no fallback auto-generation
         if not project.context_semantic:
             raise ValueError(
                 f"Não é possível travar contexto do projeto {project_id}: nenhum contexto gerado ainda"
@@ -1606,11 +1600,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         if not project:
             raise ValueError(f"Projeto {epic.project_id} não encontrado")
 
-        # PROMPT #231 - Use project.description as fallback when context_semantic is empty
-        # (Context Interview is no longer required; RAG pipeline populates description)
-        if not project.context_semantic and project.description:
-            project.context_semantic = project.description
-
+        # PROMPT #247 - context_semantic is manual, no fallback auto-generation
         if not project.context_semantic:
             raise ValueError(
                 f"Projeto {project.id} não tem contexto. "
@@ -5296,10 +5286,7 @@ Retorne APENAS o JSON, sem explicações."""
 
         context_human = _strip_emojis("\n".join(human_parts))
 
-        # Update project with auto-generated context
-        project.context_semantic = context_semantic
-        project.context_human = context_human
-        # PROMPT #247 - Description is always manual, never auto-generated
+        # PROMPT #247 - All project fields are manual, no auto-generation
         self.db.commit()
 
         return {
@@ -5987,10 +5974,7 @@ IMPORTANTE:
             context_semantic = f"# {project.name}\n\n{architecture_analysis}\n\n{business_domain_analysis}\n\n{feature_landscape}"
             context_human = context_semantic
 
-        # --- Save to project ---
-        project.context_semantic = context_semantic
-        project.context_human = context_human
-        # PROMPT #247 - Description is always manual, never auto-generated
+        # PROMPT #247 - All project fields are manual, no auto-generation
         self.db.commit()
 
         # --- Store in RAG ---

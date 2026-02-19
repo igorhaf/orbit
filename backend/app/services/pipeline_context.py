@@ -134,9 +134,7 @@ class IncrementalContextService:
                 )
                 return {"skipped": True, "reason": f"Validation failed: {'; '.join(issues)}"}
 
-            # PROMPT #247 - Description is always manual, never auto-generated
-            # Context updates go to context_human, not description
-            project.context_human = new_description
+            # PROMPT #247 - All project fields are manual, no auto-generation
             self.db.commit()
 
             desc_len_after = len(new_description)
