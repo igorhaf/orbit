@@ -2451,13 +2451,13 @@ async def generate_full_hierarchy(
 async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
     """
     PROMPT #237 - Background task: generate full hierarchy.
+    PROMPT #240 - Only generates business rule cards (closed, from existing code).
+                  NO AI-suggested cards are created here. Suggestions come from
+                  the separate "Aprovar/Rejeitar" flow.
 
-    Phases:
-    1. Generate Epics (via generate_cards_from_memory)
-    2. Activate each Epic (generates Stories automatically)
-    3. Activate each Story + generate Tasks
-    4. Activate each Task + generate Subtasks
-    5. Activate each Subtask (leaf)
+    The hierarchy is built by _classify_rules_hierarchy which uses AI to organize
+    existing business rules into Epic > Story > Task > Subtask structure.
+    All cards are created with workflow_state="closed" and status=DONE.
     """
     from app.database import SessionLocal
     from app.services.context_generator import ContextGeneratorService
@@ -2476,125 +2476,68 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
 
         project_name = project.name or str(project_id)[:8]
 
-        # === Phase 1: Generate Epics ===
-        jm.update_progress(job_id, 5.0, "Fase 1/5: Gerando Epics...")
+        # === Phase 1: Generate rich context if missing ===
+        jm.update_progress(job_id, 5.0, "Fase 1/3: Gerando contexto do projeto...")
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
-            job.notification_title = f"Fase 1/5: Gerando Epics - '{project_name}'"
+            job.notification_title = f"Fase 1/3: Contexto - '{project_name}'"
             db.commit()
 
-        epics_result = await context_service.generate_cards_from_memory(
-            project_id=project_id,
-            job_manager=jm,
-            job_id=job_id,
-        )
-        epic_ids = [e.get("id") for e in epics_result.get("suggested_epics", []) if e.get("id")]
-
-        # If no epic IDs from result, query DB for suggested epics
-        if not epic_ids:
-            epics = db.query(Task).filter(
-                Task.project_id == project_id,
-                Task.item_type == ItemType.EPIC,
-                Task.labels.contains(["suggested"]),
-            ).all()
-            epic_ids = [e.id for e in epics]
-
-        if not epic_ids:
-            jm.complete_job(job_id, {"error": "Nenhum epic gerado", "total_epics": 0})
-            return
-
-        total_epics = len(epic_ids)
-        logger.info(f"Phase 1 complete: {total_epics} epics generated")
-
-        # === Phase 2: Activate Epics (generates Stories) ===
-        jm.update_progress(job_id, 15.0, f"Fase 2/5: Ativando {total_epics} Epics...")
-        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
-        if job:
-            job.notification_title = f"Fase 2/5: Ativando Epics - '{project_name}'"
-            db.commit()
-
-        for i, epic_id in enumerate(epic_ids):
-            pct = 15.0 + (i / total_epics) * 15.0
-            jm.update_progress(job_id, pct, f"Fase 2/5: Ativando Epic {i+1}/{total_epics}...")
+        if not project.context_semantic:
             try:
-                await context_service.activate_suggested_epic(epic_id=epic_id)
+                await context_service.generate_rich_context_from_memory(
+                    project_id=project_id,
+                    progress_callback=None,
+                    ai_timeout=120
+                )
+                logger.info(f"Rich context generated for project {project.name}")
             except Exception as e:
-                logger.warning(f"Failed to activate epic {epic_id}: {e}")
+                logger.warning(f"Rich context failed, continuing: {e}")
 
-        # === Phase 3: Activate Stories + generate Tasks ===
-        # PROMPT #239 - Exclude business_rule cards from hierarchy generation
-        stories = db.query(Task).filter(
+        # === Phase 2: Generate business rule cards (hierarchical, closed) ===
+        jm.update_progress(job_id, 20.0, "Fase 2/3: Organizando regras de negocio em hierarquia...")
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Fase 2/3: Regras de negocio - '{project_name}'"
+            db.commit()
+
+        try:
+            business_rule_cards = await context_service.generate_business_rule_cards(project_id)
+            logger.info(f"Generated {len(business_rule_cards)} business rule cards")
+        except Exception as e:
+            logger.error(f"Failed to generate business rule cards: {e}")
+            business_rule_cards = []
+
+        # Count hierarchy levels
+        total_epics = sum(1 for c in business_rule_cards if c.get("item_type") == "epic")
+        total_stories = sum(1 for c in business_rule_cards if c.get("item_type") == "story")
+        total_tasks = sum(1 for c in business_rule_cards if c.get("item_type") == "task")
+        total_subtasks = sum(1 for c in business_rule_cards if c.get("item_type") == "subtask")
+
+        # === Phase 3: Generate suggested epics (draft, for user review) ===
+        jm.update_progress(job_id, 70.0, "Fase 3/3: Gerando epics sugeridos...")
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Fase 3/3: Epics sugeridos - '{project_name}'"
+            db.commit()
+
+        suggested_epic_count = 0
+        existing_suggested = db.query(Task).filter(
             Task.project_id == project_id,
-            Task.item_type == ItemType.STORY,
             Task.labels.contains(["suggested"]),
-            ~Task.labels.contains(["business_rule"]),
-        ).all()
-        total_stories = len(stories)
-        logger.info(f"Phase 2 complete: {total_stories} stories to activate")
+            Task.item_type == ItemType.EPIC,
+        ).count()
 
-        jm.update_progress(job_id, 30.0, f"Fase 3/5: Ativando {total_stories} Stories...")
-        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
-        if job:
-            job.notification_title = f"Fase 3/5: Ativando Stories - '{project_name}'"
-            db.commit()
-
-        for i, story in enumerate(stories):
-            pct = 30.0 + (i / max(total_stories, 1)) * 20.0
-            jm.update_progress(job_id, pct, f"Fase 3/5: Story {i+1}/{total_stories}...")
+        if existing_suggested == 0:
             try:
-                await context_service.activate_suggested_story(story_id=story.id)
-                await context_service._generate_draft_tasks(story, project)
+                suggested_epics = await context_service._generate_suggested_epics_from_memory(project)
+                suggested_epic_count = len(suggested_epics)
+                logger.info(f"Generated {suggested_epic_count} suggested epics (draft, for user review)")
             except Exception as e:
-                logger.warning(f"Failed to activate story {story.id}: {e}")
-
-        # === Phase 4: Activate Tasks + generate Subtasks ===
-        tasks = db.query(Task).filter(
-            Task.project_id == project_id,
-            Task.item_type == ItemType.TASK,
-            Task.labels.contains(["suggested"]),
-            ~Task.labels.contains(["business_rule"]),
-        ).all()
-        total_tasks = len(tasks)
-        logger.info(f"Phase 3 complete: {total_tasks} tasks to activate")
-
-        jm.update_progress(job_id, 50.0, f"Fase 4/5: Ativando {total_tasks} Tasks...")
-        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
-        if job:
-            job.notification_title = f"Fase 4/5: Ativando Tasks - '{project_name}'"
-            db.commit()
-
-        for i, task in enumerate(tasks):
-            pct = 50.0 + (i / max(total_tasks, 1)) * 25.0
-            jm.update_progress(job_id, pct, f"Fase 4/5: Task {i+1}/{total_tasks}...")
-            try:
-                await context_service.activate_suggested_task(task_id=task.id)
-                await context_service._generate_draft_subtasks(task, project)
-            except Exception as e:
-                logger.warning(f"Failed to activate task {task.id}: {e}")
-
-        # === Phase 5: Activate Subtasks (leaf) ===
-        subtasks = db.query(Task).filter(
-            Task.project_id == project_id,
-            Task.item_type == ItemType.SUBTASK,
-            Task.labels.contains(["suggested"]),
-            ~Task.labels.contains(["business_rule"]),
-        ).all()
-        total_subtasks = len(subtasks)
-        logger.info(f"Phase 4 complete: {total_subtasks} subtasks to activate")
-
-        jm.update_progress(job_id, 75.0, f"Fase 5/5: Ativando {total_subtasks} Subtasks...")
-        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
-        if job:
-            job.notification_title = f"Fase 5/5: Ativando Subtasks - '{project_name}'"
-            db.commit()
-
-        for i, subtask in enumerate(subtasks):
-            pct = 75.0 + (i / max(total_subtasks, 1)) * 20.0
-            jm.update_progress(job_id, pct, f"Fase 5/5: Subtask {i+1}/{total_subtasks}...")
-            try:
-                await context_service.activate_suggested_subtask(subtask_id=subtask.id)
-            except Exception as e:
-                logger.warning(f"Failed to activate subtask {subtask.id}: {e}")
+                logger.warning(f"Failed to generate suggested epics: {e}")
+        else:
+            suggested_epic_count = existing_suggested
+            logger.info(f"Skipping suggested epics - {existing_suggested} already exist")
 
         # === Complete ===
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
@@ -2604,15 +2547,18 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
 
         jm.complete_job(job_id, {
             "project_id": str(project_id),
+            "total_business_rule_cards": len(business_rule_cards),
             "total_epics": total_epics,
             "total_stories": total_stories,
             "total_tasks": total_tasks,
             "total_subtasks": total_subtasks,
+            "suggested_epics": suggested_epic_count,
         })
         logger.info(
-            f"Full hierarchy generated for '{project_name}': "
-            f"{total_epics} epics, {total_stories} stories, "
-            f"{total_tasks} tasks, {total_subtasks} subtasks"
+            f"Hierarchy generated for '{project_name}': "
+            f"{total_epics} BR epics, {total_stories} BR stories, "
+            f"{total_tasks} BR tasks, {total_subtasks} BR subtasks, "
+            f"{suggested_epic_count} suggested epics (draft)"
         )
 
     except Exception as e:
