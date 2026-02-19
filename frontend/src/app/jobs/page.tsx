@@ -379,12 +379,17 @@ export default function JobsPage() {
       if (!data?.job_id) return;
 
       // Update the jobs list in place (no re-fetch needed!)
+      // Skip child job events - they are shown inside their parent's expansion
+      const isChildJob = !!data.parent_job_id;
+
       setJobs((prevJobs) => {
         const jobIndex = prevJobs.findIndex((j) => j.id === data.job_id);
 
         if (event === 'job_started') {
           if (jobIndex === -1) {
-            // New job - add to beginning of list
+            // Child jobs should NOT be added to root list
+            if (isChildJob) return prevJobs;
+            // New root job - add to beginning of list
             const newJob: JobResponse = {
               id: data.job_id,
               job_type: data.job_type,

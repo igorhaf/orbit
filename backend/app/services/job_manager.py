@@ -209,6 +209,7 @@ class JobManager:
             "notification_title": job.notification_title,
             "task_id": str(job.task_id) if job.task_id else None,
             "project_id": str(job.project_id) if job.project_id else None,
+            "parent_job_id": str(job.parent_job_id) if job.parent_job_id else None,
         })
 
     # PROMPT #288 - Milestone thresholds for throttled progress updates
@@ -307,7 +308,8 @@ class JobManager:
             "deep_link": job.deep_link,
             "project_id": str(job.project_id) if job.project_id else None,
             "task_id": str(job.task_id) if job.task_id else None,
-            "interview_id": str(job.interview_id) if job.interview_id else None
+            "interview_id": str(job.interview_id) if job.interview_id else None,
+            "parent_job_id": str(job.parent_job_id) if job.parent_job_id else None,
         })
 
     def fail_job(self, job_id: UUID, error: str) -> None:
@@ -343,7 +345,8 @@ class JobManager:
             "deep_link": job.deep_link,
             "project_id": str(job.project_id) if job.project_id else None,
             "task_id": str(job.task_id) if job.task_id else None,
-            "interview_id": str(job.interview_id) if job.interview_id else None
+            "interview_id": str(job.interview_id) if job.interview_id else None,
+            "parent_job_id": str(job.parent_job_id) if job.parent_job_id else None,
         })
 
     def get_job(self, job_id: UUID) -> Optional[AsyncJob]:
@@ -393,7 +396,8 @@ class JobManager:
         _broadcast_job_event("job_cancelled", {
             "job_id": str(job_id),
             "job_type": job.job_type.value,
-            "status": "cancelled"
+            "status": "cancelled",
+            "parent_job_id": str(job.parent_job_id) if job.parent_job_id else None,
         })
 
         return True

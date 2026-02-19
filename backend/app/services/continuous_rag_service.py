@@ -418,27 +418,65 @@ class ContinuousRAGService:
             fp_lower = filepath.lower()
             return any(pat in fp_lower for pat in _SKIP_PATTERNS)
 
+        # PROMPT #237 - Complete/fail child jobs immediately using separate DB session
+        # to avoid transaction conflicts with the main session during asyncio.gather
+        def _complete_child_immediately(child_job_id, result_data):
+            """Complete a child job using a fresh DB session (thread-safe for asyncio)."""
+            from app.database import SessionLocal
+            from app.services.job_manager import JobManager as JM
+            _db = SessionLocal()
+            try:
+                _jm = JM(_db)
+                _jm.complete_child_job(child_job_id, result_data)
+            except Exception as e:
+                logger.warning(f"Failed to complete child job {child_job_id}: {e}")
+            finally:
+                _db.close()
+
+        def _fail_child_immediately(child_job_id, error_msg):
+            """Fail a child job using a fresh DB session (thread-safe for asyncio)."""
+            from app.database import SessionLocal
+            from app.services.job_manager import JobManager as JM
+            _db = SessionLocal()
+            try:
+                _jm = JM(_db)
+                _jm.fail_child_job(child_job_id, error_msg)
+            except Exception as e:
+                logger.warning(f"Failed to fail child job {child_job_id}: {e}")
+            finally:
+                _db.close()
+
+        def _start_child_immediately(child_job_id):
+            """Start a child job using a fresh DB session (thread-safe for asyncio)."""
+            from app.database import SessionLocal
+            from app.services.job_manager import JobManager as JM
+            _db = SessionLocal()
+            try:
+                _jm = JM(_db)
+                _jm.start_job(child_job_id)
+            except Exception as e:
+                logger.warning(f"Failed to start child job {child_job_id}: {e}")
+            finally:
+                _db.close()
+
         async def _process_one(idx: int, state: RAGFileState) -> Dict[str, Any]:
             """Process a single file with semaphore-controlled concurrency."""
             file_full_path = code_path / state.file_path
+            _child_id = child_job_map.get(state.id) if jm else None
 
             if not file_full_path.exists():
                 # Mark child as started+completed immediately for deleted files
-                if jm and state.id in child_job_map:
-                    try:
-                        jm.start_job(child_job_map[state.id])
-                    except Exception:
-                        pass
+                if _child_id:
+                    _start_child_immediately(_child_id)
+                    _complete_child_immediately(_child_id, {"status": "deleted"})
                 return {"state_id": state.id, "status": "deleted"}
 
             # PROMPT #224 - Skip files unlikely to have business rules
             if _is_low_value_file(state.file_path):
                 # Mark child as started+completed immediately for skipped files
-                if jm and state.id in child_job_map:
-                    try:
-                        jm.start_job(child_job_map[state.id])
-                    except Exception:
-                        pass
+                if _child_id:
+                    _start_child_immediately(_child_id)
+                    _complete_child_immediately(_child_id, {"status": "skipped"})
                 return {
                     "state_id": state.id,
                     "file_path": state.file_path,
@@ -455,11 +493,8 @@ class ContinuousRAGService:
 
             async with semaphore:
                 # Mark child job as running only when semaphore is acquired
-                if jm and state.id in child_job_map:
-                    try:
-                        jm.start_job(child_job_map[state.id])
-                    except Exception:
-                        pass
+                if _child_id:
+                    _start_child_immediately(_child_id)
 
                 try:
                     # Read file content (fast, local I/O)
@@ -488,6 +523,10 @@ class ContinuousRAGService:
                         max_resp_tokens=_resp_tokens,
                     )
 
+                    # PROMPT #237 - Complete child job immediately on success
+                    if _child_id:
+                        _complete_child_immediately(_child_id, {"rules_extracted": len(rules) if rules else 0})
+
                     return {
                         "state_id": state.id,
                         "file_path": state.file_path,
@@ -496,6 +535,10 @@ class ContinuousRAGService:
                     }
 
                 except Exception as e:
+                    # PROMPT #237 - Fail child job immediately on error
+                    if _child_id:
+                        _fail_child_immediately(_child_id, str(e)[:500])
+
                     return {
                         "state_id": state.id,
                         "file_path": state.file_path,
@@ -514,6 +557,10 @@ class ContinuousRAGService:
                 )
             except asyncio.TimeoutError:
                 logger.warning(f"File extraction timed out after {PER_FILE_TIMEOUT}s: {state.file_path}")
+                # PROMPT #237 - Fail child job immediately on timeout
+                _child_id = child_job_map.get(state.id) if jm else None
+                if _child_id:
+                    _fail_child_immediately(_child_id, f"Extracao expirou apos {PER_FILE_TIMEOUT}s")
                 return {
                     "state_id": state.id,
                     "file_path": state.file_path,
@@ -543,14 +590,12 @@ class ContinuousRAGService:
             if not state:
                 continue
 
-            # PROMPT #298 - Resolve child job for this file
-            _child_id = child_job_map.get(state.id) if jm else None
+            # PROMPT #237 - Child jobs are now completed/failed inside _process_one
+            # using a separate DB session, so no need to do it here.
 
             if result["status"] == "deleted":
                 state.status = FileProcessingStatus.DELETED
-                if jm and _child_id:
-                    jm.complete_child_job(_child_id, {"status": "deleted"})
-                elif (idx + 1) % 10 == 0:
+                if (idx + 1) % 10 == 0:
                     self.db.commit()
                 continue
 
@@ -561,9 +606,7 @@ class ContinuousRAGService:
                 state.rules_extracted = 0
                 state.error_message = None
                 processed += 1
-                if jm and _child_id:
-                    jm.complete_child_job(_child_id, {"status": "skipped"})
-                elif (idx + 1) % 10 == 0:
+                if (idx + 1) % 10 == 0:
                     self.db.commit()
                 continue
 
@@ -572,9 +615,7 @@ class ContinuousRAGService:
                 state.error_message = result.get("error", "Erro desconhecido")
                 errors += 1
                 logger.error(f"Failed to process {result.get('file_path')}: {result.get('error')}")
-                if jm and _child_id:
-                    jm.fail_child_job(_child_id, result.get("error", "Erro desconhecido"))
-                elif (idx + 1) % 10 == 0:
+                if (idx + 1) % 10 == 0:
                     self.db.commit()
                 continue
 
@@ -619,10 +660,8 @@ class ContinuousRAGService:
             processed += 1
             total_rules += len(new_doc_ids)
 
-            # PROMPT #298 - Complete child job for this file
-            if jm and _child_id:
-                jm.complete_child_job(_child_id, {"rules_extracted": len(new_doc_ids)})
-            elif (idx + 1) % 10 == 0:
+            # PROMPT #237 - Child job already completed inside _process_one
+            if (idx + 1) % 10 == 0:
                 self.db.commit()
 
             logger.info(
