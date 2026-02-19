@@ -151,6 +151,11 @@ export default function ProjectDetailsPage() {
         setHasEpics(status.has_epics || false);
         setTotalFilesProcessed(status.total_files_processed || 0);
 
+        // Reset generatingHierarchy when epics appear or enrichment finishes
+        if ((status.has_epics || false) && !status.is_enriching) {
+          setGeneratingHierarchy(false);
+        }
+
         // While enriching, refresh project data every poll (catches title/description updates)
         if (status.is_enriching) {
           loadProjectData();
@@ -612,6 +617,23 @@ export default function ProjectDetailsPage() {
                 </span>
                 <p className="text-xs text-blue-700 mt-0.5">
                   O codebase esta sendo analisado e o conhecimento do projeto esta sendo atualizado automaticamente.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PROMPT #244 - Generating hierarchy progress banner */}
+        {generatingHierarchy && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+              <div>
+                <span className="text-sm font-medium text-blue-900">
+                  Gerando hierarquia de cards...
+                </span>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  Epics, Stories, Tasks e Subtasks estao sendo criados a partir das regras de negocio do codebase. Isso pode levar alguns minutos.
                 </p>
               </div>
             </div>
