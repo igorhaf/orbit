@@ -40,17 +40,6 @@ from app.services.provisioning import ProvisioningService
 from app.services.project_state_detector import ProjectStateDetector
 # PROMPT #103 - External prompts support
 from app.prompts import get_prompt_service
-from app.api.routes.interview_handlers import (
-    handle_requirements_interview,
-    handle_task_focused_interview,
-    handle_meta_prompt_interview,
-    handle_orchestrator_interview,  # PROMPT #91 / PROMPT #94
-    handle_subtask_focused_interview,  # PROMPT #94 FASE 2
-    handle_task_orchestrated_interview,  # PROMPT #97
-    handle_subtask_orchestrated_interview,  # PROMPT #97
-    handle_card_focused_interview  # PROMPT #98
-)
-
 # Import helper functions from modular files (PROMPT #69)
 from .response_cleaners import clean_ai_response
 from .context_builders import (
