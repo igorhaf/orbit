@@ -171,7 +171,7 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
             return
 
         # --- Imports ---
-        from app.api.routes.wiki import (
+        from app.services.wiki_service import (
             _upsert_wiki_page,
             _build_architecture_patterns_page,
             _build_code_conventions_page,
@@ -294,7 +294,7 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
         idx_ai = len(rag_page_builders) + 2
         jm.start_job(child_ids[idx_ai])
         try:
-            from app.api.routes.projects import _enrich_context_from_rag
+            from app.services.project_service import _enrich_context_from_rag
             enriched = await _enrich_context_from_rag(db, project_id)
             if enriched:
                 pages_created += 1
@@ -420,7 +420,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
         jm.update_progress(job_id, 70.0, "Descobrindo padrões de código...")
         try:
             from app.services.pattern_discovery import PatternDiscoveryService
-            from app.api.routes.projects import _effective_max_patterns
+            from app.services.project_service import _effective_max_patterns
             effective_max = _effective_max_patterns(db, project_id)
             if effective_max > 0:
                 discovery = PatternDiscoveryService(db)
