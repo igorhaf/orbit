@@ -152,6 +152,16 @@ export default function KnowledgePage() {
     }
   }, [projectId]);
 
+  // PROMPT #243 - Load orbit knowledge files
+  const loadOrbitFiles = useCallback(async () => {
+    try {
+      const res = await knowledgeApi.listOrbitFiles(projectId);
+      setOrbitFiles(res.files);
+    } catch (error) {
+      console.error('Failed to load orbit files:', error);
+    }
+  }, [projectId]);
+
   // Initial load
   useEffect(() => {
     const loadAll = async () => {
@@ -239,15 +249,6 @@ export default function KnowledgePage() {
   };
 
   // PROMPT #243 - Orbit knowledge handlers
-  const loadOrbitFiles = useCallback(async () => {
-    try {
-      const res = await knowledgeApi.listOrbitFiles(projectId);
-      setOrbitFiles(res.files);
-    } catch (error) {
-      console.error('Failed to load orbit files:', error);
-    }
-  }, [projectId]);
-
   const handleUploadOrbitKnowledge = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
