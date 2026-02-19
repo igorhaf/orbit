@@ -376,7 +376,7 @@ class ContinuousRAGService:
             _parallel = MAX_PARALLEL_EXTRACTIONS
         semaphore = asyncio.Semaphore(_parallel)
 
-        # PROMPT #298 - Create child jobs per file upfront
+        # PROMPT #298 - Create child jobs per file upfront (pending, not running)
         jm = None
         child_job_map = {}  # state_id → child_job_id
         if parent_job_id:
@@ -391,7 +391,6 @@ class ContinuousRAGService:
                     phase_label=f"Arquivo {i}/{total_count}: {state.file_path}",
                 )
                 child_job_map[state.id] = child.id
-                jm.start_job(child.id)
 
         # Shared counters (accessed sequentially after gather)
         results = []
@@ -424,10 +423,22 @@ class ContinuousRAGService:
             file_full_path = code_path / state.file_path
 
             if not file_full_path.exists():
+                # Mark child as started+completed immediately for deleted files
+                if jm and state.id in child_job_map:
+                    try:
+                        jm.start_job(child_job_map[state.id])
+                    except Exception:
+                        pass
                 return {"state_id": state.id, "status": "deleted"}
 
             # PROMPT #224 - Skip files unlikely to have business rules
             if _is_low_value_file(state.file_path):
+                # Mark child as started+completed immediately for skipped files
+                if jm and state.id in child_job_map:
+                    try:
+                        jm.start_job(child_job_map[state.id])
+                    except Exception:
+                        pass
                 return {
                     "state_id": state.id,
                     "file_path": state.file_path,
@@ -443,6 +454,13 @@ class ContinuousRAGService:
                 ))
 
             async with semaphore:
+                # Mark child job as running only when semaphore is acquired
+                if jm and state.id in child_job_map:
+                    try:
+                        jm.start_job(child_job_map[state.id])
+                    except Exception:
+                        pass
+
                 try:
                     # Read file content (fast, local I/O)
                     content = file_full_path.read_text(encoding="utf-8", errors="ignore")
