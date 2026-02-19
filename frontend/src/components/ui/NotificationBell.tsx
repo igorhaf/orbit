@@ -299,7 +299,7 @@ export function NotificationBell() {
                           </div>
                           {job.progress_percent !== null && (
                             <span className="text-[10px] text-gray-400 mt-0.5 block">
-                              {job.progress_percent}%
+                              {Math.round(job.progress_percent)}%
                             </span>
                           )}
                         </div>

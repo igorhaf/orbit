@@ -512,8 +512,12 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
     - Only reads files and extracts business rules to RAG
     - NO automatic wiki, description, card, or enrichment generation
     - All generation (wiki, cards, description) is manual via buttons
-    - Short cooldown (5s) between batches
-    - Runs at NORMAL priority (higher than watchdog's LOW)
+
+    PROMPT #237 - Single notification for entire scan:
+    - One job loops through ALL batches until 0 pending files remain
+    - Notification shows "Processando: X/Y arquivos" with global progress %
+    - No new notifications per batch — single persistent progress bar
+    - Cooldown (5s) between batches to avoid overloading
 
     PROMPT #251 - Resilient DB connection with retry on transient failures.
     """
@@ -533,84 +537,104 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
 
         project_name = project.name or str(project_id)[:8]
 
-        # Calculate batch number for display (count completed root batch jobs + 1)
-        completed_batches = db.query(AsyncJob).filter(
-            AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
-            AsyncJob.project_id == project_id,
-            AsyncJob.status == JobStatus.COMPLETED,
-            AsyncJob.parent_job_id.is_(None),
-        ).count()
-        batch_number = completed_batches + 1
-
-        # Count total pending files to estimate total batches
+        # PROMPT #237 - Count total files for global progress calculation
         from app.models.rag_file_state import RAGFileState, FileProcessingStatus
-        total_pending = db.query(RAGFileState).filter(
+        total_files = db.query(RAGFileState).filter(
             RAGFileState.project_id == project_id,
-            RAGFileState.status == FileProcessingStatus.PENDING,
+            RAGFileState.status != FileProcessingStatus.DELETED,
         ).count()
-        total_batches = batch_number + (total_pending // batch_size if total_pending > 0 else 0)
 
-        batch_label = f"Lote {batch_number} de {total_batches}"
-        logger.info(f"Batch processing cycle for '{project_name}' - {batch_label} (batch_size={batch_size})")
+        if total_files == 0:
+            jm.complete_job(job_id, {"skipped": True, "reason": "Nenhum arquivo para processar"})
+            submit_watchdog_cycle(db, project_id)
+            return
 
-        # Update job notification title with batch label
+        # Set initial notification title
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
-            job.notification_title = f"Processando: {batch_label} - '{project_name}'"
+            job.notification_title = f"Processando: 0/{total_files} arquivos - '{project_name}'"
             db.commit()
 
-        # --- Step 1: Process next batch of pending files (RAG extraction only) ---
-        jm.update_progress(job_id, 10.0, f"Processando {batch_label} ({batch_size} arquivos max)...")
-        process_result = {}
-        try:
-            from app.services.continuous_rag_service import ContinuousRAGService
-            rag_service = ContinuousRAGService(db)
-            process_result = await rag_service.process_pending_files(project_id, batch_size=batch_size, parent_job_id=job_id)
-            actual = process_result.get('processed', 0)
-            remaining = process_result.get('pending_remaining', 0)
-            rules = process_result.get('rules_extracted', 0)
-            logger.info(f"Batch processed for '{project_name}': {actual} files, {rules} rules")
-            jm.update_progress(job_id, 90.0, f"{batch_label}: {actual} arquivos, {rules} regras, {remaining} restantes")
-        except Exception as e:
-            logger.warning(f"Batch processing failed (non-blocking): {e}")
+        logger.info(f"Batch processing cycle for '{project_name}' - {total_files} total files (batch_size={batch_size})")
 
-        rules_extracted = process_result.get("rules_extracted", 0)
-        pending_remaining = process_result.get("pending_remaining", 0)
+        total_processed = 0
+        total_rules = 0
+        total_errors = 0
+
+        from app.services.continuous_rag_service import ContinuousRAGService
+
+        # PROMPT #237 - Loop through all batches in a single job
+        while True:
+            # Check shutdown before each batch
+            if _is_shutting_down():
+                logger.info(f"Server shutting down, pausing batch for '{project_name}'")
+                break
+
+            # Count how many files are done so far (global progress)
+            done_count = db.query(RAGFileState).filter(
+                RAGFileState.project_id == project_id,
+                RAGFileState.status.in_([FileProcessingStatus.COMPLETED, FileProcessingStatus.FAILED]),
+            ).count()
+
+            pct = round(min((done_count / total_files) * 100, 99.0), 1) if total_files > 0 else 0
+            jm.update_progress(job_id, pct, f"Processando: {done_count}/{total_files} arquivos")
+
+            # Update notification title with current progress
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                job.notification_title = f"Processando: {done_count}/{total_files} arquivos - '{project_name}'"
+                db.commit()
+
+            # Process one batch
+            process_result = {}
+            try:
+                rag_service = ContinuousRAGService(db)
+                process_result = await rag_service.process_pending_files(project_id, batch_size=batch_size, parent_job_id=job_id)
+                actual = process_result.get('processed', 0)
+                rules = process_result.get('rules_extracted', 0)
+                total_processed += actual
+                total_rules += rules
+                total_errors += process_result.get('errors', 0)
+                logger.info(f"Batch done for '{project_name}': {actual} files, {rules} rules")
+            except Exception as e:
+                logger.warning(f"Batch processing failed (non-blocking): {e}")
+                total_errors += 1
+
+            pending_remaining = process_result.get("pending_remaining", 0)
+
+            if pending_remaining <= 0:
+                # All files processed
+                break
+
+            # Cooldown between batches
+            await asyncio.sleep(BATCH_COOLDOWN)
 
         # PROMPT #233 - No auto-generation: wiki, cards, description, enrichment
         # are all manual via buttons now. Pipeline only extracts rules to RAG.
 
+        # Final progress: 100%
+        final_done = db.query(RAGFileState).filter(
+            RAGFileState.project_id == project_id,
+            RAGFileState.status.in_([FileProcessingStatus.COMPLETED, FileProcessingStatus.FAILED]),
+        ).count()
+
         # Update final notification title
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
-            job.notification_title = f"{batch_label} concluido - '{project_name}'"
+            job.notification_title = f"Concluido: {final_done}/{total_files} arquivos - '{project_name}'"
             db.commit()
 
         jm.complete_job(job_id, {
             "project_id": str(project_id),
-            "batch_processed": process_result.get("processed", 0),
-            "rules_extracted": rules_extracted,
-            "pending_remaining": pending_remaining,
+            "total_processed": total_processed,
+            "total_files": total_files,
+            "rules_extracted": total_rules,
+            "errors": total_errors,
         })
 
-        # --- Decide next action ---
-        # PROMPT #226 - Check shutdown before re-queuing
-        if _is_shutting_down():
-            logger.info(f"Server shutting down, skipping batch re-queue for '{project_name}'")
-            return
-
-        await asyncio.sleep(BATCH_COOLDOWN)
-
-        if _is_shutting_down():
-            return
-
-        if pending_remaining > 0:
-            # More files to process - queue another batch cycle
-            submit_batch_processing_cycle(db, project_id, batch_size=batch_size)
-        else:
-            # All files processed - transition to normal watchdog
-            logger.info(f"All files processed for '{project_name}', transitioning to watchdog mode")
-            submit_watchdog_cycle(db, project_id)
+        # Transition to normal watchdog
+        logger.info(f"All files processed for '{project_name}', transitioning to watchdog mode")
+        submit_watchdog_cycle(db, project_id)
 
     except Exception as e:
         logger.error(f"Batch processing failed for project {project_id}: {e}", exc_info=True)
@@ -658,8 +682,9 @@ def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int
         logger.info(f"Project {project_id} no longer exists, skipping batch processing submit")
         return
 
-    # PROMPT #252 - Clean up stale jobs before checking for duplicates
-    stale_cutoff = datetime.utcnow() - timedelta(minutes=30)
+    # PROMPT #252 / #237 - Clean up stale jobs before checking for duplicates
+    # Increased to 4h since single job now loops through all batches
+    stale_cutoff = datetime.utcnow() - timedelta(hours=4)
     stale_jobs = db.query(AsyncJob).filter(
         AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
         AsyncJob.project_id == project_id,
@@ -690,6 +715,9 @@ def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int
                 logger.info(f"Re-submitted existing pending batch job {existing.id} to executor")
         return
 
+    # PROMPT #237 - Set project name for visible notification
+    project_name = project_exists.name or str(project_id)[:8]
+
     jm = JobManager(db)
     job = jm.create_job(
         job_type=JobType.RAG_CONTINUOUS_SCAN,
@@ -699,7 +727,7 @@ def submit_batch_processing_cycle(db: Session, project_id: UUID, batch_size: int
             "batch_size": batch_size,
         },
         project_id=project_id,
-        notification_title=None,  # Silent
+        notification_title=f"Processando arquivos - '{project_name}'",
     )
 
     executor = PriorityJobExecutor.get_instance()
