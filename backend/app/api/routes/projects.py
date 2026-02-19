@@ -1572,6 +1572,23 @@ async def delete_project(
         if active_jobs:
             db.flush()
             logger.info(f"Cancelled {len(active_jobs)} active jobs for project {project_id}")
+            # PROMPT #248 - Broadcast cancellation so frontend bell clears immediately
+            from app.api.websocket import broadcast_job_event
+            import asyncio
+            for job in active_jobs:
+                if not job.parent_job_id:  # Only root jobs notify bell
+                    try:
+                        loop = asyncio.get_running_loop()
+                        loop.create_task(broadcast_job_event("job_failed", {
+                            "job_id": str(job.id),
+                            "job_type": job.job_type.value,
+                            "status": "failed",
+                            "error": "Projeto deletado",
+                            "notification_title": job.notification_title,
+                            "project_id": str(project_id),
+                        }))
+                    except Exception:
+                        pass
 
         # Delete ALL jobs for this project (completed, failed, etc.)
         deleted_jobs = db.query(AsyncJob).filter(
