@@ -298,12 +298,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       return;
     }
 
+    // PROMPT #248 - Only notify for parent jobs, not sub-phases
+    // Sub-jobs (with parent_job_id) are internal phases — skip notification
+    if (data.parent_job_id && ['job_completed', 'job_failed', 'job_cancelled'].includes(event)) {
+      return;
+    }
+
     // Check if we're tracking this job
     setActiveJobs(prevJobs => {
       const jobExists = prevJobs.some(j => j.job_id === data.job_id);
 
       // If job doesn't exist in activeJobs, add it (for jobs started in other tabs)
-      if (!jobExists && event === 'job_started') {
+      // PROMPT #248 - Skip sub-jobs (phases) — only track parent jobs
+      if (!jobExists && event === 'job_started' && !data.parent_job_id) {
         const newJob: JobNotification = {
           id: `notif-${data.job_id}`,
           job_id: data.job_id,
