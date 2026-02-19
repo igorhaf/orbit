@@ -306,15 +306,8 @@ async def wiki_enrichment_job(job_id: UUID, project_id: UUID):
             logger.warning(f"Wiki AI enrichment failed: {e}")
             jm.fail_child_job(child_ids[idx_ai], str(e))
 
-        # --- Trigger rule enrichment (separate job) ---
-        if rule_pages:
-            rule_page_slugs = [p for p in rule_pages if p and p.slug.startswith("regra-")]
-            if rule_page_slugs:
-                try:
-                    from app.api.routes.wiki import _trigger_rule_enrichment_job
-                    await _trigger_rule_enrichment_job(db, project_id, len(rule_page_slugs))
-                except Exception as e:
-                    logger.warning(f"Rule enrichment trigger failed: {e}")
+        # PROMPT #233 - Pipeline is read-only: rule enrichment is triggered
+        # manually by the user, not automatically after wiki generation.
 
         jm.complete_job(job_id, {
             "project_id": str(project_id),

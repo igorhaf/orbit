@@ -518,39 +518,9 @@ async def _process_memory_scan_async(
                     f"features={len(merged_ctx.get('key_features', []))}"
                 )
 
-                # PROMPT #284 - Enrich wiki from updated RAG data (like quick-create does)
-                job_manager.update_progress(job_id, 82.0, "Expandindo wiki do projeto a partir dos achados do scan...")
-                try:
-                    await _enrich_context_from_rag(db, project_id)
-                    logger.info(f"Wiki enrichment done for project {project_id}")
-                except Exception as e:
-                    logger.warning(f"Wiki enrichment failed (non-blocking): {e}")
-
-                # PROMPT #284 - Trigger card generation from business rules (like quick-create does)
-                job_manager.update_progress(job_id, 85.0, "Gerando cards a partir das regras de negocio...")
-                try:
-                    has_rules = bool(
-                        result.get("business_rules")
-                        and isinstance(result.get("business_rules"), list)
-                        and len(result.get("business_rules", [])) > 0
-                    )
-                    if has_rules:
-                        logger.info(f"Triggering card generation for project {project_id}")
-                        cards_job = job_manager.create_job(
-                            job_type=JobType.CARDS_FROM_MEMORY,
-                            input_data={"project_id": str(project_id)},
-                            project_id=project_id,
-                            deep_link=f"/projects/{project_id}",
-                            notification_title=f"Gerando cards para '{project.name}'..."
-                        )
-                        from app.services.job_executor import PriorityJobExecutor as CardExec
-                        card_executor = CardExec.get_instance()
-                        await card_executor.submit(cards_job.priority, _process_cards_from_memory_async, cards_job.id, project_id)
-                        logger.info(f"Card generation job {cards_job.id} submitted for project {project_id}")
-                    else:
-                        logger.info(f"No business rules found for {project_id}, skipping card generation")
-                except Exception as e:
-                    logger.warning(f"Card generation trigger failed (non-blocking): {e}")
+                # PROMPT #233 - Pipeline is read-only: wiki enrichment and card generation
+                # are triggered manually by the user, not automatically after scan.
+                job_manager.update_progress(job_id, 85.0, "Scan concluido. Cards e wiki podem ser gerados manualmente.")
 
         # PROMPT #202 - Discover specs and sync to RAG after memory scan
         if project_id:
@@ -814,26 +784,8 @@ async def _process_quick_create_scan(
         job_manager.complete_job(job_id, result)
         logger.info(f"✅ Quick-create scan completed for project {project_id}")
 
-        # PROMPT #153 - Trigger background card generation after memory scan
-        # This generates business rule cards and suggested epics in background
-        try:
-            logger.info(f"🚀 Starting background card generation for project {project_id}")
-            cards_job = job_manager.create_job(
-                job_type=JobType.CARDS_FROM_MEMORY,
-                input_data={
-                    "project_id": str(project_id)
-                },
-                project_id=project_id,
-                deep_link=f"/projects/{project_id}/backlog",
-                notification_title=f"Gerando cards para '{project.name if project else 'projeto'}'..."
-            )
-            # Launch card generation in background via priority queue
-            from app.services.job_executor import PriorityJobExecutor
-            cards_executor = PriorityJobExecutor.get_instance()
-            await cards_executor.submit(cards_job.priority, _process_cards_from_memory_async, cards_job.id, project_id)
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to start card generation: {e}")
-            # Don't fail the main job if card generation fails to start
+        # PROMPT #233 - Pipeline is read-only: card generation is triggered
+        # manually by the user via UI buttons, not automatically after scan.
 
     except Exception as e:
         logger.error(f"❌ Quick-create scan failed for project {project_id}: {str(e)}", exc_info=True)
@@ -1041,42 +993,10 @@ async def _process_initial_scan(
         logger.info(f"Initial scan completed for project {project_id}")
 
         # === Step C: Submit independent follow-up jobs ===
+        # PROMPT #233 - Pipeline is read-only: C1 (wiki enrichment) and C2 (card generation)
+        # removed. These are now triggered manually by the user via UI buttons.
         from app.services.job_executor import PriorityJobExecutor
         executor = PriorityJobExecutor.get_instance()
-
-        # C1: Wiki enrichment as independent job
-        try:
-            wiki_job = job_manager.create_job(
-                job_type=JobType.WIKI_RULE_ENRICHMENT,
-                input_data={"project_id": str(project_id)},
-                project_id=project_id,
-                deep_link=f"/projects/{project_id}",
-                notification_title=f"Expandindo wiki de '{project.name}'..."
-            )
-            await executor.submit(wiki_job.priority, _enrich_wiki_job, wiki_job.id, project_id)
-            logger.info(f"Wiki enrichment job {wiki_job.id} submitted for project {project_id}")
-        except Exception as e:
-            logger.warning(f"Wiki enrichment job submission failed (non-blocking): {e}")
-
-        # C2: Card generation as independent job (if business rules found)
-        try:
-            has_rules = bool(
-                result and isinstance(result, dict) and result.get("business_rules")
-            )
-            if has_rules:
-                cards_job = job_manager.create_job(
-                    job_type=JobType.CARDS_FROM_MEMORY,
-                    input_data={"project_id": str(project_id)},
-                    project_id=project_id,
-                    deep_link=f"/projects/{project_id}",
-                    notification_title=f"Gerando cards para '{project.name}'..."
-                )
-                await executor.submit(cards_job.priority, _process_cards_from_memory_async, cards_job.id, project_id)
-                logger.info(f"Card generation job {cards_job.id} submitted for project {project_id}")
-            else:
-                logger.info(f"No business rules for {project_id}, skipping card generation")
-        except Exception as e:
-            logger.warning(f"Card generation trigger failed (non-blocking): {e}")
 
         # C3: Register remaining files and start batch processing / watchdog
         try:
