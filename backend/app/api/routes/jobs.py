@@ -306,8 +306,10 @@ async def list_active_jobs(
     Returns:
         List of job objects with status pending or running.
     """
+    # PROMPT #248 - Only return root jobs (no sub-phases) for notification bell
     active_jobs = db.query(AsyncJob).filter(
-        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING])
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+        AsyncJob.parent_job_id.is_(None)
     ).order_by(AsyncJob.created_at.desc()).all()
 
     return [job.to_dict() for job in active_jobs]

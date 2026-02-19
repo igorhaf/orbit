@@ -298,9 +298,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       return;
     }
 
-    // PROMPT #248 - Only notify for parent jobs, not sub-phases
-    // Sub-jobs (with parent_job_id) are internal phases — skip notification
-    if (data.parent_job_id && ['job_completed', 'job_failed', 'job_cancelled'].includes(event)) {
+    // PROMPT #248 - Skip ALL events from sub-jobs (phases with parent_job_id)
+    // Only parent jobs should appear in the notification bell
+    if (data.parent_job_id) {
       return;
     }
 
