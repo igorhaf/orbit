@@ -211,87 +211,9 @@ class BacklogGeneratorService:
             raise ValueError(f"Entrevista {interview_id} não possui dados de conversa")
 
         # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
-        system_prompt = """Você é um Product Owner especialista analisando conversas de entrevistas para extrair requisitos de nível Epic.
-
-METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
-
-Esta metodologia funciona da seguinte forma:
-
-1. O texto principal utiliza **identificadores simbólicos** (ex: N1, N2, P1, E1, D1, S1, C1) como **referências semânticas**
-2. Esses identificadores **NÃO são variáveis, exemplos ou placeholders**
-3. Cada identificador possui um **significado único e imutável** definido em um **Mapa Semântico**
-4. O texto narrativo deve ser interpretado **exclusivamente** com base nessas definições
-5. **Não faça inferências** fora do que está explicitamente definido no Mapa Semântico
-6. **Não substitua** os identificadores por seus significados no texto
-7. Caso haja ambiguidade, ela deve ser apontada, não resolvida automaticamente
-8. Caso seja necessário criar novos conceitos, eles devem ser introduzidos como novos identificadores e definidos separadamente
-
-**Categorias de Identificadores:**
-- **N** (Nouns/Entidades): N1, N2, N3... = Usuários, sistemas, entidades de domínio
-- **P** (Processes/Processos): P1, P2, P3... = Processos de negócio, fluxos, workflows
-- **E** (Endpoints): E1, E2, E3... = APIs, rotas, endpoints
-- **D** (Data/Dados): D1, D2, D3... = Tabelas, estruturas de dados, schemas
-- **S** (Services/Serviços): S1, S2, S3... = Serviços, integrações, bibliotecas
-- **C** (Constraints/Critérios): C1, C2, C3... = Regras de negócio, validações, restrições
-- **AC** (Acceptance Criteria): AC1, AC2, AC3... = Critérios de aceitação numerados
-
-**Objetivo desta metodologia:**
-- Reduzir ambiguidade semântica
-- Manter consistência conceitual
-- Permitir edição posterior manual do código
-- Garantir rastreabilidade entre texto e implementação
-
-Sua tarefa:
-1. Análise toda a conversa e identifique o EPIC principal (objetivo de negócio de alto nível)
-2. Crie um **Mapa Semântico** definindo TODOS os identificadores usados
-3. Escreva a narrativa do Epic usando APENAS esses identificadores
-4. Extraia critérios de aceitação (usando identificadores AC1, AC2, AC3...)
-5. Extraia insights chave: requisitos, objetivos de negócio, restrições técnicas
-6. Estime story points (1-21, escala Fibonacci) baseado na complexidade do Epic
-7. Sugira prioridade (critical, high, medium, low, trivial)
-
-IMPORTANTE:
-- Um Epic representa um grande corpo de trabalho (múltiplas Stories)
-- Foque em VALOR DE NEGÓCIO e RESULTADOS PARA O USUÁRIO
-- Use identificadores semânticos em TODO o texto (narrativa, critérios, insights)
-- Seja específico e acionável nos critérios de aceitação
-- TUDO DEVE SER EM PORTUGUÊS (título, descrição, critérios, identificadores)
-
-Retorne APENAS JSON válido (sem markdown code blocks, sem explicação):
-{
-    "title": "Título do Epic (conciso, focado em negócio) - EM PORTUGUÊS",
-    "semantic_map": {
-        "N1": "Definição clara da entidade 1",
-        "N2": "Definição clara da entidade 2",
-        "P1": "Definição clara do processo 1",
-        "E1": "Definição clara do endpoint 1",
-        "D1": "Definição clara da estrutura de dados 1",
-        "S1": "Definição clara do serviço 1",
-        "C1": "Definição clara do critério/regra 1"
-    },
-    "description_markdown": "# Epic: [Título]\n\n## Mapa Semântico\n\n- **N1**: [definição]\n- **N2**: [definição]\n- **P1**: [definição]\n...\n\n## Descrição\n\n[Narrativa usando APENAS identificadores do mapa semântico. Ex: 'Este Epic implementa P1 para N1, permitindo que N2 gerencie D1 via E1.']\n\n## Critérios de Aceitação\n\n1. **AC1**: [critério usando identificadores]\n2. **AC2**: [critério usando identificadores]\n...\n\n## Insights da Entrevista\n\n**Requisitos-Chave:**\n- [requisito usando identificadores]\n...\n\n**Objetivos de Negócio:**\n- [objetivo usando identificadores]\n...\n\n**Restrições Técnicas:**\n- [restrição usando identificadores]\n...",
-    "story_points": 13,
-    "priority": "high",
-    "acceptance_criteria": [
-        "AC1: [Critério específico mensurável usando identificadores semânticos]",
-        "AC2: [Critério específico mensurável usando identificadores semânticos]",
-        "AC3: [Critério específico mensurável usando identificadores semânticos]"
-    ],
-    "interview_insights": {
-        "key_requirements": ["[requisito usando identificadores]", "[requisito usando identificadores]"],
-        "business_goals": ["[objetivo usando identificadores]", "[objetivo usando identificadores]"],
-        "technical_constraints": ["[restrição usando identificadores]", "[restrição usando identificadores]"]
-    },
-    "interview_question_ids": [0, 2, 5]
-}
-
-**REGRAS CRÍTICAS:**
-- interview_question_ids deve conter os índices das mensagens da conversa mais relevantes para este Epic
-- description_markdown deve conter TODO o conteúdo formatado em Markdown
-- O Mapa Semântico deve estar TANTO no description_markdown quanto no campo semantic_map do JSON
-- Use identificadores semânticos em TODOS os textos (title pode ser em linguagem natural, mas description/criteria/insights devem usar identificadores)
-- NUNCA substitua identificadores por seus significados - mantenha sempre os identificadores no texto
-"""
+        # PROMPT #236 - Externalized to YAML (backlog/epic_from_interview)
+        from app.prompts.loader import get_prompt_loader
+        _loader = get_prompt_loader()
 
         # PROMPT #232 - Compressed context replaces full conversation + business rules
         from app.services.prompt_context_compressor import PromptContextCompressor
@@ -308,29 +230,13 @@ Retorne APENAS JSON válido (sem markdown code blocks, sem explicação):
         # Fallback: if conversation wasn't compressed (short), format raw
         _conversation_text = _ctx.conversation_summary or self._format_conversation(conversation)
 
-        user_prompt = f"""Análise esta conversa de entrevista e extraia o Epic principal usando a Metodologia de Referências Semânticas.
-
-{_ctx.business_rules}
-{f'ATENÇÃO: O Epic gerado DEVE respeitar TODAS as regras de negócio listadas acima.' if _ctx.business_rules else ''}
-
-CONVERSA:
-{_conversation_text}
-
-INSTRUÇÕES:
-1. Crie um Mapa Semântico definindo TODOS os conceitos como identificadores (N1, N2, P1, E1, D1, S1, C1, AC1...)
-2. Escreva a narrativa do Epic usando APENAS esses identificadores
-3. Gere o campo "description_markdown" com o Markdown completo formatado (incluindo Mapa Semântico)
-4. Gere o campo "semantic_map" com o dicionário de identificadores
-{f"5. IMPORTANTE: Incorpore as regras de negócio nos critérios de aceitação (AC1, AC2...)" if _ctx.business_rules else ""}
-
-Retorne o Epic como JSON seguindo EXATAMENTE o schema fornecido no system prompt.
-
-LEMBRE-SE:
-- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
-- Use identificadores semânticos em TODA a narrativa
-- NUNCA substitua identificadores por seus significados
-- O Mapa Semântico deve aparecer tanto no Markdown quanto no JSON
-{f"- REGRAS DE NEGÓCIO são OBRIGATÓRIAS e devem influenciar o conteúdo gerado" if _ctx.business_rules else ""}"""
+        system_prompt, user_prompt = _loader.render(
+            "backlog/epic_from_interview",
+            {
+                "conversation_text": _conversation_text,
+                "business_rules_text": _ctx.business_rules or "",
+            }
+        )
 
         # 3. Call AI (PROMPT #54.3 - Using PrompterFacade for cache support)
         logger.info(f"🎯 Generating Epic from Interview {interview_id}...")

@@ -1,0 +1,41 @@
+# Prompt: Markdown Text Formatter
+# Source: ai_format.py:60-76
+
+name: markdown_formatter
+version: 1
+category: utility
+description: Converte texto plano para formato Markdown bem estruturado
+usage_type: interview
+estimated_tokens: 500
+tags:
+  - utility
+  - markdown
+  - formatting
+
+variables:
+  required:
+    - text
+  optional: []
+
+components: []
+
+system_prompt: ""
+
+user_prompt: |
+  Convert the following text to well-structured Markdown format.
+
+  Guidelines:
+  - Use # for main title (if identifiable)
+  - Use ## for section headers
+  - Use ### for subsections
+  - Convert numbered items to proper Markdown lists (1. 2. 3.)
+  - Convert bullet points to Markdown lists (-)
+  - Add emphasis (**bold**, *italic*) where appropriate
+  - Maintain paragraph breaks
+  - Keep the original meaning and content
+  - Do NOT add extra content, only format what's there
+
+  Text to format:
+  {{ text }}
+
+  Return ONLY the Markdown-formatted text, no explanations.

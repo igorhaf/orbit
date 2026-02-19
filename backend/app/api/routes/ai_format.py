@@ -57,23 +57,13 @@ async def format_to_markdown(
         # Use AI Orchestrator to format the text
         orchestrator = AIOrchestrator(db)
 
-        prompt = f"""Convert the following text to well-structured Markdown format.
-
-Guidelines:
-- Use # for main title (if identifiable)
-- Use ## for section headers
-- Use ### for subsections
-- Convert numbered items to proper Markdown lists (1. 2. 3.)
-- Convert bullet points to Markdown lists (-)
-- Add emphasis (**bold**, *italic*) where appropriate
-- Maintain paragraph breaks
-- Keep the original meaning and content
-- Do NOT add extra content, only format what's there
-
-Text to format:
-{request.text}
-
-Return ONLY the Markdown-formatted text, no explanations."""
+        # PROMPT #236 - Externalized to YAML
+        from app.prompts.loader import get_prompt_loader
+        _loader = get_prompt_loader()
+        _, prompt = _loader.render(
+            "utility/markdown_formatter",
+            {"text": request.text}
+        )
 
         # Execute AI request
         response = await orchestrator.execute(

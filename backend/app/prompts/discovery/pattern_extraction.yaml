@@ -1,0 +1,49 @@
+# Prompt: Pattern Template Extraction from Code Files
+# Source: pattern_recognizer.py:230-249
+
+name: pattern_extraction
+version: 1
+category: discovery
+description: Extrai templates de codigo reutilizaveis a partir de arquivos similares
+usage_type: general
+estimated_tokens: 2000
+tags:
+  - discovery
+  - patterns
+  - templates
+  - code-analysis
+
+variables:
+  required:
+    - pattern_type
+    - files_text
+  optional:
+    - detected_stack
+
+components: []
+
+system_prompt: ""
+
+user_prompt: |
+  Analyze the following {{ pattern_type }} files from a {{ detected_stack | default('software') }} project and create a reusable code template.
+
+  {% if detected_stack %}
+  Stack: {{ detected_stack }}
+  {% endif %}
+
+  {{ files_text }}
+
+  Your task:
+  1. Identify the common structure across these examples
+  2. Create a generic template by replacing specific values with placeholders
+  3. Use descriptive placeholder names like EntityName, FieldName, table_name, etc.
+  4. Preserve the overall structure, imports, and code style
+
+  Placeholder naming conventions:
+  - EntityName - PascalCase for class names
+  - entity_name - snake_case for variables
+  - entityName - camelCase for methods
+  - TABLE_NAME - UPPER_SNAKE_CASE for constants
+  - description - descriptive text
+
+  Return ONLY the template code, no explanations. If the code has a language-specific syntax, include it exactly.

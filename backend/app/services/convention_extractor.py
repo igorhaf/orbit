@@ -191,40 +191,16 @@ class ConventionExtractor:
             for f in sampled_files[:10]
         ])
 
-        stack_context = f"Detected stack: {detected_stack}\n" if detected_stack else ""
-
-        prompt = f"""Analyze the following code samples from a {detected_stack or 'software'} project and extract the coding conventions used.
-
-{stack_context}
-
-{files_text}
-
-Please analyze the code and return a JSON object with the following structure:
-
-{{
-  "naming": {{
-    "classes": "PascalCase|snake_case|...",
-    "methods": "camelCase|snake_case|...",
-    "variables": "camelCase|snake_case|...",
-    "constants": "UPPER_SNAKE_CASE|...",
-    "files": "kebab-case|snake_case|PascalCase|...",
-    "database": {{"tables": "snake_case|...", "columns": "snake_case|..."}}
-  }},
-  "architecture": {{
-    "pattern": "MVC|Repository|Service Layer|...",
-    "uses_repositories": true|false,
-    "uses_services": true|false,
-    "layered_architecture": true|false
-  }},
-  "code_style": {{
-    "indentation": "2 spaces|4 spaces|tabs",
-    "quotes": "single|double",
-    "semicolons": true|false,
-    "trailing_commas": true|false
-  }}
-}}
-
-Return ONLY the JSON object, no explanations."""
+        # PROMPT #236 - Externalized to YAML
+        from app.prompts.loader import get_prompt_loader
+        _loader = get_prompt_loader()
+        _, prompt = _loader.render(
+            "discovery/convention_extraction",
+            {
+                "files_text": files_text,
+                "detected_stack": detected_stack or "",
+            }
+        )
 
         return prompt
 

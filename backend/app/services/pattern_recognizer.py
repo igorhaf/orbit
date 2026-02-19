@@ -225,27 +225,16 @@ class PatternRecognizer:
             for i, f in enumerate(sampled_files[:5])
         ])
 
-        stack_context = f"Stack: {detected_stack}\n" if detected_stack else ""
-
-        prompt = f"""Analyze the following {pattern_type} files from a {detected_stack or 'software'} project and create a reusable code template.
-
-{stack_context}
-
-{files_text}
-
-Your task:
-1. Identify the common structure across these examples
-2. Create a generic template by replacing specific values with {{Placeholders}}
-3. Use descriptive placeholder names like {{EntityName}}, {{FieldName}}, {{table_name}}, etc.
-4. Preserve the overall structure, imports, and code style
-
-Placeholder naming conventions:
-- {{EntityName}} - PascalCase for class names
-- {{entity_name}} - snake_case for variables
-- {{entityName}} - camelCase for methods
-- {{TABLE_NAME}} - UPPER_SNAKE_CASE for constants
-- {{description}} - descriptive text
-
-Return ONLY the template code, no explanations. If the code has a language-specific syntax, include it exactly."""
+        # PROMPT #236 - Externalized to YAML
+        from app.prompts.loader import get_prompt_loader
+        _loader = get_prompt_loader()
+        _, prompt = _loader.render(
+            "discovery/pattern_extraction",
+            {
+                "pattern_type": pattern_type,
+                "files_text": files_text,
+                "detected_stack": detected_stack or "",
+            }
+        )
 
         return prompt

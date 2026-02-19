@@ -305,135 +305,54 @@ class MetaPromptProcessor:
                 focus_text += f"- {label}\n"
             focus_text += "\nPriorize a geração de Stories/Tasks relacionadas a estes tópicos.\n"
 
-        # Build system prompt
-        system_prompt = f"""Você é um Product Owner sênior que vai gerar a estrutura completa de um projeto baseado em respostas de meta prompt.
+        # PROMPT #236 - Externalized to YAML (backlog/hierarchy_generation)
+        from app.prompts.loader import get_prompt_loader
+        _loader = get_prompt_loader()
 
-**CONTEXTO DO PROJETO:**
-Nome: {project.name}
-Descrição: {project.description or 'N/A'}
-
-{focus_text}
-
-**SUA TAREFA:**
-Análise TODAS as respostas do meta prompt e gere a hierarquia completa:
-
-1. **1 EPIC** - Objetivo principal do projeto (valor de negócio de alto nível)
-2. **3-7 STORIES** - Funcionalidades principais quebrando o Epic
-3. **TASKS** - 3-10 Tasks por Story (passos de implementação)
-4. **SUBTASKS** - Para Tasks complexas (>5 story points), quebrar em 2-4 subtasks
-5. **PROMPTS ATÔMICOS** - Para cada Task/Subtask, gerar um prompt de execução focado
-
-**REGRAS IMPORTANTES:**
-- TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
-- Use as respostas das perguntas fixas (Q1-Q8) como base
-- Incorpore insights das perguntas contextuais (Q10+)
-- Priorize tópicos selecionados pelo cliente em Q9
-- Epic: story_points 13-21, representa todo o projeto
-- Stories: story_points 5-13, representam features completas
-- Tasks: story_points 1-5, representam passos de implementação
-- Subtasks: story_points 1-3, granularidade máxima
-- Prompts atômicos: instruções específicas e focadas para IA executar cada Task/Subtask
-
-**FORMATO DE SAÍDA:**
-Retorne APENAS JSON válido (sem markdown):
-
-{{
-  "epic": {{
-    "title": "Título do Epic - EM PORTUGUÊS",
-    "description": "Descrição detalhada do objetivo de negócio - EM PORTUGUÊS",
-    "story_points": 21,
-    "priority": "high",
-    "business_value": "Valor para o negócio e usuário - EM PORTUGUÊS",
-    "acceptance_criteria": [
-      "Critério mensurável 1 - EM PORTUGUÊS",
-      "Critério mensurável 2 - EM PORTUGUÊS",
-      "Critério mensurável 3 - EM PORTUGUÊS"
-    ],
-    "labels": ["mvp", "core-feature"]
-  }},
-  "stories": [
-    {{
-      "title": "Título da Story 1 - EM PORTUGUÊS",
-      "description": "Descrição da funcionalidade - EM PORTUGUÊS",
-      "story_points": 8,
-      "priority": "high",
-      "acceptance_criteria": [
-        "Critério 1 - EM PORTUGUÊS",
-        "Critério 2 - EM PORTUGUÊS"
-      ],
-      "labels": ["auth", "mvp"],
-      "tasks": [
-        {{
-          "title": "Título específico da Task - EM PORTUGUÊS",
-          "description": "O que precisa ser implementado - EM PORTUGUÊS",
-          "story_points": 3,
-          "priority": "high",
-          "acceptance_criteria": [
-            "Critério testável 1 - EM PORTUGUÊS",
-            "Critério testável 2 - EM PORTUGUÊS"
-          ],
-          "generated_prompt": "Prompt atômico: Implemente [descrição específica do que fazer, usando contexto do projeto]. Considere [requisitos técnicos relevantes]. Critérios de sucesso: [o que validar]. - EM PORTUGUÊS",
-          "subtasks": [
-            {{
-              "title": "Subtask granular - EM PORTUGUÊS",
-              "description": "Passo específico - EM PORTUGUÊS",
-              "story_points": 2,
-              "priority": "high",
-              "generated_prompt": "Prompt atômico para subtask - EM PORTUGUÊS"
-            }}
-          ]
-        }}
-      ]
-    }}
-  ],
-  "metadata": {{
-    "total_stories": 5,
-    "total_tasks": 28,
-    "total_subtasks": 12,
-    "focus_topics": {json.dumps(focus_topics)}
-  }}
-}}
-
-Análise TODAS as respostas abaixo e gere a hierarquia completa."""
-
-        # Build user prompt with all Q&A
-        user_prompt = f"""**RESPOSTAS DO META PROMPT:**
-
-**Q1 - Visão e Problema:**
+        # Build QA text from all question-answer pairs
+        qa_text = f"""**Q1 - Visao e Problema:**
 {qa_pairs.get('q1_vision', 'N/A')}
 
-**Q2 - Módulos/Funcionalidades:**
+**Q2 - Modulos/Funcionalidades:**
 {qa_pairs.get('q2_features', 'N/A')}
 
-**Q3 - Perfis de Usuários:**
+**Q3 - Perfis de Usuarios:**
 {qa_pairs.get('q3_users', 'N/A')}
 
-**Q4 - Regras de Negócio:**
+**Q4 - Regras de Negocio:**
 {qa_pairs.get('q4_business_rules', 'N/A')}
 
 **Q5 - Entidades/Dados:**
 {qa_pairs.get('q5_data_entities', 'N/A')}
 
-**Q6 - Critérios de Sucesso:**
+**Q6 - Criterios de Sucesso:**
 {qa_pairs.get('q6_success_criteria', 'N/A')}
 
-**Q7 - Restrições Técnicas:**
+**Q7 - Restricoes Tecnicas:**
 {qa_pairs.get('q7_constraints', 'N/A')}
 
 **Q8 - Escopo MVP:**
 {qa_pairs.get('q8_mvp_scope', 'N/A')}
 
-**Q9 - Tópicos Selecionados:**
+**Q9 - Topicos Selecionados:**
 {', '.join([topic_labels.get(t, t) for t in focus_topics]) if focus_topics else 'Nenhum'}
 
 **PERGUNTAS CONTEXTUAIS (Q10+):**
 """
-
         for i, ctx_qa in enumerate(qa_pairs.get('contextual', []), 10):
-            user_prompt += f"\nQ{i}: {ctx_qa['question']}\n"
-            user_prompt += f"A{i}: {ctx_qa['answer']}\n"
+            qa_text += f"\nQ{i}: {ctx_qa['question']}\n"
+            qa_text += f"A{i}: {ctx_qa['answer']}\n"
 
-        user_prompt += "\n\nGere a hierarquia completa seguindo o schema JSON fornecido."
+        system_prompt, user_prompt = _loader.render(
+            "backlog/hierarchy_generation",
+            {
+                "project_name": project.name,
+                "project_description": project.description or "N/A",
+                "focus_text": focus_text,
+                "qa_text": qa_text,
+                "focus_topics_json": json.dumps(focus_topics),
+            }
+        )
 
         # Call AI
         logger.info("🤖 Calling AI to generate complete hierarchy...")

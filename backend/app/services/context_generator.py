@@ -783,57 +783,9 @@ class ContextGeneratorService:
         Returns:
             Dict with context_semantic, context_human, semantic_map, and insights
         """
-        system_prompt = """Você é um especialista em análise de requisitos de software.
-
-Sua tarefa é analisar uma entrevista de contexto de projeto e gerar:
-
-1. **CONTEXTO SEMÂNTICO** (context_semantic):
-   - Texto estruturado com identificadores semânticos
-   - Use identificadores como: N1 (nome), P1 (problema), V1 (visão), U1 (usuário), F1 (funcionalidade)
-   - Inclua um Mapa Semântico no final com todas as definições
-
-2. **MAPA SEMÂNTICO** (semantic_map):
-   - Dicionário JSON mapeando cada identificador para seu significado
-   - Exemplo: {"N1": "Sistema de Vendas", "P1": "Gestão de estoque ineficiente"}
-
-3. **INSIGHTS DA ENTREVISTA** (interview_insights):
-   - project_vision: Visão geral do projeto
-   - problem_statement: Problema que o projeto resolve
-   - key_features: Lista de funcionalidades principais
-   - target_users: Tipos de usuários do sistema
-   - success_criteria: Critérios de sucesso
-
-FORMATO DE RESPOSTA (JSON):
-```json
-{
-    "context_semantic": "## Contexto do Projeto\\n\\n### Visão\\nN1 é um sistema que resolve P1...\\n\\n### Usuários\\n- U1: ...\\n\\n## Mapa Semântico\\n- **N1**: Nome do projeto\\n- **P1**: Problema principal",
-    "semantic_map": {
-        "N1": "Nome do Projeto",
-        "P1": "Problema principal",
-        "V1": "Visão do projeto",
-        "U1": "Primeiro tipo de usuário",
-        "F1": "Primeira funcionalidade"
-    },
-    "interview_insights": {
-        "project_vision": "Desenvolver um sistema...",
-        "problem_statement": "Atualmente o cliente enfrenta...",
-        "key_features": ["Feature 1", "Feature 2"],
-        "target_users": ["Admin", "Usuário Final"],
-        "success_criteria": ["Reduzir tempo de...", "Aumentar eficiência..."]
-    }
-}
-```
-
-IMPORTANTE:
-- O context_semantic DEVE SER UMA STRING de texto markdown, NÃO um objeto/dicionario JSON
-- O context_semantic deve ser rico e detalhado (mínimo 500 caracteres)
-- Use português brasileiro
-- Os identificadores devem ser concisos (2-3 caracteres)
-- O Mapa Semântico deve estar DENTRO do context_semantic no final
-- Retorne APENAS o JSON, sem texto adicional
-- NUNCA use blocos de código markdown (```json)
-- NUNCA use emojis, icones ou símbolos especiais Unicode (nenhum emoji como casa, estrela, foguete, etc)
-- Comece a resposta diretamente com { e termine com }"""
+        # PROMPT #236 - Externalized to YAML
+        from app.prompts.loader import get_prompt_loader
+        _loader = get_prompt_loader()
 
         # PROMPT #120 - Include business rules from memory scan in context
         # PROMPT #170 - Also retrieve business rules from RAG (may be more complete)
@@ -874,15 +826,14 @@ IMPORTANTE:
             for i, rule in enumerate(business_rules, 1):
                 business_rules_section += f"{i}. {rule}\n"
 
-        user_prompt = f"""Análise a seguinte entrevista de contexto para o projeto "{project.name}":
-
-{conversation_summary}
-{business_rules_section}
-
-IMPORTANTE: Se houver "REGRAS DE NEGÓCIO VERIFICADAS NO CÓDIGO" acima, inclua-as no context_semantic
-em uma seção dedicada "## Regras de Negócio Existentes" com identificadores RN1, RN2, etc.
-
-Gere o contexto semântico estruturado, o mapa semântico e os insights conforme especificado."""
+        system_prompt, user_prompt = _loader.render(
+            "context/context_generation",
+            {
+                "project_name": project.name,
+                "conversation_summary": conversation_summary,
+                "business_rules_section": business_rules_section,
+            }
+        )
 
         # Call AI
         messages = [{"role": "user", "content": user_prompt}]

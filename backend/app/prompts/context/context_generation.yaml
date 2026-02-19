@@ -17,7 +17,8 @@ variables:
   required:
     - project_name
     - conversation_summary
-  optional: []
+  optional:
+    - business_rules_section
 
 components: []
 
@@ -67,5 +68,12 @@ user_prompt: |
   Análise a seguinte entrevista de contexto para o projeto "{{ project_name }}":
 
   {{ conversation_summary }}
+  {% if business_rules_section %}
+
+  {{ business_rules_section }}
+
+  IMPORTANTE: Se houver "REGRAS DE NEGÓCIO VERIFICADAS NO CÓDIGO" acima, inclua-as no context_semantic
+  em uma seção dedicada "## Regras de Negócio Existentes" com identificadores RN1, RN2, etc.
+  {% endif %}
 
   Gere o contexto semântico estruturado, o mapa semântico e os insights conforme especificado.
