@@ -491,18 +491,8 @@ async def _process_memory_scan_async(
         if project_id:
             project = db.query(Project).filter(Project.id == project_id).first()
             if project:
-                # PROMPT #285 - Protect project name: only update if still default folder name
-                suggested_title = result.get("suggested_title")
-                if suggested_title and suggested_title != project.name:
-                    folder_based_name = folder_name.replace("-", " ").replace("_", " ").title()
-                    if project.name == folder_based_name:
-                        project.name = suggested_title
-                        logger.info(f"Updated project name to: {suggested_title}")
-                    else:
-                        logger.info(
-                            f"Keeping user-modified project name '{project.name}' "
-                            f"(scan suggested '{suggested_title}')"
-                        )
+                # PROMPT #247 - Title is always manual, never auto-generated
+                # suggested_title from scan is stored in initial_memory_context but NOT applied
 
                 # PROMPT #285 - Smart merge: preserve existing data, add new findings
                 existing_ctx = project.initial_memory_context or {}
@@ -730,16 +720,9 @@ async def _process_quick_create_scan(
 
         job_manager.update_progress(job_id, 80.0, "Atualizando projeto com achados...")
 
-        # PROMPT #137 - Update project name with suggested title
+        # PROMPT #247 - Title is always manual, never auto-generated
         project = db.query(Project).filter(Project.id == project_id).first()
         if project:
-            suggested_title = result.get("suggested_title")
-
-            # Update name if we have a better suggestion
-            folder_based_name = folder_name.replace("-", " ").replace("_", " ").title()
-            if suggested_title and project.name == folder_based_name:
-                project.name = suggested_title
-                logger.info(f"📝 Updated project name to: {suggested_title}")
 
             # Store memory context for Context Interview
             project.initial_memory_context = result
@@ -947,31 +930,9 @@ async def _process_initial_scan(
         if not project:
             raise ValueError(f"Project {project_id} not found")
 
-        # Update title if scan found a better one
-        suggested_title = result.get("suggested_title")
-        folder_based_name = folder_name.replace("-", " ").replace("_", " ").title()
-        if suggested_title and project.name == folder_based_name:
-            project.name = suggested_title
-            logger.info(f"Updated project name to: {suggested_title}")
-
+        # PROMPT #247 - Title and description are always manual, never auto-generated
         project.initial_memory_context = result
         project.initial_scan_complete = True
-
-        # Set initial description from scan summary
-        if not project.description:
-            summary = (result.get("interview_context") or "").strip()
-            if not summary:
-                scan_info = result.get("scan_summary", {})
-                if isinstance(scan_info, dict) and scan_info:
-                    langs = scan_info.get("languages", {})
-                    lang_str = ", ".join(f"{k} ({v})" for k, v in sorted(langs.items(), key=lambda x: -x[1])[:5]) if langs else "N/A"
-                    summary = (
-                        f"Codebase com {scan_info.get('code_files', 0)} arquivos de codigo "
-                        f"({scan_info.get('total_files', 0)} total). "
-                        f"Linguagens: {lang_str}."
-                    )
-            if summary:
-                project.description = summary[:2000]
 
         project.updated_at = datetime.utcnow()
         db.commit()
@@ -1219,40 +1180,8 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
             )
             return False
 
-        project.description = enriched
-
-        # PROMPT #281 - Sync project name from wiki enrichment title
-        # PROMPT #285 - Only update name if it appears to be auto-generated (not user-edited).
-        # Auto-generated names: folder-based ("My Project"), or scan-suggested titles.
-        # If the user manually edited the name, we preserve it.
-        try:
-            first_line = enriched.strip().split("\n")[0].strip()
-            if first_line.startswith("# "):
-                wiki_title = first_line[2:].strip()
-                if wiki_title and len(wiki_title) > 3:
-                    old_name = project.name
-                    # Check if current name looks auto-generated
-                    code_path = project.code_path or ""
-                    folder_name = Path(code_path).name if code_path else ""
-                    auto_names = set()
-                    if folder_name:
-                        auto_names.add(folder_name.replace("-", " ").replace("_", " ").title())
-                        auto_names.add(folder_name)
-                    # Also consider scan-suggested title as auto-generated
-                    mem = project.initial_memory_context or {}
-                    if mem.get("suggested_title"):
-                        auto_names.add(mem["suggested_title"])
-
-                    if old_name in auto_names or not old_name:
-                        project.name = wiki_title
-                        logger.info(f"Project name synced from wiki: '{old_name}' -> '{wiki_title}'")
-                    else:
-                        logger.info(
-                            f"Keeping user-set project name '{old_name}' "
-                            f"(wiki suggested '{wiki_title}')"
-                        )
-        except Exception as e:
-            logger.warning(f"Failed to extract title from wiki enrichment: {e}")
+        # PROMPT #247 - Title and description are always manual, never auto-generated
+        # Wiki enrichment content goes to wiki pages only, not to project name/description
 
         project.updated_at = datetime.utcnow()
         db.commit()

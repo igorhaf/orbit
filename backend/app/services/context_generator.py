@@ -647,7 +647,7 @@ class ContextGeneratorService:
         # 5. Save to project - PROMPT #186: Final emoji strip before DB save
         project.context_semantic = _strip_emojis(context_result["context_semantic"])
         project.context_human = _strip_emojis(context_result["context_human"])
-        project.description = _strip_emojis(context_result["context_human"])
+        # PROMPT #247 - Description is always manual, never auto-generated
 
         # 6. Mark interview as completed
         interview.status = InterviewStatus.COMPLETED
@@ -5299,7 +5299,7 @@ Retorne APENAS o JSON, sem explicações."""
         # Update project with auto-generated context
         project.context_semantic = context_semantic
         project.context_human = context_human
-        project.description = context_human
+        # PROMPT #247 - Description is always manual, never auto-generated
         self.db.commit()
 
         return {
@@ -5990,14 +5990,7 @@ IMPORTANTE:
         # --- Save to project ---
         project.context_semantic = context_semantic
         project.context_human = context_human
-        # PROMPT #277 - Validate before saving as description
-        # Reject hallucinated content that doesn't match expected structure
-        expected_sections = ["visao geral", "stack", "arquitetura", "regras", "features", "dominio", "funcionalidade"]
-        ctx_lower = (context_human or "").lower()
-        if any(s in ctx_lower for s in expected_sections):
-            project.description = context_human
-        else:
-            logger.warning(f"Rich context rejected as description for {project.name}: no valid sections found")
+        # PROMPT #247 - Description is always manual, never auto-generated
         self.db.commit()
 
         # --- Store in RAG ---

@@ -69,7 +69,8 @@ class IncrementalContextService:
             return {"skipped": True, "reason": "Project not found"}
 
         project_name = project.name or str(project_id)[:8]
-        current_description = project.description or ""
+        # PROMPT #247 - Use context_human instead of description (description is manual-only)
+        current_description = project.context_human or ""
         desc_len_before = len(current_description)
 
         # Fetch recent rules from RAG (this batch's rules are the most recent)
@@ -133,8 +134,9 @@ class IncrementalContextService:
                 )
                 return {"skipped": True, "reason": f"Validation failed: {'; '.join(issues)}"}
 
-            # Update project description
-            project.description = new_description
+            # PROMPT #247 - Description is always manual, never auto-generated
+            # Context updates go to context_human, not description
+            project.context_human = new_description
             self.db.commit()
 
             desc_len_after = len(new_description)
