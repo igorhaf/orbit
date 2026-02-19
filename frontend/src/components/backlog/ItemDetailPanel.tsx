@@ -94,6 +94,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [isExportingPrompt, setIsExportingPrompt] = useState(false);
   const [exportResult, setExportResult] = useState<{ filename: string; orbit_path: string } | null>(null);
 
+  // PROMPT #242 - Orbit Folder: result check state
+  const [isCheckingResult, setIsCheckingResult] = useState(false);
+  const [checkResultMsg, setCheckResultMsg] = useState<{ found: boolean; message: string } | null>(null);
+
   // Check if item is a suggested/draft item
   const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
 
@@ -416,6 +420,26 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       showError(error.message || 'Falha ao exportar prompt');
     } finally {
       setIsExportingPrompt(false);
+    }
+  };
+
+  // PROMPT #242 - Orbit Folder: check result handler
+  const handleCheckResult = async () => {
+    setIsCheckingResult(true);
+    setCheckResultMsg(null);
+    try {
+      const result = await tasksApi.checkResult(item.id);
+      setCheckResultMsg({ found: result.found, message: result.message });
+      if (result.found) {
+        showSuccess(result.message);
+        if (onUpdate) onUpdate();
+      } else {
+        showError(result.message);
+      }
+    } catch (error: any) {
+      showError(error.message || 'Falha ao verificar resultado');
+    } finally {
+      setIsCheckingResult(false);
     }
   };
 
@@ -1767,6 +1791,21 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                             Exportado: <code className="bg-green-100 px-1 rounded">{exportResult.orbit_path}/prompts/{exportResult.filename}</code>
                           </div>
                         )}
+                        {/* PROMPT #242 - Check result button */}
+                        <div className="mt-3 flex items-center gap-2">
+                          <button
+                            onClick={handleCheckResult}
+                            disabled={isCheckingResult}
+                            className="px-3 py-1.5 text-xs text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
+                          >
+                            {isCheckingResult ? 'Verificando...' : 'Verificar Resultado'}
+                          </button>
+                          {checkResultMsg && (
+                            <span className={`text-xs ${checkResultMsg.found ? 'text-green-600' : 'text-gray-500'}`}>
+                              {checkResultMsg.message}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg bg-gray-50">

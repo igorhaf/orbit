@@ -406,6 +406,19 @@ export const tasksApi = {
       knowledge: number;
     }>(`/api/v1/tasks/project/${projectId}/orbit-status`),
 
+  // PROMPT #242 - Orbit Folder: Check for result file in orbit/results/
+  checkResult: (taskId: string) =>
+    request<{
+      task_id: string;
+      found: boolean;
+      title: string | null;
+      status: string | null;
+      filename: string | null;
+      message: string;
+    }>(`/api/v1/tasks/${taskId}/check-result`, {
+      method: 'POST',
+    }),
+
   // PROMPT #253 - AI title suggestion
   suggestTitle: (data: {
     user_input: string;

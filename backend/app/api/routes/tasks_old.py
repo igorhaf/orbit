@@ -2632,3 +2632,53 @@ async def get_orbit_status(
         project_id=str(project_id),
         **status
     )
+
+
+class CheckResultResponse(BaseModel):
+    """Response for orbit result check."""
+    task_id: str
+    found: bool
+    title: Optional[str] = None
+    status: Optional[str] = None
+    filename: Optional[str] = None
+    message: str
+
+
+@router.post("/{task_id}/check-result", response_model=CheckResultResponse)
+async def check_orbit_result(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #242 - Check if a result file exists for this card in orbit/results/.
+
+    Scans orbit/results/ for a matching _RESULT.md file, processes it
+    (saves to TaskResult, updates card status to REVIEW), and returns status.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+
+    try:
+        from app.services.orbit_folder import OrbitFolderService
+        service = OrbitFolderService(db)
+        result = service.check_result_for_task(task)
+    except Exception as e:
+        logger.error(f"Failed to check result for task {task_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao verificar resultado: {str(e)}")
+
+    if result:
+        return CheckResultResponse(
+            task_id=str(task_id),
+            found=True,
+            title=result.get("title"),
+            status=result.get("status"),
+            filename=result.get("filename"),
+            message=f"Resultado encontrado e processado: {result.get('filename')}"
+        )
+
+    return CheckResultResponse(
+        task_id=str(task_id),
+        found=False,
+        message="Nenhum resultado encontrado em orbit/results/"
+    )

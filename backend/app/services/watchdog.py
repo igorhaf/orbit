@@ -440,10 +440,29 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
         # PROMPT #233 - No auto-generation: wiki, cards, description, enrichment
         # are all manual via buttons now. Pipeline only scans and extracts.
 
+        # --- Step 4: Orbit result scan (PROMPT #242) ---
+        jm.update_progress(job_id, 85.0, "Verificando resultados orbit/...")
+        orbit_processed = 0
+        try:
+            from app.services.orbit_folder import OrbitFolderService
+            orbit_service = OrbitFolderService(db)
+            orbit_results = orbit_service.scan_results(project)
+            for result_item in orbit_results:
+                try:
+                    orbit_service.process_result(result_item)
+                    orbit_processed += 1
+                except Exception as e:
+                    logger.warning(f"Failed to process orbit result {result_item['filename']}: {e}")
+            if orbit_processed > 0:
+                logger.info(f"Processed {orbit_processed} orbit results for '{project_name}'")
+        except Exception as e:
+            logger.warning(f"Orbit result scan failed (non-blocking): {e}")
+
         jm.complete_job(job_id, {
             "project_id": str(project_id),
             "rag_scan": rag_result.get("processed", {}).get("processed_count", 0) if isinstance(rag_result, dict) else 0,
             "git_commits": git_result.get("new_commits", 0) if isinstance(git_result, dict) else 0,
+            "orbit_results": orbit_processed,
         })
 
         logger.info(f"Watchdog cycle completed for '{project_name}'")

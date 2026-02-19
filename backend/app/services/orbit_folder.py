@@ -14,19 +14,20 @@ task.generated_prompt is present (AI-generated). It never overwrites
 any file that was not produced by this service.
 """
 
-import json
 import logging
 import re
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Tuple
 from uuid import UUID
 
+import yaml
 from sqlalchemy.orm import Session
 
 from app.models.project import Project
-from app.models.task import Task
+from app.models.task import Task, TaskStatus
+from app.models.task_result import TaskResult
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +141,129 @@ class OrbitFolderService:
             "knowledge": _count("knowledge"),
         }
 
+    # =========================================================================
+    # PROMPT #242 - Result detection and processing
+    # =========================================================================
+
+    def scan_results(self, project: Project) -> List[Dict]:
+        """
+        Scan orbit/results/ for unprocessed result files.
+
+        Returns list of dicts with card_id, task, filename, file_path,
+        content, and front_matter for each unprocessed result.
+        """
+        results_dir = Path(project.code_path) / "orbit" / "results"
+        if not results_dir.exists():
+            return []
+
+        unprocessed = []
+        for md_file in sorted(results_dir.glob("*_RESULT.md")):
+            try:
+                front_matter, body = _parse_front_matter(md_file)
+                if not front_matter:
+                    logger.warning(f"No front matter in {md_file.name}, skipping")
+                    continue
+
+                card_id = front_matter.get("orbit_card_id")
+                if not card_id:
+                    logger.warning(f"No orbit_card_id in {md_file.name}, skipping")
+                    continue
+
+                task = self.db.query(Task).filter(Task.id == card_id).first()
+                if not task:
+                    logger.warning(f"Card {card_id} not found for {md_file.name}")
+                    continue
+
+                # Skip if already processed (same file path in TaskResult)
+                existing = self.db.query(TaskResult).filter(
+                    TaskResult.task_id == card_id
+                ).first()
+                if existing and existing.file_path == str(md_file):
+                    continue
+
+                unprocessed.append({
+                    "card_id": str(card_id),
+                    "task": task,
+                    "filename": md_file.name,
+                    "file_path": str(md_file),
+                    "content": body,
+                    "front_matter": front_matter,
+                })
+            except Exception as e:
+                logger.warning(f"Error scanning {md_file.name}: {e}")
+
+        return unprocessed
+
+    def process_result(self, result_item: Dict) -> Dict:
+        """
+        Process a single result file and link it to its card.
+
+        Creates or updates TaskResult with the result content,
+        then updates card status to REVIEW.
+        """
+        task = result_item["task"]
+        content = result_item["content"]
+        file_path = result_item["file_path"]
+
+        # Create or update TaskResult
+        existing = self.db.query(TaskResult).filter(
+            TaskResult.task_id == task.id
+        ).first()
+
+        if existing:
+            existing.output_code = content
+            existing.file_path = file_path
+            existing.updated_at = datetime.utcnow()
+        else:
+            task_result = TaskResult(
+                task_id=task.id,
+                output_code=content,
+                file_path=file_path,
+                model_used="claude-code-manual",
+                validation_passed=None,
+                attempts=1,
+            )
+            self.db.add(task_result)
+
+        # Update task status to REVIEW
+        old_status = task.status.value if task.status else "unknown"
+        task.status = TaskStatus.REVIEW
+        task.workflow_state = "review"
+        task.updated_at = datetime.utcnow()
+
+        self.db.commit()
+
+        logger.info(
+            f"Processed result for {task.item_type.value} '{task.title}' "
+            f"({old_status} -> review) from {result_item['filename']}"
+        )
+
+        return {
+            "task_id": str(task.id),
+            "title": task.title,
+            "status": "review",
+            "filename": result_item["filename"],
+        }
+
+    def check_result_for_task(self, task: Task) -> Optional[Dict]:
+        """
+        Check if a specific task has a result file in orbit/results/.
+
+        Returns processed result dict or None if not found.
+        """
+        project = self.db.query(Project).filter(
+            Project.id == task.project_id
+        ).first()
+        if not project or not project.code_path:
+            return None
+
+        results = self.scan_results(project)
+        for result_item in results:
+            if result_item["card_id"] == str(task.id):
+                return self.process_result(result_item)
+
+        return None
+
 
 # =============================================================================
 # Private helpers
@@ -243,3 +367,34 @@ orbit_schema_version: "{ORBIT_SCHEMA_VERSION}"
 """
 
     return content
+
+
+def _parse_front_matter(file_path: Path) -> Tuple[Optional[Dict], str]:
+    """
+    Parse YAML front matter from a markdown file.
+
+    Returns (front_matter_dict, body_text).
+    Returns (None, full_text) if no valid front matter found.
+    """
+    try:
+        text = file_path.read_text(encoding="utf-8")
+    except Exception:
+        return None, ""
+
+    if not text.startswith("---"):
+        return None, text
+
+    end_marker = text.find("---", 3)
+    if end_marker < 0:
+        return None, text
+
+    yaml_text = text[3:end_marker].strip()
+    body = text[end_marker + 3:].strip()
+
+    try:
+        front_matter = yaml.safe_load(yaml_text)
+        if not isinstance(front_matter, dict):
+            return None, text
+        return front_matter, body
+    except yaml.YAMLError:
+        return None, text
