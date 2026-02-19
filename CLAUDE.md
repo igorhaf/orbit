@@ -2,8 +2,8 @@
 ## Arquivo de Instruções Permanentes para Claude Code
 
 **Data de Criação:** December 29, 2025
-**Última Atualização:** January 25, 2026
-**Versão:** 1.5 - Externalized Prompts
+**Última Atualização:** February 19, 2026
+**Versão:** 1.6 - Human Data Supremacy Rule
 
 ---
 
@@ -14,6 +14,44 @@
 ---
 
 ## 🎯 INSTRUÇÕES CRÍTICAS - SEMPRE SEGUIR
+
+### REGRA #0 - DADOS HUMANOS SÃO SAGRADOS (MÁXIMA PRIORIDADE) 🛡️
+
+**⚠️ ATENÇÃO: DADOS GERADOS POR IA NUNCA SOBRESCREVEM DADOS DE OPERADOR HUMANO ⚠️**
+
+**REGRA FUNDAMENTAL:**
+Dados inseridos ou editados por um operador humano têm **prioridade absoluta** sobre dados gerados por IA. Esta regra se aplica a **TODOS os locais do sistema** sem exceção.
+
+**Princípios:**
+- ✅ **IA preenche campos vazios** - Se o campo está vazio/null, a IA pode preenchê-lo
+- ✅ **IA sugere, humano confirma** - Dados gerados por IA devem ser apresentados como sugestão quando há dado humano existente
+- ❌ **NUNCA sobrescrever dado humano com dado de IA** - Se um humano editou um campo (título, descrição, status, etc.), a IA NÃO pode sobrescrever
+- ❌ **NUNCA substituir edição manual** - Mesmo que a IA gere um resultado "melhor", o dado humano prevalece
+
+**Exemplos práticos:**
+```python
+# ✅ CORRETO - Verificar antes de sobrescrever
+if not task.description or task.description == ai_generated_original:
+    task.description = ai_new_description  # OK, campo vazio ou IA anterior
+
+# ❌ ERRADO - Sobrescrever sem verificar
+task.description = ai_new_description  # PROIBIDO se humano editou!
+```
+
+**Onde esta regra se aplica:**
+- Títulos e descrições de tasks/epics/stories
+- Campos de projetos (nome, descrição, contexto)
+- Wiki pages e conteúdo gerado
+- Qualquer campo que o usuário possa editar manualmente
+- Status, prioridade, labels - se alterados manualmente pelo usuário
+
+**Ao implementar features que geram/atualizam dados:**
+1. Sempre verificar se o dado atual foi editado por humano
+2. Se foi editado por humano, NÃO sobrescrever
+3. Se necessário atualizar, apresentar como sugestão para aprovação
+4. Logar quando um dado humano é preservado sobre sugestão de IA
+
+---
 
 ### 0. API KEYS E CONFIGURAÇÕES (CRÍTICO - NUNCA ESQUECER) ⚠️
 
