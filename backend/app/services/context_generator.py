@@ -1176,8 +1176,88 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         """
         PROMPT #193 - Use AI to classify business rules into hierarchical structure.
         PROMPT #264 - Added retry logic (2 attempts) with timeout and detailed logging.
+        PROMPT #245 - Chunked processing: splits large rule sets into batches of
+                      ~100 rules each, classifies each batch, then merges by Epic title.
+                      This prevents token overflow on large codebases (1000+ rules).
 
         Returns list of hierarchy nodes or None if classification fails.
+        """
+        import json
+        import traceback
+
+        CHUNK_SIZE = 100  # Rules per AI call
+
+        # If small enough, classify in a single call
+        if len(business_rules) <= CHUNK_SIZE:
+            result = await self._classify_rules_chunk(project, business_rules)
+            return result
+
+        # Chunked processing for large rule sets
+        logger.info(
+            f"Large rule set ({len(business_rules)} rules), "
+            f"splitting into chunks of {CHUNK_SIZE}"
+        )
+
+        all_hierarchies: List[List[Dict]] = []
+        for i in range(0, len(business_rules), CHUNK_SIZE):
+            chunk = business_rules[i:i + CHUNK_SIZE]
+            chunk_num = (i // CHUNK_SIZE) + 1
+            total_chunks = (len(business_rules) + CHUNK_SIZE - 1) // CHUNK_SIZE
+
+            logger.info(f"Classifying chunk {chunk_num}/{total_chunks} ({len(chunk)} rules)")
+
+            chunk_result = await self._classify_rules_chunk(project, chunk)
+            if chunk_result:
+                all_hierarchies.append(chunk_result)
+            else:
+                logger.warning(f"Chunk {chunk_num} classification failed, skipping")
+
+        if not all_hierarchies:
+            logger.warning("All chunks failed classification")
+            return None
+
+        # Merge hierarchies by Epic title (domain grouping)
+        merged = self._merge_hierarchies(all_hierarchies)
+        logger.info(f"Merged {len(all_hierarchies)} chunks into {len(merged)} domain groups")
+        return merged
+
+    def _merge_hierarchies(self, hierarchies: List[List[Dict]]) -> List[Dict]:
+        """
+        PROMPT #245 - Merge multiple hierarchy results by Epic title.
+        Rules from different chunks that belong to the same domain
+        are consolidated under the same Epic.
+        """
+        epic_map: Dict[str, Dict] = {}
+
+        for hierarchy in hierarchies:
+            for epic_node in hierarchy:
+                title = epic_node.get("title", "").strip()
+                # Normalize title for matching (lowercase, strip whitespace)
+                key = title.lower()
+
+                if key in epic_map:
+                    # Merge children into existing epic
+                    existing_children = epic_map[key].get("children", [])
+                    new_children = epic_node.get("children", [])
+                    existing_children.extend(new_children)
+                    epic_map[key]["children"] = existing_children
+                else:
+                    epic_map[key] = {
+                        "title": title,
+                        "description": epic_node.get("description", ""),
+                        "children": list(epic_node.get("children", []))
+                    }
+
+        return list(epic_map.values())
+
+    async def _classify_rules_chunk(
+        self,
+        project: Any,
+        business_rules: List[str]
+    ) -> Optional[List[Dict]]:
+        """
+        PROMPT #245 - Classify a single chunk of business rules via AI.
+        Extracted from original _classify_rules_hierarchy for reuse in chunking.
         """
         import json
         import traceback
@@ -1185,10 +1265,8 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         from app.contracts.loader import ContractLoader
         loader = ContractLoader()
 
-        # Format rules as numbered text
         rules_text = "\n".join([f"{i}. {rule}" for i, rule in enumerate(business_rules, 1)])
 
-        # Get additional context from memory
         memory_ctx = project.initial_memory_context or {}
         key_features = memory_ctx.get("key_features", [])
         entities = memory_ctx.get("entities", [])
@@ -1206,7 +1284,6 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             }
         )
 
-        # PROMPT #264 - Retry logic with 2 attempts
         max_retries = 2
         for attempt in range(max_retries):
             try:
@@ -1218,19 +1295,21 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         max_tokens=6000,
                         project_id=str(project.id)
                     ),
-                    timeout=120
+                    timeout=180
                 )
 
                 content = response.get("content", "")
 
-                # Parse JSON response
                 json_start = content.find("{")
                 json_end = content.rfind("}") + 1
                 if json_start >= 0 and json_end > json_start:
                     parsed = json.loads(content[json_start:json_end])
                     hierarchy = parsed.get("hierarchy", [])
                     if hierarchy and isinstance(hierarchy, list):
-                        logger.info(f"AI classified rules into {len(hierarchy)} domain groups (attempt {attempt + 1})")
+                        logger.info(
+                            f"AI classified {len(business_rules)} rules into "
+                            f"{len(hierarchy)} domain groups (attempt {attempt + 1})"
+                        )
                         return hierarchy
 
                 logger.warning(f"AI response did not contain valid hierarchy (attempt {attempt + 1}/{max_retries})")
@@ -1238,12 +1317,12 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             except json.JSONDecodeError as e:
                 logger.warning(f"JSON parse error in hierarchy classification (attempt {attempt + 1}/{max_retries}): {e}")
             except asyncio.TimeoutError:
-                logger.warning(f"Hierarchy classification timed out after 120s (attempt {attempt + 1}/{max_retries})")
+                logger.warning(f"Hierarchy classification timed out after 180s (attempt {attempt + 1}/{max_retries})")
             except Exception as e:
                 logger.error(f"Hierarchy classification failed (attempt {attempt + 1}/{max_retries}): {e}")
                 logger.error(traceback.format_exc())
 
-        logger.warning(f"Hierarchy classification failed after {max_retries} attempts, will use flat fallback")
+        logger.warning(f"Chunk classification failed after {max_retries} attempts")
         return None
 
     def _create_hierarchy_cards(

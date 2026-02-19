@@ -2452,8 +2452,8 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
     """
     PROMPT #237 - Background task: generate full hierarchy.
     PROMPT #240 - Only generates business rule cards (closed, from existing code).
-                  NO AI-suggested cards are created here. Suggestions come from
-                  the separate "Aprovar/Rejeitar" flow.
+    PROMPT #245 - Removed suggested epics generation. This flow creates ONLY
+                  business rule cards. No AI suggestions.
 
     The hierarchy is built by _classify_rules_hierarchy which uses AI to organize
     existing business rules into Epic > Story > Task > Subtask structure.
@@ -2477,10 +2477,10 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
         project_name = project.name or str(project_id)[:8]
 
         # === Phase 1: Generate rich context if missing ===
-        jm.update_progress(job_id, 5.0, "Fase 1/3: Gerando contexto do projeto...")
+        jm.update_progress(job_id, 5.0, "Fase 1/2: Gerando contexto do projeto...")
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
-            job.notification_title = f"Fase 1/3: Contexto - '{project_name}'"
+            job.notification_title = f"Fase 1/2: Contexto - '{project_name}'"
             db.commit()
 
         if not project.context_semantic:
@@ -2495,10 +2495,10 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
                 logger.warning(f"Rich context failed, continuing: {e}")
 
         # === Phase 2: Generate business rule cards (hierarchical, closed) ===
-        jm.update_progress(job_id, 20.0, "Fase 2/3: Organizando regras de negocio em hierarquia...")
+        jm.update_progress(job_id, 20.0, "Fase 2/2: Organizando regras de negocio em hierarquia...")
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
-            job.notification_title = f"Fase 2/3: Regras de negocio - '{project_name}'"
+            job.notification_title = f"Fase 2/2: Regras de negocio - '{project_name}'"
             db.commit()
 
         try:
@@ -2514,30 +2514,9 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
         total_tasks = sum(1 for c in business_rule_cards if c.get("item_type") == "task")
         total_subtasks = sum(1 for c in business_rule_cards if c.get("item_type") == "subtask")
 
-        # === Phase 3: Generate suggested epics (draft, for user review) ===
-        jm.update_progress(job_id, 70.0, "Fase 3/3: Gerando epics sugeridos...")
-        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
-        if job:
-            job.notification_title = f"Fase 3/3: Epics sugeridos - '{project_name}'"
-            db.commit()
-
-        suggested_epic_count = 0
-        existing_suggested = db.query(Task).filter(
-            Task.project_id == project_id,
-            Task.labels.contains(["suggested"]),
-            Task.item_type == ItemType.EPIC,
-        ).count()
-
-        if existing_suggested == 0:
-            try:
-                suggested_epics = await context_service._generate_suggested_epics_from_memory(project)
-                suggested_epic_count = len(suggested_epics)
-                logger.info(f"Generated {suggested_epic_count} suggested epics (draft, for user review)")
-            except Exception as e:
-                logger.warning(f"Failed to generate suggested epics: {e}")
-        else:
-            suggested_epic_count = existing_suggested
-            logger.info(f"Skipping suggested epics - {existing_suggested} already exist")
+        # PROMPT #245 - Phase 3 (suggested epics) REMOVED from "Gerar Cards".
+        # This flow generates ONLY business rule cards from existing code.
+        # Suggested epics are generated separately via "Gerar Epics" button.
 
         # === Complete ===
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
@@ -2552,7 +2531,6 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
             "total_stories": total_stories,
             "total_tasks": total_tasks,
             "total_subtasks": total_subtasks,
-            "suggested_epics": suggested_epic_count,
         })
         logger.info(
             f"Hierarchy generated for '{project_name}': "
