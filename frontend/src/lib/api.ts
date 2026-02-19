@@ -383,6 +383,29 @@ export const tasksApi = {
       body: JSON.stringify({ count }),
     }),
 
+  // PROMPT #241 - Orbit Folder: Export prompt to orbit/prompts/
+  exportPrompt: (taskId: string) =>
+    request<{
+      task_id: string;
+      filename: string;
+      file_path: string;
+      orbit_path: string;
+      message: string;
+    }>(`/api/v1/tasks/${taskId}/export-prompt`, {
+      method: 'POST',
+    }),
+
+  // PROMPT #241 - Orbit Folder: Get orbit/ folder status for a project
+  getOrbitStatus: (projectId: string) =>
+    request<{
+      project_id: string;
+      exists: boolean;
+      orbit_path: string | null;
+      prompts: number;
+      results: number;
+      knowledge: number;
+    }>(`/api/v1/tasks/project/${projectId}/orbit-status`),
+
   // PROMPT #253 - AI title suggestion
   suggestTitle: (data: {
     user_input: string;

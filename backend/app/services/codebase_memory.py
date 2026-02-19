@@ -185,6 +185,9 @@ class CodebaseMemoryService:
         # Misc
         ".terraform", ".serverless",
         ".aws-sam", ".amplify",
+
+        # PROMPT #241 - ORBIT bridge folder (prompts/results/knowledge)
+        "orbit",
     }
 
     # PROMPT #166 - File patterns to ALWAYS ignore (not business logic)

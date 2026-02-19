@@ -17,7 +17,7 @@ import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import WorkflowActions from './WorkflowActions';
 import InlineCardCreator from './InlineCardCreator'; // PROMPT #187
-import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconClipboard, IconTree, IconChat, IconChart, IconCpu, IconMicrophone, IconPencil, IconCheckCircle } from '@/components/icons';
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconClipboard, IconTree, IconChat, IconChart, IconCpu, IconMicrophone, IconPencil, IconCheckCircle, IconExport } from '@/components/icons';
 import {
   BacklogItem,
   ItemType,
@@ -89,6 +89,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
 
   // PROMPT #254 - AI content generation state
   const [isGeneratingContent, setIsGeneratingContent] = useState(false);
+
+  // PROMPT #241 - Orbit Folder: prompt export state
+  const [isExportingPrompt, setIsExportingPrompt] = useState(false);
+  const [exportResult, setExportResult] = useState<{ filename: string; orbit_path: string } | null>(null);
 
   // Check if item is a suggested/draft item
   const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
@@ -397,6 +401,21 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       showError(`Falha ao rejeitar item: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsRejecting(false);
+    }
+  };
+
+  // PROMPT #241 - Orbit Folder: export prompt handler
+  const handleExportPrompt = async () => {
+    setIsExportingPrompt(true);
+    setExportResult(null);
+    try {
+      const result = await tasksApi.exportPrompt(item.id);
+      setExportResult({ filename: result.filename, orbit_path: result.orbit_path });
+      showSuccess(result.message);
+    } catch (error: any) {
+      showError(error.message || 'Falha ao exportar prompt');
+    } finally {
+      setIsExportingPrompt(false);
     }
   };
 
@@ -1726,11 +1745,28 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                             >
                               <span className="inline-flex items-center gap-1"><IconClipboard className="w-3 h-3" /> Copiar</span>
                             </button>
+                            {/* PROMPT #241 - Export prompt to orbit/prompts/ */}
+                            <button
+                              onClick={handleExportPrompt}
+                              disabled={isExportingPrompt}
+                              className="px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+                            >
+                              <span className="inline-flex items-center gap-1">
+                                <IconExport className="w-3 h-3" />
+                                {isExportingPrompt ? 'Exportando...' : 'Exportar'}
+                              </span>
+                            </button>
                           </div>
                         </div>
                         <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono leading-relaxed">
                           {item.generated_prompt}
                         </pre>
+                        {/* PROMPT #241 - Show export result path */}
+                        {exportResult && (
+                          <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
+                            Exportado: <code className="bg-green-100 px-1 rounded">{exportResult.orbit_path}/prompts/{exportResult.filename}</code>
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg bg-gray-50">

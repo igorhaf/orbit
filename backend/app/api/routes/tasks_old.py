@@ -2543,3 +2543,92 @@ async def suggest_title(
         suggested = body.user_input.strip()
 
     return SuggestTitleResponse(suggested_title=suggested)
+
+
+# ============================================================================
+# PROMPT #241 - ORBIT FOLDER: Prompt Export
+# ============================================================================
+
+class PromptExportResponse(BaseModel):
+    """Response for prompt export to orbit/prompts/."""
+    task_id: str
+    filename: str
+    file_path: str
+    orbit_path: str
+    message: str
+
+
+class OrbitStatusResponse(BaseModel):
+    """Current state of the orbit/ folder for a project."""
+    project_id: str
+    exists: bool
+    orbit_path: Optional[str] = None
+    prompts: int = 0
+    results: int = 0
+    knowledge: int = 0
+
+
+@router.post("/{task_id}/export-prompt", response_model=PromptExportResponse)
+async def export_prompt_to_orbit(
+    task_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #241 - Export a card's generated_prompt to orbit/prompts/ as .md file.
+
+    Creates the orbit/ folder structure if it doesn't exist.
+    Writes {ITEM_TYPE}_{shortid}_{title_slug}.md to orbit/prompts/.
+    """
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa nao encontrada")
+
+    try:
+        from app.services.orbit_folder import OrbitFolderService
+        service = OrbitFolderService(db)
+        result = service.export_prompt(task)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(
+            f"Failed to export prompt for task {task_id}: {e}", exc_info=True
+        )
+        raise HTTPException(
+            status_code=500,
+            detail=f"Falha ao exportar prompt: {str(e)}"
+        )
+
+    return PromptExportResponse(
+        task_id=str(task_id),
+        filename=result["filename"],
+        file_path=result["file_path"],
+        orbit_path=result["orbit_path"],
+        message=f"Prompt exportado para orbit/prompts/{result['filename']}"
+    )
+
+
+@router.get("/project/{project_id}/orbit-status", response_model=OrbitStatusResponse)
+async def get_orbit_status(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #241 - Get the current state of the orbit/ folder for a project.
+
+    Returns counts of files in prompts/, results/, knowledge/.
+    """
+    from app.models.project import Project
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+
+    from app.services.orbit_folder import OrbitFolderService
+    service = OrbitFolderService(db)
+    status = service.get_orbit_status(project)
+
+    return OrbitStatusResponse(
+        project_id=str(project_id),
+        **status
+    )
