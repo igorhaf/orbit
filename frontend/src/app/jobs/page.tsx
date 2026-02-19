@@ -737,7 +737,7 @@ export default function JobsPage() {
                 <Trash2 className="w-4 h-4 mr-2" />
                 Limpeza
               </Button>
-              <div className="absolute right-0 mt-1 w-48 bg-white border rounded-lg shadow-lg hidden group-hover:block z-10">
+              <div className="absolute right-0 top-full pt-1 w-48 hidden group-hover:block z-10"><div className="bg-white border rounded-lg shadow-lg">
                 <button
                   onClick={() => handleCleanupClick(0)}
                   className="w-full text-left px-4 py-2 hover:bg-gray-50 text-sm font-medium text-red-600"
@@ -763,7 +763,7 @@ export default function JobsPage() {
                 >
                   Mais de 30 dias
                 </button>
-              </div>
+              </div></div>
             </div>
           </div>
         </div>
