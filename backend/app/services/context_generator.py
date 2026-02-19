@@ -1088,15 +1088,13 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
     ) -> List[Dict]:
         """
         PROMPT #120 - Generate closed cards for verified business rules.
-        PROMPT #193 - Hierarchical structure: Epic > Story > Task > Subtask.
+        PROMPT #193 - Hierarchical structure.
+        PROMPT #246 - Simplified to 2 levels: Epic (domain) > Story (rule).
         PROMPT #285 - Duplicate protection: skips if business_rule cards already exist.
 
-        Uses AI to classify business rules into a proper hierarchy grouped
-        by business domain. Each level of the tree maps to an item_type:
-        - Level 0 = Epic (business domain/module)
-        - Level 1 = Story (business rule)
-        - Level 2 = Task (technical aspect)
-        - Level 3 = Subtask (implementation detail)
+        Uses AI to classify business rules into a 2-level hierarchy:
+        - Level 0 = Epic (business domain: Aluno, Professor, Provas, etc.)
+        - Level 1 = Story (each business rule as direct child of its domain Epic)
 
         All cards are CLOSED/DONE since they represent already-implemented rules.
 
@@ -1335,21 +1333,21 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
     ) -> List[Dict]:
         """
         PROMPT #193 - Recursively create cards from AI-classified hierarchy.
+        PROMPT #246 - Simplified to 2 levels only: Epic (domain) > Story (rule).
 
         Maps depth to item_type:
-        - 0 = Epic, 1 = Story, 2 = Task, 3+ = Subtask
+        - 0 = Epic (business domain)
+        - 1 = Story (business rule)
         """
         DEPTH_TO_TYPE = {
             0: ItemType.EPIC,
             1: ItemType.STORY,
-            2: ItemType.TASK,
-            3: ItemType.SUBTASK
         }
 
         saved_cards = []
 
         for i, node in enumerate(nodes):
-            item_type = DEPTH_TO_TYPE.get(depth, ItemType.SUBTASK)
+            item_type = DEPTH_TO_TYPE.get(depth, ItemType.STORY)
             title = node.get("title", "Sem título")[:200]
             description = node.get("description", "")
 
@@ -1381,9 +1379,10 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                 "depth": depth
             })
 
-            # Recurse into children (max depth 3 = subtask)
+            # Only recurse into children at depth 0 (Epic → Stories)
+            # Max depth 1 = Story (no deeper nesting)
             children = node.get("children", [])
-            if children and depth < 3:
+            if children and depth < 1:
                 child_cards = self._create_hierarchy_cards(
                     project_id, children, parent_id=card.id, depth=depth + 1
                 )

@@ -1,7 +1,7 @@
 name: business_rules_hierarchy
 version: 1
 category: memory
-description: Classifica regras de negócio em hierarquia Epic/Story/Task/Subtask - PROMPT #193
+description: Classifica regras de negócio em hierarquia Epic(domínio) > Story(regra) - PROMPT #193, #246
 usage_type: memory
 estimated_tokens: 4000
 tags:
@@ -21,24 +21,21 @@ variables:
 system_prompt: |
   Você é um Product Owner especialista organizando regras de negocio extraidas de um codebase existente.
 
-  Sua tarefa e agrupar as regras por DOMÍNIO DE NEGOCIO e organizar em hierarquia de 4 niveis:
+  Sua tarefa e agrupar as regras por DOMÍNIO DE NEGOCIO em uma hierarquia SIMPLES de 2 niveis:
 
-  - **Nível 1 (Epic)**: Módulo ou domínio de negocio (ex: "Gestao de Usuários", "Processamento de Pagamentos", "Catálogo de Produtos")
-  - **Nível 2 (Story)**: Regra de negocio principal dentro do domínio (ex: "Autenticação com email e senha", "Calculo de frete por regiao")
-  - **Nível 3 (Task)**: Aspecto técnico ou de implementação da regra (ex: "Validação de formato de email", "Tabela de precos por CEP")
-  - **Nível 4 (Subtask)**: Detalhe específico de implementação (ex: "Mascara de CPF no formulário", "Cache de consulta de CEP")
+  - **Nível 1 (Epic)**: Domínio de negocio do sistema (ex: "Aluno", "Professor", "Provas", "Matrículas", "Pagamentos", "Turmas")
+  - **Nível 2 (Story)**: Cada regra de negocio daquele domínio vira uma Story filha direta do Epic
 
-  REGRAS IMPORTANTES:
-  - Agrupe regras RELACIONADAS sob o mesmo Epic
-  - Nem toda regra precisa ter 4 niveis - use a profundidade adequada
-  - Um Epic pode ter de 1 a 10 Stories
-  - Uma Story pode ter 0 a 5 Tasks
-  - Uma Task pode ter 0 a 3 Subtasks
-  - Titulos devem ser CLAROS e em linguagem de NEGOCIO
+  REGRAS OBRIGATÓRIAS:
+  - Cada DOMÍNIO do sistema = 1 Epic (ex: Aluno, Professor, Provas, Pagamentos, Turmas)
+  - TODAS as regras de um domínio sao filhas DIRETAS do Epic como Stories
+  - NÃO crie niveis adicionais (Task, Subtask) - apenas Epic > Story
+  - Titulos dos Epics devem ser o NOME DO DOMÍNIO (curto e direto: "Aluno", "Professor", "Provas")
+  - Titulos das Stories devem descrever a REGRA DE NEGOCIO
   - Descricoes devem explicar a regra de forma autocontida
-  - Se houver regras que não se encaixam em nenhum grupo, crie um Epic "Regras Gerais"
-  - Crie entre 3 e 8 Epics no máximo
-  - Cada Epic deve representar um MÓDULO REAL do sistema
+  - Se houver regras que não se encaixam em nenhum domínio, crie um Epic "Regras Gerais"
+  - NÃO limite o numero de Epics - crie QUANTOS domínios existirem no sistema
+  - NÃO agrupe domínios diferentes sob um mesmo Epic
 
   ## FORMATO DE RESPOSTA (JSON OBRIGATÓRIO):
 
@@ -47,19 +44,18 @@ system_prompt: |
   {
     "hierarchy": [
       {
-        "title": "Nome do Módulo/Domínio",
-        "description": "Descrição do módulo de negocio",
+        "title": "Nome do Domínio",
+        "description": "Descrição do domínio de negocio",
         "children": [
           {
-            "title": "Regra de negocio principal",
+            "title": "Regra de negocio X",
             "description": "Descrição completa da regra",
-            "children": [
-              {
-                "title": "Aspecto técnico da regra",
-                "description": "Como esta regra e implementada",
-                "children": []
-              }
-            ]
+            "children": []
+          },
+          {
+            "title": "Regra de negocio Y",
+            "description": "Descrição completa da regra",
+            "children": []
           }
         ]
       }
@@ -85,11 +81,12 @@ user_prompt: |
 
   ---
 
-  TAREFA: Organize TODAS as regras acima em uma hierarquia de Epic > Story > Task > Subtask.
+  TAREFA: Organize TODAS as regras acima em hierarquia de Epic > Story (apenas 2 niveis).
 
-  IMPORTANTE:
-  1. Agrupe regras por domínio de negocio (cada domínio = 1 Epic)
-  2. TODAS as regras devem aparecer na hierarquia - não perca nenhuma
-  3. Use titulos claros e descritivos em linguagem de negocio
-  4. Ajuste a profundidade conforme necessidade (nem tudo precisa de 4 niveis)
-  5. Responda APENAS em JSON válido
+  REGRAS:
+  1. Cada DOMÍNIO do sistema = 1 Epic (ex: "Aluno", "Professor", "Provas", "Turmas")
+  2. Cada regra de negocio = 1 Story filha direta do Epic do seu domínio
+  3. NÃO crie Tasks ou Subtasks - apenas Epic > Story
+  4. TODAS as regras devem aparecer na hierarquia - não perca nenhuma
+  5. Titulos dos Epics = nome do domínio (curto e direto)
+  6. Responda APENAS em JSON válido
