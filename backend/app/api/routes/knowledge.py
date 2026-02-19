@@ -831,6 +831,216 @@ async def upload_document(
         )
 
 
+# ============================================================================
+# PROMPT #243 - ORBIT KNOWLEDGE UPLOAD (DISK + RAG)
+# ============================================================================
+
+
+class OrbitKnowledgeUploadResponse(BaseModel):
+    filename: str
+    file_path: str
+    size_bytes: int
+    chunks_indexed: int
+    orbit_path: str
+
+
+class OrbitKnowledgeFile(BaseModel):
+    filename: str
+    size_bytes: int
+    modified_at: str
+
+
+@router.post(
+    "/projects/{project_id}/knowledge/upload-orbit",
+    response_model=OrbitKnowledgeUploadResponse,
+)
+async def upload_orbit_knowledge(
+    project_id: UUID,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Upload a knowledge file to orbit/knowledge/ on disk AND index in RAG.
+
+    PROMPT #243 - Orbit Knowledge Upload
+
+    Saves the file to {code_path}/orbit/knowledge/{filename} and also
+    chunks + indexes the content in the RAG for semantic search.
+    Accepts text files: .md, .txt, .rst, .yaml, .yml, .json
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Projeto {project_id} não encontrado",
+        )
+
+    if not project.code_path:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Projeto não tem code_path configurado",
+        )
+
+    # Validate file type
+    allowed_extensions = [".md", ".txt", ".rst", ".yaml", ".yml", ".json"]
+    filename = file.filename or "unknown"
+    ext = "." + filename.split(".")[-1].lower() if "." in filename else ""
+
+    if ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Tipo de arquivo não permitido. Permitidos: {', '.join(allowed_extensions)}",
+        )
+
+    try:
+        content = await file.read()
+
+        # 1. Save to orbit/knowledge/ on disk
+        from app.services.orbit_folder import OrbitFolderService
+
+        orbit_service = OrbitFolderService(db)
+        disk_result = orbit_service.upload_knowledge(project, filename, content)
+
+        # 2. Index in RAG
+        text_content = content.decode("utf-8")
+        chunks = _chunk_document(text_content, chunk_size=500, overlap=50)
+
+        rag_service = RAGService(db)
+        for i, chunk in enumerate(chunks):
+            rag_service.store(
+                content=chunk,
+                metadata={
+                    "content_type": "knowledge",
+                    "filename": disk_result["filename"],
+                    "chunk_index": i,
+                    "total_chunks": len(chunks),
+                    "source": "orbit_knowledge",
+                    "file_path": disk_result["file_path"],
+                    "uploaded_at": datetime.utcnow().isoformat(),
+                },
+                project_id=project_id,
+            )
+
+        logger.info(
+            f"Uploaded orbit knowledge '{disk_result['filename']}' "
+            f"({disk_result['size_bytes']} bytes, {len(chunks)} RAG chunks) "
+            f"for project {project_id}"
+        )
+
+        return OrbitKnowledgeUploadResponse(
+            filename=disk_result["filename"],
+            file_path=disk_result["file_path"],
+            size_bytes=disk_result["size_bytes"],
+            chunks_indexed=len(chunks),
+            orbit_path=disk_result["orbit_path"],
+        )
+
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="O arquivo deve ser texto codificado em UTF-8",
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        logger.error(f"Failed to upload orbit knowledge: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao enviar arquivo de conhecimento: {str(e)}",
+        )
+
+
+@router.get("/projects/{project_id}/knowledge/orbit-files")
+async def list_orbit_knowledge_files(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    List all files in orbit/knowledge/ on disk.
+
+    PROMPT #243 - Orbit Knowledge Upload
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Projeto {project_id} não encontrado",
+        )
+
+    if not project.code_path:
+        return {"files": [], "total": 0}
+
+    from app.services.orbit_folder import OrbitFolderService
+
+    orbit_service = OrbitFolderService(db)
+    files = orbit_service.list_knowledge_files(project)
+
+    return {"files": files, "total": len(files)}
+
+
+@router.delete("/projects/{project_id}/knowledge/orbit-files/{filename}")
+async def delete_orbit_knowledge_file(
+    project_id: UUID,
+    filename: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a file from orbit/knowledge/ on disk and remove its RAG chunks.
+
+    PROMPT #243 - Orbit Knowledge Upload
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Projeto {project_id} não encontrado",
+        )
+
+    from app.services.orbit_folder import OrbitFolderService
+
+    orbit_service = OrbitFolderService(db)
+    deleted = orbit_service.delete_knowledge_file(project, filename)
+
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Arquivo '{filename}' não encontrado em orbit/knowledge/",
+        )
+
+    # Also remove RAG chunks for this file
+    try:
+        safe_name = __import__("pathlib").Path(filename).name
+        query = text("""
+            DELETE FROM rag_documents
+            WHERE project_id = :project_id
+                AND metadata->>'source' = 'orbit_knowledge'
+                AND metadata->>'filename' = :filename
+        """)
+        result = db.execute(
+            query,
+            {"project_id": str(project_id), "filename": safe_name},
+        )
+        db.commit()
+        chunks_deleted = result.rowcount
+    except Exception as e:
+        logger.warning(f"Failed to delete RAG chunks for {filename}: {e}")
+        chunks_deleted = 0
+
+    logger.info(
+        f"Deleted orbit knowledge file '{filename}' "
+        f"({chunks_deleted} RAG chunks) from project {project_id}"
+    )
+
+    return {
+        "status": "deleted",
+        "filename": filename,
+        "chunks_deleted": chunks_deleted,
+    }
+
+
 @router.get("/projects/{project_id}/knowledge/documents")
 async def list_documents(
     project_id: UUID,

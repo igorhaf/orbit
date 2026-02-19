@@ -82,7 +82,7 @@ export default function KnowledgePage() {
   const [rules, setRules] = useState<BusinessRule[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [stats, setStats] = useState<KnowledgeStats | null>(null);
-  const [activeTab, setActiveTab] = useState<'rules' | 'documents' | 'stats'>('rules');
+  const [activeTab, setActiveTab] = useState<'rules' | 'documents' | 'orbit' | 'stats'>('rules');
 
   // Filter state
   const [categoryFilter, setCategoryFilter] = useState<string>('');
@@ -99,6 +99,11 @@ export default function KnowledgePage() {
 
   // Upload state
   const [uploading, setUploading] = useState(false);
+
+  // PROMPT #243 - Orbit knowledge state
+  const orbitFileInputRef = useRef<HTMLInputElement>(null);
+  const [orbitFiles, setOrbitFiles] = useState<Array<{ filename: string; size_bytes: number; modified_at: string }>>([]);
+  const [uploadingOrbit, setUploadingOrbit] = useState(false);
 
   // Load project
   const loadProject = useCallback(async () => {
@@ -151,11 +156,11 @@ export default function KnowledgePage() {
   useEffect(() => {
     const loadAll = async () => {
       setLoading(true);
-      await Promise.all([loadProject(), loadRules(), loadDocuments(), loadStats()]);
+      await Promise.all([loadProject(), loadRules(), loadDocuments(), loadOrbitFiles(), loadStats()]);
       setLoading(false);
     };
     loadAll();
-  }, [loadProject, loadRules, loadDocuments, loadStats]);
+  }, [loadProject, loadRules, loadDocuments, loadOrbitFiles, loadStats]);
 
   // Reload rules when filters change
   useEffect(() => {
@@ -230,6 +235,49 @@ export default function KnowledgePage() {
       loadStats();
     } catch (error: any) {
       showError(error.message || 'Falha ao excluir documento');
+    }
+  };
+
+  // PROMPT #243 - Orbit knowledge handlers
+  const loadOrbitFiles = useCallback(async () => {
+    try {
+      const res = await knowledgeApi.listOrbitFiles(projectId);
+      setOrbitFiles(res.files);
+    } catch (error) {
+      console.error('Failed to load orbit files:', error);
+    }
+  }, [projectId]);
+
+  const handleUploadOrbitKnowledge = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploadingOrbit(true);
+    try {
+      const res = await knowledgeApi.uploadOrbitKnowledge(projectId, file);
+      showSuccess(`"${res.filename}" salvo em orbit/knowledge/ (${res.chunks_indexed} chunks indexados)`);
+      loadOrbitFiles();
+      loadStats();
+    } catch (error: any) {
+      showError(error.message || 'Falha ao enviar arquivo');
+    } finally {
+      setUploadingOrbit(false);
+      if (orbitFileInputRef.current) {
+        orbitFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDeleteOrbitFile = async (filename: string) => {
+    if (!confirm(`Deletar "${filename}" de orbit/knowledge/?`)) return;
+
+    try {
+      const res = await knowledgeApi.deleteOrbitFile(projectId, filename);
+      showSuccess(`Arquivo excluido (${res.chunks_deleted} chunks RAG removidos)`);
+      loadOrbitFiles();
+      loadStats();
+    } catch (error: any) {
+      showError(error.message || 'Falha ao excluir arquivo');
     }
   };
 
@@ -329,6 +377,7 @@ export default function KnowledgePage() {
             {[
               { id: 'rules', label: 'Regras de Negocio', count: rules.length },
               { id: 'documents', label: 'Documentos', count: documents.length },
+              { id: 'orbit', label: 'Orbit Knowledge', count: orbitFiles.length },
               { id: 'stats', label: 'Estatisticas' },
             ].map((tab) => (
               <button
@@ -484,6 +533,94 @@ export default function KnowledgePage() {
                         onClick={() => handleDeleteDocument(doc.filename)}
                         className="text-gray-400 hover:text-red-600 p-1"
                         title="Excluir documento"
+                      >
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* PROMPT #243 - Orbit Knowledge Tab */}
+        {activeTab === 'orbit' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-500">
+                Arquivos salvos em <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs">orbit/knowledge/</code> no disco do projeto e indexados no RAG.
+              </p>
+              <div>
+                <Button
+                  variant="outline"
+                  onClick={() => orbitFileInputRef.current?.click()}
+                  disabled={uploadingOrbit}
+                >
+                  {uploadingOrbit ? (
+                    <>
+                      <span className="animate-spin mr-2">...</span>
+                      Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                      </svg>
+                      Enviar para orbit/
+                    </>
+                  )}
+                </Button>
+                <input
+                  ref={orbitFileInputRef}
+                  type="file"
+                  accept=".md,.txt,.rst,.yaml,.yml,.json"
+                  onChange={handleUploadOrbitKnowledge}
+                  className="hidden"
+                />
+              </div>
+            </div>
+
+            {orbitFiles.length === 0 ? (
+              <Card className="p-8 text-center">
+                <div className="text-gray-400 mb-4">
+                  <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum arquivo em orbit/knowledge/</h3>
+                <p className="text-gray-500 mb-4">
+                  Envie arquivos de conhecimento (.md, .txt, .yaml, .json) para o disco do projeto e RAG.
+                </p>
+                <Button variant="outline" onClick={() => orbitFileInputRef.current?.click()}>
+                  Enviar Primeiro Arquivo
+                </Button>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {orbitFiles.map((file) => (
+                  <Card key={file.filename} className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-emerald-100 rounded-lg">
+                          <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-900">{file.filename}</h3>
+                          <p className="text-sm text-gray-500">
+                            {(file.size_bytes / 1024).toFixed(1)} KB
+                            {file.modified_at && ` · ${new Date(file.modified_at).toLocaleDateString()}`}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteOrbitFile(file.filename)}
+                        className="text-gray-400 hover:text-red-600 p-1"
+                        title="Excluir arquivo"
                       >
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />

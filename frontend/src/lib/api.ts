@@ -1552,6 +1552,61 @@ export const knowledgeApi = {
         prompt_docs: number;
       };
     }>('/api/v1/knowledge/projects-stats'),
+
+  // PROMPT #243 - Orbit Knowledge Upload (disk + RAG)
+  uploadOrbitKnowledge: async (projectId: string, file: File) => {
+    const url = `${API_URL}/api/v1/projects/${projectId}/knowledge/upload-orbit`;
+    console.log('📤 Uploading orbit knowledge to', url);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+
+      console.log('📥 Orbit Upload Response:', {
+        status: response.status,
+        ok: response.ok,
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: `Upload failed: ${response.status}` }));
+        throw new Error(error.detail || `Upload failed: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Orbit knowledge upload success');
+      return data as {
+        filename: string;
+        file_path: string;
+        size_bytes: number;
+        chunks_indexed: number;
+        orbit_path: string;
+      };
+    } catch (error: any) {
+      console.error('❌ Orbit knowledge upload failed:', error.message);
+      throw error;
+    }
+  },
+
+  listOrbitFiles: (projectId: string) =>
+    request<{
+      files: Array<{
+        filename: string;
+        size_bytes: number;
+        modified_at: string;
+      }>;
+      total: number;
+    }>(`/api/v1/projects/${projectId}/knowledge/orbit-files`),
+
+  deleteOrbitFile: (projectId: string, filename: string) =>
+    request<{ status: string; filename: string; chunks_deleted: number }>(
+      `/api/v1/projects/${projectId}/knowledge/orbit-files/${encodeURIComponent(filename)}`,
+      { method: 'DELETE' }
+    ),
 };
 
 // PROMPT #215 - Prompt Queue API

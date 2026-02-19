@@ -245,6 +245,86 @@ class OrbitFolderService:
             "filename": result_item["filename"],
         }
 
+    # =========================================================================
+    # PROMPT #243 - Knowledge upload to orbit/knowledge/
+    # =========================================================================
+
+    def upload_knowledge(self, project: Project, filename: str, content: bytes) -> Dict:
+        """
+        Save a file to orbit/knowledge/ on disk.
+
+        Returns:
+            {
+                "file_path": str,
+                "filename": str,
+                "size_bytes": int,
+                "orbit_path": str,
+            }
+        """
+        orbit_path = self.ensure_orbit_structure(project)
+        knowledge_dir = orbit_path / "knowledge"
+
+        # Sanitize filename to prevent path traversal
+        safe_name = Path(filename).name
+        if not safe_name or safe_name.startswith('.'):
+            raise ValueError(f"Nome de arquivo inválido: {filename}")
+
+        file_path = knowledge_dir / safe_name
+
+        file_path.write_bytes(content)
+
+        logger.info(
+            f"Uploaded knowledge file '{safe_name}' "
+            f"({len(content)} bytes) to {file_path}"
+        )
+
+        return {
+            "file_path": str(file_path),
+            "filename": safe_name,
+            "size_bytes": len(content),
+            "orbit_path": str(orbit_path),
+        }
+
+    def list_knowledge_files(self, project: Project) -> List[Dict]:
+        """
+        List all files in orbit/knowledge/ (excluding .gitkeep).
+
+        Returns list of dicts with filename, size_bytes, modified_at.
+        """
+        knowledge_dir = Path(project.code_path) / "orbit" / "knowledge"
+        if not knowledge_dir.exists():
+            return []
+
+        files = []
+        for f in sorted(knowledge_dir.iterdir()):
+            if f.is_file() and f.name != ".gitkeep":
+                stat = f.stat()
+                files.append({
+                    "filename": f.name,
+                    "size_bytes": stat.st_size,
+                    "modified_at": datetime.fromtimestamp(
+                        stat.st_mtime, tz=timezone.utc
+                    ).isoformat(),
+                })
+        return files
+
+    def delete_knowledge_file(self, project: Project, filename: str) -> bool:
+        """
+        Delete a file from orbit/knowledge/.
+
+        Returns True if deleted, False if not found.
+        """
+        knowledge_dir = Path(project.code_path) / "orbit" / "knowledge"
+        safe_name = Path(filename).name
+        file_path = knowledge_dir / safe_name
+
+        if not file_path.exists() or not file_path.is_file():
+            return False
+
+        file_path.unlink()
+        logger.info(f"Deleted knowledge file '{safe_name}' from {knowledge_dir}")
+        return True
+
     def check_result_for_task(self, task: Task) -> Optional[Dict]:
         """
         Check if a specific task has a result file in orbit/results/.
