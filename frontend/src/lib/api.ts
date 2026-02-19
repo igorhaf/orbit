@@ -1134,6 +1134,20 @@ export const jobsApi = {
   getChildren: (jobId: string) =>
     request<{ children: JobResponse[] }>(`/api/v1/jobs/${jobId}/children`),
 
+  // Bulk delete jobs by specific IDs
+  bulkDeleteByIds: (jobIds: string[]) =>
+    request<{ deleted_count: number; message: string }>('/api/v1/jobs/bulk/delete-by-ids', {
+      method: 'POST',
+      body: JSON.stringify(jobIds),
+    }),
+
+  // Bulk cancel jobs by specific IDs
+  bulkCancelByIds: (jobIds: string[]) =>
+    request<{ cancelled_count: number; skipped_count: number; message: string }>('/api/v1/jobs/bulk/cancel-by-ids', {
+      method: 'POST',
+      body: JSON.stringify(jobIds),
+    }),
+
   // PROMPT #243 - Executor pause/resume
   pauseExecutor: () =>
     request<{ paused: boolean; message: string }>('/api/v1/jobs/executor/pause', { method: 'PATCH' }),

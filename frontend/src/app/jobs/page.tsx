@@ -44,6 +44,9 @@ import {
   Wifi,
   WifiOff,
   Ban,
+  Square,
+  CheckSquare,
+  MinusSquare,
 } from 'lucide-react';
 import Link from 'next/link';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -188,6 +191,10 @@ export default function JobsPage() {
   // PROMPT #229 - Blocklist: track files being blocked
   const [blockingFiles, setBlockingFiles] = useState<Set<string>>(new Set());
   const [blockedFiles, setBlockedFiles] = useState<Set<string>>(new Set());
+
+  // Bulk selection state
+  const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState(false);
 
   // PROMPT #286 - Expandable job detail with log viewer
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
@@ -641,6 +648,69 @@ export default function JobsPage() {
     }
   };
 
+  // Bulk selection handlers
+  const handleToggleSelect = (jobId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedJobs(prev => {
+      const next = new Set(prev);
+      if (next.has(jobId)) {
+        next.delete(jobId);
+      } else {
+        next.add(jobId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedJobs.size === jobs.length) {
+      setSelectedJobs(new Set());
+    } else {
+      setSelectedJobs(new Set(jobs.map(j => j.id)));
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedJobs.size === 0) return;
+    setBulkLoading(true);
+    try {
+      const ids = Array.from(selectedJobs);
+      await jobsApi.bulkDeleteByIds(ids);
+      setSelectedJobs(new Set());
+      fetchJobs();
+      fetchStats();
+    } catch (error) {
+      console.error('Error bulk deleting jobs:', error);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  const handleBulkCancel = async () => {
+    if (selectedJobs.size === 0) return;
+    setBulkLoading(true);
+    try {
+      const ids = Array.from(selectedJobs);
+      await jobsApi.bulkCancelByIds(ids);
+      setSelectedJobs(new Set());
+      fetchJobs();
+      fetchStats();
+    } catch (error) {
+      console.error('Error bulk cancelling jobs:', error);
+    } finally {
+      setBulkLoading(false);
+    }
+  };
+
+  // Derived: counts for bulk action labels
+  const selectedDeletable = jobs.filter(j => selectedJobs.has(j.id) && ['completed', 'failed', 'cancelled'].includes(j.status)).length;
+  const selectedCancellable = jobs.filter(j => selectedJobs.has(j.id) && ['pending', 'running'].includes(j.status)).length;
+
+  // Clear selection when filters or page change
+  useEffect(() => {
+    setSelectedJobs(new Set());
+  }, [statusFilter, typeFilter, projectFilter, offset]);
+
   // Format date
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return '-';
@@ -1031,11 +1101,68 @@ export default function JobsPage() {
                 </div>
               ) : (
                 <>
+                  {/* Bulk Action Bar */}
+                  {selectedJobs.size > 0 && (
+                    <div className="flex items-center justify-between px-4 py-2 bg-blue-50 border-b border-blue-200">
+                      <span className="text-sm text-blue-700 font-medium">
+                        {selectedJobs.size} {selectedJobs.size === 1 ? 'job selecionado' : 'jobs selecionados'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        {selectedCancellable > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleBulkCancel}
+                            disabled={bulkLoading}
+                            className="text-yellow-700 border-yellow-300 hover:bg-yellow-50"
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Cancelar ({selectedCancellable})
+                          </Button>
+                        )}
+                        {selectedDeletable > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleBulkDelete}
+                            disabled={bulkLoading}
+                            className="text-red-700 border-red-300 hover:bg-red-50"
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Excluir ({selectedDeletable})
+                          </Button>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSelectedJobs(new Set())}
+                        >
+                          Limpar seleção
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Jobs Table */}
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead className="bg-gray-50 border-b">
                         <tr>
+                          <th className="w-10 px-3 py-3">
+                            <button
+                              onClick={handleSelectAll}
+                              className="text-gray-400 hover:text-gray-600"
+                              title={selectedJobs.size === jobs.length ? 'Desmarcar todos' : 'Selecionar todos'}
+                            >
+                              {selectedJobs.size === 0 ? (
+                                <Square className="w-4 h-4" />
+                              ) : selectedJobs.size === jobs.length ? (
+                                <CheckSquare className="w-4 h-4 text-blue-600" />
+                              ) : (
+                                <MinusSquare className="w-4 h-4 text-blue-600" />
+                              )}
+                            </button>
+                          </th>
                           <th className="text-left px-4 py-3 text-sm font-medium text-gray-500">
                             Status
                           </th>
@@ -1085,9 +1212,21 @@ export default function JobsPage() {
                           return (
                             <React.Fragment key={job.id}>
                             <tr
-                              className={`hover:bg-gray-50 cursor-pointer select-none ${isExpanded ? 'bg-gray-50' : ''}`}
+                              className={`hover:bg-gray-50 cursor-pointer select-none ${isExpanded ? 'bg-gray-50' : ''} ${selectedJobs.has(job.id) ? 'bg-blue-50' : ''}`}
                               onClick={() => handleToggleExpand(job.id)}
                             >
+                              <td className="w-10 px-3 py-3">
+                                <button
+                                  onClick={(e) => handleToggleSelect(job.id, e)}
+                                  className="text-gray-400 hover:text-blue-600"
+                                >
+                                  {selectedJobs.has(job.id) ? (
+                                    <CheckSquare className="w-4 h-4 text-blue-600" />
+                                  ) : (
+                                    <Square className="w-4 h-4" />
+                                  )}
+                                </button>
+                              </td>
                               <td className="px-4 py-3">
                                 <div className="flex items-center gap-1.5">
                                   <ChevronDown className={`w-3.5 h-3.5 text-gray-400 transition-transform ${isExpanded ? '' : '-rotate-90'}`} />
@@ -1247,7 +1386,7 @@ export default function JobsPage() {
                             {expandedChildren.has(job.id) && (
                               loadingChildren.has(job.id) ? (
                                 <tr>
-                                  <td colSpan={10} className="p-0">
+                                  <td colSpan={11} className="p-0">
                                     <div className="pl-12 py-2 text-xs text-gray-500 bg-purple-50/50">Carregando sub-jobs...</div>
                                   </td>
                                 </tr>
@@ -1259,6 +1398,7 @@ export default function JobsPage() {
                                   : null;
                                 return (
                                   <tr key={child.id} className="bg-purple-50/30 hover:bg-purple-50/60 border-l-2 border-purple-300">
+                                    <td className="w-10 px-3 py-2"></td>
                                     <td className="px-4 py-2 pl-10">
                                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[child.status]}`}>
                                         {STATUS_ICONS[child.status]}
@@ -1347,7 +1487,7 @@ export default function JobsPage() {
                             {/* PROMPT #286 - Expandable job detail with log viewer */}
                             {isExpanded && (
                               <tr>
-                                <td colSpan={10} className="p-0">
+                                <td colSpan={11} className="p-0">
                                   <div className="border-t border-gray-200 bg-gray-50 px-6 py-4">
                                     {/* Job Detail Header */}
                                     <div className="flex items-center justify-between mb-3">

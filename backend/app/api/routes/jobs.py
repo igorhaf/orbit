@@ -679,3 +679,80 @@ async def bulk_delete_jobs(
         "deleted_count": count,
         "message": f"{count} jobs excluidos com sucesso"
     }
+
+
+@router.post("/bulk/delete-by-ids")
+async def bulk_delete_by_ids(
+    job_ids: List[str],
+    db: Session = Depends(get_db)
+):
+    """
+    Bulk delete jobs by specific IDs.
+    Only deletes completed, failed, or cancelled jobs.
+    """
+    if not job_ids:
+        raise HTTPException(status_code=400, detail="Lista de IDs vazia")
+
+    uuids = []
+    for jid in job_ids:
+        try:
+            uuids.append(UUID(jid))
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"ID inválido: {jid}")
+
+    query = db.query(AsyncJob).filter(
+        AsyncJob.id.in_(uuids),
+        AsyncJob.status.notin_([JobStatus.PENDING, JobStatus.RUNNING])
+    )
+    count = query.count()
+    query.delete(synchronize_session=False)
+    db.commit()
+
+    logger.info(f"Bulk deleted {count} jobs by IDs")
+    return {
+        "deleted_count": count,
+        "message": f"{count} jobs excluidos com sucesso"
+    }
+
+
+@router.post("/bulk/cancel-by-ids")
+async def bulk_cancel_by_ids(
+    job_ids: List[str],
+    db: Session = Depends(get_db)
+):
+    """
+    Bulk cancel jobs by specific IDs.
+    Only cancels pending or running jobs.
+    """
+    if not job_ids:
+        raise HTTPException(status_code=400, detail="Lista de IDs vazia")
+
+    job_manager = JobManager(db)
+    cancelled = 0
+    skipped = 0
+
+    for jid in job_ids:
+        try:
+            uid = UUID(jid)
+        except ValueError:
+            continue
+
+        job = job_manager.get_job(uid)
+        if not job:
+            continue
+
+        if job.status in (JobStatus.PENDING, JobStatus.RUNNING):
+            success = job_manager.cancel_with_children(uid)
+            if success:
+                cancelled += 1
+            else:
+                skipped += 1
+        else:
+            skipped += 1
+
+    logger.info(f"Bulk cancelled {cancelled} jobs by IDs (skipped {skipped})")
+    return {
+        "cancelled_count": cancelled,
+        "skipped_count": skipped,
+        "message": f"{cancelled} jobs cancelados com sucesso"
+    }
