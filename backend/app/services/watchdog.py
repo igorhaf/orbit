@@ -603,7 +603,28 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             pending_remaining = process_result.get("pending_remaining", 0)
 
             if pending_remaining <= 0:
-                # All files processed
+                # PROMPT #237 - Retry failed files up to 3 times
+                MAX_RETRIES = 3
+                retryable = db.query(RAGFileState).filter(
+                    RAGFileState.project_id == project_id,
+                    RAGFileState.status == FileProcessingStatus.FAILED,
+                    RAGFileState.retry_count < MAX_RETRIES,
+                ).all()
+
+                if retryable:
+                    for f in retryable:
+                        f.status = FileProcessingStatus.PENDING
+                    db.commit()
+                    logger.info(f"Retrying {len(retryable)} failed files for '{project_name}' (< {MAX_RETRIES} attempts)")
+                    # Update notification
+                    job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+                    if job:
+                        job.notification_title = f"Retry: {len(retryable)} arquivos - '{project_name}'"
+                        db.commit()
+                    await asyncio.sleep(BATCH_COOLDOWN)
+                    continue  # Re-enter loop to process retryable files
+
+                # No more retries — all done
                 break
 
             # Cooldown between batches

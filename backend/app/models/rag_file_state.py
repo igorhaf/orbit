@@ -103,6 +103,7 @@ class RAGFileState(Base):
 
     # Error tracking
     error_message = Column(Text, nullable=True)
+    retry_count = Column(Integer, nullable=False, default=0, server_default="0")
 
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -137,6 +138,7 @@ class RAGFileState(Base):
             "rules_extracted": self.rules_extracted,
             "file_layer": self.file_layer.value if self.file_layer else None,
             "error_message": self.error_message,
+            "retry_count": self.retry_count or 0,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

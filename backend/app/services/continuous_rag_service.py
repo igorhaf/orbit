@@ -613,8 +613,9 @@ class ContinuousRAGService:
             if result["status"] == "error":
                 state.status = FileProcessingStatus.FAILED
                 state.error_message = result.get("error", "Erro desconhecido")
+                state.retry_count = (state.retry_count or 0) + 1
                 errors += 1
-                logger.error(f"Failed to process {result.get('file_path')}: {result.get('error')}")
+                logger.error(f"Failed to process {result.get('file_path')} (attempt {state.retry_count}): {result.get('error')}")
                 if (idx + 1) % 10 == 0:
                     self.db.commit()
                 continue
