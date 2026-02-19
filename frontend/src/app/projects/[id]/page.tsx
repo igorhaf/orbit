@@ -877,15 +877,23 @@ export default function ProjectDetailsPage() {
                           <div className="text-2xl font-bold text-purple-700">{knowledgeStats.total_documents}</div>
                           <div className="text-xs text-purple-600">Total de Documentos</div>
                         </div>
-                        <div className="bg-blue-50 rounded-lg p-4 text-center">
+                        <div
+                          className="bg-blue-50 rounded-lg p-4 text-center cursor-pointer hover:ring-2 hover:ring-blue-300 transition-all"
+                          onClick={() => router.push(`/projects/${projectId}/knowledge/code-files`)}
+                          title="Ver todos os arquivos de codigo"
+                        >
                           <div className="text-2xl font-bold text-blue-700">{knowledgeStats.code_files_count}</div>
-                          <div className="text-xs text-blue-600">Arquivos de Código</div>
+                          <div className="text-xs text-blue-600">Arquivos de Codigo</div>
                         </div>
                         <div className="bg-yellow-50 rounded-lg p-4 text-center">
                           <div className="text-2xl font-bold text-yellow-700">{knowledgeStats.interview_answers_count}</div>
                           <div className="text-xs text-yellow-600">Respostas de Entrevista</div>
                         </div>
-                        <div className="bg-orange-50 rounded-lg p-4 text-center">
+                        <div
+                          className="bg-orange-50 rounded-lg p-4 text-center cursor-pointer hover:ring-2 hover:ring-orange-300 transition-all"
+                          onClick={() => router.push(`/projects/${projectId}/knowledge/rules`)}
+                          title="Ver todas as regras de negocio"
+                        >
                           <div className="text-2xl font-bold text-orange-700">{knowledgeStats.business_rules_count}</div>
                           <div className="text-xs text-orange-600">Regras de Negocio</div>
                         </div>

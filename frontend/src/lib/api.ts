@@ -1314,10 +1314,11 @@ export const backlogApi = {
 // PROMPT #147 - Knowledge Base API (Incremental RAG Feeding)
 export const knowledgeApi = {
   // Business Rules
-  listRules: (projectId: string, params?: { category?: string; source?: string; limit?: number }) => {
+  listRules: (projectId: string, params?: { category?: string; source?: string; source_file?: string; limit?: number }) => {
     const queryParams = new URLSearchParams();
     if (params?.category) queryParams.append('category', params.category);
     if (params?.source) queryParams.append('source', params.source);
+    if (params?.source_file) queryParams.append('source_file', params.source_file);
     if (params?.limit !== undefined) queryParams.append('limit', params.limit.toString());
 
     const queryString = queryParams.toString();
@@ -1440,6 +1441,33 @@ export const knowledgeApi = {
       by_category: Record<string, number>;
       by_source: Record<string, number>;
     }>(`/api/v1/projects/${projectId}/knowledge/full-stats`),
+
+  // PROMPT #238 - Code files list for individual page
+  getCodeFiles: (projectId: string) =>
+    request<{
+      project_id: string;
+      total: number;
+      by_language: Record<string, number>;
+      files: Array<{
+        id: string;
+        file_path: string;
+        language: string;
+        source: string;
+        created_at: string | null;
+      }>;
+    }>(`/api/v1/projects/${projectId}/knowledge/code-files`),
+
+  // PROMPT #238 - Rules grouped by source file
+  getRulesByFile: (projectId: string) =>
+    request<{
+      project_id: string;
+      total_rules: number;
+      total_files: number;
+      files: Array<{
+        source_file: string;
+        rules_count: number;
+      }>;
+    }>(`/api/v1/projects/${projectId}/knowledge/rules-by-file`),
 
   // PROMPT #172 - Global RAG Stats (all projects)
   getGlobalStats: () =>

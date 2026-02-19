@@ -420,6 +420,7 @@ async def list_business_rules(
     project_id: UUID,
     category: Optional[str] = Query(None, description="Filter by category"),
     source: Optional[str] = Query(None, description="Filter by source"),
+    source_file: Optional[str] = Query(None, description="Filter by source file path"),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db)
 ):
@@ -455,6 +456,10 @@ async def list_business_rules(
             where_clauses.append("metadata->>'source' = :source")
             params["source"] = source
 
+        if source_file:
+            where_clauses.append("metadata->>'source_file' = :source_file")
+            params["source_file"] = source_file
+
         query = text(f"""
             SELECT id, content, metadata, created_at
             FROM rag_documents
@@ -485,6 +490,124 @@ async def list_business_rules(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Falha ao listar regras de negocio: {str(e)}"
+        )
+
+
+# ============================================================================
+# PROMPT #238 - CODE FILES & RULES-BY-FILE ENDPOINTS
+# ============================================================================
+
+@router.get("/projects/{project_id}/knowledge/code-files")
+async def list_code_files(
+    project_id: UUID,
+    limit: int = Query(2000, ge=1, le=5000),
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #238 - List all code files indexed in RAG for a project.
+    Used by the Code Files individual page.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Projeto {project_id} não encontrado"
+        )
+
+    try:
+        query = text("""
+            SELECT id, metadata, created_at
+            FROM rag_documents
+            WHERE project_id = :project_id
+                AND (metadata->>'content_type' = 'code_file'
+                     OR metadata->>'type' = 'code_file')
+            ORDER BY metadata->>'source_file' ASC
+            LIMIT :limit
+        """)
+
+        result = db.execute(query, {"project_id": str(project_id), "limit": limit}).fetchall()
+
+        files = []
+        for row in result:
+            metadata = row.metadata if isinstance(row.metadata, dict) else json.loads(row.metadata)
+            files.append({
+                "id": str(row.id),
+                "file_path": metadata.get("source_file") or metadata.get("file_path", ""),
+                "language": metadata.get("language", "unknown"),
+                "source": metadata.get("source", "unknown"),
+                "created_at": row.created_at.isoformat() if row.created_at else None,
+            })
+
+        # Group count by language for sidebar
+        lang_counts: dict = {}
+        for f in files:
+            lang = f["language"]
+            lang_counts[lang] = lang_counts.get(lang, 0) + 1
+
+        return {
+            "project_id": str(project_id),
+            "total": len(files),
+            "by_language": lang_counts,
+            "files": files,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to list code files: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao listar arquivos de código: {str(e)}"
+        )
+
+
+@router.get("/projects/{project_id}/knowledge/rules-by-file")
+async def list_rules_by_file(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #238 - Get business rules grouped by source file.
+    Used by the Business Rules individual page sidebar.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Projeto {project_id} não encontrado"
+        )
+
+    try:
+        query = text("""
+            SELECT
+                COALESCE(metadata->>'source_file', '(sem arquivo)') as source_file,
+                COUNT(*) as rules_count
+            FROM rag_documents
+            WHERE project_id = :project_id
+                AND (metadata->>'content_type' = 'business_rule'
+                     OR metadata->>'type' = 'business_rule')
+            GROUP BY COALESCE(metadata->>'source_file', '(sem arquivo)')
+            ORDER BY COUNT(*) DESC
+        """)
+
+        result = db.execute(query, {"project_id": str(project_id)}).fetchall()
+
+        files = [
+            {"source_file": row.source_file, "rules_count": row.rules_count}
+            for row in result
+        ]
+        total_rules = sum(f["rules_count"] for f in files)
+
+        return {
+            "project_id": str(project_id),
+            "total_rules": total_rules,
+            "total_files": len(files),
+            "files": files,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to list rules by file: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao listar regras por arquivo: {str(e)}"
         )
 
 
