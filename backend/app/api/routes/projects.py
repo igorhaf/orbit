@@ -2382,6 +2382,245 @@ async def generate_cards_from_memory(
 
 
 # ============================================================================
+# FULL HIERARCHY GENERATION - PROMPT #237
+# ============================================================================
+
+@router.post("/{project_id}/generate-hierarchy")
+async def generate_full_hierarchy(
+    project_id: UUID,
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #237 - Generate full card hierarchy from project knowledge.
+
+    One-click generation of the complete project backlog:
+    Epics → Stories → Tasks → Subtasks
+
+    Each level is processed sequentially, with individual items
+    activated via the existing context_generator functions.
+
+    No parameters needed — uses all project knowledge (memory context,
+    RAG-extracted business rules, detected stack) to generate the hierarchy.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+
+    if not project.initial_memory_context:
+        raise HTTPException(
+            status_code=400,
+            detail="Projeto não tem contexto de memória. Aguarde o scan completar."
+        )
+
+    # Check for existing epics
+    from app.models.task import ItemType
+    existing_epics = db.query(Task).filter(
+        Task.project_id == project_id,
+        Task.item_type == ItemType.EPIC,
+    ).count()
+    if existing_epics > 0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Projeto já possui {existing_epics} epics. Delete-os antes de gerar novamente."
+        )
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.CARDS_FROM_MEMORY,
+        input_data={
+            "project_id": str(project_id),
+            "full_hierarchy": True,
+        },
+        project_id=project_id,
+        deep_link=f"/projects/{project_id}",
+        notification_title=f"Gerando hierarquia - '{project.name}'"
+    )
+
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(job.priority, _process_full_hierarchy_async, job.id, project_id)
+
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Geração de hierarquia iniciada. Acompanhe pelo sininho de notificações.",
+    }
+
+
+async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
+    """
+    PROMPT #237 - Background task: generate full hierarchy.
+
+    Phases:
+    1. Generate Epics (via generate_cards_from_memory)
+    2. Activate each Epic (generates Stories automatically)
+    3. Activate each Story + generate Tasks
+    4. Activate each Task + generate Subtasks
+    5. Activate each Subtask (leaf)
+    """
+    from app.database import SessionLocal
+    from app.services.context_generator import ContextGeneratorService
+    from app.models.task import ItemType
+
+    db = SessionLocal()
+    try:
+        jm = JobManager(db)
+        jm.start_job(job_id)
+
+        context_service = ContextGeneratorService(db)
+        project = db.query(Project).filter(Project.id == project_id).first()
+        if not project:
+            jm.fail_job(job_id, "Projeto não encontrado")
+            return
+
+        project_name = project.name or str(project_id)[:8]
+
+        # === Phase 1: Generate Epics ===
+        jm.update_progress(job_id, 5.0, "Fase 1/5: Gerando Epics...")
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Fase 1/5: Gerando Epics - '{project_name}'"
+            db.commit()
+
+        epics_result = await context_service.generate_cards_from_memory(
+            project_id=project_id,
+            job_manager=jm,
+            job_id=job_id,
+        )
+        epic_ids = [e.get("id") for e in epics_result.get("suggested_epics", []) if e.get("id")]
+
+        # If no epic IDs from result, query DB for suggested epics
+        if not epic_ids:
+            epics = db.query(Task).filter(
+                Task.project_id == project_id,
+                Task.item_type == ItemType.EPIC,
+                Task.labels.contains(["suggested"]),
+            ).all()
+            epic_ids = [e.id for e in epics]
+
+        if not epic_ids:
+            jm.complete_job(job_id, {"error": "Nenhum epic gerado", "total_epics": 0})
+            return
+
+        total_epics = len(epic_ids)
+        logger.info(f"Phase 1 complete: {total_epics} epics generated")
+
+        # === Phase 2: Activate Epics (generates Stories) ===
+        jm.update_progress(job_id, 15.0, f"Fase 2/5: Ativando {total_epics} Epics...")
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Fase 2/5: Ativando Epics - '{project_name}'"
+            db.commit()
+
+        for i, epic_id in enumerate(epic_ids):
+            pct = 15.0 + (i / total_epics) * 15.0
+            jm.update_progress(job_id, pct, f"Fase 2/5: Ativando Epic {i+1}/{total_epics}...")
+            try:
+                await context_service.activate_suggested_epic(epic_id=epic_id)
+            except Exception as e:
+                logger.warning(f"Failed to activate epic {epic_id}: {e}")
+
+        # === Phase 3: Activate Stories + generate Tasks ===
+        stories = db.query(Task).filter(
+            Task.project_id == project_id,
+            Task.item_type == ItemType.STORY,
+            Task.labels.contains(["suggested"]),
+        ).all()
+        total_stories = len(stories)
+        logger.info(f"Phase 2 complete: {total_stories} stories to activate")
+
+        jm.update_progress(job_id, 30.0, f"Fase 3/5: Ativando {total_stories} Stories...")
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Fase 3/5: Ativando Stories - '{project_name}'"
+            db.commit()
+
+        for i, story in enumerate(stories):
+            pct = 30.0 + (i / max(total_stories, 1)) * 20.0
+            jm.update_progress(job_id, pct, f"Fase 3/5: Story {i+1}/{total_stories}...")
+            try:
+                await context_service.activate_suggested_story(story_id=story.id)
+                await context_service._generate_draft_tasks(story, project)
+            except Exception as e:
+                logger.warning(f"Failed to activate story {story.id}: {e}")
+
+        # === Phase 4: Activate Tasks + generate Subtasks ===
+        tasks = db.query(Task).filter(
+            Task.project_id == project_id,
+            Task.item_type == ItemType.TASK,
+            Task.labels.contains(["suggested"]),
+        ).all()
+        total_tasks = len(tasks)
+        logger.info(f"Phase 3 complete: {total_tasks} tasks to activate")
+
+        jm.update_progress(job_id, 50.0, f"Fase 4/5: Ativando {total_tasks} Tasks...")
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Fase 4/5: Ativando Tasks - '{project_name}'"
+            db.commit()
+
+        for i, task in enumerate(tasks):
+            pct = 50.0 + (i / max(total_tasks, 1)) * 25.0
+            jm.update_progress(job_id, pct, f"Fase 4/5: Task {i+1}/{total_tasks}...")
+            try:
+                await context_service.activate_suggested_task(task_id=task.id)
+                await context_service._generate_draft_subtasks(task, project)
+            except Exception as e:
+                logger.warning(f"Failed to activate task {task.id}: {e}")
+
+        # === Phase 5: Activate Subtasks (leaf) ===
+        subtasks = db.query(Task).filter(
+            Task.project_id == project_id,
+            Task.item_type == ItemType.SUBTASK,
+            Task.labels.contains(["suggested"]),
+        ).all()
+        total_subtasks = len(subtasks)
+        logger.info(f"Phase 4 complete: {total_subtasks} subtasks to activate")
+
+        jm.update_progress(job_id, 75.0, f"Fase 5/5: Ativando {total_subtasks} Subtasks...")
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Fase 5/5: Ativando Subtasks - '{project_name}'"
+            db.commit()
+
+        for i, subtask in enumerate(subtasks):
+            pct = 75.0 + (i / max(total_subtasks, 1)) * 20.0
+            jm.update_progress(job_id, pct, f"Fase 5/5: Subtask {i+1}/{total_subtasks}...")
+            try:
+                await context_service.activate_suggested_subtask(subtask_id=subtask.id)
+            except Exception as e:
+                logger.warning(f"Failed to activate subtask {subtask.id}: {e}")
+
+        # === Complete ===
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Hierarquia completa - '{project_name}'"
+            db.commit()
+
+        jm.complete_job(job_id, {
+            "project_id": str(project_id),
+            "total_epics": total_epics,
+            "total_stories": total_stories,
+            "total_tasks": total_tasks,
+            "total_subtasks": total_subtasks,
+        })
+        logger.info(
+            f"Full hierarchy generated for '{project_name}': "
+            f"{total_epics} epics, {total_stories} stories, "
+            f"{total_tasks} tasks, {total_subtasks} subtasks"
+        )
+
+    except Exception as e:
+        logger.error(f"Full hierarchy generation failed: {e}", exc_info=True)
+        try:
+            jm.fail_job(job_id, str(e))
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+# ============================================================================
 # CLEANUP ENDPOINTS - PROMPT #126
 # ============================================================================
 

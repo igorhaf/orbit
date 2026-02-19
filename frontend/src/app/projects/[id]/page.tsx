@@ -91,6 +91,12 @@ export default function ProjectDetailsPage() {
   const [isEnriching, setIsEnriching] = useState(false);
   const prevEnrichingRef = useRef(false);
 
+  // PROMPT #237 - RAG completion status for "Gerar Cards" banner
+  const [ragCompleted, setRagCompleted] = useState(false);
+  const [hasEpics, setHasEpics] = useState(false);
+  const [totalFilesProcessed, setTotalFilesProcessed] = useState(0);
+  const [generatingHierarchy, setGeneratingHierarchy] = useState(false);
+
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
   const [epicCount, setEpicCount] = useState(10);
@@ -139,6 +145,11 @@ export default function ProjectDetailsPage() {
         const status = await ragApi.enrichmentStatus(projectId);
         const wasEnriching = prevEnrichingRef.current;
         setIsEnriching(status.is_enriching);
+
+        // PROMPT #237 - Track RAG completion for "Gerar Cards" banner
+        setRagCompleted(status.rag_completed || false);
+        setHasEpics(status.has_epics || false);
+        setTotalFilesProcessed(status.total_files_processed || 0);
 
         // While enriching, refresh project data every poll (catches title/description updates)
         if (status.is_enriching) {
@@ -603,6 +614,41 @@ export default function ProjectDetailsPage() {
                   O codebase esta sendo analisado e o conhecimento do projeto esta sendo atualizado automaticamente.
                 </p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* PROMPT #237 - RAG completed banner with "Gerar Cards" button */}
+        {ragCompleted && !hasEpics && !isEnriching && !generatingHierarchy && (
+          <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <div>
+                  <span className="text-sm font-medium text-green-900">
+                    Analise do codebase concluida — {totalFilesProcessed} arquivos processados
+                  </span>
+                  <p className="text-xs text-green-700 mt-0.5">
+                    O conhecimento do projeto esta pronto. Gere a hierarquia completa de cards (Epics, Stories, Tasks e Subtasks).
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    setGeneratingHierarchy(true);
+                    await projectsApi.generateHierarchy(projectId);
+                  } catch (err: any) {
+                    setGeneratingHierarchy(false);
+                    alert(err?.message || 'Erro ao iniciar geração');
+                  }
+                }}
+                className="flex-shrink-0 ml-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+              >
+                Gerar Cards
+              </button>
             </div>
           </div>
         )}

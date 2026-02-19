@@ -147,6 +147,12 @@ export const projectsApi = {
       method: 'POST',
     }),
 
+  // PROMPT #237 - Generate full hierarchy (Epics → Stories → Tasks → Subtasks)
+  generateHierarchy: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/generate-hierarchy`, {
+      method: 'POST',
+    }),
+
   // PROMPT #111 - Browse folders for project creation
   browseFolders: (path: string = '') =>
     request<{

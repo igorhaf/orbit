@@ -214,7 +214,7 @@ async def get_enrichment_status(
     ).all()
 
     # PROMPT #241 - Count auto-discovered cards
-    from app.models.task import Task
+    from app.models.task import Task, ItemType
     from sqlalchemy import func as sql_func, cast
     from sqlalchemy.dialects.postgresql import ARRAY
     auto_discovered_count = db.query(sql_func.count(Task.id)).filter(
@@ -222,8 +222,23 @@ async def get_enrichment_status(
         Task.reporter == "watchdog",
     ).scalar() or 0
 
+    # PROMPT #237 - RAG completion status + epic count for "Gerar Cards" button
+    is_enriching = len(active_jobs) > 0
+    pending_files = db.query(sql_func.count(RAGFileState.id)).filter(
+        RAGFileState.project_id == project_id,
+        RAGFileState.status == FileProcessingStatus.PENDING,
+    ).scalar() or 0
+    completed_files = db.query(sql_func.count(RAGFileState.id)).filter(
+        RAGFileState.project_id == project_id,
+        RAGFileState.status == FileProcessingStatus.COMPLETED,
+    ).scalar() or 0
+    epic_count = db.query(sql_func.count(Task.id)).filter(
+        Task.project_id == project_id,
+        Task.item_type == ItemType.EPIC,
+    ).scalar() or 0
+
     return {
-        "is_enriching": len(active_jobs) > 0,
+        "is_enriching": is_enriching,
         "active_jobs": [
             {
                 "id": str(j.id),
@@ -238,4 +253,7 @@ async def get_enrichment_status(
         "has_description": bool(project.description),
         "has_context": bool(project.context_human),
         "auto_discovered_cards": auto_discovered_count,
+        "rag_completed": bool(project.initial_scan_complete) and pending_files == 0 and not is_enriching,
+        "has_epics": epic_count > 0,
+        "total_files_processed": completed_files,
     }
