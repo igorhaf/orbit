@@ -531,10 +531,35 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             return
 
         project_name = project.name or str(project_id)[:8]
-        logger.info(f"Batch processing cycle for '{project_name}' (batch_size={batch_size})")
+
+        # Calculate batch number for display (count completed root batch jobs + 1)
+        completed_batches = db.query(AsyncJob).filter(
+            AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
+            AsyncJob.project_id == project_id,
+            AsyncJob.status == JobStatus.COMPLETED,
+            AsyncJob.parent_job_id.is_(None),
+        ).count()
+        batch_number = completed_batches + 1
+
+        # Count total pending files to estimate total batches
+        from app.models.rag_file_state import RAGFileState, FileProcessingStatus
+        total_pending = db.query(RAGFileState).filter(
+            RAGFileState.project_id == project_id,
+            RAGFileState.status == FileProcessingStatus.PENDING,
+        ).count()
+        total_batches = batch_number + (total_pending // batch_size if total_pending > 0 else 0)
+
+        batch_label = f"Lote {batch_number} de {total_batches}"
+        logger.info(f"Batch processing cycle for '{project_name}' - {batch_label} (batch_size={batch_size})")
+
+        # Update job notification title with batch label
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"Processando: {batch_label} - '{project_name}'"
+            db.commit()
 
         # --- Step 1: Process next batch of pending files (RAG extraction only) ---
-        jm.update_progress(job_id, 10.0, f"Processando próximo lote ({batch_size} arquivos max)...")
+        jm.update_progress(job_id, 10.0, f"Processando {batch_label} ({batch_size} arquivos max)...")
         process_result = {}
         try:
             from app.services.continuous_rag_service import ContinuousRAGService
@@ -544,7 +569,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             remaining = process_result.get('pending_remaining', 0)
             rules = process_result.get('rules_extracted', 0)
             logger.info(f"Batch processed for '{project_name}': {actual} files, {rules} rules")
-            jm.update_progress(job_id, 90.0, f"{actual} arquivos processados, {remaining} restantes, {rules} regras extraidas")
+            jm.update_progress(job_id, 90.0, f"{batch_label}: {actual} arquivos, {rules} regras, {remaining} restantes")
         except Exception as e:
             logger.warning(f"Batch processing failed (non-blocking): {e}")
 
@@ -553,6 +578,12 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
 
         # PROMPT #233 - No auto-generation: wiki, cards, description, enrichment
         # are all manual via buttons now. Pipeline only extracts rules to RAG.
+
+        # Update final notification title
+        job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+        if job:
+            job.notification_title = f"{batch_label} concluido - '{project_name}'"
+            db.commit()
 
         jm.complete_job(job_id, {
             "project_id": str(project_id),
