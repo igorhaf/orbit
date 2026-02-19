@@ -42,6 +42,17 @@ export default function ProjectDetailsPage() {
   const [isEditingDescription, setIsEditingDescription] = useState(false);
   const [editedDescription, setEditedDescription] = useState('');
   const [isFormattingDescription, setIsFormattingDescription] = useState(false);
+  const [isSavingDescription, setIsSavingDescription] = useState(false);
+
+  // Title inline editing
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState('');
+  const [isSavingTitle, setIsSavingTitle] = useState(false);
+
+  // Refs for inline editing
+  const descriptionEditorRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const titleInputRef = useRef<HTMLInputElement>(null);
 
   // Backlog states
   const [backlogFilters, setBacklogFilters] = useState<IBacklogFilters>({});
@@ -329,31 +340,131 @@ export default function ProjectDetailsPage() {
     }
   }, [project?.description, isFormattingDescription, editedDescription, isEditingDescription, checkIfMarkdown, formatDescriptionToMarkdown]);
 
-  const handleEditDescription = () => {
+  // Click outside handler for description auto-save
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (isEditingDescription &&
+          descriptionEditorRef.current &&
+          !descriptionEditorRef.current.contains(event.target as Node)) {
+        handleSaveDescription();
+      }
+    };
+
+    if (isEditingDescription) {
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside);
+      }, 100);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isEditingDescription, editedDescription]);
+
+  // Double-click to edit description
+  const handleDescriptionDoubleClick = () => {
     setEditedDescription(project?.description || '');
     setIsEditingDescription(true);
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
   };
 
   const handleSaveDescription = async () => {
+    if (editedDescription === project?.description) {
+      setIsEditingDescription(false);
+      return;
+    }
+
+    setIsSavingDescription(true);
     try {
       await projectsApi.update(projectId, {
         description: editedDescription,
       });
 
       setIsEditingDescription(false);
-      // Reset editedDescription to allow auto-formatting to run again
       setEditedDescription('');
       await loadProjectData();
     } catch (error) {
       console.error('Error saving description:', error);
       showError('Falha ao salvar descrição. Tente novamente.');
+    } finally {
+      setIsSavingDescription(false);
     }
   };
 
-  const handleCancelEdit = () => {
+  const handleCancelDescriptionEdit = () => {
     setEditedDescription(project?.description || '');
     setIsEditingDescription(false);
   };
+
+  // Double-click to edit title
+  const handleTitleDoubleClick = () => {
+    setIsEditingTitle(true);
+    setEditedTitle(project?.name || '');
+    setTimeout(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }, 0);
+  };
+
+  const handleSaveTitle = async () => {
+    const trimmed = editedTitle.trim();
+    if (!trimmed || trimmed === project?.name) {
+      setIsEditingTitle(false);
+      setEditedTitle(project?.name || '');
+      return;
+    }
+
+    setIsSavingTitle(true);
+    try {
+      await projectsApi.update(projectId, { name: trimmed });
+      setIsEditingTitle(false);
+      await loadProjectData();
+    } catch (error) {
+      console.error('Error saving title:', error);
+      showError('Falha ao salvar título. Tente novamente.');
+    } finally {
+      setIsSavingTitle(false);
+    }
+  };
+
+  const handleCancelTitleEdit = () => {
+    setEditedTitle(project?.name || '');
+    setIsEditingTitle(false);
+  };
+
+  // Markdown formatting helpers
+  const insertMarkdown = (before: string, after: string = '') => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = editedDescription.substring(start, end);
+    const newText = editedDescription.substring(0, start) + before + selectedText + after + editedDescription.substring(end);
+
+    setEditedDescription(newText);
+
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + before.length + selectedText.length + after.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
+  const formatBold = () => insertMarkdown('**', '**');
+  const formatItalic = () => insertMarkdown('*', '*');
+  const formatCode = () => insertMarkdown('`', '`');
+  const formatCodeBlock = () => insertMarkdown('\n```\n', '\n```\n');
+  const formatHeading1 = () => insertMarkdown('# ');
+  const formatHeading2 = () => insertMarkdown('## ');
+  const formatHeading3 = () => insertMarkdown('### ');
+  const formatBulletList = () => insertMarkdown('- ');
+  const formatNumberedList = () => insertMarkdown('1. ');
+  const formatLink = () => insertMarkdown('[', '](url)');
+  const formatQuote = () => insertMarkdown('> ');
+  const formatTable = () => insertMarkdown('\n| Header 1 | Header 2 |\n|----------|----------|\n| Cell 1 | Cell 2 |\n');
 
   if (loading) {
     return (
@@ -402,7 +513,40 @@ export default function ProjectDetailsPage() {
         {/* Header with action buttons on title line */}
         <div className="flex justify-between items-start">
           <div className="flex-1">
-            <h1 className="text-3xl font-bold text-gray-900">{project.name}</h1>
+            {isEditingTitle ? (
+              <div className="flex items-center gap-2">
+                <input
+                  ref={titleInputRef}
+                  type="text"
+                  value={editedTitle}
+                  onChange={(e) => setEditedTitle(e.target.value)}
+                  className="text-3xl font-bold text-gray-900 bg-transparent border-b-2 border-blue-500 focus:outline-none w-full"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleSaveTitle();
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      handleCancelTitleEdit();
+                    }
+                  }}
+                  onBlur={handleSaveTitle}
+                  disabled={isSavingTitle}
+                />
+                {isSavingTitle && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+                )}
+              </div>
+            ) : (
+              <h1
+                className="text-3xl font-bold text-gray-900 cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1 transition-colors"
+                onDoubleClick={handleTitleDoubleClick}
+                title="Clique duplo para editar"
+              >
+                {project.name}
+              </h1>
+            )}
 
             {/* Stack Configuration Badges (PROMPT #46 - Phase 1) */}
             {(project.stack_backend || project.stack_database || project.stack_frontend || project.stack_css) && (
@@ -992,65 +1136,109 @@ export default function ProjectDetailsPage() {
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <CardTitle>Descrição do Projeto</CardTitle>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     {isFormattingDescription && (
                       <span className="text-xs text-gray-500 italic">Formatando para Markdown...</span>
                     )}
-                    {!isEditingDescription ? (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleEditDescription}
-                      >
-                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                        Editar
-                      </Button>
-                    ) : (
-                      <>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={handleCancelEdit}
-                        >
-                          Cancelar
-                        </Button>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={handleSaveDescription}
-                        >
-                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                          </svg>
-                          Salvar
-                        </Button>
-                      </>
+                    {isSavingDescription && (
+                      <span className="text-xs text-gray-500 italic">Salvando...</span>
+                    )}
+                    {!isEditingDescription && (
+                      <span className="text-xs text-gray-400">Clique duplo para editar</span>
                     )}
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {project.description ? (
-                    isEditingDescription ? (
-                      <textarea
-                        value={editedDescription}
-                        onChange={(e) => setEditedDescription(e.target.value)}
-                        className="w-full min-h-[300px] p-4 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                        placeholder="Digite a descrição do projeto em formato Markdown..."
-                      />
-                    ) : (
-                      <div className="prose prose-sm max-w-none">
-                        <ReactMarkdown>
-                          {editedDescription || project.description}
-                        </ReactMarkdown>
-                        <div className="mt-2 flex justify-end not-prose">
-                          <AIModelBadge model="description-format" usage_type="general" decorative />
+                  {isEditingDescription ? (
+                    <div ref={descriptionEditorRef} className="border border-blue-300 rounded-lg overflow-hidden shadow-sm">
+                      {/* Markdown Toolbar */}
+                      <div className="flex flex-wrap items-center gap-1 p-2 bg-gray-50 border-b border-gray-200">
+                        {/* Text Formatting */}
+                        <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
+                          <button type="button" onClick={formatBold} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-bold text-sm" title="Negrito (Ctrl+B)">B</button>
+                          <button type="button" onClick={formatItalic} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm" title="Itálico (Ctrl+I)">I</button>
+                          <button type="button" onClick={formatCode} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm" title="Código Inline">{'</>'}</button>
+                        </div>
+                        {/* Headings */}
+                        <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
+                          <button type="button" onClick={formatHeading1} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 1">H1</button>
+                          <button type="button" onClick={formatHeading2} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 2">H2</button>
+                          <button type="button" onClick={formatHeading3} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 3">H3</button>
+                        </div>
+                        {/* Lists */}
+                        <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
+                          <button type="button" onClick={formatBulletList} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Lista com Marcadores">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                          </button>
+                          <button type="button" onClick={formatNumberedList} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Lista Numerada">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h10M7 16h10M3 8h.01M3 12h.01M3 16h.01" /></svg>
+                          </button>
+                        </div>
+                        {/* Blocks */}
+                        <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
+                          <button type="button" onClick={formatQuote} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Citação">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
+                          </button>
+                          <button type="button" onClick={formatCodeBlock} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono" title="Bloco de Código">{'```'}</button>
+                          <button type="button" onClick={formatTable} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Tabela">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M9 10v8m6-8v8M3 6h18v12H3V6z" /></svg>
+                          </button>
+                        </div>
+                        {/* Link */}
+                        <div className="flex items-center gap-1">
+                          <button type="button" onClick={formatLink} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Link">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                          </button>
                         </div>
                       </div>
-                    )
+
+                      {/* Textarea */}
+                      <textarea
+                        ref={textareaRef}
+                        value={editedDescription}
+                        onChange={(e) => setEditedDescription(e.target.value)}
+                        className="w-full p-4 min-h-[300px] text-sm text-gray-900 font-mono focus:outline-none resize-y"
+                        placeholder="Digite a descrição usando Markdown..."
+                        onKeyDown={(e) => {
+                          if (e.ctrlKey && e.key === 'b') { e.preventDefault(); formatBold(); }
+                          if (e.ctrlKey && e.key === 'i') { e.preventDefault(); formatItalic(); }
+                          if (e.key === 'Escape') { e.preventDefault(); handleCancelDescriptionEdit(); }
+                          if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSaveDescription(); }
+                        }}
+                      />
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center justify-between p-3 bg-gray-50 border-t border-gray-200">
+                        <span className="text-xs text-gray-500">
+                          Markdown suportado | Ctrl+B negrito | Ctrl+I itálico | Ctrl+Enter salvar | Esc cancelar
+                        </span>
+                        <div className="flex gap-2">
+                          <Button variant="ghost" size="sm" onClick={handleCancelDescriptionEdit}>Cancelar</Button>
+                          <Button variant="primary" size="sm" onClick={handleSaveDescription} disabled={isSavingDescription}>
+                            {isSavingDescription ? 'Salvando...' : 'Salvar'}
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : project.description ? (
+                    <div
+                      className="prose prose-sm max-w-none cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
+                      onDoubleClick={handleDescriptionDoubleClick}
+                    >
+                      <ReactMarkdown>
+                        {editedDescription || project.description}
+                      </ReactMarkdown>
+                      <div className="mt-2 flex justify-end not-prose">
+                        <AIModelBadge model="description-format" usage_type="general" decorative />
+                      </div>
+                    </div>
                   ) : (
-                    <p className="text-gray-500 text-sm italic">Nenhuma descrição ainda. Clique em Editar para adicionar uma.</p>
+                    <p
+                      className="text-gray-500 text-sm italic cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
+                      onDoubleClick={handleDescriptionDoubleClick}
+                    >
+                      Nenhuma descrição ainda. Clique duplo para adicionar uma.
+                    </p>
                   )}
                 </CardContent>
               </Card>
