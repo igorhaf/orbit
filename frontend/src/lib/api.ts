@@ -1186,36 +1186,6 @@ export const jobsApi = {
   },
 };
 
-// Consistency Issues API
-export const consistencyApi = {
-  list: (params?: any) => {
-    const queryParams = new URLSearchParams();
-    if (params?.project_id) queryParams.append('project_id', params.project_id);
-    const queryString = queryParams.toString();
-    return request<any>(`/api/v1/consistency-issues/${queryString ? '?' + queryString : ''}`);
-  },
-
-  get: (id: string) =>
-    request<any>(`/api/v1/consistency-issues/${id}`),
-
-  update: (id: string, data: any) =>
-    request<any>(`/api/v1/consistency-issues/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(data),
-    }),
-
-  delete: (id: string) =>
-    request<any>(`/api/v1/consistency-issues/${id}`, { method: 'DELETE' }),
-
-  analyze: (projectId: string) =>
-    request<any>(`/api/v1/consistency-issues/analyze/${projectId}`, {
-      method: 'POST',
-    }),
-
-  byProject: (projectId: string, params?: any) =>
-    request<any>(`/api/v1/consistency-issues/project/${projectId}`),
-};
-
 // RAG API (PROMPT #90 - RAG Monitoring & Code Indexing)
 export const ragApi = {
   stats: (params?: {

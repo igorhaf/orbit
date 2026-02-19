@@ -6,7 +6,6 @@ This module handles:
 - Batch execution of multiple tasks
 - Dependency resolution via topological sort
 - Progress tracking and broadcasting
-- Consistency validation after batch
 """
 
 from typing import List
@@ -14,7 +13,6 @@ from sqlalchemy.orm import Session
 from app.models.task import Task
 from app.models.task_result import TaskResult
 from app.api.websocket import broadcast_event
-from app.services.consistency_validator import ConsistencyValidator
 import logging
 
 logger = logging.getLogger(__name__)
@@ -110,53 +108,7 @@ class BatchExecutor:
 
         logger.info(f"✅ Batch execution complete: {len(results)}/{len(task_ids)} succeeded")
 
-        # Run consistency validation
-        if results:
-            await self._validate_consistency(project_id, results)
-
         return results
-
-    async def _validate_consistency(
-        self,
-        project_id: str,
-        results: List[TaskResult]
-    ) -> None:
-        """
-        Validate consistency after batch execution.
-
-        Args:
-            project_id: Project ID
-            results: List of TaskResults
-        """
-        logger.info("🔍 Running consistency validation...")
-
-        validator = ConsistencyValidator(self.db)
-
-        result_ids = [str(r.id) for r in results]
-        validation_result = await validator.validate_batch(
-            project_id=project_id,
-            task_result_ids=result_ids
-        )
-
-        # Broadcast validation result
-        await broadcast_event(
-            project_id=project_id,
-            event_type="consistency_validated",
-            data={
-                'total_issues': validation_result['total_issues'],
-                'critical': validation_result['critical'],
-                'warnings': validation_result['warnings'],
-                'auto_fixed': validation_result['auto_fixed']
-            }
-        )
-
-        # Log issues if any
-        if validation_result['critical'] > 0:
-            logger.warning(
-                f"⚠️  {validation_result['critical']} critical consistency issues found!"
-            )
-        elif validation_result['total_issues'] == 0:
-            logger.info("✅ No consistency issues found!")
 
     def _topological_sort(self, tasks: List[Task]) -> List[Task]:
         """

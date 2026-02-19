@@ -145,13 +145,6 @@ class Project(Base):
         lazy="selectin"
     )
 
-    consistency_issues = relationship(
-        "ConsistencyIssue",
-        back_populates="project",
-        cascade="all, delete-orphan",
-        lazy="selectin"
-    )
-
     analyses = relationship(
         "ProjectAnalysis",
         back_populates="project",

@@ -19,7 +19,6 @@ from app.models.commit import Commit, CommitType
 from app.models.ai_model import AIModel, AIModelUsageType
 from app.models.system_settings import SystemSettings
 from app.models.spec import Spec  # PROMPT #47 - Phase 2
-from app.models.consistency_issue import ConsistencyIssue, IssueSeverity, IssueStatus
 from app.models.project_analysis import ProjectAnalysis
 from app.models.ai_execution import AIExecution  # PROMPT #54 - AI Execution Logging
 from app.models.prompt_template import PromptTemplate  # Prompter Architecture - Phase 1
@@ -44,7 +43,6 @@ __all__ = [
     "AIModel",
     "SystemSettings",
     "Spec",  # PROMPT #47 - Phase 2
-    "ConsistencyIssue",
     "ProjectAnalysis",
     "AIExecution",  # PROMPT #54 - AI Execution Logging
     "PromptTemplate",  # Prompter Architecture - Phase 1
@@ -59,8 +57,6 @@ __all__ = [
     "ChatSessionStatus",
     "CommitType",
     "AIModelUsageType",
-    "IssueSeverity",
-    "IssueStatus",
     "RelationshipType",  # JIRA Transformation
     "CommentType",  # JIRA Transformation
     "DiscoveryQueueStatus",  # Project-Specific Specs

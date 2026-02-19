@@ -22,7 +22,6 @@ from app.models.task import Task
 from app.models.async_job import AsyncJob, JobType, JobStatus  # PROMPT #133
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
 from app.api.dependencies import get_project_or_404
-from app.services.consistency_validator import ConsistencyValidator
 from app.services.codebase_indexer import CodebaseIndexer
 from app.services.codebase_memory import CodebaseMemoryService
 from app.services.job_manager import JobManager
@@ -1943,61 +1942,6 @@ async def lock_project_context(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
-
-
-@router.get("/{project_id}/consistency-report")
-async def get_consistency_report(
-    project_id: UUID,
-    db: Session = Depends(get_db)
-):
-    """
-    Get consistency validation report for a project.
-
-    Returns detailed information about consistency issues detected between tasks:
-    - Summary: Total issues, breakdown by severity
-    - Issues by category: Naming, imports, types, etc.
-    - Recommendations: Actionable suggestions
-    - Detailed issue list: All issues with fix suggestions
-
-    **GET** `/api/v1/projects/{project_id}/consistency-report`
-
-    **Response:**
-    ```json
-    {
-        "summary": {
-            "total_issues": 5,
-            "critical": 2,
-            "warnings": 3,
-            "info": 0,
-            "auto_fixable": 4
-        },
-        "issues_by_category": {
-            "naming": 4,
-            "import": 1
-        },
-        "issues_by_severity": {
-            "critical": 2,
-            "warning": 3,
-            "info": 0
-        },
-        "recommendations": [
-            "🔴 2 critical issues found. These MUST be fixed before deploying.",
-            "💡 4 issues can be auto-fixed. Run auto-fix to resolve them automatically."
-        ],
-        "issues": [...]
-    }
-    ```
-    """
-
-    # Verify project exists
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Projeto não encontrado")
-
-    validator = ConsistencyValidator(db)
-    report = validator.generate_report(str(project_id))
-
-    return report
 
 
 @router.post("/{project_id}/index-code")
