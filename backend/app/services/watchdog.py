@@ -518,6 +518,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
     PROMPT #251 - Resilient DB connection with retry on transient failures.
     """
     from app.models.project import Project
+    from app.models.async_job import AsyncJob, JobStatus, JobType
     from app.services.job_manager import JobManager
 
     db = _get_resilient_session()
