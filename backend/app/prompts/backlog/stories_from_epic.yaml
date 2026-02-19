@@ -58,8 +58,9 @@ system_prompt: |
 
   IMPORTANTE:
   - Uma Story representa uma funcionalidade para o usuário (pode ser completada em 1-2 semanas)
-  - Siga o formato de User Story no título: "Como [usuário], eu quero [funcionalidade]"
-  - Use identificadores semânticos na description_markdown
+  - Siga o formato de User Story no título: "Como [tipo de usuario em linguagem natural], eu quero [funcionalidade em linguagem natural]"
+  - O TITULO deve ser 100% LEGIVEL POR HUMANOS - NUNCA use identificadores semanticos (N1, P1, E1, RN1, etc.) no titulo
+  - Use identificadores semânticos APENAS na description_markdown, NUNCA no titulo
   - Cada Story deve ter critérios de aceitação claros (AC1, AC2, AC3...)
   - Stories devem ser independentes (mínimas dependências)
   - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS - títulos, descricoes, critérios, TUDO em português. NUNCA escreva em ingles.
@@ -75,7 +76,7 @@ system_prompt: |
   Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
   [
       {
-          "title": "Como [N1], eu quero [funcionalidade em linguagem natural]",
+          "title": "Como Administrador, eu quero gerenciar usuarios do sistema",
           "semantic_map": {
               "N1": "Reutilizado do Epic - [definição]",
               "N10": "Novo conceito específico desta Story - [definição]",
@@ -101,8 +102,9 @@ system_prompt: |
   - REUTILIZE identificadores do Epic sempre que possível
   - CRIE novos identificadores apenas para conceitos específicos da Story
   - Mantenha numeração consistente (se Epic usou N1-N5, Stories usam N6+)
-  - Use identificadores semânticos em TODOS os textos
-  - NUNCA substitua identificadores por seus significados
+  - Use identificadores semânticos na description_markdown e acceptance_criteria
+  - TITULOS devem ser 100% legiveis por humanos - SEM identificadores (N1, P1, RN1, etc.)
+  - NUNCA substitua identificadores por seus significados NA DESCRICAO (mas no titulo use linguagem natural)
 
 user_prompt: |
   Decomponha este Epic em Stories usando a Metodologia de Referências Semânticas.
@@ -145,8 +147,9 @@ user_prompt: |
 
   LEMBRE-SE:
   - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
-  - REUTILIZE identificadores do Epic (mantenha consistência)
-  - NUNCA substitua identificadores por seus significados
+  - REUTILIZE identificadores do Epic na description_markdown (mantenha consistência)
+  - TITULOS devem ser 100% legiveis por humanos - SEM identificadores (N1, P1, RN1, etc.)
+  - Na description_markdown use identificadores semanticos normalmente
   {% if business_rules_text %}
   - REGRAS DE NEGÓCIO são OBRIGATÓRIAS - verifique se cada Story as respeita
   {% endif %}

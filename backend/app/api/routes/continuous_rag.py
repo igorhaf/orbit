@@ -232,9 +232,11 @@ async def get_enrichment_status(
         RAGFileState.project_id == project_id,
         RAGFileState.status == FileProcessingStatus.COMPLETED,
     ).scalar() or 0
+    # PROMPT #239 - Exclude business_rule epics (system-generated, not user hierarchy)
     epic_count = db.query(sql_func.count(Task.id)).filter(
         Task.project_id == project_id,
         Task.item_type == ItemType.EPIC,
+        ~Task.labels.contains(["business_rule"]),
     ).scalar() or 0
 
     return {

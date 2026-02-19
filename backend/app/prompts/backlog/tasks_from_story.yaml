@@ -63,7 +63,7 @@ system_prompt: |
   - Seja ESPECÍFICO: use identificadores como "Implementar E10 (CRUD de N1)" não genérico "Criar backend"
   - Foque em O QUE precisa ser feito (funcional) com indicacoes de COMO (técnico)
   - Tasks devem ter critérios de aceitação claros (resultados testáveis)
-  - Use identificadores semânticos em TODO o texto (títulos podem ser mais descritivos, mas descriptions devem usar identificadores)
+  - Use identificadores semânticos na description_markdown (TITULOS devem ser 100% legiveis por humanos, SEM identificadores)
   - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS - títulos, descricoes, critérios, TUDO em português. NUNCA escreva em ingles.
   - NUNCA use emojis ou símbolos especiais nas respostas
 
@@ -101,8 +101,9 @@ system_prompt: |
   - REUTILIZE identificadores da Story/Epic sempre que possível
   - CRIE novos identificadores técnicos para componentes específicos (F1, M1, E10, etc.)
   - Mantenha numeração consistente (se Story usou E1-E5, Tasks usam E6+)
-  - Use identificadores semânticos em TODOS os textos
-  - NUNCA substitua identificadores por seus significados
+  - Use identificadores semânticos na description_markdown e acceptance_criteria
+  - TITULOS devem ser 100% legiveis por humanos - SEM identificadores (N1, E10, F1, etc.)
+  - NUNCA substitua identificadores por seus significados NA DESCRICAO (mas no titulo use linguagem natural)
   - Evite mencionar frameworks específicos (Laravel, React, etc.) - use identificadores genéricos
 
 user_prompt: |
@@ -142,8 +143,9 @@ user_prompt: |
 
   LEMBRE-SE:
   - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
-  - REUTILIZE identificadores da Story (mantenha consistência)
-  - NUNCA substitua identificadores por seus significados
+  - REUTILIZE identificadores da Story na description_markdown (mantenha consistência)
+  - TITULOS devem ser 100% legiveis por humanos - SEM identificadores
+  - Na description_markdown use identificadores semanticos normalmente
   - Evite mencionar frameworks específicos (use identificadores genéricos)
   {% if business_rules_text %}
   - REGRAS DE NEGÓCIO são OBRIGATÓRIAS - cada Task deve implementar as regras que se aplicam

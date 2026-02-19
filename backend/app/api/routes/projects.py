@@ -2412,11 +2412,12 @@ async def generate_full_hierarchy(
             detail="Projeto não tem contexto de memória. Aguarde o scan completar."
         )
 
-    # Check for existing epics
+    # Check for existing epics (exclude business_rule epics from system)
     from app.models.task import ItemType
     existing_epics = db.query(Task).filter(
         Task.project_id == project_id,
         Task.item_type == ItemType.EPIC,
+        ~Task.labels.contains(["business_rule"]),
     ).count()
     if existing_epics > 0:
         raise HTTPException(
@@ -2521,10 +2522,12 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
                 logger.warning(f"Failed to activate epic {epic_id}: {e}")
 
         # === Phase 3: Activate Stories + generate Tasks ===
+        # PROMPT #239 - Exclude business_rule cards from hierarchy generation
         stories = db.query(Task).filter(
             Task.project_id == project_id,
             Task.item_type == ItemType.STORY,
             Task.labels.contains(["suggested"]),
+            ~Task.labels.contains(["business_rule"]),
         ).all()
         total_stories = len(stories)
         logger.info(f"Phase 2 complete: {total_stories} stories to activate")
@@ -2549,6 +2552,7 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
             Task.project_id == project_id,
             Task.item_type == ItemType.TASK,
             Task.labels.contains(["suggested"]),
+            ~Task.labels.contains(["business_rule"]),
         ).all()
         total_tasks = len(tasks)
         logger.info(f"Phase 3 complete: {total_tasks} tasks to activate")
@@ -2573,6 +2577,7 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
             Task.project_id == project_id,
             Task.item_type == ItemType.SUBTASK,
             Task.labels.contains(["suggested"]),
+            ~Task.labels.contains(["business_rule"]),
         ).all()
         total_subtasks = len(subtasks)
         logger.info(f"Phase 4 complete: {total_subtasks} subtasks to activate")

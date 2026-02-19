@@ -1348,17 +1348,21 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         })
 
         for i, rule in enumerate(business_rules, 1):
-            rule_title = rule.split(":")[0] if ":" in rule else rule[:80]
-            if len(rule_title) > 80:
-                rule_title = rule_title[:77] + "..."
+            # PROMPT #239 - Use clean title without RN prefix
+            rule_title = rule.split(":")[0].strip() if ":" in rule else rule[:80]
+            # Remove any existing RN prefix from source data
+            if rule_title.startswith("RN") and len(rule_title) > 2 and rule_title[2:].lstrip("0123456789").startswith(":"):
+                rule_title = rule_title.split(":", 1)[1].strip() if ":" in rule_title else rule_title
+            if len(rule_title) > 100:
+                rule_title = rule_title[:97] + "..."
 
             story = Task(
                 id=uuid4(),
                 project_id=project_id,
                 parent_id=parent_epic.id,
-                title=f"RN{i}: {rule_title}",
+                title=rule_title,
                 description=rule,
-                generated_prompt=f"RN{i}: {rule}",
+                generated_prompt=rule,
                 item_type=ItemType.STORY,
                 status=TaskStatus.DONE,
                 priority=PriorityLevel.MEDIUM,
