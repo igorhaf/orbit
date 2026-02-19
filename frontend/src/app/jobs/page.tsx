@@ -711,6 +711,35 @@ export default function JobsPage() {
     setSelectedJobs(new Set());
   }, [statusFilter, typeFilter, projectFilter, offset]);
 
+  // Auto-refresh expanded children when jobs list updates (running jobs may have new child statuses)
+  useEffect(() => {
+    if (expandedChildren.size === 0) return;
+    const expandedIds = Array.from(expandedChildren);
+    // Only refresh children for jobs that are still running or pending
+    const activeExpanded = expandedIds.filter(id => {
+      const job = jobs.find(j => j.id === id);
+      return job && ['running', 'pending'].includes(job.status);
+    });
+    if (activeExpanded.length === 0) return;
+
+    let cancelled = false;
+    const refreshChildren = async () => {
+      for (const jobId of activeExpanded) {
+        if (cancelled) return;
+        try {
+          const res = await jobsApi.getChildren(jobId);
+          if (!cancelled) {
+            setChildrenMap(prev => new Map(prev).set(jobId, res.children));
+          }
+        } catch {
+          // Ignore errors during refresh
+        }
+      }
+    };
+    refreshChildren();
+    return () => { cancelled = true; };
+  }, [jobs, expandedChildren]);
+
   // Format date
   const formatDate = (dateStr: string | null): string => {
     if (!dateStr) return '-';
