@@ -8,19 +8,20 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';  // PROMPT #151 - Restored useRouter for redirect
 import Link from 'next/link';
-import ReactMarkdown from 'react-markdown';
 import { Layout, Breadcrumbs } from '@/components/layout';
-import { Card, CardHeader, CardTitle, CardContent, Button, Badge, AIModelBadge, Dialog, DialogFooter } from '@/components/ui';
+import { Button, Badge, Dialog, DialogFooter } from '@/components/ui';
 import { KanbanBoard } from '@/components/kanban/KanbanBoard';
 import BacklogListView from '@/components/backlog/BacklogListView';
 import { BacklogFilters, ItemDetailPanel } from '@/components/backlog';
 // PROMPT #131 - Removed InterviewTree, interviews now shown below backlog items
-import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel, ContinuousRAGPanel } from '@/components/rag';
 import { GitCommitsList } from '@/components/commits';  // PROMPT #113 - Git Integration
 import { ProjectSpecsList } from '@/components/specs';  // PROMPT #197 - Specs tab
 import PromptQueuePanel from '@/components/backlog/PromptQueuePanel';  // PROMPT #215 - Prompt Queue
 import WikiPanel from '@/components/wiki/WikiPanel';  // PROMPT #272 - Wiki as project tab
 import { ProjectChatPanel } from '@/components/chat/ProjectChatPanel';  // PROMPT #282 - RAG Chat
+import RagTab from './RagTab';  // PROMPT #232 - Extracted tab sub-component
+import AnalyticsTab from './AnalyticsTab';  // PROMPT #232 - Extracted tab sub-component
+import OverviewTab from './OverviewTab';  // PROMPT #232 - Extracted tab sub-component
 import { projectsApi, tasksApi, ragApi, knowledgeApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
@@ -850,549 +851,60 @@ export default function ProjectDetailsPage() {
 
         {/* RAG Analytics Tab (PROMPT #90) */}
         {/* PROMPT #136 - Fixed: CodeIndexingPanel always visible */}
+        {/* PROMPT #232 - Extracted to RagTab sub-component */}
         {activeTab === 'rag' && (
-          <div className="space-y-6">
-            {loadingRag ? (
-              <div className="flex items-center justify-center py-12">
-                <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              </div>
-            ) : (
-              <>
-                {/* RAG Stats - only show if we have data */}
-                {ragStats && ragStats.total_rag_enabled > 0 ? (
-                  <>
-                    {/* Stats Cards */}
-                    <RagStatsCard stats={ragStats} />
-
-                    {/* Charts and Table */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <RagHitRatePieChart usageTypes={ragStats.by_usage_type} />
-                      <RagUsageTypeTable usageTypes={ragStats.by_usage_type} />
-                    </div>
-                  </>
-                ) : (
-                  <Card>
-                    <CardContent className="py-12 text-center text-gray-500">
-                      <p>Nenhum dado RAG disponível ainda</p>
-                      <p className="text-sm mt-2">Indexe seu código abaixo para habilitar operações de IA aprimoradas por RAG</p>
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* PROMPT #172 - Document Storage Stats */}
-                {knowledgeStats && knowledgeStats.total_documents > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg flex items-center gap-2">
-                        <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                        </svg>
-                        Armazenamento de Documentos
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="bg-purple-50 rounded-lg p-4 text-center">
-                          <div className="text-2xl font-bold text-purple-700">{knowledgeStats.total_documents}</div>
-                          <div className="text-xs text-purple-600">Total de Documentos</div>
-                        </div>
-                        <div
-                          className="bg-blue-50 rounded-lg p-4 text-center cursor-pointer hover:ring-2 hover:ring-blue-300 transition-all"
-                          onClick={() => router.push(`/projects/${projectId}/knowledge/code-files`)}
-                          title="Ver todos os arquivos de codigo"
-                        >
-                          <div className="text-2xl font-bold text-blue-700">{knowledgeStats.code_files_count}</div>
-                          <div className="text-xs text-blue-600">Arquivos de Codigo</div>
-                        </div>
-                        <div className="bg-yellow-50 rounded-lg p-4 text-center">
-                          <div className="text-2xl font-bold text-yellow-700">{knowledgeStats.interview_answers_count}</div>
-                          <div className="text-xs text-yellow-600">Respostas de Entrevista</div>
-                        </div>
-                        <div
-                          className="bg-orange-50 rounded-lg p-4 text-center cursor-pointer hover:ring-2 hover:ring-orange-300 transition-all"
-                          onClick={() => router.push(`/projects/${projectId}/knowledge/rules`)}
-                          title="Ver todas as regras de negocio"
-                        >
-                          <div className="text-2xl font-bold text-orange-700">{knowledgeStats.business_rules_count}</div>
-                          <div className="text-xs text-orange-600">Regras de Negocio</div>
-                        </div>
-                      </div>
-
-                      {/* By Source breakdown */}
-                      {Object.keys(knowledgeStats.by_source).length > 0 && (
-                        <div className="mt-4 pt-4 border-t">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Por Fonte</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(knowledgeStats.by_source).map(([source, count]) => (
-                              <span key={source} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
-                                {source.replace(/_/g, ' ')}: <strong>{count}</strong>
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* By Category breakdown (for business rules) */}
-                      {Object.keys(knowledgeStats.by_category).length > 0 && (
-                        <div className="mt-4 pt-4 border-t">
-                          <h4 className="text-sm font-medium text-gray-700 mb-2">Regras de Negocio por Categoria</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {Object.entries(knowledgeStats.by_category).map(([category, count]) => (
-                              <span key={category} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
-                                {category}: <strong>{count}</strong>
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                )}
-
-                {/* PROMPT #218 - Continuous RAG Evolution Panel */}
-                <ContinuousRAGPanel
-                  projectId={projectId}
-                  onScanComplete={loadRagStats}
-                />
-
-                {/* Code Indexing Panel - ALWAYS visible (PROMPT #136) */}
-                <CodeIndexingPanel
-                  projectId={projectId}
-                  stats={codeStats}
-                  onIndexComplete={loadRagStats}
-                />
-              </>
-            )}
-          </div>
+          <RagTab
+            projectId={projectId}
+            loadingRag={loadingRag}
+            ragStats={ragStats}
+            knowledgeStats={knowledgeStats}
+            codeStats={codeStats}
+            loadRagStats={loadRagStats}
+          />
         )}
 
         {/* Blocking Analytics Tab (PROMPT #97) */}
+        {/* PROMPT #232 - Extracted to AnalyticsTab sub-component */}
         {activeTab === 'analytics' && (
-          <div className="space-y-6">
-            {/* Time Period Selector */}
-            <div className="flex justify-between items-center">
-              <h3 className="text-lg font-semibold text-gray-900">Análise do Sistema de Bloqueios</h3>
-              <div className="flex gap-2">
-                {[7, 30, 90, 365].map((days) => (
-                  <Button
-                    key={days}
-                    variant={analyticsDays === days ? 'primary' : 'outline'}
-                    size="sm"
-                    onClick={() => setAnalyticsDays(days)}
-                  >
-                    {days === 365 ? 'Todo Período' : `${days}d`}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {loadingAnalytics ? (
-              <div className="flex items-center justify-center py-12">
-                <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              </div>
-            ) : analyticsData ? (
-              <>
-                {/* Key Metrics Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium text-gray-500">Atualmente Bloqueados</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-baseline">
-                        <span className="text-3xl font-bold text-red-600">{analyticsData.total_blocked}</span>
-                        <span className="ml-2 text-sm text-gray-500">tarefas</span>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">Pendente de aprovacao do usuário</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium text-gray-500">Aprovados</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-baseline">
-                        <span className="text-3xl font-bold text-green-600">{analyticsData.total_approved}</span>
-                        <span className="ml-2 text-sm text-gray-500">modificacoes</span>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">{(analyticsData.approval_rate * 100).toFixed(1)}% taxa de aprovacao</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium text-gray-500">Rejeitados</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-baseline">
-                        <span className="text-3xl font-bold text-orange-600">{analyticsData.total_rejected}</span>
-                        <span className="ml-2 text-sm text-gray-500">modificacoes</span>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">{(analyticsData.rejection_rate * 100).toFixed(1)}% taxa de rejeicao</p>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium text-gray-500">Similaridade Media</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-baseline">
-                        <span className="text-3xl font-bold text-blue-600">{(analyticsData.avg_similarity_score * 100).toFixed(1)}%</span>
-                      </div>
-                      <p className="text-xs text-gray-400 mt-1">Precisao de detecção da IA</p>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Charts Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  {/* Similarity Distribution */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Distribuicao de Pontuacao de Similaridade</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {Object.entries(analyticsData.similarity_distribution).map(([range, count]) => {
-                          const total = Object.values(analyticsData.similarity_distribution).reduce((a, b) => a + b, 0);
-                          const percentage = total > 0 ? (count / total) * 100 : 0;
-
-                          const getColor = (range: string) => {
-                            if (range === '90+') return 'bg-red-500';
-                            if (range === '80-90') return 'bg-orange-500';
-                            if (range === '70-80') return 'bg-yellow-500';
-                            return 'bg-green-500';
-                          };
-
-                          return (
-                            <div key={range}>
-                              <div className="flex justify-between text-sm mb-1">
-                                <span className="font-medium text-gray-700">{range}% Similares</span>
-                                <span className="text-gray-500">{count} ({percentage.toFixed(0)}%)</span>
-                              </div>
-                              <div className="w-full bg-gray-200 rounded-full h-3">
-                                <div
-                                  className={`h-3 rounded-full ${getColor(range)}`}
-                                  style={{ width: `${percentage}%` }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  {/* Approval vs Rejection Rate */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Taxa de Resolução</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="font-medium text-green-700">Aprovados</span>
-                            <span className="text-gray-500">{analyticsData.total_approved} ({(analyticsData.approval_rate * 100).toFixed(1)}%)</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-6">
-                            <div
-                              className="h-6 rounded-full bg-green-500 flex items-center justify-center text-white text-xs font-semibold"
-                              style={{ width: `${analyticsData.approval_rate * 100}%` }}
-                            >
-                              {analyticsData.approval_rate > 0.15 && `${(analyticsData.approval_rate * 100).toFixed(0)}%`}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="font-medium text-orange-700">Rejeitados</span>
-                            <span className="text-gray-500">{analyticsData.total_rejected} ({(analyticsData.rejection_rate * 100).toFixed(1)}%)</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-6">
-                            <div
-                              className="h-6 rounded-full bg-orange-500 flex items-center justify-center text-white text-xs font-semibold"
-                              style={{ width: `${analyticsData.rejection_rate * 100}%` }}
-                            >
-                              {analyticsData.rejection_rate > 0.15 && `${(analyticsData.rejection_rate * 100).toFixed(0)}%`}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="pt-4 border-t">
-                          <div className="text-sm text-gray-600">
-                            <strong>Total Resolvidos:</strong> {analyticsData.total_approved + analyticsData.total_rejected} modificacoes
-                          </div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            <strong>Taxa de Bloqueio:</strong> {(analyticsData.blocking_rate * 100).toFixed(1)}% de todas as tarefas
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Timeline */}
-                {analyticsData.blocked_by_date && analyticsData.blocked_by_date.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Linha do Tempo de Bloqueios</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2">
-                        {analyticsData.blocked_by_date.slice(0, 10).map((item) => (
-                          <div key={item.date} className="flex justify-between items-center py-2 border-b last:border-0">
-                            <span className="text-sm font-medium text-gray-700">{new Date(item.date).toLocaleDateString()}</span>
-                            <Badge variant="outline">{item.count} bloqueados</Badge>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
-              </>
-            ) : (
-              <Card>
-                <CardContent className="py-12 text-center text-gray-500">
-                  <p>Nenhuma análise de bloqueios disponível ainda</p>
-                  <p className="text-sm mt-2">Análises aparecerao apos a IA sugerir modificacoes nas tarefas</p>
-                </CardContent>
-              </Card>
-            )}
-          </div>
+          <AnalyticsTab
+            loadingAnalytics={loadingAnalytics}
+            analyticsData={analyticsData}
+            analyticsDays={analyticsDays}
+            setAnalyticsDays={setAnalyticsDays}
+          />
         )}
 
+        {/* PROMPT #232 - Extracted to OverviewTab sub-component */}
         {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {/* Overview Sub-Tabs */}
-            <div className="border-b border-gray-200">
-              <nav className="-mb-px flex space-x-8">
-                {[
-                  { id: 'description', label: 'Descrição do Projeto' },
-                  { id: 'statistics', label: 'Estatisticas' },
-                ].map((sub) => (
-                  <button
-                    key={sub.id}
-                    onClick={() => setOverviewSubTab(sub.id as OverviewSubTab)}
-                    className={`
-                      pb-4 px-1 border-b-2 font-medium text-sm
-                      ${
-                        overviewSubTab === sub.id
-                          ? 'border-blue-500 text-blue-600'
-                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                      }
-                    `}
-                  >
-                    {sub.label}
-                  </button>
-                ))}
-              </nav>
-            </div>
-
-            {/* Sub-Tab: Project Description */}
-            {overviewSubTab === 'description' && (
-              <>
-              {/* PROMPT #272 - Wiki stats moved to Wiki tab */}
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <CardTitle>Descrição do Projeto</CardTitle>
-                  <div className="flex items-center gap-2">
-                    {isFormattingDescription && (
-                      <span className="text-xs text-gray-500 italic">Formatando para Markdown...</span>
-                    )}
-                    {isSavingDescription && (
-                      <span className="text-xs text-gray-500 italic">Salvando...</span>
-                    )}
-                    {!isEditingDescription && (
-                      <span className="text-xs text-gray-400">Clique duplo para editar</span>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  {isEditingDescription ? (
-                    <div ref={descriptionEditorRef} className="border border-blue-300 rounded-lg overflow-hidden shadow-sm">
-                      {/* Markdown Toolbar */}
-                      <div className="flex flex-wrap items-center gap-1 p-2 bg-gray-50 border-b border-gray-200">
-                        {/* Text Formatting */}
-                        <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                          <button type="button" onClick={formatBold} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-bold text-sm" title="Negrito (Ctrl+B)">B</button>
-                          <button type="button" onClick={formatItalic} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm" title="Itálico (Ctrl+I)">I</button>
-                          <button type="button" onClick={formatCode} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm" title="Código Inline">{'</>'}</button>
-                        </div>
-                        {/* Headings */}
-                        <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                          <button type="button" onClick={formatHeading1} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 1">H1</button>
-                          <button type="button" onClick={formatHeading2} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 2">H2</button>
-                          <button type="button" onClick={formatHeading3} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 3">H3</button>
-                        </div>
-                        {/* Lists */}
-                        <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                          <button type="button" onClick={formatBulletList} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Lista com Marcadores">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-                          </button>
-                          <button type="button" onClick={formatNumberedList} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Lista Numerada">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h10M7 16h10M3 8h.01M3 12h.01M3 16h.01" /></svg>
-                          </button>
-                        </div>
-                        {/* Blocks */}
-                        <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                          <button type="button" onClick={formatQuote} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Citação">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                          </button>
-                          <button type="button" onClick={formatCodeBlock} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono" title="Bloco de Código">{'```'}</button>
-                          <button type="button" onClick={formatTable} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Tabela">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M9 10v8m6-8v8M3 6h18v12H3V6z" /></svg>
-                          </button>
-                        </div>
-                        {/* Link */}
-                        <div className="flex items-center gap-1">
-                          <button type="button" onClick={formatLink} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Link">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Textarea */}
-                      <textarea
-                        ref={textareaRef}
-                        value={editedDescription}
-                        onChange={(e) => setEditedDescription(e.target.value)}
-                        className="w-full p-4 min-h-[300px] text-sm text-gray-900 font-mono focus:outline-none resize-y"
-                        placeholder="Digite a descrição usando Markdown..."
-                        onKeyDown={(e) => {
-                          if (e.ctrlKey && e.key === 'b') { e.preventDefault(); formatBold(); }
-                          if (e.ctrlKey && e.key === 'i') { e.preventDefault(); formatItalic(); }
-                          if (e.key === 'Escape') { e.preventDefault(); handleCancelDescriptionEdit(); }
-                          if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); handleSaveDescription(); }
-                        }}
-                      />
-
-                      {/* Action Buttons */}
-                      <div className="flex items-center justify-between p-3 bg-gray-50 border-t border-gray-200">
-                        <span className="text-xs text-gray-500">
-                          Markdown suportado | Ctrl+B negrito | Ctrl+I itálico | Ctrl+Enter salvar | Esc cancelar
-                        </span>
-                        <div className="flex gap-2">
-                          <Button variant="ghost" size="sm" onClick={handleCancelDescriptionEdit}>Cancelar</Button>
-                          <Button variant="primary" size="sm" onClick={handleSaveDescription} disabled={isSavingDescription}>
-                            {isSavingDescription ? 'Salvando...' : 'Salvar'}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : project.description ? (
-                    <div
-                      className="prose prose-sm max-w-none cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
-                      onDoubleClick={handleDescriptionDoubleClick}
-                    >
-                      <ReactMarkdown>
-                        {editedDescription || project.description}
-                      </ReactMarkdown>
-                      <div className="mt-2 flex justify-end not-prose">
-                        <AIModelBadge model="description-format" usage_type="general" decorative />
-                      </div>
-                    </div>
-                  ) : (
-                    <p
-                      className="text-gray-500 text-sm italic cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
-                      onDoubleClick={handleDescriptionDoubleClick}
-                    >
-                      Nenhuma descrição ainda. Clique duplo para adicionar uma.
-                    </p>
-                  )}
-                </CardContent>
-              </Card>
-              </>
-            )}
-
-            {/* Sub-Tab: Statistics */}
-            {overviewSubTab === 'statistics' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Statistics */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Estatisticas</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div>
-                      <p className="text-sm text-gray-500">Total de Tarefas</p>
-                      <p className="text-2xl font-bold text-gray-900">
-                        {tasks.length}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Concluidas</p>
-                      <p className="text-2xl font-bold text-green-600">
-                        {tasksByStatus.done.length}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Em Progresso</p>
-                      <p className="text-2xl font-bold text-blue-600">
-                        {tasksByStatus.in_progress.length}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-500">Pendentes</p>
-                      <p className="text-2xl font-bold text-gray-600">
-                        {tasksByStatus.todo.length + tasksByStatus.backlog.length}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Progress */}
-                <Card className="lg:col-span-2">
-                  <CardHeader>
-                    <CardTitle>Progresso por Status</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    {Object.entries(tasksByStatus).map(([status, statusTasks]) => {
-                      const percentage = tasks.length
-                        ? (statusTasks.length / tasks.length) * 100
-                        : 0;
-
-                      return (
-                        <div key={status}>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="font-medium text-gray-700 capitalize">
-                              {status.replace('_', ' ')}
-                            </span>
-                            <span className="text-gray-500">
-                              {statusTasks.length} ({percentage.toFixed(0)}%)
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div
-                              className={`h-2 rounded-full ${
-                                status === 'done'
-                                  ? 'bg-green-500'
-                                  : status === 'in_progress'
-                                  ? 'bg-blue-500'
-                                  : status === 'review'
-                                  ? 'bg-purple-500'
-                                  : 'bg-gray-400'
-                              }`}
-                              style={{ width: `${percentage}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </div>
+          <OverviewTab
+            project={project}
+            tasks={tasks}
+            tasksByStatus={tasksByStatus}
+            overviewSubTab={overviewSubTab}
+            setOverviewSubTab={setOverviewSubTab}
+            isEditingDescription={isEditingDescription}
+            editedDescription={editedDescription}
+            setEditedDescription={setEditedDescription}
+            isFormattingDescription={isFormattingDescription}
+            isSavingDescription={isSavingDescription}
+            descriptionEditorRef={descriptionEditorRef}
+            textareaRef={textareaRef}
+            handleDescriptionDoubleClick={handleDescriptionDoubleClick}
+            handleSaveDescription={handleSaveDescription}
+            handleCancelDescriptionEdit={handleCancelDescriptionEdit}
+            formatBold={formatBold}
+            formatItalic={formatItalic}
+            formatCode={formatCode}
+            formatCodeBlock={formatCodeBlock}
+            formatHeading1={formatHeading1}
+            formatHeading2={formatHeading2}
+            formatHeading3={formatHeading3}
+            formatBulletList={formatBulletList}
+            formatNumberedList={formatNumberedList}
+            formatLink={formatLink}
+            formatQuote={formatQuote}
+            formatTable={formatTable}
+          />
         )}
       </div>
       {/* Epic Count Dialog */}
