@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy.orm import Session
+
 from app.models.project import Project
 from app.models.async_job import AsyncJob, JobType, JobStatus
 from app.models.spec import Spec
@@ -174,6 +176,11 @@ async def _process_memory_scan_async(
                 merged_ctx = _merge_memory_context(existing_ctx, result)
                 project.initial_memory_context = merged_ctx
                 project.initial_scan_complete = True
+                # PROMPT #232 - IC-5/IA-5: promote to active on scan success
+                from app.models.project import ProjectStatus
+                if project.status == ProjectStatus.draft:
+                    project.status = ProjectStatus.active
+                    logger.info(f"📦 Project '{project.name}' promoted to active (scan complete)")
                 project.scan_depth = scan_depth
                 project.updated_at = datetime.utcnow()
                 db.commit()
@@ -289,6 +296,11 @@ async def _process_quick_create_scan(
             project.initial_memory_context = result
             # PROMPT #222 - Signal that initial scan is done so Continuous RAG can start
             project.initial_scan_complete = True
+            # PROMPT #232 - IC-5/IA-5: promote to active on scan success
+            from app.models.project import ProjectStatus
+            if project.status == ProjectStatus.draft:
+                project.status = ProjectStatus.active
+                logger.info(f"📦 Project '{project.name}' promoted to active (scan complete)")
             project.updated_at = datetime.utcnow()
             db.commit()
 
@@ -397,6 +409,11 @@ async def _process_initial_scan(
         # PROMPT #247 - Title and description are always manual, never auto-generated
         project.initial_memory_context = result
         project.initial_scan_complete = True
+        # PROMPT #232 - IC-5/IA-5: promote to active on scan success
+        from app.models.project import ProjectStatus
+        if project.status == ProjectStatus.draft:
+            project.status = ProjectStatus.active
+            logger.info(f"📦 Project '{project.name}' promoted to active (scan complete)")
 
         project.updated_at = datetime.utcnow()
         db.commit()

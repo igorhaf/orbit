@@ -104,6 +104,39 @@ async def create_task(
     - **status**: Task status (default: backlog)
     - **prompt_id**: Related prompt ID (optional)
     """
+    # PROMPT #232 - IC-3 fix: Validate project exists
+    from app.models.project import Project
+    project = db.query(Project).filter(Project.id == task_data.project_id).first()
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Projeto {task_data.project_id} não encontrado"
+        )
+
+    # PROMPT #232 - IC-3 fix: Validate hierarchy rules when parent_id is set
+    if task_data.parent_id:
+        parent = db.query(Task).filter(Task.id == task_data.parent_id).first()
+        if not parent:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task pai {task_data.parent_id} não encontrada"
+            )
+        # Validate hierarchy: Epic→Story, Story→Task/Bug, Task→Subtask
+        valid_children = {
+            ItemType.EPIC: [ItemType.STORY],
+            ItemType.STORY: [ItemType.TASK, ItemType.BUG],
+            ItemType.TASK: [ItemType.SUBTASK],
+            ItemType.SUBTASK: [],
+            ItemType.BUG: [],
+        }
+        allowed = valid_children.get(parent.item_type, [])
+        if task_data.item_type not in allowed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{task_data.item_type.value} não pode ser filho de {parent.item_type.value}. "
+                       f"Filhos válidos: {[c.value for c in allowed]}"
+            )
+
     # Get the current max order for the status column
     max_order = db.query(Task).filter(
         Task.project_id == task_data.project_id,
@@ -192,6 +225,12 @@ async def update_task(
     # Track if status changed to done
     status_changed_to_done = False
     old_status = task.status
+
+    # PROMPT #232 - REGRA #0: Mark fields as human-edited when user updates them
+    if 'description' in update_data:
+        task.description_edited_by = 'human'
+    if 'generated_prompt' in update_data:
+        task.prompt_edited_by = 'human'
 
     for field, value in update_data.items():
         setattr(task, field, value)

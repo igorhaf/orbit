@@ -519,14 +519,14 @@ async def create_and_process_project(
     folder_name = path.name
     temp_name = folder_name.replace("-", " ").replace("_", " ").title()
 
-    # PROMPT #301 - Create project as ACTIVE immediately
+    # PROMPT #232 - IC-5 fix: Start as draft, promote to active on scan success
     from app.models.project import ProjectStatus
 
     db_project = Project(
         name=temp_name,
         code_path=code_path,
         context_locked=False,
-        status=ProjectStatus.active,
+        status=ProjectStatus.draft,
         scan_depth=scan_depth,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()

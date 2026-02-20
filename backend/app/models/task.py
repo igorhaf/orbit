@@ -215,6 +215,12 @@ class Task(Base):
     # Stores the model ID that generated description/generated_prompt
     created_by_ai_model = Column(String(100), nullable=True)
 
+    # PROMPT #232 - Human Data Supremacy (REGRA #0)
+    # Tracks whether description/generated_prompt were manually edited by a human.
+    # If edited_by == 'human', AI activation MUST NOT overwrite these fields.
+    description_edited_by = Column(String(10), nullable=True, default=None)  # 'ai' | 'human' | None
+    prompt_edited_by = Column(String(10), nullable=True, default=None)  # 'ai' | 'human' | None
+
     # PROMPT #94 FASE 4 - Blocking System for Modification Detection
     # When AI suggests modifying existing task (>90% semantic similarity):
     # - Task gets BLOCKED status

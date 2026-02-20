@@ -239,6 +239,28 @@ async def create_interview(
     # DEBUG: Log the determined interview mode (PROMPT #98 debugging)
     logger.info(f"✅ INTERVIEW MODE DETERMINED: interview_mode={interview_mode}")
 
+    # PROMPT #232 - IA-1 fix: Cancel existing active interview on same card before creating new
+    if parent_task_id:
+        active_interview = db.query(Interview).filter(
+            Interview.parent_task_id == parent_task_id,
+            Interview.status == "active"
+        ).first()
+        if active_interview:
+            active_interview.status = "cancelled"
+            db.flush()
+            logger.info(f"🚫 Cancelled previous active interview {active_interview.id} on card {parent_task_id}")
+    else:
+        # PROMPT #232 - IA-1 fix: Cancel existing active context/meta_prompt interview
+        active_interview = db.query(Interview).filter(
+            Interview.project_id == interview_data.project_id,
+            Interview.parent_task_id == None,
+            Interview.status == "active"
+        ).first()
+        if active_interview:
+            active_interview.status = "cancelled"
+            db.flush()
+            logger.info(f"🚫 Cancelled previous active project interview {active_interview.id}")
+
     db_interview = Interview(
         project_id=interview_data.project_id,
         parent_task_id=parent_task_id,  # PROMPT #97
@@ -895,6 +917,14 @@ async def generate_context_from_interview(
     # Get project for notification
     project = db.query(Project).filter(Project.id == interview.project_id).first()
     project_name = project.name if project else "projeto"
+
+    # PROMPT #232 - IA-2 fix: prevent context regeneration after lock
+    if project and project.context_locked:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Contexto do projeto já está travado. "
+                   "Não é possível regenerar contexto após ativação de cards."
+        )
 
     # PROMPT #133 - Create background job
     # PROMPT #151 - Use resume param for wizard state restoration

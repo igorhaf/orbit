@@ -107,8 +107,19 @@ class CardActivatorMixin:
         )
 
         # 4. Update epic with generated content
-        epic.description = epic_content["description"]
-        epic.generated_prompt = epic_content["generated_prompt"]
+        # PROMPT #232 - REGRA #0: Human data is sacred - never overwrite human edits
+        if epic.description_edited_by != 'human':
+            epic.description = epic_content["description"]
+            epic.description_edited_by = 'ai'
+        else:
+            logger.info(f"🛡️ Preserving human-edited description for epic '{epic.title}'")
+
+        if epic.prompt_edited_by != 'human':
+            epic.generated_prompt = epic_content["generated_prompt"]
+            epic.prompt_edited_by = 'ai'
+        else:
+            logger.info(f"🛡️ Preserving human-edited prompt for epic '{epic.title}'")
+
         epic.acceptance_criteria = epic_content.get("acceptance_criteria", [])
         epic.story_points = epic_content.get("story_points")
         # PROMPT #127 - Track which AI model generated the content
@@ -135,7 +146,8 @@ class CardActivatorMixin:
         epic.updated_at = datetime.utcnow()
 
         # 6. Lock project context (first item activated = context locked)
-        if not project.context_locked and epic.item_type == ItemType.EPIC:
+        # PROMPT #232 - IC-2 fix: lock context on ANY card activation, not just Epic
+        if not project.context_locked:
             project.context_locked = True
             project.context_locked_at = datetime.utcnow()
             logger.info(f"🔒 Context locked for project {project.name} (first item activated)")
@@ -1457,8 +1469,19 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         )
 
         # Update story
-        story.description = story_content.get("description", story.description)
-        story.generated_prompt = story_content.get("generated_prompt")
+        # PROMPT #232 - REGRA #0: Human data is sacred - never overwrite human edits
+        if story.description_edited_by != 'human':
+            story.description = story_content.get("description", story.description)
+            story.description_edited_by = 'ai'
+        else:
+            logger.info(f"🛡️ Preserving human-edited description for story '{story.title}'")
+
+        if story.prompt_edited_by != 'human':
+            story.generated_prompt = story_content.get("generated_prompt")
+            story.prompt_edited_by = 'ai'
+        else:
+            logger.info(f"🛡️ Preserving human-edited prompt for story '{story.title}'")
+
         story.acceptance_criteria = story_content.get("acceptance_criteria", [])
         story.story_points = story_content.get("story_points", story.story_points)
         # PROMPT #127 - Track which AI model generated the content
@@ -1475,6 +1498,12 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
             story.labels = [l for l in story.labels if l != "suggested"]
         story.workflow_state = "open"
         story.updated_at = datetime.utcnow()
+
+        # PROMPT #232 - IC-2 fix: lock context on ANY card activation
+        if not project.context_locked:
+            project.context_locked = True
+            project.context_locked_at = datetime.utcnow()
+            logger.info(f"🔒 Context locked for project {project.name} (story activated)")
 
         self.db.commit()
         self.db.refresh(story)
@@ -1926,8 +1955,19 @@ Retorne APENAS o JSON, sem explicações."""
         )
 
         # Update task
-        task.description = task_content.get("description", task.description)
-        task.generated_prompt = task_content.get("generated_prompt")
+        # PROMPT #232 - REGRA #0: Human data is sacred - never overwrite human edits
+        if task.description_edited_by != 'human':
+            task.description = task_content.get("description", task.description)
+            task.description_edited_by = 'ai'
+        else:
+            logger.info(f"🛡️ Preserving human-edited description for task '{task.title}'")
+
+        if task.prompt_edited_by != 'human':
+            task.generated_prompt = task_content.get("generated_prompt")
+            task.prompt_edited_by = 'ai'
+        else:
+            logger.info(f"🛡️ Preserving human-edited prompt for task '{task.title}'")
+
         task.acceptance_criteria = task_content.get("acceptance_criteria", [])
         task.story_points = task_content.get("story_points", task.story_points)
         # PROMPT #127 - Track which AI model generated the content
@@ -1943,6 +1983,12 @@ Retorne APENAS o JSON, sem explicações."""
             task.labels = [l for l in task.labels if l != "suggested"]
         task.workflow_state = "open"
         task.updated_at = datetime.utcnow()
+
+        # PROMPT #232 - IC-2 fix: lock context on ANY card activation
+        if not project.context_locked:
+            project.context_locked = True
+            project.context_locked_at = datetime.utcnow()
+            logger.info(f"🔒 Context locked for project {project.name} (task activated)")
 
         self.db.commit()
         self.db.refresh(task)
@@ -2392,8 +2438,19 @@ Retorne APENAS o JSON, sem explicações."""
         )
 
         # Update subtask with generated content
-        subtask.description = subtask_content.get("description", subtask.description)
-        subtask.generated_prompt = subtask_content.get("generated_prompt")
+        # PROMPT #232 - REGRA #0: Human data is sacred - never overwrite human edits
+        if subtask.description_edited_by != 'human':
+            subtask.description = subtask_content.get("description", subtask.description)
+            subtask.description_edited_by = 'ai'
+        else:
+            logger.info(f"🛡️ Preserving human-edited description for subtask '{subtask.title}'")
+
+        if subtask.prompt_edited_by != 'human':
+            subtask.generated_prompt = subtask_content.get("generated_prompt")
+            subtask.prompt_edited_by = 'ai'
+        else:
+            logger.info(f"🛡️ Preserving human-edited prompt for subtask '{subtask.title}'")
+
         subtask.acceptance_criteria = subtask_content.get("acceptance_criteria", [])
         # PROMPT #127 - Track which AI model generated the content
         subtask.created_by_ai_model = subtask_content.get("ai_model_used")
@@ -2413,6 +2470,12 @@ Retorne APENAS o JSON, sem explicações."""
             subtask.labels = [l for l in subtask.labels if l != "suggested"]
         subtask.workflow_state = "open"
         subtask.updated_at = datetime.utcnow()
+
+        # PROMPT #232 - IC-2 fix: lock context on ANY card activation
+        if not project.context_locked:
+            project.context_locked = True
+            project.context_locked_at = datetime.utcnow()
+            logger.info(f"🔒 Context locked for project {project.name} (subtask activated)")
 
         self.db.commit()
         self.db.refresh(subtask)
