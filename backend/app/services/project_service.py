@@ -911,8 +911,11 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
             business_rule_cards = await context_service.generate_business_rule_cards(project_id)
             logger.info(f"Generated {len(business_rule_cards)} business rule cards")
         except Exception as e:
-            logger.error(f"Failed to generate business rule cards: {e}")
+            # PROMPT #233 - LI-2 fix: log error but don't silently swallow it - report partial failure
+            logger.error(f"Failed to generate business rule cards: {e}", exc_info=True)
             business_rule_cards = []
+            # Record the failure in job result so user knows it partially failed
+            jm.update_progress(job_id, 90.0, f"Regras de negocio falharam: {str(e)[:100]}")
 
         # Count hierarchy levels
         total_epics = sum(1 for c in business_rule_cards if c.get("item_type") == "epic")
@@ -941,8 +944,7 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
         logger.info(
             f"Hierarchy generated for '{project_name}': "
             f"{total_epics} BR epics, {total_stories} BR stories, "
-            f"{total_tasks} BR tasks, {total_subtasks} BR subtasks, "
-            f"{suggested_epic_count} suggested epics (draft)"
+            f"{total_tasks} BR tasks, {total_subtasks} BR subtasks"
         )
 
     except Exception as e:

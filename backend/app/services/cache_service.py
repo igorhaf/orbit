@@ -142,11 +142,13 @@ class CacheService:
             SHA256 hash as cache key
         """
         # Sort keys for consistent hashing
+        # PROMPT #233 - LI-4 fix: round temperature to avoid float serialization mismatches
+        temp = cache_input.get("temperature", 0.7)
         key_parts = {
             "prompt": cache_input.get("prompt", ""),
             "system_prompt": cache_input.get("system_prompt", ""),
             "usage_type": cache_input.get("usage_type", ""),
-            "temperature": cache_input.get("temperature", 0.7),
+            "temperature": round(float(temp), 2) if temp is not None else 0.7,
             "model": cache_input.get("model", ""),
         }
 

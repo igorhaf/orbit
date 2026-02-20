@@ -5,7 +5,7 @@ Represents relationships between tasks (blocks, depends_on, relates_to, duplicat
 
 from datetime import datetime
 from uuid import uuid4
-from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SQLEnum, Index
+from sqlalchemy import Column, String, DateTime, ForeignKey, Enum as SQLEnum, Index, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
@@ -77,9 +77,12 @@ class TaskRelationship(Base):
     )
 
     # Composite indexes for performance
+    # PROMPT #233 - DB-4 fix: prevent duplicate relationships
     __table_args__ = (
         Index('ix_task_rel_source_target', 'source_task_id', 'target_task_id'),
         Index('ix_task_rel_type_source', 'relationship_type', 'source_task_id'),
+        UniqueConstraint('source_task_id', 'target_task_id', 'relationship_type',
+                         name='uq_task_relationship_tuple'),
     )
 
     def __repr__(self) -> str:

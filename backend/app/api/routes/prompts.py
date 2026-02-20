@@ -51,6 +51,31 @@ async def list_prompts(
     return prompts
 
 
+# PROMPT #233 - CQ-1 fix: /reusable/all MUST come before /{prompt_id} to avoid FastAPI capturing "reusable" as prompt_id
+@router.get("/reusable/all", response_model=List[PromptResponse])
+async def get_reusable_prompts(
+    project_id: Optional[UUID] = Query(None, description="Filter by project ID"),
+    type: Optional[str] = Query(None, description="Filter by prompt type"),
+    db: Session = Depends(get_db)
+):
+    """
+    Get all reusable prompts.
+
+    - **project_id**: Filter by project (optional)
+    - **type**: Filter by prompt type (optional)
+    """
+    query = db.query(Prompt).filter(Prompt.is_reusable == True)
+
+    if project_id:
+        query = query.filter(Prompt.project_id == project_id)
+    if type:
+        query = query.filter(Prompt.type == type)
+
+    prompts = query.order_by(Prompt.created_at.desc()).all()
+
+    return prompts
+
+
 @router.post("/", response_model=PromptResponse, status_code=status.HTTP_201_CREATED)
 async def create_prompt(
     prompt_data: PromptCreate,
@@ -230,27 +255,3 @@ async def delete_all_prompts(
     db.query(Prompt).delete()
     db.commit()
     return None
-
-
-@router.get("/reusable/all", response_model=List[PromptResponse])
-async def get_reusable_prompts(
-    project_id: Optional[UUID] = Query(None, description="Filter by project ID"),
-    type: Optional[str] = Query(None, description="Filter by prompt type"),
-    db: Session = Depends(get_db)
-):
-    """
-    Get all reusable prompts.
-
-    - **project_id**: Filter by project (optional)
-    - **type**: Filter by prompt type (optional)
-    """
-    query = db.query(Prompt).filter(Prompt.is_reusable == True)
-
-    if project_id:
-        query = query.filter(Prompt.project_id == project_id)
-    if type:
-        query = query.filter(Prompt.type == type)
-
-    prompts = query.order_by(Prompt.created_at.desc()).all()
-
-    return prompts

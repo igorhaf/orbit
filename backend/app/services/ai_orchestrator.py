@@ -1025,7 +1025,11 @@ class AIOrchestrator:
                                         break
                                 input_tokens = result.get("usage", {}).get("input_tokens", 0)
                                 output_tokens = result.get("usage", {}).get("output_tokens", 0)
-                                cost = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000)
+                                # PROMPT #233 - CF-1 fix: use dynamic pricing instead of hardcoded Claude pricing
+                                from app.utils.pricing import calculate_cost
+                                _chain_model_name = chain_model_config.get('model', '')
+                                _cost_info = calculate_cost(input_tokens, output_tokens, _chain_model_name)
+                                cost = _cost_info["total_cost"]
                                 prompt_metadata = metadata or {}
                                 if task_id:
                                     prompt_metadata["task_id"] = str(task_id)
@@ -1382,12 +1386,20 @@ class AIOrchestrator:
                                 for i, r in enumerate(scored_results)
                             ])
 
-                            # Inject RAG context before last user message
-                            rag_message = {
-                                "role": "user",
-                                "content": f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]"
-                            }
-                            _effective_messages.insert(-1, rag_message)
+                            # PROMPT #233 - LI-3 fix: merge RAG context into last user message
+                            # instead of creating a separate user message (which breaks alternating roles for OpenAI/Gemini)
+                            if _effective_messages and _effective_messages[-1].get("role") == "user":
+                                _effective_messages[-1]["content"] = (
+                                    f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]\n\n"
+                                    + _effective_messages[-1]["content"]
+                                )
+                            else:
+                                # Fallback: insert as separate message if last isn't user
+                                rag_message = {
+                                    "role": "user",
+                                    "content": f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]"
+                                }
+                                _effective_messages.insert(-1, rag_message)
                             rag_context_injected = True
 
                         logger.info(
@@ -1652,11 +1664,12 @@ class AIOrchestrator:
                                 user_prompt_text = msg.get("content", "")
                                 break
 
-                        # Calculate cost (rough estimate based on Claude pricing)
+                        # PROMPT #233 - CF-1 fix: use dynamic pricing instead of hardcoded Claude pricing
                         input_tokens = result.get("usage", {}).get("input_tokens", 0)
                         output_tokens = result.get("usage", {}).get("output_tokens", 0)
-                        # Rough estimate: $3/million input, $15/million output for Claude Sonnet
-                        cost = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000)
+                        from app.utils.pricing import calculate_cost
+                        _cost_info = calculate_cost(input_tokens, output_tokens, model_name)
+                        cost = _cost_info["total_cost"]
 
                         prompt_metadata = metadata or {}
                         if task_id:
@@ -1695,11 +1708,12 @@ class AIOrchestrator:
             # PROMPT #74 - Store result in cache after successful execution
             if self.cache_service:
                 try:
-                    # Calculate cost for caching
+                    # PROMPT #233 - CF-1 fix: use dynamic pricing instead of hardcoded Claude pricing
                     input_tokens = result.get("usage", {}).get("input_tokens", 0)
                     output_tokens = result.get("usage", {}).get("output_tokens", 0)
-                    # Rough estimate: $3/million input, $15/million output for Claude Sonnet
-                    cost = (input_tokens * 3 / 1_000_000) + (output_tokens * 15 / 1_000_000)
+                    from app.utils.pricing import calculate_cost
+                    _cost_info = calculate_cost(input_tokens, output_tokens, model_name)
+                    cost = _cost_info["total_cost"]
 
                     cache_input = {
                         "prompt": json.dumps(_effective_messages),
@@ -2623,6 +2637,7 @@ class AIOrchestrator:
         accumulated = ""
         input_tokens = 0
         output_tokens = 0
+        _stream_start = time.time()
 
         async with client.messages.stream(
             model=model,
@@ -2640,6 +2655,8 @@ class AIOrchestrator:
             input_tokens = final_message.usage.input_tokens
             output_tokens = final_message.usage.output_tokens
 
+        # PROMPT #233 - CQ-3 fix: include execution_time_ms in streaming responses
+        _streaming_time_ms = int((time.time() - _stream_start) * 1000)
         return {
             "provider": "anthropic",
             "model": model,
@@ -2648,6 +2665,7 @@ class AIOrchestrator:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": input_tokens + output_tokens,
+                "execution_time_ms": _streaming_time_ms,
             }
         }
 
@@ -2678,6 +2696,7 @@ class AIOrchestrator:
         accumulated = ""
         input_tokens = 0
         output_tokens = 0
+        _stream_start = time.time()
 
         response_stream = await client.chat.completions.create(
             model=model,
@@ -2707,6 +2726,7 @@ class AIOrchestrator:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": input_tokens + output_tokens,
+                "execution_time_ms": int((time.time() - _stream_start) * 1000),
             }
         }
 
@@ -2748,6 +2768,7 @@ class AIOrchestrator:
         input_tokens = 0
         output_tokens = 0
         effective_timeout = timeout_seconds or 120.0
+        _stream_start = time.time()
 
         async with http_client.stream("POST", url, json=payload, timeout=effective_timeout) as response:
             async for line in response.aiter_lines():
@@ -2780,6 +2801,7 @@ class AIOrchestrator:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": input_tokens + output_tokens,
+                "execution_time_ms": int((time.time() - _stream_start) * 1000),
             }
         }
 

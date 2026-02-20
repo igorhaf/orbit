@@ -10,8 +10,10 @@ from typing import Dict, List, Optional, Any
 from uuid import UUID
 from datetime import datetime
 from sqlalchemy.orm import Session
+import asyncio
 import json
 import logging
+import re
 
 from app.models.project import Project
 from app.models.interview import Interview, InterviewStatus
@@ -131,6 +133,10 @@ class ContextInterviewMixin:
 
         # 4.5. PROMPT #175 - Validate context content before saving
         context_result = self._validate_context_content(context_result, project.name)
+
+        # PROMPT #233 - PD-1 fix: Save context to project (was missing - context was generated but never persisted)
+        project.context_semantic = context_result["context_semantic"]
+        project.context_human = context_result["context_human"]
 
         # PROMPT #247 - All project fields are manual, no auto-generation
 
@@ -324,14 +330,17 @@ class ContextInterviewMixin:
         messages = [{"role": "user", "content": user_prompt}]
 
         # PROMPT #144 - Increased max_tokens to avoid truncation
-        response = await self.orchestrator.execute(
-            usage_type="prompt_generation",
-            messages=messages,
-            system_prompt=system_prompt,
-            max_tokens=8000,
-            enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
-            project_id=str(project.id)  # PROMPT #125 - Log to prompts table
-            # Note: temperature is configured in the AI model settings in the database
+        # PROMPT #233 - SP-1 fix: add timeout to prevent hanging forever (like generate_rich_context_from_memory does)
+        response = await asyncio.wait_for(
+            self.orchestrator.execute(
+                usage_type="prompt_generation",
+                messages=messages,
+                system_prompt=system_prompt,
+                max_tokens=8000,
+                enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
+                project_id=str(project.id)  # PROMPT #125 - Log to prompts table
+            ),
+            timeout=180.0  # 3 minute timeout
         )
 
         # Parse response - PROMPT #148: Use robust JSON parser

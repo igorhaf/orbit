@@ -247,13 +247,29 @@ def get_context_ai_prompt(conversation_data: list, project: Project) -> str:
     question_count = len([m for m in conversation_data if m.get('role') == 'assistant'])
 
     # PROMPT #118 - Include memory context if available
+    # PROMPT #233 - LI-7 fix: format dict as readable markdown instead of raw dict string
     memory_context = ""
     if has_memory_context(project):
+        mem = project.initial_memory_context
+        mem_lines = []
+        if isinstance(mem, dict):
+            for key, value in mem.items():
+                if isinstance(value, list):
+                    mem_lines.append(f"- **{key}:** {', '.join(str(v) for v in value)}")
+                elif isinstance(value, dict):
+                    mem_lines.append(f"- **{key}:**")
+                    for k2, v2 in value.items():
+                        mem_lines.append(f"  - {k2}: {v2}")
+                else:
+                    mem_lines.append(f"- **{key}:** {value}")
+            mem_text = "\n".join(mem_lines)
+        else:
+            mem_text = str(mem)
         memory_context = f"""
 ## Contexto Extraído do Código (Memory Scan)
 O código do projeto foi analisado e o seguinte contexto foi extraído:
 
-{project.initial_memory_context}
+{mem_text}
 
 Use este contexto para fazer perguntas mais específicas e relevantes.
 Não pergunte sobre o que já está claro no contexto acima.

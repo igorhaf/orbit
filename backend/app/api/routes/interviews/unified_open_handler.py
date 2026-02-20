@@ -216,10 +216,11 @@ async def handle_unified_open_interview(
         # Calculate question number (user message = answer to previous question)
         question_number = (message_count // 2) + 1
 
-        logger.info(f"📋 Context Interview - question_number={question_number}, fixed_count={count_fixed_questions_context()}")
+        # PROMPT #233 - LI-1 fix: pass project to enable memory context optimization (PROMPT #118)
+        logger.info(f"📋 Context Interview - question_number={question_number}, fixed_count={count_fixed_questions_context(project)}")
 
         # Check if we're still in fixed questions phase (Q1-Q3)
-        if question_number <= count_fixed_questions_context():
+        if question_number <= count_fixed_questions_context(project):
             fixed_question = get_context_fixed_question(question_number, project, db)
             if fixed_question:
                 # Append to conversation

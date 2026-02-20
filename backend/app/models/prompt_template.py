@@ -37,7 +37,8 @@ class PromptTemplate(Base):
     template_format = Column(String(20), default="jinja2")
 
     # Composition
-    base_template_id = Column(UUID(as_uuid=True), ForeignKey("prompt_templates.id"), nullable=True)
+    # PROMPT #233 - DB-3 fix: add explicit ondelete to prevent silent RESTRICT failures
+    base_template_id = Column(UUID(as_uuid=True), ForeignKey("prompt_templates.id", ondelete="SET NULL"), nullable=True)
     components = Column(JSON, default=list)  # List of component template IDs/names
 
     # Variable schema (JSON Schema format)
@@ -45,7 +46,7 @@ class PromptTemplate(Base):
 
     # Versioning
     version = Column(Integer, default=1, nullable=False)
-    parent_version_id = Column(UUID(as_uuid=True), ForeignKey("prompt_templates.id"), nullable=True)
+    parent_version_id = Column(UUID(as_uuid=True), ForeignKey("prompt_templates.id", ondelete="SET NULL"), nullable=True)
     is_active = Column(Boolean, default=True, index=True)
 
     # Metrics
@@ -54,7 +55,7 @@ class PromptTemplate(Base):
     avg_quality_score = Column(Float, nullable=True)
 
     # Metadata
-    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id"), nullable=True)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), nullable=True)
     description = Column(Text, nullable=True)
     tags = Column(JSON, default=list)  # e.g., ["task-generation", "interview"]
 

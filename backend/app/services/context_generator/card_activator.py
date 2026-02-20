@@ -16,6 +16,7 @@ import re
 
 from app.models.project import Project
 from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
+from app.services.rag_service import RAGService
 from .utils import (
     _robust_json_parse,
     _strip_emojis,

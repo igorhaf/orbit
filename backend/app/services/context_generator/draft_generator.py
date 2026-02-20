@@ -17,6 +17,7 @@ import re
 
 from app.models.project import Project
 from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
+from app.services.rag_service import RAGService
 from .utils import (
     _robust_json_parse,
     _strip_emojis,
@@ -380,12 +381,13 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         continue
 
                     # Extract content from AI response
-                    description = story_data.get("description_markdown", story_data.get("description", ""))
-                    generated_prompt = story_data.get("description_markdown", "")
+                    # PROMPT #233 - PD-3 fix: generated_prompt = semantic, description = human-readable
+                    generated_prompt = story_data.get("description_markdown", story_data.get("description", ""))
+                    story_semantic_map = story_data.get("semantic_map", {})
+                    description = _convert_semantic_to_human(generated_prompt, story_semantic_map) if generated_prompt else ""
                     acceptance_criteria = story_data.get("acceptance_criteria", [])
                     story_points = story_data.get("story_points", 5)
                     priority_str = story_data.get("priority", "medium").lower()
-                    story_semantic_map = story_data.get("semantic_map", {})
 
                     # Map priority string to enum
                     priority_map = {
@@ -412,6 +414,9 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         status=TaskStatus.BACKLOG,
                         order=i,
                         reporter="system",
+                        # PROMPT #233 - PD-2 fix: mark as AI-generated for REGRA #0
+                        description_edited_by='ai',
+                        prompt_edited_by='ai',
                         interview_insights={
                             "derived_from_epic": str(epic.id),
                             "semantic_map": story_semantic_map,
@@ -628,12 +633,13 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         skipped_count += 1
                         continue
 
-                    description = task_data.get("description_markdown", task_data.get("description", ""))
-                    generated_prompt = task_data.get("description_markdown", "")
+                    # PROMPT #233 - PD-3 fix: generated_prompt = semantic, description = human-readable
+                    generated_prompt = task_data.get("description_markdown", task_data.get("description", ""))
+                    task_semantic_map = task_data.get("semantic_map", {})
+                    description = _convert_semantic_to_human(generated_prompt, task_semantic_map) if generated_prompt else ""
                     acceptance_criteria = task_data.get("acceptance_criteria", [])
                     story_points = task_data.get("story_points", 3)
                     priority_str = task_data.get("priority", "medium").lower()
-                    task_semantic_map = task_data.get("semantic_map", {})
 
                     priority_map = {
                         "critical": PriorityLevel.CRITICAL,
@@ -659,6 +665,9 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         status=TaskStatus.BACKLOG,
                         order=i,
                         reporter="system",
+                        # PROMPT #233 - PD-2 fix: mark as AI-generated for REGRA #0
+                        description_edited_by='ai',
+                        prompt_edited_by='ai',
                         interview_insights={
                             "derived_from_story": str(story.id),
                             "semantic_map": task_semantic_map,
@@ -840,12 +849,13 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         skipped_count += 1
                         continue
 
-                    description = st_data.get("description_markdown", st_data.get("description", ""))
-                    generated_prompt = st_data.get("description_markdown", "")
+                    # PROMPT #233 - PD-3 fix: generated_prompt = semantic, description = human-readable
+                    generated_prompt = st_data.get("description_markdown", st_data.get("description", ""))
+                    st_semantic_map = st_data.get("semantic_map", {})
+                    description = _convert_semantic_to_human(generated_prompt, st_semantic_map) if generated_prompt else ""
                     acceptance_criteria = st_data.get("acceptance_criteria", [])
                     story_points = st_data.get("story_points", 1)
                     priority_str = st_data.get("priority", "medium").lower()
-                    st_semantic_map = st_data.get("semantic_map", {})
 
                     priority_map = {
                         "critical": PriorityLevel.CRITICAL,
@@ -871,6 +881,9 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                         status=TaskStatus.BACKLOG,
                         order=i,
                         reporter="system",
+                        # PROMPT #233 - PD-2 fix: mark as AI-generated for REGRA #0
+                        description_edited_by='ai',
+                        prompt_edited_by='ai',
                         interview_insights={
                             "derived_from_task": str(task.id),
                             "semantic_map": st_semantic_map,

@@ -142,9 +142,10 @@ class Task(Base):
         nullable=False,
         index=True
     )
+    # PROMPT #233 - DB-1 fix: changed from SET NULL to CASCADE to match children cascade="all, delete-orphan"
     parent_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("tasks.id", ondelete="SET NULL"),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
         nullable=True,
         index=True
     )

@@ -59,9 +59,10 @@ class Prompt(Base):
         index=True
     )
 
+    # PROMPT #233 - DB-2 fix: align with Interview.prompts cascade="all, delete-orphan"
     created_from_interview_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("interviews.id", ondelete="SET NULL"),
+        ForeignKey("interviews.id", ondelete="CASCADE"),
         nullable=True,
         index=True
     )
