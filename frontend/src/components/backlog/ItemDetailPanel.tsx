@@ -3,21 +3,23 @@
  * Comprehensive detail view with 8 sections for backlog items
  * JIRA Transformation - PROMPT #62 - Phase 4
  * PROMPT #128 - Background Job Notifications
+ * Refactored: Tab content extracted to sub-components (OverviewTab, HierarchyTab, InterviewTab, PromptTab, AcceptanceTab)
  */
 
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import ReactMarkdown from 'react-markdown';
-import { Card, CardHeader, CardTitle, CardContent, Button, Input, Dialog, DialogFooter } from '@/components/ui';
-import { AIModelBadge } from '@/components/ui/AIModelBadge';
-import { ChatInterface } from '@/components/interview';  // PROMPT #131 - Restored for modal view
+import { Button, Dialog, DialogFooter } from '@/components/ui';
 import { tasksApi, interviewsApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import WorkflowActions from './WorkflowActions';
-import InlineCardCreator from './InlineCardCreator'; // PROMPT #187
-import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconClipboard, IconTree, IconChat, IconChart, IconCpu, IconMicrophone, IconPencil, IconCheckCircle, IconExport } from '@/components/icons';
+import OverviewTab from './OverviewTab';
+import HierarchyTab from './HierarchyTab';
+import InterviewTab from './InterviewTab';
+import PromptTab from './PromptTab';
+import AcceptanceTab from './AcceptanceTab';
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconClipboard, IconTree, IconChat, IconChart, IconMicrophone, IconPencil, IconCheckCircle } from '@/components/icons';
 import {
   BacklogItem,
   ItemType,
@@ -144,7 +146,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   }, [item.id]);
 
   // PROMPT #177 - Refresh item data when activation or generation job completes
-  // When isApproving/isGeneratingChildren transitions from true → false, the job finished.
+  // When isApproving/isGeneratingChildren transitions from true -> false, the job finished.
   // Call onUpdate() so the parent refreshes the backlog and syncs selectedBacklogItem.
   // PROMPT #192 - Also re-fetch children directly so hierarchy tab updates immediately.
   const prevIsApprovingRef = useRef(isApproving);
@@ -272,12 +274,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       // Run card inference first
       const currentInterview = cardInterviews.find(i => i.id === selectedInterviewId);
       if (currentInterview?.interview_mode === 'card_focused') {
-        console.log('🔄 Running card inference for task:', item.id);
+        console.log('Running card inference for task:', item.id);
         try {
           await tasksApi.runCardInference(item.id, selectedInterviewId);
-          console.log('✅ Card inference completed');
+          console.log('Card inference completed');
         } catch (inferenceError) {
-          console.error('⚠️ Card inference failed, continuing with completion:', inferenceError);
+          console.error('Card inference failed, continuing with completion:', inferenceError);
         }
       }
       // Then complete the interview
@@ -356,7 +358,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const handleApprove = async () => {
     try {
       const result = await tasksApi.activateSuggestedEpic(item.id);
-      console.log('✅ Item activation started:', item.title);
+      console.log('Item activation started:', item.title);
 
       // PROMPT #128 - Register job in notification system
       if (result.job_id) {
@@ -371,7 +373,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           false,
           item.id // task_id for persistent loading state
         );
-        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificações.');
+        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificacoes.');
         return;
       } else {
         // Legacy flow (synchronous response)
@@ -380,14 +382,14 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           const childType = item.item_type === 'epic' ? 'stories' :
                             item.item_type === 'story' ? 'tasks' :
                             item.item_type === 'task' ? 'subtasks' : 'items';
-          console.log(`📝 Generated ${childrenCount} draft ${childType}`);
+          console.log(`Generated ${childrenCount} draft ${childType}`);
           showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
         }
       }
 
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      console.error('❌ Failed to approve item:', error);
+      console.error('Failed to approve item:', error);
       showError(`Falha ao aprovar item: ${error.message || 'Erro desconhecido'}`);
     }
   };
@@ -397,11 +399,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     setIsRejecting(true);
     try {
       await tasksApi.rejectSuggestedEpic(item.id);
-      console.log('✅ Item rejected and deleted:', item.title);
+      console.log('Item rejected and deleted:', item.title);
       onClose();
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      console.error('❌ Failed to reject item:', error);
+      console.error('Failed to reject item:', error);
       showError(`Falha ao rejeitar item: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsRejecting(false);
@@ -459,11 +461,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           false,
           item.id // PROMPT #176 - Track which task is generating children for persistent loading
         );
-        showSuccess(`Geração de ${count} ${childType} iniciada! Acompanhe o progresso nas notificações.`);
+        showSuccess(`Geracao de ${count} ${childType} iniciada! Acompanhe o progresso nas notificacoes.`);
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      console.error('❌ Failed to generate children:', error);
+      console.error('Failed to generate children:', error);
       showError(`Falha ao gerar filhos: ${error.message || 'Erro desconhecido'}`);
     }
   };
@@ -488,12 +490,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     setIsSavingDescription(true);
     try {
       await tasksApi.update(item.id, { description: editedDescription });
-      console.log('✅ Description saved:', item.title);
+      console.log('Description saved:', item.title);
       setIsEditingDescription(false);
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      console.error('❌ Failed to save description:', error);
-      showError(`Falha ao salvar descrição: ${error.message || 'Erro desconhecido'}`);
+      console.error('Failed to save description:', error);
+      showError(`Falha ao salvar descricao: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsSavingDescription(false);
     }
@@ -529,7 +531,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('Failed to save title:', error);
-      showError(`Falha ao salvar título: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao salvar titulo: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsSavingTitle(false);
     }
@@ -561,7 +563,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       }
     } catch (error: any) {
       console.error('Failed to suggest title:', error);
-      showError('Sugestão da IA falhou. Tente novamente.');
+      showError('Sugestao da IA falhou. Tente novamente.');
     } finally {
       setIsGeneratingTitle(false);
       titleInputRef.current?.focus();
@@ -584,17 +586,17 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         addJob(
           result.job_id,
           jobType,
-          `Gerando conteúdo: ${item.title.substring(0, 30)}...`,
+          `Gerando conteudo: ${item.title.substring(0, 30)}...`,
           item.title,
           false,
           item.id
         );
-        showSuccess('Geração de conteúdo iniciada! Acompanhe o progresso nas notificações.');
+        showSuccess('Geracao de conteudo iniciada! Acompanhe o progresso nas notificacoes.');
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('Failed to generate content:', error);
-      showError(`Falha na geração de conteúdo IA: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha na geracao de conteudo IA: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsGeneratingContent(false);
     }
@@ -610,7 +612,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       setIsAddingCriterion(false);
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      showError(`Falha ao adicionar critério: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao adicionar criterio: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -620,7 +622,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       await tasksApi.update(item.id, { acceptance_criteria: updated });
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      showError(`Falha ao excluir critério: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao excluir criterio: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -634,7 +636,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       setEditingCriterionText('');
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      showError(`Falha ao atualizar critério: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao atualizar criterio: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -718,11 +720,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       // Clear suggestions from task
       await tasksApi.update(item.id, { subtask_suggestions: [] });
 
-      console.log('✅ Accepted all subtasks');
+      console.log('Accepted all subtasks');
       await fetchItemDetails(); // Refresh to show new children
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      console.error('❌ Failed to accept subtasks:', error);
+      console.error('Failed to accept subtasks:', error);
       showError(`Falha ao aceitar subtasks: ${error.message}`);
     } finally {
       setAcceptingSubtasks(false);
@@ -733,12 +735,12 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     setCreatingInterview(true);
     try {
       const interview = await tasksApi.createInterview(item.id);
-      console.log('✅ Created sub-interview:', interview);
+      console.log('Created sub-interview:', interview);
 
       // Navigate to interview page
       window.location.href = `/projects/${item.project_id}/interviews/${interview.id}`;
     } catch (error: any) {
-      console.error('❌ Failed to create sub-interview:', error);
+      console.error('Failed to create sub-interview:', error);
       showError(`Falha ao criar sub-entrevista: ${error.message}`);
     } finally {
       setCreatingInterview(false);
@@ -772,11 +774,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const tabs: Array<{ id: string; label: string; icon: React.ReactNode; count?: number; hasPrompt?: boolean }> = [
     { id: 'overview', label: 'Visao Geral', icon: <IconClipboard className="w-4 h-4" /> },
     { id: 'hierarchy', label: 'Hierarquia', icon: <IconTree className="w-4 h-4" /> },
-    { id: 'comments', label: 'Comentários', icon: <IconChat className="w-4 h-4" />, count: comments.length },
-    { id: 'transitions', label: 'Histórico', icon: <IconChart className="w-4 h-4" />, count: transitions.length },
+    { id: 'comments', label: 'Comentarios', icon: <IconChat className="w-4 h-4" />, count: comments.length },
+    { id: 'transitions', label: 'Historico', icon: <IconChart className="w-4 h-4" />, count: transitions.length },
     ...(!isFromCode ? [{ id: 'interview', label: 'Entrevista', icon: <IconMicrophone className="w-4 h-4" />, count: cardInterviews.length }] : []),
     { id: 'prompt', label: 'Prompt', icon: <IconPencil className="w-4 h-4" />, hasPrompt: !!item.generated_prompt },
-    { id: 'acceptance', label: 'Critérios', icon: <IconCheckCircle className="w-4 h-4" />, count: item.acceptance_criteria?.length || 0 },
+    { id: 'acceptance', label: 'Criterios', icon: <IconCheckCircle className="w-4 h-4" />, count: item.acceptance_criteria?.length || 0 },
   ];
 
   // PROMPT #131 - Check if we're in interview chat mode (needs flex layout)
@@ -847,7 +849,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       handleSuggestTitle();
                     }}
                     disabled={!editedTitle.trim() || isGeneratingTitle}
-                    title="Sugerir um título melhor com IA"
+                    title="Sugerir um titulo melhor com IA"
                     className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isGeneratingTitle ? (
@@ -868,7 +870,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 <h2
                   className="text-2xl font-bold text-gray-900 cursor-pointer hover:bg-gray-100 rounded px-1 -mx-1 transition-colors"
                   onClick={handleTitleClick}
-                  title="Clique para editar título"
+                  title="Clique para editar titulo"
                 >
                   {item.title}
                 </h2>
@@ -973,437 +975,62 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
             <>
               {/* Overview Tab */}
               {activeTab === 'overview' && (
-                <div className="space-y-6">
-                  {/* Description - PROMPT #97: Inline editable with Markdown toolbar */}
-                  <div ref={descriptionEditorRef}>
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="text-sm font-semibold text-gray-900">Descrição</h3>
-                      <div className="flex items-center gap-2">
-                        {/* PROMPT #254 - AI content generation button (reuses activate pipeline) */}
-                        <button
-                          type="button"
-                          onClick={handleGenerateContent}
-                          disabled={isGeneratingContent || isApproving}
-                          title="Gerar descrição detalhada com IA"
-                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {(isGeneratingContent || isApproving) ? (
-                            <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                            </svg>
-                          ) : (
-                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
-                            </svg>
-                          )}
-                          <span>{(isGeneratingContent || isApproving) ? 'Gerando...' : 'IA'}</span>
-                        </button>
-                        {!isEditingDescription && (
-                          <span className="text-xs text-gray-400">Clique duplo para editar</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {isEditingDescription ? (
-                      <div className="border border-blue-300 rounded-lg overflow-hidden shadow-sm">
-                        {/* Markdown Toolbar */}
-                        <div className="flex flex-wrap items-center gap-1 p-2 bg-gray-50 border-b border-gray-200">
-                          {/* Text Formatting */}
-                          <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                            <button
-                              type="button"
-                              onClick={formatBold}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-bold text-sm"
-                              title="Negrito (Ctrl+B)"
-                            >
-                              B
-                            </button>
-                            <button
-                              type="button"
-                              onClick={formatItalic}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm"
-                              title="Italico (Ctrl+I)"
-                            >
-                              I
-                            </button>
-                            <button
-                              type="button"
-                              onClick={formatCode}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm"
-                              title="Código Inline"
-                            >
-                              {'</>'}
-                            </button>
-                          </div>
-
-                          {/* Headings */}
-                          <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                            <button
-                              type="button"
-                              onClick={formatHeading1}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold"
-                              title="Título 1"
-                            >
-                              H1
-                            </button>
-                            <button
-                              type="button"
-                              onClick={formatHeading2}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold"
-                              title="Título 2"
-                            >
-                              H2
-                            </button>
-                            <button
-                              type="button"
-                              onClick={formatHeading3}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold"
-                              title="Título 3"
-                            >
-                              H3
-                            </button>
-                          </div>
-
-                          {/* Lists */}
-                          <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                            <button
-                              type="button"
-                              onClick={formatBulletList}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
-                              title="Lista com Marcadores"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={formatNumberedList}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
-                              title="Lista Numerada"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 8h10M7 12h10M7 16h10M3 8h.01M3 12h.01M3 16h.01" />
-                              </svg>
-                            </button>
-                          </div>
-
-                          {/* Blocks */}
-                          <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                            <button
-                              type="button"
-                              onClick={formatQuote}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
-                              title="Citacao"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                              </svg>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={formatCodeBlock}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono"
-                              title="Bloco de Código"
-                            >
-                              {'```'}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={formatTable}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
-                              title="Tabela"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M9 10v8m6-8v8M3 6h18v12H3V6z" />
-                              </svg>
-                            </button>
-                          </div>
-
-                          {/* Link */}
-                          <div className="flex items-center gap-1">
-                            <button
-                              type="button"
-                              onClick={formatLink}
-                              className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm"
-                              title="Link"
-                            >
-                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-
-                        {/* Textarea */}
-                        <textarea
-                          ref={textareaRef}
-                          value={editedDescription}
-                          onChange={(e) => setEditedDescription(e.target.value)}
-                          className="w-full p-4 min-h-[300px] text-sm text-gray-900 font-mono focus:outline-none resize-y"
-                          placeholder="Digite a descrição usando Markdown..."
-                          onKeyDown={(e) => {
-                            // Ctrl+B for bold
-                            if (e.ctrlKey && e.key === 'b') {
-                              e.preventDefault();
-                              formatBold();
-                            }
-                            // Ctrl+I for italic
-                            if (e.ctrlKey && e.key === 'i') {
-                              e.preventDefault();
-                              formatItalic();
-                            }
-                            // Escape to cancel
-                            if (e.key === 'Escape') {
-                              e.preventDefault();
-                              handleCancelEdit();
-                            }
-                            // Ctrl+Enter to save
-                            if (e.ctrlKey && e.key === 'Enter') {
-                              e.preventDefault();
-                              handleSaveDescription();
-                            }
-                          }}
-                        />
-
-                        {/* Action Buttons */}
-                        <div className="flex items-center justify-between p-3 bg-gray-50 border-t border-gray-200">
-                          <span className="text-xs text-gray-500">
-                            Pressione <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Ctrl+Enter</kbd> para salvar, <kbd className="px-1 py-0.5 bg-gray-200 rounded text-xs">Esc</kbd> para cancelar
-                          </span>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={handleCancelEdit}
-                              disabled={isSavingDescription}
-                            >
-                              Cancelar
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="primary"
-                              onClick={handleSaveDescription}
-                              disabled={isSavingDescription}
-                            >
-                              {isSavingDescription ? (
-                                <>
-                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
-                                  Salvando...
-                                </>
-                              ) : (
-                                'Salvar'
-                              )}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div
-                        onDoubleClick={handleDescriptionDoubleClick}
-                        className="cursor-pointer hover:bg-gray-50 rounded-lg p-3 -m-3 transition-colors group"
-                        title="Clique duplo para editar"
-                      >
-                        {item.description ? (
-                          <div className="prose prose-sm max-w-none text-gray-700 group-hover:bg-gray-50">
-                            <ReactMarkdown>
-                              {item.description}
-                            </ReactMarkdown>
-                          </div>
-                        ) : (
-                          <p className="text-sm text-gray-400 italic py-4 text-center border-2 border-dashed border-gray-200 rounded-lg">
-                            Clique duplo para adicionar uma descrição...
-                          </p>
-                        )}
-                        {/* PROMPT #127 - Show AI model icon if content was generated by AI */}
-                        {item.created_by_ai_model && (
-                          <div className="mt-2 flex justify-end">
-                            <AIModelBadge model={item.created_by_ai_model} usage_type="prompt_generation" promptText={item.generated_prompt} />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Metadata Grid */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 uppercase">Status</span>
-                      <p className="text-sm text-gray-900 mt-1">{item.workflow_state}</p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 uppercase">Prioridade</span>
-                      <p className="text-sm text-gray-900 mt-1">{item.priority}</p>
-                    </div>
-                    {item.reporter && (
-                      <div>
-                        <span className="text-xs font-semibold text-gray-500 uppercase">Relator</span>
-                        <p className="text-sm text-gray-900 mt-1">{item.reporter}</p>
-                      </div>
-                    )}
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 uppercase">Criado</span>
-                      <p className="text-sm text-gray-900 mt-1">
-                        {new Date(item.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-semibold text-gray-500 uppercase">Atualizado</span>
-                      <p className="text-sm text-gray-900 mt-1">
-                        {new Date(item.updated_at).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Labels */}
-                  {item.labels && item.labels.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900 mb-2">Etiquetas</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {item.labels.map((label, idx) => (
-                          <span key={idx} className="px-2 py-1 text-xs rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
-                            {label}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Components */}
-                  {item.components && item.components.length > 0 && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900 mb-2">Componentes</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {item.components.map((component, idx) => (
-                          <span key={idx} className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-700">
-                            {component}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <OverviewTab
+                  item={item}
+                  isEditingDescription={isEditingDescription}
+                  editedDescription={editedDescription}
+                  setEditedDescription={setEditedDescription}
+                  descriptionEditorRef={descriptionEditorRef}
+                  textareaRef={textareaRef}
+                  handleDescriptionDoubleClick={handleDescriptionDoubleClick}
+                  handleSaveDescription={handleSaveDescription}
+                  handleCancelEdit={handleCancelEdit}
+                  isSavingDescription={isSavingDescription}
+                  handleGenerateContent={handleGenerateContent}
+                  isGeneratingContent={isGeneratingContent}
+                  isApproving={isApproving}
+                  formatBold={formatBold}
+                  formatItalic={formatItalic}
+                  formatCode={formatCode}
+                  formatCodeBlock={formatCodeBlock}
+                  formatHeading1={formatHeading1}
+                  formatHeading2={formatHeading2}
+                  formatHeading3={formatHeading3}
+                  formatBulletList={formatBulletList}
+                  formatNumberedList={formatNumberedList}
+                  formatLink={formatLink}
+                  formatQuote={formatQuote}
+                  formatTable={formatTable}
+                  onUpdate={onUpdate}
+                />
               )}
 
               {/* Hierarchy Tab */}
               {activeTab === 'hierarchy' && (
-                <div className="space-y-6">
-                  {/* Parent */}
-                  {parent && (
-                    <div>
-                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Pai</h3>
-                      <div
-                        className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
-                        onClick={() => onNavigateToItem?.(parent)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="flex items-center text-gray-600">{getItemTypeIcon(parent.item_type)}</span>
-                          <span className="text-sm font-medium text-gray-900">{parent.title}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Children */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-sm font-semibold text-gray-900">
-                        Filhos ({children.length})
-                      </h3>
-                      {/* PROMPT #187 - Add child + Generate children buttons */}
-                      {!isSuggestedItem && item.item_type !== 'subtask' && (
-                        <div className="flex items-center gap-2">
-                          {/* PROMPT #187 - Manual add child button */}
-                          {childType && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={isAddingChild}
-                              onClick={() => setIsAddingChild(true)}
-                            >
-                              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                              </svg>
-                              Adicionar {childTypeLabel}
-                            </Button>
-                          )}
-                          {/* PROMPT #127 - Generate children button */}
-                          {/* PROMPT #176 - Persistent loading state during generation */}
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            disabled={isGeneratingChildren}
-                            onClick={() => {
-                              const defaults: Record<string, number> = { epic: 10, story: 8, task: 5 };
-                              setChildrenCount(defaults[item.item_type] || 10);
-                              setShowGenerateChildrenDialog(true);
-                            }}
-                          >
-                            {isGeneratingChildren ? (
-                              <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
-                                Gerando...
-                              </>
-                            ) : (
-                              <>
-                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                </svg>
-                                {item.item_type === 'epic' ? 'Gerar Stories' :
-                                 item.item_type === 'story' ? 'Gerar Tasks' :
-                                 item.item_type === 'task' ? 'Gerar Subtasks' : 'Gerar'}
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                    {children.length === 0 && !isAddingChild ? (
-                      <p className="text-sm text-gray-500 italic">Nenhum item filho</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {children.map((child) => (
-                          <div
-                            key={child.id}
-                            className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 cursor-pointer transition-colors"
-                            onClick={() => onNavigateToItem?.(child)}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <span className="flex items-center text-gray-600">{getItemTypeIcon(child.item_type)}</span>
-                                <span className="text-sm font-medium text-gray-900">{child.title}</span>
-                              </div>
-                              <span className={`px-2 py-0.5 text-xs font-medium rounded border ${getPriorityColor(child.priority)}`}>
-                                {child.priority}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {/* PROMPT #187 - Inline child card creator */}
-                    {isAddingChild && childType && (
-                      <div className="mt-2">
-                        <InlineCardCreator
-                          itemType={childType}
-                          projectId={item.project_id}
-                          parentId={item.id}
-                          onCreated={() => {
-                            setIsAddingChild(false);
-                            fetchItemDetails();
-                            if (onUpdate) onUpdate();
-                          }}
-                          onCancel={() => setIsAddingChild(false)}
-                          variant="hierarchy-card"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
+                <HierarchyTab
+                  item={item}
+                  parent={parent}
+                  children={children}
+                  onNavigateToItem={onNavigateToItem}
+                  isSuggestedItem={isSuggestedItem}
+                  isGeneratingChildren={isGeneratingChildren}
+                  isAddingChild={isAddingChild}
+                  setIsAddingChild={setIsAddingChild}
+                  childType={childType}
+                  childTypeLabel={childTypeLabel}
+                  childrenCount={childrenCount}
+                  setChildrenCount={setChildrenCount}
+                  showGenerateChildrenDialog={showGenerateChildrenDialog}
+                  setShowGenerateChildrenDialog={setShowGenerateChildrenDialog}
+                  handleGenerateChildren={handleGenerateChildren}
+                  fetchItemDetails={fetchItemDetails}
+                  onUpdate={onUpdate}
+                  getItemTypeIcon={getItemTypeIcon}
+                  getPriorityColor={getPriorityColor}
+                />
               )}
 
-              {/* Comments Tab */}
+              {/* Comments Tab - kept inline (small ~62 lines) */}
               {activeTab === 'comments' && (
                 <div className="space-y-4">
                   {/* Add Comment */}
@@ -1411,7 +1038,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                     <textarea
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Adicionar um comentário..."
+                      placeholder="Adicionar um comentario..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                       rows={3}
                     />
@@ -1423,7 +1050,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                         isLoading={isAddingComment}
                         disabled={!newComment.trim()}
                       >
-                        Adicionar Comentário
+                        Adicionar Comentario
                       </Button>
                     </div>
                   </div>
@@ -1432,7 +1059,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   <div className="space-y-3">
                     {comments.length === 0 ? (
                       <p className="text-sm text-gray-500 italic text-center py-8">
-                        Nenhum comentário ainda. Seja o primeiro a comentar!
+                        Nenhum comentario ainda. Seja o primeiro a comentar!
                       </p>
                     ) : (
                       comments.map((comment) => (
@@ -1468,7 +1095,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 </div>
               )}
 
-              {/* Transitions Tab */}
+              {/* Transitions Tab - kept inline (small ~56 lines) */}
               {activeTab === 'transitions' && (
                 <div className="space-y-6">
                   {/* Workflow Actions */}
@@ -1488,7 +1115,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   {/* Status History */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                      Histórico de Status ({transitions.length})
+                      Historico de Status ({transitions.length})
                     </h3>
 
                     {transitions.length === 0 ? (
@@ -1529,452 +1156,53 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
 
               {/* Interview Tab - PROMPT #131 - List view or ChatInterface */}
               {activeTab === 'interview' && (
-                <div className={selectedInterviewId ? 'flex flex-col flex-1 min-h-0' : 'space-y-4'}>
-                  {/* PROMPT #131 - Show ChatInterface when interview is selected */}
-                  {selectedInterviewId ? (
-                    <div className="flex flex-col flex-1 min-h-0 gap-2">
-                      {/* Header with title, back link, and action buttons */}
-                      <div className="flex items-center gap-3 flex-shrink-0">
-                        <IconChat className="w-5 h-5 text-blue-600" />
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          {cardInterviews.find(i => i.id === selectedInterviewId)?.interview_mode === 'card_focused' ? 'Entrevista do Card' : 'Entrevista'}
-                        </h3>
-                        <span className={`px-2 py-0.5 text-xs rounded-full ${
-                          cardInterviews.find(i => i.id === selectedInterviewId)?.status === 'completed'
-                            ? 'bg-green-100 text-green-700'
-                            : cardInterviews.find(i => i.id === selectedInterviewId)?.status === 'cancelled'
-                            ? 'bg-red-100 text-red-700'
-                            : 'bg-blue-100 text-blue-700'
-                        }`}>
-                          {cardInterviews.find(i => i.id === selectedInterviewId)?.status?.toUpperCase()}
-                        </span>
-
-                        {/* Spacer */}
-                        <div className="flex-1" />
-
-                        {/* Action buttons for active interviews */}
-                        {cardInterviews.find(i => i.id === selectedInterviewId)?.status === 'active' && (
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="primary"
-                              size="sm"
-                              onClick={handleCompleteInterview}
-                              disabled={completingInterview || cancellingInterview}
-                            >
-                              {completingInterview ? (
-                                <>
-                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
-                                  Concluindo...
-                                </>
-                              ) : (
-                                <>
-                                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                  Concluir
-                                </>
-                              )}
-                            </Button>
-                            <Button
-                              variant="danger"
-                              size="sm"
-                              onClick={handleCancelInterview}
-                              disabled={completingInterview || cancellingInterview}
-                            >
-                              {cancellingInterview ? 'Cancelando...' : 'Cancelar'}
-                            </Button>
-                          </div>
-                        )}
-
-                        {/* Back to list link */}
-                        <button
-                          onClick={() => setSelectedInterviewId(null)}
-                          className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                          </svg>
-                          Voltar para lista
-                        </button>
-                      </div>
-
-                      {/* ChatInterface - fills remaining space, with header hidden */}
-                      <div className="border border-gray-200 rounded-lg overflow-hidden flex-1 min-h-0">
-                        <ChatInterface
-                          interviewId={selectedInterviewId}
-                          interviewMode="card_focused"
-                          onStatusChange={() => {
-                            fetchCardInterview();
-                            onUpdate?.();
-                          }}
-                          embedded={true}
-                          parentTaskId={item.id}
-                          hideHeader={true}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Header with count and add button */}
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-sm font-semibold text-gray-900">
-                          Entrevistas ({cardInterviews.length})
-                        </h3>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={handleCreateCardInterview}
-                          disabled={creatingCardInterview}
-                        >
-                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                          </svg>
-                          {creatingCardInterview ? 'Criando...' : 'Nova Entrevista'}
-                        </Button>
-                      </div>
-
-                      {/* Interview List - Similar to Criteria */}
-                      {loadingInterview ? (
-                        <div className="flex items-center justify-center py-8">
-                          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                        </div>
-                      ) : cardInterviews.length === 0 ? (
-                        /* PROMPT #131 - Empty state with AI Suggestions call-to-action */
-                        <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg bg-gray-50">
-                          <span className="mb-3 block"><IconCpu className="w-10 h-10 mx-auto text-gray-400" /></span>
-                          <p className="text-sm text-gray-700 font-medium mb-2">Sugestões da IA</p>
-                          <p className="text-xs text-gray-500 mb-4 max-w-sm mx-auto">
-                            Inicie uma entrevista do card para obter sugestões da IA para melhorar este card,
-                            decompor em subtasks ou refinar critérios de aceitação.
-                          </p>
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            onClick={handleCreateCardInterview}
-                            disabled={creatingCardInterview}
-                          >
-                            {creatingCardInterview ? (
-                              <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                Criando...
-                              </>
-                            ) : (
-                              <>
-                                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                </svg>
-                                Iniciar Entrevista IA
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      ) : (
-                        <ul className="space-y-2">
-                          {cardInterviews.map((interview) => (
-                            <li
-                              key={interview.id}
-                              onClick={() => setSelectedInterviewId(interview.id)}
-                              className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg hover:bg-blue-50 hover:border-blue-300 cursor-pointer transition-colors"
-                            >
-                              {/* Interview icon */}
-                              <IconChat className="w-5 h-5 text-blue-600" />
-
-                              {/* Interview info */}
-                              <div className="flex-1 min-w-0">
-                                <span className="text-sm font-medium text-blue-700">
-                                  {interview.interview_mode === 'context' ? 'Entrevista de Contexto' :
-                                   interview.interview_mode === 'meta_prompt' ? 'Entrevista de Epic' :
-                                   interview.interview_mode === 'card_focused' ? 'Entrevista do Card' :
-                                   interview.interview_mode === 'task_focused' ? 'Entrevista de Task' :
-                                   'Entrevista'}
-                                </span>
-                                <span className="text-xs text-gray-500 ml-2">
-                                  {interview.conversation_data?.length || 0} mensagens
-                                </span>
-                              </div>
-
-                              {/* Status badge */}
-                              <span className={`px-2 py-0.5 text-xs rounded-full ${
-                                interview.status === 'completed'
-                                  ? 'bg-green-100 text-green-700 border border-green-200'
-                                  : interview.status === 'active'
-                                  ? 'bg-blue-100 text-blue-700 border border-blue-200'
-                                  : 'bg-gray-100 text-gray-700 border border-gray-200'
-                              }`}>
-                                {interview.status}
-                              </span>
-
-                              {/* Arrow icon */}
-                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-
-                      {/* Interview Traceability (from original interview that created this card) */}
-                      {(item.interview_question_ids?.length > 0 || (item.interview_insights && Object.keys(item.interview_insights).length > 0)) && (
-                        <div className="pt-4 border-t border-gray-200">
-                          <h3 className="text-sm font-semibold text-gray-900 mb-3">Rastreabilidade da Entrevista</h3>
-
-                          {/* Question IDs */}
-                          {item.interview_question_ids && item.interview_question_ids.length > 0 && (
-                            <div className="mb-4">
-                              <span className="text-xs font-semibold text-gray-500 uppercase">Perguntas Referenciadas</span>
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {item.interview_question_ids.map((qid) => (
-                                  <span key={qid} className="px-2 py-1 text-xs rounded bg-green-100 text-green-700 border border-green-200">
-                                    Q{qid}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Interview Insights */}
-                          {item.interview_insights && Object.keys(item.interview_insights).length > 0 && (
-                            <div>
-                              <span className="text-xs font-semibold text-gray-500 uppercase">Insights</span>
-                              <pre className="text-xs bg-gray-50 p-3 rounded border border-gray-200 overflow-x-auto mt-2">
-                                {JSON.stringify(item.interview_insights, null, 2)}
-                              </pre>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
+                <InterviewTab
+                  item={item}
+                  selectedInterviewId={selectedInterviewId}
+                  setSelectedInterviewId={setSelectedInterviewId}
+                  cardInterviews={cardInterviews}
+                  loadingInterview={loadingInterview}
+                  creatingCardInterview={creatingCardInterview}
+                  completingInterview={completingInterview}
+                  cancellingInterview={cancellingInterview}
+                  handleCreateCardInterview={handleCreateCardInterview}
+                  handleCompleteInterview={handleCompleteInterview}
+                  handleCancelInterview={handleCancelInterview}
+                  onUpdate={onUpdate}
+                  fetchCardInterview={fetchCardInterview}
+                />
               )}
 
               {/* Prompt Tab */}
               {activeTab === 'prompt' && (
-                <div className="space-y-6">
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-900 mb-3">Prompt Gerado</h3>
-
-                    {item.generated_prompt ? (
-                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Prompt Atômico</span>
-                          <div className="flex items-center gap-2">
-                            {/* PROMPT #127 - Show AI model icon if prompt was generated by AI */}
-                            {item.created_by_ai_model && (
-                              <AIModelBadge model={item.created_by_ai_model} usage_type="prompt_generation" promptText={item.generated_prompt} />
-                            )}
-                            <button
-                              onClick={() => navigator.clipboard.writeText(item.generated_prompt || '')}
-                              className="px-2 py-1 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded transition-colors"
-                            >
-                              <span className="inline-flex items-center gap-1"><IconClipboard className="w-3 h-3" /> Copiar</span>
-                            </button>
-                            {/* PROMPT #241 - Export prompt to orbit/prompts/ */}
-                            <button
-                              onClick={handleExportPrompt}
-                              disabled={isExportingPrompt}
-                              className="px-2 py-1 text-xs text-green-600 hover:text-green-700 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-                            >
-                              <span className="inline-flex items-center gap-1">
-                                <IconExport className="w-3 h-3" />
-                                {isExportingPrompt ? 'Exportando...' : 'Exportar'}
-                              </span>
-                            </button>
-                          </div>
-                        </div>
-                        <pre className="text-sm text-gray-900 whitespace-pre-wrap font-mono leading-relaxed">
-                          {item.generated_prompt}
-                        </pre>
-                        {/* PROMPT #241 - Show export result path */}
-                        {exportResult && (
-                          <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
-                            Exportado: <code className="bg-green-100 px-1 rounded">{exportResult.orbit_path}/prompts/{exportResult.filename}</code>
-                          </div>
-                        )}
-                        {/* PROMPT #242 - Check result button */}
-                        <div className="mt-3 flex items-center gap-2">
-                          <button
-                            onClick={handleCheckResult}
-                            disabled={isCheckingResult}
-                            className="px-3 py-1.5 text-xs text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded transition-colors disabled:opacity-50"
-                          >
-                            {isCheckingResult ? 'Verificando...' : 'Verificar Resultado'}
-                          </button>
-                          {checkResultMsg && (
-                            <span className={`text-xs ${checkResultMsg.found ? 'text-green-600' : 'text-gray-500'}`}>
-                              {checkResultMsg.message}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-12 border border-dashed border-gray-300 rounded-lg bg-gray-50">
-                        <span className="mb-3 block"><IconPencil className="w-10 h-10 mx-auto text-gray-400" /></span>
-                        <p className="text-sm text-gray-500 mb-2">Nenhum prompt gerado ainda</p>
-                        <p className="text-xs text-gray-400">
-                          O prompt sera gerado a partir da entrevista ou pode ser criado manualmente
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Prompt Metadata */}
-                  {item.generated_prompt && (
-                    <div className="border-t border-gray-200 pt-6">
-                      <h3 className="text-sm font-semibold text-gray-900 mb-3">Detalhes do Prompt</h3>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Orçamento de Tokens</span>
-                          <p className="text-sm text-gray-900 mt-1">
-                            {item.token_budget ? `${item.token_budget.toLocaleString()} tokens` : 'Não definido'}
-                          </p>
-                        </div>
-                        {item.actual_tokens_used && (
-                          <div>
-                            <span className="text-xs font-semibold text-gray-500 uppercase">Tokens Usados</span>
-                            <p className="text-sm text-gray-900 mt-1">
-                              {item.actual_tokens_used.toLocaleString()} tokens
-                              {item.token_budget && (
-                                <span className="text-xs text-gray-500 ml-2">
-                                  ({Math.round((item.actual_tokens_used / item.token_budget) * 100)}%)
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        )}
-                        <div>
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Tipo de Item</span>
-                          <p className="text-sm text-gray-900 mt-1">{item.item_type}</p>
-                        </div>
-                        <div>
-                          <span className="text-xs font-semibold text-gray-500 uppercase">Modelo de IA Alvo</span>
-                          <p className="text-sm text-gray-900 mt-1">
-                            {item.target_ai_model_id || 'Seleção automática'}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <PromptTab
+                  item={item}
+                  handleExportPrompt={handleExportPrompt}
+                  isExportingPrompt={isExportingPrompt}
+                  exportResult={exportResult}
+                  handleCheckResult={handleCheckResult}
+                  isCheckingResult={isCheckingResult}
+                  checkResultMsg={checkResultMsg}
+                />
               )}
 
               {/* Acceptance Criteria Tab - PROMPT #218 - Full CRUD */}
               {activeTab === 'acceptance' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-gray-900">
-                      Critérios de Aceitação ({item.acceptance_criteria?.length || 0})
-                    </h3>
-                    <Button size="sm" variant="outline" onClick={() => setIsAddingCriterion(true)}>
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      Adicionar Critério
-                    </Button>
-                  </div>
-
-                  {/* Add criterion input */}
-                  {isAddingCriterion && (
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={newCriterion}
-                        onChange={(e) => setNewCriterion(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleAddCriterion();
-                          if (e.key === 'Escape') { setIsAddingCriterion(false); setNewCriterion(''); }
-                        }}
-                        placeholder="Descreva o critério de aceitação..."
-                        className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        autoFocus
-                      />
-                      <Button size="sm" variant="primary" onClick={handleAddCriterion} disabled={!newCriterion.trim()}>
-                        Adicionar
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => { setIsAddingCriterion(false); setNewCriterion(''); }}>
-                        Cancelar
-                      </Button>
-                    </div>
-                  )}
-
-                  {!item.acceptance_criteria || item.acceptance_criteria.length === 0 ? (
-                    <p className="text-sm text-gray-500 italic">Nenhum critério de aceitação definido</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {item.acceptance_criteria.map((criterion, idx) => {
-                        // Normalize: criterion can be string or {text, completed} object
-                        const criterionText = typeof criterion === 'string' ? criterion : (criterion as any)?.text || JSON.stringify(criterion);
-                        return (
-                        <li key={idx} className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50 group">
-                          {editingCriterionIdx === idx ? (
-                            /* Editing mode */
-                            <div className="flex-1 flex gap-2">
-                              <input
-                                type="text"
-                                value={editingCriterionText}
-                                onChange={(e) => setEditingCriterionText(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') handleEditCriterion(idx);
-                                  if (e.key === 'Escape') { setEditingCriterionIdx(null); setEditingCriterionText(''); }
-                                }}
-                                className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded focus:ring-2 focus:ring-blue-500"
-                                autoFocus
-                              />
-                              <button
-                                onClick={() => handleEditCriterion(idx)}
-                                className="p-1 text-green-600 hover:text-green-700"
-                                title="Salvar"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              </button>
-                              <button
-                                onClick={() => { setEditingCriterionIdx(null); setEditingCriterionText(''); }}
-                                className="p-1 text-gray-400 hover:text-gray-600"
-                                title="Cancelar"
-                              >
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                </svg>
-                              </button>
-                            </div>
-                          ) : (
-                            /* View mode */
-                            <>
-                              <span className="mt-0.5 text-gray-400 text-xs font-mono">{idx + 1}.</span>
-                              <span
-                                className="flex-1 text-sm text-gray-900 cursor-pointer"
-                                onDoubleClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterionText); }}
-                                title="Clique duplo para editar"
-                              >
-                                {criterionText}
-                              </span>
-                              <button
-                                onClick={() => { setEditingCriterionIdx(idx); setEditingCriterionText(criterionText); }}
-                                className="p-1 text-gray-300 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Editar"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                </svg>
-                              </button>
-                              <button
-                                onClick={() => handleDeleteCriterion(idx)}
-                                className="p-1 text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
-                                title="Excluir"
-                              >
-                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                </svg>
-                              </button>
-                            </>
-                          )}
-                        </li>
-                      );})}
-                    </ul>
-                  )}
-                </div>
+                <AcceptanceTab
+                  item={item}
+                  newCriterion={newCriterion}
+                  setNewCriterion={setNewCriterion}
+                  isAddingCriterion={isAddingCriterion}
+                  setIsAddingCriterion={setIsAddingCriterion}
+                  editingCriterionIdx={editingCriterionIdx}
+                  setEditingCriterionIdx={setEditingCriterionIdx}
+                  editingCriterionText={editingCriterionText}
+                  setEditingCriterionText={setEditingCriterionText}
+                  handleAddCriterion={handleAddCriterion}
+                  handleDeleteCriterion={handleDeleteCriterion}
+                  handleEditCriterion={handleEditCriterion}
+                  onUpdate={onUpdate}
+                />
               )}
 
               {/* PROMPT #131 - Removed AI Suggestions Tab - now handled by card interviews */}
@@ -2003,7 +1231,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 Excluir &quot;{item.title}&quot;?
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Isso excluira permanentemente este {item.item_type} e todas as entrevistas relacionadas. Esta ação não pode ser desfeita.
+                Isso excluira permanentemente este {item.item_type} e todas as entrevistas relacionadas. Esta acao nao pode ser desfeita.
               </p>
             </div>
           </div>
