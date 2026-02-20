@@ -107,7 +107,7 @@ export default function AIModelsPage() {
     setEditFormData({
       name: model.name,
       provider: model.provider,
-      api_key: model.api_key,  // ✅ FIX: Include API key from model
+      api_key: '',  // PROMPT #234: Don't pre-fill masked key; leave blank to keep current
       usage_type: model.usage_type,
       is_active: model.is_active,
       config: model.config,

@@ -17,6 +17,7 @@ import re
 from app.models.project import Project
 from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
 from app.services.rag_service import RAGService
+from app.prompts.loader import get_prompt_loader  # PROMPT #234 YP-1
 from .utils import (
     _robust_json_parse,
     _strip_emojis,
@@ -84,7 +85,8 @@ class CardActivatorMixin:
             )
 
         # 2. Fetch project and context
-        project = self.db.query(Project).filter(Project.id == epic.project_id).first()
+        # PROMPT #234 SM-2: Use FOR UPDATE to prevent race condition on context_locked
+        project = self.db.query(Project).with_for_update().filter(Project.id == epic.project_id).first()
         if not project:
             raise ValueError(f"Projeto {epic.project_id} não encontrado")
 
@@ -492,183 +494,10 @@ class CardActivatorMixin:
         Returns:
             Dict with full epic content
         """
-        # PROMPT #96 - Enhanced prompt for DETAILED epic content generation
-        system_prompt = """Você é um Arquiteto de Software e Product Owner especialista gerando especificações técnicas DETALHADAS para Epics.
-
-OBJETIVO: Gerar uma especificação COMPLETA e DETALHADA do módulo/funcionalidade, incluindo:
-- Campos e atributos com tipos de dados
-- Regras de negócio específicas
-- Fluxos e estados
-- Interface do usuário
-- Integrações e APIs
-- Validações e constraints
-
-METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
-
-**Categorias de Identificadores (use TODAS que forem aplicáveis):**
-
-**Entidades e Dados:**
-- **N** (Nouns/Entidades): N1, N2... = Entidades de domínio (Ex: N1=Usuário, N2=Imóvel)
-- **ATTR** (Atributos): ATTR1, ATTR2... = Campos/atributos específicos (Ex: ATTR1=nome:string, ATTR2=email:string)
-- **D** (Data/Estruturas): D1, D2... = Tabelas, schemas, models (Ex: D1=tabela_usuarios)
-- **ENUM** (Enumerações): ENUM1, ENUM2... = Valores fixos (Ex: ENUM1=TipoUsuario[admin,corretor,cliente])
-- **REL** (Relacionamentos): REL1, REL2... = Relações entre entidades (Ex: REL1=N1 possui muitos N2)
-
-**Lógica e Regras:**
-- **RN** (Regras de Negócio): RN1, RN2... = Regras específicas (Ex: RN1=Email deve ser único)
-- **VAL** (Validações): VAL1, VAL2... = Validações de entrada (Ex: VAL1=CPF válido)
-- **CALC** (Cálculos): CALC1, CALC2... = Fórmulas e cálculos (Ex: CALC1=comissão=valor*0.05)
-- **COND** (Condições): COND1, COND2... = Condições lógicas (Ex: COND1=se status=ativo)
-
-**Fluxos e Processos:**
-- **P** (Processos): P1, P2... = Fluxos de trabalho (Ex: P1=Cadastro de imóvel)
-- **EST** (Estados): EST1, EST2... = Estados possíveis (Ex: EST1=rascunho, EST2=publicado)
-- **TRANS** (Transições): TRANS1, TRANS2... = Transições de estado (Ex: TRANS1=EST1→EST2)
-- **STEP** (Etapas): STEP1, STEP2... = Passos do processo (Ex: STEP1=preencher dados)
-
-**Interface:**
-- **TELA** (Telas): TELA1, TELA2... = Telas/páginas (Ex: TELA1=Dashboard, TELA2=Listagem)
-- **COMP** (Componentes): COMP1, COMP2... = Componentes UI (Ex: COMP1=FormularioCadastro)
-- **BTN** (Botões/Ações): BTN1, BTN2... = Ações do usuário (Ex: BTN1=Salvar, BTN2=Cancelar)
-- **FILTRO** (Filtros): FILTRO1... = Filtros disponíveis (Ex: FILTRO1=por status)
-
-**Integrações:**
-- **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuários)
-- **S** (Serviços): S1, S2... = Serviços externos (Ex: S1=serviço de email)
-- **EVENTO** (Eventos): EVENTO1... = Eventos do sistema (Ex: EVENTO1=usuario_criado)
-
-**Critérios:**
-- **AC** (Acceptance Criteria): AC1, AC2... = Critérios de aceitação
-- **PERF** (Performance): PERF1... = Requisitos de performance
-- **SEG** (Segurança): SEG1... = Requisitos de segurança
-
-Sua tarefa:
-1. Análise o contexto do projeto e o épico sugerido
-2. Crie um **Mapa Semântico EXTENSO** com MÍNIMO 25-35 identificadores
-3. DETALHE especificamente:
-   - TODOS os campos/atributos com seus TIPOS DE DADOS
-   - TODAS as regras de negócio com condições específicas
-   - TODOS os estados e transições
-   - TODAS as telas e componentes principais
-   - TODOS os endpoints necessários
-4. Escreva a descrição usando APENAS identificadores do mapa
-5. Defina critérios de aceitação específicos e mensuráveis
-
-ESTRUTURA OBRIGATÓRIA DO description_markdown:
-
-```
-# Epic: [Título]
-
-## Mapa Semântico
-
-### Entidades
-- **N1**: [entidade]
-- **N2**: [entidade]
-
-### Atributos de [Entidade Principal]
-- **ATTR1**: [campo]: [tipo] - [descrição]
-- **ATTR2**: [campo]: [tipo] - [descrição]
-...
-
-### Enumerações
-- **ENUM1**: [nome][valor1, valor2, valor3]
-...
-
-### Regras de Negócio
-- **RN1**: [regra específica]
-- **RN2**: [regra específica]
-...
-
-### Validações
-- **VAL1**: [validação]
-...
-
-### Estados e Transições
-- **EST1**: [estado1]
-- **EST2**: [estado2]
-- **TRANS1**: EST1 → EST2 quando [condição]
-...
-
-### Telas e Componentes
-- **TELA1**: [nome da tela] - [descrição]
-- **COMP1**: [componente] em TELA1
-...
-
-### Endpoints
-- **API1**: [método] [rota] - [descrição]
-...
-
-## Descrição Funcional
-
-[Narrativa DETALHADA usando os identificadores. Descreva o fluxo completo,
-como as telas interagem, quais validações são aplicadas em cada etapa,
-como os estados mudam, etc.]
-
-## Fluxo Principal
-
-1. STEP1: [descrição usando identificadores]
-2. STEP2: [descrição usando identificadores]
-...
-
-## Critérios de Aceitação
-
-1. **AC1**: [critério específico e mensurável]
-2. **AC2**: [critério específico e mensurável]
-...
-
-## Regras de Negócio Detalhadas
-
-### RN1: [Nome da Regra]
-- **Condição**: [quando se aplica]
-- **Ação**: [o que acontece]
-- **Exceção**: [casos especiais]
-
-...
-
-## Especificação de Dados
-
-### Tabela: [nome]
-| Campo | Tipo | Obrigatório | Descrição |
-|-------|------|-------------|-----------|
-| ATTR1 | string | Sim | ... |
-| ATTR2 | integer | Não | ... |
-
-## Considerações Técnicas
-
-- [consideração 1]
-- [consideração 2]
-```
-
-Retorne APENAS JSON válido (sem markdown code blocks):
-{
-    "title": "Título do Epic",
-    "semantic_map": {
-        "N1": "...", "N2": "...",
-        "ATTR1": "campo: tipo - descrição",
-        "RN1": "regra específica",
-        "EST1": "estado", "TRANS1": "transição",
-        "TELA1": "tela", "API1": "endpoint"
-    },
-    "description_markdown": "[MARKDOWN COMPLETO seguindo a estrutura acima]",
-    "story_points": 13,
-    "priority": "high",
-    "acceptance_criteria": ["AC1: critério", "AC2: critério"],
-    "interview_insights": {
-        "key_requirements": ["requisito 1", "requisito 2"],
-        "business_goals": ["objetivo 1", "objetivo 2"],
-        "technical_constraints": ["restrição 1", "restrição 2"]
-    }
-}
-
-**REGRAS CRÍTICAS:**
-- MÍNIMO 25 identificadores no mapa semântico
-- DETALHE campos com TIPOS DE DADOS (string, integer, boolean, date, etc)
-- DETALHE regras de negócio com CONDIÇÕES ESPECÍFICAS
-- INCLUA telas e componentes UI
-- INCLUA endpoints da API
-- A descrição deve ter MÍNIMO 1500 caracteres
-- TUDO EM PORTUGUÊS
-"""
+        # PROMPT #234 YP-1 - Load system_prompt from YAML (was hardcoded)
+        _loader = get_prompt_loader()
+        _epic_template = _loader.load("context/activate_epic_full")
+        system_prompt = _epic_template.system_prompt
 
         # PROMPT #162 - Fetch relevant interview answers from RAG
         interview_context = ""
@@ -979,7 +808,7 @@ Retorne como JSON seguindo o schema do system prompt."""
                                 break
                             else:
                                 result = None
-                        except:
+                        except (json.JSONDecodeError, ValueError):
                             continue
             except Exception as e:
                 logger.warning(f"Truncation recovery failed: {e}")
@@ -995,7 +824,7 @@ Retorne como JSON seguindo o schema do system prompt."""
                     logger.info("✅ JSON parsed with ast.literal_eval")
                 else:
                     result = None
-            except:
+            except (ValueError, SyntaxError):
                 pass
 
         if result:
@@ -1075,22 +904,15 @@ Retorne como JSON seguindo o schema do system prompt."""
             # Extract key info from project context for better prompting
             context_preview = project_context[:3000] if project_context else "Não disponível"
 
-            simple_system_prompt = f"""Você é um Arquiteto de Software Sênior com 20 anos de experiência.
-
-Sua tarefa é escrever uma ESPECIFICAÇÃO TÉCNICA COMPLETA E DETALHADA para um módulo de software.
-
-REGRAS IMPORTANTES:
-1. Seja EXTREMAMENTE ESPECÍFICO - use nomes reais de campos, tabelas, endpoints
-2. NÃO use placeholders genéricos como "campo1", "tabela1", "endpoint1"
-3. BASEIE-SE no contexto do projeto para gerar nomes e estruturas realistas
-4. Cada seção deve ter MÍNIMO 5 itens detalhados
-5. Use Markdown formatado corretamente
-6. Responda APENAS em PORTUGUÊS
-
-CONTEXTO DO PROJETO PARA REFERÊNCIA:
-{context_preview}
-
-Use este contexto para gerar especificações REALISTAS e ESPECÍFICAS para o módulo solicitado."""
+            # PROMPT #234 YP-1 - Load from YAML
+            _simple_loader = get_prompt_loader()
+            _simple_sys, _ = _simple_loader.render("context/epic_specification_simple", {
+                "context_preview": context_preview,
+                "epic_title": epic_title,
+                "project_name": project.name,
+                "epic_description": epic_description or "",
+            })
+            simple_system_prompt = _simple_sys
 
             simple_prompt = f"""# Especificação Técnica: {epic_title}
 
@@ -1456,8 +1278,8 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         if not is_suggested:
             raise ValueError(f"Story {story_id} não é um item sugerido")
 
-        # Fetch project
-        project = self.db.query(Project).filter(Project.id == story.project_id).first()
+        # Fetch project - PROMPT #234 SM-2: FOR UPDATE to prevent race on context_locked
+        project = self.db.query(Project).with_for_update().filter(Project.id == story.project_id).first()
         if not project:
             raise ValueError(f"Projeto {story.project_id} não encontrado")
 
@@ -1565,172 +1387,9 @@ Por favor, edite manualmente para adicionar os detalhes técnicos necessários.
         if parent_epic and parent_epic.interview_insights:
             epic_semantic_map = parent_epic.interview_insights.get("semantic_map", {})
 
-        # SAME DETAILED PROMPT AS EPIC - Adapted for Story
-        system_prompt = """Você é um Arquiteto de Software e Product Owner especialista gerando especificações técnicas DETALHADAS para User Stories.
-
-OBJETIVO: Gerar uma especificação COMPLETA e DETALHADA da User Story, incluindo:
-- Campos e atributos com tipos de dados
-- Regras de negócio específicas
-- Fluxos e estados
-- Interface do usuário
-- Integrações e APIs
-- Validações e constraints
-
-METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
-
-**Categorias de Identificadores (use TODAS que forem aplicáveis):**
-
-**Entidades e Dados:**
-- **N** (Nouns/Entidades): N1, N2... = Entidades de domínio (Ex: N1=Usuário, N2=Imóvel)
-- **ATTR** (Atributos): ATTR1, ATTR2... = Campos/atributos específicos (Ex: ATTR1=nome:string, ATTR2=email:string)
-- **D** (Data/Estruturas): D1, D2... = Tabelas, schemas, models (Ex: D1=tabela_usuarios)
-- **ENUM** (Enumerações): ENUM1, ENUM2... = Valores fixos (Ex: ENUM1=TipoUsuario[admin,corretor,cliente])
-- **REL** (Relacionamentos): REL1, REL2... = Relações entre entidades (Ex: REL1=N1 possui muitos N2)
-
-**Lógica e Regras:**
-- **RN** (Regras de Negócio): RN1, RN2... = Regras específicas (Ex: RN1=Email deve ser único)
-- **VAL** (Validações): VAL1, VAL2... = Validações de entrada (Ex: VAL1=CPF válido)
-- **CALC** (Cálculos): CALC1, CALC2... = Fórmulas e cálculos (Ex: CALC1=comissão=valor*0.05)
-- **COND** (Condições): COND1, COND2... = Condições lógicas (Ex: COND1=se status=ativo)
-
-**Fluxos e Processos:**
-- **P** (Processos): P1, P2... = Fluxos de trabalho (Ex: P1=Cadastro de imóvel)
-- **EST** (Estados): EST1, EST2... = Estados possíveis (Ex: EST1=rascunho, EST2=publicado)
-- **TRANS** (Transições): TRANS1, TRANS2... = Transições de estado (Ex: TRANS1=EST1→EST2)
-- **STEP** (Etapas): STEP1, STEP2... = Passos do processo (Ex: STEP1=preencher dados)
-
-**Interface:**
-- **TELA** (Telas): TELA1, TELA2... = Telas/páginas (Ex: TELA1=Dashboard, TELA2=Listagem)
-- **COMP** (Componentes): COMP1, COMP2... = Componentes UI (Ex: COMP1=FormularioCadastro)
-- **BTN** (Botões/Ações): BTN1, BTN2... = Ações do usuário (Ex: BTN1=Salvar, BTN2=Cancelar)
-- **FILTRO** (Filtros): FILTRO1... = Filtros disponíveis (Ex: FILTRO1=por status)
-
-**Integrações:**
-- **API** (Endpoints): API1, API2... = Endpoints REST (Ex: API1=POST /usuários)
-- **S** (Serviços): S1, S2... = Serviços externos (Ex: S1=serviço de email)
-- **EVENTO** (Eventos): EVENTO1... = Eventos do sistema (Ex: EVENTO1=usuario_criado)
-
-**Critérios:**
-- **AC** (Acceptance Criteria): AC1, AC2... = Critérios de aceitação
-- **PERF** (Performance): PERF1... = Requisitos de performance
-- **SEG** (Segurança): SEG1... = Requisitos de segurança
-
-**IMPORTANTE:** REUTILIZE os identificadores do Epic pai (N1, N2, ATTR1, etc.) e ESTENDA com novos específicos desta Story.
-
-ESTRUTURA OBRIGATÓRIA DO description_markdown:
-
-```
-# Story: [Título no formato User Story]
-
-## Mapa Semântico
-
-### Entidades (Reutilizadas do Epic)
-- **N1**: [reutilizado do Epic]
-- **N2**: [reutilizado do Epic]
-
-### Atributos Relevantes
-- **ATTR1**: [campo]: [tipo] - [descrição]
-- **ATTR2**: [campo]: [tipo] - [descrição]
-...
-
-### Regras de Negócio
-- **RN1**: [regra específica]
-- **RN2**: [regra específica]
-...
-
-### Validações
-- **VAL1**: [validação]
-...
-
-### Estados e Transições
-- **EST1**: [estado1]
-- **TRANS1**: EST1 → EST2 quando [condição]
-...
-
-### Telas e Componentes
-- **TELA1**: [nome da tela] - [descrição]
-- **COMP1**: [componente] em TELA1
-...
-
-### Endpoints
-- **API1**: [método] [rota] - [descrição]
-...
-
-## Descrição Funcional
-
-[Narrativa DETALHADA usando os identificadores. Descreva o fluxo completo,
-como as telas interagem, quais validações são aplicadas em cada etapa,
-como os estados mudam, etc. MÍNIMO 1500 caracteres.]
-
-## Fluxo Principal
-
-1. STEP1: [descrição usando identificadores]
-2. STEP2: [descrição usando identificadores]
-...
-
-## Critérios de Aceitação
-
-1. **AC1**: [critério específico e mensurável]
-2. **AC2**: [critério específico e mensurável]
-...
-
-## Regras de Negócio Detalhadas
-
-### RN1: [Nome da Regra]
-- **Condição**: [quando se aplica]
-- **Ação**: [o que acontece]
-- **Exceção**: [casos especiais]
-
-...
-
-## Especificação de Dados
-
-### Campos Envolvidos
-| Campo | Tipo | Obrigatório | Descrição |
-|-------|------|-------------|-----------|
-| ATTR1 | string | Sim | ... |
-| ATTR2 | integer | Não | ... |
-
-## Considerações Técnicas
-
-- [consideração 1]
-- [consideração 2]
-```
-
-Retorne APENAS JSON válido (sem markdown code blocks):
-{
-    "title": "Título da Story",
-    "semantic_map": {
-        "N1": "reutilizado do Epic", "N2": "...",
-        "ATTR1": "campo: tipo - descrição",
-        "RN1": "regra específica",
-        "EST1": "estado", "TRANS1": "transição",
-        "TELA1": "tela", "API1": "endpoint",
-        "AC1": "critério de aceitação"
-    },
-    "description_markdown": "[MARKDOWN COMPLETO seguindo a estrutura acima - MÍNIMO 1500 caracteres]",
-    "story_points": 5,
-    "priority": "high",
-    "acceptance_criteria": ["AC1: critério", "AC2: critério", "AC3: critério", "AC4: critério", "AC5: critério"],
-    "interview_insights": {
-        "key_requirements": ["requisito 1", "requisito 2"],
-        "business_goals": ["objetivo 1", "objetivo 2"],
-        "technical_constraints": ["restrição 1", "restrição 2"]
-    }
-}
-
-**REGRAS CRÍTICAS:**
-- MÍNIMO 20 identificadores no mapa semântico
-- REUTILIZE identificadores do Epic (N1-N9, ATTR1-ATTR9, etc.)
-- ESTENDA com novos identificadores específicos desta Story
-- DETALHE campos com TIPOS DE DADOS (string, integer, boolean, date, etc)
-- DETALHE regras de negócio com CONDIÇÕES ESPECÍFICAS
-- INCLUA telas e componentes UI
-- INCLUA endpoints da API
-- A descrição deve ter MÍNIMO 1500 caracteres
-- MÍNIMO 5 critérios de aceitação
-- TUDO EM PORTUGUÊS
-"""
+        # PROMPT #234 YP-1 - Load story system_prompt from YAML (was hardcoded)
+        _story_template = get_prompt_loader().load("context/story_specification")
+        system_prompt = _story_template.system_prompt
 
         # PROMPT #232 - Compressed context replaces NO TRUNCATION pattern
         from app.services.prompt_context_compressor import PromptContextCompressor
@@ -1934,8 +1593,8 @@ Retorne APENAS o JSON, sem explicações."""
         if not is_suggested:
             raise ValueError(f"Task {task_id} não é um item sugerido")
 
-        # Fetch project
-        project = self.db.query(Project).filter(Project.id == task.project_id).first()
+        # Fetch project - PROMPT #234 SM-2: FOR UPDATE to prevent race on context_locked
+        project = self.db.query(Project).with_for_update().filter(Project.id == task.project_id).first()
         if not project:
             raise ValueError(f"Projeto {task.project_id} não encontrado")
 
@@ -2063,164 +1722,9 @@ Retorne APENAS o JSON, sem explicações."""
         # Combine all semantic maps for context
         combined_semantic_map = {**epic_semantic_map, **story_semantic_map}
 
-        # SAME DETAILED PROMPT AS EPIC - Adapted for Task
-        system_prompt = """Você é um Arquiteto de Software e Tech Lead especialista gerando especificações técnicas DETALHADAS para Tasks de desenvolvimento.
-
-OBJETIVO: Gerar uma especificação TÉCNICA COMPLETA da Task, incluindo:
-- Arquivos a criar/modificar
-- Funções e métodos com assinaturas
-- Parâmetros e tipos de retorno
-- Validações e tratamento de erros
-- Testes necessários
-- Comandos e código de exemplo
-
-METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
-
-**Categorias de Identificadores (use TODAS que forem aplicáveis):**
-
-**Código e Arquivos:**
-- **FILE** (Arquivos): FILE1, FILE2... = Arquivos a criar/modificar (Ex: FILE1=src/models/User.ts)
-- **FUNC** (Funções): FUNC1, FUNC2... = Funções/métodos (Ex: FUNC1=createUser(data: UserDTO): Promise<User>)
-- **CLASS** (Classes): CLASS1, CLASS2... = Classes a criar (Ex: CLASS1=UserService)
-- **PARAM** (Parâmetros): PARAM1, PARAM2... = Parâmetros de funções (Ex: PARAM1=userId: string)
-- **RET** (Retornos): RET1, RET2... = Tipos de retorno (Ex: RET1=Promise<User>)
-- **IMPORT** (Imports): IMPORT1... = Imports necessários (Ex: IMPORT1=import { User } from './models')
-
-**Dados e Tipos:**
-- **N** (Entidades): N1, N2... = Entidades envolvidas (reutilizar do Epic/Story)
-- **ATTR** (Atributos): ATTR1, ATTR2... = Campos com tipos (reutilizar do Epic/Story)
-- **TYPE** (Tipos): TYPE1, TYPE2... = Tipos/interfaces (Ex: TYPE1=UserDTO)
-- **SCHEMA** (Schemas): SCHEMA1... = Schemas de validação (Ex: SCHEMA1=createUserSchema)
-
-**Lógica:**
-- **VAL** (Validações): VAL1, VAL2... = Validações a implementar
-- **ERR** (Erros): ERR1, ERR2... = Erros a tratar (Ex: ERR1=UserNotFoundError)
-- **LOG** (Logs): LOG1... = Logs a adicionar
-- **COND** (Condições): COND1... = Condições lógicas
-
-**Integração:**
-- **API** (Endpoints): API1, API2... = Endpoints (reutilizar do Epic/Story)
-- **QUERY** (Queries): QUERY1... = Queries de banco (Ex: QUERY1=SELECT * FROM users WHERE id = ?)
-- **CMD** (Comandos): CMD1... = Comandos a executar (Ex: CMD1=npm run migrate)
-
-**Testes:**
-- **TEST** (Testes): TEST1, TEST2... = Casos de teste (Ex: TEST1=should create user with valid data)
-- **MOCK** (Mocks): MOCK1... = Mocks necessários
-- **FIXTURE** (Fixtures): FIXTURE1... = Dados de teste
-
-**Critérios:**
-- **AC** (Acceptance Criteria): AC1, AC2... = Critérios de aceitação técnicos
-
-**IMPORTANTE:** REUTILIZE os identificadores do Epic/Story (N1, N2, ATTR1, API1, etc.) e ESTENDA com novos específicos desta Task.
-
-ESTRUTURA OBRIGATÓRIA DO description_markdown:
-
-```
-# Task: [Título Técnico]
-
-## Mapa Semântico
-
-### Entidades (Reutilizadas)
-- **N1**: [do Epic/Story]
-
-### Arquivos
-- **FILE1**: [caminho/arquivo.ext] - [descrição do que fazer]
-- **FILE2**: [caminho/arquivo.ext] - [descrição]
-
-### Funções a Implementar
-- **FUNC1**: [assinatura completa com tipos]
-- **FUNC2**: [assinatura completa com tipos]
-
-### Tipos/Interfaces
-- **TYPE1**: [definição do tipo]
-
-### Validações
-- **VAL1**: [validação específica]
-- **VAL2**: [validação específica]
-
-### Tratamento de Erros
-- **ERR1**: [erro e como tratar]
-
-### Queries/Comandos
-- **QUERY1**: [query SQL ou comando]
-- **CMD1**: [comando terminal]
-
-### Testes Necessários
-- **TEST1**: [caso de teste]
-- **TEST2**: [caso de teste]
-
-## Descrição Técnica
-
-[Narrativa DETALHADA usando os identificadores. Descreva EXATAMENTE:
-- O QUE implementar (quais arquivos, funções)
-- COMO implementar (lógica, algoritmo)
-- ONDE implementar (localização no código)
-MÍNIMO 1200 caracteres.]
-
-## Passos de Implementação
-
-1. STEP1: [passo detalhado com identificadores]
-2. STEP2: [passo detalhado]
-...
-
-## Código de Exemplo
-
-```[linguagem]
-// Exemplo de implementação de FUNC1
-[código de exemplo]
-```
-
-## Critérios de Aceitação Técnicos
-
-1. **AC1**: [critério técnico específico]
-2. **AC2**: [critério técnico específico]
-...
-
-## Comandos Necessários
-
-```bash
-[comandos a executar]
-```
-
-## Considerações Técnicas
-
-- [consideração 1]
-- [consideração 2]
-```
-
-Retorne APENAS JSON válido:
-{
-    "title": "Título da Task",
-    "semantic_map": {
-        "N1": "reutilizado", "ATTR1": "reutilizado",
-        "FILE1": "caminho/arquivo.ext",
-        "FUNC1": "assinatura(params): ReturnType",
-        "VAL1": "validação",
-        "ERR1": "erro",
-        "TEST1": "caso de teste",
-        "AC1": "critério"
-    },
-    "description_markdown": "[MARKDOWN COMPLETO - MÍNIMO 1200 caracteres]",
-    "story_points": 3,
-    "acceptance_criteria": ["AC1: critério", "AC2: critério", "AC3: critério", "AC4: critério"],
-    "interview_insights": {
-        "files_to_modify": ["arquivo1", "arquivo2"],
-        "dependencies": ["dep1", "dep2"],
-        "commands": ["cmd1", "cmd2"]
-    }
-}
-
-**REGRAS CRÍTICAS:**
-- MÍNIMO 15 identificadores no mapa semântico
-- REUTILIZE identificadores do Epic/Story
-- INCLUA arquivos específicos (FILE1, FILE2...)
-- INCLUA funções com assinaturas completas (FUNC1, FUNC2...)
-- INCLUA casos de teste (TEST1, TEST2...)
-- A descrição deve ter MÍNIMO 1200 caracteres
-- MÍNIMO 4 critérios de aceitação
-- INCLUA código de exemplo quando aplicável
-- TUDO EM PORTUGUÊS
-"""
+        # PROMPT #234 YP-1 - Load task system_prompt from YAML (was hardcoded)
+        _task_template = get_prompt_loader().load("context/task_specification")
+        system_prompt = _task_template.system_prompt
 
         # PROMPT #232 - Compressed context replaces NO TRUNCATION pattern
         from app.services.prompt_context_compressor import PromptContextCompressor
@@ -2414,8 +1918,8 @@ Retorne APENAS o JSON, sem explicações."""
         if not is_suggested:
             raise ValueError(f"Subtask {subtask_id} não é um item sugerido")
 
-        # Fetch project
-        project = self.db.query(Project).filter(Project.id == subtask.project_id).first()
+        # Fetch project - PROMPT #234 SM-2: FOR UPDATE to prevent race on context_locked
+        project = self.db.query(Project).with_for_update().filter(Project.id == subtask.project_id).first()
         if not project:
             raise ValueError(f"Projeto {subtask.project_id} não encontrado")
 
@@ -2555,123 +2059,9 @@ Retorne APENAS o JSON, sem explicações."""
         # Combine all semantic maps
         combined_semantic_map = {**epic_semantic_map, **story_semantic_map, **task_semantic_map}
 
-        system_prompt = """Você é um Desenvolvedor Sênior gerando especificações DETALHADAS para Subtasks de implementação.
-
-OBJETIVO: Gerar uma especificação COMPLETA da Subtask, incluindo:
-- Código específico a escrever
-- Linhas exatas a modificar
-- Comandos a executar
-- Validações e testes
-
-METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
-
-**Categorias de Identificadores:**
-- **N** (Entidades): Reutilizar do Epic/Story/Task
-- **ATTR** (Atributos): Reutilizar do Epic/Story/Task
-- **FILE** (Arquivos): FILE1... = Arquivo específico a modificar
-- **LINE** (Linhas): LINE1... = Linhas de código específicas
-- **FUNC** (Funções): FUNC1... = Função específica a implementar/modificar
-- **CODE** (Código): CODE1... = Bloco de código a adicionar
-- **VAL** (Validações): VAL1... = Validação específica
-- **TEST** (Testes): TEST1... = Teste específico
-- **CMD** (Comandos): CMD1... = Comando a executar
-- **AC** (Critérios): AC1, AC2... = Critérios de aceitação
-
-ESTRUTURA OBRIGATÓRIA DO description_markdown:
-
-```
-# Subtask: [Título - Ação Específica]
-
-## Mapa Semântico
-
-### Entidades (Reutilizadas)
-- **N1**: [do Epic/Story/Task]
-
-### Arquivo(s) a Modificar
-- **FILE1**: [caminho/completo/arquivo.ext]
-
-### Código a Adicionar/Modificar
-- **CODE1**: [descrição do bloco de código]
-- **LINE1**: [linha específica]
-
-### Função(ões) Envolvida(s)
-- **FUNC1**: [nome da função]
-
-### Validações
-- **VAL1**: [validação]
-
-### Teste(s)
-- **TEST1**: [caso de teste]
-
-### Comando(s)
-- **CMD1**: [comando]
-
-## Descrição Técnica Detalhada
-
-[Narrativa DETALHADA descrevendo EXATAMENTE:
-- O QUE modificar (arquivo, função, linha)
-- O CÓDIGO a escrever
-- COMO testar
-MÍNIMO 800 caracteres.]
-
-## Código a Implementar
-
-```[linguagem]
-// Código específico a adicionar
-[código completo]
-```
-
-## Passos de Execução
-
-1. [Passo específico com arquivo/linha]
-2. [Passo específico]
-...
-
-## Comandos a Executar
-
-```bash
-[comandos]
-```
-
-## Critérios de Aceitação
-
-1. **AC1**: [critério específico]
-2. **AC2**: [critério específico]
-...
-```
-
-Retorne APENAS JSON válido:
-{
-    "title": "Título da Subtask",
-    "semantic_map": {
-        "N1": "reutilizado",
-        "FILE1": "caminho/arquivo.ext",
-        "LINE1": "linha específica",
-        "CODE1": "descrição do código",
-        "FUNC1": "função",
-        "VAL1": "validação",
-        "TEST1": "teste",
-        "CMD1": "comando",
-        "AC1": "critério"
-    },
-    "description_markdown": "[MARKDOWN COMPLETO - MÍNIMO 800 caracteres]",
-    "acceptance_criteria": ["AC1: critério", "AC2: critério", "AC3: critério"],
-    "interview_insights": {
-        "code_to_add": "código",
-        "files_to_modify": ["arquivo1"],
-        "commands": ["cmd1"]
-    }
-}
-
-**REGRAS CRÍTICAS:**
-- MÍNIMO 10 identificadores no mapa semântico
-- REUTILIZE identificadores do Epic/Story/Task
-- INCLUA código específico a escrever
-- INCLUA arquivo e localização exata
-- description_markdown com MÍNIMO 800 caracteres
-- MÍNIMO 3 critérios de aceitação
-- TUDO EM PORTUGUÊS
-"""
+        # PROMPT #234 YP-1 - Load subtask system_prompt from YAML (was hardcoded)
+        _subtask_template = get_prompt_loader().load("context/subtask_specification")
+        system_prompt = _subtask_template.system_prompt
 
         # Build COMPLETE context from Epic + Story + Task - NO TRUNCATION
         epic_full_spec = ""

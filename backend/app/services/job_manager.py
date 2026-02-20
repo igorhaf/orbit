@@ -349,6 +349,37 @@ class JobManager:
             "parent_job_id": str(job.parent_job_id) if job.parent_job_id else None,
         })
 
+    def cleanup_stale_jobs(self, stale_minutes: int = 10) -> int:
+        """
+        PROMPT #234 SM-3: Mark stale RUNNING/PENDING jobs as FAILED.
+        Jobs stuck in RUNNING or PENDING for longer than stale_minutes are considered dead.
+
+        Returns:
+            Number of jobs cleaned up
+        """
+        from datetime import timedelta
+        cutoff = datetime.utcnow() - timedelta(minutes=stale_minutes)
+
+        stale_jobs = self.db.query(AsyncJob).filter(
+            AsyncJob.status.in_([JobStatus.RUNNING, JobStatus.PENDING]),
+            AsyncJob.updated_at < cutoff
+        ).all()
+
+        count = 0
+        for job in stale_jobs:
+            job.status = JobStatus.FAILED
+            job.error = f"Job stuck for >{stale_minutes} minutes - marked as failed by cleanup"
+            job.completed_at = datetime.utcnow()
+            self.db.add(JobLogEntry(job_id=job.id, level="warning", message=f"Stale job cleanup after {stale_minutes}min"))
+            count += 1
+            logger.warning(f"Cleaned up stale job {job.id} (type={job.job_type.value})")
+
+        if count > 0:
+            self.db.commit()
+            logger.info(f"Cleaned up {count} stale jobs")
+
+        return count
+
     def get_job(self, job_id: UUID) -> Optional[AsyncJob]:
         """
         Get job by ID.

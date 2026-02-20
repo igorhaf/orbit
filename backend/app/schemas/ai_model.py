@@ -83,15 +83,23 @@ class AIModelUpdate(BaseModel):
 
 
 class AIModelResponse(AIModelBase):
-    """Schema for AIModel response (includes API key for development)"""
+    """Schema for AIModel response (API key masked for security)"""
     id: UUID
-    api_key: str  # Included for development/debugging
+    api_key: str  # Masked in response - PROMPT #234 SEC-1
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
         use_enum_values = True
+
+    @field_validator('api_key', mode='before')
+    @classmethod
+    def mask_api_key(cls, v: str) -> str:
+        """Mask API key - show only last 4 characters for security"""
+        if not v or len(v) <= 4:
+            return '***'
+        return f'***...{v[-4:]}'
 
 
 class AIModelDetailResponse(AIModelBase):

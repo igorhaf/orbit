@@ -311,7 +311,7 @@ class FileProcessor:
                     size = path.stat().st_size
                     if size > 10 * 1024 * 1024:
                         return None
-                except:
+                except OSError:
                     return None
 
                 return {
@@ -410,6 +410,6 @@ class FileProcessor:
             if item.is_file():
                 try:
                     total += item.stat().st_size
-                except:
+                except OSError:
                     pass
         return total

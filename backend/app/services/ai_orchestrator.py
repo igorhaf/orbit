@@ -45,6 +45,22 @@ def _get_model_semaphore(model_id: str, max_concurrent: int) -> asyncio.Semaphor
     return _model_semaphores[model_id]
 
 
+def _safe_broadcast(event_type: str, data: dict):
+    """PROMPT #234 EH-2: Safe wrapper for broadcast_chain_event via asyncio.create_task.
+    Logs errors instead of silently dropping them."""
+    async def _do_broadcast():
+        try:
+            await broadcast_chain_event(event_type, data)
+        except Exception as e:
+            logger.warning(f"Failed to broadcast chain event '{event_type}': {e}")
+
+    try:
+        asyncio.create_task(_do_broadcast())
+    except RuntimeError:
+        # No running event loop
+        logger.debug(f"No event loop for broadcast '{event_type}', skipping")
+
+
 UsageType = Literal[
     "prompt_generation",
     "task_execution",
@@ -956,7 +972,7 @@ class AIOrchestrator:
                             f"{chain_model_config['db_model_name']} ({chain_model_config['provider']}/{chain_model_config['model']})"
                         )
                         # PROMPT #124 - Broadcast chain attempt start
-                        asyncio.create_task(broadcast_chain_event("chain_attempt_start", {
+                        _safe_broadcast("chain_attempt_start", {
                             "usage_type": usage_type,
                             "chain_source": chain_source,
                             "model_id": chain_model_config.get("db_model_id", ""),
@@ -964,7 +980,7 @@ class AIOrchestrator:
                             "provider": chain_model_config["provider"],
                             "chain_position": chain_idx + 1,
                             "chain_total": len(chain_model_list),
-                        }))
+                        })
                         result = await self._execute_with_config(
                             model_config=chain_model_config,
                             messages=_effective_messages,
@@ -977,7 +993,7 @@ class AIOrchestrator:
                         result["chain_fallback"] = chain_idx > 0 or chain_source == "general"
                         result["chain_source"] = chain_source
                         # PROMPT #124 - Broadcast chain attempt success
-                        asyncio.create_task(broadcast_chain_event("chain_attempt_success", {
+                        _safe_broadcast("chain_attempt_success", {
                             "usage_type": usage_type,
                             "model_id": chain_model_config.get("db_model_id", ""),
                             "model_name": chain_model_config["db_model_name"],
@@ -985,7 +1001,7 @@ class AIOrchestrator:
                             "chain_position": chain_idx + 1,
                             "execution_time_ms": result.get("usage", {}).get("execution_time_ms"),
                             "total_tokens": result.get("usage", {}).get("total_tokens"),
-                        }))
+                        })
                         # PROMPT #124 - Log successful chain execution
                         try:
                             chain_exec_log = AIExecution(
@@ -1205,7 +1221,7 @@ class AIOrchestrator:
                         )
                         # PROMPT #124 - Broadcast chain attempt failed
                         next_model = chain_model_list[chain_idx + 1]["db_model_name"] if chain_idx < len(chain_model_list) - 1 else None
-                        asyncio.create_task(broadcast_chain_event("chain_attempt_failed", {
+                        _safe_broadcast("chain_attempt_failed", {
                             "usage_type": usage_type,
                             "model_id": chain_model_config.get("db_model_id", ""),
                             "model_name": chain_model_config["db_model_name"],
@@ -1214,7 +1230,7 @@ class AIOrchestrator:
                             "chain_total": len(chain_model_list),
                             "error": str(e)[:200],
                             "next_model": next_model,
-                        }))
+                        })
                         # PROMPT #124 - Log failed chain attempt
                         try:
                             chain_fail_log = AIExecution(

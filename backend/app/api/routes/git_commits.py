@@ -402,7 +402,7 @@ async def list_git_branches(
                 # Parse ISO date
                 date_str = parts[2].strip()
                 last_commit_date = datetime.fromisoformat(date_str.replace(" ", "T").split("+")[0])
-            except:
+            except (ValueError, TypeError):
                 pass
 
         branches.append(GitBranch(

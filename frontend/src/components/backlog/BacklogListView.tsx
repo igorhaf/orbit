@@ -269,9 +269,41 @@ export default function BacklogListView({
     return filterBySearch(backlog, filters?.search || '');
   };
 
+  // PROMPT #234 RT-3: Added cancelled flag to prevent setState after unmount
   useEffect(() => {
-    fetchBacklog();
+    let cancelled = false;
+
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const apiFilters = filters ? {
+          item_type: filters.item_type,
+          priority: filters.priority,
+          labels: filters.labels,
+          status: filters.status
+        } : undefined;
+
+        const data = await tasksApi.getBacklog(projectId, apiFilters);
+        if (cancelled) return;
+        setBacklog(data || []);
+
+        if (data && data.length > 0 && onFilterOptionsChange) {
+          const options = extractFilterOptions(data);
+          onFilterOptionsChange(options);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error fetching backlog:', error);
+        setBacklog([]);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+
+    loadData();
     fetchInterviews();  // PROMPT #131 - Fetch interviews
+
+    return () => { cancelled = true; };
   }, [projectId, filters?.item_type, filters?.priority, filters?.labels, filters?.status, refreshKey]);  // PROMPT #123 - Don't re-fetch on search change
 
   // PROMPT #173 - Refresh backlog when activation job completes (via WebSocket notification)

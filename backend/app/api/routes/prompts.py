@@ -245,13 +245,14 @@ async def create_new_version(
 
 @router.delete("/", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_all_prompts(
+    project_id: UUID = Query(..., description="Project ID - required to prevent accidental global deletion"),
     db: Session = Depends(get_db)
 ):
     """
-    Delete all prompts (clear all logs).
+    Delete all prompts for a specific project (clear logs).
 
-    ⚠️ WARNING: This action cannot be undone!
+    PROMPT #234 SEC-2: Requires project_id to prevent accidental global deletion.
     """
-    db.query(Prompt).delete()
+    db.query(Prompt).filter(Prompt.project_id == project_id).delete(synchronize_session='fetch')
     db.commit()
     return None

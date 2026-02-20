@@ -38,17 +38,10 @@ export default function PromptsPage() {
   };
 
   const handleClearAll = async () => {
-    setIsClearing(true);
-    try {
-      await promptsApi.deleteAll();
-      setShowClearConfirm(false);
-      await loadPrompts();
-    } catch (err: any) {
-      console.error('Failed to clear prompts:', err);
-      setError(err.message || 'Falha ao limpar prompts');
-    } finally {
-      setIsClearing(false);
-    }
+    // PROMPT #234 SEC-2: deleteAll now requires project_id for safety
+    // This global page doesn't have a project context, so disable for now
+    setError('Limpeza global desabilitada por seguranca. Use a pagina do projeto para limpar prompts.');
+    setShowClearConfirm(false);
   };
 
   useEffect(() => {

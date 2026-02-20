@@ -21,8 +21,8 @@ export const promptsApi = {
   delete: (id: string) =>
     request<any>(`/api/v1/prompts/${id}`, { method: 'DELETE' }),
 
-  deleteAll: () =>
-    request<any>('/api/v1/prompts/', { method: 'DELETE' }),
+  deleteAll: (projectId: string) =>
+    request<any>(`/api/v1/prompts/?project_id=${projectId}`, { method: 'DELETE' }),
 
   versions: (id: string) =>
     request<any>(`/api/v1/prompts/${id}/versions`),

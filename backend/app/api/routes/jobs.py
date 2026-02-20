@@ -617,6 +617,26 @@ async def cleanup_old_jobs(
     }
 
 
+@router.post("/cleanup-stale")
+async def cleanup_stale_jobs(
+    stale_minutes: int = Query(10, ge=1, le=60, description="Mark RUNNING/PENDING jobs older than N minutes as FAILED"),
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #234 SM-3: Mark stale RUNNING/PENDING jobs as FAILED.
+    Jobs stuck in RUNNING or PENDING for longer than stale_minutes are considered dead
+    (e.g., server crashed during execution).
+    """
+    from app.services.job_manager import JobManager
+    jm = JobManager(db)
+    count = jm.cleanup_stale_jobs(stale_minutes=stale_minutes)
+    return {
+        "cleaned_count": count,
+        "stale_minutes": stale_minutes,
+        "message": f"{count} stale jobs marked as FAILED"
+    }
+
+
 @router.delete("/bulk")
 async def bulk_delete_jobs(
     status: Optional[str] = Query(None, description="Delete jobs with this status"),

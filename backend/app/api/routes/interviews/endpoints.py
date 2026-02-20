@@ -352,6 +352,13 @@ async def add_message_to_interview(
     - **interview_id**: UUID of the interview
     - **message**: Message object to add to conversation_data
     """
+    # PROMPT #234 SM-1: Prevent adding messages to completed/cancelled interviews
+    if interview.status in ('completed', 'cancelled'):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot add messages to interview with status '{interview.status}'"
+        )
+
     if not isinstance(interview.conversation_data, list):
         interview.conversation_data = []
 

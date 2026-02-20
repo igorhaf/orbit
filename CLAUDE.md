@@ -798,8 +798,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #231 (Fix RAG Extraction Timeouts + Performance)
-**Próximo prompt:** PROMPT #232
+**Último prompt:** PROMPT #234 (Deep Audit v2 - Security, State Machines, Error Handling, YAML Migration)
+**Próximo prompt:** PROMPT #235
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40

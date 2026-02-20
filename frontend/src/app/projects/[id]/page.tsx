@@ -138,12 +138,15 @@ export default function ProjectDetailsPage() {
 
   // PROMPT #301 - Poll enrichment status and auto-refresh project data while enriching
   // This covers initial scan, wiki enrichment, card generation, and watchdog
+  // PROMPT #234 RT-3: Added cancelled flag to prevent setState after unmount
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
+    let cancelled = false;
 
     const checkEnrichment = async () => {
       try {
         const status = await ragApi.enrichmentStatus(projectId);
+        if (cancelled) return;
         const wasEnriching = prevEnrichingRef.current;
         setIsEnriching(status.is_enriching);
 
@@ -176,6 +179,7 @@ export default function ProjectDetailsPage() {
     interval = setInterval(checkEnrichment, 5000); // Poll every 5s for faster updates
 
     return () => {
+      cancelled = true;
       if (interval) clearInterval(interval);
     };
   }, [projectId, loadProjectData]);
