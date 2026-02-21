@@ -29,13 +29,10 @@ import {
   FileText,
   FolderOpen,
   AlertCircle,
-  Package,
   MessageSquare,
   BookOpen,
   Code,
   Tags,
-  Layers,
-  FileCode,
 } from 'lucide-react';
 
 // Types for the projects stats response
@@ -62,11 +59,6 @@ interface ProjectsStatsResponse {
     interview_answers: number;
     project_context: number;
     documents: number;
-  };
-  global_only: {
-    total_documents: number;
-    framework_specs: number;
-    prompt_docs: number;
   };
 }
 
@@ -145,40 +137,7 @@ export default function RagPage() {
           </Button>
         </div>
 
-        {/* Global Knowledge Section */}
-        {projectsStats && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-indigo-600" />
-                Conhecimento Global
-                <span className="text-sm font-normal text-gray-500 ml-2">(Compartilhado entre todos os projetos)</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-indigo-50 rounded-lg p-4 text-center">
-                  <Package className="w-6 h-6 text-indigo-600 mx-auto mb-2" />
-                  <div className="text-2xl font-bold text-indigo-700">{projectsStats.global_only.total_documents}</div>
-                  <div className="text-xs text-indigo-600">Total Docs Globais</div>
-                </div>
-                <div className="bg-blue-50 rounded-lg p-4 text-center">
-                  <FileCode className="w-6 h-6 text-blue-600 mx-auto mb-2" />
-                  <div className="text-2xl font-bold text-blue-700">{projectsStats.global_only.framework_specs}</div>
-                  <div className="text-xs text-blue-600">Specs de Frameworks</div>
-                </div>
-                <div className="bg-purple-50 rounded-lg p-4 text-center">
-                  <FileText className="w-6 h-6 text-purple-600 mx-auto mb-2" />
-                  <div className="text-2xl font-bold text-purple-700">{projectsStats.global_only.prompt_docs}</div>
-                  <div className="text-xs text-purple-600">Docs PROMPT</div>
-                </div>
-              </div>
-              <p className="text-xs text-gray-500 mt-4 text-center">
-                Especificações de frameworks e documentação PROMPT são conhecimento compartilhado disponível para todos os projetos.
-              </p>
-            </CardContent>
-          </Card>
-        )}
+        {/* Global Knowledge Section removed - specs are per-project only */}
 
         {/* Projects Comparison Table */}
         {!projectsStats || projectsStats.projects.length === 0 ? (
@@ -375,7 +334,6 @@ export default function RagPage() {
                 <p className="text-sm text-blue-700 mt-1">
                   Cada projeto tem sua própria base de conhecimento RAG (Retrieval-Augmented Generation) isolada.
                   O ORBIT orquestra esses RAGs por projeto para fornecer respostas de IA com contexto.
-                  Conhecimento global (specs de frameworks, docs PROMPT) e compartilhado entre todos os projetos.
                 </p>
               </div>
             </div>

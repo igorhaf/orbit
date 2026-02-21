@@ -236,7 +236,6 @@ async def get_all_projects_rag_stats(
     Returns:
         - projects: List of projects with their RAG stats
         - totals: Aggregated totals across all projects
-        - global_only: Stats for global documents (project_id=NULL)
     """
     try:
         # Get all projects
@@ -260,17 +259,6 @@ async def get_all_projects_rag_stats(
 
         stats_results = db.execute(stats_query).fetchall()
         stats_by_project = {str(row.project_id): row for row in stats_results}
-
-        # Get global-only stats (project_id IS NULL)
-        global_query = text("""
-            SELECT
-                COUNT(*) as total_documents,
-                COUNT(*) FILTER (WHERE metadata->>'type' LIKE 'spec_%') as framework_specs,
-                COUNT(*) FILTER (WHERE metadata->>'content_type' = 'prompt_doc') as prompt_docs
-            FROM rag_documents
-            WHERE project_id IS NULL
-        """)
-        global_result = db.execute(global_query).fetchone()
 
         # Build response
         project_stats = []
@@ -324,11 +312,6 @@ async def get_all_projects_rag_stats(
             "success": True,
             "projects": project_stats,
             "totals": totals,
-            "global_only": {
-                "total_documents": global_result.total_documents if global_result else 0,
-                "framework_specs": global_result.framework_specs if global_result else 0,
-                "prompt_docs": global_result.prompt_docs if global_result else 0
-            }
         }
 
     except Exception as e:
