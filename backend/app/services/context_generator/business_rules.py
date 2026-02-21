@@ -193,11 +193,16 @@ class BusinessRulesMixin:
             saved_cards = self._create_hierarchy_cards(project_id, hierarchy)
             self.db.commit()
             logger.info(f"Generated {len(saved_cards)} hierarchical business rule cards")
+            # PROMPT #245 - Normalize card formatting after creation
+            self._normalize_cards(project_id)
             return saved_cards
 
         # Fallback: flat structure (original PROMPT #120 behavior)
         logger.warning("Hierarchical classification failed, using flat structure")
-        return self._create_flat_business_rule_cards(project_id, business_rules)
+        cards = self._create_flat_business_rule_cards(project_id, business_rules)
+        # PROMPT #245 - Normalize card formatting after creation
+        self._normalize_cards(project_id)
+        return cards
 
     async def _classify_rules_hierarchy(
         self,
@@ -701,3 +706,17 @@ class BusinessRulesMixin:
         self.db.commit()
         logger.info(f"Generated {len(saved_cards)} flat 4-level business rule cards (fallback)")
         return saved_cards
+
+    def _normalize_cards(self, project_id: UUID):
+        """
+        PROMPT #245 - Normalize from_rag card formatting to match ORBIT standards.
+        Called automatically after card creation.
+        Respects REGRA #0: never overwrites human-edited fields.
+        """
+        try:
+            from scripts.normalize_cards import normalize_project_cards
+            counts = normalize_project_cards(str(project_id), db=self.db)
+            total = sum(counts.values())
+            logger.info(f"Normalized {total} cards for project {project_id}")
+        except Exception as e:
+            logger.warning(f"Card normalization skipped (non-critical): {e}")

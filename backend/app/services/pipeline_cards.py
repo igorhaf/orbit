@@ -130,6 +130,12 @@ class HierarchicalCardService:
 
         if epics_created > 0 or stories_created > 0:
             self.db.commit()
+            # PROMPT #245 - Normalize card formatting after creation
+            try:
+                from scripts.normalize_cards import normalize_project_cards
+                normalize_project_cards(str(project_id), db=self.db)
+            except Exception as e:
+                logger.warning(f"Card normalization skipped (non-critical): {e}")
 
         logger.info(
             f"Cards batch #{batch_number} for '{project_name}': "

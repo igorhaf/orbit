@@ -757,6 +757,17 @@ def main():
         db.commit()
 
         # =================================================================
+        # PHASE 4: Normalize card formatting
+        # =================================================================
+        logger.info("=" * 60)
+        logger.info("PHASE 4: Normalizing card formatting...")
+        logger.info("=" * 60)
+
+        from scripts.normalize_cards import normalize_project_cards
+        norm_counts = normalize_project_cards(PROJECT_ID, db=db)
+        logger.info(f"Phase 4 complete: {sum(norm_counts.values())} cards normalized")
+
+        # =================================================================
         # Summary
         # =================================================================
         logger.info("=" * 60)
