@@ -1478,11 +1478,11 @@ async def generate_cards_from_memory(
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
-    # Check if project has memory context
-    if not project.initial_memory_context:
+    # PROMPT #242 - Check if RAG indexing is complete (not just memory context)
+    if not project.initial_scan_complete:
         raise HTTPException(
             status_code=400,
-            detail="Projeto não tem contexto de memória. Execute um scan de memória primeiro."
+            detail="A indexacao RAG ainda nao foi concluida. Aguarde o scan completar."
         )
 
     # Extract epic_count from request body (default: 10)
@@ -1538,10 +1538,11 @@ async def generate_full_hierarchy(
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
 
-    if not project.initial_memory_context:
+    # PROMPT #242 - Check if RAG indexing is complete
+    if not project.initial_scan_complete:
         raise HTTPException(
             status_code=400,
-            detail="Projeto não tem contexto de memória. Aguarde o scan completar."
+            detail="A indexacao RAG ainda nao foi concluida. Aguarde o scan completar."
         )
 
     # Check for existing epics (exclude business_rule epics from system)

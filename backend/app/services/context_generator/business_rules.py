@@ -118,6 +118,7 @@ class BusinessRulesMixin:
         from sqlalchemy import text as sql_text
 
         # PROMPT #241 - Build query with ignore_paths filter
+        # PROMPT #242 - Include source_file for AI classification context
         ignore_paths = project.ignore_paths if project.ignore_paths and isinstance(project.ignore_paths, list) else []
         if ignore_paths:
             # Exclude rules whose source_file starts with any ignored path
@@ -126,7 +127,7 @@ class BusinessRulesMixin:
                 for i in range(len(ignore_paths))
             )
             query = f"""
-                SELECT content FROM rag_documents
+                SELECT content, metadata->>'source_file' as source_file FROM rag_documents
                 WHERE project_id = :pid
                 AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')
                 {where_clauses}
@@ -139,12 +140,21 @@ class BusinessRulesMixin:
             logger.info(f"📁 RAG query excludes {len(ignore_paths)} ignored paths: {ignore_paths}")
         else:
             rag_result = self.db.execute(sql_text("""
-                SELECT content FROM rag_documents
+                SELECT content, metadata->>'source_file' as source_file FROM rag_documents
                 WHERE project_id = :pid
                 AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')
                 ORDER BY created_at
             """), {"pid": str(project_id)})
-        rag_rules = [row[0] for row in rag_result]
+
+        # PROMPT #242 - Format rules with source_file context for better AI classification
+        rag_rules = []
+        for row in rag_result:
+            content = row[0]
+            source = row[1] if len(row) > 1 and row[1] else None
+            if source:
+                rag_rules.append(f"[{source}] {content}")
+            else:
+                rag_rules.append(content)
 
         # Fallback to initial_memory_context if RAG has no rules
         if not rag_rules:

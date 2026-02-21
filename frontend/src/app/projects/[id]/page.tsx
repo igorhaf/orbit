@@ -98,6 +98,9 @@ export default function ProjectDetailsPage() {
   const [totalFilesProcessed, setTotalFilesProcessed] = useState(0);
   const [generatingHierarchy, setGeneratingHierarchy] = useState(false);
 
+  // PROMPT #242 - Track initial_scan_complete for RAG → Cards ordering
+  const [initialScanComplete, setInitialScanComplete] = useState(false);
+
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
   const [epicCount, setEpicCount] = useState(10);
@@ -154,6 +157,8 @@ export default function ProjectDetailsPage() {
         setRagCompleted(status.rag_completed || false);
         setHasEpics(status.has_epics || false);
         setTotalFilesProcessed(status.total_files_processed || 0);
+        // PROMPT #242 - Track initial_scan_complete for RAG → Cards ordering
+        setInitialScanComplete(status.initial_scan_complete || false);
 
         // Reset generatingHierarchy when epics appear or enrichment finishes
         if ((status.has_epics || false) && !status.is_enriching) {
@@ -645,8 +650,20 @@ export default function ProjectDetailsPage() {
           </div>
         )}
 
-        {/* PROMPT #237 - RAG completed banner with "Gerar Cards" button */}
-        {ragCompleted && !hasEpics && !isEnriching && !generatingHierarchy && (
+        {/* PROMPT #242 - Indexing in progress banner (before RAG complete) */}
+        {!initialScanComplete && !hasEpics && !loading && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-600" />
+              <span className="text-sm font-medium text-yellow-900">
+                Indexando codebase... A geracao de cards sera liberada apos a conclusao.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* PROMPT #237/#242 - RAG completed banner with "Gerar Cards" button */}
+        {initialScanComplete && !hasEpics && !generatingHierarchy && (
           <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -669,7 +686,7 @@ export default function ProjectDetailsPage() {
                     await projectsApi.generateHierarchy(projectId);
                   } catch (err: any) {
                     setGeneratingHierarchy(false);
-                    alert(err?.message || 'Erro ao iniciar geração');
+                    showError(err?.message || 'Erro ao iniciar geracao');
                   }
                 }}
                 className="flex-shrink-0 ml-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"

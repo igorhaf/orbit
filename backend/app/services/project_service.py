@@ -901,6 +901,11 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
             jm.fail_job(job_id, "Projeto não encontrado")
             return
 
+        # PROMPT #242 - Safety net: ensure RAG indexing completed before generating cards
+        if not project.initial_scan_complete:
+            jm.fail_job(job_id, "RAG indexing not complete. Cannot generate cards.")
+            return
+
         project_name = project.name or str(project_id)[:8]
 
         # === Phase 1: Generate rich context if missing ===

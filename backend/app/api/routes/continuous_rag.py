@@ -255,6 +255,7 @@ async def get_enrichment_status(
         "has_description": bool(project.description),
         "has_context": bool(project.context_human),
         "auto_discovered_cards": auto_discovered_count,
+        "initial_scan_complete": bool(project.initial_scan_complete),
         "rag_completed": bool(project.initial_scan_complete) and pending_files == 0 and not is_enriching,
         "has_epics": epic_count > 0,
         "total_files_processed": completed_files,
