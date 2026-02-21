@@ -92,18 +92,25 @@ export default function ProjectDetailsPage() {
   const [isEnriching, setIsEnriching] = useState(false);
   const prevEnrichingRef = useRef(false);
 
-  // PROMPT #237 - RAG completion status for "Gerar Cards" banner
-  const [ragCompleted, setRagCompleted] = useState(false);
+  // PROMPT #237 - RAG completion status
   const [hasEpics, setHasEpics] = useState(false);
-  const [totalFilesProcessed, setTotalFilesProcessed] = useState(0);
   const [generatingHierarchy, setGeneratingHierarchy] = useState(false);
 
   // PROMPT #242 - Track initial_scan_complete for RAG → Cards ordering
   const [initialScanComplete, setInitialScanComplete] = useState(false);
 
-  // PROMPT #251 - Manual RAG scan state
-  const [scanningRag, setScanningRag] = useState(false);
+  // PROMPT #251 - Manual RAG scan state (hasCompletedScan used by polling)
   const [hasCompletedScan, setHasCompletedScan] = useState(false);
+
+  // PROMPT #252 - Pipeline wizard state (4 phases)
+  const [pipelinePhase1, setPipelinePhase1] = useState<'pending' | 'running' | 'completed' | 'failed'>('pending');
+  const [pipelinePhase2, setPipelinePhase2] = useState<'pending' | 'running' | 'completed' | 'failed'>('pending');
+  const [pipelinePhase3, setPipelinePhase3] = useState<'pending' | 'running' | 'completed' | 'failed'>('pending');
+  const [pipelinePhase4, setPipelinePhase4] = useState<'pending' | 'running' | 'completed' | 'failed'>('pending');
+  const [hasIndexedFiles, setHasIndexedFiles] = useState(false);
+  const [hasBusinessRules, setHasBusinessRules] = useState(false);
+  const [hasCards, setHasCards] = useState(false);
+  const [hasWiki, setHasWiki] = useState(false);
 
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
@@ -157,14 +164,22 @@ export default function ProjectDetailsPage() {
         const wasEnriching = prevEnrichingRef.current;
         setIsEnriching(status.is_enriching);
 
-        // PROMPT #237 - Track RAG completion for "Gerar Cards" banner
-        setRagCompleted(status.rag_completed || false);
+        // PROMPT #237 - Track RAG completion
         setHasEpics(status.has_epics || false);
-        setTotalFilesProcessed(status.total_files_processed || 0);
         // PROMPT #242 - Track initial_scan_complete for RAG → Cards ordering
         setInitialScanComplete(status.initial_scan_complete || false);
         // PROMPT #251 - Track if at least one RAG scan has been completed
         setHasCompletedScan(status.has_completed_scan || false);
+
+        // PROMPT #252 - Pipeline wizard state
+        setHasIndexedFiles(status.has_indexed_files || false);
+        setHasBusinessRules(status.has_business_rules || false);
+        setHasCards(status.has_cards || false);
+        setHasWiki(status.has_wiki || false);
+        if (status.pipeline_phase_1) setPipelinePhase1(status.pipeline_phase_1);
+        if (status.pipeline_phase_2) setPipelinePhase2(status.pipeline_phase_2);
+        if (status.pipeline_phase_3) setPipelinePhase3(status.pipeline_phase_3);
+        if (status.pipeline_phase_4) setPipelinePhase4(status.pipeline_phase_4);
 
         // Reset generatingHierarchy when epics appear or enrichment finishes
         if ((status.has_epics || false) && !status.is_enriching) {
@@ -619,62 +634,7 @@ export default function ProjectDetailsPage() {
           )}
           </div>
 
-          {/* PROMPT #251 - Manual RAG Scan button (always visible when scan complete) */}
-          {initialScanComplete && (
-            <button
-              disabled={scanningRag || isEnriching}
-              onClick={async () => {
-                try {
-                  setScanningRag(true);
-                  setIsEnriching(true);
-                  await ragApi.continuousScan(projectId);
-                  showSuccess('Scan de documentos iniciado');
-                } catch (err: any) {
-                  showError(err?.message || 'Erro ao iniciar scan');
-                  setIsEnriching(false);
-                } finally {
-                  setScanningRag(false);
-                }
-              }}
-              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors disabled:opacity-50"
-              title="Escanear novos arquivos e documentos para o RAG"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              {scanningRag ? 'Escaneando...' : isEnriching ? 'Scan em andamento' : 'Scan Documentos'}
-            </button>
-          )}
         </div>
-
-        {/* PROMPT #251 - Scan in progress banner (replaces old enrichment banner) */}
-        {isEnriching && initialScanComplete && !generatingHierarchy && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
-              <span className="text-sm font-medium text-blue-900">
-                Scan de documentos em andamento...
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* PROMPT #244 - Generating hierarchy progress banner */}
-        {generatingHierarchy && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
-              <div>
-                <span className="text-sm font-medium text-blue-900">
-                  Gerando hierarquia de cards...
-                </span>
-                <p className="text-xs text-blue-700 mt-0.5">
-                  Epics, Stories, Tasks e Subtasks estao sendo criados a partir das regras de negocio do codebase. Isso pode levar alguns minutos.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* PROMPT #251 - Only show indexing banner during initial scan (not enriching) */}
         {!initialScanComplete && !loading && (
@@ -688,71 +648,217 @@ export default function ProjectDetailsPage() {
           </div>
         )}
 
-        {/* PROMPT #251 - Action banner: scan first, then generate cards */}
-        {initialScanComplete && !hasEpics && !isEnriching && !generatingHierarchy && (
-          <div className={`${hasCompletedScan ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'} border rounded-lg px-4 py-3`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                {hasCompletedScan ? (
-                  <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                ) : (
-                  <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                )}
-                <div>
-                  <span className={`text-sm font-medium ${hasCompletedScan ? 'text-green-900' : 'text-amber-900'}`}>
-                    {hasCompletedScan
-                      ? `Documentos escaneados — pronto para gerar cards`
-                      : 'Escaneie os documentos do projeto antes de gerar cards'}
-                  </span>
-                  <p className={`text-xs mt-0.5 ${hasCompletedScan ? 'text-green-700' : 'text-amber-700'}`}>
-                    {hasCompletedScan
-                      ? 'Gere a hierarquia completa de cards (Epics, Stories, Tasks e Subtasks).'
-                      : 'O scan extrai regras de negocio do codigo que serao usadas para gerar os cards.'}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                <button
-                  disabled={scanningRag}
-                  onClick={async () => {
-                    try {
-                      setScanningRag(true);
-                      setIsEnriching(true);
-                      await ragApi.continuousScan(projectId);
-                      showSuccess('Scan de documentos iniciado');
-                    } catch (err: any) {
-                      showError(err?.message || 'Erro ao iniciar scan');
-                      setIsEnriching(false);
-                    } finally {
-                      setScanningRag(false);
-                    }
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors disabled:opacity-50"
-                >
-                  {scanningRag ? 'Escaneando...' : 'Scan Documentos'}
-                </button>
-                {hasCompletedScan && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        setGeneratingHierarchy(true);
-                        await projectsApi.generateHierarchy(projectId);
-                      } catch (err: any) {
-                        setGeneratingHierarchy(false);
-                        showError(err?.message || 'Erro ao iniciar geracao');
-                      }
-                    }}
-                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
-                  >
-                    Gerar Cards
-                  </button>
-                )}
-              </div>
+        {/* PROMPT #252 - Pipeline Wizard Stepper */}
+        {initialScanComplete && (
+          <div className="bg-white border border-gray-200 rounded-lg px-6 py-5">
+            {/* Stepper */}
+            <div className="flex items-center justify-center gap-0">
+              {/* Step 1 - Scan */}
+              {(() => {
+                const s1 = pipelinePhase1 === 'completed' ? 'completed'
+                  : pipelinePhase1 === 'running' ? 'running'
+                  : 'available';
+                return (
+                  <div className="flex flex-col items-center">
+                    <button
+                      disabled={s1 === 'running' || s1 === 'completed'}
+                      onClick={async () => {
+                        try {
+                          setPipelinePhase1('running');
+                          await ragApi.continuousScan(projectId);
+                          showSuccess('Fase 1: Indexação de arquivos iniciada');
+                        } catch (err: any) {
+                          setPipelinePhase1('pending');
+                          showError(err?.message || 'Erro ao iniciar scan');
+                        }
+                      }}
+                      className={`relative w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                        s1 === 'completed' ? 'bg-green-500 border-2 border-green-500 text-white cursor-default'
+                        : s1 === 'running' ? 'bg-blue-50 border-2 border-blue-400 cursor-wait'
+                        : 'bg-white border-2 border-blue-500 hover:bg-blue-50 cursor-pointer'
+                      }`}
+                      title={s1 === 'completed' ? 'Scan concluído' : s1 === 'running' ? 'Escaneando...' : 'Clique para escanear arquivos'}
+                    >
+                      {s1 === 'running' && (
+                        <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-blue-500 animate-spin" />
+                      )}
+                      {s1 === 'completed' ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      ) : s1 === 'running' ? (
+                        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                      ) : (
+                        <span className="text-xs font-bold text-blue-600">1</span>
+                      )}
+                    </button>
+                    <span className={`mt-1.5 text-xs font-medium ${s1 === 'completed' ? 'text-green-600' : s1 === 'running' ? 'text-blue-600' : 'text-blue-600'}`}>Scan</span>
+                  </div>
+                );
+              })()}
+
+              {/* Line 1→2 */}
+              <div className={`flex-1 h-0.5 mx-2 ${pipelinePhase1 === 'completed' ? 'bg-green-400' : 'bg-gray-200'}`} />
+
+              {/* Step 2 - Regras */}
+              {(() => {
+                const s2 = pipelinePhase2 === 'completed' ? 'completed'
+                  : pipelinePhase2 === 'running' ? 'running'
+                  : hasIndexedFiles ? 'available'
+                  : 'locked';
+                return (
+                  <div className="flex flex-col items-center">
+                    <button
+                      disabled={s2 === 'locked' || s2 === 'running' || s2 === 'completed'}
+                      onClick={async () => {
+                        try {
+                          setPipelinePhase2('running');
+                          await ragApi.extractRules(projectId);
+                          showSuccess('Fase 2: Extração de regras iniciada');
+                        } catch (err: any) {
+                          setPipelinePhase2(hasIndexedFiles ? 'pending' : 'pending');
+                          showError(err?.message || 'Erro ao iniciar extração de regras');
+                        }
+                      }}
+                      className={`relative w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                        s2 === 'completed' ? 'bg-green-500 border-2 border-green-500 text-white cursor-default'
+                        : s2 === 'running' ? 'bg-blue-50 border-2 border-blue-400 cursor-wait'
+                        : s2 === 'available' ? 'bg-white border-2 border-blue-500 hover:bg-blue-50 cursor-pointer'
+                        : 'bg-gray-100 border-2 border-gray-300 text-gray-400 cursor-not-allowed'
+                      }`}
+                      title={s2 === 'completed' ? 'Regras extraídas' : s2 === 'running' ? 'Extraindo regras...' : s2 === 'available' ? 'Clique para extrair regras de negócio' : 'Conclua o scan primeiro'}
+                    >
+                      {s2 === 'running' && (
+                        <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-blue-500 animate-spin" />
+                      )}
+                      {s2 === 'completed' ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      ) : s2 === 'running' ? (
+                        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" /></svg>
+                      ) : (
+                        <span className={`text-xs font-bold ${s2 === 'locked' ? 'text-gray-400' : 'text-blue-600'}`}>2</span>
+                      )}
+                    </button>
+                    <span className={`mt-1.5 text-xs font-medium ${s2 === 'completed' ? 'text-green-600' : s2 === 'running' ? 'text-blue-600' : s2 === 'available' ? 'text-blue-600' : 'text-gray-400'}`}>Regras</span>
+                  </div>
+                );
+              })()}
+
+              {/* Line 2→3 */}
+              <div className={`flex-1 h-0.5 mx-2 ${pipelinePhase2 === 'completed' ? 'bg-green-400' : 'bg-gray-200'}`} />
+
+              {/* Step 3 - Cards */}
+              {(() => {
+                const s3 = pipelinePhase3 === 'completed' ? 'completed'
+                  : pipelinePhase3 === 'running' ? 'running'
+                  : hasBusinessRules ? 'available'
+                  : 'locked';
+                return (
+                  <div className="flex flex-col items-center">
+                    <button
+                      disabled={s3 === 'locked' || s3 === 'running' || s3 === 'completed'}
+                      onClick={async () => {
+                        try {
+                          setPipelinePhase3('running');
+                          setGeneratingHierarchy(true);
+                          await ragApi.generateCards(projectId);
+                          showSuccess('Fase 3: Geração de cards iniciada');
+                        } catch (err: any) {
+                          setPipelinePhase3(hasBusinessRules ? 'pending' : 'pending');
+                          setGeneratingHierarchy(false);
+                          showError(err?.message || 'Erro ao iniciar geração de cards');
+                        }
+                      }}
+                      className={`relative w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                        s3 === 'completed' ? 'bg-green-500 border-2 border-green-500 text-white cursor-default'
+                        : s3 === 'running' ? 'bg-blue-50 border-2 border-blue-400 cursor-wait'
+                        : s3 === 'available' ? 'bg-white border-2 border-blue-500 hover:bg-blue-50 cursor-pointer'
+                        : 'bg-gray-100 border-2 border-gray-300 text-gray-400 cursor-not-allowed'
+                      }`}
+                      title={s3 === 'completed' ? 'Cards gerados' : s3 === 'running' ? 'Gerando cards...' : s3 === 'available' ? 'Clique para gerar cards' : 'Extraia as regras primeiro'}
+                    >
+                      {s3 === 'running' && (
+                        <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-blue-500 animate-spin" />
+                      )}
+                      {s3 === 'completed' ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      ) : s3 === 'running' ? (
+                        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" /></svg>
+                      ) : (
+                        <span className={`text-xs font-bold ${s3 === 'locked' ? 'text-gray-400' : 'text-blue-600'}`}>3</span>
+                      )}
+                    </button>
+                    <span className={`mt-1.5 text-xs font-medium ${s3 === 'completed' ? 'text-green-600' : s3 === 'running' ? 'text-blue-600' : s3 === 'available' ? 'text-blue-600' : 'text-gray-400'}`}>Cards</span>
+                  </div>
+                );
+              })()}
+
+              {/* Line 3→4 */}
+              <div className={`flex-1 h-0.5 mx-2 ${pipelinePhase3 === 'completed' ? 'bg-green-400' : 'bg-gray-200'}`} />
+
+              {/* Step 4 - Wiki */}
+              {(() => {
+                const s4 = pipelinePhase4 === 'completed' ? 'completed'
+                  : pipelinePhase4 === 'running' ? 'running'
+                  : hasCards ? 'available'
+                  : 'locked';
+                return (
+                  <div className="flex flex-col items-center">
+                    <button
+                      disabled={s4 === 'locked' || s4 === 'running' || s4 === 'completed'}
+                      onClick={async () => {
+                        try {
+                          setPipelinePhase4('running');
+                          await ragApi.generateWiki(projectId);
+                          showSuccess('Fase 4: Geração de wiki iniciada');
+                        } catch (err: any) {
+                          setPipelinePhase4(hasCards ? 'pending' : 'pending');
+                          showError(err?.message || 'Erro ao iniciar geração de wiki');
+                        }
+                      }}
+                      className={`relative w-10 h-10 rounded-full flex items-center justify-center transition-all ${
+                        s4 === 'completed' ? 'bg-green-500 border-2 border-green-500 text-white cursor-default'
+                        : s4 === 'running' ? 'bg-blue-50 border-2 border-blue-400 cursor-wait'
+                        : s4 === 'available' ? 'bg-white border-2 border-blue-500 hover:bg-blue-50 cursor-pointer'
+                        : 'bg-gray-100 border-2 border-gray-300 text-gray-400 cursor-not-allowed'
+                      }`}
+                      title={s4 === 'completed' ? 'Wiki gerado' : s4 === 'running' ? 'Gerando wiki...' : s4 === 'available' ? 'Clique para gerar wiki + título + descrição' : 'Gere os cards primeiro'}
+                    >
+                      {s4 === 'running' && (
+                        <span className="absolute inset-0 rounded-full border-2 border-transparent border-t-blue-500 animate-spin" />
+                      )}
+                      {s4 === 'completed' ? (
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg>
+                      ) : s4 === 'running' ? (
+                        <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                      ) : (
+                        <span className={`text-xs font-bold ${s4 === 'locked' ? 'text-gray-400' : 'text-blue-600'}`}>4</span>
+                      )}
+                    </button>
+                    <span className={`mt-1.5 text-xs font-medium ${s4 === 'completed' ? 'text-green-600' : s4 === 'running' ? 'text-blue-600' : s4 === 'available' ? 'text-blue-600' : 'text-gray-400'}`}>Wiki</span>
+                  </div>
+                );
+              })()}
             </div>
+
+            {/* Descriptive text below stepper */}
+            <p className="text-center text-sm text-gray-500 mt-4">
+              {pipelinePhase4 === 'completed'
+                ? 'Pipeline completo! Projeto totalmente documentado.'
+                : pipelinePhase4 === 'running'
+                ? 'Gerando wiki, título e descrição do projeto...'
+                : pipelinePhase3 === 'completed'
+                ? 'Cards gerados! Clique em "Wiki" para gerar a documentação completa.'
+                : pipelinePhase3 === 'running'
+                ? 'Gerando cards a partir das regras de negócio...'
+                : pipelinePhase2 === 'completed'
+                ? 'Regras extraídas! Clique em "Cards" para gerar os cards.'
+                : pipelinePhase2 === 'running'
+                ? 'Extraindo regras de negócio do código...'
+                : pipelinePhase1 === 'completed'
+                ? 'Scan completo! Clique em "Regras" para extrair regras de negócio.'
+                : pipelinePhase1 === 'running'
+                ? 'Indexando arquivos do projeto...'
+                : 'Clique em "Scan" para indexar os arquivos do projeto.'}
+            </p>
           </div>
         )}
 

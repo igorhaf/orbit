@@ -294,6 +294,22 @@ export const ragApi = {
       method: 'POST',
     }),
 
+  // PROMPT #252 - Pipeline phases
+  extractRules: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/extract-rules`, {
+      method: 'POST',
+    }),
+
+  generateCards: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/generate-cards`, {
+      method: 'POST',
+    }),
+
+  generateWiki: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/generate-wiki`, {
+      method: 'POST',
+    }),
+
   continuousStatus: (projectId: string) =>
     request<any>(`/api/v1/projects/${projectId}/rag/status`),
 

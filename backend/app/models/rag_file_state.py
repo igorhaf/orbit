@@ -22,6 +22,7 @@ class FileProcessingStatus(str, enum.Enum):
     """Status of file processing for RAG."""
     PENDING = "pending"          # File detected as new/modified, waiting to be processed
     PROCESSING = "processing"    # Currently being analyzed by AI
+    INDEXED = "indexed"          # PROMPT #252 - Embedding stored in RAG, awaiting rule extraction
     COMPLETED = "completed"      # Successfully processed and rules stored in RAG
     FAILED = "failed"            # Processing failed (see error_message)
     DELETED = "deleted"          # File no longer exists on disk, pending RAG cleanup
