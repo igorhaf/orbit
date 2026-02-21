@@ -75,7 +75,7 @@ class ConsoleLogEntry:
         return asdict(self)
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), ensure_ascii=False)
+        return json.dumps(self.to_dict(), ensure_ascii=False, default=str)
 
 
 class ConsoleLogger:
@@ -243,12 +243,20 @@ class ConsoleLogger:
         return entry
 
     async def _notify_subscribers(self, entry: ConsoleLogEntry):
-        """Notify all SSE subscribers of new log entry.
+        """Notify all subscribers of new log entry.
 
-        PROMPT #221 - Non-blocking: uses put_nowait() to prevent streaming
-        stalls when subscriber queues are full. If a queue is full, drops
-        the oldest entry to make room (streaming chunks are ephemeral).
+        PROMPT #247 - Primary delivery via WebSocket (replaces SSE).
+        SSE queues kept as fallback for any remaining SSE consumers.
+        PROMPT #221 - Non-blocking: uses put_nowait() for SSE queues.
         """
+        # PROMPT #247 - Broadcast via WebSocket (primary channel)
+        try:
+            from app.api.websocket import broadcast_console_log
+            asyncio.create_task(broadcast_console_log(entry.to_dict()))
+        except Exception:
+            pass  # WebSocket not available yet during startup
+
+        # SSE fallback (kept for backwards compatibility)
         dead_subscribers = []
 
         for queue in self.subscribers:

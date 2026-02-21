@@ -114,33 +114,47 @@ export default function ConsolePage() {
   const logsEndRef = useRef<HTMLDivElement>(null);
   const consoleRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const pingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isPausedRef = useRef(isPaused);
+  isPausedRef.current = isPaused;
 
-  // Connect to SSE stream
+  // PROMPT #247 - Connect via WebSocket (replaces SSE EventSource)
   const connectToStream = useCallback(() => {
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+    if (wsRef.current?.readyState === WebSocket.OPEN ||
+        wsRef.current?.readyState === WebSocket.CONNECTING) {
+      return;
     }
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const eventSource = new EventSource(`${apiUrl}/api/v1/console/stream`);
-    eventSourceRef.current = eventSource;
+    const wsUrl = apiUrl.replace(/^http/, 'ws');
+    const ws = new WebSocket(`${wsUrl}/api/v1/ws/console`);
+    wsRef.current = ws;
 
-    eventSource.onopen = () => {
+    ws.onopen = () => {
       setIsConnected(true);
+      // Ping every 30s to keep alive
+      if (pingIntervalRef.current) clearInterval(pingIntervalRef.current);
+      pingIntervalRef.current = setInterval(() => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ command: 'ping' }));
+        }
+      }, 30000);
     };
 
-    eventSource.onmessage = (event) => {
-      if (isPaused) return;
+    ws.onmessage = (event) => {
+      if (isPausedRef.current) return;
 
       try {
-        const data = JSON.parse(event.data);
+        const message = JSON.parse(event.data);
 
-        // Skip connection messages
-        if (data.type === 'connected') {
-          return;
-        }
+        // Skip pong responses
+        if (message.event === 'pong') return;
+
+        // Extract log data from WebSocket message
+        const data = message.event === 'console_log' ? message.data : message;
+        if (!data || !data.id) return;
 
         // PROMPT #217 - Handle streaming chunks separately
         if (data.category === 'ai_streaming') {
@@ -151,7 +165,6 @@ export default function ConsolePage() {
 
           if (streamId) {
             if (isComplete) {
-              // Move completed stream content into main logs so it persists
               setActiveStreams(prev => {
                 const completed = prev.get(streamId);
                 if (completed && completed.fullText.trim()) {
@@ -192,49 +205,51 @@ export default function ConsolePage() {
               });
             }
           }
-          return; // Don't add streaming chunks to main log array
+          return;
         }
 
         // Add regular log entry
         setLogs((prev) => {
-          // Prevent duplicates
-          if (prev.some((log) => log.id === data.id)) {
-            return prev;
-          }
-
-          // Keep max 1000 logs for performance
+          if (prev.some((log) => log.id === data.id)) return prev;
           const newLogs = [...prev, data];
-          if (newLogs.length > 1000) {
-            return newLogs.slice(-1000);
-          }
-          return newLogs;
+          return newLogs.length > 1000 ? newLogs.slice(-1000) : newLogs;
         });
       } catch {
-        // Ignore parse errors (keepalive messages)
+        // Ignore parse errors
       }
     };
 
-    eventSource.onerror = () => {
+    ws.onclose = () => {
       setIsConnected(false);
-
-      // Reconnect after delay
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
+      wsRef.current = null;
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
+        pingIntervalRef.current = null;
       }
+      // Reconnect after delay
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = setTimeout(connectToStream, 3000);
     };
-  }, [isPaused]);
+
+    ws.onerror = () => {
+      // onclose will fire after onerror, handling reconnect
+    };
+  }, []);
 
   // Connect on mount
   useEffect(() => {
     connectToStream();
 
     return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
       }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
+      }
+      if (pingIntervalRef.current) {
+        clearInterval(pingIntervalRef.current);
       }
     };
   }, [connectToStream]);
@@ -273,15 +288,9 @@ export default function ConsolePage() {
     return true;
   });
 
-  // Clear logs - close SSE, clear backend buffer, reconnect
+  // Clear logs - clear backend buffer and local state
   const clearLogs = async () => {
-    // 1. Close current SSE to stop receiving buffered events
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-
-    // 2. Clear backend buffer
+    // 1. Clear backend buffer
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       await fetch(`${apiUrl}/api/v1/console/logs`, { method: 'DELETE' });
@@ -289,12 +298,9 @@ export default function ConsolePage() {
       // Ignore errors
     }
 
-    // 3. Clear local state
+    // 2. Clear local state (WebSocket stays connected)
     setLogs([]);
     setActiveStreams(new Map());
-
-    // 4. Reconnect SSE (backend buffer is now empty, no stale logs)
-    connectToStream();
   };
 
   // Copy all visible logs to clipboard

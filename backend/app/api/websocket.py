@@ -380,3 +380,99 @@ async def broadcast_chain_event(event_type: str, data: dict):
         "data": data,
     }
     await AIFlowManager.broadcast(message)
+
+
+# ============================================================================
+# PROMPT #247 - WebSocket para Console Logs (Global, substitui SSE)
+# ============================================================================
+
+console_connections: Set[WebSocket] = set()
+
+
+class ConsoleWSManager:
+    """
+    Manages WebSocket connections for real-time console log streaming.
+
+    PROMPT #247 - Replaces SSE (EventSource) to avoid blocking during
+    long-running AI calls (Claudio proxy).
+    """
+
+    @staticmethod
+    async def connect(websocket: WebSocket):
+        await websocket.accept()
+        console_connections.add(websocket)
+        logger.info(f"📋 Console WebSocket connected (total: {len(console_connections)})")
+
+    @staticmethod
+    async def disconnect(websocket: WebSocket):
+        console_connections.discard(websocket)
+        logger.info(f"📋 Console WebSocket disconnected (total: {len(console_connections)})")
+
+    @staticmethod
+    async def broadcast(message: dict):
+        if not console_connections:
+            return
+        message_json = json.dumps(message, default=str)
+        disconnected = set()
+        for conn in console_connections.copy():
+            try:
+                await conn.send_text(message_json)
+            except Exception:
+                disconnected.add(conn)
+        for conn in disconnected:
+            console_connections.discard(conn)
+
+
+@router.websocket("/ws/console")
+async def console_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time console log streaming.
+
+    PROMPT #247 - Replaces SSE /console/stream endpoint.
+
+    Events sent to client:
+    - console_log: A new log entry (same format as SSE data)
+
+    URL: ws://localhost:8000/api/v1/ws/console
+    """
+    await ConsoleWSManager.connect(websocket)
+    try:
+        # Send recent logs on connect
+        try:
+            from app.services.console_logger import get_console_logger
+            console = get_console_logger()
+            recent_logs = await console.get_recent_logs(limit=50)
+            for log in recent_logs:
+                await websocket.send_text(json.dumps({
+                    "event": "console_log",
+                    "data": log.to_dict(),
+                }, default=str))
+        except Exception as e:
+            logger.warning(f"Failed to send recent logs: {e}")
+
+        while True:
+            data = await websocket.receive_text()
+            try:
+                message = json.loads(data)
+                if message.get("command") == "ping":
+                    await websocket.send_text(json.dumps({"event": "pong"}))
+            except json.JSONDecodeError:
+                pass
+    except WebSocketDisconnect:
+        await ConsoleWSManager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"Console WebSocket error: {e}")
+        await ConsoleWSManager.disconnect(websocket)
+
+
+async def broadcast_console_log(log_data: dict):
+    """
+    Broadcast a console log entry to all connected console clients.
+
+    PROMPT #247 - Called from ConsoleLogger._notify_subscribers()
+    """
+    message = {
+        "event": "console_log",
+        "data": log_data,
+    }
+    await ConsoleWSManager.broadcast(message)

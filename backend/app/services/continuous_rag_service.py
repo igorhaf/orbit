@@ -573,9 +573,11 @@ class ContinuousRAGService:
                     "error": f"Extracao expirou apos {PER_FILE_TIMEOUT}s",
                 }
 
-        # Launch all tasks with controlled concurrency
-        tasks = [_process_one_with_timeout(i, state) for i, state in enumerate(pending_states)]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # PROMPT #247 - Sequential execution to avoid blocking Claudio proxy
+        results = []
+        for i, state in enumerate(pending_states):
+            result = await _process_one_with_timeout(i, state)
+            results.append(result)
 
         # Process results sequentially (DB writes are not thread-safe)
         processed = 0

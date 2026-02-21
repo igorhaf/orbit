@@ -2063,11 +2063,11 @@ class CodebaseMemoryService:
             doc_samples = [s for s in code_samples if s["type"] in ["documentation", "configuration"]]
             domain_samples = [s for s in code_samples if self._is_domain_file(s["filename"])][:25]
 
-            logger.info("🚀 Running documentation + domain phases in parallel...")
-            doc_result, domain_result = await asyncio.gather(
-                self._analyze_phase("documentation", doc_samples, stack_info, project_id),
-                self._analyze_phase("domain", domain_samples, stack_info, project_id),
-            )
+            # PROMPT #247 - Sequential execution (no parallel) to avoid blocking Claudio
+            logger.info("🔗 Running documentation then domain phases sequentially...")
+            doc_result = await self._analyze_phase("documentation", doc_samples, stack_info, project_id)
+            await asyncio.sleep(1.0)  # PROMPT #247 - 1s interval between AI calls
+            domain_result = await self._analyze_phase("domain", domain_samples, stack_info, project_id)
             all_phases["documentation"] = doc_result
             all_phases["domain"] = domain_result
             phases_completed += 2

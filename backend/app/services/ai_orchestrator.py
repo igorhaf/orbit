@@ -36,6 +36,11 @@ logger = logging.getLogger(__name__)
 # Shared across all AIOrchestrator instances within the same process.
 _model_semaphores: Dict[str, asyncio.Semaphore] = {}
 
+# PROMPT #247 - Claudio throttle: enforce 1-second interval between API calls.
+# Claudio local proxy doesn't support parallel requests; sequential with delay.
+_claudio_last_call_ts: float = 0.0
+_CLAUDIO_MIN_INTERVAL: float = 1.0  # seconds between calls
+
 
 def _get_model_semaphore(model_id: str, max_concurrent: int) -> asyncio.Semaphore:
     """Get or create a semaphore for a given model with the specified concurrency limit."""
@@ -2189,6 +2194,16 @@ class AIOrchestrator:
         )
 
         try:
+            # PROMPT #247 - Claudio throttle: enforce minimum interval between calls
+            if provider == "claudio":
+                global _claudio_last_call_ts
+                elapsed = time.time() - _claudio_last_call_ts
+                if elapsed < _CLAUDIO_MIN_INTERVAL:
+                    wait = _CLAUDIO_MIN_INTERVAL - elapsed
+                    logger.info(f"⏳ Claudio throttle: waiting {wait:.2f}s before next call")
+                    await asyncio.sleep(wait)
+                _claudio_last_call_ts = time.time()
+
             try:
                 if provider == "anthropic":
                     result = await self._execute_anthropic_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)

@@ -1,18 +1,16 @@
 """
-Console API Routes - PROMPT #168
-Real-time console log streaming via SSE (Server-Sent Events)
+Console API Routes - PROMPT #168 / PROMPT #247
+Console log management (REST endpoints).
+Real-time streaming moved to WebSocket at /ws/console (PROMPT #247).
 
 Provides:
-- GET /console/stream - SSE stream for real-time logs
 - GET /console/logs - Get recent logs with filtering
 - DELETE /console/logs - Clear log buffer
 """
 
-import asyncio
 import logging
 from typing import Optional
 from fastapi import APIRouter, Query
-from fastapi.responses import StreamingResponse
 
 from app.services.console_logger import (
     get_console_logger,
@@ -22,64 +20,6 @@ from app.services.console_logger import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-
-@router.get("/stream")
-async def stream_console_logs():
-    """
-    SSE endpoint for real-time console log streaming
-
-    Returns Server-Sent Events with log entries as they occur.
-    Each event is a JSON-encoded ConsoleLogEntry.
-
-    Usage in frontend:
-    ```javascript
-    const eventSource = new EventSource('/api/v1/console/stream');
-    eventSource.onmessage = (event) => {
-        const log = JSON.parse(event.data);
-        console.log(log);
-    };
-    ```
-    """
-    console = get_console_logger()
-    queue = await console.subscribe()
-
-    async def event_generator():
-        try:
-            # Send initial connection message
-            yield f"data: {{'type': 'connected', 'message': 'Console stream connected'}}\n\n"
-
-            # Send recent logs first (last 50)
-            recent_logs = await console.get_recent_logs(limit=50)
-            for log in recent_logs:
-                yield f"data: {log.to_json()}\n\n"
-
-            # Stream new logs as they arrive
-            while True:
-                try:
-                    # Wait for new log with timeout (for keepalive)
-                    log_entry = await asyncio.wait_for(queue.get(), timeout=30.0)
-                    yield f"data: {log_entry.to_json()}\n\n"
-                except asyncio.TimeoutError:
-                    # Send keepalive ping
-                    yield f": keepalive\n\n"
-                except asyncio.CancelledError:
-                    break
-        except Exception as e:
-            logger.error(f"SSE stream error: {e}")
-        finally:
-            await console.unsubscribe(queue)
-            logger.info("Console SSE stream closed")
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"  # Disable nginx buffering
-        }
-    )
 
 
 @router.get("/logs")
