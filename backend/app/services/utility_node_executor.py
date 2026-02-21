@@ -81,6 +81,7 @@ class UtilityNodeExecutor:
             "rag_context",
             "prompt_transformer",
             "router",
+            "prompt_node",
         ]
 
         # Sort nodes by pre-process order
@@ -122,6 +123,10 @@ class UtilityNodeExecutor:
             elif node_type == "router":
                 # Router can modify context to influence model selection
                 self._pre_router(config, modified_messages, context)
+
+            elif node_type == "prompt_node":
+                # PROMPT #250 - Prompt Node: inject prompt YAML reference into context
+                self._pre_prompt_node(config, context)
 
         return early_result, modified_messages, modified_system_prompt
 
@@ -1010,3 +1015,29 @@ class UtilityNodeExecutor:
                     "skip_permanent_errors": config.get("skip_permanent_errors", True),  # PROMPT #229
                 }
         return None
+
+    # =========================================================================
+    # PROMPT #250 - PROMPT NODE (Reusable structured prompt reference)
+    # =========================================================================
+
+    def _pre_prompt_node(self, config: Dict, context: Dict) -> None:
+        """
+        Pre-process: inject prompt YAML reference and config into context.
+
+        This node stores metadata about a reusable prompt (YAML path, repeat count).
+        Execution is manual via Claude Code — this node just makes the prompt
+        visible in the AI Flow diagram and available in context.
+        """
+        prompt_yaml = config.get("prompt_yaml", "")
+        repeat = config.get("repeat", 1)
+        description = config.get("description", "")
+
+        context["prompt_node"] = {
+            "prompt_yaml": prompt_yaml,
+            "repeat": repeat,
+            "description": description,
+        }
+
+        logger.info(
+            f"📝 Prompt Node: yaml={prompt_yaml}, repeat={repeat}x"
+        )

@@ -2,16 +2,17 @@
 RAG (Retrieval-Augmented Generation) Service
 
 PROMPT #83 - Phase 1: RAG Foundation
+PROMPT #250 - Migrated from MiniLM to Nomic Embed Text via Ollama (768 dims)
 
 This service provides semantic search over stored knowledge using embeddings.
-Uses sentence-transformers for generating 384-dimensional embeddings and PostgreSQL
-for storage and similarity search.
+Uses Nomic Embed Text (via Ollama) for generating 768-dimensional embeddings
+and PostgreSQL with pgvector for storage and similarity search.
 
 Features:
 - Store documents with embeddings
 - Retrieve similar documents via semantic search
 - Filter by project_id, metadata, etc.
-- Future: pgvector extension for optimized vector search
+- pgvector extension for optimized vector search
 
 Usage:
     from app.services.rag_service import RAGService
@@ -35,28 +36,29 @@ Usage:
 
 import json
 import logging
+import os
 from typing import Dict, List, Optional
 from uuid import UUID
 
-import numpy as np
-from sentence_transformers import SentenceTransformer
+import requests
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+# Ollama configuration for Nomic Embed Text
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
+NOMIC_MODEL = "nomic-embed-text"
+NOMIC_DIMS = 768
 
 
 class RAGService:
     """
     RAG Service for semantic knowledge storage and retrieval.
 
-    Uses sentence-transformers (all-MiniLM-L6-v2) for generating 384-dim embeddings
-    and PostgreSQL for storage with cosine similarity search.
+    Uses Nomic Embed Text via Ollama for generating 768-dim embeddings
+    and PostgreSQL with pgvector for cosine similarity search.
     """
-
-    # Singleton pattern for embedding model (expensive to load)
-    _embedder: Optional[SentenceTransformer] = None
-    _model_name = "all-MiniLM-L6-v2"  # 384 dimensions, fast, good quality
 
     def __init__(self, db: Session):
         """
@@ -66,15 +68,34 @@ class RAGService:
             db: SQLAlchemy database session
         """
         self.db = db
-        self._ensure_embedder_loaded()
 
-    @classmethod
-    def _ensure_embedder_loaded(cls):
-        """Load embedding model once (singleton pattern)."""
-        if cls._embedder is None:
-            logger.info(f"Loading embedding model: {cls._model_name}")
-            cls._embedder = SentenceTransformer(cls._model_name)
-            logger.info("Embedding model loaded successfully")
+    @staticmethod
+    def _generate_embedding(text_content: str) -> List[float]:
+        """Generate embedding via Nomic Embed Text (Ollama API).
+
+        Args:
+            text_content: Text to embed
+
+        Returns:
+            List of 768 floats
+
+        Raises:
+            RuntimeError: If Ollama is unreachable or model unavailable
+        """
+        try:
+            resp = requests.post(
+                f"{OLLAMA_HOST}/api/embeddings",
+                json={"model": NOMIC_MODEL, "prompt": text_content},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            embedding = resp.json()["embedding"]
+            if len(embedding) != NOMIC_DIMS:
+                logger.warning(f"Unexpected embedding dims: {len(embedding)} (expected {NOMIC_DIMS})")
+            return embedding
+        except Exception as e:
+            logger.error(f"Nomic embedding failed: {e}")
+            raise RuntimeError(f"Failed to generate embedding via Ollama ({OLLAMA_HOST}): {e}")
 
     def store(
         self,
@@ -104,8 +125,8 @@ class RAGService:
                 project_id=project_id
             )
         """
-        # Generate embedding
-        embedding = self._embedder.encode(content).tolist()
+        # Generate embedding via Nomic Embed Text
+        embedding = self._generate_embedding(content)
 
         # Insert into database
         query = text("""
@@ -163,8 +184,8 @@ class RAGService:
                 print(f"Content: {r['content']}")
                 print(f"Metadata: {r['metadata']}")
         """
-        # Generate query embedding
-        query_embedding = self._embedder.encode(query).tolist()
+        # Generate query embedding via Nomic Embed Text
+        query_embedding = self._generate_embedding(query)
 
         # Build WHERE clause from filter
         where_clauses = ["1=1"]

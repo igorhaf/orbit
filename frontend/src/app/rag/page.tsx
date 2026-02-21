@@ -33,6 +33,7 @@ import {
   BookOpen,
   Code,
   Tags,
+  Package,
 } from 'lucide-react';
 
 // Types for the projects stats response

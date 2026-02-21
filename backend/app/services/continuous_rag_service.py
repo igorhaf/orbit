@@ -996,3 +996,86 @@ class ContinuousRAGService:
         except Exception as e:
             logger.error(f"AI rule extraction failed for {filename}: {e}")
             return []
+
+    # =========================================================================
+    # PROMPT #250 - Embedding-Only Indexing (No AI calls)
+    # =========================================================================
+
+    async def index_files_direct(self, project_id: UUID) -> Dict[str, Any]:
+        """
+        Index project files directly via Nomic Embed Text embeddings (no AI calls).
+
+        Reads each pending file, stores its content as a RAG document using
+        embedding-only storage. No business rule extraction — just raw file
+        content indexed for semantic search.
+
+        Returns:
+            Dict with indexed count and errors
+        """
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        if not project or not project.code_path:
+            return {"indexed": 0, "errors": 0, "error": "Project not found or no code_path"}
+
+        code_path = Path(project.code_path)
+
+        pending_states = self.db.query(RAGFileState).filter(
+            RAGFileState.project_id == project_id,
+            RAGFileState.status == FileProcessingStatus.PENDING
+        ).all()
+
+        if not pending_states:
+            return {"indexed": 0, "errors": 0}
+
+        console = _get_console_logger()
+        indexed = 0
+        errors = 0
+
+        for state in pending_states:
+            try:
+                file_path = code_path / state.file_path
+                if not file_path.exists():
+                    state.status = FileProcessingStatus.DELETED
+                    continue
+
+                content = file_path.read_text(errors="replace")
+                if not content.strip():
+                    state.status = FileProcessingStatus.PROCESSED
+                    continue
+
+                # Truncate very large files (Nomic context: 8192 tokens ~ 32K chars)
+                if len(content) > 30000:
+                    content = content[:30000]
+
+                # Store directly via RAG embedding (Nomic Embed Text, no AI)
+                self.rag.store(
+                    content=f"# {state.file_path}\n\n{content}",
+                    metadata={
+                        "type": "source_code",
+                        "source": "continuous_scan",
+                        "source_file": state.file_path,
+                        "file_layer": state.file_layer or "unknown",
+                    },
+                    project_id=project_id,
+                )
+
+                state.status = FileProcessingStatus.PROCESSED
+                state.rules_extracted = 0
+                indexed += 1
+
+                if console and indexed % 50 == 0:
+                    asyncio.create_task(console.log_memory_scan(
+                        phase="index_direct",
+                        message=f"Indexed {indexed}/{len(pending_states)} files (embedding-only)",
+                        project_id=str(project_id),
+                    ))
+
+            except Exception as e:
+                logger.error(f"Direct index failed for {state.file_path}: {e}")
+                state.status = FileProcessingStatus.ERROR
+                state.error_message = str(e)[:500]
+                errors += 1
+
+        self.db.commit()
+
+        logger.info(f"Direct indexing complete: {indexed} files indexed, {errors} errors")
+        return {"indexed": indexed, "errors": errors}

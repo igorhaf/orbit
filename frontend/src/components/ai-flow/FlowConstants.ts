@@ -49,6 +49,7 @@ export const UTILITY_NODE_COLORS: Record<string, string> = {
   cost_guard: '#ef4444',
   rate_limiter: '#ec4899',
   timeout: '#f97316',
+  prompt_node: '#6366f1',
 };
 
 export const UTILITY_NODE_BG: Record<string, string> = {
@@ -61,6 +62,7 @@ export const UTILITY_NODE_BG: Record<string, string> = {
   cost_guard: 'bg-red-50 border-red-200',
   rate_limiter: 'bg-pink-50 border-pink-200',
   timeout: 'bg-orange-50 border-orange-200',
+  prompt_node: 'bg-indigo-50 border-indigo-200',
 };
 
 // Map utility node type string to ReactFlow node type string
@@ -74,10 +76,11 @@ export const UTILITY_TYPE_TO_NODE_TYPE: Record<string, string> = {
   cost_guard: 'costGuardNode',
   rate_limiter: 'rateLimiterNode',
   timeout: 'timeoutNode',
+  prompt_node: 'promptNodeNode',
 };
 
 // PROMPT #225 - Pipeline classification
 // Utility nodes that execute BEFORE the AI model call
-export const PRE_PROCESS_TYPES = ['cache', 'rag_context', 'prompt_transformer', 'router', 'rate_limiter', 'timeout'];
+export const PRE_PROCESS_TYPES = ['cache', 'rag_context', 'prompt_transformer', 'router', 'rate_limiter', 'timeout', 'prompt_node'];
 // Utility nodes that execute AFTER the AI model call
 export const POST_PROCESS_TYPES = ['retry', 'validator', 'cost_guard'];

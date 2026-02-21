@@ -395,6 +395,34 @@ export default function EditUtilityNodeDialog({
           />
         );
 
+      case 'prompt_node':
+        return (
+          <>
+            <Input
+              label="Arquivo YAML do Prompt"
+              placeholder="rag/extract_rules"
+              value={config.prompt_yaml ?? ''}
+              onChange={(e) => updateConfig('prompt_yaml', e.target.value)}
+              helperText="Caminho relativo em backend/app/prompts/ (sem .yaml)"
+            />
+            <Input
+              label="Repeticoes"
+              type="number"
+              min="1"
+              max="10"
+              value={config.repeat ?? 1}
+              onChange={(e) => updateConfig('repeat', parseInt(e.target.value) || 1)}
+              helperText="Numero de vezes que o prompt sera executado"
+            />
+            <Input
+              label="Descricao"
+              placeholder="Extrair regras de negocio do codebase..."
+              value={config.description ?? ''}
+              onChange={(e) => updateConfig('description', e.target.value)}
+            />
+          </>
+        );
+
       default:
         return <p className="text-sm text-gray-500">Nenhuma configuracao editavel para este tipo de no.</p>;
     }

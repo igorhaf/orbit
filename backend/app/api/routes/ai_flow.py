@@ -854,6 +854,18 @@ UTILITY_NODE_CATALOG = {
             "auto_populate": True,
         },
     },
+    "prompt_node": {
+        "type": "prompt_node",
+        "label": "Prompt Node",
+        "description": "Prompt estruturado reutilizável para Claude Code. Armazena referência a arquivo YAML com instruções que podem ser executadas manualmente ou via automação.",
+        "icon": "file-text",
+        "color": "#6366f1",
+        "default_config": {
+            "prompt_yaml": "",
+            "repeat": 1,
+            "description": "",
+        },
+    },
 }
 
 

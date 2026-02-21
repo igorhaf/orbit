@@ -408,6 +408,44 @@ export function TimeoutNode({ data }: { data: any }) {
 }
 
 // ---------------------------------------------------------------------------
+// PROMPT #250 - Prompt Node (Reusable structured prompt for Claude Code)
+// ---------------------------------------------------------------------------
+
+export function PromptNodeNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.prompt_node;
+  return (
+    <div
+      className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}
+    >
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-indigo-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="prompt_node" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900">{data.label || 'Prompt Node'}</div>
+            <div className="text-xs text-indigo-600">Prompt Estruturado</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-indigo-500' : 'bg-gray-400'}`} />
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="text-[10px] text-gray-500">YAML: <span className="font-semibold text-gray-700">{data.config?.prompt_yaml || 'não configurado'}</span></div>
+          <div className="text-[10px] text-gray-500">Repetições: <span className="font-semibold text-gray-700">{data.config?.repeat || 1}x</span></div>
+          {data.config?.description && (
+            <div className="text-[10px] text-gray-500 truncate">{data.config.description}</div>
+          )}
+        </div>
+      </div>
+      {data.onRemove && (
+        <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
+          className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
+      )}
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-indigo-500 transition-all" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Node Type Registry
 // ---------------------------------------------------------------------------
 
@@ -422,4 +460,5 @@ export const nodeTypes = {
   costGuardNode: CostGuardNode,
   rateLimiterNode: RateLimiterNode,
   timeoutNode: TimeoutNode,
+  promptNodeNode: PromptNodeNode,
 };

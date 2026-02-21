@@ -430,25 +430,17 @@ class CacheService:
             Embedding list or None if error
         """
         try:
-            # Lazy load sentence-transformers
-            if not hasattr(self, '_embedding_model'):
-                try:
-                    from sentence_transformers import SentenceTransformer
-                    self._embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-                    logger.info("✓ Loaded sentence-transformers model: all-MiniLM-L6-v2")
-                except ImportError:
-                    logger.warning("sentence-transformers not installed - semantic cache disabled")
-                    self._embedding_model = None
-                    return None
-
-            if self._embedding_model is None:
-                return None
-
-            # Generate embedding and convert to list for JSON serialization
-            import numpy as np
-            embedding = self._embedding_model.encode(text, normalize_embeddings=True)
-            return embedding.tolist()
-
+            # PROMPT #250 - Use Nomic Embed Text via Ollama (same as RAGService)
+            import os
+            import requests as _requests
+            ollama_host = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
+            resp = _requests.post(
+                f"{ollama_host}/api/embeddings",
+                json={"model": "nomic-embed-text", "prompt": text},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return resp.json()["embedding"]
         except Exception as e:
             logger.error(f"Embedding generation error: {e}")
             return None
