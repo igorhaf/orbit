@@ -177,6 +177,59 @@ def _extract_action_from_rule(rule_text: str) -> str:
 
 
 # ============================================================================
+# TITLE-IN-BODY DEDUPLICATION
+# ============================================================================
+
+def _strip_title_from_body(title: str, body: str) -> str:
+    """Remove the title (or ~90% similar text) from the first lines of the body.
+
+    Cards often have the title duplicated as the first line of the description
+    (e.g. '# Title' or just 'Title' as plain text). This removes that redundancy.
+    """
+    from difflib import SequenceMatcher
+
+    if not body or not title:
+        return body
+
+    title_clean = title.strip().lower()
+    lines = body.split("\n")
+    new_lines = []
+    skipped_header = False
+
+    for i, line in enumerate(lines):
+        # Only check the first few non-empty lines (title is always at the top)
+        if not skipped_header and i < 5:
+            stripped = line.strip()
+            if not stripped:
+                # Keep blank lines but don't count them
+                new_lines.append(line)
+                continue
+
+            # Remove markdown heading markers for comparison
+            compare_text = stripped.lstrip("#").strip().lower()
+
+            if not compare_text:
+                new_lines.append(line)
+                continue
+
+            # Check: exact match or >=90% similarity
+            ratio = SequenceMatcher(None, title_clean, compare_text).ratio()
+            if ratio >= 0.9 or compare_text == title_clean:
+                # Skip this line — it's the title repeated
+                continue
+            else:
+                skipped_header = True
+                new_lines.append(line)
+        else:
+            skipped_header = True
+            new_lines.append(line)
+
+    # Strip leading blank lines after removal
+    result = "\n".join(new_lines).lstrip("\n")
+    return result
+
+
+# ============================================================================
 # DESCRIPTION NORMALIZATION
 # ============================================================================
 
@@ -185,9 +238,7 @@ def normalize_epic_description(title: str, domain: str, stories: list, rules: li
     rules_text = "\n".join(f"- {r}" for r in rules[:15])
     stories_text = "\n".join(f"- {s}" for s in stories)
 
-    return f"""# {title}
-
-## Contexto
+    return f"""## Contexto
 
 Este epico abrange o dominio **{domain}** do sistema ORBIT, cobrindo {len(stories)} stories e {len(rules)} regras de negocio. Define as funcionalidades e restricoes fundamentais para o correto funcionamento deste modulo.
 
@@ -208,9 +259,7 @@ def normalize_story_description(title: str, parent_epic: str, rules: list) -> st
     """Story description: business rule contextual."""
     rules_text = "\n".join(f"{i}. {r}" for i, r in enumerate(rules, 1))
 
-    return f"""# {title}
-
-## Contexto
+    return f"""## Contexto
 
 Story do epico **{parent_epic}**. Descreve como as regras de negocio se aplicam ao usuario final e quais restricoes o sistema deve respeitar.
 
@@ -231,9 +280,7 @@ def normalize_task_description(title: str, parent_story: str, rules: list) -> st
     """Task description: balanced functional + technical."""
     rules_text = "\n".join(f"- {r}" for r in rules)
 
-    return f"""# {title}
-
-## Contexto
+    return f"""## Contexto
 
 Subtarefa da story **{parent_story}**. Define o que precisa ser construido e indica os componentes e modulos envolvidos.
 
@@ -248,9 +295,7 @@ Task"""
 
 def normalize_subtask_description(title: str, parent_task: str, rule_text: str) -> str:
     """Subtask description: objectively technical."""
-    return f"""# {title}
-
-## Contexto
+    return f"""## Contexto
 
 Implementacao atomica da task **{parent_task}**.
 
@@ -528,6 +573,9 @@ def normalize_single_card(
         if domain:
             new_insights["source_domain"] = domain
 
+        # Strip title duplicated in body
+        new_desc = _strip_title_from_body(new_title, new_desc)
+
         db.execute(text("""
             UPDATE tasks SET
                 title = :title,
@@ -703,6 +751,9 @@ def normalize_project_cards(project_id: str, db=None):
             new_insights["source"] = "rag_business_rules"
             if domain:
                 new_insights["source_domain"] = domain
+
+            # Strip title duplicated in body
+            new_desc = _strip_title_from_body(new_title, new_desc)
 
             # Update card
             db.execute(text("""
