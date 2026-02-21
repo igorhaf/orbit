@@ -541,6 +541,7 @@ export default function AIModelsPage() {
                   }
                   required
                 >
+                  <option value="claudio">Claudio (Local Proxy)</option>
                   <option value="anthropic">Anthropic</option>
                   <option value="openai">OpenAI</option>
                   <option value="google">Google</option>
@@ -553,10 +554,10 @@ export default function AIModelsPage() {
 
               {/* API Key */}
               <Input
-                label={createFormData.provider === 'ollama' ? 'Chave API (opcional para Ollama)' : 'Chave API'}
+                label={['ollama', 'claudio'].includes(createFormData.provider) ? 'Chave API (opcional)' : 'Chave API'}
                 type="password"
-                placeholder={createFormData.provider === 'ollama' ? 'Deixe vazio para Ollama local' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
-                required={createFormData.provider !== 'ollama'}
+                placeholder={['ollama', 'claudio'].includes(createFormData.provider) ? 'Deixe vazio (nao necessario)' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
+                required={!['ollama', 'claudio'].includes(createFormData.provider)}
                 value={createFormData.api_key}
                 onChange={(e) =>
                   setCreateFormData({ ...createFormData, api_key: e.target.value })
@@ -783,6 +784,7 @@ export default function AIModelsPage() {
                     setEditFormData({ ...editFormData, provider: e.target.value })
                   }
                 >
+                  <option value="claudio">Claudio (Local Proxy)</option>
                   <option value="anthropic">Anthropic</option>
                   <option value="openai">OpenAI</option>
                   <option value="google">Google</option>

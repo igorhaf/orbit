@@ -353,6 +353,17 @@ class AIOrchestrator:
                         logger.info(f"✅ Cohere async HTTP client initialized with API key from: {model.name}")
                         initialized_providers.add("cohere")
 
+                    elif provider_key == "claudio":
+                        # PROMPT #246 - Claudio local proxy (Anthropic-compatible API, no API key)
+                        from anthropic import AsyncAnthropic
+                        claudio_base = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
+                        self.clients["claudio"] = AsyncAnthropic(
+                            api_key=model.api_key or "not-needed",
+                            base_url=claudio_base
+                        )
+                        logger.info(f"✅ Claudio (AsyncAnthropic) client initialized: {claudio_base} (from model: {model.name})")
+                        initialized_providers.add("claudio")
+
             except Exception as e:
                 logger.error(f"❌ Failed to initialize {model.provider} client: {e}")
 
@@ -1625,6 +1636,13 @@ class AIOrchestrator:
                         stream_callback=_stream_cb, flush_callback=_flush_cb,
                         timeout_seconds=_resolved_timeout
                     )
+                elif provider == "claudio":
+                    # PROMPT #246 - Claudio uses Anthropic protocol via local proxy
+                    result = await self._execute_anthropic_streaming(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        stream_callback=_stream_cb, flush_callback=_flush_cb,
+                        timeout_seconds=_resolved_timeout, client_key="claudio"
+                    )
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -1668,6 +1686,12 @@ class AIOrchestrator:
                     result = await self._execute_cohere(
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
                         timeout_seconds=_resolved_timeout
+                    )
+                elif provider == "claudio":
+                    # PROMPT #246 - Claudio non-streaming fallback
+                    result = await self._execute_anthropic(
+                        model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                        timeout_seconds=_resolved_timeout, client_key="claudio"
                     )
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
@@ -1867,6 +1891,11 @@ class AIOrchestrator:
                         elif provider == "cohere":
                             result = await self._execute_cohere(
                                 model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature
+                            )
+                        elif provider == "claudio":
+                            result = await self._execute_anthropic(
+                                model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
+                                client_key="claudio"
                             )
                         result = self.utility_executor.post_process(
                             _utility_nodes, result, _effective_messages,
@@ -2171,6 +2200,8 @@ class AIOrchestrator:
                     result = await self._execute_ollama_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k, num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive)
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                elif provider == "claudio":
+                    result = await self._execute_anthropic_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, client_key="claudio")
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -2193,6 +2224,8 @@ class AIOrchestrator:
                     result = await self._execute_ollama(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, top_p=top_p, top_k=top_k, num_ctx=_num_ctx, num_batch=_num_batch, keep_alive=_keep_alive)
                 elif provider == "cohere":
                     result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
+                elif provider == "claudio":
+                    result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, client_key="claudio")
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -2214,17 +2247,20 @@ class AIOrchestrator:
         temperature: float,
         api_key_override: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
+        client_key: str = "anthropic",
     ) -> Dict:
         """
-        Executa com Anthropic Claude usando configurações do banco
+        Executa com Anthropic Claude (ou Claudio proxy) usando configurações do banco
         PROMPT #51 - Dynamic AI Model Integration
         PROMPT #75 - Async execution with await (non-blocking)
         PROMPT #207 - Configurable timeout
+        PROMPT #246 - client_key param for Claudio support
         """
-        client = self.clients["anthropic"]  # AsyncAnthropic instance
+        client = self.clients.get(client_key) or self.clients.get("anthropic")
 
         # PROMPT #127 - Use override key if provided (chain execution)
-        if api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
+        # Skip override for claudio (no API key needed)
+        if client_key != "claudio" and api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
             from anthropic import AsyncAnthropic
             client = AsyncAnthropic(api_key=api_key_override)
 
@@ -2243,7 +2279,7 @@ class AIOrchestrator:
             response = await api_call
 
         return {
-            "provider": "anthropic",
+            "provider": client_key,
             "model": model,
             "content": response.content[0].text,
             "usage": {
@@ -2709,11 +2745,15 @@ class AIOrchestrator:
         flush_callback,
         api_key_override: Optional[str] = None,
         timeout_seconds: Optional[float] = None,
+        client_key: str = "anthropic",
     ) -> Dict:
-        """Anthropic streaming using client.messages.stream()"""
-        client = self.clients["anthropic"]
+        """Anthropic/Claudio streaming using client.messages.stream()
+        PROMPT #246 - client_key param for Claudio support
+        """
+        client = self.clients.get(client_key) or self.clients.get("anthropic")
 
-        if api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
+        # Skip override for claudio (no API key needed)
+        if client_key != "claudio" and api_key_override and api_key_override not in ("CONFIGURE_VIA_WEB_INTERFACE", "configure-via-web-interface"):
             from anthropic import AsyncAnthropic
             client = AsyncAnthropic(api_key=api_key_override)
 
@@ -2741,7 +2781,7 @@ class AIOrchestrator:
         # PROMPT #233 - CQ-3 fix: include execution_time_ms in streaming responses
         _streaming_time_ms = int((time.time() - _stream_start) * 1000)
         return {
-            "provider": "anthropic",
+            "provider": client_key,
             "model": model,
             "content": accumulated,
             "usage": {
