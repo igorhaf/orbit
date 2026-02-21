@@ -2,7 +2,8 @@
 Business rules classification and card creation mixin.
 
 Handles AI-based hierarchical classification of business rules
-into Epic > Story structure and card creation.
+into Epic > Story > Task > Subtask structure and card creation.
+PROMPT #240 - Rigid 4-level hierarchy matching generate_cards_from_rag.py.
 Extracted from context_generator.py during modularization (PROMPT #249).
 """
 
@@ -10,8 +11,10 @@ from typing import Dict, List, Optional, Any
 from uuid import UUID, uuid4
 from datetime import datetime
 from sqlalchemy.orm import Session
+import asyncio
 import json
 import logging
+import math
 
 from app.models.project import Project
 from app.models.task import Task, TaskStatus, ItemType, PriorityLevel
@@ -19,6 +22,62 @@ from app.services.rag_service import RAGService
 from .utils import _robust_json_parse
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================
+# PROMPT #240 - Rigid card rendering functions (same as script)
+# ============================================================
+
+def _render_description(title: str, context: str, rules: list, level: str) -> str:
+    """Render human-readable description from rules."""
+    ac_text = "\n".join(f"- {r}" for r in rules[:8]) if rules else "- A definir"
+    return f"""# {title}
+
+## Contexto
+
+{context}
+
+## Regras de Negocio Aplicaveis
+
+{ac_text}
+
+## Nivel
+
+{level}
+"""
+
+
+def _render_prompt(title: str, semantic_map: dict, rules: list, level: str) -> str:
+    """Render semantic prompt with references."""
+    sm_lines = "\n".join(f"- **{k}**: {v}" for k, v in semantic_map.items())
+    rules_text = "\n".join(f"{i+1}. {r}" for i, r in enumerate(rules[:10]))
+    return f"""# {level}: {title}
+
+## Mapa Semantico
+
+{sm_lines}
+
+## Regras de Negocio
+
+{rules_text}
+
+## Instrucoes
+
+Implementar {title} respeitando todas as regras de negocio listadas acima.
+Cada criterio de aceitacao deve ser verificavel e testavel.
+"""
+
+
+def _make_acceptance_criteria(rules: list) -> list:
+    """Convert rules to acceptance criteria format."""
+    criteria = []
+    for r in rules[:6]:
+        text = r.strip() if isinstance(r, str) else str(r).strip()
+        if len(text) > 20:
+            criteria.append(text[:200])
+    if not criteria:
+        criteria.append("Funcionalidade implementada conforme especificacao")
+    return criteria
 
 
 class BusinessRulesMixin:
@@ -29,18 +88,18 @@ class BusinessRulesMixin:
         project_id: UUID
     ) -> List[Dict]:
         """
-        PROMPT #120 - Generate closed cards for verified business rules.
+        PROMPT #120 - Generate cards for verified business rules.
         PROMPT #193 - Hierarchical structure.
-        PROMPT #246 - Simplified to 2 levels: Epic (domain) > Story (rule).
-        PROMPT #285 - Duplicate protection: skips if business_rule cards already exist.
+        PROMPT #240 - Rigid 4-level hierarchy: Epic > Story > Task > Subtask.
 
-        Uses AI to classify business rules into a 2-level hierarchy:
-        - Level 0 = Epic (business domain: Aluno, Professor, Provas, etc.)
-        - Level 1 = Story (each business rule as direct child of its domain Epic)
+        Uses AI to classify business rules into Epic > Story groups.
+        Then code decomposes each Story into Tasks (groups of 3-4 rules)
+        and Subtasks (1 per rule).
 
-        All cards are CLOSED/DONE since they represent already-implemented rules.
+        All cards have: description, generated_prompt, acceptance_criteria,
+        semantic_map, description_edited_by='ai', prompt_edited_by='ai'.
 
-        Falls back to flat structure (1 Epic + N Stories) if AI classification fails.
+        Falls back to flat 4-level structure if AI classification fails.
 
         Args:
             project_id: Project ID
@@ -75,20 +134,20 @@ class BusinessRulesMixin:
 
         business_rules = rag_rules
 
-        # PROMPT #291 - Delete existing business_rule cards before regenerating
-        # This allows re-running with updated RAG data (745 rules vs old 20).
+        # PROMPT #291 - Delete existing business_rule/from_rag cards before regenerating
+        # This allows re-running with updated RAG data.
         existing_br_cards = self.db.query(Task).filter(
             Task.project_id == project_id,
-            Task.labels.contains(["business_rule"])
+            (Task.labels.contains(["business_rule"]) | Task.labels.contains(["from_rag"]))
         ).count()
 
         if existing_br_cards > 0:
             logger.info(
-                f"Removing {existing_br_cards} existing business_rule cards to regenerate from RAG ({len(business_rules)} rules)"
+                f"Removing {existing_br_cards} existing business_rule/from_rag cards to regenerate from RAG ({len(business_rules)} rules)"
             )
             self.db.query(Task).filter(
                 Task.project_id == project_id,
-                Task.labels.contains(["business_rule"])
+                (Task.labels.contains(["business_rule"]) | Task.labels.contains(["from_rag"]))
             ).delete(synchronize_session='fetch')
             self.db.flush()
 
@@ -269,66 +328,221 @@ class BusinessRulesMixin:
         self,
         project_id: UUID,
         nodes: List[Dict],
-        parent_id: Optional[UUID] = None,
-        depth: int = 0,
-        order_start: int = 0
     ) -> List[Dict]:
         """
-        PROMPT #193 - Recursively create cards from AI-classified hierarchy.
-        PROMPT #246 - Simplified to 2 levels only: Epic (domain) > Story (rule).
+        PROMPT #240 - Create rigid 4-level card hierarchy from AI-classified nodes.
 
-        Maps depth to item_type:
-        - 0 = Epic (business domain)
-        - 1 = Story (business rule)
+        AI provides Epic(domain) > Story(area, rules[]).
+        Code decomposes Stories into Tasks (groups of 3-4 rules)
+        and Subtasks (1 per rule).
+
+        Every card has: description, generated_prompt, acceptance_criteria,
+        semantic_map, description_edited_by='ai', prompt_edited_by='ai'.
         """
+        LEVEL_NAMES = ["Epic", "Story", "Task", "Subtask"]
         DEPTH_TO_TYPE = {
             0: ItemType.EPIC,
             1: ItemType.STORY,
+            2: ItemType.TASK,
+            3: ItemType.SUBTASK,
         }
+        DEPTH_STORY_POINTS = {0: 13, 1: 5, 2: 3, 3: 1}
+        DEPTH_PRIORITY = {
+            0: PriorityLevel.HIGH,
+            1: PriorityLevel.HIGH,
+            2: PriorityLevel.MEDIUM,
+            3: PriorityLevel.MEDIUM,
+        }
+        RULES_PER_TASK = 3  # Group N rules into Tasks
 
+        now = datetime.utcnow()
         saved_cards = []
 
-        for i, node in enumerate(nodes):
-            item_type = DEPTH_TO_TYPE.get(depth, ItemType.STORY)
-            title = node.get("title", "Sem título")[:200]
-            description = node.get("description", "")
+        for epic_idx, epic_node in enumerate(nodes):
+            epic_title = (epic_node.get("title") or "Sem titulo")[:200]
+            epic_desc = epic_node.get("description", "")
+            epic_children = epic_node.get("children", [])
 
-            card = Task(
-                id=uuid4(),
+            # Collect all rules across stories for the epic
+            all_epic_rules = []
+            for child in epic_children:
+                child_rules = child.get("rules", [])
+                if child_rules:
+                    all_epic_rules.extend(child_rules)
+                # Also use story description as rule if no rules field
+                child_desc = child.get("description", "")
+                if not child_rules and child_desc:
+                    all_epic_rules.append(child_desc)
+
+            epic_sm = {
+                "N1": epic_title,
+                "P1": f"Dominio: {epic_title}",
+            }
+
+            # --- CREATE EPIC ---
+            epic_id = uuid4()
+            epic_card = Task(
+                id=epic_id,
                 project_id=project_id,
-                parent_id=parent_id,
-                title=title,
-                description=description,
-                generated_prompt=description,
-                item_type=item_type,
-                status=TaskStatus.DONE,
-                priority=PriorityLevel.HIGH if depth == 0 else PriorityLevel.MEDIUM,
-                order=order_start + i,
-                labels=["business_rule", "verified", "from_code"],
-                workflow_state="closed",
-                resolution="fixed",
+                parent_id=None,
+                item_type=ItemType.EPIC,
+                title=epic_title,
+                description=_render_description(epic_title, epic_desc, all_epic_rules[:6], "Epic"),
+                generated_prompt=_render_prompt(epic_title, epic_sm, all_epic_rules[:10], "EPIC"),
+                acceptance_criteria=_make_acceptance_criteria(all_epic_rules[:6]),
+                story_points=DEPTH_STORY_POINTS[0],
+                priority=DEPTH_PRIORITY[0],
+                status=TaskStatus.BACKLOG,
+                order=epic_idx,
+                labels=["from_rag"],
+                workflow_state="open",
                 reporter="system",
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+                description_edited_by="ai",
+                prompt_edited_by="ai",
+                interview_insights={
+                    "semantic_map": epic_sm,
+                    "source": "rag_business_rules",
+                },
+                created_at=now,
+                updated_at=now,
             )
-            self.db.add(card)
-
+            self.db.add(epic_card)
             saved_cards.append({
-                "id": str(card.id),
-                "title": card.title,
-                "item_type": item_type.value if hasattr(item_type, 'value') else str(item_type),
-                "workflow_state": "closed",
-                "depth": depth
+                "id": str(epic_id), "title": epic_title,
+                "item_type": "epic", "workflow_state": "open", "depth": 0,
             })
+            logger.info(f"EPIC {epic_idx}: {epic_title}")
 
-            # Only recurse into children at depth 0 (Epic → Stories)
-            # Max depth 1 = Story (no deeper nesting)
-            children = node.get("children", [])
-            if children and depth < 1:
-                child_cards = self._create_hierarchy_cards(
-                    project_id, children, parent_id=card.id, depth=depth + 1
+            # --- CREATE STORIES (from AI children) ---
+            for story_idx, story_node in enumerate(epic_children):
+                story_title = (story_node.get("title") or f"Story {story_idx+1}")[:200]
+                story_desc = story_node.get("description", "")
+                story_rules = story_node.get("rules", [])
+                if not story_rules and story_desc:
+                    story_rules = [story_desc]
+
+                story_sm = {**epic_sm, f"S{story_idx+1}": story_title}
+                story_id = uuid4()
+
+                story_card = Task(
+                    id=story_id,
+                    project_id=project_id,
+                    parent_id=epic_id,
+                    item_type=ItemType.STORY,
+                    title=story_title,
+                    description=_render_description(story_title, story_desc or epic_desc, story_rules, "Story"),
+                    generated_prompt=_render_prompt(story_title, story_sm, story_rules, "STORY"),
+                    acceptance_criteria=_make_acceptance_criteria(story_rules),
+                    story_points=DEPTH_STORY_POINTS[1],
+                    priority=DEPTH_PRIORITY[1],
+                    status=TaskStatus.BACKLOG,
+                    order=story_idx,
+                    labels=["from_rag"],
+                    workflow_state="open",
+                    reporter="system",
+                    description_edited_by="ai",
+                    prompt_edited_by="ai",
+                    interview_insights={
+                        "semantic_map": story_sm,
+                        "derived_from": str(epic_id),
+                        "source": "rag_business_rules",
+                    },
+                    created_at=now,
+                    updated_at=now,
                 )
-                saved_cards.extend(child_cards)
+                self.db.add(story_card)
+                saved_cards.append({
+                    "id": str(story_id), "title": story_title,
+                    "item_type": "story", "workflow_state": "open", "depth": 1,
+                })
+
+                # --- CREATE TASKS (group rules into tasks of RULES_PER_TASK) ---
+                if not story_rules:
+                    continue
+
+                num_tasks = max(1, math.ceil(len(story_rules) / RULES_PER_TASK))
+                for task_idx in range(num_tasks):
+                    start = task_idx * RULES_PER_TASK
+                    task_rules = story_rules[start:start + RULES_PER_TASK]
+                    task_title_base = task_rules[0] if task_rules else f"Task {task_idx+1}"
+                    # Use first rule as title, truncated
+                    task_title = (task_title_base[:80] + "...") if len(task_title_base) > 80 else task_title_base
+
+                    task_sm = {**story_sm, f"T{task_idx+1}": task_title}
+                    task_id = uuid4()
+
+                    task_card = Task(
+                        id=task_id,
+                        project_id=project_id,
+                        parent_id=story_id,
+                        item_type=ItemType.TASK,
+                        title=task_title,
+                        description=_render_description(task_title, story_desc or story_title, task_rules, "Task"),
+                        generated_prompt=_render_prompt(task_title, task_sm, task_rules, "TASK"),
+                        acceptance_criteria=_make_acceptance_criteria(task_rules),
+                        story_points=DEPTH_STORY_POINTS[2],
+                        priority=DEPTH_PRIORITY[2],
+                        status=TaskStatus.BACKLOG,
+                        order=task_idx,
+                        labels=["from_rag"],
+                        workflow_state="open",
+                        reporter="system",
+                        description_edited_by="ai",
+                        prompt_edited_by="ai",
+                        interview_insights={
+                            "semantic_map": task_sm,
+                            "derived_from": str(story_id),
+                            "source": "rag_business_rules",
+                        },
+                        created_at=now,
+                        updated_at=now,
+                    )
+                    self.db.add(task_card)
+                    saved_cards.append({
+                        "id": str(task_id), "title": task_title,
+                        "item_type": "task", "workflow_state": "open", "depth": 2,
+                    })
+
+                    # --- CREATE SUBTASKS (1 per rule) ---
+                    for st_idx, rule in enumerate(task_rules):
+                        rule_text = rule if isinstance(rule, str) else str(rule)
+                        st_title = (rule_text[:100] + "...") if len(rule_text) > 100 else rule_text
+                        st_sm = {**task_sm, f"ST{st_idx+1}": st_title}
+                        st_id = uuid4()
+
+                        st_card = Task(
+                            id=st_id,
+                            project_id=project_id,
+                            parent_id=task_id,
+                            item_type=ItemType.SUBTASK,
+                            title=st_title,
+                            description=_render_description(st_title, f"Subtarefa de: {task_title}", [rule_text], "Subtask"),
+                            generated_prompt=_render_prompt(st_title, st_sm, [rule_text], "SUBTASK"),
+                            acceptance_criteria=[rule_text[:200]],
+                            story_points=DEPTH_STORY_POINTS[3],
+                            priority=DEPTH_PRIORITY[3],
+                            status=TaskStatus.BACKLOG,
+                            order=st_idx,
+                            labels=["from_rag"],
+                            workflow_state="open",
+                            reporter="system",
+                            description_edited_by="ai",
+                            prompt_edited_by="ai",
+                            interview_insights={
+                                "semantic_map": st_sm,
+                                "derived_from": str(task_id),
+                                "source": "rag_business_rules",
+                            },
+                            created_at=now,
+                            updated_at=now,
+                        )
+                        self.db.add(st_card)
+                        saved_cards.append({
+                            "id": str(st_id), "title": st_title,
+                            "item_type": "subtask", "workflow_state": "open", "depth": 3,
+                        })
+
+                logger.info(f"  STORY {story_idx}: {story_title} ({len(story_rules)} rules)")
 
         return saved_cards
 
@@ -338,70 +552,120 @@ class BusinessRulesMixin:
         business_rules: List[str]
     ) -> List[Dict]:
         """
-        PROMPT #120 - Original flat structure fallback.
-        Creates 1 Epic + N Stories for business rules.
+        PROMPT #240 - Flat fallback with 4-level rigid structure.
+        Creates 1 Epic > N Stories (batches of ~10 rules) > Tasks > Subtasks.
         """
-        saved_cards = []
+        now = datetime.utcnow()
+        RULES_PER_STORY = 10
+        RULES_PER_TASK = 3
 
-        parent_epic = Task(
-            id=uuid4(),
+        epic_sm = {"N1": "Regras de Negocio", "P1": "Documentacao de regras"}
+
+        # --- EPIC ---
+        epic_id = uuid4()
+        epic_card = Task(
+            id=epic_id,
             project_id=project_id,
             title="Regras de Negocio Documentadas",
-            description=f"Regras de negocio verificadas no código-fonte. Total: {len(business_rules)}",
+            description=_render_description(
+                "Regras de Negocio Documentadas",
+                f"Regras de negocio extraidas do projeto. Total: {len(business_rules)}",
+                business_rules[:6], "Epic"
+            ),
+            generated_prompt=_render_prompt(
+                "Regras de Negocio Documentadas", epic_sm, business_rules[:10], "EPIC"
+            ),
+            acceptance_criteria=_make_acceptance_criteria(business_rules[:6]),
             item_type=ItemType.EPIC,
-            status=TaskStatus.DONE,
+            status=TaskStatus.BACKLOG,
+            story_points=13,
             priority=PriorityLevel.HIGH,
             order=0,
-            labels=["business_rule", "verified", "from_code"],
-            workflow_state="closed",
-            resolution="fixed",
+            labels=["from_rag"],
+            workflow_state="open",
             reporter="system",
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
+            description_edited_by="ai",
+            prompt_edited_by="ai",
+            interview_insights={"semantic_map": epic_sm, "source": "rag_business_rules"},
+            created_at=now,
+            updated_at=now,
         )
-        self.db.add(parent_epic)
-        saved_cards.append({
-            "id": str(parent_epic.id),
-            "title": parent_epic.title,
-            "item_type": "epic",
-            "workflow_state": "closed"
-        })
+        self.db.add(epic_card)
+        saved_cards = [{"id": str(epic_id), "title": epic_card.title, "item_type": "epic", "workflow_state": "open", "depth": 0}]
 
-        for i, rule in enumerate(business_rules, 1):
-            # PROMPT #239 - Use clean title without RN prefix
-            rule_title = rule.split(":")[0].strip() if ":" in rule else rule[:80]
-            # Remove any existing RN prefix from source data
-            if rule_title.startswith("RN") and len(rule_title) > 2 and rule_title[2:].lstrip("0123456789").startswith(":"):
-                rule_title = rule_title.split(":", 1)[1].strip() if ":" in rule_title else rule_title
-            if len(rule_title) > 100:
-                rule_title = rule_title[:97] + "..."
+        # --- STORIES (batches of RULES_PER_STORY) ---
+        num_stories = max(1, math.ceil(len(business_rules) / RULES_PER_STORY))
+        for story_idx in range(num_stories):
+            start = story_idx * RULES_PER_STORY
+            story_rules = business_rules[start:start + RULES_PER_STORY]
+            story_title = f"Regras {start+1}-{start+len(story_rules)}"
+            story_sm = {**epic_sm, f"S{story_idx+1}": story_title}
+            story_id = uuid4()
 
-            story = Task(
-                id=uuid4(),
-                project_id=project_id,
-                parent_id=parent_epic.id,
-                title=rule_title,
-                description=rule,
-                generated_prompt=rule,
-                item_type=ItemType.STORY,
-                status=TaskStatus.DONE,
-                priority=PriorityLevel.MEDIUM,
-                order=i,
-                labels=["business_rule", "verified", "from_code"],
-                workflow_state="closed",
-                resolution="fixed",
-                reporter="system",
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow()
+            story_card = Task(
+                id=story_id, project_id=project_id, parent_id=epic_id,
+                item_type=ItemType.STORY, title=story_title,
+                description=_render_description(story_title, "Grupo de regras de negocio", story_rules, "Story"),
+                generated_prompt=_render_prompt(story_title, story_sm, story_rules, "STORY"),
+                acceptance_criteria=_make_acceptance_criteria(story_rules),
+                story_points=5, priority=PriorityLevel.HIGH,
+                status=TaskStatus.BACKLOG, order=story_idx,
+                labels=["from_rag"], workflow_state="open", reporter="system",
+                description_edited_by="ai", prompt_edited_by="ai",
+                interview_insights={"semantic_map": story_sm, "derived_from": str(epic_id), "source": "rag_business_rules"},
+                created_at=now, updated_at=now,
             )
-            self.db.add(story)
-            saved_cards.append({
-                "id": str(story.id),
-                "title": story.title,
-                "item_type": "story",
-                "workflow_state": "closed"
-            })
+            self.db.add(story_card)
+            saved_cards.append({"id": str(story_id), "title": story_title, "item_type": "story", "workflow_state": "open", "depth": 1})
+
+            # --- TASKS (group rules) ---
+            num_tasks = max(1, math.ceil(len(story_rules) / RULES_PER_TASK))
+            for task_idx in range(num_tasks):
+                t_start = task_idx * RULES_PER_TASK
+                task_rules = story_rules[t_start:t_start + RULES_PER_TASK]
+                task_title = (task_rules[0][:80] + "...") if len(task_rules[0]) > 80 else task_rules[0]
+                task_sm = {**story_sm, f"T{task_idx+1}": task_title}
+                task_id = uuid4()
+
+                task_card = Task(
+                    id=task_id, project_id=project_id, parent_id=story_id,
+                    item_type=ItemType.TASK, title=task_title,
+                    description=_render_description(task_title, story_title, task_rules, "Task"),
+                    generated_prompt=_render_prompt(task_title, task_sm, task_rules, "TASK"),
+                    acceptance_criteria=_make_acceptance_criteria(task_rules),
+                    story_points=3, priority=PriorityLevel.MEDIUM,
+                    status=TaskStatus.BACKLOG, order=task_idx,
+                    labels=["from_rag"], workflow_state="open", reporter="system",
+                    description_edited_by="ai", prompt_edited_by="ai",
+                    interview_insights={"semantic_map": task_sm, "derived_from": str(story_id), "source": "rag_business_rules"},
+                    created_at=now, updated_at=now,
+                )
+                self.db.add(task_card)
+                saved_cards.append({"id": str(task_id), "title": task_title, "item_type": "task", "workflow_state": "open", "depth": 2})
+
+                # --- SUBTASKS (1 per rule) ---
+                for st_idx, rule in enumerate(task_rules):
+                    rule_text = rule if isinstance(rule, str) else str(rule)
+                    st_title = (rule_text[:100] + "...") if len(rule_text) > 100 else rule_text
+                    st_sm = {**task_sm, f"ST{st_idx+1}": st_title}
+                    st_id = uuid4()
+
+                    st_card = Task(
+                        id=st_id, project_id=project_id, parent_id=task_id,
+                        item_type=ItemType.SUBTASK, title=st_title,
+                        description=_render_description(st_title, f"Subtarefa de: {task_title}", [rule_text], "Subtask"),
+                        generated_prompt=_render_prompt(st_title, st_sm, [rule_text], "SUBTASK"),
+                        acceptance_criteria=[rule_text[:200]],
+                        story_points=1, priority=PriorityLevel.MEDIUM,
+                        status=TaskStatus.BACKLOG, order=st_idx,
+                        labels=["from_rag"], workflow_state="open", reporter="system",
+                        description_edited_by="ai", prompt_edited_by="ai",
+                        interview_insights={"semantic_map": st_sm, "derived_from": str(task_id), "source": "rag_business_rules"},
+                        created_at=now, updated_at=now,
+                    )
+                    self.db.add(st_card)
+                    saved_cards.append({"id": str(st_id), "title": st_title, "item_type": "subtask", "workflow_state": "open", "depth": 3})
 
         self.db.commit()
-        logger.info(f"Generated {len(saved_cards)} flat business rule cards (fallback)")
+        logger.info(f"Generated {len(saved_cards)} flat 4-level business rule cards (fallback)")
         return saved_cards

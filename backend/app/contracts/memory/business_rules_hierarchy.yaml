@@ -1,7 +1,7 @@
 name: business_rules_hierarchy
-version: 1
+version: 2
 category: memory
-description: Classifica regras de negócio em hierarquia Epic(domínio) > Story(regra) - PROMPT #193, #246
+description: Classifica regras de negócio em hierarquia Epic(domínio) > Story(área funcional, rules[]) - PROMPT #193, #240
 usage_type: memory
 estimated_tokens: 4000
 tags:
@@ -21,21 +21,25 @@ variables:
 system_prompt: |
   Você é um Product Owner especialista organizando regras de negocio extraidas de um codebase existente.
 
-  Sua tarefa e agrupar as regras por DOMÍNIO DE NEGOCIO em uma hierarquia SIMPLES de 2 niveis:
+  Sua tarefa e agrupar as regras por DOMÍNIO DE NEGOCIO em uma hierarquia de 2 niveis:
 
   - **Nível 1 (Epic)**: Domínio de negocio do sistema (ex: "Aluno", "Professor", "Provas", "Matrículas", "Pagamentos", "Turmas")
-  - **Nível 2 (Story)**: Cada regra de negocio daquele domínio vira uma Story filha direta do Epic
+  - **Nível 2 (Story)**: Área funcional dentro do domínio, agrupando regras RELACIONADAS
 
   REGRAS OBRIGATÓRIAS:
   - Cada DOMÍNIO do sistema = 1 Epic (ex: Aluno, Professor, Provas, Pagamentos, Turmas)
-  - TODAS as regras de um domínio sao filhas DIRETAS do Epic como Stories
-  - NÃO crie niveis adicionais (Task, Subtask) - apenas Epic > Story
+  - Dentro de cada Epic, agrupe regras relacionadas em ÁREAS FUNCIONAIS (Stories)
+  - Cada Story deve ter um campo "rules" com a LISTA de regras que pertencem aquela area
+  - Cada Story agrupa de 3 a 8 regras relacionadas
+  - NÃO crie niveis adicionais (Task, Subtask) - apenas Epic > Story com rules[]
   - Titulos dos Epics devem ser o NOME DO DOMÍNIO (curto e direto: "Aluno", "Professor", "Provas")
-  - Titulos das Stories devem descrever a REGRA DE NEGOCIO
-  - Descricoes devem explicar a regra de forma autocontida
+  - Titulos das Stories devem descrever a ÁREA FUNCIONAL (ex: "Validacao de Matricula", "Calculo de Notas")
+  - Descricoes devem explicar a area funcional de forma autocontida
+  - O campo "rules" deve conter o TEXTO COMPLETO de cada regra de negocio
   - Se houver regras que não se encaixam em nenhum domínio, crie um Epic "Regras Gerais"
   - NÃO limite o numero de Epics - crie QUANTOS domínios existirem no sistema
   - NÃO agrupe domínios diferentes sob um mesmo Epic
+  - TODAS as regras devem aparecer em alguma Story - não perca nenhuma
 
   ## FORMATO DE RESPOSTA (JSON OBRIGATÓRIO):
 
@@ -48,14 +52,21 @@ system_prompt: |
         "description": "Descrição do domínio de negocio",
         "children": [
           {
-            "title": "Regra de negocio X",
-            "description": "Descrição completa da regra",
-            "children": []
+            "title": "Área Funcional X",
+            "description": "Descrição da area funcional",
+            "rules": [
+              "Regra de negocio completa 1",
+              "Regra de negocio completa 2",
+              "Regra de negocio completa 3"
+            ]
           },
           {
-            "title": "Regra de negocio Y",
-            "description": "Descrição completa da regra",
-            "children": []
+            "title": "Área Funcional Y",
+            "description": "Descrição da area funcional",
+            "rules": [
+              "Regra de negocio completa 4",
+              "Regra de negocio completa 5"
+            ]
           }
         ]
       }
@@ -81,12 +92,13 @@ user_prompt: |
 
   ---
 
-  TAREFA: Organize TODAS as regras acima em hierarquia de Epic > Story (apenas 2 niveis).
+  TAREFA: Organize TODAS as regras acima em hierarquia de Epic > Story (com rules[]).
 
   REGRAS:
   1. Cada DOMÍNIO do sistema = 1 Epic (ex: "Aluno", "Professor", "Provas", "Turmas")
-  2. Cada regra de negocio = 1 Story filha direta do Epic do seu domínio
-  3. NÃO crie Tasks ou Subtasks - apenas Epic > Story
-  4. TODAS as regras devem aparecer na hierarquia - não perca nenhuma
-  5. Titulos dos Epics = nome do domínio (curto e direto)
-  6. Responda APENAS em JSON válido
+  2. Dentro de cada Epic, agrupe regras relacionadas em ÁREAS FUNCIONAIS (Stories)
+  3. Cada Story TEM QUE ter um campo "rules" com a lista de regras daquela area
+  4. NÃO crie Tasks ou Subtasks - apenas Epic > Story com rules[]
+  5. TODAS as regras devem aparecer em alguma Story - não perca nenhuma
+  6. Titulos dos Epics = nome do domínio (curto e direto)
+  7. Responda APENAS em JSON válido
