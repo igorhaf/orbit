@@ -235,15 +235,16 @@ class RagPipelineService:
         return result
 
     # =========================================================================
-    # PHASE 2: Extract business rules — 3 passes with rich prompts
-    # Each pass uses Claudio Opus 4.6 (rag_extraction).
-    # Pass 1: Initial extraction. Pass 2: Find missing. Pass 3: Final sweep.
+    # PHASE 2: Extract business rules from indexed code files
+    # Reads actual code content from RAG documents, sends in batches to AI.
+    # Uses Claudio Opus 4.6 (rag_extraction) for each batch.
     # =========================================================================
 
     PHASE2_SYSTEM_PROMPT = (
         "Voce e um analista de negocios senior especializado em engenharia reversa "
         "de requisitos funcionais a partir de codebases existentes.\n\n"
-        "Seu objetivo e extrair TODAS as regras de negocio presentes no codigo-fonte. "
+        "Voce vai receber o CONTEUDO REAL de arquivos de codigo-fonte de um projeto. "
+        "Seu objetivo e extrair TODAS as regras de negocio presentes nesses arquivos.\n\n"
         "Regras de negocio sao qualquer logica que define COMO o sistema se comporta "
         "do ponto de vista do USUARIO ou do DOMINIO do negocio.\n\n"
         "CATEGORIAS DE REGRAS que voce deve procurar:\n"
@@ -257,7 +258,7 @@ class RagPipelineService:
         "- **negocio**: Politicas de negocio, regras de precificacao, SLAs\n\n"
         "IGNORE completamente:\n"
         "- Configuracoes de framework (middleware, rotas, DI)\n"
-        "- CSS, estilos, layouts\n"
+        "- CSS, estilos, layouts puros (sem logica)\n"
         "- Logs, prints, debug\n"
         "- Infraestrutura (Docker, CI/CD, deploy)\n"
         "- Imports e boilerplate\n\n"
@@ -270,15 +271,19 @@ class RagPipelineService:
         '"rule_type": "dominio|validacao|restricao|workflow|permissao|calculo|integracao|negocio", '
         '"source_file": "caminho/do/arquivo.ext", '
         '"priority": "high|normal|low"}\n'
-        "]}"
+        "]}\n\n"
+        "Se nenhum arquivo do lote contem regras de negocio, retorne: "
+        '{"business_rules": []}'
     )
+
+    # Batch size: ~50 files per AI call (avg 737 chars/file = ~37K chars per batch)
+    PHASE2_BATCH_SIZE = 50
 
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 2: Extract business rules via 3 AI passes.
-        Pass 1: Initial full extraction.
-        Pass 2: Find rules that pass 1 missed.
-        Pass 3: Final sweep for remaining rules.
+        Phase 2: Extract business rules by reading actual code from RAG.
+        Fetches all code_file documents, groups into batches, sends each
+        batch to AI for rule extraction. Uses rag_extraction (Opus 4.6).
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
@@ -301,94 +306,85 @@ class RagPipelineService:
         except Exception:
             pass
 
+        # Fetch ALL code_file documents from RAG (indexed in Phase 1)
+        jm.update_progress(job_id, 8.0, "Fase 2/4: Carregando arquivos indexados...")
+
+        code_files = self.db.execute(sql_text(
+            "SELECT content, metadata->>'source_file' as source_file "
+            "FROM rag_documents WHERE project_id = :pid "
+            "AND metadata->>'type' = 'code_file' "
+            "ORDER BY metadata->>'source_file'"
+        ), {"pid": str(project_id)}).fetchall()
+
+        if not code_files:
+            self._set_phase_status(project_id, 2, "failed")
+            raise ValueError("Nenhum arquivo indexado encontrado. Execute Phase 1 primeiro.")
+
+        total_files = len(code_files)
+        logger.info(f"Phase 2: {total_files} code files to process in batches of {self.PHASE2_BATCH_SIZE}")
+
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
 
-        all_extracted_rules: List[str] = []
         total_rules = 0
-        project_name = project.name or "Projeto"
+        total_batches = (total_files + self.PHASE2_BATCH_SIZE - 1) // self.PHASE2_BATCH_SIZE
 
-        # === PASS 1: Initial extraction ===
-        jm.update_progress(job_id, 10.0, "Fase 2/4: Passada 1/3 — Extracao inicial de regras...")
+        for batch_idx in range(0, total_files, self.PHASE2_BATCH_SIZE):
+            batch = code_files[batch_idx:batch_idx + self.PHASE2_BATCH_SIZE]
+            batch_num = (batch_idx // self.PHASE2_BATCH_SIZE) + 1
 
-        pass1_prompt = (
-            f"Analise o projeto \"{project_name}\" localizado em {project.code_path}.\n\n"
-            "Extraia TODAS as regras de negocio que voce conseguir encontrar no codigo.\n"
-            "Seja o mais abrangente possivel. Procure em:\n"
-            "- Models e schemas (entidades, validacoes, constraints)\n"
-            "- Services e use cases (logica de negocio, workflows)\n"
-            "- Endpoints e controllers (permissoes, validacoes de entrada)\n"
-            "- Utils e helpers (calculos, formatacoes de negocio)\n"
-            "- Migrations e seeds (regras de dados, defaults)\n\n"
-            "Quero o MAXIMO de regras possivel. Nao economize."
-        )
+            # Build file contents for this batch
+            files_text = ""
+            for row in batch:
+                content = row[0] or ""
+                source = row[1] or "unknown"
+                if content.strip():
+                    files_text += f"\n### {source}\n```\n{content}\n```\n"
 
-        pass1_rules = await self._execute_extraction_pass(
-            orchestrator, pass1_prompt, project_id
-        )
-        pass1_stored = self._store_rules(pass1_rules, project_id, "pass_1")
-        total_rules += pass1_stored
-        all_extracted_rules.extend([r.get("rule_text", "") for r in pass1_rules if isinstance(r, dict)])
-        self.db.commit()
+            if not files_text.strip():
+                continue
 
-        logger.info(f"Phase 2 Pass 1: {pass1_stored} rules extracted")
+            # Progress update
+            pct = 10 + (80 * batch_num / total_batches)
+            jm.update_progress(
+                job_id, pct,
+                f"Fase 2/4: Lote {batch_num}/{total_batches} — "
+                f"{total_rules} regras ate agora..."
+            )
 
-        # === PASS 2: Find missing rules ===
-        jm.update_progress(job_id, 40.0, f"Fase 2/4: Passada 2/3 — Buscando regras faltantes... ({total_rules} ate agora)")
+            # AI call for this batch
+            user_prompt = (
+                f"Analise os seguintes {len(batch)} arquivos do projeto "
+                f"\"{project.name or 'Projeto'}\" e extraia TODAS as regras "
+                f"de negocio que voce encontrar.\n\n"
+                f"{files_text}"
+            )
 
-        existing_summary = "\n".join(f"- {r[:120]}" for r in all_extracted_rules[:50])
-        pass2_prompt = (
-            f"Analise novamente o projeto \"{project_name}\" em {project.code_path}.\n\n"
-            "Na passada anterior, as seguintes regras de negocio ja foram extraidas:\n"
-            f"{existing_summary}\n\n"
-            "Agora encontre TODAS as regras de negocio que FALTARAM na passada anterior.\n"
-            "Procure especificamente em:\n"
-            "- Edge cases e tratamentos de erro com significado de negocio\n"
-            "- Regras implicitas (convencoes, padroes nao documentados)\n"
-            "- Logica condicional complexa (if/else com significado de negocio)\n"
-            "- Integracao entre servicos (regras de comunicacao, contratos)\n"
-            "- Regras de estado e transicao (maquinas de estado, lifecycle)\n"
-            "- Regras de UI que refletem logica de negocio (habilitacao/desabilitacao)\n\n"
-            "NAO repita regras ja extraidas. Retorne APENAS regras NOVAS."
-        )
+            try:
+                response = await orchestrator.execute(
+                    usage_type="rag_extraction",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=self.PHASE2_SYSTEM_PROMPT,
+                    max_tokens=8192,
+                    project_id=project_id,
+                    metadata={
+                        "phase": "rag_pipeline_phase2",
+                        "batch": batch_num,
+                        "total_batches": total_batches,
+                    },
+                )
 
-        pass2_rules = await self._execute_extraction_pass(
-            orchestrator, pass2_prompt, project_id
-        )
-        pass2_stored = self._store_rules(pass2_rules, project_id, "pass_2")
-        total_rules += pass2_stored
-        all_extracted_rules.extend([r.get("rule_text", "") for r in pass2_rules if isinstance(r, dict)])
-        self.db.commit()
+                raw = response.get("content", "")
+                batch_rules = self._parse_rules_json(raw)
+                batch_stored = self._store_rules(batch_rules, project_id, f"batch_{batch_num}")
+                total_rules += batch_stored
+                self.db.commit()
 
-        logger.info(f"Phase 2 Pass 2: {pass2_stored} new rules extracted")
+                logger.info(f"Phase 2 batch {batch_num}/{total_batches}: {batch_stored} rules")
 
-        # === PASS 3: Final sweep ===
-        jm.update_progress(job_id, 70.0, f"Fase 2/4: Passada 3/3 — Varredura final... ({total_rules} ate agora)")
-
-        existing_summary_2 = "\n".join(f"- {r[:120]}" for r in all_extracted_rules[:80])
-        pass3_prompt = (
-            f"Ultima varredura do projeto \"{project_name}\" em {project.code_path}.\n\n"
-            "Regras ja extraidas nas 2 passadas anteriores:\n"
-            f"{existing_summary_2}\n\n"
-            "Faca uma VARREDURA FINAL e encontre quaisquer regras de negocio restantes.\n"
-            "Foque em areas frequentemente ignoradas:\n"
-            "- Configuracoes com significado de negocio (limites, timeouts, thresholds)\n"
-            "- Regras de ordenacao e priorizacao\n"
-            "- Regras de cache e invalidacao com impacto no negocio\n"
-            "- Regras de notificacao e alertas\n"
-            "- Regras de agendamento e recorrencia\n"
-            "- Contratos de API (campos obrigatorios, formatos, codigos de erro)\n\n"
-            "NAO repita regras ja extraidas. Retorne APENAS regras NOVAS que nenhuma passada anterior encontrou."
-        )
-
-        pass3_rules = await self._execute_extraction_pass(
-            orchestrator, pass3_prompt, project_id
-        )
-        pass3_stored = self._store_rules(pass3_rules, project_id, "pass_3")
-        total_rules += pass3_stored
-        self.db.commit()
-
-        logger.info(f"Phase 2 Pass 3: {pass3_stored} new rules extracted")
+            except Exception as e:
+                logger.error(f"Phase 2 batch {batch_num} failed: {e}")
+                continue
 
         # Update rag_file_state
         try:
@@ -405,40 +401,27 @@ class RagPipelineService:
             raise ValueError("Extracao falhou: 0 regras extraidas")
 
         self._set_phase_status(project_id, 2, "completed")
-        jm.update_progress(job_id, 95.0,
-                           f"Fase 2/4: Concluida — {total_rules} regras extraidas "
-                           f"(P1:{pass1_stored} P2:{pass2_stored} P3:{pass3_stored})")
+        jm.update_progress(
+            job_id, 95.0,
+            f"Fase 2/4: Concluida — {total_rules} regras extraidas "
+            f"de {total_files} arquivos em {total_batches} lotes"
+        )
         return {
             "phase": "extract_rules",
             "rules_extracted": total_rules,
-            "pass_1": pass1_stored,
-            "pass_2": pass2_stored,
-            "pass_3": pass3_stored,
+            "files_processed": total_files,
+            "batches": total_batches,
         }
 
-    async def _execute_extraction_pass(
-        self, orchestrator, user_prompt: str, project_id: UUID
-    ) -> List[Any]:
-        """Execute a single extraction pass and return parsed rules list."""
+    def _parse_rules_json(self, raw: str) -> List[Any]:
+        """Parse business rules JSON from AI response."""
         try:
-            response = await orchestrator.execute(
-                usage_type="rag_extraction",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=self.PHASE2_SYSTEM_PROMPT,
-                max_tokens=8192,
-                project_id=project_id,
-                metadata={"phase": "rag_pipeline_phase2"},
-            )
-
-            raw = response.get("content", "")
             json_match = re.search(r'\{[\s\S]*\}', raw)
             if json_match:
                 parsed = json.loads(json_match.group())
                 return parsed.get("business_rules", [])
         except json.JSONDecodeError as e:
             logger.error(f"Phase 2 JSON parse error: {e}")
-        except Exception as e:
-            logger.error(f"Phase 2 extraction pass failed: {e}")
         return []
 
     def _store_rules(self, rules: List[Any], project_id: UUID, source: str) -> int:

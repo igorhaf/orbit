@@ -1,11 +1,11 @@
-# PROMPT #252 - Pipeline RAG: Opus Flows, Scan Fix, 3-Pass Rule Extraction
-## Dedicated AI Flow chains + critical bug fixes + rich prompt extraction
+# PROMPT #252 - Pipeline RAG: Opus Flows, Scan Fix, Batch Rule Extraction
+## Dedicated AI Flow chains + critical bug fixes + batch-based code analysis
 
 **Date:** February 21, 2026
 **Status:** ✅ COMPLETED
 **Priority:** HIGH
 **Type:** Feature Implementation + Bug Fix
-**Impact:** Pipeline RAG funcional: scan sem falhas, extração de regras com cobertura quase total via 3 passadas Opus 4.6
+**Impact:** Pipeline RAG funcional: scan sem falhas, extração de regras via leitura real de código em lotes de 50 arquivos
 
 ---
 
@@ -15,13 +15,13 @@
 2. Upgradar memory scan para Opus 4.6
 3. Corrigir bug crítico que causava 881/886 falhas no scan (`_detect_language` ausente)
 4. Corrigir `.astext` crash e syntax error no seed script
-5. Reescrever Phase 2 com prompt rico em português + 3 passadas para máxima cobertura de regras
+5. Reescrever Phase 2 com extração baseada em conteúdo real dos arquivos indexados
 
 **Key Requirements:**
 1. `content_generation` e `rag_extraction` como novos usage_types com Opus 4.6
 2. Memory scan tb com Opus 4.6
 3. Phase 1 scan sem erros (881 arquivos falhavam por método ausente)
-4. Phase 2 com prompt detalhado em português e 3 passadas incrementais
+4. Phase 2 lendo CONTEÚDO REAL dos arquivos da tabela `rag_documents` em lotes
 
 ---
 
@@ -48,14 +48,16 @@
 - Entries `content_generation` e `rag_extraction` em `_build_utility_nodes()` estavam fora do dict `configs`
 - Removido `}` prematuro que fechava o dict antes das novas entries
 
-### 5. Phase 2: Prompt Rico + 3 Passadas
-- System prompt detalhado com 8 categorias de regras (domínio, validação, restrição, workflow, permissão, cálculo, integração, negócio)
-- 3 passadas incrementais:
-  - **Pass 1:** Extração inicial abrangente
-  - **Pass 2:** Busca regras faltantes (recebe resumo das regras já extraídas)
-  - **Pass 3:** Varredura final em áreas frequentemente ignoradas
-- Tudo em português, formato JSON estruturado
-- Cada passada usa `usage_type="rag_extraction"` (Claudio Opus 4.6)
+### 5. Phase 2: Extração por Lotes com Conteúdo Real
+- **Abordagem:** Lê TODOS os documentos `code_file` da tabela `rag_documents` (1175 arquivos)
+- **Lotes de 50 arquivos:** Cada lote é enviado com conteúdo real (```código```) ao AI
+- **~24 lotes** processados sequencialmente com progresso no wizard
+- **System prompt rico** com 8 categorias de regras (domínio, validação, restrição, workflow, permissão, cálculo, integração, negócio)
+- **Formato JSON** estruturado com rule_text, rule_type, source_file, priority
+- Tudo em português
+- Cada lote usa `usage_type="rag_extraction"` (Claudio Opus 4.6)
+- Métodos auxiliares: `_parse_rules_json()` e `_store_rules()`
+- Regras com menos de 10 caracteres são descartadas (ruído)
 
 ### 6. Phase 1 Gating Fix
 - Botão "Regras" (Phase 2) não desbloqueia mais antes do Phase 1 completar
@@ -67,7 +69,7 @@
 
 ### Modified:
 1. **backend/app/models/ai_model.py** — +2 enum values (content_generation, rag_extraction)
-2. **backend/app/services/rag_pipeline.py** — `_detect_language()`, `.astext` fix, Phase 2 reescrita com 3 passadas
+2. **backend/app/services/rag_pipeline.py** — `_detect_language()`, `.astext` fix, Phase 2 reescrita com extração por lotes
 3. **backend/scripts/seed_ai_flow_chains.py** — Syntax fix + Opus models/chains + memory upgrade
 4. **backend/app/services/context_generator/draft_generator.py** — `_get_usage_type()` com override
 5. **backend/app/services/project_service.py** — `content_generation` na wiki enrichment
@@ -94,7 +96,7 @@
 ## 🎯 Success Metrics
 
 ✅ **Bug `_detect_language` corrigido:** 881 arquivos não falharão mais no scan
-✅ **3 passadas de extração:** Cobertura quase total de regras de negócio
+✅ **Extração por lotes com código real:** 1175 arquivos processados em ~24 lotes de 50
 ✅ **Opus 4.6 em 3 operações:** content_generation, rag_extraction, memory
 ✅ **Seed script sem erros:** Reproduzível em ambiente limpo
 
@@ -105,11 +107,14 @@
 ### 1. Root cause das 881 falhas era trivial
 O erro `'RagPipelineService' object has no attribute '_detect_language'` estava mascarado pelo error_message genérico no dashboard. Bastou consultar a tabela `rag_file_state` com `GROUP BY error_message` para identificar instantaneamente.
 
-### 2. Prompt rico > batches de código
-A qualidade do prompt é mais importante que injetar código bruto. Com Opus 4.6 e instruções detalhadas sobre categorias de regras, 3 passadas incrementais cobrem praticamente todas as regras possíveis sem necessidade de iterar arquivos.
+### 2. AI precisa de conteúdo real, não só nome de projeto
+A primeira abordagem (3 passadas com apenas nome do projeto) extraiu apenas 36 regras. A abordagem correta é enviar o CONTEÚDO REAL dos arquivos de código ao AI, lido diretamente da tabela `rag_documents` onde Phase 1 já os indexou.
 
 ### 3. `.astext` é broken em SQLAlchemy com JSON columns
 O atributo `.astext` não funciona em `BinaryExpression` do SQLAlchemy para JSON columns. Raw SQL com `->>'key'` é a solução confiável.
+
+### 4. Lotes de 50 arquivos é o sweet spot
+Com média de ~737 chars por arquivo, lotes de 50 geram ~37K caracteres por chamada de AI — dentro do limite confortável de contexto do Opus 4.6, permitindo análise detalhada sem truncamento.
 
 ---
 
@@ -118,11 +123,11 @@ O atributo `.astext` não funciona em `BinaryExpression` do SQLAlchemy para JSON
 **Key Achievements:**
 - ✅ 3 operações rodando com Claudio Opus 4.6 (content, RAG, memory)
 - ✅ Bug crítico de 881 falhas corrigido
-- ✅ Phase 2 com 3 passadas incrementais em português
+- ✅ Phase 2 com extração por lotes lendo conteúdo real dos arquivos
 - ✅ Seed script reproduzível sem syntax errors
 - ✅ Phase 1 gating correto (não desbloqueia prematuramente)
 
 **Impact:**
 - Pipeline RAG funcional de ponta a ponta
 - Qualidade de conteúdo superior com Opus 4.6
-- Extração de regras de negócio com cobertura quase total
+- Extração de regras de negócio via análise real de código (não apenas metadados)
