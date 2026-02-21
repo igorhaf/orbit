@@ -331,9 +331,13 @@ def delete_page(code_path: str, slug: str) -> bool:
     if children_dir.exists() and children_dir.is_dir():
         shutil.rmtree(children_dir)
 
-    # Clean up empty parent directories up to wiki root
+    # Clean up empty parent directories up to wiki root.
+    # PROMPT #243 - NEVER delete wiki root or any satellite/ ancestor.
     parent = path.parent
     while parent != wiki and parent.exists():
+        # Safety: stop if we somehow reach a satellite/ structural dir
+        if parent.name in ("satellite", "knowledge", "wiki"):
+            break
         try:
             if not any(parent.iterdir()):
                 parent.rmdir()

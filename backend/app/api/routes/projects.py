@@ -833,17 +833,14 @@ async def delete_project(
     except Exception as e:
         logger.warning(f"Failed to delete prompt_templates: {e}")
 
-    # Step 5: Delete project folder from disk
-    try:
-        import shutil
-        if project.project_folder:
-            projects_dir = Path("/projects")
-            project_path = projects_dir / project.project_folder
-            if project_path.exists():
-                shutil.rmtree(project_path)
-                logger.info(f"Deleted project folder: {project_path}")
-    except Exception as e:
-        logger.warning(f"Failed to delete project folder: {e}")
+    # Step 5: NEVER delete code_path or satellite/ from disk.
+    # code_path belongs to the user — ORBIT does not own it.
+    # satellite/ is a sacred knowledge base that must survive project deletion.
+    # Only database records are removed; all files on disk are preserved.
+    logger.info(
+        f"Project '{project_name}' disk files preserved "
+        f"(code_path={project.code_path}, satellite/ protected)"
+    )
 
     # Step 6: Delete the project (CASCADE handles interviews, tasks, wiki, specs, etc.)
     db.delete(project)

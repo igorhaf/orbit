@@ -38,6 +38,64 @@ logger = logging.getLogger(__name__)
 ORBIT_SCHEMA_VERSION = "1"
 SATELLITE_DIR = "satellite"  # PROMPT #235 - KB folder name
 
+# PROMPT #243 - Satellite folder is SACRED: once created, it must NEVER be
+# deleted — neither the folder itself nor its structural contents. This
+# applies to ALL projects including ORBIT itself.
+SATELLITE_PROTECTED_DIRS = frozenset({
+    "satellite",
+    "satellite/memory",
+    "satellite/docs",
+    "satellite/knowledge",
+    "satellite/knowledge/wiki",
+    "satellite/knowledge/results",
+    "satellite/knowledge/prompts",
+})
+
+
+def is_satellite_protected(path: Path, code_path: Path) -> bool:
+    """
+    Check if a path is a protected satellite directory or the satellite root.
+
+    Protected paths can NEVER be deleted by any automated process.
+    Returns True if the path is protected and must NOT be removed.
+    """
+    try:
+        rel = path.resolve().relative_to(code_path.resolve())
+        return str(rel) in SATELLITE_PROTECTED_DIRS
+    except ValueError:
+        return False
+
+
+def safe_rmtree(path: Path, code_path: Path) -> bool:
+    """
+    Safe version of shutil.rmtree that refuses to delete satellite/ or
+    any path that contains a satellite/ directory.
+
+    Returns True if deletion was allowed and performed, False if blocked.
+    """
+    import shutil
+    resolved = path.resolve()
+    code_resolved = code_path.resolve()
+
+    # Block 1: Never delete code_path itself
+    if resolved == code_resolved:
+        logger.warning(f"BLOCKED: refusing to delete code_path itself: {path}")
+        return False
+
+    # Block 2: Never delete satellite/ or its protected subdirectories
+    if is_satellite_protected(path, code_path):
+        logger.warning(f"BLOCKED: refusing to delete protected satellite path: {path}")
+        return False
+
+    # Block 3: Never delete a parent of satellite/ (would destroy it)
+    satellite_path = code_resolved / SATELLITE_DIR
+    if satellite_path.resolve().is_relative_to(resolved):
+        logger.warning(f"BLOCKED: refusing to delete parent of satellite/: {path}")
+        return False
+
+    shutil.rmtree(path)
+    return True
+
 
 def ensure_satellite_dirs(code_path: Path) -> Path:
     """
@@ -349,12 +407,21 @@ class OrbitFolderService:
 
     def delete_knowledge_file(self, project: Project, filename: str) -> bool:
         """
-        Delete a file from satellite/docs/.
+        Delete a single user-uploaded file from satellite/docs/.
 
-        Returns True if deleted, False if not found.
+        PROMPT #243 - Structural files (.gitkeep) and directories are
+        NEVER deleted. Only individual user-uploaded files can be removed.
+
+        Returns True if deleted, False if not found or protected.
         """
         knowledge_dir = Path(project.code_path) / SATELLITE_DIR / "docs"
         safe_name = Path(filename).name
+
+        # Never delete structural files
+        if safe_name == ".gitkeep":
+            logger.warning(f"BLOCKED: refusing to delete structural file .gitkeep")
+            return False
+
         file_path = knowledge_dir / safe_name
 
         if not file_path.exists() or not file_path.is_file():
