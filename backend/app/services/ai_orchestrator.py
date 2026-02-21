@@ -61,6 +61,71 @@ def _safe_broadcast(event_type: str, data: dict):
         logger.debug(f"No event loop for broadcast '{event_type}', skipping")
 
 
+# PROMPT #235 - usage_types whose executions are saved to satellite/prompts/
+# (interview excluded - too verbose; general excluded - too broad)
+_SAVE_USAGE_TYPES = {
+    "prompt_generation", "task_execution",
+    "commit_generation", "memory", "pattern_discovery",
+}
+
+
+def _save_prompt_to_satellite(db: Session, prompt_log) -> None:
+    """
+    PROMPT #235 - Save a successful AI execution as markdown in satellite/prompts/.
+
+    Only writes for usage_types in _SAVE_USAGE_TYPES.
+    Only writes if project has code_path and satellite/prompts/ already exists.
+    REGRA #0: never overwrites an existing file.
+    """
+    try:
+        if not prompt_log.project_id:
+            return
+        if prompt_log.type not in _SAVE_USAGE_TYPES:
+            return
+
+        from pathlib import Path as _Path
+        from app.models.project import Project
+
+        project = db.query(Project).filter(
+            Project.id == prompt_log.project_id
+        ).first()
+        if not project or not project.code_path:
+            return
+
+        from app.services.orbit_folder import SATELLITE_DIR
+        prompts_dir = _Path(project.code_path) / SATELLITE_DIR / "prompts"
+        if not prompts_dir.exists():
+            return  # KB not initialized yet - skip silently
+
+        date_str = (prompt_log.created_at or datetime.utcnow()).strftime("%Y-%m-%d")
+        prompt_id_short = str(prompt_log.id).replace("-", "")[:8]
+        filename = f"{date_str}_{prompt_log.type}_{prompt_id_short}.md"
+        file_path = prompts_dir / filename
+
+        # REGRA #0 - never overwrite
+        if file_path.exists():
+            return
+
+        cost = prompt_log.total_cost_usd or 0.0
+        content = (
+            f"# {prompt_log.type} — {date_str}\n\n"
+            f"**Model:** {prompt_log.ai_model_used or 'unknown'}\n"
+            f"**Status:** {prompt_log.status or 'unknown'}\n"
+            f"**Tokens:** {prompt_log.input_tokens or 0} in / "
+            f"{prompt_log.output_tokens or 0} out | "
+            f"Cost: ${cost:.4f}\n\n"
+            f"## System Prompt\n\n{prompt_log.system_prompt or ''}\n\n"
+            f"## User Prompt\n\n{prompt_log.user_prompt or ''}\n\n"
+            f"## Response\n\n{prompt_log.response or ''}\n"
+        )
+
+        file_path.write_text(content, encoding="utf-8")
+        logger.debug(f"Saved prompt log to satellite: {filename}")
+
+    except Exception as e:
+        logger.warning(f"Failed to save prompt to satellite (non-critical): {e}")
+
+
 UsageType = Literal[
     "prompt_generation",
     "task_execution",
@@ -1070,6 +1135,7 @@ class AIOrchestrator:
                                 self.db.add(prompt_log)
                                 self.db.commit()
                                 logger.info(f"✅ Logged prompt to audit (chain path): {prompt_log.id}")
+                                _save_prompt_to_satellite(self.db, prompt_log)  # PROMPT #235
                             except Exception as prompt_error:
                                 logger.error(f"⚠️  Failed to log prompt (chain path): {prompt_error}")
                                 self.db.rollback()
@@ -1712,6 +1778,7 @@ class AIOrchestrator:
                         self.db.add(prompt_log)
                         self.db.commit()
                         logger.info(f"✅ Logged prompt to audit: {prompt_log.id}")
+                        _save_prompt_to_satellite(self.db, prompt_log)  # PROMPT #235
                     except Exception as prompt_error:
                         logger.error(f"⚠️  Failed to log prompt to audit: {prompt_error}")
                         self.db.rollback()

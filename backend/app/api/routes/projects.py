@@ -502,14 +502,10 @@ async def create_and_process_project(
             detail=f"scan_depth inválido '{scan_depth}'. Deve ser um de: {', '.join(valid_depths)}"
         )
 
-    # Validate code_path
+    # Validate code_path - only reject if it exists but is a file
+    # (PROMPT #235: if it doesn't exist, it will be created with satellite/ KB structure)
     path = Path(code_path)
-    if not path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Caminho do código não existe: {code_path}"
-        )
-    if not path.is_dir():
+    if path.exists() and not path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Caminho do código não é um diretório: {code_path}"
@@ -518,6 +514,10 @@ async def create_and_process_project(
     # Use folder name as temporary title
     folder_name = path.name
     temp_name = folder_name.replace("-", " ").replace("_", " ").title()
+
+    # PROMPT #235 - Initialize satellite/ KB structure (creates code_path if needed)
+    from app.services.project_service import initialize_project_knowledge_base
+    initialize_project_knowledge_base(code_path, temp_name)
 
     # PROMPT #232 - IC-5 fix: Start as draft, promote to active on scan success
     from app.models.project import ProjectStatus

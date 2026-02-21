@@ -30,6 +30,41 @@ logger = logging.getLogger(__name__)
 MAX_SPECS_PER_PROJECT = 50
 
 
+def initialize_project_knowledge_base(code_path: str, project_name: str) -> str:
+    """
+    PROMPT #235 - Create satellite/ KB structure inside code_path.
+
+    Creates code_path itself if it doesn't exist.
+    Creates satellite/ and all subfolders (idempotent).
+    Creates satellite/README.md if not present (REGRA #0 - never overwrites).
+
+    Returns the satellite/ path as string.
+    """
+    from app.services.orbit_folder import ensure_satellite_dirs
+
+    path = Path(code_path)
+    satellite_path = ensure_satellite_dirs(path)
+
+    # Create README.md only if not present (REGRA #0)
+    readme = satellite_path / "README.md"
+    if not readme.exists():
+        readme.write_text(
+            f"# {project_name}\n\n"
+            "Base de conhecimento gerenciada pelo ORBIT.\n\n"
+            "## Estrutura\n\n"
+            "- `prompts/` — Prompts gerados para cards e logs de execucao de IA\n"
+            "- `results/` — Resultados de execucao de tasks pelo Claude Code\n"
+            "- `knowledge/` — Arquivos de contexto e documentacao adicional\n"
+            "- `docs/` — Documentacao publica do projeto\n"
+            "- `rag/internal/` — Reports de implementacao\n"
+            "- `rag/docs/` — Documentacao geral\n",
+            encoding="utf-8"
+        )
+        logger.info(f"Created satellite/README.md for project '{project_name}'")
+
+    return str(satellite_path)
+
+
 def _get_max_patterns(db: Session) -> int:
     """Read max_discovery_patterns from system_settings, default 20.
     Auto-creates the setting with default value if it doesn't exist."""

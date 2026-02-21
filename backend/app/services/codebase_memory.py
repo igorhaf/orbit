@@ -188,6 +188,8 @@ class CodebaseMemoryService:
 
         # PROMPT #241 - ORBIT bridge folder (prompts/results/knowledge)
         "orbit",
+        # PROMPT #235 - satellite/ KB folder
+        "satellite",
     }
 
     # PROMPT #166 - File patterns to ALWAYS ignore (not business logic)

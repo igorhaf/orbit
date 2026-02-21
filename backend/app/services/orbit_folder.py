@@ -2,12 +2,16 @@
 Orbit Folder Service
 
 PROMPT #241 - orbit/ folder architecture inside project code_path.
+PROMPT #235 - renamed bridge folder from orbit/ to satellite/.
 
-Creates and manages the orbit/ bridge folder structure:
-  {code_path}/orbit/
-  {code_path}/orbit/prompts/     <- exported card prompts (.md)
-  {code_path}/orbit/results/     <- Claude Code output results (.md)
-  {code_path}/orbit/knowledge/   <- additional context files
+Creates and manages the satellite/ knowledge-base folder structure:
+  {code_path}/satellite/
+  {code_path}/satellite/prompts/       <- exported card prompts + AI execution logs
+  {code_path}/satellite/results/       <- Claude Code output results (.md)
+  {code_path}/satellite/knowledge/     <- additional context files
+  {code_path}/satellite/docs/          <- public documentation
+  {code_path}/satellite/rag/internal/  <- implementation reports
+  {code_path}/satellite/rag/docs/      <- general documentation
 
 Human Data Supremacy Rule: this service ONLY writes files when
 task.generated_prompt is present (AI-generated). It never overwrites
@@ -32,6 +36,52 @@ from app.models.task_result import TaskResult
 logger = logging.getLogger(__name__)
 
 ORBIT_SCHEMA_VERSION = "1"
+SATELLITE_DIR = "satellite"  # PROMPT #235 - KB folder name
+
+
+def ensure_satellite_dirs(code_path: Path) -> Path:
+    """
+    PROMPT #235 - Create satellite/ KB structure inside code_path.
+
+    Creates code_path itself if it doesn't exist (parents=True).
+    Idempotent - safe to call multiple times.
+    Returns the satellite/ Path.
+
+    Structure:
+      satellite/
+        prompts/       .gitkeep
+        results/       .gitkeep
+        knowledge/     .gitkeep
+        docs/          .gitkeep
+        rag/
+          internal/    .gitkeep
+          docs/        .gitkeep
+    """
+    code_path.mkdir(parents=True, exist_ok=True)
+
+    satellite_path = code_path / SATELLITE_DIR
+    satellite_path.mkdir(exist_ok=True)
+
+    # Core leaf subfolders
+    for sub in ("prompts", "results", "knowledge", "docs"):
+        sub_path = satellite_path / sub
+        sub_path.mkdir(exist_ok=True)
+        gitkeep = sub_path / ".gitkeep"
+        if not gitkeep.exists():
+            gitkeep.touch()
+
+    # RAG subfolders
+    rag_path = satellite_path / "rag"
+    rag_path.mkdir(exist_ok=True)
+    for sub in ("internal", "docs"):
+        sub_path = rag_path / sub
+        sub_path.mkdir(exist_ok=True)
+        gitkeep = sub_path / ".gitkeep"
+        if not gitkeep.exists():
+            gitkeep.touch()
+
+    logger.info(f"Satellite KB structure ensured at {satellite_path}")
+    return satellite_path
 
 
 class OrbitFolderService:
@@ -43,9 +93,9 @@ class OrbitFolderService:
 
     def ensure_orbit_structure(self, project: Project) -> Path:
         """
-        Create orbit/ folder and its three subfolders inside code_path.
+        Create satellite/ KB folder and all its subfolders inside code_path.
         Idempotent - safe to call multiple times.
-        Returns the orbit/ Path.
+        Returns the satellite/ Path.
         """
         code_path = Path(project.code_path)
         if not code_path.exists():
@@ -53,19 +103,7 @@ class OrbitFolderService:
                 f"code_path nao existe: {code_path}"
             )
 
-        orbit_path = code_path / "orbit"
-        orbit_path.mkdir(exist_ok=True)
-
-        for sub in self.SUBFOLDERS:
-            (orbit_path / sub).mkdir(exist_ok=True)
-
-        for sub in self.SUBFOLDERS:
-            gitkeep = orbit_path / sub / ".gitkeep"
-            if not gitkeep.exists():
-                gitkeep.touch()
-
-        logger.info(f"Orbit folder structure ensured at {orbit_path}")
-        return orbit_path
+        return ensure_satellite_dirs(code_path)
 
     def export_prompt(self, task: Task) -> Dict:
         """
@@ -95,8 +133,8 @@ class OrbitFolderService:
         if not project:
             raise ValueError(f"Projeto {task.project_id} nao encontrado")
 
-        orbit_path = self.ensure_orbit_structure(project)
-        prompts_dir = orbit_path / "prompts"
+        satellite_path = self.ensure_orbit_structure(project)
+        prompts_dir = satellite_path / "prompts"
 
         filename = _build_orbit_filename(task)
         file_path = prompts_dir / filename
@@ -113,19 +151,19 @@ class OrbitFolderService:
         return {
             "file_path": str(file_path),
             "filename": filename,
-            "orbit_path": str(orbit_path),
+            "orbit_path": str(satellite_path),
         }
 
     def get_orbit_status(self, project: Project) -> Dict:
-        """Return the current state of the orbit/ folder."""
+        """Return the current state of the satellite/ KB folder."""
         code_path = Path(project.code_path)
-        orbit_path = code_path / "orbit"
+        satellite_path = code_path / SATELLITE_DIR
 
-        if not orbit_path.exists():
+        if not satellite_path.exists():
             return {"exists": False, "prompts": 0, "results": 0, "knowledge": 0}
 
         def _count(sub: str) -> int:
-            folder = orbit_path / sub
+            folder = satellite_path / sub
             if not folder.exists():
                 return 0
             return sum(
@@ -135,7 +173,7 @@ class OrbitFolderService:
 
         return {
             "exists": True,
-            "orbit_path": str(orbit_path),
+            "orbit_path": str(satellite_path),
             "prompts": _count("prompts"),
             "results": _count("results"),
             "knowledge": _count("knowledge"),
@@ -152,7 +190,7 @@ class OrbitFolderService:
         Returns list of dicts with card_id, task, filename, file_path,
         content, and front_matter for each unprocessed result.
         """
-        results_dir = Path(project.code_path) / "orbit" / "results"
+        results_dir = Path(project.code_path) / SATELLITE_DIR / "results"
         if not results_dir.exists():
             return []
 
@@ -291,7 +329,7 @@ class OrbitFolderService:
 
         Returns list of dicts with filename, size_bytes, modified_at.
         """
-        knowledge_dir = Path(project.code_path) / "orbit" / "knowledge"
+        knowledge_dir = Path(project.code_path) / SATELLITE_DIR / "knowledge"
         if not knowledge_dir.exists():
             return []
 
@@ -314,7 +352,7 @@ class OrbitFolderService:
 
         Returns True if deleted, False if not found.
         """
-        knowledge_dir = Path(project.code_path) / "orbit" / "knowledge"
+        knowledge_dir = Path(project.code_path) / SATELLITE_DIR / "knowledge"
         safe_name = Path(filename).name
         file_path = knowledge_dir / safe_name
 
@@ -443,7 +481,7 @@ orbit_schema_version: "{ORBIT_SCHEMA_VERSION}"
 
 > Exportado pelo ORBIT em {now_iso}
 > Arquivo de resultado esperado: `{result_filename}`
-> Coloque o arquivo de resultado em: `orbit/results/`
+> Coloque o arquivo de resultado em: `satellite/results/`
 """
 
     return content
