@@ -2589,7 +2589,7 @@ async def suggest_title(
 # ============================================================================
 
 class PromptExportResponse(BaseModel):
-    """Response for prompt export to satellite/memory/."""
+    """Response for prompt export to satellite/knowledge/prompts/."""
     task_id: str
     filename: str
     file_path: str
@@ -2603,8 +2603,9 @@ class OrbitStatusResponse(BaseModel):
     exists: bool
     orbit_path: Optional[str] = None
     memory: int = 0
+    docs: int = 0
     results: int = 0
-    knowledge: int = 0
+    prompts: int = 0
 
 
 @router.post("/{task_id}/export-prompt", response_model=PromptExportResponse)
@@ -2613,10 +2614,10 @@ async def export_prompt_to_orbit(
     db: Session = Depends(get_db)
 ):
     """
-    PROMPT #241 - Export a card's generated_prompt to satellite/memory/ as .md file.
+    PROMPT #241 - Export a card's generated_prompt to satellite/knowledge/prompts/ as .md file.
 
     Creates the satellite/ folder structure if it doesn't exist.
-    Writes {ITEM_TYPE}_{shortid}_{title_slug}.md to satellite/memory/.
+    Writes {ITEM_TYPE}_{shortid}_{title_slug}.md to satellite/knowledge/prompts/.
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -2644,7 +2645,7 @@ async def export_prompt_to_orbit(
         filename=result["filename"],
         file_path=result["file_path"],
         orbit_path=result["orbit_path"],
-        message=f"Prompt exportado para satellite/memory/{result['filename']}"
+        message=f"Prompt exportado para satellite/knowledge/prompts/{result['filename']}"
     )
 
 
@@ -2656,7 +2657,7 @@ async def get_orbit_status(
     """
     PROMPT #241 - Get the current state of the satellite/ folder for a project.
 
-    Returns counts of files in memory/, results/, knowledge/.
+    Returns counts of files in memory/, docs/, knowledge/results/, knowledge/prompts/.
     """
     from app.models.project import Project
     project = db.query(Project).filter(Project.id == project_id).first()

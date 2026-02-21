@@ -4,9 +4,9 @@ Base de conhecimento gerenciada pelo ORBIT.
 
 ## Estrutura
 
-- `memory/` — Prompts gerados para cards e logs de execucao de IA
-- `results/` — Resultados de execucao de tasks pelo Claude Code
-- `knowledge/` — Arquivos de contexto e documentacao adicional
-- `docs/` — Documentacao publica do projeto
-- `rag/internal/` — Reports de implementacao
-- `rag/docs/` — Documentacao geral
+- `memory/` — Logs de execucao de IA (auto-salvos pelo AIOrchestrator)
+- `docs/` — Documentos externos (PDFs, TXTs, etc.) vigiados pelo RAG para analise
+- `knowledge/` — Base de conhecimento estruturada
+  - `wiki/` — Wiki pages (.md com YAML front matter)
+  - `results/` — Resultados de execucao do Claude Code (lidos pelos cards)
+  - `prompts/` — Prompts exportados para execucao no Claude Code

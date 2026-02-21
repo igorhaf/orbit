@@ -2,10 +2,10 @@
 Wiki Filesystem Storage Layer
 
 PROMPT #237 - Wiki pages stored as .md files with YAML front matter
-in satellite/wiki/ inside the project code_path.
+in satellite/knowledge/wiki/ inside the project code_path.
 
 Storage structure:
-    satellite/wiki/
+    satellite/knowledge/wiki/
         {slug}.md                    -> root page (no parent)
         {parent_slug}/
             {slug}.md                -> child page
@@ -52,7 +52,7 @@ class WikiFileInfo:
 
 def _wiki_dir(code_path: str) -> Path:
     """Return the wiki directory path for a project."""
-    return Path(code_path) / SATELLITE_DIR / WIKI_DIR_NAME
+    return Path(code_path) / SATELLITE_DIR / "knowledge" / WIKI_DIR_NAME
 
 
 def _deterministic_id(project_id, slug: str) -> str:

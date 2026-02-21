@@ -670,16 +670,19 @@ git push origin main
 
 ```
 satellite/
-  memory/         # Prompts de cards exportados + logs de execucao IA
-  results/        # Resultados de execucao de tasks pelo Claude Code
-  knowledge/      # Reports de implementacao (PROMPT_N_*.md) + contexto adicional
-  docs/           # Documentacao publica do projeto
-  wiki/           # Wiki pages (.md com YAML front matter)
-  README.md       # Descricao auto-gerada do projeto
+  memory/              # Logs de execucao IA (auto-salvos pelo AIOrchestrator)
+  docs/                # Documentos externos (PDFs, TXTs, etc.) - vigiado pelo RAG
+  knowledge/           # Base de conhecimento estruturada
+    wiki/              # Wiki pages (.md com YAML front matter)
+    results/           # Resultados do Claude Code (lidos pelos cards)
+    prompts/           # Prompts exportados para execucao no Claude Code
+  README.md            # Descricao auto-gerada do projeto
 ```
 
 **Regras:**
 - ✅ Todos os reports de PROMPT vao em `satellite/knowledge/`
+- ✅ Upload de documentos externos vai para `satellite/docs/` (vigiado pelo RAG)
+- ✅ Wiki pages ficam em `satellite/knowledge/wiki/`
 - ✅ CLAUDE.md e README.md permanecem na raiz (sao arquivos especiais)
 - ❌ NUNCA criar .md de documentacao na raiz do projeto
 

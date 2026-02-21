@@ -6,12 +6,12 @@ PROMPT #235 - renamed bridge folder from orbit/ to satellite/.
 
 Creates and manages the satellite/ knowledge-base folder structure:
   {code_path}/satellite/
-  {code_path}/satellite/memory/        <- exported card prompts + AI execution logs
-  {code_path}/satellite/results/       <- Claude Code output results (.md)
-  {code_path}/satellite/knowledge/     <- additional context files
-  {code_path}/satellite/docs/          <- public documentation
-  {code_path}/satellite/rag/internal/  <- implementation reports
-  {code_path}/satellite/rag/docs/      <- general documentation
+  {code_path}/satellite/memory/              <- AI execution logs (auto-saved by AIOrchestrator)
+  {code_path}/satellite/docs/               <- external documents (PDFs, TXTs, etc.) watched by RAG
+  {code_path}/satellite/knowledge/           <- structured knowledge base
+  {code_path}/satellite/knowledge/wiki/      <- wiki pages (.md with YAML front matter)
+  {code_path}/satellite/knowledge/results/   <- Claude Code execution results (read by cards)
+  {code_path}/satellite/knowledge/prompts/   <- prompts exported for Claude Code execution
 
 Human Data Supremacy Rule: this service ONLY writes files when
 task.generated_prompt is present (AI-generated). It never overwrites
@@ -49,32 +49,31 @@ def ensure_satellite_dirs(code_path: Path) -> Path:
 
     Structure:
       satellite/
-        memory/        .gitkeep
-        results/       .gitkeep
-        knowledge/     .gitkeep
-        docs/          .gitkeep
-        rag/
-          internal/    .gitkeep
-          docs/        .gitkeep
+        memory/                .gitkeep   <- AI execution logs
+        docs/                  .gitkeep   <- external documents for RAG
+        knowledge/                        <- structured knowledge base
+          wiki/                .gitkeep   <- wiki pages
+          results/             .gitkeep   <- Claude Code results
+          prompts/             .gitkeep   <- exported prompts
     """
     code_path.mkdir(parents=True, exist_ok=True)
 
     satellite_path = code_path / SATELLITE_DIR
     satellite_path.mkdir(exist_ok=True)
 
-    # Core leaf subfolders
-    for sub in ("memory", "results", "knowledge", "docs", "wiki"):
+    # Top-level subfolders
+    for sub in ("memory", "docs"):
         sub_path = satellite_path / sub
         sub_path.mkdir(exist_ok=True)
         gitkeep = sub_path / ".gitkeep"
         if not gitkeep.exists():
             gitkeep.touch()
 
-    # RAG subfolders
-    rag_path = satellite_path / "rag"
-    rag_path.mkdir(exist_ok=True)
-    for sub in ("internal", "docs"):
-        sub_path = rag_path / sub
+    # Knowledge subfolders (structured KB)
+    knowledge_path = satellite_path / "knowledge"
+    knowledge_path.mkdir(exist_ok=True)
+    for sub in ("wiki", "results", "prompts"):
+        sub_path = knowledge_path / sub
         sub_path.mkdir(exist_ok=True)
         gitkeep = sub_path / ".gitkeep"
         if not gitkeep.exists():
@@ -86,7 +85,7 @@ def ensure_satellite_dirs(code_path: Path) -> Path:
 
 class OrbitFolderService:
 
-    SUBFOLDERS = ("memory", "results", "knowledge")
+    SUBFOLDERS = ("memory", "docs", "knowledge")
 
     def __init__(self, db: Session):
         self.db = db
@@ -107,7 +106,7 @@ class OrbitFolderService:
 
     def export_prompt(self, task: Task) -> Dict:
         """
-        Export a card's generated_prompt to satellite/memory/ as a structured .md file.
+        Export a card's generated_prompt to satellite/knowledge/prompts/ as a structured .md file.
 
         Returns:
             {
@@ -134,10 +133,11 @@ class OrbitFolderService:
             raise ValueError(f"Projeto {task.project_id} nao encontrado")
 
         satellite_path = self.ensure_orbit_structure(project)
-        memory_dir = satellite_path / "memory"
+        prompts_dir = satellite_path / "knowledge" / "prompts"
+        prompts_dir.mkdir(parents=True, exist_ok=True)
 
         filename = _build_orbit_filename(task)
-        file_path = memory_dir / filename
+        file_path = prompts_dir / filename
 
         content = _render_prompt_md(task, project)
 
@@ -160,7 +160,7 @@ class OrbitFolderService:
         satellite_path = code_path / SATELLITE_DIR
 
         if not satellite_path.exists():
-            return {"exists": False, "memory": 0, "results": 0, "knowledge": 0}
+            return {"exists": False, "memory": 0, "docs": 0, "results": 0, "prompts": 0}
 
         def _count(sub: str) -> int:
             folder = satellite_path / sub
@@ -175,8 +175,9 @@ class OrbitFolderService:
             "exists": True,
             "orbit_path": str(satellite_path),
             "memory": _count("memory"),
-            "results": _count("results"),
-            "knowledge": _count("knowledge"),
+            "docs": _count("docs"),
+            "results": _count("knowledge/results"),
+            "prompts": _count("knowledge/prompts"),
         }
 
     # =========================================================================
@@ -190,7 +191,7 @@ class OrbitFolderService:
         Returns list of dicts with card_id, task, filename, file_path,
         content, and front_matter for each unprocessed result.
         """
-        results_dir = Path(project.code_path) / SATELLITE_DIR / "results"
+        results_dir = Path(project.code_path) / SATELLITE_DIR / "knowledge" / "results"
         if not results_dir.exists():
             return []
 
@@ -289,7 +290,7 @@ class OrbitFolderService:
 
     def upload_knowledge(self, project: Project, filename: str, content: bytes) -> Dict:
         """
-        Save a file to orbit/knowledge/ on disk.
+        Save a file to satellite/docs/ on disk.
 
         Returns:
             {
@@ -300,7 +301,7 @@ class OrbitFolderService:
             }
         """
         orbit_path = self.ensure_orbit_structure(project)
-        knowledge_dir = orbit_path / "knowledge"
+        knowledge_dir = orbit_path / "docs"
 
         # Sanitize filename to prevent path traversal
         safe_name = Path(filename).name
@@ -325,11 +326,11 @@ class OrbitFolderService:
 
     def list_knowledge_files(self, project: Project) -> List[Dict]:
         """
-        List all files in orbit/knowledge/ (excluding .gitkeep).
+        List all files in satellite/docs/ (excluding .gitkeep).
 
         Returns list of dicts with filename, size_bytes, modified_at.
         """
-        knowledge_dir = Path(project.code_path) / SATELLITE_DIR / "knowledge"
+        knowledge_dir = Path(project.code_path) / SATELLITE_DIR / "docs"
         if not knowledge_dir.exists():
             return []
 
@@ -348,11 +349,11 @@ class OrbitFolderService:
 
     def delete_knowledge_file(self, project: Project, filename: str) -> bool:
         """
-        Delete a file from orbit/knowledge/.
+        Delete a file from satellite/docs/.
 
         Returns True if deleted, False if not found.
         """
-        knowledge_dir = Path(project.code_path) / SATELLITE_DIR / "knowledge"
+        knowledge_dir = Path(project.code_path) / SATELLITE_DIR / "docs"
         safe_name = Path(filename).name
         file_path = knowledge_dir / safe_name
 
@@ -481,7 +482,7 @@ orbit_schema_version: "{ORBIT_SCHEMA_VERSION}"
 
 > Exportado pelo ORBIT em {now_iso}
 > Arquivo de resultado esperado: `{result_filename}`
-> Coloque o arquivo de resultado em: `satellite/results/`
+> Coloque o arquivo de resultado em: `satellite/knowledge/results/`
 """
 
     return content

@@ -860,13 +860,13 @@ async def upload_orbit_knowledge(
     db: Session = Depends(get_db),
 ):
     """
-    Upload a knowledge file to orbit/knowledge/ on disk AND index in RAG.
+    Upload a document to satellite/docs/ on disk AND index in RAG.
 
     PROMPT #243 - Orbit Knowledge Upload
 
-    Saves the file to {code_path}/orbit/knowledge/{filename} and also
+    Saves the file to {code_path}/satellite/docs/{filename} and also
     chunks + indexes the content in the RAG for semantic search.
-    Accepts text files: .md, .txt, .rst, .yaml, .yml, .json
+    Accepts text files: .md, .txt, .rst, .yaml, .yml, .json, .pdf
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -895,7 +895,7 @@ async def upload_orbit_knowledge(
     try:
         content = await file.read()
 
-        # 1. Save to orbit/knowledge/ on disk
+        # 1. Save to satellite/docs/ on disk
         from app.services.orbit_folder import OrbitFolderService
 
         orbit_service = OrbitFolderService(db)
@@ -959,7 +959,7 @@ async def list_orbit_knowledge_files(
     db: Session = Depends(get_db),
 ):
     """
-    List all files in orbit/knowledge/ on disk.
+    List all files in satellite/docs/ on disk.
 
     PROMPT #243 - Orbit Knowledge Upload
     """
@@ -988,7 +988,7 @@ async def delete_orbit_knowledge_file(
     db: Session = Depends(get_db),
 ):
     """
-    Delete a file from orbit/knowledge/ on disk and remove its RAG chunks.
+    Delete a file from satellite/docs/ on disk and remove its RAG chunks.
 
     PROMPT #243 - Orbit Knowledge Upload
     """
@@ -1007,7 +1007,7 @@ async def delete_orbit_knowledge_file(
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Arquivo '{filename}' não encontrado em orbit/knowledge/",
+            detail=f"Arquivo '{filename}' não encontrado em satellite/docs/",
         )
 
     # Also remove RAG chunks for this file
