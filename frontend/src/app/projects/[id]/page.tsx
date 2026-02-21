@@ -617,16 +617,18 @@ export default function ProjectDetailsPage() {
           </div>
 
           {/* PROMPT #251 - Manual RAG Scan button (always visible when scan complete) */}
-          {initialScanComplete && !isEnriching && (
+          {initialScanComplete && (
             <button
-              disabled={scanningRag}
+              disabled={scanningRag || isEnriching}
               onClick={async () => {
                 try {
                   setScanningRag(true);
+                  setIsEnriching(true);
                   await ragApi.continuousScan(projectId);
                   showSuccess('Scan de documentos iniciado');
                 } catch (err: any) {
                   showError(err?.message || 'Erro ao iniciar scan');
+                  setIsEnriching(false);
                 } finally {
                   setScanningRag(false);
                 }
@@ -637,13 +639,22 @@ export default function ProjectDetailsPage() {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
-              {scanningRag ? 'Escaneando...' : 'Scan Documentos'}
+              {scanningRag ? 'Escaneando...' : isEnriching ? 'Scan em andamento' : 'Scan Documentos'}
             </button>
           )}
         </div>
 
-        {/* PROMPT #251 - Removed "Expandindo projeto em segundo plano" banner.
-            Continuous scan was removed; RAG scan is now manual via button. */}
+        {/* PROMPT #251 - Scan in progress banner (replaces old enrichment banner) */}
+        {isEnriching && initialScanComplete && !generatingHierarchy && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+              <span className="text-sm font-medium text-blue-900">
+                Scan de documentos em andamento...
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* PROMPT #244 - Generating hierarchy progress banner */}
         {generatingHierarchy && (
