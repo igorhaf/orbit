@@ -4,7 +4,7 @@ Base de conhecimento gerenciada pelo ORBIT.
 
 ## Estrutura
 
-- `prompts/` — Prompts gerados para cards e logs de execucao de IA
+- `memory/` — Prompts gerados para cards e logs de execucao de IA
 - `results/` — Resultados de execucao de tasks pelo Claude Code
 - `knowledge/` — Arquivos de contexto e documentacao adicional
 - `docs/` — Documentacao publica do projeto

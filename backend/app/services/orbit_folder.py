@@ -6,7 +6,7 @@ PROMPT #235 - renamed bridge folder from orbit/ to satellite/.
 
 Creates and manages the satellite/ knowledge-base folder structure:
   {code_path}/satellite/
-  {code_path}/satellite/prompts/       <- exported card prompts + AI execution logs
+  {code_path}/satellite/memory/        <- exported card prompts + AI execution logs
   {code_path}/satellite/results/       <- Claude Code output results (.md)
   {code_path}/satellite/knowledge/     <- additional context files
   {code_path}/satellite/docs/          <- public documentation
@@ -49,7 +49,7 @@ def ensure_satellite_dirs(code_path: Path) -> Path:
 
     Structure:
       satellite/
-        prompts/       .gitkeep
+        memory/        .gitkeep
         results/       .gitkeep
         knowledge/     .gitkeep
         docs/          .gitkeep
@@ -63,7 +63,7 @@ def ensure_satellite_dirs(code_path: Path) -> Path:
     satellite_path.mkdir(exist_ok=True)
 
     # Core leaf subfolders
-    for sub in ("prompts", "results", "knowledge", "docs", "wiki"):
+    for sub in ("memory", "results", "knowledge", "docs", "wiki"):
         sub_path = satellite_path / sub
         sub_path.mkdir(exist_ok=True)
         gitkeep = sub_path / ".gitkeep"
@@ -86,7 +86,7 @@ def ensure_satellite_dirs(code_path: Path) -> Path:
 
 class OrbitFolderService:
 
-    SUBFOLDERS = ("prompts", "results", "knowledge")
+    SUBFOLDERS = ("memory", "results", "knowledge")
 
     def __init__(self, db: Session):
         self.db = db
@@ -107,7 +107,7 @@ class OrbitFolderService:
 
     def export_prompt(self, task: Task) -> Dict:
         """
-        Export a card's generated_prompt to orbit/prompts/ as a structured .md file.
+        Export a card's generated_prompt to satellite/memory/ as a structured .md file.
 
         Returns:
             {
@@ -134,10 +134,10 @@ class OrbitFolderService:
             raise ValueError(f"Projeto {task.project_id} nao encontrado")
 
         satellite_path = self.ensure_orbit_structure(project)
-        prompts_dir = satellite_path / "prompts"
+        memory_dir = satellite_path / "memory"
 
         filename = _build_orbit_filename(task)
-        file_path = prompts_dir / filename
+        file_path = memory_dir / filename
 
         content = _render_prompt_md(task, project)
 
@@ -160,7 +160,7 @@ class OrbitFolderService:
         satellite_path = code_path / SATELLITE_DIR
 
         if not satellite_path.exists():
-            return {"exists": False, "prompts": 0, "results": 0, "knowledge": 0}
+            return {"exists": False, "memory": 0, "results": 0, "knowledge": 0}
 
         def _count(sub: str) -> int:
             folder = satellite_path / sub
@@ -174,7 +174,7 @@ class OrbitFolderService:
         return {
             "exists": True,
             "orbit_path": str(satellite_path),
-            "prompts": _count("prompts"),
+            "memory": _count("memory"),
             "results": _count("results"),
             "knowledge": _count("knowledge"),
         }

@@ -2589,7 +2589,7 @@ async def suggest_title(
 # ============================================================================
 
 class PromptExportResponse(BaseModel):
-    """Response for prompt export to orbit/prompts/."""
+    """Response for prompt export to satellite/memory/."""
     task_id: str
     filename: str
     file_path: str
@@ -2598,11 +2598,11 @@ class PromptExportResponse(BaseModel):
 
 
 class OrbitStatusResponse(BaseModel):
-    """Current state of the orbit/ folder for a project."""
+    """Current state of the satellite/ folder for a project."""
     project_id: str
     exists: bool
     orbit_path: Optional[str] = None
-    prompts: int = 0
+    memory: int = 0
     results: int = 0
     knowledge: int = 0
 
@@ -2613,10 +2613,10 @@ async def export_prompt_to_orbit(
     db: Session = Depends(get_db)
 ):
     """
-    PROMPT #241 - Export a card's generated_prompt to orbit/prompts/ as .md file.
+    PROMPT #241 - Export a card's generated_prompt to satellite/memory/ as .md file.
 
-    Creates the orbit/ folder structure if it doesn't exist.
-    Writes {ITEM_TYPE}_{shortid}_{title_slug}.md to orbit/prompts/.
+    Creates the satellite/ folder structure if it doesn't exist.
+    Writes {ITEM_TYPE}_{shortid}_{title_slug}.md to satellite/memory/.
     """
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -2644,7 +2644,7 @@ async def export_prompt_to_orbit(
         filename=result["filename"],
         file_path=result["file_path"],
         orbit_path=result["orbit_path"],
-        message=f"Prompt exportado para orbit/prompts/{result['filename']}"
+        message=f"Prompt exportado para satellite/memory/{result['filename']}"
     )
 
 
@@ -2654,9 +2654,9 @@ async def get_orbit_status(
     db: Session = Depends(get_db)
 ):
     """
-    PROMPT #241 - Get the current state of the orbit/ folder for a project.
+    PROMPT #241 - Get the current state of the satellite/ folder for a project.
 
-    Returns counts of files in prompts/, results/, knowledge/.
+    Returns counts of files in memory/, results/, knowledge/.
     """
     from app.models.project import Project
     project = db.query(Project).filter(Project.id == project_id).first()

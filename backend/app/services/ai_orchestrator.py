@@ -61,7 +61,7 @@ def _safe_broadcast(event_type: str, data: dict):
         logger.debug(f"No event loop for broadcast '{event_type}', skipping")
 
 
-# PROMPT #235 - usage_types whose executions are saved to satellite/prompts/
+# PROMPT #235 - usage_types whose executions are saved to satellite/memory/
 # (interview excluded - too verbose; general excluded - too broad)
 _SAVE_USAGE_TYPES = {
     "prompt_generation", "task_execution",
@@ -71,10 +71,10 @@ _SAVE_USAGE_TYPES = {
 
 def _save_prompt_to_satellite(db: Session, prompt_log) -> None:
     """
-    PROMPT #235 - Save a successful AI execution as markdown in satellite/prompts/.
+    PROMPT #235 - Save a successful AI execution as markdown in satellite/memory/.
 
     Only writes for usage_types in _SAVE_USAGE_TYPES.
-    Only writes if project has code_path and satellite/prompts/ already exists.
+    Only writes if project has code_path and satellite/memory/ already exists.
     REGRA #0: never overwrites an existing file.
     """
     try:
@@ -93,14 +93,14 @@ def _save_prompt_to_satellite(db: Session, prompt_log) -> None:
             return
 
         from app.services.orbit_folder import SATELLITE_DIR
-        prompts_dir = _Path(project.code_path) / SATELLITE_DIR / "prompts"
-        if not prompts_dir.exists():
+        memory_dir = _Path(project.code_path) / SATELLITE_DIR / "memory"
+        if not memory_dir.exists():
             return  # KB not initialized yet - skip silently
 
         date_str = (prompt_log.created_at or datetime.utcnow()).strftime("%Y-%m-%d")
         prompt_id_short = str(prompt_log.id).replace("-", "")[:8]
         filename = f"{date_str}_{prompt_log.type}_{prompt_id_short}.md"
-        file_path = prompts_dir / filename
+        file_path = memory_dir / filename
 
         # REGRA #0 - never overwrite
         if file_path.exists():

@@ -72,7 +72,7 @@ export default function PromptTab({
             {/* PROMPT #241 - Show export result path */}
             {exportResult && (
               <div className="mt-3 p-2 bg-green-50 border border-green-200 rounded text-xs text-green-700">
-                Exportado: <code className="bg-green-100 px-1 rounded">{exportResult.orbit_path}/prompts/{exportResult.filename}</code>
+                Exportado: <code className="bg-green-100 px-1 rounded">{exportResult.orbit_path}/memory/{exportResult.filename}</code>
               </div>
             )}
             {/* PROMPT #242 - Check result button */}
