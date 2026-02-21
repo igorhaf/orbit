@@ -642,22 +642,8 @@ export default function ProjectDetailsPage() {
           )}
         </div>
 
-        {/* PROMPT #301 - Enrichment active banner (scan, wiki, cards, watchdog) */}
-        {isEnriching && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
-              <div>
-                <span className="text-sm font-medium text-blue-900">
-                  Expandindo projeto em segundo plano
-                </span>
-                <p className="text-xs text-blue-700 mt-0.5">
-                  O codebase esta sendo analisado e o conhecimento do projeto esta sendo atualizado automaticamente.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* PROMPT #251 - Removed "Expandindo projeto em segundo plano" banner.
+            Continuous scan was removed; RAG scan is now manual via button. */}
 
         {/* PROMPT #244 - Generating hierarchy progress banner */}
         {generatingHierarchy && (
@@ -676,13 +662,13 @@ export default function ProjectDetailsPage() {
           </div>
         )}
 
-        {/* PROMPT #242 - Indexing in progress banner (before RAG complete or re-indexing) */}
-        {(!initialScanComplete || isEnriching) && !hasEpics && !loading && (
+        {/* PROMPT #251 - Only show indexing banner during initial scan (not enriching) */}
+        {!initialScanComplete && !loading && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-600" />
               <span className="text-sm font-medium text-yellow-900">
-                Indexando codebase... A geracao de cards sera liberada apos a conclusao.
+                Analisando codebase... Aguarde a conclusao do scan inicial.
               </span>
             </div>
           </div>
