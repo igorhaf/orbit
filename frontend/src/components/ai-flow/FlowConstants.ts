@@ -13,6 +13,7 @@ export const USAGE_TYPE_OPTIONS = [
   { value: 'commit_generation', label: 'Geracao de Commits' },
   { value: 'pattern_discovery', label: 'Descoberta de Padroes' },
   { value: 'memory', label: 'Memoria (Scan de Codebase)' },
+  { value: 'queue_orchestration', label: 'Orquestração de Fila' },
   { value: 'general', label: 'Geral' },
 ];
 
@@ -22,6 +23,7 @@ export const PROVIDER_COLORS: Record<string, string> = {
   google: '#2563eb',
   ollama: '#ea580c',
   cohere: '#e11d48',
+  claudio: '#0891b2',
 };
 
 export const PROVIDER_BG: Record<string, string> = {
@@ -30,6 +32,7 @@ export const PROVIDER_BG: Record<string, string> = {
   google: 'bg-blue-50 border-blue-200',
   ollama: 'bg-orange-50 border-orange-200',
   cohere: 'bg-rose-50 border-rose-200',
+  claudio: 'bg-cyan-50 border-cyan-200',
 };
 
 // ---------------------------------------------------------------------------
