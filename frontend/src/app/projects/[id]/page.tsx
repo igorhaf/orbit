@@ -111,6 +111,8 @@ export default function ProjectDetailsPage() {
   const [hasBusinessRules, setHasBusinessRules] = useState(false);
   const [hasCards, setHasCards] = useState(false);
   const [hasWiki, setHasWiki] = useState(false);
+  // Track when phases are locally triggered to prevent stale poll overrides
+  const phaseTriggeredAt = useRef<Record<string, number>>({});
 
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
@@ -176,10 +178,29 @@ export default function ProjectDetailsPage() {
         setHasBusinessRules(status.has_business_rules || false);
         setHasCards(status.has_cards || false);
         setHasWiki(status.has_wiki || false);
-        if (status.pipeline_phase_1) setPipelinePhase1(status.pipeline_phase_1);
-        if (status.pipeline_phase_2) setPipelinePhase2(status.pipeline_phase_2);
-        if (status.pipeline_phase_3) setPipelinePhase3(status.pipeline_phase_3);
-        if (status.pipeline_phase_4) setPipelinePhase4(status.pipeline_phase_4);
+        // Update pipeline phases with stale-poll protection:
+        // When a phase is locally triggered ('running'), don't let a stale poll
+        // override it back to 'completed'/'pending' for 15s (cooldown).
+        // Once the backend returns 'running', the cooldown is cleared.
+        const COOLDOWN_MS = 15000;
+        const now = Date.now();
+        const phaseUpdates: [string, (v: any) => void, string | undefined][] = [
+          ['phase_1', setPipelinePhase1, status.pipeline_phase_1],
+          ['phase_2', setPipelinePhase2, status.pipeline_phase_2],
+          ['phase_3', setPipelinePhase3, status.pipeline_phase_3],
+          ['phase_4', setPipelinePhase4, status.pipeline_phase_4],
+        ];
+        for (const [key, setter, pollValue] of phaseUpdates) {
+          if (!pollValue) continue;
+          const triggeredAt = phaseTriggeredAt.current[key] || 0;
+          if (triggeredAt && now - triggeredAt < COOLDOWN_MS && pollValue !== 'running') {
+            continue; // Skip stale poll within cooldown — keep local 'running'
+          }
+          if (pollValue === 'running' && triggeredAt) {
+            delete phaseTriggeredAt.current[key]; // Backend confirmed, clear cooldown
+          }
+          setter(pollValue);
+        }
 
         // Reset generatingHierarchy when epics appear or enrichment finishes
         if ((status.has_epics || false) && !status.is_enriching) {
@@ -653,10 +674,12 @@ export default function ProjectDetailsPage() {
                       disabled={s1 === 'running' || s1 === 'completed'}
                       onClick={async () => {
                         try {
+                          phaseTriggeredAt.current['phase_1'] = Date.now();
                           setPipelinePhase1('running');
                           await ragApi.continuousScan(projectId);
                           showSuccess('Fase 1: Indexação de arquivos iniciada');
                         } catch (err: any) {
+                          delete phaseTriggeredAt.current['phase_1'];
                           setPipelinePhase1('pending');
                           showError(err?.message || 'Erro ao iniciar scan');
                         }
@@ -691,7 +714,7 @@ export default function ProjectDetailsPage() {
               {(() => {
                 const s2 = pipelinePhase2 === 'completed' ? 'completed'
                   : pipelinePhase2 === 'running' ? 'running'
-                  : hasIndexedFiles ? 'available'
+                  : (hasIndexedFiles && pipelinePhase1 === 'completed') ? 'available'
                   : 'locked';
                 return (
                   <div className="flex flex-col items-center">
@@ -699,10 +722,12 @@ export default function ProjectDetailsPage() {
                       disabled={s2 === 'locked' || s2 === 'running' || s2 === 'completed'}
                       onClick={async () => {
                         try {
+                          phaseTriggeredAt.current['phase_2'] = Date.now();
                           setPipelinePhase2('running');
                           await ragApi.extractRules(projectId);
                           showSuccess('Fase 2: Extração de regras iniciada');
                         } catch (err: any) {
+                          delete phaseTriggeredAt.current['phase_2'];
                           setPipelinePhase2(hasIndexedFiles ? 'pending' : 'pending');
                           showError(err?.message || 'Erro ao iniciar extração de regras');
                         }
@@ -738,7 +763,7 @@ export default function ProjectDetailsPage() {
               {(() => {
                 const s3 = pipelinePhase3 === 'completed' ? 'completed'
                   : pipelinePhase3 === 'running' ? 'running'
-                  : hasBusinessRules ? 'available'
+                  : (hasBusinessRules && pipelinePhase2 === 'completed') ? 'available'
                   : 'locked';
                 return (
                   <div className="flex flex-col items-center">
@@ -746,11 +771,13 @@ export default function ProjectDetailsPage() {
                       disabled={s3 === 'locked' || s3 === 'running' || s3 === 'completed'}
                       onClick={async () => {
                         try {
+                          phaseTriggeredAt.current['phase_3'] = Date.now();
                           setPipelinePhase3('running');
                           setGeneratingHierarchy(true);
                           await ragApi.generateCards(projectId);
                           showSuccess('Fase 3: Geração de cards iniciada');
                         } catch (err: any) {
+                          delete phaseTriggeredAt.current['phase_3'];
                           setPipelinePhase3(hasBusinessRules ? 'pending' : 'pending');
                           setGeneratingHierarchy(false);
                           showError(err?.message || 'Erro ao iniciar geração de cards');
@@ -787,7 +814,7 @@ export default function ProjectDetailsPage() {
               {(() => {
                 const s4 = pipelinePhase4 === 'completed' ? 'completed'
                   : pipelinePhase4 === 'running' ? 'running'
-                  : hasCards ? 'available'
+                  : (hasCards && pipelinePhase3 === 'completed') ? 'available'
                   : 'locked';
                 return (
                   <div className="flex flex-col items-center">
@@ -795,10 +822,12 @@ export default function ProjectDetailsPage() {
                       disabled={s4 === 'locked' || s4 === 'running' || s4 === 'completed'}
                       onClick={async () => {
                         try {
+                          phaseTriggeredAt.current['phase_4'] = Date.now();
                           setPipelinePhase4('running');
                           await ragApi.generateWiki(projectId);
                           showSuccess('Fase 4: Geração de wiki iniciada');
                         } catch (err: any) {
+                          delete phaseTriggeredAt.current['phase_4'];
                           setPipelinePhase4(hasCards ? 'pending' : 'pending');
                           showError(err?.message || 'Erro ao iniciar geração de wiki');
                         }

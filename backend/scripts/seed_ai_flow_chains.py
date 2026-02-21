@@ -1,10 +1,16 @@
 """
-Seed AI Flow Chains - Preset: Custo Mínimo (Ollama-first)
+Seed AI Flow Chains - Preset: Custo Mínimo (Ollama-first) + Claudio Opus pipelines
+
 Configure all Ollama models with top_p/top_k and create optimal AI Flow chains
-for all 8 usage types with performance utility nodes.
+for all 10 usage types with performance utility nodes.
 
 Preset: CUSTO MÍNIMO - Prioriza modelos locais (Ollama) para zero custo de API.
 Modelos cloud ficam como fallback final apenas se necessário.
+
+PROMPT #252 additions:
+- content_generation:  Claudio Opus 4.6 (Wiki, Cards, Description, Title)
+- rag_extraction:      Claudio Opus 4.6 (Business rules extraction)
+- memory:              Claudio Opus 4.6 (upgraded from Sonnet)
 
 Strategy per operation (cost-optimized):
 - interview:           Gemma3 12B → Qwen3 8B
@@ -12,9 +18,11 @@ Strategy per operation (cost-optimized):
 - task_execution:      Qwen3 8B → Gemma3 12B
 - commit_generation:   Gemma3 12B → Qwen3 8B
 - pattern_discovery:   DeepSeek-R1 14B → Gemma3 12B
-- memory:              Qwen3 8B → Gemma3 12B → DeepSeek-R1 14B
+- memory:              Claudio Opus 4.6
 - queue_orchestration: Qwen3 8B → Gemma3 12B → Phi-4 14B
 - general:             Qwen3 8B → Gemma3 12B → DeepSeek-R1 14B
+- content_generation:  Claudio Opus 4.6
+- rag_extraction:      Claudio Opus 4.6
 
 Usage:
     docker exec -w /app orbit-backend python scripts/seed_ai_flow_chains.py
@@ -151,6 +159,16 @@ CHAIN_STRATEGY = {
         ("qwen3:8b", None),
         ("gemma3:12b", None),
         ("deepseek-r1:14b", None),
+    ],
+    # PROMPT #252 - Content generation: Wiki, Cards, Description, Title
+    # Claudio Opus 4.6 for rich, high-quality content
+    "content_generation": [
+        (None, "Claudio Opus 4.6 (Content)"),
+    ],
+    # PROMPT #252 - RAG extraction: business rules from codebase
+    # Claudio Opus 4.6 for precise rule extraction
+    "rag_extraction": [
+        (None, "Claudio Opus 4.6 (RAG Extraction)"),
     ],
 }
 
@@ -584,6 +602,82 @@ def _build_utility_nodes(usage_key: str) -> list:
                 "position": {"x": X_START + X_STEP * 2, "y": POST_Y},
             },
         ],
+        # ----------------------------------------------------------------
+        # Content generation (PROMPT #252): quality content, long timeout
+        # Timeout (pre) + Validator (post) + Retry (post)
+        # ----------------------------------------------------------------
+        "content_generation": [
+            {
+                "id": "timeout-1707800001",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 600},
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "validator-1707800002",
+                "type": "validator",
+                "label": "Validator",
+                "enabled": True,
+                "config": {
+                    "validation_type": "not_empty",
+                    "retry_on_fail": True,
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
+            {
+                "id": "retry-1707800003",
+                "type": "retry",
+                "label": "Retry",
+                "enabled": True,
+                "config": {
+                    "max_retries": 2,
+                    "backoff_base_ms": 3000,
+                    "backoff_multiplier": 2.0,
+                    "retry_on": ["timeout", "server_error"],
+                },
+                "position": {"x": X_START + X_STEP, "y": POST_Y},
+            },
+        ],
+        # ----------------------------------------------------------------
+        # RAG extraction (PROMPT #252): precise extraction, JSON required
+        # Timeout (pre) + JSON Validator (post) + Retry (post)
+        # ----------------------------------------------------------------
+        "rag_extraction": [
+            {
+                "id": "timeout-1707900001",
+                "type": "timeout",
+                "label": "Timeout",
+                "enabled": True,
+                "config": {"timeout_seconds": 600},
+                "position": {"x": X_START, "y": PRE_Y},
+            },
+            {
+                "id": "validator-1707900002",
+                "type": "validator",
+                "label": "JSON Validator",
+                "enabled": True,
+                "config": {
+                    "validation_type": "json",
+                    "retry_on_fail": True,
+                },
+                "position": {"x": X_START, "y": POST_Y},
+            },
+            {
+                "id": "retry-1707900003",
+                "type": "retry",
+                "label": "Retry",
+                "enabled": True,
+                "config": {
+                    "max_retries": 2,
+                    "backoff_base_ms": 3000,
+                    "backoff_multiplier": 2.0,
+                    "retry_on": ["timeout", "server_error"],
+                },
+                "position": {"x": X_START + X_STEP, "y": POST_Y},
+            },
+        ],
     }
 
     return configs.get(usage_key, configs["general"])
@@ -717,6 +811,28 @@ CHAIN_POSITIONS = {
             {"x": 1460, "y": 120},  # DeepSeek-R1
         ],
     },
+    # PROMPT #252 - Content generation: single Opus model
+    "content_generation": {
+        "fixed": {
+            "start": {"x": 50, "y": 150},
+            "error": {"x": 760, "y": 340},
+            "response": {"x": 850, "y": 150},
+        },
+        "models": [
+            {"x": 400, "y": 130},   # Claudio Opus 4.6 (Content)
+        ],
+    },
+    # PROMPT #252 - RAG extraction: single Opus model
+    "rag_extraction": {
+        "fixed": {
+            "start": {"x": 50, "y": 150},
+            "error": {"x": 760, "y": 340},
+            "response": {"x": 850, "y": 150},
+        },
+        "models": [
+            {"x": 400, "y": 130},   # Claudio Opus 4.6 (RAG Extraction)
+        ],
+    },
 }
 
 
@@ -751,6 +867,54 @@ def seed_ai_flow_chains():
 
         db.commit()
         logger.info(f"  {updated_count} Ollama models updated.")
+
+        # ==================================================================
+        # Step 1.5: Ensure Claudio Opus 4.6 models exist (PROMPT #252)
+        # ==================================================================
+        logger.info("\n[1.5/3] Ensuring Claudio Opus 4.6 models exist...")
+
+        claudio_models = {
+            "Claudio Opus 4.6 (Content)": {
+                "usage_type": AIModelUsageType.CONTENT_GENERATION,
+                "config": {"model_id": "claude-opus-4-6", "max_tokens": 8192, "temperature": 0.7},
+            },
+            "Claudio Opus 4.6 (RAG Extraction)": {
+                "usage_type": AIModelUsageType.RAG_EXTRACTION,
+                "config": {"model_id": "claude-opus-4-6", "max_tokens": 8192, "temperature": 0.3},
+            },
+        }
+
+        for model_name, model_cfg in claudio_models.items():
+            existing = db.query(AIModel).filter(AIModel.name == model_name).first()
+            if not existing:
+                new_model = AIModel(
+                    id=uuid4(),
+                    name=model_name,
+                    provider="claudio",
+                    api_key="not-needed",
+                    usage_type=model_cfg["usage_type"],
+                    is_active=True,
+                    config=model_cfg["config"],
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow(),
+                )
+                db.add(new_model)
+                logger.info(f"  Created: {model_name}")
+            else:
+                logger.info(f"  Exists: {model_name}")
+
+        # Upgrade memory model to Opus 4.6
+        memory_model = db.query(AIModel).filter(
+            AIModel.usage_type == AIModelUsageType.MEMORY,
+            AIModel.provider == "claudio",
+            AIModel.is_active == True,
+        ).first()
+        if memory_model and "sonnet" in (memory_model.config or {}).get("model_id", "").lower():
+            memory_model.config = {"model_id": "claude-opus-4-6", "max_tokens": 8192, "temperature": 0.5}
+            memory_model.name = "Claudio Opus 4.6 (Memory)"
+            logger.info(f"  Upgraded memory model to Opus 4.6")
+
+        db.commit()
 
         # ==================================================================
         # Step 2: Build model UUID lookup
@@ -789,6 +953,8 @@ def seed_ai_flow_chains():
             "pattern_discovery": AIModelUsageType.PATTERN_DISCOVERY,
             "memory": AIModelUsageType.MEMORY,
             "queue_orchestration": AIModelUsageType.QUEUE_ORCHESTRATION,
+            "content_generation": AIModelUsageType.CONTENT_GENERATION,
+            "rag_extraction": AIModelUsageType.RAG_EXTRACTION,
             "general": AIModelUsageType.GENERAL,
         }
 

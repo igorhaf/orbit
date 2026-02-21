@@ -122,14 +122,14 @@ class RagPipelineService:
             if pages and len(pages) > 0:
                 state["phase_4_status"] = "completed"
 
-        # Check for running jobs
+        # Check for running jobs (raw SQL to avoid .astext ORM issue)
         for phase_num, job_input_phase in [(1, "index_files"), (2, "extract_rules"),
                                             (3, "generate_cards"), (4, "generate_wiki")]:
-            running = self.db.query(AsyncJob).filter(
-                AsyncJob.project_id == project_id,
-                AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
-                AsyncJob.input_data["phase"].astext == job_input_phase,
-            ).first()
+            running = self.db.execute(sql_text(
+                "SELECT 1 FROM async_jobs WHERE project_id = :pid "
+                "AND status IN ('pending', 'running') "
+                "AND input_data->>'phase' = :phase LIMIT 1"
+            ), {"pid": str(project_id), "phase": job_input_phase}).first()
             if running:
                 state[f"phase_{phase_num}_status"] = "running"
 
@@ -235,14 +235,50 @@ class RagPipelineService:
         return result
 
     # =========================================================================
-    # PHASE 2: Extract business rules — single AI call
-    # ONE prompt to the orchestrator. Context from RAG injected automatically.
-    # No YAML, no batches, no file iteration.
+    # PHASE 2: Extract business rules — 3 passes with rich prompts
+    # Each pass uses Claudio Opus 4.6 (rag_extraction).
+    # Pass 1: Initial extraction. Pass 2: Find missing. Pass 3: Final sweep.
     # =========================================================================
+
+    PHASE2_SYSTEM_PROMPT = (
+        "Voce e um analista de negocios senior especializado em engenharia reversa "
+        "de requisitos funcionais a partir de codebases existentes.\n\n"
+        "Seu objetivo e extrair TODAS as regras de negocio presentes no codigo-fonte. "
+        "Regras de negocio sao qualquer logica que define COMO o sistema se comporta "
+        "do ponto de vista do USUARIO ou do DOMINIO do negocio.\n\n"
+        "CATEGORIAS DE REGRAS que voce deve procurar:\n"
+        "- **dominio**: Entidades, relacionamentos, estados, ciclos de vida\n"
+        "- **validacao**: Validacoes de entrada, formatos, campos obrigatorios\n"
+        "- **restricao**: Limites numericos, tamanhos, quotas, thresholds\n"
+        "- **workflow**: Fluxos de usuario, maquinas de estado, transicoes\n"
+        "- **permissao**: Controle de acesso, roles, autorizacoes\n"
+        "- **calculo**: Formulas, algoritmos, agregacoes, metricas\n"
+        "- **integracao**: APIs externas, webhooks, eventos entre servicos\n"
+        "- **negocio**: Politicas de negocio, regras de precificacao, SLAs\n\n"
+        "IGNORE completamente:\n"
+        "- Configuracoes de framework (middleware, rotas, DI)\n"
+        "- CSS, estilos, layouts\n"
+        "- Logs, prints, debug\n"
+        "- Infraestrutura (Docker, CI/CD, deploy)\n"
+        "- Imports e boilerplate\n\n"
+        "FORMATO DE RESPOSTA: JSON puro, sem markdown, sem explicacoes.\n"
+        "Cada regra deve ser escrita em PORTUGUES, como se voce explicasse "
+        "para um gerente de produto que NAO conhece o codigo.\n\n"
+        "Responda APENAS com o JSON no formato:\n"
+        '{"business_rules": [\n'
+        '  {"rule_text": "Descricao clara da regra em portugues", '
+        '"rule_type": "dominio|validacao|restricao|workflow|permissao|calculo|integracao|negocio", '
+        '"source_file": "caminho/do/arquivo.ext", '
+        '"priority": "high|normal|low"}\n'
+        "]}"
+    )
+
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 2: ONE AI call to extract business rules.
-        The orchestrator injects RAG context (code_files already indexed).
+        Phase 2: Extract business rules via 3 AI passes.
+        Pass 1: Initial full extraction.
+        Pass 2: Find rules that pass 1 missed.
+        Pass 3: Final sweep for remaining rules.
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
@@ -251,7 +287,7 @@ class RagPipelineService:
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        jm.update_progress(job_id, 10.0, "Fase 2/4: Preparando extração de regras...")
+        jm.update_progress(job_id, 5.0, "Fase 2/4: Preparando extracao de regras...")
 
         # Delete old business rules
         try:
@@ -265,78 +301,94 @@ class RagPipelineService:
         except Exception:
             pass
 
-        jm.update_progress(job_id, 20.0, "Fase 2/4: Extraindo regras de negócio via IA...")
-
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
 
-        response = await orchestrator.execute(
-            usage_type="memory",
-            messages=[{"role": "user", "content": (
-                f"Analise o projeto \"{project.name or 'Projeto'}\" "
-                f"localizado em {project.code_path}.\n\n"
-                "Extraia TODAS as regras de negócio FUNCIONAIS do código.\n"
-                "Foque em: fluxos de usuário, validações, permissões, "
-                "limites, cálculos, workflows.\n"
-                "Ignore: configs de framework, CSS, logs, infraestrutura.\n"
-                "Escreva cada regra como se explicasse para um GERENTE DE PRODUTO.\n\n"
-                "Responda em JSON:\n"
-                '{"business_rules": ['
-                '{"rule_text": "...", "rule_type": "domain|validation|constraint|'
-                'workflow|permission|calculation", "source_file": "...", '
-                '"priority": "high|normal|low"}'
-                "]}"
-            )}],
-            system_prompt=(
-                "Você é um analista de negócios especializado em extrair "
-                "requisitos funcionais de codebases existentes."
-            ),
-            max_tokens=8192,
-            project_id=project_id,
-            metadata={"phase": "rag_pipeline_phase2"},
+        all_extracted_rules: List[str] = []
+        total_rules = 0
+        project_name = project.name or "Projeto"
+
+        # === PASS 1: Initial extraction ===
+        jm.update_progress(job_id, 10.0, "Fase 2/4: Passada 1/3 — Extracao inicial de regras...")
+
+        pass1_prompt = (
+            f"Analise o projeto \"{project_name}\" localizado em {project.code_path}.\n\n"
+            "Extraia TODAS as regras de negocio que voce conseguir encontrar no codigo.\n"
+            "Seja o mais abrangente possivel. Procure em:\n"
+            "- Models e schemas (entidades, validacoes, constraints)\n"
+            "- Services e use cases (logica de negocio, workflows)\n"
+            "- Endpoints e controllers (permissoes, validacoes de entrada)\n"
+            "- Utils e helpers (calculos, formatacoes de negocio)\n"
+            "- Migrations e seeds (regras de dados, defaults)\n\n"
+            "Quero o MAXIMO de regras possivel. Nao economize."
         )
 
-        jm.update_progress(job_id, 70.0, "Fase 2/4: Processando resposta...")
+        pass1_rules = await self._execute_extraction_pass(
+            orchestrator, pass1_prompt, project_id
+        )
+        pass1_stored = self._store_rules(pass1_rules, project_id, "pass_1")
+        total_rules += pass1_stored
+        all_extracted_rules.extend([r.get("rule_text", "") for r in pass1_rules if isinstance(r, dict)])
+        self.db.commit()
 
-        raw = response.get("content", "")
-        total_rules = 0
+        logger.info(f"Phase 2 Pass 1: {pass1_stored} rules extracted")
 
-        json_match = re.search(r'\{[\s\S]*\}', raw)
-        if json_match:
-            try:
-                parsed = json.loads(json_match.group())
-                rules = parsed.get("business_rules", [])
+        # === PASS 2: Find missing rules ===
+        jm.update_progress(job_id, 40.0, f"Fase 2/4: Passada 2/3 — Buscando regras faltantes... ({total_rules} ate agora)")
 
-                for rule in rules:
-                    if isinstance(rule, str):
-                        rule_text, rule_type, source_file, priority = rule, "general", "", "normal"
-                    elif isinstance(rule, dict):
-                        rule_text = (
-                            rule.get("rule_text") or rule.get("description")
-                            or rule.get("rule") or rule.get("text") or ""
-                        )
-                        rule_type = rule.get("rule_type", "general")
-                        source_file = rule.get("source_file", "")
-                        priority = rule.get("priority", "normal")
-                    else:
-                        continue
+        existing_summary = "\n".join(f"- {r[:120]}" for r in all_extracted_rules[:50])
+        pass2_prompt = (
+            f"Analise novamente o projeto \"{project_name}\" em {project.code_path}.\n\n"
+            "Na passada anterior, as seguintes regras de negocio ja foram extraidas:\n"
+            f"{existing_summary}\n\n"
+            "Agora encontre TODAS as regras de negocio que FALTARAM na passada anterior.\n"
+            "Procure especificamente em:\n"
+            "- Edge cases e tratamentos de erro com significado de negocio\n"
+            "- Regras implicitas (convencoes, padroes nao documentados)\n"
+            "- Logica condicional complexa (if/else com significado de negocio)\n"
+            "- Integracao entre servicos (regras de comunicacao, contratos)\n"
+            "- Regras de estado e transicao (maquinas de estado, lifecycle)\n"
+            "- Regras de UI que refletem logica de negocio (habilitacao/desabilitacao)\n\n"
+            "NAO repita regras ja extraidas. Retorne APENAS regras NOVAS."
+        )
 
-                    if not rule_text or len(rule_text.strip()) < 10:
-                        continue
+        pass2_rules = await self._execute_extraction_pass(
+            orchestrator, pass2_prompt, project_id
+        )
+        pass2_stored = self._store_rules(pass2_rules, project_id, "pass_2")
+        total_rules += pass2_stored
+        all_extracted_rules.extend([r.get("rule_text", "") for r in pass2_rules if isinstance(r, dict)])
+        self.db.commit()
 
-                    self.rag.store_business_rule(
-                        content=rule_text,
-                        project_id=project_id,
-                        source="pipeline_phase2",
-                        source_file=source_file,
-                        rule_type=rule_type,
-                        priority=priority,
-                    )
-                    total_rules += 1
+        logger.info(f"Phase 2 Pass 2: {pass2_stored} new rules extracted")
 
-                self.db.commit()
-            except json.JSONDecodeError as e:
-                logger.error(f"Phase 2 JSON parse error: {e}")
+        # === PASS 3: Final sweep ===
+        jm.update_progress(job_id, 70.0, f"Fase 2/4: Passada 3/3 — Varredura final... ({total_rules} ate agora)")
+
+        existing_summary_2 = "\n".join(f"- {r[:120]}" for r in all_extracted_rules[:80])
+        pass3_prompt = (
+            f"Ultima varredura do projeto \"{project_name}\" em {project.code_path}.\n\n"
+            "Regras ja extraidas nas 2 passadas anteriores:\n"
+            f"{existing_summary_2}\n\n"
+            "Faca uma VARREDURA FINAL e encontre quaisquer regras de negocio restantes.\n"
+            "Foque em areas frequentemente ignoradas:\n"
+            "- Configuracoes com significado de negocio (limites, timeouts, thresholds)\n"
+            "- Regras de ordenacao e priorizacao\n"
+            "- Regras de cache e invalidacao com impacto no negocio\n"
+            "- Regras de notificacao e alertas\n"
+            "- Regras de agendamento e recorrencia\n"
+            "- Contratos de API (campos obrigatorios, formatos, codigos de erro)\n\n"
+            "NAO repita regras ja extraidas. Retorne APENAS regras NOVAS que nenhuma passada anterior encontrou."
+        )
+
+        pass3_rules = await self._execute_extraction_pass(
+            orchestrator, pass3_prompt, project_id
+        )
+        pass3_stored = self._store_rules(pass3_rules, project_id, "pass_3")
+        total_rules += pass3_stored
+        self.db.commit()
+
+        logger.info(f"Phase 2 Pass 3: {pass3_stored} new rules extracted")
 
         # Update rag_file_state
         try:
@@ -350,11 +402,75 @@ class RagPipelineService:
 
         if total_rules == 0:
             self._set_phase_status(project_id, 2, "failed")
-            raise ValueError("Extração falhou: 0 regras extraídas")
+            raise ValueError("Extracao falhou: 0 regras extraidas")
 
         self._set_phase_status(project_id, 2, "completed")
-        jm.update_progress(job_id, 95.0, f"Fase 2/4: Concluída — {total_rules} regras extraídas")
-        return {"phase": "extract_rules", "rules_extracted": total_rules}
+        jm.update_progress(job_id, 95.0,
+                           f"Fase 2/4: Concluida — {total_rules} regras extraidas "
+                           f"(P1:{pass1_stored} P2:{pass2_stored} P3:{pass3_stored})")
+        return {
+            "phase": "extract_rules",
+            "rules_extracted": total_rules,
+            "pass_1": pass1_stored,
+            "pass_2": pass2_stored,
+            "pass_3": pass3_stored,
+        }
+
+    async def _execute_extraction_pass(
+        self, orchestrator, user_prompt: str, project_id: UUID
+    ) -> List[Any]:
+        """Execute a single extraction pass and return parsed rules list."""
+        try:
+            response = await orchestrator.execute(
+                usage_type="rag_extraction",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=self.PHASE2_SYSTEM_PROMPT,
+                max_tokens=8192,
+                project_id=project_id,
+                metadata={"phase": "rag_pipeline_phase2"},
+            )
+
+            raw = response.get("content", "")
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                return parsed.get("business_rules", [])
+        except json.JSONDecodeError as e:
+            logger.error(f"Phase 2 JSON parse error: {e}")
+        except Exception as e:
+            logger.error(f"Phase 2 extraction pass failed: {e}")
+        return []
+
+    def _store_rules(self, rules: List[Any], project_id: UUID, source: str) -> int:
+        """Parse and store extracted rules in RAG. Returns count stored."""
+        stored = 0
+        for rule in rules:
+            if isinstance(rule, str):
+                rule_text, rule_type, source_file, priority = rule, "general", "", "normal"
+            elif isinstance(rule, dict):
+                rule_text = (
+                    rule.get("rule_text") or rule.get("description")
+                    or rule.get("rule") or rule.get("text") or ""
+                )
+                rule_type = rule.get("rule_type", "general")
+                source_file = rule.get("source_file", "")
+                priority = rule.get("priority", "normal")
+            else:
+                continue
+
+            if not rule_text or len(rule_text.strip()) < 10:
+                continue
+
+            self.rag.store_business_rule(
+                content=rule_text,
+                project_id=project_id,
+                source=f"pipeline_phase2_{source}",
+                source_file=source_file,
+                rule_type=rule_type,
+                priority=priority,
+            )
+            stored += 1
+        return stored
 
     # =========================================================================
     # PHASE 3: Generate cards from business rules (closed status)
@@ -373,9 +489,10 @@ class RagPipelineService:
 
         jm.update_progress(job_id, 5.0, "Fase 3/4: Gerando cards a partir das regras...")
 
-        # Use existing card generation logic
+        # Use existing card generation logic with content_generation flow (Opus 4.6)
         from app.services.context_generator import ContextGeneratorService
         context_service = ContextGeneratorService(self.db)
+        context_service._usage_type_override = "content_generation"
 
         result = await context_service.generate_cards_from_memory(
             project_id=project_id,
@@ -581,7 +698,7 @@ class RagPipelineService:
 
         try:
             response = await orchestrator.execute(
-                usage_type="task_execution",
+                usage_type="content_generation",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
                 max_tokens=500,
@@ -616,6 +733,25 @@ class RagPipelineService:
             logger.warning(f"Title/description AI call failed: {e}")
 
         return False
+
+    # =========================================================================
+    # File helpers
+    # =========================================================================
+    @staticmethod
+    def _detect_language(file_path: str) -> str:
+        """Detect programming language from file extension."""
+        ext = Path(file_path).suffix.lower()
+        LANG_MAP = {
+            ".py": "python", ".js": "javascript", ".ts": "typescript",
+            ".tsx": "typescript", ".jsx": "javascript", ".java": "java",
+            ".rb": "ruby", ".go": "go", ".rs": "rust", ".php": "php",
+            ".c": "c", ".cpp": "cpp", ".h": "c", ".cs": "csharp",
+            ".swift": "swift", ".kt": "kotlin", ".scala": "scala",
+            ".html": "html", ".css": "css", ".scss": "scss",
+            ".sql": "sql", ".sh": "shell", ".yaml": "yaml", ".yml": "yaml",
+            ".json": "json", ".md": "markdown", ".xml": "xml",
+        }
+        return LANG_MAP.get(ext, "unknown")
 
     # =========================================================================
     # Git commit helpers (used by Phase 4)

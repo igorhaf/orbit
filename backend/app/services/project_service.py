@@ -652,7 +652,7 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
     # PROMPT #227 - Reduced from 12000 to 4000 tokens to avoid Ollama timeout
     # 4000 tokens is enough for structured wiki (sections, rules, features)
     response = await orchestrator.execute(
-        usage_type="general",
+        usage_type="content_generation",
         messages=[{"role": "user", "content": usr_prompt}],
         system_prompt=sys_prompt,
         max_tokens=4000,

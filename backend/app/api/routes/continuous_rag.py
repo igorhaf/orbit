@@ -77,6 +77,10 @@ async def trigger_rag_scan(
         except Exception as e:
             try:
                 jm.fail_job(job_id, str(e))
+                from app.services.rag_pipeline import _get_redis
+                rc = _get_redis()
+                if rc:
+                    rc.hset(f"rag:pipeline:{proj_id}", "phase_1_status", "failed")
             except Exception:
                 pass
         finally:
@@ -151,6 +155,11 @@ async def trigger_extract_rules(
         except Exception as e:
             try:
                 jm.fail_job(job_id, str(e))
+                # Clean Redis state on failure
+                from app.services.rag_pipeline import _get_redis
+                rc = _get_redis()
+                if rc:
+                    rc.hset(f"rag:pipeline:{proj_id}", "phase_2_status", "failed")
             except Exception:
                 pass
         finally:
@@ -216,6 +225,10 @@ async def trigger_generate_cards(
         except Exception as e:
             try:
                 jm.fail_job(job_id, str(e))
+                from app.services.rag_pipeline import _get_redis
+                rc = _get_redis()
+                if rc:
+                    rc.hset(f"rag:pipeline:{proj_id}", "phase_3_status", "failed")
             except Exception:
                 pass
         finally:
@@ -278,6 +291,10 @@ async def trigger_generate_wiki(
         except Exception as e:
             try:
                 jm.fail_job(job_id, str(e))
+                from app.services.rag_pipeline import _get_redis
+                rc = _get_redis()
+                if rc:
+                    rc.hset(f"rag:pipeline:{proj_id}", "phase_4_status", "failed")
             except Exception:
                 pass
         finally:
@@ -468,15 +485,32 @@ async def get_enrichment_status(
     except Exception:
         pass
 
-    # Determine pipeline phase statuses from active jobs
+    # Determine pipeline phase statuses.
+    # Phase completion is determined by COMPLETED pipeline jobs (not old data).
+    # Phases 2-4: also accept DB evidence (rules/cards/wiki exist).
+    # Phase 1: ONLY completed if a Phase 1 pipeline job finished OR Redis confirms.
+    # This prevents Phase 2 from unlocking based on stale initial_scan_complete.
+
+    # Check for completed Phase 1 pipeline jobs (RAG_CONTINUOUS_SCAN with phase=index_files)
+    phase_1_job_completed = db.execute(sql_text(
+        "SELECT 1 FROM async_jobs WHERE project_id = :pid "
+        "AND status = 'completed' AND job_type = 'rag_continuous_scan' "
+        "AND input_data->>'phase' = 'index_files' LIMIT 1"
+    ), {"pid": str(project_id)}).first() is not None
+
     pipeline_state = {
-        "phase_1": "completed" if has_indexed_files else "pending",
+        "phase_1": "completed" if phase_1_job_completed else "pending",
         "phase_2": "completed" if has_business_rules else "pending",
         "phase_3": "completed" if has_cards else "pending",
         "phase_4": "completed" if has_wiki else "pending",
     }
-    # Check for running phase jobs
+
+    # Check for running phase jobs (PENDING or RUNNING override to "running")
     for j in active_jobs:
+        # MEMORY_SCAN jobs are Phase 1 equivalent (no "phase" key in input_data)
+        if j.job_type == JobType.MEMORY_SCAN:
+            pipeline_state["phase_1"] = "running"
+            continue
         if j.input_data and isinstance(j.input_data, dict):
             phase = j.input_data.get("phase", "")
             phase_map = {
@@ -489,7 +523,8 @@ async def get_enrichment_status(
             if key:
                 pipeline_state[key] = "running"
 
-    # Also try Redis for more accurate state
+    # Redis pipeline state: only trust "completed"/"failed" from Redis.
+    # "running" from Redis can be stale (cancelled/cleaned jobs); active_jobs check above is authoritative.
     try:
         from app.services.rag_pipeline import _get_redis
         redis_client = _get_redis()
@@ -498,7 +533,9 @@ async def get_enrichment_status(
             for k, v in rstate.items():
                 if k.startswith("phase_") and k.endswith("_status"):
                     phase_key = k.replace("_status", "")
-                    pipeline_state[phase_key] = v
+                    # Only accept completed/failed from Redis; running is determined from active_jobs
+                    if v in ("completed", "failed") and pipeline_state.get(phase_key) == "pending":
+                        pipeline_state[phase_key] = v
     except Exception:
         pass
 

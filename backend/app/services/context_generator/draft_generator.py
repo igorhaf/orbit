@@ -31,6 +31,10 @@ logger = logging.getLogger(__name__)
 class DraftGeneratorMixin:
     """Mixin providing draft generation and batch processing methods."""
 
+    def _get_usage_type(self) -> str:
+        """Return usage_type for AI calls. Supports temporary override via _usage_type_override."""
+        return getattr(self, "_usage_type_override", None) or "prompt_generation"
+
     async def generate_suggested_epics(
         self,
         project_id: UUID,
@@ -155,7 +159,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         messages = [{"role": "user", "content": user_prompt}]
 
         response = await self.orchestrator.execute(
-            usage_type="prompt_generation",
+            usage_type=self._get_usage_type(),
             messages=messages,
             system_prompt=system_prompt,
             max_tokens=4000,
@@ -336,7 +340,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
             orchestrator = AIOrchestrator(self.db)
             response = await orchestrator.execute(
-                usage_type="prompt_generation",
+                usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
                 max_tokens=8000,
@@ -589,7 +593,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
             orchestrator = AIOrchestrator(self.db)
             response = await orchestrator.execute(
-                usage_type="prompt_generation",
+                usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
                 max_tokens=6000,
@@ -805,7 +809,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
 
             orchestrator = AIOrchestrator(self.db)
             response = await orchestrator.execute(
-                usage_type="prompt_generation",
+                usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
                 max_tokens=4000,
@@ -1165,7 +1169,7 @@ IMPORTANTE:
 
         try:
             response = await self.orchestrator.execute(
-                usage_type="prompt_generation",
+                usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
                 max_tokens=3000,
@@ -1406,7 +1410,7 @@ IMPORTANTE:
 
         try:
             response = await self.orchestrator.execute(
-                usage_type="prompt_generation",
+                usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
                 max_tokens=2000,  # Smaller since only 5 epics

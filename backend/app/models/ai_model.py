@@ -21,6 +21,8 @@ class AIModelUsageType(str, enum.Enum):
     PATTERN_DISCOVERY = "pattern_discovery"  # PROMPT #62 - AI-powered pattern discovery
     MEMORY = "memory"  # PROMPT #118 - Codebase memory scan and business rules extraction
     QUEUE_ORCHESTRATION = "queue_orchestration"  # PROMPT #215 - Prompt queue execution
+    CONTENT_GENERATION = "content_generation"  # PROMPT #252 - Wiki, Cards, Description, Title (Opus)
+    RAG_EXTRACTION = "rag_extraction"  # PROMPT #252 - Business rules extraction to RAG (Opus)
     GENERAL = "general"
 
 
