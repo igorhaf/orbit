@@ -701,28 +701,34 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
         db.commit()
         logger.info(f"Wiki enriched for project {project_id} ({len(enriched)} chars)")
 
-        # PROMPT #265 - Parse AI-enriched markdown into separate wiki pages
-        # The AI generates a structured markdown with ## sections (Visao Geral,
-        # Stack Tecnologica, Arquitetura, Regras de Negocio, Features, Integracoes).
-        # We parse each section into its own wiki page instead of dumping everything
-        # into a single "Visao Geral" page.
+        # PROMPT #265/#237 - Parse AI-enriched markdown into wiki pages on disk
         try:
-            from app.services.wiki_service import _upsert_wiki_page, _parse_wiki_sections
+            from app.services.wiki_service import (
+                _upsert_wiki_page, _parse_wiki_sections,
+                _build_architecture_patterns_page,
+                _build_code_conventions_page,
+                _build_ui_components_page,
+                _build_code_structure_page,
+                _build_git_history_page,
+                _build_business_rules_wiki_pages,
+                _apply_semantic_links_to_project_fs,
+                _trigger_rule_enrichment_job,
+            )
+
+            code_path = project.code_path
+            if not code_path:
+                raise ValueError("Project has no code_path")
 
             sections = _parse_wiki_sections(enriched)
 
             order = 0
             for slug, (title, content) in sections.items():
-                _upsert_wiki_page(db, project_id, slug, title, content, order, "enrichment")
+                _upsert_wiki_page(code_path, project_id, slug, title, content, order, "enrichment")
                 order += 1
 
-            # Fallback: if parsing produced no sections, create single overview page
             if not sections:
-                _upsert_wiki_page(db, project_id, "visao-geral", "Visao Geral", enriched, 0, "enrichment")
+                _upsert_wiki_page(code_path, project_id, "visao-geral", "Visao Geral", enriched, 0, "enrichment")
 
-            # PROMPT #266/#268 - Raw rules catalog as separate reference page.
-            # The AI enrichment creates the main "regras-de-negocio" page in Portuguese.
-            # This raw catalog is a supplementary reference with ALL extracted rules.
             if rules:
                 rules_md_parts = [
                     "## Catálogo de Referência - Regras Brutas\n",
@@ -734,30 +740,14 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                     rule_text = rule[:500] if len(rule) > 500 else rule
                     rules_md_parts.append(f"{i}. {rule_text}")
                 rules_md = "\n".join(rules_md_parts)
-                # PROMPT #277 - Set parent_id to regras-de-negocio to avoid appearing in sidebar
-                from app.models.wiki_page import WikiPage as WikiPageModel
-                regras_parent = (
-                    db.query(WikiPageModel)
-                    .filter(WikiPageModel.project_id == project_id, WikiPageModel.slug == "regras-de-negocio")
-                    .first()
-                )
                 _upsert_wiki_page(
-                    db, project_id, "regras-catálogo-bruto",
+                    code_path, project_id, "regras-catálogo-bruto",
                     "Catálogo de Referência - Regras Brutas", rules_md,
                     12, "ai_generated",
-                    parent_id=regras_parent.id if regras_parent else None,
+                    parent_slug="regras-de-negocio",
                 )
                 logger.info(f"Wiki: raw rules catalog with {len(rules)} rules for project {project_id}")
 
-            # PROMPT #267 - Generate wiki pages from ALL RAG data types
-            from app.services.wiki_service import (
-                _build_architecture_patterns_page,
-                _build_code_conventions_page,
-                _build_ui_components_page,
-                _build_code_structure_page,
-                _build_git_history_page,
-                _build_business_rules_wiki_pages,
-            )
             page_builders = [
                 ("padrões-arquitetura", "Padrões de Arquitetura", _build_architecture_patterns_page, 6),
                 ("convencoes-código", "Convencoes de Código", _build_code_conventions_page, 7),
@@ -766,33 +756,28 @@ async def _enrich_context_from_rag(db, project_id: UUID) -> bool:
                 ("histórico-desenvolvimento", "Histórico de Desenvolvimento", _build_git_history_page, 10),
             ]
             rag_pages_count = 0
-            for slug, title, builder, order in page_builders:
+            for slug, title, builder, order_idx in page_builders:
                 content = builder(db, project_id)
                 if content:
-                    _upsert_wiki_page(db, project_id, slug, title, content, order, "ai_generated")
+                    _upsert_wiki_page(code_path, project_id, slug, title, content, order_idx, "ai_generated")
                     rag_pages_count += 1
             if rag_pages_count:
                 logger.info(f"Wiki: {rag_pages_count} RAG data pages for project {project_id}")
 
-            # PROMPT #269 - Individual business rule wiki pages (hierarchical)
-            rule_pages = _build_business_rules_wiki_pages(db, project_id)
+            rule_pages = _build_business_rules_wiki_pages(db, code_path, project_id)
             if rule_pages:
                 logger.info(f"Wiki: {len(rule_pages)} business rule pages for project {project_id}")
 
-            db.commit()
-
-            # PROMPT #274 - Apply semantic hypertext linking
+            # Apply semantic hypertext linking
             try:
-                from app.services.wiki_service import _apply_semantic_links_to_project
-                _apply_semantic_links_to_project(db, project_id)
+                _apply_semantic_links_to_project_fs(code_path, project_id)
             except Exception as e:
                 logger.warning(f"Failed to apply semantic links: {e}")
 
-            # PROMPT #270 - Auto-trigger AI enrichment for individual rule pages
-            rule_page_count = len([p for p in rule_pages if p and p.slug.startswith("regra-")])
+            # Auto-trigger AI enrichment for individual rule pages
+            rule_page_count = len([p for p in rule_pages if p and p.get("slug", "").startswith("regra-")])
             if rule_page_count > 0:
                 try:
-                    from app.services.wiki_service import _trigger_rule_enrichment_job
                     await _trigger_rule_enrichment_job(db, project_id, rule_page_count)
                 except Exception as e:
                     logger.warning(f"Failed to trigger rule enrichment: {e}")

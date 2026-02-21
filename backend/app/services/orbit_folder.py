@@ -63,7 +63,7 @@ def ensure_satellite_dirs(code_path: Path) -> Path:
     satellite_path.mkdir(exist_ok=True)
 
     # Core leaf subfolders
-    for sub in ("prompts", "results", "knowledge", "docs"):
+    for sub in ("prompts", "results", "knowledge", "docs", "wiki"):
         sub_path = satellite_path / sub
         sub_path.mkdir(exist_ok=True)
         gitkeep = sub_path / ".gitkeep"

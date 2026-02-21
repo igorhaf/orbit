@@ -1,8 +1,8 @@
 """
-Wiki Service - Business logic extracted from wiki routes.
+Wiki Service - Business logic for wiki page generation, enrichment, and linking.
 
-Contains all wiki page generation, enrichment, and semantic linking logic.
-Extracted during Frente 4 refactoring (PROMPT #252).
+PROMPT #237 - Refactored to use filesystem storage (wiki_fs) instead of database.
+All wiki pages are stored as .md files in satellite/wiki/.
 
 Route handlers in wiki.py import from this module.
 """
@@ -16,13 +16,14 @@ from uuid import UUID
 from collections import defaultdict
 
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, text as sql_text
+from sqlalchemy import text as sql_text
 
 from app.database import SessionLocal
-from app.models.wiki_page import WikiPage
 from app.models.project import Project
+from app.services import wiki_fs
 
 logger = logging.getLogger(__name__)
+
 
 def _slugify(text: str) -> str:
     """Convert text to URL-friendly slug."""
@@ -38,83 +39,44 @@ def _slugify(text: str) -> str:
     text = re.sub(r'-+', '-', text)
     return text.strip('-')
 
-def _ensure_unique_slug(db: Session, project_id: UUID, slug: str, exclude_id: Optional[UUID] = None) -> str:
-    """Ensure slug is unique within project, appending suffix if needed."""
-    base_slug = slug
-    counter = 1
-    while True:
-        query = db.query(WikiPage).filter(
-            and_(WikiPage.project_id == project_id, WikiPage.slug == slug)
-        )
-        if exclude_id:
-            query = query.filter(WikiPage.id != exclude_id)
-        if not query.first():
-            return slug
-        slug = f"{base_slug}-{counter}"
-        counter += 1
+
+def _ensure_unique_slug(code_path: str, slug: str) -> str:
+    """Ensure slug is unique within project wiki on disk."""
+    return wiki_fs.ensure_unique_slug(code_path, slug)
+
 
 def _upsert_wiki_page(
-    db: Session,
+    code_path: str,
     project_id: UUID,
     slug: str,
     title: str,
     content: str,
     order_index: int,
     source: str,
-    parent_id: UUID = None,
-) -> WikiPage:
-    """Create or update a wiki page by slug.
+    parent_slug: str = None,
+) -> dict:
+    """Create or update a wiki page on disk.
 
-    PROMPT #285 - Protected sources: pages that were manually edited or enriched
-    are NEVER overwritten by automated re-scan. This prevents data loss when:
-    - User manually edits a wiki page (source='manual')
-    - AI enrichment has already generated rich content (source='enrichment')
-
-    Only pages with source='ai_generated' are safe to overwrite.
+    PROMPT #237 - Filesystem-based replacement for the DB version.
+    PROMPT #285 - Protected sources: pages with source='manual' or 'enrichment'
+    are NEVER overwritten by automated re-scan.
     """
-    existing = (
-        db.query(WikiPage)
-        .filter(and_(WikiPage.project_id == project_id, WikiPage.slug == slug))
-        .first()
-    )
-    if existing:
-        # PROMPT #285 - Protected sources: never overwrite user-edited or enriched pages
-        protected_sources = {"manual", "enrichment"}
-        if existing.source in protected_sources:
-            logger.debug(
-                f"Wiki page '{slug}' is protected (source={existing.source}), "
-                f"skipping content overwrite"
-            )
-            # Still update parent_id to fix hierarchy
-            if parent_id is not None:
-                existing.parent_id = parent_id
-            return existing
-
-        existing.title = title
-        existing.order_index = order_index
-        existing.content = content
-        # Always fix parent_id if provided (prevents orphan pages)
-        if parent_id is not None:
-            existing.parent_id = parent_id
-        return existing
-
-    page = WikiPage(
+    return wiki_fs.write_page(
+        code_path=code_path,
         project_id=project_id,
         slug=slug,
         title=title,
         content=content,
-        order_index=order_index,
         source=source,
-        parent_id=parent_id,
+        order_index=order_index,
+        parent_slug=parent_slug,
     )
-    db.add(page)
-    return page
+
 
 def _build_stack_page(project, stack_info: dict, scan_summary: dict = None) -> str:
     """Build markdown content for stack page."""
     lines = ["## Stack Tecnologica\n"]
 
-    # From project model fields
     if project.stack:
         stack = project.stack
         if stack.get("backend"):
@@ -129,7 +91,6 @@ def _build_stack_page(project, stack_info: dict, scan_summary: dict = None) -> s
             lines.append(f"- **Mobile:** {stack['mobile']}")
         lines.append("")
 
-    # Detected stack from scan
     if stack_info:
         detected = stack_info.get("detected_stack", "")
         description = stack_info.get("description", "")
@@ -141,7 +102,6 @@ def _build_stack_page(project, stack_info: dict, scan_summary: dict = None) -> s
                 lines.append(f"- **Confianca:** {confidence}%")
             lines.append("")
 
-        # Top scores from scan
         all_scores = stack_info.get("all_scores", {})
         if all_scores:
             top = sorted(all_scores.items(), key=lambda x: x[1], reverse=True)
@@ -184,7 +144,6 @@ def _build_stack_page(project, stack_info: dict, scan_summary: dict = None) -> s
                 lines.append(f"- {db_name}")
             lines.append("")
 
-    # Languages from scan summary
     scan_summary = scan_summary or {}
     scan_languages = scan_summary.get("languages", {})
     if scan_languages and isinstance(scan_languages, dict):
@@ -195,6 +154,7 @@ def _build_stack_page(project, stack_info: dict, scan_summary: dict = None) -> s
         lines.append("")
 
     return "\n".join(lines)
+
 
 def _build_rules_page(business_rules: list) -> str:
     """Build markdown content for business rules page."""
@@ -216,6 +176,7 @@ def _build_rules_page(business_rules: list) -> str:
 
     return "\n".join(lines)
 
+
 def _build_features_page(features: list) -> str:
     """Build markdown content for features page."""
     lines = ["## Features Principais\n"]
@@ -233,6 +194,7 @@ def _build_features_page(features: list) -> str:
 
     return "\n".join(lines)
 
+
 def _build_scan_page(scan_summary: dict) -> str:
     """Build markdown content for scan summary page."""
     lines = ["## Resumo do Codebase\n"]
@@ -249,6 +211,7 @@ def _build_scan_page(scan_summary: dict) -> str:
 
     lines.append("")
     return "\n".join(lines)
+
 
 def _translate_spec_type(spec_type: str) -> str:
     """Translate spec_type labels to Portuguese."""
@@ -274,6 +237,7 @@ def _translate_spec_type(spec_type: str) -> str:
     }
     return SPEC_PT.get(spec_type, spec_type.replace("_", " ").title())
 
+
 def _translate_category(category: str) -> str:
     """Translate category labels to Portuguese."""
     CAT_PT = {
@@ -294,12 +258,9 @@ def _translate_category(category: str) -> str:
     }
     return CAT_PT.get(category, category.title() if category else "Geral")
 
+
 def _build_architecture_patterns_page(db, project_id: UUID) -> Optional[str]:
-    """
-    PROMPT #267/#268 - Build wiki page from RAG architecture patterns.
-    Fetches layered_architecture, hub-spoke graphs, REST APIs, paired imports.
-    """
-    from sqlalchemy import text as sql_text
+    """Build wiki page from RAG architecture patterns."""
     result = db.execute(sql_text("""
         SELECT content, metadata FROM rag_documents
         WHERE project_id = :pid
@@ -337,12 +298,9 @@ def _build_architecture_patterns_page(db, project_id: UUID) -> Optional[str]:
 
     return "\n".join(lines)
 
+
 def _build_code_conventions_page(db, project_id: UUID) -> Optional[str]:
-    """
-    PROMPT #267 - Build wiki page from RAG code convention patterns.
-    Fetches naming conventions, class hierarchies, import patterns, function signatures.
-    """
-    from sqlalchemy import text as sql_text
+    """Build wiki page from RAG code convention patterns."""
     result = db.execute(sql_text("""
         SELECT content, metadata FROM rag_documents
         WHERE project_id = :pid
@@ -383,11 +341,9 @@ def _build_code_conventions_page(db, project_id: UUID) -> Optional[str]:
 
     return "\n".join(lines)
 
+
 def _build_ui_components_page(db, project_id: UUID) -> Optional[str]:
-    """
-    PROMPT #267 - Build wiki page from RAG UI component/blueprint patterns.
-    """
-    from sqlalchemy import text as sql_text
+    """Build wiki page from RAG UI component/blueprint patterns."""
     result = db.execute(sql_text("""
         SELECT content, metadata FROM rag_documents
         WHERE project_id = :pid
@@ -421,11 +377,9 @@ def _build_ui_components_page(db, project_id: UUID) -> Optional[str]:
 
     return "\n".join(lines)
 
+
 def _build_code_structure_page(db, project_id: UUID) -> Optional[str]:
-    """
-    PROMPT #267 - Build wiki page aggregating code files by language and directory.
-    """
-    from sqlalchemy import text as sql_text
+    """Build wiki page aggregating code files by language and directory."""
     result = db.execute(sql_text("""
         SELECT
             metadata->>'language' as lang,
@@ -439,13 +393,10 @@ def _build_code_structure_page(db, project_id: UUID) -> Optional[str]:
     if not rows:
         return None
 
-    # Group by language, then by directory
-    from collections import defaultdict
     lang_dirs: dict = defaultdict(lambda: defaultdict(list))
     for row in rows:
         lang = row[0] or "unknown"
         fpath = row[1] or "unknown"
-        # Extract directory from path
         parts = fpath.rsplit("/", 1)
         directory = parts[0] if len(parts) > 1 else "/"
         filename = parts[-1]
@@ -464,10 +415,8 @@ def _build_code_structure_page(db, project_id: UUID) -> Optional[str]:
         lines.append(f"\n### {lang.upper()} ({file_count} arquivos)\n")
 
         for directory, files in sorted(dirs.items()):
-            # Show directory with file count
             dir_display = directory.split("/projects/")[-1] if "/projects/" in directory else directory
             lines.append(f"**{dir_display}/** ({len(files)} arquivos)")
-            # List files (max 20 per directory to avoid huge pages)
             for f in sorted(files)[:20]:
                 lines.append(f"- {f}")
             if len(files) > 20:
@@ -476,11 +425,9 @@ def _build_code_structure_page(db, project_id: UUID) -> Optional[str]:
 
     return "\n".join(lines)
 
+
 def _build_git_history_page(db, project_id: UUID) -> Optional[str]:
-    """
-    PROMPT #267 - Build wiki page from RAG git commits.
-    """
-    from sqlalchemy import text as sql_text
+    """Build wiki page from RAG git commits."""
     result = db.execute(sql_text("""
         SELECT content, metadata FROM rag_documents
         WHERE project_id = :pid
@@ -508,12 +455,11 @@ def _build_git_history_page(db, project_id: UUID) -> Optional[str]:
 
     return "\n".join(lines)
 
+
 # =============================================================================
-# PROMPT #269 - Individual Business Rule Wiki Pages
+# PROMPT #269 - Individual Business Rule Wiki Pages (filesystem-based)
 # =============================================================================
 
-# PROMPT #287 - Generic domain classification
-# Directories to skip when extracting domain (framework/boilerplate dirs)
 _SKIP_DIRS = {
     "app", "src", "lib", "backend", "frontend", "server", "client",
     "api", "core", "common", "utils", "helpers", "shared", "base",
@@ -526,39 +472,30 @@ _SKIP_DIRS = {
     ".", "..", "",
 }
 
+
 def _classify_domain(source_file: str) -> Tuple[str, str]:
-    """
-    PROMPT #287 - Classify a source file into a business domain.
-    Generic approach: extracts the most meaningful directory from the path.
-    Works with any project structure, not just specific hardcoded paths.
-    Returns (domain_name, domain_slug).
-    """
+    """Classify a source file into a business domain."""
     if not source_file:
         return ("General", "general")
 
-    # Normalize: remove project root prefix if present
     path = source_file
     if "/projects/" in path:
         path = path.split("/projects/", 1)[-1]
-        # Skip the project folder name itself
         parts = path.split("/")
         if len(parts) > 1:
-            parts = parts[1:]  # skip project folder
+            parts = parts[1:]
         path = "/".join(parts)
 
-    # Split into directory parts (exclude filename)
     parts = path.replace("\\", "/").split("/")
     if len(parts) > 1:
-        parts = parts[:-1]  # remove filename
+        parts = parts[:-1]
     else:
-        # Single file with no directory → use filename without extension
         name = parts[0].rsplit(".", 1)[0] if "." in parts[0] else parts[0]
         if name:
             slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
             return (name.replace("_", " ").replace("-", " ").title(), slug or "general")
         return ("General", "general")
 
-    # Walk directory parts and find the first meaningful (non-boilerplate) dir
     for part in parts:
         clean = part.strip()
         if clean.lower() not in _SKIP_DIRS and len(clean) > 1:
@@ -566,7 +503,6 @@ def _classify_domain(source_file: str) -> Tuple[str, str]:
             name = clean.replace("_", " ").replace("-", " ").title()
             return (name, slug or "general")
 
-    # Fallback: use last directory part
     last = parts[-1].strip() if parts else ""
     if last and len(last) > 1:
         slug = re.sub(r"[^a-z0-9]+", "-", last.lower()).strip("-")
@@ -575,24 +511,18 @@ def _classify_domain(source_file: str) -> Tuple[str, str]:
 
     return ("General", "general")
 
+
 def _build_business_rules_wiki_pages(
-    db: "Session", project_id: UUID
-) -> List[WikiPage]:
+    db: "Session", code_path: str, project_id: UUID
+) -> List[dict]:
     """
-    PROMPT #269 - Build hierarchical wiki pages for business rules.
+    PROMPT #269/#237 - Build hierarchical wiki pages for business rules on disk.
 
     Creates:
     1. Index page listing all domains with rule counts
-    2. Per-domain page with bullet list of rules (linking to individual pages)
+    2. Per-domain page with bullet list of rules
     3. Per-rule individual page with rich content
-
-    Uses parent_id for hierarchy:
-      regras-de-negocio (existing) -> domain pages -> individual rule pages
     """
-    from sqlalchemy import text as sql_text
-    from collections import defaultdict
-    import hashlib
-
     result = db.execute(sql_text("""
         SELECT id, content, metadata->>'source_file' as source_file
         FROM rag_documents
@@ -614,7 +544,6 @@ def _build_business_rules_wiki_pages(
         source_file = row[2] or ""
         if not content.strip():
             continue
-        # Generate short stable slug from content hash - skip duplicates
         rule_hash = hashlib.md5(content.encode()).hexdigest()[:8]
         if rule_hash in seen_hashes:
             continue
@@ -628,34 +557,22 @@ def _build_business_rules_wiki_pages(
             "rule_hash": rule_hash,
         })
 
-    created_pages: List[WikiPage] = []
+    created_pages: List[dict] = []
 
-    # PROMPT #277 - Find or CREATE parent page (regras-de-negocio)
-    # If it doesn't exist, create a stub so all rule pages have a parent
-    # and don't appear as root items in the sidebar
-    parent_page = (
-        db.query(WikiPage)
-        .filter(
-            WikiPage.project_id == project_id,
-            WikiPage.slug == "regras-de-negocio",
-        )
-        .first()
-    )
-    if not parent_page:
-        parent_page = _upsert_wiki_page(
-            db, project_id, "regras-de-negocio",
+    # Ensure parent page exists
+    parent_slug = "regras-de-negocio"
+    if not wiki_fs.page_exists(code_path, parent_slug):
+        created_pages.append(_upsert_wiki_page(
+            code_path, project_id, parent_slug,
             "Regras de Negocio",
             "## Regras de Negócio\n\nPágina principal das regras de negócio do projeto.\n",
             2, "ai_generated"
-        )
-        db.flush()
-    parent_id = parent_page.id
+        ))
 
-    # --- Index page (PROMPT #287 - Enhanced) ---
+    # --- Index page ---
     total_rules = sum(len(rules) for rules in domains.values())
     total_domains = len(domains)
 
-    # Build source files set for stats
     all_source_files = set()
     for rules in domains.values():
         for rule in rules:
@@ -682,12 +599,10 @@ def _build_business_rules_wiki_pages(
     index_lines.append("")
     index_lines.append("---\n")
 
-    # Add domain list with brief description
     index_lines.append("### Dominios\n")
     for domain_name in sorted(domains.keys()):
         rules = domains[domain_name]
         domain_slug = rules[0]["domain_slug"]
-        # Show first 3 rule titles as preview
         previews = []
         for rule in rules[:3]:
             title = rule["content"].split(".")[0].strip()
@@ -705,11 +620,11 @@ def _build_business_rules_wiki_pages(
         )
 
     index_page = _upsert_wiki_page(
-        db, project_id, "regras-índice",
+        code_path, project_id, "regras-índice",
         "Regras de Negocio - Índice",
         "\n".join(index_lines),
         20, "ai_generated",
-        parent_id=parent_id,
+        parent_slug=parent_slug,
     )
     created_pages.append(index_page)
 
@@ -720,13 +635,11 @@ def _build_business_rules_wiki_pages(
         domain_slug = rules[0]["domain_slug"]
         page_slug = f"regras-{domain_slug}"
 
-        # Domain page with bullet list
         domain_lines = [
             f"## Regras de Negocio - {domain_name}\n",
             f"Total de regras neste dominio: **{len(rules)}**\n",
         ]
 
-        # Group by source file within domain
         by_file: Dict[str, list] = defaultdict(list)
         for rule in rules:
             by_file[rule["source_file"]].append(rule)
@@ -736,7 +649,6 @@ def _build_business_rules_wiki_pages(
             file_display = source_file.split("/projects/")[-1] if "/projects/" in source_file else source_file
             domain_lines.append(f"\n### {file_display}\n")
             for rule in file_rules:
-                # Title: first sentence, max 120 chars
                 title = rule["content"].split(".")[0].strip()
                 if len(title) > 120:
                     title = title[:117] + "..."
@@ -746,11 +658,11 @@ def _build_business_rules_wiki_pages(
                 domain_lines.append(f"- [{title}](wiki:{rule_slug})")
 
         domain_page = _upsert_wiki_page(
-            db, project_id, page_slug,
+            code_path, project_id, page_slug,
             f"Regras de Negocio - {domain_name}",
             "\n".join(domain_lines),
             domain_order, "ai_generated",
-            parent_id=index_page.id if index_page else None,
+            parent_slug="regras-índice",
         )
         created_pages.append(domain_page)
 
@@ -784,10 +696,10 @@ def _build_business_rules_wiki_pages(
             )
 
             rule_page = _upsert_wiki_page(
-                db, project_id, rule_slug,
+                code_path, project_id, rule_slug,
                 title, rule_content,
                 rule_order, "ai_generated",
-                parent_id=domain_page.id if domain_page else None,
+                parent_slug=page_slug,
             )
             created_pages.append(rule_page)
             rule_order += 1
@@ -796,14 +708,11 @@ def _build_business_rules_wiki_pages(
 
     return created_pages
 
+
 async def _trigger_rule_enrichment_job(
     db: Session, project_id: UUID, rule_count: int, force: bool = False
 ) -> Optional[UUID]:
-    """
-    PROMPT #270/#275 - Helper to create and submit a rule enrichment background job.
-    Returns the job_id or None if failed.
-    With force=True, re-enriches ALL rule pages including already-enriched ones.
-    """
+    """Create and submit a rule enrichment background job."""
     from app.models.async_job import JobType
     from app.services.job_manager import JobManager
     from app.services.job_executor import PriorityJobExecutor
@@ -833,41 +742,44 @@ async def _trigger_rule_enrichment_job(
     logger.info(f"Wiki rule enrichment job {job.id} submitted for {rule_count} rules (force={force})")
     return job.id
 
+
 async def _enrich_rules_background(
     job_id: UUID,
     project_id: UUID,
     force: bool = False,
 ):
     """
-    PROMPT #270/#275 - Background task to enrich individual business rule wiki pages.
-    Makes one AI call per rule page with rich prompt context.
-    With force=True, re-enriches ALL rule pages including already-enriched ones.
+    Background task to enrich individual business rule wiki pages.
+    PROMPT #237 - Reads/writes wiki pages from filesystem.
     """
-    import asyncio
-    from app.database import SessionLocal
-    from app.services.job_manager import JobManager
-    from app.services.ai_orchestrator import AIOrchestrator
-    from app.prompts.loader import PromptLoader
-    from sqlalchemy import text as sql_text
-
     db = SessionLocal()
     try:
+        from app.services.job_manager import JobManager
+        from app.services.ai_orchestrator import AIOrchestrator
+        from app.prompts.loader import PromptLoader
+
         job_manager = JobManager(db)
         job_manager.start_job(job_id)
 
         # Get project info
         project = db.query(Project).filter(Project.id == project_id).first()
-        project_name = project.name if project else ""
-        project_context = (project.context_human or "")[:1000] if project else ""
+        if not project or not project.code_path:
+            job_manager.complete_job(job_id, {"enriched": 0, "error": "No project/code_path"})
+            return
 
-        # PROMPT #275 - Get rule pages: all if force, only unenriched otherwise
-        query = db.query(WikiPage).filter(
-            WikiPage.project_id == project_id,
-            WikiPage.slug.like("regra-%"),
-        )
-        if not force:
-            query = query.filter(WikiPage.source == "ai_generated")
-        rule_pages = query.all()
+        code_path = project.code_path
+        project_name = project.name or ""
+        project_context = (project.context_human or "")[:1000]
+
+        # Get rule pages from filesystem
+        all_pages = wiki_fs.list_pages(code_path)
+        if force:
+            rule_pages = [p for p in all_pages if p.slug.startswith("regra-")]
+        else:
+            rule_pages = [
+                p for p in all_pages
+                if p.slug.startswith("regra-") and p.source == "ai_generated"
+            ]
 
         total = len(rule_pages)
         if total == 0:
@@ -876,31 +788,18 @@ async def _enrich_rules_background(
 
         job_manager.update_progress(job_id, 5.0, f"Preparando {total} regras para expansao...")
 
-        # PROMPT #288 - Batch-load all parent pages in ONE query (fixes N+1)
-        parent_ids = set(p.parent_id for p in rule_pages if p.parent_id)
-        parent_map: dict = {}  # id -> (slug, title)
-        if parent_ids:
-            parent_rows = (
-                db.query(WikiPage.id, WikiPage.slug, WikiPage.title)
-                .filter(WikiPage.id.in_(parent_ids))
-                .all()
-            )
-            parent_map = {row[0]: (row[1], row[2]) for row in parent_rows}
-
-        # Build domain_rules_map from parent info (batch siblings per parent)
-        domain_rules_map: dict = {}
-        for parent_id, (parent_slug, parent_title) in parent_map.items():
-            if parent_slug not in domain_rules_map:
-                siblings = (
-                    db.query(WikiPage.title)
-                    .filter(
-                        WikiPage.parent_id == parent_id,
-                        WikiPage.slug.like("regra-%"),
-                    )
-                    .limit(10)
-                    .all()
-                )
-                domain_rules_map[parent_slug] = [s[0] for s in siblings]
+        # Build parent/sibling context from filesystem
+        parent_map: Dict[str, str] = {}  # slug -> parent_slug
+        siblings_map: Dict[str, List[str]] = {}  # parent_slug -> list of child titles
+        for page in all_pages:
+            if page.parent_slug:
+                parent_map[page.slug] = page.parent_slug
+            ps = page.parent_slug
+            if ps:
+                if ps not in siblings_map:
+                    siblings_map[ps] = []
+                if page.slug.startswith("regra-"):
+                    siblings_map[ps].append(page.title)
 
         loader = PromptLoader()
         orchestrator = AIOrchestrator(db)
@@ -908,7 +807,6 @@ async def _enrich_rules_background(
         failed_count = 0
 
         for i, page in enumerate(rule_pages):
-            # Check cancellation
             if job_manager.is_cancelled(job_id):
                 job_manager.update_progress(
                     job_id, (i / total) * 100,
@@ -923,15 +821,11 @@ async def _enrich_rules_background(
             )
 
             try:
-                # PROMPT #275 - Extract domain, source, and rule content
-                # For unenriched pages: parse from template markers
-                # For already-enriched pages: look up original from RAG or use parent domain
                 domain_name = "Geral"
                 source_file = ""
                 rule_content = page.title
 
                 if page.source == "ai_generated":
-                    # Original template format - parse markers (supports both PT and EN labels)
                     for line in page.content.split("\n"):
                         if line.startswith("**Dominio:**") or line.startswith("**Domain:**"):
                             domain_name = line.replace("**Dominio:**", "").replace("**Domain:**", "").strip()
@@ -946,7 +840,6 @@ async def _enrich_rules_background(
                                     rule_content = desc_text
                             break
                 else:
-                    # Already enriched - try to get original from RAG using slug hash
                     rule_hash = page.slug.replace("regra-", "")
                     rag_result = db.execute(sql_text("""
                         SELECT content, metadata->>'source_file' as source_file
@@ -962,25 +855,21 @@ async def _enrich_rules_background(
                         rule_content = rag_row[0] or page.title
                         source_file = rag_row[1] or ""
                     else:
-                        # Fallback: use existing enriched content as context
                         rule_content = page.content
 
-                    # PROMPT #288 - Use pre-loaded parent_map instead of per-rule query
-                    if page.parent_id and page.parent_id in parent_map:
-                        _, parent_title = parent_map[page.parent_id]
-                        if parent_title:
-                            domain_name = (parent_title
+                    # Get domain from parent page title
+                    if page.parent_slug:
+                        parent_page = wiki_fs.read_page(code_path, page.parent_slug)
+                        if parent_page:
+                            domain_name = (parent_page.title
                                 .replace("Business Rules - ", "")
                                 .replace("Regras de Negocio - ", ""))
 
-                # PROMPT #288 - Use pre-loaded parent_map for related rules lookup
-                parent_slug = ""
-                if page.parent_id and page.parent_id in parent_map:
-                    parent_slug = parent_map[page.parent_id][0]
-                related = domain_rules_map.get(parent_slug, [])
+                # Get related rules from siblings
+                parent_slug = page.parent_slug or ""
+                related = siblings_map.get(parent_slug, [])
                 related_text = "\n".join(f"- {r}" for r in related[:8]) if related else ""
 
-                # Render prompt
                 template_vars = {
                     "rule_content": rule_content,
                     "domain_name": domain_name,
@@ -993,8 +882,6 @@ async def _enrich_rules_background(
                     "context/wiki_rule_enrichment", template_vars
                 )
 
-                # Call AI
-                # PROMPT #228 - Changed to "general" for qwen3:14b (quality text)
                 response = await orchestrator.execute(
                     usage_type="general",
                     messages=[{"role": "user", "content": usr_prompt}],
@@ -1007,9 +894,17 @@ async def _enrich_rules_background(
 
                 enriched_content = response.get("content", "")
                 if enriched_content and len(enriched_content) > 100:
-                    page.content = enriched_content
-                    page.source = "enrichment"
-                    db.commit()
+                    wiki_fs.write_page(
+                        code_path=code_path,
+                        project_id=project_id,
+                        slug=page.slug,
+                        title=page.title,
+                        content=enriched_content,
+                        source="enrichment",
+                        order_index=page.order_index,
+                        parent_slug=page.parent_slug,
+                        respect_protected=False,
+                    )
                     enriched_count += 1
                 else:
                     failed_count += 1
@@ -1019,11 +914,10 @@ async def _enrich_rules_background(
                 failed_count += 1
                 logger.error(f"Failed to enrich rule {page.slug}: {e}")
 
-            # PROMPT #288 - Reduced from 0.5s to 0.1s (rate limiter handles throttling)
             await asyncio.sleep(0.1)
 
-        # PROMPT #274 - Re-apply semantic links after enrichment
-        linked_count = _apply_semantic_links_to_project(db, project_id)
+        # Re-apply semantic links after enrichment
+        linked_count = _apply_semantic_links_to_project_fs(code_path, project_id)
 
         job_manager.complete_job(job_id, {
             "enriched": enriched_count,
@@ -1040,11 +934,13 @@ async def _enrich_rules_background(
     except Exception as e:
         logger.error(f"Wiki rule enrichment job {job_id} failed: {e}")
         try:
+            from app.services.job_manager import JobManager
             JobManager(db).fail_job(job_id, str(e))
         except Exception:
             pass
     finally:
         db.close()
+
 
 # ---------------------------------------------------------------------------
 # PROMPT #274 - Hypertext Linking Semântico (estilo Wikipedia)
@@ -1059,28 +955,18 @@ def _add_semantic_links_to_content(
 ) -> str:
     """
     Scan markdown content and add wiki:slug links for mentions of other page titles.
-    Like Wikipedia: first occurrence of each term becomes a link, rest stay as plain text.
-
     Idempotent: detects existing wiki links and skips terms already linked.
-    Cleans up orphan links whose target page no longer exists.
-
-    Args:
-        content: Markdown content to process
-        terms_map: {title_lower: slug} mapping of all wiki pages
-        exclude_slug: Slug of current page (avoid self-links)
-        max_links: Maximum number of links to add per page
-        valid_slugs: Set of all valid slugs (for orphan link cleanup)
     """
     if not content or not terms_map:
         return content
 
-    # Step 1: Remove orphan wiki links (target page deleted or renamed)
+    # Step 1: Remove orphan wiki links
     if valid_slugs is not None:
         def _clean_orphan(m: re.Match) -> str:
             slug = m.group(2)
             if slug in valid_slugs:
-                return m.group(0)  # keep valid link
-            return m.group(1)  # revert to plain text
+                return m.group(0)
+            return m.group(1)
 
         content = re.sub(
             r'\[([^\]]+)\]\(wiki:([a-z0-9_-]+)\)',
@@ -1088,28 +974,25 @@ def _add_semantic_links_to_content(
             content,
         )
 
-    # Step 2: Collect slugs already linked in the content (avoid duplicates)
+    # Step 2: Collect slugs already linked
     existing_link_slugs: set = set()
     for m in re.finditer(r'\]\(wiki:([a-z0-9_-]+)\)', content):
         existing_link_slugs.add(m.group(1))
 
-    # Sort terms by length (longest first) to avoid partial matches
     sorted_terms = sorted(terms_map.keys(), key=len, reverse=True)
 
     lines = content.split("\n")
     result_lines = []
     links_added = 0
-    linked_slugs: set = set(existing_link_slugs)  # start with already-linked
+    linked_slugs: set = set(existing_link_slugs)
     in_code_block = False
 
     for line in lines:
-        # Toggle code block state
         if line.strip().startswith("```"):
             in_code_block = not in_code_block
             result_lines.append(line)
             continue
 
-        # Skip code blocks and headings
         if in_code_block or line.strip().startswith("#"):
             result_lines.append(line)
             continue
@@ -1123,114 +1006,52 @@ def _add_semantic_links_to_content(
                 break
 
             slug = terms_map[term]
-
-            # Skip self-links and terms whose slug is already linked
             if slug == exclude_slug or slug in linked_slugs:
                 continue
 
-            # Match term NOT inside existing markdown links or inline code.
-            # Use a two-step approach: first strip existing link spans,
-            # then search for the term in the remaining text.
-            # Simple approach: search and verify match is not inside [...](...) span
             pattern = re.compile(
                 r'\b(' + re.escape(term) + r')\b',
                 re.IGNORECASE,
             )
 
-            # Find all matches and check each is not inside an existing link
             for match in pattern.finditer(line):
                 start, end = match.start(), match.end()
-                # Check if this match falls inside a markdown link [text](url)
-                # by looking for enclosing [ before and ]( after
                 before = line[:start]
-                after = line[end:]
-
-                # Inside link text: [...HERE...](...) - preceded by [ with no ] between
                 in_link_text = (
                     '[' in before
                     and '](' not in before[before.rfind('['):]
                 )
-                # Inside link url: [...](...HERE...)
                 in_link_url = (
                     '](' in before
                     and ')' not in before[before.rfind('](') + 2:]
                 )
-                # Inside inline code: `HERE`
                 backtick_count = before.count('`')
                 in_inline_code = backtick_count % 2 == 1
 
                 if in_link_text or in_link_url or in_inline_code:
-                    continue  # skip this match, try next
+                    continue
 
-                # Valid match found - replace it
                 matched_text = match.group(1)
                 replacement = f"[{matched_text}](wiki:{slug})"
                 line = line[:start] + replacement + line[end:]
                 links_added += 1
                 linked_slugs.add(slug)
-                break  # only first valid occurrence per term
+                break
 
         result_lines.append(line)
 
     return "\n".join(result_lines)
 
-def _apply_semantic_links_to_project(db: Session, project_id: UUID) -> int:
-    """
-    Apply semantic hypertext linking to all wiki pages of a project.
-    Scans each page's content for mentions of other page titles and adds wiki links.
 
-    Returns number of pages modified.
-    """
-    pages = (
-        db.query(WikiPage)
-        .filter(WikiPage.project_id == project_id)
-        .all()
+def _apply_semantic_links_to_project_fs(code_path: str, project_id) -> int:
+    """Apply semantic hypertext linking to all wiki pages on disk."""
+    return wiki_fs.apply_semantic_links(
+        code_path, project_id, _add_semantic_links_to_content
     )
 
-    if not pages:
-        return 0
-
-    # Build terms map from page titles (skip very short titles)
-    terms_map: Dict[str, str] = {}
-    valid_slugs: set = set()
-    for page in pages:
-        valid_slugs.add(page.slug)
-        title = page.title.strip()
-        if len(title) >= 4:
-            terms_map[title.lower()] = page.slug
-
-    if not terms_map:
-        return 0
-
-    modified_count = 0
-    for page in pages:
-        new_content = _add_semantic_links_to_content(
-            page.content,
-            terms_map,
-            exclude_slug=page.slug,
-            max_links=10,
-            valid_slugs=valid_slugs,
-        )
-        if new_content != page.content:
-            page.content = new_content
-            modified_count += 1
-
-    if modified_count > 0:
-        db.commit()
-        logger.info(
-            f"Semantic linking: {modified_count}/{len(pages)} pages "
-            f"updated for project {project_id}"
-        )
-
-    return modified_count
 
 def _parse_wiki_sections(markdown: str) -> Dict[str, Tuple[str, str]]:
-    """
-    PROMPT #265 - Parse AI-generated markdown into wiki page sections.
-
-    Splits a markdown document by ## headers and maps each section to a wiki page slug.
-    Returns ordered dict of {slug: (title, content)}.
-    """
+    """Parse AI-generated markdown into wiki page sections."""
     SECTION_MAP = {
         "visao geral": ("visao-geral", "Visao Geral"),
         "stack tecnologica": ("stack-tecnologica", "Stack Tecnologica"),
@@ -1243,7 +1064,6 @@ def _parse_wiki_sections(markdown: str) -> Dict[str, Tuple[str, str]]:
     }
 
     def _normalize(text: str) -> str:
-        """Remove accents and special chars for matching."""
         replacements = {
             'á': 'a', 'à': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a',
             'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
@@ -1258,19 +1078,13 @@ def _parse_wiki_sections(markdown: str) -> Dict[str, Tuple[str, str]]:
         return result
 
     sections: Dict[str, Tuple[str, str]] = {}
-
-    # Split by ## headers, keeping the header text
     parts = re.split(r'^## (.+)$', markdown, flags=re.MULTILINE)
-
-    # parts[0] = content before first ##
-    # parts[1] = first header, parts[2] = first content, etc.
 
     for i in range(1, len(parts), 2):
         header = parts[i].strip()
         content = parts[i + 1].strip() if i + 1 < len(parts) else ""
         header_normalized = _normalize(header)
 
-        # Try to match against known sections
         matched = False
         for key, (slug, title) in SECTION_MAP.items():
             if key in header_normalized:
@@ -1280,18 +1094,15 @@ def _parse_wiki_sections(markdown: str) -> Dict[str, Tuple[str, str]]:
                 break
 
         if not matched:
-            # Unknown section - create page with slugified header
             slug = _slugify(header)
             if slug:
                 sections[slug] = (header, f"## {header}\n\n{content}")
 
     return sections
 
+
 def _parse_wiki_subsections(markdown: str) -> Dict[str, Tuple[str, str]]:
-    """
-    PROMPT #268 - Parse ### headers into wiki pages when ## parsing yields few results.
-    Some AI models generate with ### instead of ## for subsections.
-    """
+    """Parse ### headers into wiki pages when ## parsing yields few results."""
     SECTION_MAP = {
         "visao geral": ("visao-geral", "Visao Geral"),
         "stack tecnologica": ("stack-tecnologica", "Stack Tecnologica"),
