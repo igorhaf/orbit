@@ -135,6 +135,9 @@ export interface Project {
   // PROMPT #236 - Deletion protection
   protected?: boolean;
 
+  // PROMPT #241 - User-editable ignore paths
+  ignore_paths?: string[] | null;
+
   created_at: string;
   updated_at: string;
 }
@@ -168,6 +171,9 @@ export interface ProjectUpdate {
   stack_database?: string | null;
   stack_frontend?: string | null;
   stack_css?: string | null;
+
+  // PROMPT #241 - User-editable ignore paths
+  ignore_paths?: string[] | null;
 }
 
 export interface ProjectWithRelations extends Project {

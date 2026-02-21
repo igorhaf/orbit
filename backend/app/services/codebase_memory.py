@@ -729,6 +729,13 @@ class CodebaseMemoryService:
                             ai_ignores.get("rationale", {}),
                             project_name,
                         )
+
+                # PROMPT #241 - Load user-editable ignore paths
+                if project_obj and project_obj.ignore_paths:
+                    user_paths = project_obj.ignore_paths
+                    if isinstance(user_paths, list):
+                        self._effective_ignore_dirs.update(user_paths)
+                        logger.info(f"📁 Loaded {len(user_paths)} user ignore paths: {user_paths}")
             except Exception as e:
                 logger.warning(f"AI ignore detection skipped (non-blocking): {e}")
 

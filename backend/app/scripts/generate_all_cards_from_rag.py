@@ -252,7 +252,17 @@ def main():
     """), {"pid": str(PROJECT_ID)})
 
     all_rules = [(row[0], row[1] or "") for row in result]
-    logger.info(f"Found {len(all_rules)} business rules")
+    logger.info(f"Found {len(all_rules)} business rules (before filtering)")
+
+    # PROMPT #241 - Filter out rules from ignored paths
+    ignore_paths_row = session.execute(text(
+        "SELECT ignore_paths FROM projects WHERE id = :pid"
+    ), {"pid": str(PROJECT_ID)}).first()
+    ignore_paths = ignore_paths_row[0] if ignore_paths_row and ignore_paths_row[0] else []
+    if ignore_paths:
+        before = len(all_rules)
+        all_rules = [(c, s) for c, s in all_rules if not any(s.startswith(p) for p in ignore_paths)]
+        logger.info(f"📁 Filtered {before - len(all_rules)} rules from ignored paths {ignore_paths} → {len(all_rules)} remaining")
 
     # ── Step 2: Group rules by domain (Epic) ──
     domain_rules = defaultdict(list)

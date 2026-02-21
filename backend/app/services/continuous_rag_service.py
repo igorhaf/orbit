@@ -165,6 +165,11 @@ class ContinuousRAGService:
                 self._memory._effective_ignore_dirs.update(custom_dirs)
                 logger.info(f"🤖 Loaded {len(custom_dirs)} project-specific ignore dirs: {custom_dirs}")
 
+        # PROMPT #241 - Load user-editable ignore paths
+        if project.ignore_paths and isinstance(project.ignore_paths, list):
+            self._memory._effective_ignore_dirs.update(project.ignore_paths)
+            logger.info(f"📁 Loaded {len(project.ignore_paths)} user ignore paths: {project.ignore_paths}")
+
         # PROMPT #250 - Load global blocklist
         global_blocklist = self._memory._load_global_blocklist()
         gl_dirs = global_blocklist.get("directories", [])

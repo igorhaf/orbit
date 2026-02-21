@@ -3,15 +3,17 @@
 /**
  * OverviewTab - Overview/Settings Tab Component
  * Extracted from project detail page (PROMPT #232)
- * Shows project description (with inline markdown editor) and statistics sub-tabs
+ * PROMPT #241 - Added "Configuracoes" subtab with ignore_paths management
+ * Shows project description (with inline markdown editor), statistics, and settings sub-tabs
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, AIModelBadge } from '@/components/ui';
 import { Project, Task } from '@/lib/types';
+import { projectsApi } from '@/lib/api';
 
-type OverviewSubTab = 'description' | 'statistics';
+type OverviewSubTab = 'description' | 'statistics' | 'settings';
 
 interface TasksByStatus {
   backlog: Task[];
@@ -27,6 +29,7 @@ interface OverviewTabProps {
   tasksByStatus: TasksByStatus;
   overviewSubTab: OverviewSubTab;
   setOverviewSubTab: (tab: OverviewSubTab) => void;
+  onProjectUpdate?: (project: Project) => void;
   // Description editing
   isEditingDescription: boolean;
   editedDescription: string;
@@ -59,6 +62,7 @@ export default function OverviewTab({
   tasksByStatus,
   overviewSubTab,
   setOverviewSubTab,
+  onProjectUpdate,
   isEditingDescription,
   editedDescription,
   setEditedDescription,
@@ -82,14 +86,55 @@ export default function OverviewTab({
   formatQuote,
   formatTable,
 }: OverviewTabProps) {
+  // PROMPT #241 - Settings state for ignore_paths
+  const [ignorePaths, setIgnorePaths] = useState<string[]>(project.ignore_paths || []);
+  const [newIgnorePath, setNewIgnorePath] = useState('');
+  const [isSavingIgnorePaths, setIsSavingIgnorePaths] = useState(false);
+  const [ignorePathsSaved, setIgnorePathsSaved] = useState(false);
+
+  // AI-detected patterns (read-only)
+  const aiPatterns = project.initial_memory_context?.custom_ignore_patterns;
+  const aiDirs: string[] = aiPatterns?.directories || [];
+
+  const handleAddIgnorePath = () => {
+    const path = newIgnorePath.trim();
+    if (!path) return;
+    // Ensure trailing slash for directories
+    const normalized = path.endsWith('/') ? path : path + '/';
+    if (ignorePaths.includes(normalized)) return;
+    setIgnorePaths([...ignorePaths, normalized]);
+    setNewIgnorePath('');
+    setIgnorePathsSaved(false);
+  };
+
+  const handleRemoveIgnorePath = (path: string) => {
+    setIgnorePaths(ignorePaths.filter(p => p !== path));
+    setIgnorePathsSaved(false);
+  };
+
+  const handleSaveIgnorePaths = async () => {
+    setIsSavingIgnorePaths(true);
+    try {
+      const updated = await projectsApi.update(project.id, { ignore_paths: ignorePaths });
+      if (onProjectUpdate) onProjectUpdate(updated);
+      setIgnorePathsSaved(true);
+      setTimeout(() => setIgnorePathsSaved(false), 3000);
+    } catch (err) {
+      console.error('Failed to save ignore paths:', err);
+    } finally {
+      setIsSavingIgnorePaths(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Overview Sub-Tabs */}
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex space-x-8">
           {[
-            { id: 'description', label: 'Descrição do Projeto' },
+            { id: 'description', label: 'Descricao do Projeto' },
             { id: 'statistics', label: 'Estatisticas' },
+            { id: 'settings', label: 'Configuracoes' },
           ].map((sub) => (
             <button
               key={sub.id}
@@ -115,7 +160,7 @@ export default function OverviewTab({
         {/* PROMPT #272 - Wiki stats moved to Wiki tab */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Descrição do Projeto</CardTitle>
+            <CardTitle>Descricao do Projeto</CardTitle>
             <div className="flex items-center gap-2">
               {isFormattingDescription && (
                 <span className="text-xs text-gray-500 italic">Formatando para Markdown...</span>
@@ -136,14 +181,14 @@ export default function OverviewTab({
                   {/* Text Formatting */}
                   <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
                     <button type="button" onClick={formatBold} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-bold text-sm" title="Negrito (Ctrl+B)">B</button>
-                    <button type="button" onClick={formatItalic} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm" title="Itálico (Ctrl+I)">I</button>
-                    <button type="button" onClick={formatCode} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm" title="Código Inline">{'</>'}</button>
+                    <button type="button" onClick={formatItalic} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm" title="Italico (Ctrl+I)">I</button>
+                    <button type="button" onClick={formatCode} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm" title="Codigo Inline">{'</>'}</button>
                   </div>
                   {/* Headings */}
                   <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                    <button type="button" onClick={formatHeading1} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 1">H1</button>
-                    <button type="button" onClick={formatHeading2} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 2">H2</button>
-                    <button type="button" onClick={formatHeading3} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 3">H3</button>
+                    <button type="button" onClick={formatHeading1} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Titulo 1">H1</button>
+                    <button type="button" onClick={formatHeading2} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Titulo 2">H2</button>
+                    <button type="button" onClick={formatHeading3} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Titulo 3">H3</button>
                   </div>
                   {/* Lists */}
                   <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
@@ -156,10 +201,10 @@ export default function OverviewTab({
                   </div>
                   {/* Blocks */}
                   <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                    <button type="button" onClick={formatQuote} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Citação">
+                    <button type="button" onClick={formatQuote} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Citacao">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                     </button>
-                    <button type="button" onClick={formatCodeBlock} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono" title="Bloco de Código">{'```'}</button>
+                    <button type="button" onClick={formatCodeBlock} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono" title="Bloco de Codigo">{'```'}</button>
                     <button type="button" onClick={formatTable} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Tabela">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M9 10v8m6-8v8M3 6h18v12H3V6z" /></svg>
                     </button>
@@ -178,7 +223,7 @@ export default function OverviewTab({
                   value={editedDescription}
                   onChange={(e) => setEditedDescription(e.target.value)}
                   className="w-full p-4 min-h-[300px] text-sm text-gray-900 font-mono focus:outline-none resize-y"
-                  placeholder="Digite a descrição usando Markdown..."
+                  placeholder="Digite a descricao usando Markdown..."
                   onKeyDown={(e) => {
                     if (e.ctrlKey && e.key === 'b') { e.preventDefault(); formatBold(); }
                     if (e.ctrlKey && e.key === 'i') { e.preventDefault(); formatItalic(); }
@@ -190,7 +235,7 @@ export default function OverviewTab({
                 {/* Action Buttons */}
                 <div className="flex items-center justify-between p-3 bg-gray-50 border-t border-gray-200">
                   <span className="text-xs text-gray-500">
-                    Markdown suportado | Ctrl+B negrito | Ctrl+I itálico | Ctrl+Enter salvar | Esc cancelar
+                    Markdown suportado | Ctrl+B negrito | Ctrl+I italico | Ctrl+Enter salvar | Esc cancelar
                   </span>
                   <div className="flex gap-2">
                     <Button variant="ghost" size="sm" onClick={handleCancelDescriptionEdit}>Cancelar</Button>
@@ -217,7 +262,7 @@ export default function OverviewTab({
                 className="text-gray-500 text-sm italic cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
                 onDoubleClick={handleDescriptionDoubleClick}
               >
-                Nenhuma descrição ainda. Clique duplo para adicionar uma.
+                Nenhuma descricao ainda. Clique duplo para adicionar uma.
               </p>
             )}
           </CardContent>
@@ -299,6 +344,130 @@ export default function OverviewTab({
                   </div>
                 );
               })}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Sub-Tab: Settings (PROMPT #241) */}
+      {overviewSubTab === 'settings' && (
+        <div className="space-y-6">
+          {/* Ignore Paths */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Pastas Ignoradas</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-gray-500">
+                Pastas listadas aqui serao excluidas do scan de codebase, RAG e geracao de cards.
+                Os caminhos sao relativos a raiz do projeto.
+              </p>
+
+              {/* Current ignore_paths (editable) */}
+              {ignorePaths.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-700 uppercase tracking-wide">Configurado pelo usuario</p>
+                  {ignorePaths.map((path) => (
+                    <div key={path} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                        </svg>
+                        <code className="text-sm text-gray-800">{path}</code>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveIgnorePath(path)}
+                        className="text-red-400 hover:text-red-600 p-1"
+                        title="Remover"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* AI-detected patterns (read-only) */}
+              {aiDirs.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-gray-700 uppercase tracking-wide">Detectado pela IA (somente leitura)</p>
+                  {aiDirs.map((dir) => (
+                    <div key={dir} className="flex items-center bg-blue-50 rounded-lg px-3 py-2">
+                      <div className="flex items-center gap-2">
+                        <svg className="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <code className="text-sm text-blue-800">{dir}</code>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {ignorePaths.length === 0 && aiDirs.length === 0 && (
+                <p className="text-sm text-gray-400 italic">Nenhuma pasta ignorada configurada.</p>
+              )}
+
+              {/* Add new path */}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newIgnorePath}
+                  onChange={(e) => setNewIgnorePath(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddIgnorePath(); } }}
+                  placeholder="Ex: vendor/, node_modules/custom/"
+                  className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <Button variant="ghost" size="sm" onClick={handleAddIgnorePath} disabled={!newIgnorePath.trim()}>
+                  Adicionar
+                </Button>
+              </div>
+
+              {/* Save button */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
+                {ignorePathsSaved && (
+                  <span className="text-sm text-green-600">Salvo com sucesso!</span>
+                )}
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={handleSaveIgnorePaths}
+                  disabled={isSavingIgnorePaths}
+                >
+                  {isSavingIgnorePaths ? 'Salvando...' : 'Salvar'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Project Info (read-only) */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Informacoes do Projeto</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Caminho do Codigo</p>
+                <code className="text-sm text-gray-800">{project.code_path}</code>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Status</p>
+                <span className={`text-sm font-medium ${project.status === 'active' ? 'text-green-600' : 'text-gray-600'}`}>
+                  {project.status === 'active' ? 'Ativo' : project.status === 'processing' ? 'Processando' : 'Rascunho'}
+                </span>
+              </div>
+              <div>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Contexto Travado</p>
+                <span className="text-sm text-gray-800">{project.context_locked ? 'Sim' : 'Nao'}</span>
+              </div>
+              {project.protected && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Protegido</p>
+                  <span className="text-sm text-green-600">Sim - Protegido contra exclusao</span>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

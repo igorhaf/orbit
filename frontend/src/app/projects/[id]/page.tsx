@@ -27,7 +27,7 @@ import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats
 import { useNotification } from '@/hooks';
 
 type Tab = 'overview' | 'backlog' | 'kanban' | 'queue' | 'wiki' | 'chat' | 'specs' | 'commits' | 'rag' | 'analytics';
-type OverviewSubTab = 'description' | 'statistics';
+type OverviewSubTab = 'description' | 'statistics' | 'settings';
 
 export default function ProjectDetailsPage() {
   const params = useParams();
@@ -886,6 +886,7 @@ export default function ProjectDetailsPage() {
             tasksByStatus={tasksByStatus}
             overviewSubTab={overviewSubTab}
             setOverviewSubTab={setOverviewSubTab}
+            onProjectUpdate={(updated) => setProject(updated)}
             isEditingDescription={isEditingDescription}
             editedDescription={editedDescription}
             setEditedDescription={setEditedDescription}

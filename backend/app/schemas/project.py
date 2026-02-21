@@ -62,6 +62,9 @@ class ProjectUpdate(BaseModel):
     # PROMPT #118 - Initial memory context from codebase scan (can be set after creation)
     initial_memory_context: Optional[dict] = Field(None, description="Context from codebase memory scan")
 
+    # PROMPT #241 - User-editable ignore paths per project
+    ignore_paths: Optional[list] = Field(None, description="Paths to exclude from scanning")
+
 
 class ProjectResponse(ProjectBase):
     """Schema for Project response"""
@@ -77,6 +80,9 @@ class ProjectResponse(ProjectBase):
 
     # PROMPT #118 - Initial memory context from codebase scan
     initial_memory_context: Optional[dict] = Field(None, description="Context from codebase memory scan")
+
+    # PROMPT #241 - User-editable ignore paths per project
+    ignore_paths: Optional[list] = Field(None, description="Paths to exclude from scanning")
 
     # PROMPT #236 - Deletion protection
     protected: bool = Field(False, description="Whether this project is protected against deletion")

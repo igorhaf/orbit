@@ -107,6 +107,11 @@ class Project(Base):
     # JSON: {"directories": [...], "rationale": {...}, "detected_by_ai": true}
     custom_ignore_patterns = Column(JSON, nullable=True)
 
+    # PROMPT #241 - User-editable ignore paths per project
+    # JSON array of relative paths to exclude from scanning
+    # Example: ["projects/", "vendor/", "node_modules/custom/"]
+    ignore_paths = Column(JSON, nullable=True)
+
     # PROMPT #236 - Protection against accidental deletion
     # When True, project cannot be deleted unless system setting
     # "allow_protected_project_deletion" is set to "true"

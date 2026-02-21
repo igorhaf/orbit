@@ -116,12 +116,34 @@ class BusinessRulesMixin:
         # initial_memory_context (which only has ~20 rules from initial scan).
         # RAG has ALL rules from continuous scans (typically 500-745+).
         from sqlalchemy import text as sql_text
-        rag_result = self.db.execute(sql_text("""
-            SELECT content FROM rag_documents
-            WHERE project_id = :pid
-            AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')
-            ORDER BY created_at
-        """), {"pid": str(project_id)})
+
+        # PROMPT #241 - Build query with ignore_paths filter
+        ignore_paths = project.ignore_paths if project.ignore_paths and isinstance(project.ignore_paths, list) else []
+        if ignore_paths:
+            # Exclude rules whose source_file starts with any ignored path
+            where_clauses = " ".join(
+                f"AND NOT (metadata->>'source_file' LIKE :ip{i} || '%')"
+                for i in range(len(ignore_paths))
+            )
+            query = f"""
+                SELECT content FROM rag_documents
+                WHERE project_id = :pid
+                AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')
+                {where_clauses}
+                ORDER BY created_at
+            """
+            params = {"pid": str(project_id)}
+            for i, p in enumerate(ignore_paths):
+                params[f"ip{i}"] = p
+            rag_result = self.db.execute(sql_text(query), params)
+            logger.info(f"📁 RAG query excludes {len(ignore_paths)} ignored paths: {ignore_paths}")
+        else:
+            rag_result = self.db.execute(sql_text("""
+                SELECT content FROM rag_documents
+                WHERE project_id = :pid
+                AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')
+                ORDER BY created_at
+            """), {"pid": str(project_id)})
         rag_rules = [row[0] for row in rag_result]
 
         # Fallback to initial_memory_context if RAG has no rules
