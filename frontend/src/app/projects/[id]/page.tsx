@@ -103,6 +103,7 @@ export default function ProjectDetailsPage() {
 
   // PROMPT #251 - Manual RAG scan state
   const [scanningRag, setScanningRag] = useState(false);
+  const [hasCompletedScan, setHasCompletedScan] = useState(false);
 
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
@@ -162,6 +163,8 @@ export default function ProjectDetailsPage() {
         setTotalFilesProcessed(status.total_files_processed || 0);
         // PROMPT #242 - Track initial_scan_complete for RAG → Cards ordering
         setInitialScanComplete(status.initial_scan_complete || false);
+        // PROMPT #251 - Track if at least one RAG scan has been completed
+        setHasCompletedScan(status.has_completed_scan || false);
 
         // Reset generatingHierarchy when epics appear or enrichment finishes
         if ((status.has_epics || false) && !status.is_enriching) {
@@ -685,20 +688,30 @@ export default function ProjectDetailsPage() {
           </div>
         )}
 
-        {/* PROMPT #237/#242/#251 - RAG completed banner with action buttons */}
+        {/* PROMPT #251 - Action banner: scan first, then generate cards */}
         {initialScanComplete && !hasEpics && !isEnriching && !generatingHierarchy && (
-          <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
+          <div className={`${hasCompletedScan ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'} border rounded-lg px-4 py-3`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+                {hasCompletedScan ? (
+                  <svg className="w-5 h-5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                )}
                 <div>
-                  <span className="text-sm font-medium text-green-900">
-                    Analise do codebase concluida{totalFilesProcessed > 0 ? ` — ${totalFilesProcessed} arquivos indexados` : ''}
+                  <span className={`text-sm font-medium ${hasCompletedScan ? 'text-green-900' : 'text-amber-900'}`}>
+                    {hasCompletedScan
+                      ? `Documentos escaneados — pronto para gerar cards`
+                      : 'Escaneie os documentos do projeto antes de gerar cards'}
                   </span>
-                  <p className="text-xs text-green-700 mt-0.5">
-                    O conhecimento do projeto esta pronto. Escaneie documentos ou gere a hierarquia de cards.
+                  <p className={`text-xs mt-0.5 ${hasCompletedScan ? 'text-green-700' : 'text-amber-700'}`}>
+                    {hasCompletedScan
+                      ? 'Gere a hierarquia completa de cards (Epics, Stories, Tasks e Subtasks).'
+                      : 'O scan extrai regras de negocio do codigo que serao usadas para gerar os cards.'}
                   </p>
                 </div>
               </div>
@@ -708,9 +721,12 @@ export default function ProjectDetailsPage() {
                   onClick={async () => {
                     try {
                       setScanningRag(true);
+                      setIsEnriching(true);
                       await ragApi.continuousScan(projectId);
+                      showSuccess('Scan de documentos iniciado');
                     } catch (err: any) {
                       showError(err?.message || 'Erro ao iniciar scan');
+                      setIsEnriching(false);
                     } finally {
                       setScanningRag(false);
                     }
@@ -719,20 +735,22 @@ export default function ProjectDetailsPage() {
                 >
                   {scanningRag ? 'Escaneando...' : 'Scan Documentos'}
                 </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      setGeneratingHierarchy(true);
-                      await projectsApi.generateHierarchy(projectId);
-                    } catch (err: any) {
-                      setGeneratingHierarchy(false);
-                      showError(err?.message || 'Erro ao iniciar geracao');
-                    }
-                  }}
-                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
-                >
-                  Gerar Cards
-                </button>
+                {hasCompletedScan && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        setGeneratingHierarchy(true);
+                        await projectsApi.generateHierarchy(projectId);
+                      } catch (err: any) {
+                        setGeneratingHierarchy(false);
+                        showError(err?.message || 'Erro ao iniciar geracao');
+                      }
+                    }}
+                    className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                  >
+                    Gerar Cards
+                  </button>
+                )}
               </div>
             </div>
           </div>

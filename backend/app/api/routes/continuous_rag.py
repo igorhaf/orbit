@@ -239,6 +239,13 @@ async def get_enrichment_status(
         ~Task.labels.contains(["business_rule"]),
     ).scalar() or 0
 
+    # PROMPT #251 - Check if project has RAG documents (scan was done)
+    from sqlalchemy import text as sql_text
+    rag_doc_count = db.execute(
+        sql_text("SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid"),
+        {"pid": str(project_id)},
+    ).scalar() or 0
+
     return {
         "is_enriching": is_enriching,
         "active_jobs": [
@@ -261,4 +268,5 @@ async def get_enrichment_status(
         "rag_completed": bool(project.initial_scan_complete) and not is_enriching,
         "has_epics": epic_count > 0,
         "total_files_processed": completed_files,
+        "has_completed_scan": rag_doc_count > 0,
     }
