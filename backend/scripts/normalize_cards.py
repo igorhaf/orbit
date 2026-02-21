@@ -436,7 +436,127 @@ def build_semantic_map(item_type: str, title: str, domain: str, rules: list, sto
 
 
 # ============================================================================
-# MAIN NORMALIZER
+# SINGLE CARD NORMALIZER (per-card, called immediately after creation)
+# ============================================================================
+
+def normalize_single_card(
+    db,
+    card_id: str,
+    item_type: str,
+    title: str,
+    description: str = "",
+    domain: str = "",
+    parent_title: str = "",
+    children_titles: list = None,
+    rules: list = None,
+    interview_insights: dict = None,
+):
+    """
+    Normalize a single card immediately after creation.
+
+    Call this right after db.add(card) + db.flush() to ensure each card
+    is properly formatted from the moment it's created.
+
+    Args:
+        db: SQLAlchemy session
+        card_id: UUID of the card
+        item_type: "epic", "story", "task", or "subtask"
+        title: Current card title
+        description: Current card description (used for rule extraction)
+        domain: Business domain name (for epics mainly)
+        parent_title: Title of the parent card
+        children_titles: List of children card titles (for epics: story names)
+        rules: List of business rule texts
+        interview_insights: Existing insights dict to merge with
+    """
+    from sqlalchemy import text
+
+    if children_titles is None:
+        children_titles = []
+    if rules is None:
+        rules = _extract_rules_from_description(description) if description else []
+    if interview_insights is None:
+        interview_insights = {}
+
+    try:
+        if item_type == "epic":
+            new_title = normalize_epic_title(title, domain)
+            semantic_map = build_semantic_map("epic", new_title, domain, rules, children_titles)
+            new_desc = normalize_epic_description(new_title, domain, children_titles, rules)
+            new_prompt = normalize_epic_prompt(new_title, domain, semantic_map, rules)
+            new_ac = normalize_acceptance_criteria(None, "epic", rules)
+            new_sp = 13
+            new_priority = "high"
+
+        elif item_type == "story":
+            new_title = normalize_story_title(title, rules, parent_title)
+            parent_map = interview_insights.get("semantic_map", {})
+            semantic_map = build_semantic_map("story", new_title, domain, rules, parent_map=parent_map)
+            new_desc = normalize_story_description(new_title, parent_title, rules)
+            new_prompt = normalize_story_prompt(new_title, parent_title, semantic_map, rules)
+            new_ac = normalize_acceptance_criteria(None, "story", rules)
+            new_sp = 5
+            new_priority = "high"
+
+        elif item_type == "task":
+            new_title = normalize_task_title(title, rules)
+            parent_map = interview_insights.get("semantic_map", {})
+            semantic_map = build_semantic_map("task", new_title, domain, rules, parent_map=parent_map)
+            new_desc = normalize_task_description(new_title, parent_title, rules)
+            new_prompt = normalize_task_prompt(new_title, parent_title, semantic_map, rules)
+            new_ac = normalize_acceptance_criteria(None, "task", rules)
+            new_sp = 3
+            new_priority = "medium"
+
+        elif item_type == "subtask":
+            rule_text = description or title
+            new_title = normalize_subtask_title(title)
+            semantic_map = build_semantic_map("subtask", new_title, domain, [rule_text])
+            new_desc = normalize_subtask_description(new_title, parent_title, rule_text)
+            new_prompt = normalize_subtask_prompt(new_title, parent_title, rule_text)
+            new_ac = normalize_acceptance_criteria(None, "subtask", [rule_text])
+            new_sp = 1
+            new_priority = "medium"
+        else:
+            logger.debug(f"normalize_single_card: unknown item_type '{item_type}', skipping")
+            return
+
+        # Merge insights
+        new_insights = interview_insights.copy()
+        new_insights["semantic_map"] = semantic_map
+        new_insights["source"] = "rag_business_rules"
+        if domain:
+            new_insights["source_domain"] = domain
+
+        db.execute(text("""
+            UPDATE tasks SET
+                title = :title,
+                description = :desc,
+                generated_prompt = :prompt,
+                acceptance_criteria = :ac,
+                story_points = :sp,
+                priority = :priority,
+                interview_insights = :insights
+            WHERE id = :id
+        """), {
+            "id": card_id,
+            "title": new_title,
+            "desc": new_desc,
+            "prompt": new_prompt,
+            "ac": json.dumps(new_ac),
+            "sp": new_sp,
+            "priority": new_priority,
+            "insights": json.dumps(new_insights),
+        })
+
+        logger.info(f"Normalized {item_type} card '{new_title[:50]}' ({card_id})")
+
+    except Exception as e:
+        logger.warning(f"normalize_single_card failed for {card_id}: {e}")
+
+
+# ============================================================================
+# BATCH NORMALIZER (project-wide, kept for backwards compatibility)
 # ============================================================================
 
 def normalize_project_cards(project_id: str, db=None):

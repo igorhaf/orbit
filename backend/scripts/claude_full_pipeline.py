@@ -644,6 +644,14 @@ def main():
             card_counts["epic"] += 1
             total_cards += 1
 
+            # Normalize epic immediately
+            try:
+                from scripts.normalize_cards import normalize_single_card
+                normalize_single_card(db, str(epic_id), "epic", epic_title,
+                                      domain=domain_key, rules=epic_rules[:10])
+            except Exception as e:
+                logger.debug(f"Per-card normalization skipped: {e}")
+
             # Index epic in RAG
             epic_rag_content = f"{epic_title}\n\n{epic_desc}\n\n{epic_prompt}"
             epic_emb = model.encode(epic_rag_content).tolist()
@@ -694,6 +702,14 @@ def main():
                 card_counts["story"] += 1
                 total_cards += 1
 
+                # Normalize story immediately
+                try:
+                    from scripts.normalize_cards import normalize_single_card
+                    normalize_single_card(db, str(story_id), "story", story_name,
+                                          parent_title=epic_title, rules=story_rules)
+                except Exception as e:
+                    logger.debug(f"Per-card normalization skipped: {e}")
+
                 # Tasks (group rules in sets of 3)
                 task_order = 0
                 for chunk_start in range(0, len(story_rules), 3):
@@ -727,6 +743,14 @@ def main():
                     card_counts["task"] += 1
                     total_cards += 1
 
+                    # Normalize task immediately
+                    try:
+                        from scripts.normalize_cards import normalize_single_card
+                        normalize_single_card(db, str(task_id), "task", task_title,
+                                              parent_title=story_name, rules=chunk)
+                    except Exception as e:
+                        logger.debug(f"Per-card normalization skipped: {e}")
+
                     # Subtasks (1 per rule)
                     for sub_idx, rule_text in enumerate(chunk):
                         subtask_id = uuid4()
@@ -751,24 +775,21 @@ def main():
                         card_counts["subtask"] += 1
                         total_cards += 1
 
+                        # Normalize subtask immediately
+                        try:
+                            from scripts.normalize_cards import normalize_single_card
+                            normalize_single_card(db, str(subtask_id), "subtask", sub_title,
+                                                  description=rule_text, parent_title=task_title)
+                        except Exception as e:
+                            logger.debug(f"Per-card normalization skipped: {e}")
+
             db.commit()
             logger.info(f"  Epic: {epic_title} - {len(domain_data['stories'])} stories, {len(epic_rules)} rules")
 
         db.commit()
 
         # =================================================================
-        # PHASE 4: Normalize card formatting
-        # =================================================================
-        logger.info("=" * 60)
-        logger.info("PHASE 4: Normalizing card formatting...")
-        logger.info("=" * 60)
-
-        from scripts.normalize_cards import normalize_project_cards
-        norm_counts = normalize_project_cards(PROJECT_ID, db=db)
-        logger.info(f"Phase 4 complete: {sum(norm_counts.values())} cards normalized")
-
-        # =================================================================
-        # Summary
+        # Summary (per-card normalization already applied above)
         # =================================================================
         logger.info("=" * 60)
         logger.info("PIPELINE COMPLETE!")

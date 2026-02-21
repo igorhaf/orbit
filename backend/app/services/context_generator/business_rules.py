@@ -25,6 +25,24 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================
+# PROMPT #249 - Per-card normalization helper
+# ============================================================
+
+def _normalize_card_inline(db, card_id, item_type, title, description="",
+                           domain="", parent_title="", rules=None, insights=None):
+    """Normalize a single card immediately after creation (non-critical)."""
+    try:
+        from scripts.normalize_cards import normalize_single_card
+        normalize_single_card(
+            db=db, card_id=card_id, item_type=item_type, title=title,
+            description=description, domain=domain, parent_title=parent_title,
+            rules=rules, interview_insights=insights or {},
+        )
+    except Exception as e:
+        logger.debug(f"Per-card normalization skipped for {card_id}: {e}")
+
+
+# ============================================================
 # PROMPT #240 - Rigid card rendering functions (same as script)
 # ============================================================
 
@@ -193,15 +211,11 @@ class BusinessRulesMixin:
             saved_cards = self._create_hierarchy_cards(project_id, hierarchy)
             self.db.commit()
             logger.info(f"Generated {len(saved_cards)} hierarchical business rule cards")
-            # PROMPT #245 - Normalize card formatting after creation
-            self._normalize_cards(project_id)
             return saved_cards
 
         # Fallback: flat structure (original PROMPT #120 behavior)
         logger.warning("Hierarchical classification failed, using flat structure")
         cards = self._create_flat_business_rule_cards(project_id, business_rules)
-        # PROMPT #245 - Normalize card formatting after creation
-        self._normalize_cards(project_id)
         return cards
 
     async def _classify_rules_hierarchy(
@@ -444,6 +458,9 @@ class BusinessRulesMixin:
                 updated_at=now,
             )
             self.db.add(epic_card)
+            self.db.flush()
+            _normalize_card_inline(self.db, str(epic_id), "epic", epic_title,
+                                   domain=epic_title, rules=all_epic_rules[:10])
             saved_cards.append({
                 "id": str(epic_id), "title": epic_title,
                 "item_type": "epic", "workflow_state": "open", "depth": 0,
@@ -488,6 +505,10 @@ class BusinessRulesMixin:
                     updated_at=now,
                 )
                 self.db.add(story_card)
+                self.db.flush()
+                _normalize_card_inline(self.db, str(story_id), "story", story_title,
+                                       domain=epic_title, parent_title=epic_title,
+                                       rules=story_rules)
                 saved_cards.append({
                     "id": str(story_id), "title": story_title,
                     "item_type": "story", "workflow_state": "open", "depth": 1,
@@ -535,6 +556,9 @@ class BusinessRulesMixin:
                         updated_at=now,
                     )
                     self.db.add(task_card)
+                    self.db.flush()
+                    _normalize_card_inline(self.db, str(task_id), "task", task_title,
+                                           parent_title=story_title, rules=task_rules)
                     saved_cards.append({
                         "id": str(task_id), "title": task_title,
                         "item_type": "task", "workflow_state": "open", "depth": 2,
@@ -574,6 +598,9 @@ class BusinessRulesMixin:
                             updated_at=now,
                         )
                         self.db.add(st_card)
+                        self.db.flush()
+                        _normalize_card_inline(self.db, str(st_id), "subtask", st_title,
+                                               description=rule_text, parent_title=task_title)
                         saved_cards.append({
                             "id": str(st_id), "title": st_title,
                             "item_type": "subtask", "workflow_state": "open", "depth": 3,
@@ -628,6 +655,9 @@ class BusinessRulesMixin:
             updated_at=now,
         )
         self.db.add(epic_card)
+        self.db.flush()
+        _normalize_card_inline(self.db, str(epic_id), "epic", epic_card.title,
+                               domain="Regras de Negocio", rules=business_rules[:10])
         saved_cards = [{"id": str(epic_id), "title": epic_card.title, "item_type": "epic", "workflow_state": "open", "depth": 0}]
 
         # --- STORIES (batches of RULES_PER_STORY) ---
@@ -653,6 +683,9 @@ class BusinessRulesMixin:
                 created_at=now, updated_at=now,
             )
             self.db.add(story_card)
+            self.db.flush()
+            _normalize_card_inline(self.db, str(story_id), "story", story_title,
+                                   parent_title=epic_card.title, rules=story_rules)
             saved_cards.append({"id": str(story_id), "title": story_title, "item_type": "story", "workflow_state": "open", "depth": 1})
 
             # --- TASKS (group rules) ---
@@ -678,6 +711,9 @@ class BusinessRulesMixin:
                     created_at=now, updated_at=now,
                 )
                 self.db.add(task_card)
+                self.db.flush()
+                _normalize_card_inline(self.db, str(task_id), "task", task_title,
+                                       parent_title=story_title, rules=task_rules)
                 saved_cards.append({"id": str(task_id), "title": task_title, "item_type": "task", "workflow_state": "open", "depth": 2})
 
                 # --- SUBTASKS (1 per rule) ---
@@ -701,22 +737,12 @@ class BusinessRulesMixin:
                         created_at=now, updated_at=now,
                     )
                     self.db.add(st_card)
+                    self.db.flush()
+                    _normalize_card_inline(self.db, str(st_id), "subtask", st_title,
+                                           description=rule_text, parent_title=task_title)
                     saved_cards.append({"id": str(st_id), "title": st_title, "item_type": "subtask", "workflow_state": "open", "depth": 3})
 
         self.db.commit()
         logger.info(f"Generated {len(saved_cards)} flat 4-level business rule cards (fallback)")
         return saved_cards
 
-    def _normalize_cards(self, project_id: UUID):
-        """
-        PROMPT #245 - Normalize from_rag card formatting to match ORBIT standards.
-        Called automatically after card creation.
-        Respects REGRA #0: never overwrites human-edited fields.
-        """
-        try:
-            from scripts.normalize_cards import normalize_project_cards
-            counts = normalize_project_cards(str(project_id), db=self.db)
-            total = sum(counts.values())
-            logger.info(f"Normalized {total} cards for project {project_id}")
-        except Exception as e:
-            logger.warning(f"Card normalization skipped (non-critical): {e}")

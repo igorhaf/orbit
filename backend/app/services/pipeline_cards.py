@@ -130,12 +130,6 @@ class HierarchicalCardService:
 
         if epics_created > 0 or stories_created > 0:
             self.db.commit()
-            # PROMPT #245 - Normalize card formatting after creation
-            try:
-                from scripts.normalize_cards import normalize_project_cards
-                normalize_project_cards(str(project_id), db=self.db)
-            except Exception as e:
-                logger.warning(f"Card normalization skipped (non-critical): {e}")
 
         logger.info(
             f"Cards batch #{batch_number} for '{project_name}': "
@@ -250,6 +244,22 @@ class HierarchicalCardService:
         )
         self.db.add(new_epic)
         self.db.flush()
+
+        # Normalize card immediately after creation
+        try:
+            from scripts.normalize_cards import normalize_single_card
+            normalize_single_card(
+                db=self.db,
+                card_id=str(new_epic.id),
+                item_type="epic",
+                title=epic_title,
+                description=epic_description,
+                domain=domain_name,
+                rules=[r['content'][:200] for r in domain_rules],
+            )
+        except Exception as e:
+            logger.debug(f"Single card normalization skipped: {e}")
+
         logger.info(f"Created domain Epic '{epic_title}' for project {project_id}")
         return new_epic
 
@@ -357,6 +367,24 @@ class HierarchicalCardService:
                 updated_at=datetime.utcnow(),
             )
             self.db.add(new_story)
+            self.db.flush()
+
+            # Normalize card immediately after creation
+            try:
+                from scripts.normalize_cards import normalize_single_card
+                normalize_single_card(
+                    db=self.db,
+                    card_id=str(new_story.id),
+                    item_type="story",
+                    title=title,
+                    description=description,
+                    domain=domain_name,
+                    parent_title=epic.title or "",
+                    rules=[r['content'][:200] for r in domain_rules],
+                )
+            except Exception as e:
+                logger.debug(f"Single card normalization skipped: {e}")
+
             existing_texts.append(story_text)
             created += 1
 
