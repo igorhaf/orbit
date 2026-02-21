@@ -431,17 +431,17 @@ Exemplo de fluxo correto:
 
 #### Estrutura do Arquivo:
 ```
-rag/internal/PROMPT_[NÚMERO]_[DESCRIÇÃO].md
+satellite/rag/internal/PROMPT_[NÚMERO]_[DESCRIÇÃO].md
 ```
 
-**Todos os reports de implementação ficam na pasta `rag/internal/`.**
+**Todos os reports de implementação ficam na pasta `satellite/rag/internal/`.**
 
 **Exemplos de nomenclatura real do projeto:**
-- `rag/internal/PROMPT_50_IMPLEMENTATION_REPORT.md` - Implementação de feature completa
-- `rag/internal/PROMPT_42_FIX_UNICODE_PARSER.md` - Correção específica (nome descritivo)
-- `rag/internal/PROMPT_42_IMPLEMENTATION_SUMMARY.md` - Resumo de implementação
-- `rag/internal/PROMPT_46_PHASE1_IMPLEMENTATION_REPORT.md` - Fase de projeto
-- `rag/internal/PROMPT_37_FIX_REPORT.md` - Correção de bug (genérico)
+- `satellite/rag/internal/PROMPT_50_IMPLEMENTATION_REPORT.md` - Implementação de feature completa
+- `satellite/rag/internal/PROMPT_42_FIX_UNICODE_PARSER.md` - Correção específica (nome descritivo)
+- `satellite/rag/internal/PROMPT_42_IMPLEMENTATION_SUMMARY.md` - Resumo de implementação
+- `satellite/rag/internal/PROMPT_46_PHASE1_IMPLEMENTATION_REPORT.md` - Fase de projeto
+- `satellite/rag/internal/PROMPT_37_FIX_REPORT.md` - Correção de bug (genérico)
 
 **Regra:** Use um nome que descreva claramente o trabalho realizado. Não há formato rígido, adapte ao contexto.
 
@@ -543,11 +543,11 @@ rag/internal/PROMPT_[NÚMERO]_[DESCRIÇÃO].md
 ```
 
 #### Exemplos de Referência:
-Consulte os arquivos existentes em `rag/internal/`:
-- `rag/internal/PROMPT_50_IMPLEMENTATION_REPORT.md` - Implementação de feature completa
-- `rag/internal/PROMPT_49_PHASE_4_REPORT.md` - Fase de projeto
-- `rag/internal/PROMPT_46_PHASE1_IMPLEMENTATION_REPORT.md` - Implementação de fase
-- `rag/internal/PROMPT_42_FIX_UNICODE_PARSER.md` - Correção de bug
+Consulte os arquivos existentes em `satellite/rag/internal/`:
+- `satellite/rag/internal/PROMPT_50_IMPLEMENTATION_REPORT.md` - Implementação de feature completa
+- `satellite/rag/internal/PROMPT_49_PHASE_4_REPORT.md` - Fase de projeto
+- `satellite/rag/internal/PROMPT_46_PHASE1_IMPLEMENTATION_REPORT.md` - Implementação de fase
+- `satellite/rag/internal/PROMPT_42_FIX_UNICODE_PARSER.md` - Correção de bug
 
 ---
 
@@ -602,7 +602,7 @@ git push origin main
 git status
 
 # 2. Adicionar arquivos
-git add frontend/src/app/ai-models/page.tsx rag/internal/PROMPT_50_IMPLEMENTATION_REPORT.md
+git add frontend/src/app/ai-models/page.tsx satellite/rag/internal/PROMPT_50_IMPLEMENTATION_REPORT.md
 
 # 3. Commit
 git commit -m "feat: implement AI Models management page
@@ -637,7 +637,7 @@ git push origin main
 - [ ] Verificar que não há erros
 
 #### Após Completar a Implementação:
-- [ ] **Criar arquivo rag/internal/PROMPT_[N]_[TIPO]_REPORT.md**
+- [ ] **Criar arquivo satellite/rag/internal/PROMPT_[N]_[TIPO]_REPORT.md**
   - [ ] Título e metadados (Date, Status, Priority, Type, Impact)
   - [ ] Objective com requisitos claros
   - [ ] Pattern Analysis (se aplicável)
@@ -664,29 +664,35 @@ git push origin main
 
 ---
 
-### 3. ESTRUTURA RAG (DOCUMENTAÇÃO PARA AUTO-ANÁLISE)
+### 3. ESTRUTURA SATELLITE (BASE DE CONHECIMENTO DO PROJETO)
 
-**Pasta `rag/` contém todos os artefatos de documentação que o ORBIT estuda para se auto-desenvolver:**
+**A pasta `satellite/` contém todos os artefatos de documentacao que o ORBIT usa para memória e auto-análise:**
 
 ```
-rag/
-  internal/       # Reports de implementação (PROMPT_N_*.md)
-  docs/           # Documentação geral (guias, status, fixes)
+satellite/
+  prompts/        # Prompts de cards exportados + logs de execucao IA
+  results/        # Resultados de execucao de tasks pelo Claude Code
+  knowledge/      # Arquivos de contexto e docs adicionais
+  docs/           # Documentacao publica do projeto
+  rag/
+    internal/     # Reports de implementacao (PROMPT_N_*.md)
+    docs/         # Documentacao geral (guias, status, fixes)
+  README.md       # Descricao auto-gerada do projeto
 ```
 
 **Regras:**
-- ✅ Todos os reports de PROMPT vão em `rag/internal/`
-- ✅ Documentação geral vai em `rag/docs/`
-- ✅ CLAUDE.md e README.md permanecem na raiz (são arquivos especiais)
-- ❌ NUNCA criar .md de documentação na raiz do projeto
+- ✅ Todos os reports de PROMPT vao em `satellite/rag/internal/`
+- ✅ Documentacao geral vai em `satellite/rag/docs/`
+- ✅ CLAUDE.md e README.md permanecem na raiz (sao arquivos especiais)
+- ❌ NUNCA criar .md de documentacao na raiz do projeto
+- ❌ NUNCA usar a pasta `rag/` antiga na raiz — tudo vai em `satellite/`
 
 **Auto-Análise do ORBIT:**
-O ORBIT pode analisar seu PRÓPRIO codebase como um projeto. Para isso:
+O ORBIT pode analisar seu PROPRIO codebase como um projeto. Para isso:
 - Criar um projeto com `code_path` apontando para a raiz do ORBIT (ex: `/home/igorhaf/orbit`)
-- A pasta `projects/` já está no `.gitignore` e será automaticamente excluída pelo scanner
-- A pasta `rag/` contém a documentação que o watchdog irá descobrir e indexar
-- O scanner respeita `.gitignore`, `IGNORE_DIRECTORIES` e padrões detectados por IA (PROMPT #223)
-- Nenhum symlink necessário - a infraestrutura existente já cuida da exclusão
+- A pasta `satellite/` e criada automaticamente ao instanciar o projeto (PROMPT #235)
+- A pasta `satellite/` e excluida do scan de tech stack mas indexada pelo RAG scanner
+- O scanner respeita `.gitignore`, `IGNORE_DIRECTORIES` e padroes detectados por IA (PROMPT #223)
 
 ---
 
@@ -779,7 +785,7 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 ## ⚠️ REGRAS IMPORTANTES
 
 ### SEMPRE:
-1. ✅ Criar arquivo rag/internal/PROMPT_[N]_REPORT.md após cada implementação
+1. ✅ Criar arquivo satellite/rag/internal/PROMPT_[N]_REPORT.md após cada implementação
 2. ✅ Fazer git commit e push no final de CADA prompt
 3. ✅ Seguir padrões existentes do código
 4. ✅ Usar componentes e funções já existentes
@@ -798,8 +804,8 @@ O sistema usa especificações de frameworks (Laravel, Next.js, PostgreSQL, Tail
 
 ## 📝 NUMERAÇÃO DE PROMPTS
 
-**Último prompt:** PROMPT #234 (Deep Audit v2 - Security, State Machines, Error Handling, YAML Migration)
-**Próximo prompt:** PROMPT #235
+**Último prompt:** PROMPT #235 (Satellite KB - Auto-create knowledge base folder on project creation)
+**Próximo prompt:** PROMPT #236
 
 **Sequência existente:**
 - PROMPT_36 → PROMPT_37 → PROMPT_38 → PROMPT_39 → PROMPT_40
@@ -885,7 +891,7 @@ git commit -m "docs: update CLAUDE.md memory file
 
 Sua responsabilidade é:
 1. 📝 Implementar features seguindo padrões
-2. 📋 Documentar tudo em arquivos rag/internal/PROMPT_N.md
+2. 📋 Documentar tudo em arquivos satellite/rag/internal/PROMPT_N.md
 3. 💾 Commitar e fazer push de TODAS as mudanças
 4. 🎯 Manter qualidade e consistência do código
 5. 🚀 Entregar valor ao usuário
