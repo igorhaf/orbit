@@ -636,27 +636,16 @@ export default function ProjectDetailsPage() {
 
         </div>
 
-        {/* PROMPT #251 - Only show indexing banner during initial scan (not enriching) */}
-        {!initialScanComplete && !loading && (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-600" />
-              <span className="text-sm font-medium text-yellow-900">
-                Analisando codebase... Aguarde a conclusao do scan inicial.
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* PROMPT #252 - Pipeline Wizard Stepper */}
-        {initialScanComplete && (
+        {/* PROMPT #252 - Pipeline Wizard Stepper (always visible) */}
+        {!loading && (
           <div className="bg-white border border-gray-200 rounded-lg px-6 py-5">
             {/* Stepper */}
             <div className="flex items-center justify-center gap-0">
               {/* Step 1 - Scan */}
               {(() => {
+                // Show running during initial scan OR manual pipeline scan
                 const s1 = pipelinePhase1 === 'completed' ? 'completed'
-                  : pipelinePhase1 === 'running' ? 'running'
+                  : (pipelinePhase1 === 'running' || !initialScanComplete) ? 'running'
                   : 'available';
                 return (
                   <div className="flex flex-col items-center">
@@ -855,6 +844,8 @@ export default function ProjectDetailsPage() {
                 ? 'Extraindo regras de negócio do código...'
                 : pipelinePhase1 === 'completed'
                 ? 'Scan completo! Clique em "Regras" para extrair regras de negócio.'
+                : !initialScanComplete
+                ? 'Analisando codebase... Aguarde a conclusão do scan inicial.'
                 : pipelinePhase1 === 'running'
                 ? 'Indexando arquivos do projeto...'
                 : 'Clique em "Scan" para indexar os arquivos do projeto.'}

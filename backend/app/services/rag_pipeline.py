@@ -13,8 +13,10 @@ State stored in Redis: rag:pipeline:{project_id}
 import os
 import json
 import logging
+import subprocess
 from datetime import datetime
-from typing import Dict, Any, Optional
+from pathlib import Path
+from typing import Dict, Any, List, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -355,6 +357,43 @@ class RagPipelineService:
                 errors += 1
 
         self.db.commit()
+
+        # ── Git commits: extract rules from commit messages ──
+        git_rules_count = 0
+        git_commits_count = 0
+        try:
+            jm.update_progress(job_id, 90.0, "Fase 2/4: Extraindo regras dos commits git...")
+            commits = self._extract_git_commits(project.code_path)
+            git_commits_count = len(commits)
+            if commits:
+                git_rules = await self._extract_rules_from_commits(
+                    orchestrator, commits, project_id
+                )
+                # Delete old git commit rules and store new ones
+                self.rag.delete_by_filter({
+                    "project_id": str(project_id),
+                    "type": "business_rule",
+                    "source_file": "_git_commits",
+                })
+                for rule in git_rules:
+                    rule_text = rule.get("rule_text") or rule.get("description") or rule.get("text") or ""
+                    if not rule_text or len(rule_text.strip()) < 10:
+                        continue
+                    self.rag.store_business_rule(
+                        content=rule_text,
+                        project_id=project_id,
+                        source="git_commits",
+                        source_file="_git_commits",
+                        rule_type=rule.get("rule_type", "domain"),
+                        priority=rule.get("priority", "normal"),
+                    )
+                    git_rules_count += 1
+                total_rules += git_rules_count
+                self.db.commit()
+                logger.info(f"Phase 2: Extracted {git_rules_count} rules from {git_commits_count} git commits")
+        except Exception as e:
+            logger.warning(f"Git commit rule extraction failed: {e}")
+
         self._set_phase_status(project_id, 2, "completed")
 
         result = {
@@ -362,6 +401,8 @@ class RagPipelineService:
             "total_files": total,
             "processed": processed,
             "rules_extracted": total_rules,
+            "git_rules": git_rules_count,
+            "git_commits_analyzed": git_commits_count,
             "errors": errors,
         }
         jm.update_progress(job_id, 95.0, f"Fase 2/4: Concluída — {total_rules} regras extraídas")
@@ -619,6 +660,15 @@ class RagPipelineService:
         if stack_info:
             user_prompt += f"\n\n## Stack: {stack_info}"
 
+        # Include recent git commits for additional context
+        try:
+            commits = self._extract_git_commits(project.code_path, max_commits=50)
+            if commits:
+                commit_lines = [f"- [{c['date']}] {c['subject']}" for c in commits[:30]]
+                user_prompt += f"\n\n## Commits Recentes:\n" + "\n".join(commit_lines)
+        except Exception:
+            pass
+
         try:
             response = await orchestrator.execute(
                 usage_type="task_execution",
@@ -683,3 +733,98 @@ class RagPipelineService:
         ]
         lower = file_path.lower()
         return any(p in lower for p in skip_patterns)
+
+    # =========================================================================
+    # Git commit helpers
+    # =========================================================================
+    NOISE_COMMIT_PATTERNS = [
+        "merge branch", "merge pull request", "initial commit",
+        "wip", "fix typo", "update readme", "bump version",
+        "auto-commit", "generated", "revert",
+    ]
+
+    def _extract_git_commits(self, code_path: str, max_commits: int = 200) -> List[Dict[str, str]]:
+        """Extract recent git commits from repository."""
+        git_dir = Path(code_path) / ".git"
+        if not git_dir.exists():
+            return []
+        try:
+            result = subprocess.run(
+                ["git", "log", f"--pretty=format:%H|||%s|||%b|||%an|||%ad",
+                 "--date=short", f"-{max_commits}"],
+                cwd=code_path, capture_output=True, text=True, timeout=30
+            )
+            if result.returncode != 0:
+                return []
+            commits = []
+            for line in result.stdout.strip().split("\n"):
+                if not line.strip():
+                    continue
+                parts = line.split("|||")
+                if len(parts) >= 2:
+                    subject = parts[1].strip()
+                    if any(p in subject.lower() for p in self.NOISE_COMMIT_PATTERNS):
+                        continue
+                    if len(subject) < 5:
+                        continue
+                    commits.append({
+                        "hash": parts[0].strip()[:12],
+                        "subject": subject,
+                        "body": parts[2].strip() if len(parts) > 2 else "",
+                        "author": parts[3].strip() if len(parts) > 3 else "",
+                        "date": parts[4].strip() if len(parts) > 4 else "",
+                    })
+            return commits
+        except Exception:
+            return []
+
+    async def _extract_rules_from_commits(
+        self, orchestrator, commits: List[Dict[str, str]], project_id: UUID
+    ) -> List[dict]:
+        """Extract business rules from git commit messages using AI."""
+        if not commits:
+            return []
+        # Format commits into text
+        lines = []
+        for c in commits:
+            entry = f"[{c.get('date','')}] {c['hash']} - {c['subject']}"
+            if c.get("body"):
+                body = c["body"].replace("\n", " ").strip()[:200]
+                if body:
+                    entry += f"\n  {body}"
+            lines.append(entry)
+        commit_text = "\n".join(lines)
+        # Truncate if too large
+        if len(commit_text) > 12000:
+            commit_text = commit_text[:12000]
+
+        system_prompt = (
+            "Você é um analista de código. Analise os commits git abaixo e extraia "
+            "TODAS as regras de negócio implícitas nos commits.\n"
+            "Commits revelam: features implementadas, validações adicionadas, "
+            "fluxos de trabalho, restrições, correções de regras.\n\n"
+            "Retorne JSON: {\"business_rules\": [{\"rule_text\": \"...\", \"rule_type\": \"...\"}]}\n"
+            "rule_type: validation | workflow | constraint | calculation | permission | domain | interface\n"
+            "Se não encontrar regras, retorne: {\"business_rules\": []}"
+        )
+        user_prompt = f"## Git Commits ({len(commits)} commits):\n\n{commit_text}"
+
+        try:
+            response = await orchestrator.execute(
+                usage_type="task_execution",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=system_prompt,
+                max_tokens=4096,
+                project_id=str(project_id),
+                metadata={"type": "rule_extraction_git", "skip_context_build": True},
+            )
+            raw = response.get("content", "")
+            import re
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                return parsed.get("business_rules", [])
+            return []
+        except Exception as e:
+            logger.warning(f"Git commit rule extraction failed: {e}")
+            return []
