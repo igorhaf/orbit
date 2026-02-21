@@ -235,12 +235,18 @@ class RagPipelineService:
         return result
 
     # =========================================================================
-    # PHASE 2: Extract business rules (AI, usage_type=task_execution)
+    # PHASE 2: Extract business rules via ContractLoader + AIOrchestrator
+    # Uses the same pattern as ContinuousRAGService._extract_rules_from_file()
+    # Contract: memory/continuous_rag_extract.yaml | usage_type: memory
     # =========================================================================
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 2: For each INDEXED file, use AI to extract business rules.
-        Files go from INDEXED → COMPLETED status.
+        Phase 2: Collect source files from disk, send each to the AI via the
+        externalised YAML contract ``memory/continuous_rag_extract`` and store
+        the extracted business rules in RAG.
+
+        Uses the exact same ContractLoader + AIOrchestrator(usage_type="memory")
+        pattern that ContinuousRAGService already uses.
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
@@ -249,112 +255,127 @@ class RagPipelineService:
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        jm.update_progress(job_id, 5.0, "Fase 2/4: Preparando extração de regras...")
+        jm.update_progress(job_id, 5.0, "Fase 2/4: Coletando arquivos do projeto...")
 
-        # Get all INDEXED files
-        indexed_files = self.db.query(RAGFileState).filter(
-            RAGFileState.project_id == project_id,
-            RAGFileState.status == FileProcessingStatus.INDEXED,
-        ).order_by(
-            # Process by semantic layer priority: schema > routes > logic > presentation > config
-            RAGFileState.file_layer.asc()
-        ).all()
+        # ── Collect source files directly from disk ──
+        source_files = self._collect_source_files(project.code_path)
+        logger.info(f"Phase 2: Found {len(source_files)} source files on disk for {project_id}")
 
-        total = len(indexed_files)
-        processed = 0
-        total_rules = 0
-        errors = 0
+        if not source_files:
+            self._set_phase_status(project_id, 2, "failed")
+            raise ValueError("Nenhum arquivo fonte encontrado no projeto")
 
-        # Import AIOrchestrator for AI extraction
+        # ── Setup: ContractLoader + AIOrchestrator (same as continuous_rag) ──
+        from app.contracts.loader import ContractLoader
         from app.services.ai_orchestrator import AIOrchestrator
+        from app.services.codebase_memory import CodebaseMemoryService
+
+        contract_loader = ContractLoader()
         orchestrator = AIOrchestrator(self.db)
+        memory_service = CodebaseMemoryService(self.db)  # for _parse_phase_response
 
-        for i, file_state in enumerate(indexed_files):
+        # Project context for richer extraction
+        project_context = ""
+        if project.context_human:
+            project_context = project.context_human[:500]
+
+        total_rules = 0
+        ai_errors = 0
+        total_files = len(source_files)
+
+        # ── Delete old business_rule docs to start fresh ──
+        try:
+            self.db.execute(sql_text(
+                "DELETE FROM rag_documents WHERE project_id = :pid "
+                "AND metadata->>'type' = 'business_rule'"
+            ), {"pid": str(project_id)})
+            self.db.commit()
+        except Exception:
+            pass
+
+        jm.update_progress(job_id, 10.0,
+                           f"Fase 2/4: Extraindo regras de {total_files} arquivos...")
+
+        # ── Process each file using ContractLoader (same as continuous_rag) ──
+        for i, (rel_path, content) in enumerate(source_files):
             try:
-                file_path = os.path.join(project.code_path, file_state.file_path)
-                if not os.path.isfile(file_path):
-                    file_state.status = FileProcessingStatus.COMPLETED
-                    file_state.rules_extracted = 0
-                    processed += 1
-                    continue
+                language = self._detect_language(rel_path)
 
-                # Skip low-value files
-                if self._should_skip_file(file_state.file_path):
-                    file_state.status = FileProcessingStatus.COMPLETED
-                    file_state.rules_extracted = 0
-                    processed += 1
-                    continue
-
-                # Read file content
-                try:
-                    with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-                        content = f.read()
-                except Exception:
-                    file_state.status = FileProcessingStatus.COMPLETED
-                    file_state.rules_extracted = 0
-                    processed += 1
-                    continue
-
-                if not content or len(content.strip()) < 50:
-                    file_state.status = FileProcessingStatus.COMPLETED
-                    file_state.rules_extracted = 0
-                    processed += 1
-                    continue
-
-                # Truncate for AI
+                # Truncate large files
                 max_chars = 15000
                 if len(content) > max_chars:
                     content = content[:max_chars]
 
-                language = self._detect_language(file_state.file_path)
-
-                # Extract rules using AI (usage_type=task_execution)
-                rules = await self._extract_rules_ai(
-                    orchestrator, file_state.file_path, content, language, project_id
+                # Render the YAML contract (same as continuous_rag_service line 930)
+                system_prompt, user_prompt = contract_loader.render(
+                    "memory/continuous_rag_extract",
+                    {
+                        "filename": rel_path,
+                        "file_content": content,
+                        "language": language,
+                        "project_context": project_context,
+                        "stack_info": "",
+                    }
                 )
 
-                # Delete old rules for this file
-                self.rag.delete_by_filter({
-                    "project_id": str(project_id),
-                    "type": "business_rule",
-                    "source_file": file_state.file_path,
-                })
+                # Call AI via orchestrator (same as continuous_rag_service line 941)
+                response = await orchestrator.execute(
+                    usage_type="memory",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=system_prompt,
+                    max_tokens=4096,
+                    project_id=project_id,
+                    metadata={
+                        "phase": "rag_pipeline_phase2",
+                        "scan_type": "pipeline_extract_rules",
+                        "filename": rel_path,
+                        "language": language,
+                    }
+                )
 
-                # Store new rules
-                doc_ids = []
+                # Parse response (same as continuous_rag_service line 956)
+                result = memory_service._parse_phase_response(response.get("content", "{}"))
+                rules = result.get("business_rules", [])
+
+                # Normalize and store rules
                 for rule in rules:
-                    rule_text = rule.get("rule_text") or rule.get("description") or rule.get("text") or ""
+                    if isinstance(rule, str):
+                        rule_text = rule
+                        rule_type = "general"
+                    elif isinstance(rule, dict):
+                        rule_text = (
+                            rule.get("rule_text") or rule.get("description")
+                            or rule.get("rule") or rule.get("text") or ""
+                        )
+                        rule_type = rule.get("rule_type") or rule.get("type") or "general"
+                    else:
+                        continue
+
                     if not rule_text or len(rule_text.strip()) < 10:
                         continue
-                    doc_id = self.rag.store_business_rule(
+
+                    self.rag.store_business_rule(
                         content=rule_text,
                         project_id=project_id,
-                        source="continuous_scan",
-                        source_file=file_state.file_path,
-                        rule_type=rule.get("rule_type", "general"),
-                        priority=rule.get("priority", "normal"),
+                        source="pipeline_phase2",
+                        source_file=rel_path,
+                        rule_type=rule_type,
+                        priority=rule.get("priority", "normal") if isinstance(rule, dict) else "normal",
                     )
-                    doc_ids.append(str(doc_id))
+                    total_rules += 1
 
-                file_state.status = FileProcessingStatus.COMPLETED
-                file_state.rules_extracted = len(doc_ids)
-                file_state.rag_document_ids = (file_state.rag_document_ids or []) + doc_ids
-                file_state.last_processed_at = datetime.utcnow()
-                total_rules += len(doc_ids)
-                processed += 1
-
-                # Progress
-                pct = 10 + (80 * (i + 1) / max(total, 1))
-                if (i + 1) % 5 == 0 or i == total - 1:
-                    jm.update_progress(job_id, pct,
-                                       f"Fase 2/4: Extraindo regras... ({i + 1}/{total} arquivos, {total_rules} regras)")
+                if (i + 1) % 5 == 0:
                     self.db.commit()
 
             except Exception as e:
-                logger.error(f"Phase 2 error processing {file_state.file_path}: {e}")
-                file_state.status = FileProcessingStatus.FAILED
-                file_state.error_message = str(e)[:500]
-                errors += 1
+                logger.error(f"Phase 2 error extracting from {rel_path}: {e}")
+                ai_errors += 1
+
+            # Progress update
+            pct = 10 + (70 * (i + 1) / max(total_files, 1))
+            if (i + 1) % 5 == 0 or i == total_files - 1:
+                jm.update_progress(job_id, pct,
+                                   f"Fase 2/4: {i + 1}/{total_files} arquivos — {total_rules} regras")
 
         self.db.commit()
 
@@ -362,19 +383,13 @@ class RagPipelineService:
         git_rules_count = 0
         git_commits_count = 0
         try:
-            jm.update_progress(job_id, 90.0, "Fase 2/4: Extraindo regras dos commits git...")
+            jm.update_progress(job_id, 85.0, "Fase 2/4: Extraindo regras dos commits git...")
             commits = self._extract_git_commits(project.code_path)
             git_commits_count = len(commits)
             if commits:
                 git_rules = await self._extract_rules_from_commits(
                     orchestrator, commits, project_id
                 )
-                # Delete old git commit rules and store new ones
-                self.rag.delete_by_filter({
-                    "project_id": str(project_id),
-                    "type": "business_rule",
-                    "source_file": "_git_commits",
-                })
                 for rule in git_rules:
                     rule_text = rule.get("rule_text") or rule.get("description") or rule.get("text") or ""
                     if not rule_text or len(rule_text.strip()) < 10:
@@ -393,17 +408,32 @@ class RagPipelineService:
                 logger.info(f"Phase 2: Extracted {git_rules_count} rules from {git_commits_count} git commits")
         except Exception as e:
             logger.warning(f"Git commit rule extraction failed: {e}")
+            ai_errors += 1
+
+        # ── Also update rag_file_state if entries exist ──
+        try:
+            self.db.query(RAGFileState).filter(
+                RAGFileState.project_id == project_id,
+                RAGFileState.status == FileProcessingStatus.INDEXED,
+            ).update({"status": FileProcessingStatus.COMPLETED}, synchronize_session="fetch")
+            self.db.commit()
+        except Exception:
+            pass
+
+        # ── Determine final status ──
+        if total_rules == 0 and ai_errors > 0:
+            self._set_phase_status(project_id, 2, "failed")
+            raise ValueError(f"Extração falhou: 0 regras extraídas, {ai_errors} erros de IA")
 
         self._set_phase_status(project_id, 2, "completed")
 
         result = {
             "phase": "extract_rules",
-            "total_files": total,
-            "processed": processed,
+            "total_files": total_files,
             "rules_extracted": total_rules,
             "git_rules": git_rules_count,
             "git_commits_analyzed": git_commits_count,
-            "errors": errors,
+            "ai_errors": ai_errors,
         }
         jm.update_progress(job_id, 95.0, f"Fase 2/4: Concluída — {total_rules} regras extraídas")
         return result
@@ -569,44 +599,6 @@ class RagPipelineService:
     # Helper methods
     # =========================================================================
 
-    async def _extract_rules_ai(
-        self, orchestrator, file_path: str, content: str,
-        language: str, project_id: UUID
-    ) -> list:
-        """Extract business rules from file content using AI (task_execution)."""
-        system_prompt = (
-            "Você é um analista de código. Extraia TODAS as regras de negócio deste arquivo.\n"
-            "Regras de negócio incluem: validações, restrições, fluxos de trabalho, "
-            "cálculos, permissões, estados, limites.\n\n"
-            "Retorne JSON: {\"business_rules\": [{\"rule_text\": \"...\", \"rule_type\": \"...\"}]}\n"
-            "rule_type: validation | workflow | constraint | calculation | permission | domain | interface\n"
-            "Se não encontrar regras, retorne: {\"business_rules\": []}"
-        )
-
-        user_prompt = f"Arquivo: {file_path}\nLinguagem: {language}\n\n```\n{content}\n```"
-
-        try:
-            response = await orchestrator.execute(
-                usage_type="task_execution",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=4096,
-                project_id=str(project_id),
-                metadata={"type": "rule_extraction", "source_file": file_path, "skip_context_build": True},
-            )
-
-            raw = response.get("content", "")
-            # Parse JSON from response
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', raw)
-            if json_match:
-                parsed = json.loads(json_match.group())
-                return parsed.get("business_rules", [])
-            return []
-        except Exception as e:
-            logger.warning(f"AI extraction failed for {file_path}: {e}")
-            return []
-
     async def _generate_title_and_description(self, project_id: UUID, project: Project) -> bool:
         """Generate project title and description from RAG (REGRA #0: only if empty)."""
         # Skip if already set by human
@@ -733,6 +725,82 @@ class RagPipelineService:
         ]
         lower = file_path.lower()
         return any(p in lower for p in skip_patterns)
+
+    # =========================================================================
+    # File collection helpers
+    # =========================================================================
+
+    # Directories to always skip
+    _SKIP_DIRS = {
+        "node_modules", "vendor", ".git", "__pycache__", ".next", ".nuxt",
+        "dist", "build", ".cache", "coverage", ".tox", ".venv", "venv",
+        "satellite", ".claude", ".idea", ".vscode", "storage",
+    }
+
+    # Extensions worth analyzing for business rules
+    _SOURCE_EXTS = {
+        ".py", ".js", ".ts", ".tsx", ".jsx", ".java", ".go", ".rs",
+        ".rb", ".php", ".cs", ".swift", ".kt", ".dart", ".vue",
+        ".sql", ".yaml", ".yml",
+    }
+
+    def _collect_source_files(self, code_path: str, max_files: int = 200) -> List[tuple]:
+        """
+        Walk code_path and collect (relative_path, content) tuples
+        for files worth analyzing. Skips test files, configs, etc.
+        Returns at most max_files entries sorted by likely business value.
+        """
+        collected = []
+        root = Path(code_path)
+        if not root.is_dir():
+            return []
+
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Prune skipped directories in-place
+            dirnames[:] = [d for d in dirnames if d not in self._SKIP_DIRS and not d.startswith(".")]
+
+            for fname in filenames:
+                ext = os.path.splitext(fname)[1].lower()
+                if ext not in self._SOURCE_EXTS:
+                    continue
+
+                full = os.path.join(dirpath, fname)
+                rel = os.path.relpath(full, code_path)
+
+                if self._should_skip_file(rel):
+                    continue
+
+                try:
+                    size = os.path.getsize(full)
+                    if size < 50 or size > 500_000:
+                        continue
+                    with open(full, "r", encoding="utf-8", errors="replace") as f:
+                        content = f.read()
+                    if len(content.strip()) < 50:
+                        continue
+                    collected.append((rel, content))
+                except Exception:
+                    continue
+
+                if len(collected) >= max_files:
+                    break
+            if len(collected) >= max_files:
+                break
+
+        # Prioritize: models/schemas first, then routes, then services, then others
+        def _priority(item):
+            p = item[0].lower()
+            if "model" in p or "schema" in p or "migration" in p:
+                return 0
+            if "route" in p or "api" in p or "endpoint" in p or "controller" in p:
+                return 1
+            if "service" in p or "use_case" in p or "domain" in p:
+                return 2
+            if "view" in p or "page" in p or "component" in p:
+                return 3
+            return 4
+        collected.sort(key=_priority)
+        return collected[:max_files]
 
     # =========================================================================
     # Git commit helpers

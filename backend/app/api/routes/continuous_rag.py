@@ -119,8 +119,9 @@ async def trigger_extract_rules(
         if code_files == 0:
             raise HTTPException(status_code=400, detail="Fase 1 (Scan) precisa ser executada primeiro")
 
-    # Check for existing running job
+    # Check for existing running RAG pipeline job
     existing = db.query(AsyncJob).filter(
+        AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
         AsyncJob.project_id == project_id,
         AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
         AsyncJob.parent_job_id.is_(None),
@@ -183,8 +184,9 @@ async def trigger_generate_cards(
     if rule_count == 0:
         raise HTTPException(status_code=400, detail="Fase 2 (Extração de Regras) precisa ser executada primeiro")
 
-    # Check for existing running job
+    # Check for existing running cards generation job
     existing = db.query(AsyncJob).filter(
+        AsyncJob.job_type == JobType.CARDS_FROM_MEMORY,
         AsyncJob.project_id == project_id,
         AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
         AsyncJob.parent_job_id.is_(None),
@@ -244,8 +246,9 @@ async def trigger_generate_wiki(
     if card_count == 0:
         raise HTTPException(status_code=400, detail="Fase 3 (Geração de Cards) precisa ser executada primeiro")
 
-    # Check for existing running job
+    # Check for existing running wiki generation job
     existing = db.query(AsyncJob).filter(
+        AsyncJob.job_type == JobType.WIKI_GENERATION,
         AsyncJob.project_id == project_id,
         AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
         AsyncJob.parent_job_id.is_(None),
