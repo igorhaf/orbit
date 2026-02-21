@@ -46,6 +46,7 @@ import {
   Lightbulb,
   Folder,
   FileSearch,
+  Shield,
 } from 'lucide-react';
 import { useNotification } from '@/hooks';
 
@@ -103,6 +104,10 @@ export default function SettingsPage() {
   const [showBlocklistFolderPicker, setShowBlocklistFolderPicker] = useState(false);
   const [showBlocklistFilePicker, setShowBlocklistFilePicker] = useState(false);
 
+  // PROMPT #236 - Protected project deletion toggle
+  const [allowProtectedDeletion, setAllowProtectedDeletion] = useState(false);
+  const [savingProtection, setSavingProtection] = useState(false);
+
   useEffect(() => {
     loadData();
   }, []);
@@ -152,6 +157,10 @@ export default function SettingsPage() {
       } catch {
         // blocklist endpoints may not exist yet
       }
+
+      // PROMPT #236 - Load protected deletion setting
+      const protSetting = allSettings.find((s: SystemSettings) => s.key === 'allow_protected_project_deletion');
+      setAllowProtectedDeletion(protSetting?.value === 'true');
     } catch (err: unknown) {
       console.error('Failed to load settings:', err);
       setError((err as Error).message || 'Falha ao carregar configurações');
@@ -354,6 +363,21 @@ export default function SettingsPage() {
       setBlocklistSuggestions([]);
       setSaveSuccess('Todas as sugestões rejeitadas');
     } catch (err: any) { showError(`Falha ao rejeitar: ${err.message}`); }
+  };
+
+  // PROMPT #236 - Toggle protected project deletion
+  const handleToggleProtectedDeletion = async () => {
+    setSavingProtection(true);
+    const newValue = !allowProtectedDeletion;
+    try {
+      await settingsApi.set('allow_protected_project_deletion', String(newValue), 'Permitir exclusao de projetos protegidos (true/false)');
+      setAllowProtectedDeletion(newValue);
+      setSaveSuccess(newValue ? 'Exclusao de projetos protegidos ATIVADA' : 'Exclusao de projetos protegidos DESATIVADA');
+    } catch (err: any) {
+      showError(`Falha ao salvar: ${err.message}`);
+    } finally {
+      setSavingProtection(false);
+    }
   };
 
   const generalSettings = settings.filter(s => !s.key.startsWith('default_model_') && !s.key.startsWith('queue_'));
@@ -922,6 +946,56 @@ export default function SettingsPage() {
             <p className="text-sm text-gray-500">
               Pares chave-valor personalizados para configuração avancada do sistema.
             </p>
+
+            {/* PROMPT #236 - Security: Protected project deletion toggle */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-amber-50 rounded-lg flex-shrink-0">
+                    <Shield className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div>
+                    <span className="text-sm font-medium text-gray-900">Segurança</span>
+                    <p className="text-xs text-gray-500 mt-0.5">Protecao contra exclusao acidental de projetos</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">Permitir exclusao de projetos protegidos</span>
+                      {allowProtectedDeletion && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Ativo</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Quando ativo, projetos marcados como protegidos podem ser excluidos normalmente. Mantenha desativado para proteção máxima.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={allowProtectedDeletion}
+                    disabled={savingProtection}
+                    onClick={handleToggleProtectedDeletion}
+                    className={`
+                      relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent
+                      transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                      ${allowProtectedDeletion ? 'bg-red-500' : 'bg-gray-300'}
+                      ${savingProtection ? 'opacity-50 cursor-not-allowed' : ''}
+                    `}
+                  >
+                    <span
+                      className={`
+                        pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0
+                        transition duration-200 ease-in-out
+                        ${allowProtectedDeletion ? 'translate-x-5' : 'translate-x-0'}
+                      `}
+                    />
+                  </button>
+                </div>
+              </CardContent>
+            </Card>
 
             <Card>
               <CardContent className="pt-6">

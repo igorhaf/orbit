@@ -30,6 +30,8 @@ _DEFAULT_SETTINGS = [
     ("queue_auto_sort_strategy", "balanced", "Default queue sort strategy: balanced, hierarchy_first, priority_first, age_first, dependency_first"),
     ("queue_max_concurrent", "1", "Maximum concurrent prompt executions from queue"),
     ("queue_auto_populate", "true", "Auto-populate queue when cards are activated (true/false)"),
+    # PROMPT #236 - Project deletion protection
+    ("allow_protected_project_deletion", "false", "Permitir exclusao de projetos protegidos (true/false)"),
 ]
 
 

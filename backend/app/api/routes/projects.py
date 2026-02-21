@@ -745,6 +745,20 @@ async def delete_project(
     5. Delete project folder from disk
     6. Delete the project (SQLAlchemy CASCADE handles interviews, tasks, wiki, etc.)
     """
+    # PROMPT #236 - Protection guard
+    if project.protected:
+        from app.models.system_settings import SystemSettings
+        setting = db.query(SystemSettings).filter(
+            SystemSettings.key == "allow_protected_project_deletion"
+        ).first()
+        if not setting or setting.value != "true":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Este projeto esta protegido contra exclusao. "
+                       "Ative 'Permitir exclusao de projetos protegidos' "
+                       "nas Configuracoes para excluir."
+            )
+
     project_id = project.id
     project_name = project.name or str(project_id)[:8]
     logger.info(f"Deleting project '{project_name}' ({project_id}) - full cascade cleanup")

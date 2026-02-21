@@ -18,7 +18,7 @@ import {
   Dialog,
   AIModelBadge,
 } from '@/components/ui';
-import { projectsApi } from '@/lib/api';
+import { projectsApi, settingsApi } from '@/lib/api';
 import { Project } from '@/lib/types';
 
 /**
@@ -48,8 +48,10 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showProtectedDialog, setShowProtectedDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [allowProtectedDeletion, setAllowProtectedDeletion] = useState(false);
 
   // PROMPT #301 - Removed processing job tracking (projects are always active now)
 
@@ -71,6 +73,11 @@ export default function ProjectsPage() {
     const init = async () => {
       setLoading(true);
       await fetchProjects();
+      // PROMPT #236 - Check if protected deletion is allowed
+      try {
+        const setting = await settingsApi.get('allow_protected_project_deletion');
+        setAllowProtectedDeletion(setting?.value === 'true');
+      } catch { /* setting may not exist yet */ }
       setLoading(false);
     };
     init();
@@ -80,7 +87,12 @@ export default function ProjectsPage() {
 
   const handleDeleteProject = async (project: Project) => {
     setProjectToDelete(project);
-    setShowDeleteDialog(true);
+    // PROMPT #236 - Protected projects show info dialog instead of confirm
+    if (project.protected && !allowProtectedDeletion) {
+      setShowProtectedDialog(true);
+    } else {
+      setShowDeleteDialog(true);
+    }
   };
 
   const confirmDeleteProject = async () => {
@@ -229,6 +241,8 @@ export default function ProjectsPage() {
                       variant="danger"
                       size="sm"
                       onClick={() => handleDeleteProject(project)}
+                      className={project.protected && !allowProtectedDeletion ? 'opacity-40 cursor-not-allowed' : ''}
+                      title={project.protected && !allowProtectedDeletion ? 'Projeto protegido contra exclusao' : 'Excluir projeto'}
                     >
                       <svg
                         className="w-4 h-4"
@@ -288,6 +302,42 @@ export default function ProjectsPage() {
                 isLoading={isDeleting}
               >
                 Sim, Excluir Projeto
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+
+        {/* PROMPT #236 - Protected Project Info Dialog */}
+        <Dialog
+          open={showProtectedDialog}
+          onClose={() => setShowProtectedDialog(false)}
+          title="Projeto Protegido"
+          description="Este projeto esta protegido contra exclusao."
+        >
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-blue-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-blue-900 mb-1">Projeto protegido contra exclusao</h4>
+                  <p className="text-sm text-blue-800">
+                    O projeto &quot;{projectToDelete?.name}&quot; esta marcado como protegido. Para excluí-lo, va em <strong>Configurações &rarr; Avançado</strong> e ative a opção &quot;Permitir exclusão de projetos protegidos&quot;.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => setShowProtectedDialog(false)}
+              >
+                Entendido
               </Button>
             </div>
           </div>

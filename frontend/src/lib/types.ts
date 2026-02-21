@@ -132,6 +132,9 @@ export interface Project {
   // PROMPT #121 - Memory scan data
   initial_memory_context?: Record<string, any> | null;
 
+  // PROMPT #236 - Deletion protection
+  protected?: boolean;
+
   created_at: string;
   updated_at: string;
 }
