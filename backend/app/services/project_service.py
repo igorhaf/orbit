@@ -469,30 +469,10 @@ async def _process_initial_scan(
 
         logger.info(f"Initial scan completed for project {project_id}")
 
-        # === Step C: Submit independent follow-up jobs ===
-        # PROMPT #233 - Pipeline is read-only: C1 (wiki enrichment) and C2 (card generation)
-        # removed. These are now triggered manually by the user via UI buttons.
-        from app.services.job_executor import PriorityJobExecutor
-        executor = PriorityJobExecutor.get_instance()
-
-        # C3: Register remaining files and start batch processing / watchdog
-        try:
-            if scan_depth != "deep":
-                from app.services.continuous_rag_service import ContinuousRAGService
-                rag_service = ContinuousRAGService(db)
-                await rag_service.scan_for_changes(project_id)
-                logger.info(f"Registered remaining files for batch processing")
-
-                from app.services.watchdog import submit_batch_processing_cycle
-                batch_size = {"quick": 8, "normal": 10}.get(scan_depth, 10)
-                submit_batch_processing_cycle(db, project_id, batch_size=batch_size)
-                logger.info(f"Batch processing started (batch_size={batch_size})")
-            else:
-                from app.services.watchdog import submit_watchdog_cycle
-                submit_watchdog_cycle(db, project_id)
-                logger.info(f"Watchdog started for project {project_id} (deep scan)")
-        except Exception as e:
-            logger.warning(f"Post-scan job start failed (non-blocking): {e}")
+        # === Step C: RAG indexing is now MANUAL ===
+        # PROMPT #251 - Removed automatic batch_processing_cycle and watchdog.
+        # User triggers RAG scan manually via "Scan Documentos" button.
+        logger.info(f"Initial scan done for {project_id}. RAG indexing available via manual button.")
 
     except Exception as e:
         logger.error(f"Initial scan failed for project {project_id}: {str(e)}", exc_info=True)

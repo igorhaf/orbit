@@ -101,6 +101,9 @@ export default function ProjectDetailsPage() {
   // PROMPT #242 - Track initial_scan_complete for RAG → Cards ordering
   const [initialScanComplete, setInitialScanComplete] = useState(false);
 
+  // PROMPT #251 - Manual RAG scan state
+  const [scanningRag, setScanningRag] = useState(false);
+
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
   const [epicCount, setEpicCount] = useState(10);
@@ -613,7 +616,30 @@ export default function ProjectDetailsPage() {
           )}
           </div>
 
-          {/* PROMPT #273 - Interview/Consistency buttons moved to tabs */}
+          {/* PROMPT #251 - Manual RAG Scan button (always visible when scan complete) */}
+          {initialScanComplete && !isEnriching && (
+            <button
+              disabled={scanningRag}
+              onClick={async () => {
+                try {
+                  setScanningRag(true);
+                  await ragApi.continuousScan(projectId);
+                  showSuccess('Scan de documentos iniciado');
+                } catch (err: any) {
+                  showError(err?.message || 'Erro ao iniciar scan');
+                } finally {
+                  setScanningRag(false);
+                }
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-600 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors disabled:opacity-50"
+              title="Escanear novos arquivos e documentos para o RAG"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              {scanningRag ? 'Escaneando...' : 'Scan Documentos'}
+            </button>
+          )}
         </div>
 
         {/* PROMPT #301 - Enrichment active banner (scan, wiki, cards, watchdog) */}
@@ -662,7 +688,7 @@ export default function ProjectDetailsPage() {
           </div>
         )}
 
-        {/* PROMPT #237/#242 - RAG completed banner with "Gerar Cards" button */}
+        {/* PROMPT #237/#242/#251 - RAG completed banner with action buttons */}
         {initialScanComplete && !hasEpics && !isEnriching && !generatingHierarchy && (
           <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
             <div className="flex items-center justify-between">
@@ -672,27 +698,45 @@ export default function ProjectDetailsPage() {
                 </svg>
                 <div>
                   <span className="text-sm font-medium text-green-900">
-                    Analise do codebase concluida — {totalFilesProcessed} arquivos processados
+                    Analise do codebase concluida{totalFilesProcessed > 0 ? ` — ${totalFilesProcessed} arquivos indexados` : ''}
                   </span>
                   <p className="text-xs text-green-700 mt-0.5">
-                    O conhecimento do projeto esta pronto. Gere a hierarquia completa de cards (Epics, Stories, Tasks e Subtasks).
+                    O conhecimento do projeto esta pronto. Escaneie documentos ou gere a hierarquia de cards.
                   </p>
                 </div>
               </div>
-              <button
-                onClick={async () => {
-                  try {
-                    setGeneratingHierarchy(true);
-                    await projectsApi.generateHierarchy(projectId);
-                  } catch (err: any) {
-                    setGeneratingHierarchy(false);
-                    showError(err?.message || 'Erro ao iniciar geracao');
-                  }
-                }}
-                className="flex-shrink-0 ml-4 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
-              >
-                Gerar Cards
-              </button>
+              <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+                <button
+                  disabled={scanningRag}
+                  onClick={async () => {
+                    try {
+                      setScanningRag(true);
+                      await ragApi.continuousScan(projectId);
+                    } catch (err: any) {
+                      showError(err?.message || 'Erro ao iniciar scan');
+                    } finally {
+                      setScanningRag(false);
+                    }
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors disabled:opacity-50"
+                >
+                  {scanningRag ? 'Escaneando...' : 'Scan Documentos'}
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      setGeneratingHierarchy(true);
+                      await projectsApi.generateHierarchy(projectId);
+                    } catch (err: any) {
+                      setGeneratingHierarchy(false);
+                      showError(err?.message || 'Erro ao iniciar geracao');
+                    }
+                  }}
+                  className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
+                >
+                  Gerar Cards
+                </button>
+              </div>
             </div>
           </div>
         )}

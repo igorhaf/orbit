@@ -465,31 +465,7 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
 
         logger.info(f"Watchdog cycle completed for '{project_name}'")
 
-        # Conditional cooldown: check if there's pending work
-        has_work = False
-        try:
-            from app.models.rag_file_state import RAGFileState, FileProcessingStatus
-            pending_files = db.query(RAGFileState).filter(
-                RAGFileState.project_id == project_id,
-                RAGFileState.status == FileProcessingStatus.PENDING,
-            ).count()
-            has_work = pending_files > 0
-        except Exception:
-            pass
-
-        cooldown = CYCLE_COOLDOWN if has_work else IDLE_COOLDOWN
-        logger.info(f"Watchdog cooldown for '{project_name}': {cooldown}s ({'active' if has_work else 'idle'})")
-
-        # PROMPT #226 - Check for shutdown before sleeping (break sleep into 2s chunks)
-        for _ in range(0, cooldown, 2):
-            if _is_shutting_down():
-                logger.info(f"Server shutting down, skipping watchdog re-queue for '{project_name}'")
-                return
-            await asyncio.sleep(min(2, cooldown))
-
-        if _is_shutting_down():
-            return
-        submit_watchdog_cycle(db, project_id)
+        # PROMPT #251 - No auto-requeue. Scan is now manual via button.
 
     except Exception as e:
         logger.error(f"Watchdog cycle failed for project {project_id}: {e}", exc_info=True)
@@ -497,22 +473,6 @@ async def watchdog_cycle(job_id: UUID, project_id: UUID):
             jm.fail_job(job_id, str(e))
         except Exception:
             pass
-        # Re-queue even on failure (with longer cooldown)
-        if _is_shutting_down():
-            return
-        await asyncio.sleep(ERROR_COOLDOWN)
-        if _is_shutting_down():
-            return
-        # Use a fresh session for re-queuing since the original may be dead
-        requeue_db = None
-        try:
-            requeue_db = _get_resilient_session()
-            submit_watchdog_cycle(requeue_db, project_id)
-        except Exception:
-            logger.warning(f"Failed to re-queue watchdog for {project_id} (DB unavailable)")
-        finally:
-            if requeue_db:
-                requeue_db.close()
     finally:
         db.close()
 
@@ -563,7 +523,6 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
 
         if total_files == 0:
             jm.complete_job(job_id, {"skipped": True, "reason": "Nenhum arquivo para processar"})
-            submit_watchdog_cycle(db, project_id)
             return
 
         # Set initial notification title
@@ -670,9 +629,8 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             "errors": total_errors,
         })
 
-        # Transition to normal watchdog
-        logger.info(f"All files processed for '{project_name}', transitioning to watchdog mode")
-        submit_watchdog_cycle(db, project_id)
+        # PROMPT #251 - No auto-transition to watchdog. Scan is manual.
+        logger.info(f"All files processed for '{project_name}'. Batch cycle complete.")
 
     except Exception as e:
         logger.error(f"Batch processing failed for project {project_id}: {e}", exc_info=True)
@@ -680,22 +638,7 @@ async def batch_processing_cycle(job_id: UUID, project_id: UUID, batch_size: int
             jm.fail_job(job_id, str(e))
         except Exception:
             pass
-        # Re-queue even on failure
-        if _is_shutting_down():
-            return
-        await asyncio.sleep(ERROR_COOLDOWN)
-        if _is_shutting_down():
-            return
-        # Use a fresh session for re-queuing since the original may be dead
-        requeue_db = None
-        try:
-            requeue_db = _get_resilient_session()
-            submit_batch_processing_cycle(requeue_db, project_id, batch_size=batch_size)
-        except Exception:
-            logger.warning(f"Failed to re-queue batch processing for {project_id} (DB unavailable)")
-        finally:
-            if requeue_db:
-                requeue_db.close()
+        # PROMPT #251 - No auto-requeue on failure. User triggers manually.
     finally:
         db.close()
 
@@ -1296,73 +1239,9 @@ async def bootstrap_watchdog():
             db.commit()
             logger.info(f"Cleaned up {len(stale_jobs)} stale pending jobs (all types)")
 
-        # PROMPT #255 - Re-submit orphaned pending jobs to in-memory executor.
-        # After restart, DB jobs may be 'pending' but not in the executor's in-memory queue.
-        orphaned_jobs = db.query(AsyncJob).filter(
-            AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
-            AsyncJob.status == JobStatus.PENDING,
-        ).all()
-        if orphaned_jobs:
-            executor = PriorityJobExecutor.get_instance()
-            for orphan in orphaned_jobs:
-                input_data = orphan.input_data or {}
-                project_id_str = input_data.get("project_id")
-                if not project_id_str:
-                    continue
-                orphan_project_id = UUID(project_id_str)
-
-                if input_data.get("batch_processing"):
-                    batch_size = input_data.get("batch_size", 10)
-                    await executor.submit(
-                        JobPriority.NORMAL,
-                        batch_processing_cycle,
-                        orphan.id,
-                        orphan_project_id,
-                        batch_size,
-                    )
-                    logger.info(f"Re-submitted orphaned batch job {orphan.id} for project {project_id_str}")
-                else:
-                    await executor.submit(
-                        JobPriority.LOW,
-                        watchdog_cycle,
-                        orphan.id,
-                        orphan_project_id,
-                    )
-                    logger.info(f"Re-submitted orphaned watchdog job {orphan.id} for project {project_id_str}")
-            logger.info(f"Re-submitted {len(orphaned_jobs)} orphaned jobs to executor")
-            db.close()
-            return  # Don't create new jobs - orphaned ones will handle it
-
-        projects = db.query(Project).filter(
-            Project.code_path.isnot(None),
-            Project.code_path != "",
-            Project.initial_scan_complete == True,
-        ).all()
-
-        count = 0
-        for project in projects:
-            try:
-                # PROMPT #245 - Check if project has pending files (still in initial ingestion)
-                pending_count = db.query(RAGFileState).filter(
-                    RAGFileState.project_id == project.id,
-                    RAGFileState.status == FileProcessingStatus.PENDING,
-                ).count()
-
-                if pending_count > 0:
-                    # Still processing initial files - use batch mode
-                    # PROMPT #260 / #231 - Smaller batches to reduce queue timeout pressure
-                    batch_size = {"quick": 8, "normal": 10}.get(project.scan_depth, 10)
-                    submit_batch_processing_cycle(db, project.id, batch_size=batch_size)
-                    logger.info(f"Batch processing resumed for {project.name} ({pending_count} pending)")
-                else:
-                    # All files processed - use regular watchdog
-                    submit_watchdog_cycle(db, project.id)
-                count += 1
-            except Exception as e:
-                logger.warning(f"Failed to bootstrap watchdog for {project.name}: {e}")
-
-        if count > 0:
-            logger.info(f"Watchdog/batch bootstrapped for {count} project(s)")
+        # PROMPT #251 - No automatic watchdog/batch bootstrap on startup.
+        # RAG scan is now manual, triggered by user via "Scan Documentos" button.
+        logger.info("Watchdog bootstrap: automatic scan disabled. Users trigger scans manually.")
     except Exception as e:
         logger.error(f"Watchdog bootstrap failed: {e}")
     finally:
