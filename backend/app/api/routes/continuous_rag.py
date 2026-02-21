@@ -491,18 +491,22 @@ async def get_enrichment_status(
     # Phase 1: ONLY completed if a Phase 1 pipeline job finished OR Redis confirms.
     # This prevents Phase 2 from unlocking based on stale initial_scan_complete.
 
-    # Check for completed Phase 1 pipeline jobs (RAG_CONTINUOUS_SCAN with phase=index_files)
-    phase_1_job_completed = db.execute(sql_text(
-        "SELECT 1 FROM async_jobs WHERE project_id = :pid "
-        "AND status = 'completed' AND job_type = 'rag_continuous_scan' "
-        "AND input_data->>'phase' = 'index_files' LIMIT 1"
-    ), {"pid": str(project_id)}).first() is not None
+    # Check for completed pipeline jobs per phase
+    def _phase_job_completed(phase_name: str) -> bool:
+        return db.execute(sql_text(
+            "SELECT 1 FROM async_jobs WHERE project_id = :pid "
+            "AND status = 'completed' AND job_type = 'rag_continuous_scan' "
+            "AND input_data->>'phase' = :phase LIMIT 1"
+        ), {"pid": str(project_id), "phase": phase_name}).first() is not None
+
+    # Phase 1: completed if pipeline job OR memory_scan indexed files
+    phase_1_done = _phase_job_completed("index_files") or has_indexed_files
 
     pipeline_state = {
-        "phase_1": "completed" if phase_1_job_completed else "pending",
-        "phase_2": "completed" if has_business_rules else "pending",
-        "phase_3": "completed" if has_cards else "pending",
-        "phase_4": "completed" if has_wiki else "pending",
+        "phase_1": "completed" if phase_1_done else "pending",
+        "phase_2": "completed" if _phase_job_completed("extract_rules") else "pending",
+        "phase_3": "completed" if _phase_job_completed("generate_cards") else "pending",
+        "phase_4": "completed" if _phase_job_completed("generate_wiki") else "pending",
     }
 
     # Check for running phase jobs (PENDING or RUNNING override to "running")
