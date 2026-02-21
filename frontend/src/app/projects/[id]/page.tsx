@@ -650,8 +650,8 @@ export default function ProjectDetailsPage() {
           </div>
         )}
 
-        {/* PROMPT #242 - Indexing in progress banner (before RAG complete) */}
-        {!initialScanComplete && !hasEpics && !loading && (
+        {/* PROMPT #242 - Indexing in progress banner (before RAG complete or re-indexing) */}
+        {(!initialScanComplete || isEnriching) && !hasEpics && !loading && (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3">
             <div className="flex items-center gap-3">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-yellow-600" />
@@ -663,7 +663,7 @@ export default function ProjectDetailsPage() {
         )}
 
         {/* PROMPT #237/#242 - RAG completed banner with "Gerar Cards" button */}
-        {initialScanComplete && !hasEpics && !generatingHierarchy && (
+        {initialScanComplete && !hasEpics && !isEnriching && !generatingHierarchy && (
           <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">

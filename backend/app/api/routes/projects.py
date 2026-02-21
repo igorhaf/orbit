@@ -1485,6 +1485,18 @@ async def generate_cards_from_memory(
             detail="A indexacao RAG ainda nao foi concluida. Aguarde o scan completar."
         )
 
+    # PROMPT #242 - Block if RAG re-indexing is in progress
+    active_rag = db.query(AsyncJob).filter(
+        AsyncJob.project_id == project_id,
+        AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+    ).first()
+    if active_rag:
+        raise HTTPException(
+            status_code=400,
+            detail="Indexacao RAG em andamento. Aguarde a conclusao antes de gerar cards."
+        )
+
     # Extract epic_count from request body (default: 10)
     epic_count = 10
     if body and isinstance(body, dict) and "epic_count" in body:
@@ -1543,6 +1555,18 @@ async def generate_full_hierarchy(
         raise HTTPException(
             status_code=400,
             detail="A indexacao RAG ainda nao foi concluida. Aguarde o scan completar."
+        )
+
+    # PROMPT #242 - Block if RAG re-indexing is in progress
+    active_rag = db.query(AsyncJob).filter(
+        AsyncJob.project_id == project_id,
+        AsyncJob.job_type == JobType.RAG_CONTINUOUS_SCAN,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+    ).first()
+    if active_rag:
+        raise HTTPException(
+            status_code=400,
+            detail="Indexacao RAG em andamento. Aguarde a conclusao antes de gerar cards."
         )
 
     # Check for existing epics (exclude business_rule epics from system)
