@@ -274,14 +274,18 @@ class RagPipelineService:
         "  ]\n"
         "}\n\n"
         "REGRAS DO CONTRATO:\n"
-        "- rule_text: MINIMO 15 caracteres, MAXIMO 500 caracteres\n"
+        "- rule_text: MINIMO 15 caracteres, MAXIMO 2000 caracteres. SEJA DETALHADO — "
+        "descreva a regra com contexto, condicoes, excecoes e impacto no negocio.\n"
         "- rule_type: EXATAMENTE um dos 8 valores do enum\n"
         "- source_file: caminho relativo real do projeto, NUNCA vazio\n"
         "- priority: EXATAMENTE um dos 4 valores do enum\n"
+        "- entity: inclua SEMPRE que possivel a entidade envolvida\n"
+        "- evidence: inclua trecho de codigo, nome de funcao ou classe que comprova a regra (ate 1000 chars)\n"
         "- Cada regra deve ser UNICA — sem duplicatas semanticas\n"
         "- Todas em PORTUGUES\n"
         "- NAO invente regras — apenas extraia o que EXISTE no codigo/docs\n"
-        "- Extraia o MAXIMO possivel. Analise CADA modelo, servico, rota, validacao, schema."
+        "- Extraia o MAXIMO possivel. Analise CADA modelo, servico, rota, validacao, schema.\n"
+        "- PREFIRA regras DETALHADAS e RICAS a regras curtas e genericas."
     )
 
     # Claude Opus 4.6: 200K context window
@@ -548,16 +552,16 @@ class RagPipelineService:
                     continue
 
             # Sanitize lengths
-            rule_text = rule_text[:500]
-            source_file = source_file[:255]
+            rule_text = rule_text[:2000]
+            source_file = source_file[:500]
 
             valid.append({
                 "rule_text": rule_text,
                 "rule_type": rule_type,
                 "source_file": source_file,
                 "priority": priority,
-                "entity": str(rule.get("entity") or "").strip()[:100],
-                "evidence": str(rule.get("evidence") or "").strip()[:300],
+                "entity": str(rule.get("entity") or "").strip()[:200],
+                "evidence": str(rule.get("evidence") or "").strip()[:1000],
             })
 
         if rejected:
@@ -598,30 +602,37 @@ class RagPipelineService:
         "{\n"
         '  "cards": [\n'
         "    {\n"
-        '      "title": "string OBRIGATORIA, 5-120 caracteres, titulo conciso em portugues",\n'
-        '      "description": "string OBRIGATORIA, minimo 20 caracteres, explicando O QUE e POR QUE",\n'
+        '      "title": "string OBRIGATORIA, 5-255 caracteres, titulo claro e descritivo em portugues",\n'
+        '      "description": "string OBRIGATORIA, minimo 50 caracteres (idealmente 200-2000). '
+        'Descreva em DETALHES: o que a demanda resolve, por que e importante, contexto tecnico, '
+        'dependencias e impacto no sistema.",\n'
         '      "item_type": "string OBRIGATORIA, enum: epic|story|task|subtask",\n'
         '      "parent_title": "string ou null. Titulo EXATO do card pai. null para epics de nivel raiz.",\n'
         '      "story_points": "integer OBRIGATORIO, Fibonacci: 1|2|3|5|8|13",\n'
         '      "priority": "string OBRIGATORIA, enum: critical|high|medium|low",\n'
-        '      "labels": "array de strings, 1-5 labels descritivas (ex: [\"autenticacao\", \"backend\"])",\n'
-        '      "acceptance_criteria": "array de strings, minimo 1 criterio por card, cada criterio com minimo 10 caracteres"\n'
+        '      "labels": "array de strings, 1-10 labels descritivas (ex: [\"autenticacao\", \"backend\"])",\n'
+        '      "acceptance_criteria": "array de strings, minimo 2 criterios por card, '
+        'cada criterio com minimo 15 caracteres, descrevendo condicao verificavel de aceite"\n'
         "    }\n"
         "  ]\n"
         "}\n\n"
         "REGRAS DO CONTRATO:\n"
-        "- title: 5-120 caracteres, UNICO no projeto, sem prefixos numericos\n"
-        "- description: MINIMO 20 caracteres, explicar O QUE a demanda resolve e POR QUE\n"
+        "- title: 5-255 caracteres, UNICO no projeto, sem prefixos numericos\n"
+        "- description: MINIMO 50 caracteres, idealmente 200-2000 caracteres. "
+        "QUANTO MAIS DETALHE, MELHOR. Inclua: contexto, motivacao, requisitos tecnicos, "
+        "dependencias, e como se integra com o resto do sistema.\n"
         "- item_type: EXATAMENTE um dos 4 valores do enum\n"
         "- parent_title: DEVE corresponder ao title EXATO de outro card na lista. null para epics raiz.\n"
         "  story tem parent_title de um epic. task tem parent_title de uma story. subtask de uma task.\n"
         "- story_points: Fibonacci APENAS (1,2,3,5,8,13). Epics: 8-13. Stories: 3-8. Tasks: 1-5. Subtasks: 1-2.\n"
         "- priority: EXATAMENTE um dos 4 valores\n"
-        "- labels: array de 1-5 strings, cada label 2-30 caracteres, lowercase, sem espacos (use hifens)\n"
-        "- acceptance_criteria: MINIMO 1 criterio, MAXIMO 10. Cada criterio e uma string verificavel.\n"
+        "- labels: array de 1-10 strings, cada label 2-50 caracteres, lowercase, sem espacos (use hifens)\n"
+        "- acceptance_criteria: MINIMO 2 criterios, MAXIMO 20. Cada criterio e uma string verificavel "
+        "com minimo 15 caracteres. Criterios devem ser especificos e testáveis.\n"
         "- Todos os textos em PORTUGUES\n"
         "- Hierarquia COMPLETA: cada epic deve ter stories, cada story deve ter tasks\n"
-        "- NAO crie cards orphaos (sem pai) exceto epics de nivel raiz"
+        "- NAO crie cards orphaos (sem pai) exceto epics de nivel raiz\n"
+        "- PREFIRA descricoes RICAS e DETALHADAS a descricoes curtas e genericas."
     )
 
     PHASE3_PASSES = 3  # 1 initial + 2 reinforcement
@@ -774,10 +785,10 @@ class RagPipelineService:
             ac_list = card.get("acceptance_criteria", [])
 
             # ---- STRICT VALIDATION ----
-            if len(title) < 5 or len(title) > 120:
+            if len(title) < 5 or len(title) > 255:
                 rejected += 1
                 continue
-            if len(description) < 20:
+            if len(description) < 50:
                 rejected += 1
                 continue
             if item_type not in self.VALID_ITEM_TYPES:
@@ -797,26 +808,26 @@ class RagPipelineService:
             if not isinstance(labels, list):
                 labels = []
             labels = [
-                str(l).strip().lower().replace(" ", "-")[:30]
+                str(l).strip().lower().replace(" ", "-")[:50]
                 for l in labels
                 if isinstance(l, str) and len(str(l).strip()) >= 2
-            ][:5]
+            ][:10]
             # acceptance_criteria: validate array of strings
             if not isinstance(ac_list, list):
                 ac_list = []
             acceptance_criteria = []
-            for ac in ac_list[:10]:
+            for ac in ac_list[:20]:
                 if isinstance(ac, str) and len(ac.strip()) >= 10:
-                    acceptance_criteria.append({"text": ac.strip()[:500], "completed": False})
+                    acceptance_criteria.append({"text": ac.strip()[:2000], "completed": False})
                 elif isinstance(ac, dict) and ac.get("text") and len(str(ac["text"]).strip()) >= 10:
                     acceptance_criteria.append({
-                        "text": str(ac["text"]).strip()[:500],
+                        "text": str(ac["text"]).strip()[:2000],
                         "completed": bool(ac.get("completed", False)),
                     })
 
             valid_cards.append({
-                "title": title[:120],
-                "description": description[:2000],
+                "title": title[:255],
+                "description": description[:10000],
                 "item_type": item_type,
                 "parent_title": parent_title,
                 "story_points": story_points,
@@ -886,29 +897,35 @@ class RagPipelineService:
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
         "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
         "{\n"
-        '  "title": "string OBRIGATORIA, 5-60 caracteres, titulo conciso do projeto",\n'
-        '  "description": "string OBRIGATORIA, 50-500 caracteres, 2-4 frases descrevendo o projeto",\n'
+        '  "title": "string OBRIGATORIA, 5-120 caracteres, titulo claro do projeto",\n'
+        '  "description": "string OBRIGATORIA, 50-2000 caracteres, descricao detalhada do projeto",\n'
         '  "wiki_pages": [\n'
         "    {\n"
-        '      "slug": "string OBRIGATORIA, formato kebab-case (a-z, 0-9, hifens), 3-50 caracteres",\n'
-        '      "title": "string OBRIGATORIA, 3-100 caracteres, titulo da pagina em portugues",\n'
-        '      "content": "string OBRIGATORIA, conteudo em Markdown, MINIMO 200 caracteres. '
-        'Use headers (#, ##, ###), listas, exemplos de codigo quando relevante.",\n'
+        '      "slug": "string OBRIGATORIA, formato kebab-case (a-z, 0-9, hifens), 3-80 caracteres",\n'
+        '      "title": "string OBRIGATORIA, 3-200 caracteres, titulo da pagina em portugues",\n'
+        '      "content": "string OBRIGATORIA, conteudo em Markdown, MINIMO 500 caracteres. '
+        'SEJA EXTENSO — cada pagina deve ter conteudo RICO e DETALHADO com headers (#, ##, ###), '
+        'listas, tabelas, exemplos de codigo, explicacoes profundas. '
+        'Paginas com menos de 500 caracteres serao DESCARTADAS.",\n'
         '      "order": "integer OBRIGATORIO, posicao da pagina (1, 2, 3...), unico por pagina"\n'
         "    }\n"
         "  ]\n"
         "}\n\n"
         "REGRAS DO CONTRATO:\n"
-        "- title (projeto): 5-60 caracteres, sem quebras de linha\n"
-        "- description (projeto): 50-500 caracteres, 2-4 frases completas\n"
+        "- title (projeto): 5-120 caracteres, sem quebras de linha\n"
+        "- description (projeto): 50-2000 caracteres. Descreva o projeto em DETALHES: "
+        "proposito, stack tecnologica, arquitetura geral, publico alvo.\n"
         "- slug: kebab-case APENAS (regex: ^[a-z0-9]+(-[a-z0-9]+)*$), UNICO\n"
-        "- title (pagina): 3-100 caracteres, descritivo\n"
-        "- content: MINIMO 200 caracteres de Markdown RICO. Paginas com menos sao descartadas.\n"
+        "- title (pagina): 3-200 caracteres, descritivo\n"
+        "- content: MINIMO 500 caracteres de Markdown RICO. Paginas com menos sao DESCARTADAS.\n"
+        "  Cada pagina deve ter: multiplos headers (##, ###), paragrafos detalhados, "
+        "listas completas, exemplos de codigo com ``` quando aplicavel, tabelas quando util.\n"
+        "  QUANTO MAIS CONTEUDO, MELHOR. Idealmente 1000-5000 caracteres por pagina.\n"
         "- order: inteiro sequencial unico (1, 2, 3...)\n"
         "- Todos os textos em PORTUGUES\n"
-        "- Cada pagina wiki DEVE ter: pelo menos 1 header (#), pelo menos 1 paragrafo, "
-        "conteudo factual baseado no codigo real do projeto\n"
-        "- NAO invente features que nao existem no codigo"
+        "- Cada pagina wiki DEVE ter conteudo factual baseado no codigo real do projeto\n"
+        "- NAO invente features que nao existem no codigo\n"
+        "- PREFIRA paginas EXTENSAS e DETALHADAS a paginas curtas e superficiais."
     )
 
     PHASE4_PASSES = 3  # 1 initial + 2 reinforcement
@@ -1039,7 +1056,7 @@ class RagPipelineService:
 
         # ---- PROJECT TITLE — strict validation + REGRA #0 ----
         title = str(parsed.get("title") or "").strip()
-        if title and 5 <= len(title) <= 60:
+        if title and 5 <= len(title) <= 120:
             # Remove line breaks (contract violation)
             title = title.replace("\n", " ").replace("\r", "")
             # REGRA #0: Only set if empty (human data is sacred)
@@ -1048,23 +1065,23 @@ class RagPipelineService:
                 result["title_generated"] = True
                 logger.info(f"Phase 4: Generated title: {title}")
         elif title:
-            logger.warning(f"Phase 4: title rejected (len={len(title)}, must be 5-60)")
+            logger.warning(f"Phase 4: title rejected (len={len(title)}, must be 5-120)")
 
         # ---- PROJECT DESCRIPTION — strict validation + REGRA #0 ----
         description = str(parsed.get("description") or "").strip()
-        if description and 50 <= len(description) <= 500:
+        if description and 50 <= len(description) <= 2000:
             # REGRA #0: Only set if empty
             if not (project.description and project.description.strip()):
                 project.description = description
                 result["description_generated"] = True
                 logger.info(f"Phase 4: Generated description ({len(description)} chars)")
         elif description and len(description) >= 20:
-            # Relax slightly: accept 20+ chars but truncate to 500
+            # Relax slightly: accept 20+ chars but truncate to 2000
             if not (project.description and project.description.strip()):
-                project.description = description[:500]
+                project.description = description[:2000]
                 result["description_generated"] = True
         elif description:
-            logger.warning(f"Phase 4: description rejected (len={len(description)}, must be 50-500)")
+            logger.warning(f"Phase 4: description rejected (len={len(description)}, must be 50-2000)")
 
         # ---- WIKI PAGES — strict validation ----
         code_path = project.code_path
@@ -1087,8 +1104,8 @@ class RagPipelineService:
             order = page.get("order", 1)
 
             # ---- STRICT VALIDATION ----
-            # slug: kebab-case, 3-50 chars
-            if not slug or len(slug) < 3 or len(slug) > 50:
+            # slug: kebab-case, 3-80 chars
+            if not slug or len(slug) < 3 or len(slug) > 80:
                 rejected += 1
                 continue
             if not self.SLUG_RE.match(slug):
@@ -1106,10 +1123,10 @@ class RagPipelineService:
             # title: 3-100 chars
             if len(page_title) < 3:
                 page_title = slug.replace("-", " ").title()
-            page_title = page_title[:100]
+            page_title = page_title[:200]
 
-            # content: min 200 chars of actual Markdown
-            if len(content) < 200:
+            # content: min 500 chars of actual Markdown
+            if len(content) < 500:
                 rejected += 1
                 logger.warning(f"Phase 4: wiki '{slug}' rejected (content too short: {len(content)} chars)")
                 continue
