@@ -341,7 +341,7 @@ class RagPipelineService:
                     "Leia os arquivos do projeto, extraia regras de negocio, e grave o resultado "
                     "no arquivo JSON especificado. Responda apenas com uma confirmacao curta."
                 ),
-                max_tokens=32000,
+                max_tokens=128000,
                 project_id=project_id,
                 metadata={"phase": "rag_pipeline_phase2", "pass": 1},
                 thinking=self.THINKING_CONFIG,
@@ -356,19 +356,32 @@ class RagPipelineService:
 
         jm.update_progress(job_id, 70.0, "Fase 2/4: Lendo regras extraidas pelo Claudio...")
 
-        # Read the output file written by Claudio
-        if not os.path.exists(output_file):
-            logger.error(f"Phase 2: Output file not found: {output_file}")
-            self._set_phase_status(project_id, 2, "failed")
-            raise ValueError(f"Claudio nao gerou o arquivo {self.PHASE2_OUTPUT_FILE}")
+        # Read the output file written by Claudio, fallback to response text
+        raw_content = None
+        if os.path.exists(output_file):
+            try:
+                with open(output_file, "r", encoding="utf-8") as f:
+                    raw_content = f.read()
+                logger.info(f"Phase 2: Read rules from file ({len(raw_content)} chars)")
+            except Exception as e:
+                logger.warning(f"Phase 2: Failed to read output file: {e}")
 
-        try:
-            with open(output_file, "r", encoding="utf-8") as f:
-                raw_content = f.read()
-        except Exception as e:
-            logger.error(f"Phase 2: Failed to read output file: {e}")
-            self._set_phase_status(project_id, 2, "failed")
-            raise ValueError(f"Erro ao ler arquivo de regras: {e}")
+        # Fallback: try to extract rules from Claudio's response text
+        if not raw_content or len(raw_content.strip()) < 20:
+            response_text = response.get("content", "")
+            if response_text and "business_rules" in response_text:
+                logger.info("Phase 2: Fallback — extracting rules from response text")
+                raw_content = response_text
+            elif response_text and "rule_text" in response_text:
+                logger.info("Phase 2: Fallback — wrapping response rules in envelope")
+                raw_content = response_text
+            else:
+                logger.error(f"Phase 2: No output file and no rules in response")
+                self._set_phase_status(project_id, 2, "failed")
+                raise ValueError(
+                    f"Claudio nao gerou o arquivo {self.PHASE2_OUTPUT_FILE} "
+                    f"e a resposta nao contem regras"
+                )
 
         # Parse and validate rules
         rules = self._parse_rules_json(raw_content)
