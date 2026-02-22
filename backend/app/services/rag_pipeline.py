@@ -284,10 +284,12 @@ class RagPipelineService:
     PHASE2_RAG_TOP_K = 300
     PHASE2_RAG_THRESHOLD = 0.1
 
+    PHASE2_PASSES = 3  # 1 initial + 2 reinforcement
+
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 2: Extract business rules via single AI prompt with RAG injection.
-        Uses enable_rag=True with high top_k to leverage Claude's 200K context.
+        Phase 2: Extract business rules via 3 AI passes with RAG injection.
+        Pass 1: initial extraction. Pass 2-3: reinforcement to find missed rules.
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
@@ -320,51 +322,78 @@ class RagPipelineService:
             self._set_phase_status(project_id, 2, "failed")
             raise ValueError("Nenhum arquivo indexado encontrado. Execute Phase 1 primeiro.")
 
-        logger.info(f"Phase 2: {code_file_count} code files indexed, using RAG injection")
+        logger.info(f"Phase 2: {code_file_count} code files indexed, {self.PHASE2_PASSES} passes")
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
 
-        jm.update_progress(job_id, 10.0,
-            f"Fase 2/4: Extraindo regras de negocio de {code_file_count} arquivos via IA...")
+        project_name = project.name or "Projeto"
+        total_rules = 0
 
-        user_prompt = (
-            f"Extraia todas as regras de negocio possiveis a partir de todo o "
-            f"codigo-fonte e documentacao do projeto \"{project.name or 'Projeto'}\" "
-            f"que esta indexado na base de conhecimento.\n\n"
-            f"O projeto tem {code_file_count} arquivos indexados. "
-            f"Analise CADA modelo, servico, rota, validacao, schema, migration, "
-            f"configuracao e documentacao presente no contexto.\n\n"
-            f"Liste TODAS as regras encontradas em portugues, categorizadas por tipo "
-            f"(dominio, validacao, restricao, workflow, permissao, calculo, integracao, negocio).\n\n"
-            f"NAO pare ate ter extraido TODAS as regras possiveis do contexto fornecido."
-        )
+        for pass_num in range(1, self.PHASE2_PASSES + 1):
+            pct_base = 5 + (85 * (pass_num - 1) // self.PHASE2_PASSES)
+            pct_end = 5 + (85 * pass_num // self.PHASE2_PASSES)
 
-        try:
-            response = await orchestrator.execute(
-                usage_type="rag_extraction",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=self.PHASE2_SYSTEM_PROMPT,
-                max_tokens=16384,
-                project_id=project_id,
-                enable_rag=True,
-                rag_top_k=self.PHASE2_RAG_TOP_K,
-                rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
-                metadata={"phase": "rag_pipeline_phase2"},
-            )
+            jm.update_progress(job_id, pct_base,
+                f"Fase 2/4: Passada {pass_num}/{self.PHASE2_PASSES} — "
+                f"{total_rules} regras ate agora...")
 
-            jm.update_progress(job_id, 70.0, "Fase 2/4: Processando regras extraidas...")
+            if pass_num == 1:
+                user_prompt = (
+                    f"Extraia todas as regras de negocio possiveis a partir de todo o "
+                    f"codigo-fonte e documentacao do projeto \"{project_name}\" "
+                    f"que esta indexado na base de conhecimento.\n\n"
+                    f"O projeto tem {code_file_count} arquivos indexados. "
+                    f"Analise CADA modelo, servico, rota, validacao, schema, migration, "
+                    f"configuracao e documentacao presente no contexto.\n\n"
+                    f"Liste TODAS as regras encontradas em portugues, categorizadas por tipo "
+                    f"(dominio, validacao, restricao, workflow, permissao, calculo, integracao, negocio).\n\n"
+                    f"NAO pare ate ter extraido TODAS as regras possiveis do contexto fornecido."
+                )
+            else:
+                # Get current rules to send as context for reinforcement
+                current_rules = self.db.execute(sql_text(
+                    "SELECT content FROM rag_documents WHERE project_id = :pid "
+                    "AND metadata->>'type' = 'business_rule' LIMIT 200"
+                ), {"pid": str(project_id)}).fetchall()
+                rules_summary = "\n".join(f"- {r[0][:120]}" for r in current_rules)
 
-            raw = response.get("content", "")
-            rules = self._parse_rules_json(raw)
-            total_rules = self._store_rules(rules, project_id)
-            self.db.commit()
+                user_prompt = (
+                    f"Voce ja extraiu {total_rules} regras de negocio do projeto "
+                    f"\"{project_name}\". Aqui esta um resumo das regras ja encontradas:\n\n"
+                    f"{rules_summary}\n\n"
+                    f"Agora, faca uma NOVA varredura completa na base de conhecimento "
+                    f"e encontre TODAS as regras de negocio que AINDA NAO foram extraidas.\n\n"
+                    f"Foque em areas que podem ter sido ignoradas: validacoes sutis, "
+                    f"restricoes implicitas, regras de permissao, calculos escondidos, "
+                    f"workflows secundarios, integracao entre servicos, edge cases.\n\n"
+                    f"Retorne APENAS regras NOVAS que NAO estao na lista acima."
+                )
 
-            logger.info(f"Phase 2: {total_rules} business rules extracted and stored")
+            try:
+                response = await orchestrator.execute(
+                    usage_type="rag_extraction",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=self.PHASE2_SYSTEM_PROMPT,
+                    max_tokens=16384,
+                    project_id=project_id,
+                    enable_rag=True,
+                    rag_top_k=self.PHASE2_RAG_TOP_K,
+                    rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
+                    metadata={"phase": "rag_pipeline_phase2", "pass": pass_num},
+                )
 
-        except Exception as e:
-            self._set_phase_status(project_id, 2, "failed")
-            raise ValueError(f"Extracao falhou: {e}")
+                raw = response.get("content", "")
+                rules = self._parse_rules_json(raw)
+                pass_rules = self._store_rules(rules, project_id)
+                self.db.commit()
+                total_rules += pass_rules
+
+                logger.info(f"Phase 2 pass {pass_num}/{self.PHASE2_PASSES}: +{pass_rules} rules (total: {total_rules})")
+
+            except Exception as e:
+                logger.error(f"Phase 2 pass {pass_num} failed: {e}")
+                continue
 
         # Update rag_file_state
         try:
@@ -383,12 +412,13 @@ class RagPipelineService:
         self._set_phase_status(project_id, 2, "completed")
         jm.update_progress(
             job_id, 95.0,
-            f"Fase 2/4: Concluida — {total_rules} regras extraidas"
+            f"Fase 2/4: Concluida — {total_rules} regras em {self.PHASE2_PASSES} passadas"
         )
         return {
             "phase": "extract_rules",
             "rules_extracted": total_rules,
             "files_in_rag": code_file_count,
+            "passes": self.PHASE2_PASSES,
         }
 
     def _parse_rules_json(self, raw: str) -> List[Any]:
@@ -472,10 +502,12 @@ class RagPipelineService:
         "]}"
     )
 
+    PHASE3_PASSES = 3  # 1 initial + 2 reinforcement
+
     async def phase_3_generate_cards(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 3: Generate cards via single AI prompt with RAG injection.
-        Reads business rules from RAG context and creates hierarchical cards.
+        Phase 3: Generate cards via 3 AI passes with RAG injection.
+        Pass 1: initial card generation. Pass 2-3: reinforcement for missed cards.
         """
         self._set_phase_status(project_id, 3, "running")
         jm = JobManager(self.db)
@@ -497,58 +529,87 @@ class RagPipelineService:
             raise ValueError("Nenhuma regra de negocio encontrada. Execute Phase 2 primeiro.")
 
         from app.services.ai_orchestrator import AIOrchestrator
+        from app.models.task import Task
         orchestrator = AIOrchestrator(self.db)
 
-        jm.update_progress(job_id, 10.0,
-            f"Fase 3/4: Criando cards hierarquicos a partir de {rule_count} regras...")
+        project_name = project.name or "Projeto"
+        total_cards = 0
 
-        user_prompt = (
-            f"Pegue todas as regras de negocio presentes na base de conhecimento "
-            f"do projeto \"{project.name or 'Projeto'}\" e crie todos os cards "
-            f"no banco de dados usando a hierarquia: Epic > Story > Task > Subtask.\n\n"
-            f"O projeto tem {rule_count} regras de negocio indexadas. "
-            f"Use a estrutura do codigo como referencia de formatacao.\n\n"
-            f"Agrupe regras relacionadas em Epics, decomponha em Stories com "
-            f"criterios de aceitacao, depois em Tasks tecnicas e Subtasks atomicas.\n\n"
-            f"Gere o MAXIMO de cards possiveis para cobrir TODAS as regras."
-        )
+        for pass_num in range(1, self.PHASE3_PASSES + 1):
+            pct_base = 5 + (85 * (pass_num - 1) // self.PHASE3_PASSES)
 
-        try:
-            response = await orchestrator.execute(
-                usage_type="content_generation",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=self.PHASE3_SYSTEM_PROMPT,
-                max_tokens=16384,
-                project_id=project_id,
-                enable_rag=True,
-                rag_top_k=self.PHASE2_RAG_TOP_K,
-                rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
-                metadata={"phase": "rag_pipeline_phase3"},
-            )
+            jm.update_progress(job_id, pct_base,
+                f"Fase 3/4: Passada {pass_num}/{self.PHASE3_PASSES} — "
+                f"{total_cards} cards ate agora...")
 
-            jm.update_progress(job_id, 60.0, "Fase 3/4: Salvando cards no banco...")
+            if pass_num == 1:
+                user_prompt = (
+                    f"Pegue todas as regras de negocio presentes na base de conhecimento "
+                    f"do projeto \"{project_name}\" e crie todos os cards "
+                    f"usando a hierarquia: Epic > Story > Task > Subtask.\n\n"
+                    f"O projeto tem {rule_count} regras de negocio indexadas. "
+                    f"Use a estrutura do codigo como referencia de formatacao.\n\n"
+                    f"Agrupe regras relacionadas em Epics, decomponha em Stories com "
+                    f"criterios de aceitacao, depois em Tasks tecnicas e Subtasks atomicas.\n\n"
+                    f"Gere o MAXIMO de cards possiveis para cobrir TODAS as regras."
+                )
+            else:
+                # Get existing card titles for reinforcement context
+                existing_cards = self.db.query(Task.title, Task.item_type).filter(
+                    Task.project_id == project_id,
+                    Task.reporter == "pipeline_phase3",
+                ).all()
+                cards_summary = "\n".join(
+                    f"- [{c.item_type}] {c.title}" for c in existing_cards
+                )
 
-            raw = response.get("content", "")
-            cards_created = self._create_cards_from_json(raw, project_id)
-            self.db.commit()
+                user_prompt = (
+                    f"Voce ja criou {total_cards} cards para o projeto \"{project_name}\". "
+                    f"Aqui estao os cards ja criados:\n\n"
+                    f"{cards_summary}\n\n"
+                    f"Agora, faca uma NOVA analise das regras de negocio na base de conhecimento "
+                    f"e crie cards para TUDO que ainda NAO foi coberto.\n\n"
+                    f"Foque em: regras sem card correspondente, areas funcionais ignoradas, "
+                    f"stories que faltam em epics existentes, tasks e subtasks faltantes.\n\n"
+                    f"Retorne APENAS cards NOVOS que NAO existem na lista acima."
+                )
 
-            logger.info(f"Phase 3: {cards_created} cards created")
+            try:
+                response = await orchestrator.execute(
+                    usage_type="content_generation",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=self.PHASE3_SYSTEM_PROMPT,
+                    max_tokens=16384,
+                    project_id=project_id,
+                    enable_rag=True,
+                    rag_top_k=self.PHASE2_RAG_TOP_K,
+                    rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
+                    metadata={"phase": "rag_pipeline_phase3", "pass": pass_num},
+                )
 
-        except Exception as e:
-            self._set_phase_status(project_id, 3, "failed")
-            raise ValueError(f"Geracao de cards falhou: {e}")
+                raw = response.get("content", "")
+                pass_cards = self._create_cards_from_json(raw, project_id)
+                self.db.commit()
+                total_cards += pass_cards
 
-        if cards_created == 0:
+                logger.info(f"Phase 3 pass {pass_num}/{self.PHASE3_PASSES}: +{pass_cards} cards (total: {total_cards})")
+
+            except Exception as e:
+                logger.error(f"Phase 3 pass {pass_num} failed: {e}")
+                continue
+
+        if total_cards == 0:
             self._set_phase_status(project_id, 3, "failed")
             raise ValueError("Geracao falhou: 0 cards criados")
 
         self._set_phase_status(project_id, 3, "completed")
         jm.update_progress(job_id, 95.0,
-            f"Fase 3/4: Concluida — {cards_created} cards criados")
+            f"Fase 3/4: Concluida — {total_cards} cards em {self.PHASE3_PASSES} passadas")
         return {
             "phase": "generate_cards",
-            "cards_created": cards_created,
+            "cards_created": total_cards,
             "rules_in_rag": rule_count,
+            "passes": self.PHASE3_PASSES,
         }
 
     def _create_cards_from_json(self, raw: str, project_id: UUID) -> int:
@@ -655,10 +716,12 @@ class RagPipelineService:
         "]}"
     )
 
+    PHASE4_PASSES = 3  # 1 initial + 2 reinforcement
+
     async def phase_4_generate_wiki(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 4: Generate wiki + title + description via single AI prompt.
-        Uses enable_rag=True to inject full project context.
+        Phase 4: Generate wiki + title + description via 3 AI passes.
+        Pass 1: initial generation. Pass 2-3: reinforce and expand wiki pages.
         """
         self._set_phase_status(project_id, 4, "running")
         jm = JobManager(self.db)
@@ -672,56 +735,92 @@ class RagPipelineService:
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
 
-        jm.update_progress(job_id, 10.0, "Fase 4/4: Analisando projeto via IA...")
+        project_name = project.name or "Projeto"
+        total_pages = 0
 
-        user_prompt = (
-            f"Pegue todas as regras de negocio e todo o codigo-fonte presentes "
-            f"na base de conhecimento do projeto \"{project.name or 'Projeto'}\" "
-            f"e crie toda a estrutura de documentacao:\n\n"
-            f"1. Um titulo conciso para o projeto (max 60 caracteres)\n"
-            f"2. Uma descricao clara em 2-4 frases\n"
-            f"3. Todas as paginas wiki usando a estrutura do codigo como referencia\n\n"
-            f"Use o codigo-fonte REAL do projeto para criar paginas ricas e precisas. "
-            f"Documente padroes, convencoes, regras de negocio, APIs, componentes "
-            f"e estrutura de codigo encontrados.\n\n"
-            f"Gere o conteudo COMPLETO de cada pagina wiki em Markdown."
-        )
+        for pass_num in range(1, self.PHASE4_PASSES + 1):
+            pct_base = 5 + (85 * (pass_num - 1) // self.PHASE4_PASSES)
 
-        try:
-            response = await orchestrator.execute(
-                usage_type="content_generation",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=self.PHASE4_SYSTEM_PROMPT,
-                max_tokens=16384,
-                project_id=project_id,
-                enable_rag=True,
-                rag_top_k=self.PHASE2_RAG_TOP_K,
-                rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
-                metadata={"phase": "rag_pipeline_phase4"},
-            )
+            jm.update_progress(job_id, pct_base,
+                f"Fase 4/4: Passada {pass_num}/{self.PHASE4_PASSES} — "
+                f"{total_pages} paginas ate agora...")
 
-            jm.update_progress(job_id, 60.0, "Fase 4/4: Salvando wiki e metadados...")
+            if pass_num == 1:
+                user_prompt = (
+                    f"Pegue todas as regras de negocio e todo o codigo-fonte presentes "
+                    f"na base de conhecimento do projeto \"{project_name}\" "
+                    f"e crie toda a estrutura de documentacao:\n\n"
+                    f"1. Um titulo conciso para o projeto (max 60 caracteres)\n"
+                    f"2. Uma descricao clara em 2-4 frases\n"
+                    f"3. Todas as paginas wiki usando a estrutura do codigo como referencia\n\n"
+                    f"Use o codigo-fonte REAL do projeto para criar paginas ricas e precisas. "
+                    f"Documente padroes, convencoes, regras de negocio, APIs, componentes "
+                    f"e estrutura de codigo encontrados.\n\n"
+                    f"Gere o conteudo COMPLETO de cada pagina wiki em Markdown."
+                )
+            else:
+                # Get existing wiki page slugs for reinforcement
+                existing_pages = self.db.execute(sql_text(
+                    "SELECT metadata->>'slug' as slug, metadata->>'title' as title "
+                    "FROM rag_documents WHERE project_id = :pid "
+                    "AND metadata->>'type' = 'wiki_page'"
+                ), {"pid": str(project_id)}).fetchall()
+                pages_summary = "\n".join(
+                    f"- [{p[0]}] {p[1]}" for p in existing_pages if p[0]
+                )
 
-            raw = response.get("content", "")
-            result = self._save_wiki_and_metadata(raw, project_id, project)
-            self.db.commit()
+                user_prompt = (
+                    f"Voce ja criou {total_pages} paginas wiki para o projeto "
+                    f"\"{project_name}\". Paginas existentes:\n\n"
+                    f"{pages_summary}\n\n"
+                    f"Agora, faca uma NOVA analise da base de conhecimento e:\n"
+                    f"1. Crie paginas wiki para areas que AINDA NAO foram documentadas\n"
+                    f"2. Expanda paginas existentes com mais detalhes se necessario "
+                    f"(use o MESMO slug para atualizar)\n\n"
+                    f"Foque em: APIs nao documentadas, workflows complexos, "
+                    f"configuracoes importantes, guias de desenvolvimento, "
+                    f"padroes de teste, deploy e infraestrutura.\n\n"
+                    f"NAO inclua titulo e descricao do projeto (ja foram gerados)."
+                )
 
-            logger.info(
-                f"Phase 4: {result['pages_created']} wiki pages, "
-                f"title={'yes' if result['title_generated'] else 'no'}, "
-                f"desc={'yes' if result['description_generated'] else 'no'}"
-            )
+            try:
+                response = await orchestrator.execute(
+                    usage_type="content_generation",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=self.PHASE4_SYSTEM_PROMPT,
+                    max_tokens=16384,
+                    project_id=project_id,
+                    enable_rag=True,
+                    rag_top_k=self.PHASE2_RAG_TOP_K,
+                    rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
+                    metadata={"phase": "rag_pipeline_phase4", "pass": pass_num},
+                )
 
-        except Exception as e:
+                raw = response.get("content", "")
+                result = self._save_wiki_and_metadata(raw, project_id, project)
+                self.db.commit()
+                total_pages += result["pages_created"]
+
+                logger.info(
+                    f"Phase 4 pass {pass_num}/{self.PHASE4_PASSES}: "
+                    f"+{result['pages_created']} pages (total: {total_pages})"
+                )
+
+            except Exception as e:
+                logger.error(f"Phase 4 pass {pass_num} failed: {e}")
+                continue
+
+        if total_pages == 0:
             self._set_phase_status(project_id, 4, "failed")
-            raise ValueError(f"Geracao de wiki falhou: {e}")
+            raise ValueError("Geracao falhou: 0 paginas wiki criadas")
 
         self._set_phase_status(project_id, 4, "completed")
         jm.update_progress(job_id, 95.0,
-            f"Fase 4/4: Concluida — {result['pages_created']} paginas wiki geradas")
+            f"Fase 4/4: Concluida — {total_pages} paginas em {self.PHASE4_PASSES} passadas")
         return {
             "phase": "generate_wiki",
-            **result,
+            "pages_created": total_pages,
+            "passes": self.PHASE4_PASSES,
         }
 
     def _save_wiki_and_metadata(self, raw: str, project_id: UUID, project: Project) -> Dict:
