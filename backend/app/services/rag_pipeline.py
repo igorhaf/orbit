@@ -249,21 +249,59 @@ class RagPipelineService:
     # PROMPT #253 - Thinking mode for deeper analysis
     THINKING_CONFIG = {"type": "enabled", "budget_tokens": 10000}
 
-    # Phase 2 uses Claudio with cwd — the agent reads the codebase directly.
-    # Output file where Claudio writes extracted rules.
-    PHASE2_OUTPUT_FILE = "satellite/knowledge/business_rules.json"
-
     # RAG config reused by Phase 3 and Phase 4
     PHASE2_RAG_TOP_K = 300
     PHASE2_RAG_THRESHOLD = 0.1
 
+    # Phase 2: max chars of code per batch sent to the LLM
+    PHASE2_BATCH_MAX_CHARS = 60000  # ~15K tokens per batch
+
+    PHASE2_SYSTEM_PROMPT = (
+        "Voce e um analista de negocios senior especializado em engenharia reversa "
+        "de requisitos funcionais a partir de codebases existentes.\n\n"
+        "Voce vai receber trechos de codigo-fonte de um projeto. Analise CADA arquivo "
+        "e extraia TODAS as regras de negocio que encontrar.\n\n"
+        "CATEGORIAS de regras (use EXATAMENTE um destes valores):\n"
+        "  dominio | validacao | restricao | workflow | permissao | calculo | integracao | negocio\n\n"
+        "PRIORIDADE (use EXATAMENTE um destes valores):\n"
+        "  critical | high | medium | low\n\n"
+        "IGNORE completamente:\n"
+        "  - Configuracoes puras de framework (settings, config boilerplate)\n"
+        "  - CSS, estilos, layouts puramente visuais\n"
+        "  - Logs de debug, print statements\n"
+        "  - Infraestrutura Docker, CI/CD\n"
+        "  - Imports e boilerplate de linguagem\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "CONTRATO DE RESPOSTA — JSON RIGIDO\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
+        "{\n"
+        '  "business_rules": [\n'
+        "    {\n"
+        '      "rule_text": "descricao detalhada da regra em portugues (min 15 chars, ideal 100-500)",\n'
+        '      "rule_type": "dominio|validacao|restricao|workflow|permissao|calculo|integracao|negocio",\n'
+        '      "source_file": "caminho relativo do arquivo (ex: backend/app/models/user.py)",\n'
+        '      "priority": "critical|high|medium|low",\n'
+        '      "entity": "entidade principal (ex: Usuario, Pedido, Projeto)",\n'
+        '      "evidence": "trecho de codigo ou funcao que comprova a regra"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "REGRAS:\n"
+        "- Extraia o MAXIMO de regras possivel de cada arquivo\n"
+        "- NAO invente regras — apenas o que EXISTE no codigo\n"
+        "- Todas as descricoes em PORTUGUES\n"
+        "- Se nenhuma regra for encontrada, retorne {\"business_rules\": []}\n"
+        "- Seja DETALHADO nas descricoes (rule_text)\n"
+        "- source_file DEVE ser o caminho relativo do arquivo analisado"
+    )
+
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 2: Extract business rules via Claudio agent.
+        Phase 2: Extract business rules from code files already indexed in RAG.
 
-        Claudio runs with cwd=project.code_path, reads the actual codebase,
-        and writes a JSON file with extracted rules. We then read that file
-        and import into RAG.
+        Reads code_file documents from RAG DB (indexed in Phase 1), splits into
+        batches that fit in LLM context, and extracts business rules from each batch.
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
@@ -272,10 +310,7 @@ class RagPipelineService:
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        code_path = project.code_path
-        output_file = os.path.join(code_path, self.PHASE2_OUTPUT_FILE)
-
-        jm.update_progress(job_id, 5.0, "Fase 2/4: Preparando extracao de regras via Claudio...")
+        jm.update_progress(job_id, 5.0, "Fase 2/4: Preparando extracao de regras...")
 
         # Delete old business rules from RAG
         try:
@@ -289,108 +324,94 @@ class RagPipelineService:
         except Exception:
             pass
 
-        # Ensure output directory exists
-        output_dir = os.path.dirname(output_file)
-        os.makedirs(output_dir, exist_ok=True)
+        # Load all code files from RAG DB (indexed in Phase 1)
+        code_docs = self.db.execute(sql_text(
+            "SELECT content, metadata FROM rag_documents "
+            "WHERE project_id = :pid AND metadata->>'type' = 'code_file' "
+            "ORDER BY LENGTH(content) DESC"
+        ), {"pid": str(project_id)}).fetchall()
 
-        # Delete old output file if exists
-        if os.path.exists(output_file):
-            os.remove(output_file)
+        if not code_docs:
+            self._set_phase_status(project_id, 2, "failed")
+            raise ValueError("Nenhum arquivo indexado. Execute Phase 1 primeiro.")
+
+        logger.info(f"Phase 2: {len(code_docs)} code files loaded from RAG DB")
+
+        # Split into batches
+        batches = []
+        current_batch = []
+        current_chars = 0
+
+        for doc in code_docs:
+            content = doc[0] or ""
+            if not content.strip():
+                continue
+            doc_chars = len(content)
+            if current_chars + doc_chars > self.PHASE2_BATCH_MAX_CHARS and current_batch:
+                batches.append(current_batch)
+                current_batch = []
+                current_chars = 0
+            current_batch.append(content)
+            current_chars += doc_chars
+
+        if current_batch:
+            batches.append(current_batch)
+
+        logger.info(f"Phase 2: {len(batches)} batches created from {len(code_docs)} files")
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
 
         project_name = project.name or "Projeto"
+        total_rules = 0
 
-        jm.update_progress(job_id, 10.0, "Fase 2/4: Claudio analisando codebase...")
-
-        # Single prompt — Claudio reads the code and writes the output file
-        user_prompt = (
-            f"Voce esta no diretorio do projeto \"{project_name}\".\n\n"
-            f"SUA TAREFA: Analisar TODO o codigo-fonte do projeto e extrair "
-            f"TODAS as regras de negocio. Leia os arquivos de modelos, servicos, "
-            f"rotas, validacoes, schemas, migrations e configuracoes.\n\n"
-            f"CATEGORIAS de regras (use EXATAMENTE um destes valores):\n"
-            f"  dominio | validacao | restricao | workflow | permissao | calculo | integracao | negocio\n\n"
-            f"PRIORIDADE (use EXATAMENTE um destes valores):\n"
-            f"  critical | high | medium | low\n\n"
-            f"IGNORE: configuracoes puras de framework, CSS, logs de debug, infra Docker, imports.\n\n"
-            f"Para CADA regra encontrada, extraia:\n"
-            f"- rule_text: descricao detalhada em portugues (min 15 chars, ideal 100-500)\n"
-            f"- rule_type: uma das 8 categorias acima\n"
-            f"- source_file: caminho relativo do arquivo (ex: backend/app/models/user.py)\n"
-            f"- priority: critical|high|medium|low\n"
-            f"- entity: entidade principal (ex: Usuario, Pedido)\n"
-            f"- evidence: trecho de codigo ou funcao que comprova a regra\n\n"
-            f"GRAVE O RESULTADO no arquivo: {self.PHASE2_OUTPUT_FILE}\n\n"
-            f"O arquivo DEVE ser um JSON valido com esta estrutura:\n"
-            f'{{"business_rules": [{{"rule_text": "...", "rule_type": "...", '
-            f'"source_file": "...", "priority": "...", "entity": "...", "evidence": "..."}}]}}\n\n'
-            f"Extraia o MAXIMO de regras possivel. Analise CADA arquivo relevante. "
-            f"NAO invente regras — apenas extraia o que EXISTE no codigo. "
-            f"Todas em PORTUGUES. Seja DETALHADO nas descricoes."
-        )
-
-        try:
-            response = await orchestrator.execute(
-                usage_type="rag_extraction",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=(
-                    "Voce e um analista de negocios senior especializado em engenharia reversa "
-                    "de requisitos funcionais a partir de codebases existentes. "
-                    "Leia os arquivos do projeto, extraia regras de negocio, e grave o resultado "
-                    "no arquivo JSON especificado. Responda apenas com uma confirmacao curta."
-                ),
-                max_tokens=128000,
-                project_id=project_id,
-                metadata={"phase": "rag_pipeline_phase2", "pass": 1},
-                thinking=self.THINKING_CONFIG,
+        for batch_idx, batch in enumerate(batches):
+            pct = 10 + (80 * batch_idx // max(len(batches), 1))
+            jm.update_progress(
+                job_id, pct,
+                f"Fase 2/4: Batch {batch_idx + 1}/{len(batches)} — "
+                f"{total_rules} regras ate agora..."
             )
 
-            logger.info(f"Phase 2: Claudio response: {response.get('content', '')[:200]}")
+            # Join batch files into context
+            code_context = "\n\n---\n\n".join(batch)
 
-        except Exception as e:
-            logger.error(f"Phase 2 Claudio execution failed: {e}")
-            self._set_phase_status(project_id, 2, "failed")
-            raise ValueError(f"Claudio falhou: {e}")
+            user_prompt = (
+                f"Analise os seguintes arquivos do projeto \"{project_name}\" "
+                f"e extraia TODAS as regras de negocio:\n\n"
+                f"{code_context}"
+            )
 
-        jm.update_progress(job_id, 70.0, "Fase 2/4: Lendo regras extraidas pelo Claudio...")
-
-        # Read the output file written by Claudio, fallback to response text
-        raw_content = None
-        if os.path.exists(output_file):
             try:
-                with open(output_file, "r", encoding="utf-8") as f:
-                    raw_content = f.read()
-                logger.info(f"Phase 2: Read rules from file ({len(raw_content)} chars)")
-            except Exception as e:
-                logger.warning(f"Phase 2: Failed to read output file: {e}")
-
-        # Fallback: try to extract rules from Claudio's response text
-        if not raw_content or len(raw_content.strip()) < 20:
-            response_text = response.get("content", "")
-            if response_text and "business_rules" in response_text:
-                logger.info("Phase 2: Fallback — extracting rules from response text")
-                raw_content = response_text
-            elif response_text and "rule_text" in response_text:
-                logger.info("Phase 2: Fallback — wrapping response rules in envelope")
-                raw_content = response_text
-            else:
-                logger.error(f"Phase 2: No output file and no rules in response")
-                self._set_phase_status(project_id, 2, "failed")
-                raise ValueError(
-                    f"Claudio nao gerou o arquivo {self.PHASE2_OUTPUT_FILE} "
-                    f"e a resposta nao contem regras"
+                # NOTE: project_id omitted intentionally to prevent Claudio
+                # from entering agent mode (cwd). We want pure LLM response.
+                response = await orchestrator.execute(
+                    usage_type="rag_extraction",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=self.PHASE2_SYSTEM_PROMPT,
+                    max_tokens=16000,
+                    metadata={
+                        "phase": "rag_pipeline_phase2",
+                        "batch": batch_idx + 1,
+                        "total_batches": len(batches),
+                        "project_id": str(project_id),
+                    },
                 )
 
-        # Parse and validate rules
-        rules = self._parse_rules_json(raw_content)
-        total_rules = self._store_rules(rules, project_id)
-        self.db.commit()
+                raw = response.get("content", "")
+                rules = self._parse_rules_json(raw)
+                batch_rules = self._store_rules(rules, project_id)
+                self.db.commit()
+                total_rules += batch_rules
 
-        logger.info(f"Phase 2: {total_rules} rules imported from {output_file}")
+                logger.info(
+                    f"Phase 2 batch {batch_idx + 1}/{len(batches)}: "
+                    f"+{batch_rules} rules (total: {total_rules})"
+                )
 
-        jm.update_progress(job_id, 90.0, f"Fase 2/4: {total_rules} regras importadas para RAG...")
+            except Exception as e:
+                logger.error(f"Phase 2 batch {batch_idx + 1} failed: {e}")
+                continue
 
         # Update rag_file_state
         try:
@@ -404,17 +425,20 @@ class RagPipelineService:
 
         if total_rules == 0:
             self._set_phase_status(project_id, 2, "failed")
-            raise ValueError("Extracao falhou: 0 regras extraidas do arquivo gerado pelo Claudio")
+            raise ValueError(
+                f"Extracao falhou: 0 regras extraidas de {len(batches)} batches"
+            )
 
         self._set_phase_status(project_id, 2, "completed")
         jm.update_progress(
             job_id, 95.0,
-            f"Fase 2/4: Concluida — {total_rules} regras extraidas pelo Claudio"
+            f"Fase 2/4: Concluida — {total_rules} regras em {len(batches)} batches"
         )
         return {
             "phase": "extract_rules",
             "rules_extracted": total_rules,
-            "output_file": self.PHASE2_OUTPUT_FILE,
+            "batches": len(batches),
+            "code_files": len(code_docs),
         }
 
     # =====================================================================
