@@ -246,51 +246,33 @@ class RagPipelineService:
     # discarded by the validator.  No fuzzy fallbacks, no guessing.
     # =====================================================================
 
-    # PROMPT #253 - Thinking mode for deeper analysis
-    THINKING_CONFIG = {"type": "enabled", "budget_tokens": 10000}
+    # PROMPT #259 - Thinking disabled to save credits
+    THINKING_CONFIG = None
 
-    # RAG config reused by Phase 3 and Phase 4
-    PHASE2_RAG_TOP_K = 300
-    PHASE2_RAG_THRESHOLD = 0.1
+    # RAG config - keep small to avoid payload too large errors
+    PHASE2_RAG_TOP_K = 20
+    PHASE2_RAG_THRESHOLD = 0.3
 
     PHASE2_SYSTEM_PROMPT = (
-        "Voce e um analista de negocios senior especializado em engenharia reversa "
-        "de requisitos funcionais a partir de codebases existentes.\n\n"
-        "Voce vai receber trechos de codigo-fonte de um projeto. Analise CADA arquivo "
-        "e extraia TODAS as regras de negocio que encontrar.\n\n"
-        "CATEGORIAS de regras (use EXATAMENTE um destes valores):\n"
+        "IMPORTANTE: Voce NAO tem acesso a ferramentas. NAO tente executar comandos, "
+        "ler arquivos ou explorar diretorios. Todo o codigo necessario ja esta incluido "
+        "na mensagem do usuario como CONTEXTO. Analise APENAS o texto fornecido.\n\n"
+        "Voce e um analista de negocios. Extraia regras de negocio do codigo fornecido.\n\n"
+        "CATEGORIAS (use EXATAMENTE um destes):\n"
         "  dominio | validacao | restricao | workflow | permissao | calculo | integracao | negocio\n\n"
-        "PRIORIDADE (use EXATAMENTE um destes valores):\n"
+        "PRIORIDADE (use EXATAMENTE um destes):\n"
         "  critical | high | medium | low\n\n"
-        "IGNORE completamente:\n"
-        "  - Configuracoes puras de framework (settings, config boilerplate)\n"
-        "  - CSS, estilos, layouts puramente visuais\n"
-        "  - Logs de debug, print statements\n"
-        "  - Infraestrutura Docker, CI/CD\n"
-        "  - Imports e boilerplate de linguagem\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "CONTRATO DE RESPOSTA — JSON RIGIDO\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
-        "{\n"
-        '  "business_rules": [\n'
-        "    {\n"
-        '      "rule_text": "descricao detalhada da regra em portugues (min 15 chars, ideal 100-500)",\n'
-        '      "rule_type": "dominio|validacao|restricao|workflow|permissao|calculo|integracao|negocio",\n'
-        '      "source_file": "caminho relativo do arquivo (ex: backend/app/models/user.py)",\n'
-        '      "priority": "critical|high|medium|low",\n'
-        '      "entity": "entidade principal (ex: Usuario, Pedido, Projeto)",\n'
-        '      "evidence": "trecho de codigo ou funcao que comprova a regra"\n'
-        "    }\n"
-        "  ]\n"
-        "}\n\n"
+        "IGNORE: config boilerplate, CSS, logs, Docker, imports.\n\n"
+        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes, sem texto antes ou depois.\n\n"
+        '{"business_rules": [{"rule_text": "descricao em portugues min 15 chars", '
+        '"rule_type": "dominio", "source_file": "caminho/arquivo.py", '
+        '"priority": "medium", "entity": "Entidade", "evidence": "trecho de codigo"}]}\n\n'
         "REGRAS:\n"
-        "- Extraia o MAXIMO de regras possivel de cada arquivo\n"
-        "- NAO invente regras — apenas o que EXISTE no codigo\n"
-        "- Todas as descricoes em PORTUGUES\n"
-        "- Se nenhuma regra for encontrada, retorne {\"business_rules\": []}\n"
-        "- Seja DETALHADO nas descricoes (rule_text)\n"
-        "- source_file DEVE ser o caminho relativo do arquivo analisado"
+        "- Extraia o MAXIMO de regras do codigo no contexto\n"
+        "- NAO invente regras — apenas o que EXISTE no codigo fornecido\n"
+        "- Descricoes em PORTUGUES\n"
+        "- Se nenhuma regra: {\"business_rules\": []}\n"
+        "- source_file = caminho relativo do arquivo"
     )
 
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
@@ -341,11 +323,11 @@ class RagPipelineService:
         project_name = project.name or "Projeto"
 
         user_prompt = (
-            f'Analise TODOS os arquivos do projeto "{project_name}" disponiveis '
-            f'na base de conhecimento e extraia TODAS as regras de negocio.\n\n'
-            f'O projeto tem {code_count} arquivos indexados. Analise cada um e extraia '
-            f'o maximo de regras possivel.\n\n'
-            f'Retorne o JSON com as regras encontradas seguindo o contrato do system prompt.'
+            f'O codigo-fonte do projeto "{project_name}" esta no CONTEXTO acima '
+            f'(secao RELEVANT CONTEXT FROM KNOWLEDGE BASE). '
+            f'Analise esse codigo e extraia todas as regras de negocio.\n\n'
+            f'Retorne APENAS o JSON com business_rules conforme o system prompt. '
+            f'NAO use ferramentas, NAO explore arquivos, NAO escreva texto explicativo.'
         )
 
         try:
@@ -353,13 +335,13 @@ class RagPipelineService:
                 usage_type="rag_extraction",
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=self.PHASE2_SYSTEM_PROMPT,
-                max_tokens=16000,
+                max_tokens=8000,
                 project_id=project_id,
                 enable_rag=True,
                 rag_top_k=self.PHASE2_RAG_TOP_K,
                 rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
                 metadata={"phase": "rag_pipeline_phase2", "project_id": str(project_id)},
-                thinking=self.THINKING_CONFIG,
+                disable_cwd=True,
             )
 
             raw = response.get("content", "")
@@ -706,7 +688,7 @@ class RagPipelineService:
                     rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
                     rag_filter={"type": "business_rule"},
                     metadata={"phase": "rag_pipeline_phase3", "pass": pass_num},
-                    thinking=self.THINKING_CONFIG,
+                    disable_cwd=True,
                 )
 
                 raw = response.get("content", "")

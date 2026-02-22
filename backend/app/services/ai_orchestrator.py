@@ -873,6 +873,8 @@ class AIOrchestrator:
         trace_id: Optional[str] = None,
         # PROMPT #253 - Claudio extended thinking
         thinking: Optional[Dict] = None,
+        # PROMPT #259 - Disable CWD for RAG-only calls
+        disable_cwd: bool = False,
     ) -> Dict:
         """
         Executa chamada de IA usando modelo e configurações do banco
@@ -2201,8 +2203,9 @@ class AIOrchestrator:
         )
 
         # PROMPT #253 - Resolve cwd from project_id for Claudio calls
+        # PROMPT #259 - disable_cwd skips CWD resolution (RAG-only calls)
         _claudio_cwd = None
-        if provider == "claudio" and project_id:
+        if provider == "claudio" and project_id and not disable_cwd:
             try:
                 from app.models.project import Project
                 _proj = self.db.query(Project).filter(Project.id == project_id).first()
