@@ -283,6 +283,8 @@ class RagPipelineService:
     # Sobram ~35K para prompts + 16K para resposta
     PHASE2_RAG_TOP_K = 300
     PHASE2_RAG_THRESHOLD = 0.1
+    # PROMPT #253 - Thinking mode for deeper analysis
+    THINKING_CONFIG = {"type": "enabled", "budget_tokens": 10000}
 
     PHASE2_PASSES = 3  # 1 initial + 2 reinforcement
 
@@ -375,12 +377,13 @@ class RagPipelineService:
                     usage_type="rag_extraction",
                     messages=[{"role": "user", "content": user_prompt}],
                     system_prompt=self.PHASE2_SYSTEM_PROMPT,
-                    max_tokens=16384,
+                    max_tokens=32000,
                     project_id=project_id,
                     enable_rag=True,
                     rag_top_k=self.PHASE2_RAG_TOP_K,
                     rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
                     metadata={"phase": "rag_pipeline_phase2", "pass": pass_num},
+                    thinking=self.THINKING_CONFIG,
                 )
 
                 raw = response.get("content", "")
@@ -579,12 +582,13 @@ class RagPipelineService:
                     usage_type="content_generation",
                     messages=[{"role": "user", "content": user_prompt}],
                     system_prompt=self.PHASE3_SYSTEM_PROMPT,
-                    max_tokens=16384,
+                    max_tokens=32000,
                     project_id=project_id,
                     enable_rag=True,
                     rag_top_k=self.PHASE2_RAG_TOP_K,
                     rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
                     metadata={"phase": "rag_pipeline_phase3", "pass": pass_num},
+                    thinking=self.THINKING_CONFIG,
                 )
 
                 raw = response.get("content", "")
@@ -788,12 +792,13 @@ class RagPipelineService:
                     usage_type="content_generation",
                     messages=[{"role": "user", "content": user_prompt}],
                     system_prompt=self.PHASE4_SYSTEM_PROMPT,
-                    max_tokens=16384,
+                    max_tokens=32000,
                     project_id=project_id,
                     enable_rag=True,
                     rag_top_k=self.PHASE2_RAG_TOP_K,
                     rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
                     metadata={"phase": "rag_pipeline_phase4", "pass": pass_num},
+                    thinking=self.THINKING_CONFIG,
                 )
 
                 raw = response.get("content", "")

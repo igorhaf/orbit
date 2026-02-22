@@ -3,7 +3,7 @@ Service central para orquestração de múltiplos modelos de IA
 Gerencia Anthropic, OpenAI e Google AI de forma inteligente
 """
 
-from typing import Dict, List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal
 from sqlalchemy.orm import Session
 import logging
 import time
@@ -870,7 +870,9 @@ class AIOrchestrator:
         rag_top_k: int = 3,
         rag_similarity_threshold: float = 0.7,
         # PROMPT #296 - Observability
-        trace_id: Optional[str] = None
+        trace_id: Optional[str] = None,
+        # PROMPT #253 - Claudio extended thinking
+        thinking: Optional[Dict] = None,
     ) -> Dict:
         """
         Executa chamada de IA usando modelo e configurações do banco
@@ -1063,6 +1065,8 @@ class AIOrchestrator:
                             system_prompt=_effective_system_prompt,
                             max_tokens=max_tokens,
                             overrides=_util_context if _util_context else None,
+                            project_id=project_id,
+                            thinking=thinking,
                         )
                         result["chain_position"] = chain_idx + 1
                         result["chain_total"] = len(chain_model_list)
@@ -1182,6 +1186,8 @@ class AIOrchestrator:
                                         system_prompt=_effective_system_prompt,
                                         max_tokens=max_tokens,
                                         overrides=_util_context if _util_context else None,
+                                        project_id=project_id,
+                                        thinking=thinking,
                                     )
                                     result = self.utility_executor.post_process(
                                         _utility_nodes, result, _effective_messages,
@@ -1273,6 +1279,8 @@ class AIOrchestrator:
                                             system_prompt=_effective_system_prompt,
                                             max_tokens=max_tokens,
                                             overrides=_util_context if _util_context else None,
+                                            project_id=project_id,
+                                            thinking=thinking,
                                         )
                                         logger.info(f"✅ Retry Node (error): success on attempt {retry_attempt+1}")
                                         # Post-process the retried result
@@ -2058,6 +2066,8 @@ class AIOrchestrator:
                     messages=messages,
                     system_prompt=system_prompt,
                     max_tokens=max_tokens,
+                    project_id=project_id,
+                    thinking=thinking,
                 )
 
                 result["chain_position"] = i + 1
@@ -2085,6 +2095,8 @@ class AIOrchestrator:
         system_prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
         overrides: Optional[Dict] = None,
+        project_id: Optional[UUID] = None,
+        thinking: Optional[Dict] = None,
     ) -> Dict:
         """
         PROMPT #122 - Execute with a specific model config (for chain-based execution).
@@ -2188,6 +2200,18 @@ class AIOrchestrator:
             stream_id=_stream_id, model_label=_model_label,
         )
 
+        # PROMPT #253 - Resolve cwd from project_id for Claudio calls
+        _claudio_cwd = None
+        if provider == "claudio" and project_id:
+            try:
+                from app.models.project import Project
+                _proj = self.db.query(Project).filter(Project.id == project_id).first()
+                if _proj and _proj.code_path:
+                    _claudio_cwd = _proj.code_path
+                    logger.info(f"📂 Claudio cwd: {_claudio_cwd}")
+            except Exception as _cwd_err:
+                logger.warning(f"Could not resolve cwd for Claudio: {_cwd_err}")
+
         try:
             try:
                 if provider == "anthropic":
@@ -2201,7 +2225,7 @@ class AIOrchestrator:
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "claudio":
-                    result = await self._execute_anthropic_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, client_key="claudio")
+                    result = await self._execute_claudio_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -2225,7 +2249,7 @@ class AIOrchestrator:
                 elif provider == "cohere":
                     result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "claudio":
-                    result = await self._execute_anthropic(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, client_key="claudio")
+                    result = await self._execute_claudio(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -2288,6 +2312,193 @@ class AIOrchestrator:
                 "total_tokens": response.usage.input_tokens + response.usage.output_tokens
             }
         }
+
+    async def _execute_claudio(
+        self,
+        model: str,
+        messages: List[Dict],
+        system_prompt: Optional[str],
+        max_tokens: int,
+        temperature: float,
+        timeout_seconds: Optional[float] = None,
+        cwd: Optional[str] = None,
+        thinking: Optional[Dict] = None,
+    ) -> Dict:
+        """
+        PROMPT #253 - Execute via Claudio proxy using httpx (not SDK).
+        Supports cwd (working directory) and thinking (extended thinking)
+        which are Claudio-specific parameters not available in AsyncAnthropic SDK.
+        """
+        import httpx
+
+        claudio_base = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
+        url = f"{claudio_base}/v1/messages"
+
+        body: Dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": messages,
+        }
+
+        if system_prompt:
+            body["system"] = system_prompt
+
+        if cwd:
+            body["cwd"] = cwd
+
+        if thinking:
+            body["thinking"] = thinking
+        else:
+            body["temperature"] = temperature
+
+        _timeout = timeout_seconds or 600.0
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(_timeout)) as client:
+            resp = await client.post(
+                url,
+                json=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "anthropic-version": "2023-06-01",
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+        # Extract text from content blocks (may include thinking + text blocks)
+        content_text = ""
+        thinking_text = ""
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                content_text += block.get("text", "")
+            elif block.get("type") == "thinking":
+                thinking_text += block.get("thinking", "")
+
+        usage = data.get("usage", {})
+        result = {
+            "provider": "claudio",
+            "model": model,
+            "content": content_text,
+            "usage": {
+                "input_tokens": usage.get("input_tokens", 0),
+                "output_tokens": usage.get("output_tokens", 0),
+                "total_tokens": usage.get("input_tokens", 0) + usage.get("output_tokens", 0),
+            },
+        }
+        if thinking_text:
+            result["thinking"] = thinking_text
+
+        return result
+
+    async def _execute_claudio_streaming(
+        self,
+        model: str,
+        messages: List[Dict],
+        system_prompt: Optional[str],
+        max_tokens: int,
+        temperature: float,
+        stream_callback,
+        flush_callback,
+        timeout_seconds: Optional[float] = None,
+        cwd: Optional[str] = None,
+        thinking: Optional[Dict] = None,
+    ) -> Dict:
+        """
+        PROMPT #253 - Claudio streaming via httpx SSE.
+        Supports cwd and thinking parameters.
+        """
+        import httpx
+
+        claudio_base = os.getenv("CLAUDIO_BASE_URL", "http://localhost:8001")
+        url = f"{claudio_base}/v1/messages"
+
+        body: Dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "stream": True,
+            "messages": messages,
+        }
+
+        if system_prompt:
+            body["system"] = system_prompt
+
+        if cwd:
+            body["cwd"] = cwd
+
+        if thinking:
+            body["thinking"] = thinking
+        else:
+            body["temperature"] = temperature
+
+        _timeout = timeout_seconds or 600.0
+        accumulated = ""
+        thinking_text = ""
+        input_tokens = 0
+        output_tokens = 0
+        _stream_start = time.time()
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(_timeout)) as client:
+            async with client.stream(
+                "POST", url, json=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "anthropic-version": "2023-06-01",
+                },
+            ) as resp:
+                resp.raise_for_status()
+                buf = ""
+                async for chunk in resp.aiter_text():
+                    buf += chunk
+                    while "\n\n" in buf:
+                        event_block, buf = buf.split("\n\n", 1)
+                        event_type = ""
+                        event_data = ""
+                        for line in event_block.split("\n"):
+                            if line.startswith("event: "):
+                                event_type = line[7:]
+                            elif line.startswith("data: "):
+                                event_data = line[6:]
+                        if not event_data:
+                            continue
+                        try:
+                            parsed = json.loads(event_data)
+                        except (json.JSONDecodeError, Exception):
+                            continue
+
+                        if event_type == "content_block_delta":
+                            delta = parsed.get("delta", {})
+                            if delta.get("type") == "text_delta":
+                                text = delta.get("text", "")
+                                accumulated += text
+                                await stream_callback(text)
+                            elif delta.get("type") == "thinking_delta":
+                                thinking_text += delta.get("thinking", "")
+                        elif event_type == "message_delta":
+                            usage_delta = parsed.get("usage", {})
+                            output_tokens = usage_delta.get("output_tokens", output_tokens)
+                        elif event_type == "message_start":
+                            msg = parsed.get("message", {})
+                            usage_start = msg.get("usage", {})
+                            input_tokens = usage_start.get("input_tokens", 0)
+
+        await flush_callback()
+
+        _streaming_time_ms = int((time.time() - _stream_start) * 1000)
+        result = {
+            "provider": "claudio",
+            "model": model,
+            "content": accumulated,
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": input_tokens + output_tokens,
+                "execution_time_ms": _streaming_time_ms,
+            },
+        }
+        if thinking_text:
+            result["thinking"] = thinking_text
+
+        return result
 
     async def _execute_openai(
         self,
