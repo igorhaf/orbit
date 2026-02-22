@@ -434,12 +434,48 @@ class RagPipelineService:
         return stored
 
     # =========================================================================
-    # PHASE 3: Generate cards from business rules (closed status)
+    # PHASE 3: Generate cards from business rules via single AI prompt
+    # Uses enable_rag=True to inject business rules from RAG.
     # =========================================================================
+
+    PHASE3_SYSTEM_PROMPT = (
+        "Voce e um Product Owner senior especializado em estruturar backlogs "
+        "de projetos de software a partir de regras de negocio.\n\n"
+        "Voce vai receber as regras de negocio de um projeto extraidas da base "
+        "de conhecimento. Seu objetivo e criar uma hierarquia completa de cards "
+        "(demandas) no formato usado por ferramentas como JIRA.\n\n"
+        "HIERARQUIA OBRIGATORIA:\n"
+        "- **epic**: Modulos ou grandes areas funcionais do sistema\n"
+        "- **story**: Historias de usuario dentro de cada epic\n"
+        "- **task**: Tarefas tecnicas para implementar cada story\n"
+        "- **subtask**: Sub-tarefas atomicas dentro de cada task\n\n"
+        "REGRAS DE GERACAO:\n"
+        "- Cada epic deve agrupar regras de negocio relacionadas\n"
+        "- Cada story deve ter criterios de aceitacao claros\n"
+        "- Cada task deve ser implementavel por um desenvolvedor\n"
+        "- Cada subtask deve ser atomica (1-2 horas de trabalho)\n"
+        "- Titulos concisos e descritivos em PORTUGUES\n"
+        "- Descricoes claras explicando O QUE e POR QUE\n"
+        "- story_points em Fibonacci: 1, 2, 3, 5, 8, 13\n"
+        "- priority: critical, high, medium, low\n\n"
+        "FORMATO DE RESPOSTA: JSON puro, sem markdown.\n"
+        "Responda APENAS com o JSON:\n"
+        '{"cards": [\n'
+        '  {"title": "Titulo do Card", '
+        '"description": "Descricao detalhada", '
+        '"item_type": "epic|story|task|subtask", '
+        '"parent_title": null ou "Titulo do Epic/Story pai", '
+        '"story_points": 5, '
+        '"priority": "high|medium|low|critical", '
+        '"labels": ["area1", "area2"], '
+        '"acceptance_criteria": ["Criterio 1", "Criterio 2"]}\n'
+        "]}"
+    )
+
     async def phase_3_generate_cards(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 3: Generate cards from business rules in RAG.
-        Cards come CLOSED (workflow_state=done) since rules are already validated.
+        Phase 3: Generate cards via single AI prompt with RAG injection.
+        Reads business rules from RAG context and creates hierarchical cards.
         """
         self._set_phase_status(project_id, 3, "running")
         jm = JobManager(self.db)
@@ -450,44 +486,179 @@ class RagPipelineService:
 
         jm.update_progress(job_id, 5.0, "Fase 3/4: Gerando cards a partir das regras...")
 
-        # Use existing card generation logic with content_generation flow (Opus 4.6)
-        from app.services.context_generator import ContextGeneratorService
-        context_service = ContextGeneratorService(self.db)
-        context_service._usage_type_override = "content_generation"
+        # Verify business rules exist
+        rule_count = self.db.execute(sql_text(
+            "SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid "
+            "AND metadata->>'type' = 'business_rule'"
+        ), {"pid": str(project_id)}).scalar() or 0
 
-        result = await context_service.generate_cards_from_memory(
-            project_id=project_id,
-            job_manager=jm,
-            job_id=job_id,
+        if rule_count == 0:
+            self._set_phase_status(project_id, 3, "failed")
+            raise ValueError("Nenhuma regra de negocio encontrada. Execute Phase 2 primeiro.")
+
+        from app.services.ai_orchestrator import AIOrchestrator
+        orchestrator = AIOrchestrator(self.db)
+
+        jm.update_progress(job_id, 10.0,
+            f"Fase 3/4: Criando cards hierarquicos a partir de {rule_count} regras...")
+
+        user_prompt = (
+            f"Pegue todas as regras de negocio presentes na base de conhecimento "
+            f"do projeto \"{project.name or 'Projeto'}\" e crie todos os cards "
+            f"no banco de dados usando a hierarquia: Epic > Story > Task > Subtask.\n\n"
+            f"O projeto tem {rule_count} regras de negocio indexadas. "
+            f"Use a estrutura do codigo como referencia de formatacao.\n\n"
+            f"Agrupe regras relacionadas em Epics, decomponha em Stories com "
+            f"criterios de aceitacao, depois em Tasks tecnicas e Subtasks atomicas.\n\n"
+            f"Gere o MAXIMO de cards possiveis para cobrir TODAS as regras."
         )
 
-        # Mark all generated cards as done (closed)
-        from app.models.task import Task
-        updated = self.db.query(Task).filter(
-            Task.project_id == project_id,
-            Task.reporter == "watchdog",
-            Task.workflow_state.in_(["draft", "open", "backlog"]),
-        ).update({"workflow_state": "done"}, synchronize_session="fetch")
-        self.db.commit()
+        try:
+            response = await orchestrator.execute(
+                usage_type="content_generation",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=self.PHASE3_SYSTEM_PROMPT,
+                max_tokens=16384,
+                project_id=project_id,
+                enable_rag=True,
+                rag_top_k=self.PHASE2_RAG_TOP_K,
+                rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
+                metadata={"phase": "rag_pipeline_phase3"},
+            )
+
+            jm.update_progress(job_id, 60.0, "Fase 3/4: Salvando cards no banco...")
+
+            raw = response.get("content", "")
+            cards_created = self._create_cards_from_json(raw, project_id)
+            self.db.commit()
+
+            logger.info(f"Phase 3: {cards_created} cards created")
+
+        except Exception as e:
+            self._set_phase_status(project_id, 3, "failed")
+            raise ValueError(f"Geracao de cards falhou: {e}")
+
+        if cards_created == 0:
+            self._set_phase_status(project_id, 3, "failed")
+            raise ValueError("Geracao falhou: 0 cards criados")
 
         self._set_phase_status(project_id, 3, "completed")
-
-        cards_result = {
+        jm.update_progress(job_id, 95.0,
+            f"Fase 3/4: Concluida — {cards_created} cards criados")
+        return {
             "phase": "generate_cards",
-            "business_rule_cards": len(result.get("business_rule_cards", [])),
-            "suggested_epics": len(result.get("suggested_epics", [])),
-            "cards_closed": updated,
+            "cards_created": cards_created,
+            "rules_in_rag": rule_count,
         }
-        jm.update_progress(job_id, 95.0, f"Fase 3/4: Concluída — {updated} cards gerados")
-        return cards_result
+
+    def _create_cards_from_json(self, raw: str, project_id: UUID) -> int:
+        """Parse AI JSON response and create Task records in DB."""
+        from app.models.task import Task
+
+        try:
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if not json_match:
+                return 0
+            parsed = json.loads(json_match.group())
+            cards = parsed.get("cards", [])
+        except (json.JSONDecodeError, Exception) as e:
+            logger.error(f"Phase 3 JSON parse error: {e}")
+            return 0
+
+        # First pass: create all cards and map titles to IDs
+        title_to_id = {}
+        created = 0
+
+        for card in cards:
+            if not isinstance(card, dict):
+                continue
+            title = (card.get("title") or "").strip()
+            if not title:
+                continue
+
+            item_type = card.get("item_type", "task")
+            if item_type not in ("epic", "story", "task", "subtask"):
+                item_type = "task"
+
+            ac_list = card.get("acceptance_criteria", [])
+            acceptance_criteria = []
+            if isinstance(ac_list, list):
+                for ac in ac_list:
+                    if isinstance(ac, str):
+                        acceptance_criteria.append({"text": ac, "completed": False})
+                    elif isinstance(ac, dict):
+                        acceptance_criteria.append(ac)
+
+            task = Task(
+                title=title[:255],
+                description=card.get("description", ""),
+                item_type=item_type,
+                project_id=project_id,
+                workflow_state="done",
+                reporter="pipeline_phase3",
+                story_points=card.get("story_points"),
+                priority=card.get("priority", "medium"),
+                labels=card.get("labels", []),
+                acceptance_criteria=acceptance_criteria or None,
+                order=created,
+            )
+            self.db.add(task)
+            self.db.flush()
+            title_to_id[title] = task.id
+            created += 1
+
+        # Second pass: set parent_id based on parent_title
+        for card in cards:
+            if not isinstance(card, dict):
+                continue
+            title = (card.get("title") or "").strip()
+            parent_title = (card.get("parent_title") or "").strip()
+            if title and parent_title and parent_title in title_to_id and title in title_to_id:
+                self.db.execute(sql_text(
+                    "UPDATE tasks SET parent_id = :parent_id WHERE id = :task_id"
+                ), {"parent_id": str(title_to_id[parent_title]), "task_id": str(title_to_id[title])})
+
+        return created
 
     # =========================================================================
-    # PHASE 4: Generate wiki + title + description (1 AI call)
+    # PHASE 4: Generate wiki + title + description via single AI prompt
+    # Uses enable_rag=True to inject all project context from RAG.
     # =========================================================================
+
+    PHASE4_SYSTEM_PROMPT = (
+        "Voce e um documentador tecnico senior especializado em criar "
+        "wikis completas de projetos de software.\n\n"
+        "Voce vai receber o contexto completo de um projeto (codigo, regras "
+        "de negocio, estrutura) da base de conhecimento. Seu objetivo e gerar "
+        "TUDO de uma vez:\n\n"
+        "1. **Titulo do projeto** — conciso, max 60 caracteres\n"
+        "2. **Descricao do projeto** — 2-4 frases claras\n"
+        "3. **Paginas wiki** — documentacao completa do projeto\n\n"
+        "PAGINAS WIKI OBRIGATORIAS:\n"
+        "- **visao-geral**: Visao geral do projeto, proposito, arquitetura\n"
+        "- **padroes-arquitetura**: Padroes arquiteturais usados (MVC, CQRS, etc.)\n"
+        "- **convencoes-codigo**: Convencoes de codificacao, naming, estilo\n"
+        "- **regras-negocio**: Catalogo completo de regras de negocio\n"
+        "- **estrutura-codigo**: Organizacao de pastas, modulos, pacotes\n"
+        "- **componentes-interface**: Componentes UI, design system, paginas\n"
+        "- **integracao-api**: APIs, endpoints, webhooks, servicos externos\n\n"
+        "Cada pagina deve ter conteudo RICO em Markdown com headers, listas, "
+        "exemplos de codigo quando relevante.\n\n"
+        "TUDO em PORTUGUES.\n\n"
+        "FORMATO DE RESPOSTA: JSON puro, sem markdown externo.\n"
+        '{"title": "Titulo do Projeto", '
+        '"description": "Descricao clara do projeto...", '
+        '"wiki_pages": [\n'
+        '  {"slug": "visao-geral", "title": "Visao Geral", '
+        '"content": "# Visao Geral\\n\\nConteudo em markdown...", '
+        '"order": 1}\n'
+        "]}"
+    )
+
     async def phase_4_generate_wiki(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 4: Generate wiki + project title + description.
-        Uses 1 AI call for everything. Wiki pages also indexed in RAG.
+        Phase 4: Generate wiki + title + description via single AI prompt.
+        Uses enable_rag=True to inject full project context.
         """
         self._set_phase_status(project_id, 4, "running")
         jm = JobManager(self.db)
@@ -496,204 +667,123 @@ class RagPipelineService:
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        jm.update_progress(job_id, 5.0, "Fase 4/4: Preparando geração de wiki...")
+        jm.update_progress(job_id, 5.0, "Fase 4/4: Gerando wiki, titulo e descricao...")
 
-        # Step 1: Generate wiki pages using existing wiki service
-        jm.update_progress(job_id, 10.0, "Fase 4/4: Gerando páginas wiki...")
-        from app.services.wiki_service import (
-            _upsert_wiki_page,
-            _build_architecture_patterns_page,
-            _build_code_conventions_page,
-            _build_ui_components_page,
-            _build_code_structure_page,
-            _build_git_history_page,
-            _build_business_rules_wiki_pages,
-            _apply_semantic_links_to_project_fs,
-        )
-
-        code_path = project.code_path
-        pages_created = 0
-
-        # DB-only wiki pages
-        rag_page_builders = [
-            ("padroes-arquitetura", "Padrões de Arquitetura", _build_architecture_patterns_page, 6),
-            ("convencoes-codigo", "Convenções de Código", _build_code_conventions_page, 7),
-            ("componentes-interface", "Componentes e Interface", _build_ui_components_page, 8),
-            ("estrutura-codigo", "Estrutura de Código", _build_code_structure_page, 9),
-            ("historico-desenvolvimento", "Histórico de Desenvolvimento", _build_git_history_page, 10),
-        ]
-
-        for slug, title, builder, order in rag_page_builders:
-            try:
-                content = builder(self.db, project_id)
-                if content:
-                    _upsert_wiki_page(code_path, project_id, slug, title, content, order, "ai_generated")
-                    # Index wiki page in RAG
-                    self.rag.store(
-                        content=content,
-                        metadata={"type": "wiki_page", "slug": slug, "title": title},
-                        project_id=project_id,
-                    )
-                    pages_created += 1
-            except Exception as e:
-                logger.warning(f"Wiki page {slug} failed: {e}")
-
-        jm.update_progress(job_id, 30.0, "Fase 4/4: Gerando páginas de regras de negócio...")
-
-        # Business rule wiki pages
-        try:
-            rule_pages = _build_business_rules_wiki_pages(self.db, code_path, project_id)
-            pages_created += len(rule_pages) if rule_pages else 0
-            # Index rule pages in RAG
-            for rp in (rule_pages or []):
-                if rp.get("content"):
-                    self.rag.store(
-                        content=rp["content"],
-                        metadata={"type": "wiki_page", "slug": rp.get("slug", ""), "title": rp.get("title", "")},
-                        project_id=project_id,
-                    )
-        except Exception as e:
-            logger.warning(f"Business rules wiki failed: {e}")
-
-        jm.update_progress(job_id, 50.0, "Fase 4/4: Aplicando links semânticos...")
-
-        # Semantic linking
-        try:
-            _apply_semantic_links_to_project_fs(code_path, project_id)
-        except Exception as e:
-            logger.warning(f"Semantic links failed: {e}")
-
-        jm.update_progress(job_id, 60.0, "Fase 4/4: Gerando visão geral, título e descrição...")
-
-        # Step 2: Generate title + description via AI (1 prompt)
-        title_desc_generated = False
-        try:
-            title_desc_generated = await self._generate_title_and_description(project_id, project)
-        except Exception as e:
-            logger.warning(f"Title/description generation failed: {e}")
-
-        # Step 3: AI enrichment (Visão Geral page)
-        jm.update_progress(job_id, 75.0, "Fase 4/4: Gerando Visão Geral via IA...")
-        try:
-            from app.services.project_service import _enrich_context_from_rag
-            await _enrich_context_from_rag(self.db, project_id)
-        except Exception as e:
-            logger.warning(f"AI enrichment failed: {e}")
-
-        self.db.commit()
-        self._set_phase_status(project_id, 4, "completed")
-
-        result = {
-            "phase": "generate_wiki",
-            "pages_created": pages_created,
-            "title_description_generated": title_desc_generated,
-        }
-        jm.update_progress(job_id, 95.0, f"Fase 4/4: Concluída — {pages_created} páginas wiki geradas")
-        return result
-
-    # =========================================================================
-    # Helper methods
-    # =========================================================================
-
-    async def _generate_title_and_description(self, project_id: UUID, project: Project) -> bool:
-        """Generate project title and description from RAG (REGRA #0: only if empty)."""
-        # Skip if already set by human
-        has_title = bool(project.name and project.name.strip())
-        has_description = bool(project.description and project.description.strip())
-
-        if has_title and has_description:
-            logger.info(f"Title/description already set for {project_id}, skipping (REGRA #0)")
-            return False
-
-        # Get business rules from RAG
-        rules_result = self.db.execute(sql_text(
-            "SELECT content FROM rag_documents WHERE project_id = :pid "
-            "AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule') "
-            "ORDER BY created_at DESC LIMIT 50"
-        ), {"pid": str(project_id)})
-        rules = [row[0][:200] for row in rules_result.fetchall()]
-
-        if not rules:
-            logger.info(f"No rules in RAG for {project_id}, cannot generate title/description")
-            return False
-
-        # Get stack info
-        stack_info = ""
-        if project.initial_memory_context and isinstance(project.initial_memory_context, dict):
-            si = project.initial_memory_context.get("stack_info", {})
-            if si and isinstance(si, dict):
-                parts = []
-                if si.get("languages"):
-                    langs = si["languages"]
-                    parts.append(f"Linguagens: {', '.join(langs) if isinstance(langs, list) else langs}")
-                if si.get("frameworks"):
-                    fws = si["frameworks"]
-                    parts.append(f"Frameworks: {', '.join(fws) if isinstance(fws, list) else fws}")
-                stack_info = "; ".join(parts)
-
-        # AI call
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
 
-        system_prompt = (
-            "Analise as regras de negócio e informações do projeto e gere:\n"
-            "1. Um título conciso (máx 60 caracteres)\n"
-            "2. Uma descrição clara em 2-4 frases\n\n"
-            "Retorne APENAS JSON:\n"
-            '{"title": "Título do Projeto", "description": "Descrição clara..."}'
+        jm.update_progress(job_id, 10.0, "Fase 4/4: Analisando projeto via IA...")
+
+        user_prompt = (
+            f"Pegue todas as regras de negocio e todo o codigo-fonte presentes "
+            f"na base de conhecimento do projeto \"{project.name or 'Projeto'}\" "
+            f"e crie toda a estrutura de documentacao:\n\n"
+            f"1. Um titulo conciso para o projeto (max 60 caracteres)\n"
+            f"2. Uma descricao clara em 2-4 frases\n"
+            f"3. Todas as paginas wiki usando a estrutura do codigo como referencia\n\n"
+            f"Use o codigo-fonte REAL do projeto para criar paginas ricas e precisas. "
+            f"Documente padroes, convencoes, regras de negocio, APIs, componentes "
+            f"e estrutura de codigo encontrados.\n\n"
+            f"Gere o conteudo COMPLETO de cada pagina wiki em Markdown."
         )
-
-        rules_text = "\n".join(f"- {r}" for r in rules[:30])
-        user_prompt = f"## Regras de Negócio:\n{rules_text}"
-        if stack_info:
-            user_prompt += f"\n\n## Stack: {stack_info}"
-
-        # Include recent git commits for additional context
-        try:
-            commits = self._extract_git_commits(project.code_path, max_commits=50)
-            if commits:
-                commit_lines = [f"- [{c['date']}] {c['subject']}" for c in commits[:30]]
-                user_prompt += f"\n\n## Commits Recentes:\n" + "\n".join(commit_lines)
-        except Exception:
-            pass
 
         try:
             response = await orchestrator.execute(
                 usage_type="content_generation",
                 messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=500,
-                project_id=str(project_id),
-                metadata={"type": "project_info_generation", "skip_context_build": True},
+                system_prompt=self.PHASE4_SYSTEM_PROMPT,
+                max_tokens=16384,
+                project_id=project_id,
+                enable_rag=True,
+                rag_top_k=self.PHASE2_RAG_TOP_K,
+                rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
+                metadata={"phase": "rag_pipeline_phase4"},
             )
 
+            jm.update_progress(job_id, 60.0, "Fase 4/4: Salvando wiki e metadados...")
+
             raw = response.get("content", "")
-            import re
-            json_match = re.search(r'\{[\s\S]*\}', raw)
-            if json_match:
-                parsed = json.loads(json_match.group())
-                title = parsed.get("title", "").strip()
-                description = parsed.get("description", "").strip()
+            result = self._save_wiki_and_metadata(raw, project_id, project)
+            self.db.commit()
 
-                updated = False
-                if title and not has_title:
-                    project.name = title[:100]
-                    updated = True
-                    logger.info(f"Generated title for {project_id}: {title}")
-
-                if description and not has_description:
-                    project.description = description[:2000]
-                    updated = True
-                    logger.info(f"Generated description for {project_id}")
-
-                if updated:
-                    self.db.commit()
-                return updated
+            logger.info(
+                f"Phase 4: {result['pages_created']} wiki pages, "
+                f"title={'yes' if result['title_generated'] else 'no'}, "
+                f"desc={'yes' if result['description_generated'] else 'no'}"
+            )
 
         except Exception as e:
-            logger.warning(f"Title/description AI call failed: {e}")
+            self._set_phase_status(project_id, 4, "failed")
+            raise ValueError(f"Geracao de wiki falhou: {e}")
 
-        return False
+        self._set_phase_status(project_id, 4, "completed")
+        jm.update_progress(job_id, 95.0,
+            f"Fase 4/4: Concluida — {result['pages_created']} paginas wiki geradas")
+        return {
+            "phase": "generate_wiki",
+            **result,
+        }
+
+    def _save_wiki_and_metadata(self, raw: str, project_id: UUID, project: Project) -> Dict:
+        """Parse AI JSON response and save wiki pages, title, description."""
+        from app.services.wiki_service import _upsert_wiki_page
+
+        result = {"pages_created": 0, "title_generated": False, "description_generated": False}
+
+        try:
+            json_match = re.search(r'\{[\s\S]*\}', raw)
+            if not json_match:
+                return result
+            parsed = json.loads(json_match.group())
+        except (json.JSONDecodeError, Exception) as e:
+            logger.error(f"Phase 4 JSON parse error: {e}")
+            return result
+
+        # REGRA #0: Title — only if empty (human data is sacred)
+        title = (parsed.get("title") or "").strip()
+        if title and not (project.name and project.name.strip()):
+            project.name = title[:100]
+            result["title_generated"] = True
+            logger.info(f"Phase 4: Generated title: {title}")
+
+        # REGRA #0: Description — only if empty
+        description = (parsed.get("description") or "").strip()
+        if description and not (project.description and project.description.strip()):
+            project.description = description[:2000]
+            result["description_generated"] = True
+            logger.info(f"Phase 4: Generated description")
+
+        # Wiki pages
+        code_path = project.code_path
+        wiki_pages = parsed.get("wiki_pages", [])
+        for page in wiki_pages:
+            if not isinstance(page, dict):
+                continue
+            slug = (page.get("slug") or "").strip()
+            page_title = (page.get("title") or "").strip()
+            content = (page.get("content") or "").strip()
+            order = page.get("order", 1)
+
+            if not slug or not content:
+                continue
+
+            try:
+                _upsert_wiki_page(
+                    code_path, project_id, slug,
+                    page_title or slug, content,
+                    order, "ai_generated"
+                )
+                # Index wiki page in RAG
+                self.rag.store(
+                    content=content,
+                    metadata={"type": "wiki_page", "slug": slug, "title": page_title},
+                    project_id=project_id,
+                )
+                result["pages_created"] += 1
+            except Exception as e:
+                logger.warning(f"Wiki page {slug} failed: {e}")
+
+        return result
 
     # =========================================================================
     # File helpers
