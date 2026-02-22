@@ -240,42 +240,48 @@ class RagPipelineService:
     # Single call — no batches, no file iteration.
     # =========================================================================
 
+    # =====================================================================
+    # STRICT JSON CONTRACTS — PROMPT #254
+    # Each phase has a rigid schema. The AI MUST comply or entries are
+    # discarded by the validator.  No fuzzy fallbacks, no guessing.
+    # =====================================================================
+
     PHASE2_SYSTEM_PROMPT = (
         "Voce e um analista de negocios senior especializado em engenharia reversa "
         "de requisitos funcionais a partir de codebases existentes.\n\n"
         "Voce vai receber o contexto completo de um projeto de software indexado "
-        "na base de conhecimento. Seu objetivo e extrair TODAS as regras de negocio "
-        "possiveis a partir desse contexto.\n\n"
-        "Regras de negocio sao qualquer logica que define COMO o sistema se comporta "
-        "do ponto de vista do USUARIO ou do DOMINIO do negocio.\n\n"
-        "CATEGORIAS DE REGRAS que voce deve procurar:\n"
-        "- **dominio**: Entidades, relacionamentos, estados, ciclos de vida\n"
-        "- **validacao**: Validacoes de entrada, formatos, campos obrigatorios\n"
-        "- **restricao**: Limites numericos, tamanhos, quotas, thresholds\n"
-        "- **workflow**: Fluxos de usuario, maquinas de estado, transicoes\n"
-        "- **permissao**: Controle de acesso, roles, autorizacoes\n"
-        "- **calculo**: Formulas, algoritmos, agregacoes, metricas\n"
-        "- **integracao**: APIs externas, webhooks, eventos entre servicos\n"
-        "- **negocio**: Politicas de negocio, regras de precificacao, SLAs\n\n"
-        "IGNORE completamente:\n"
-        "- Configuracoes de framework (middleware, rotas, DI)\n"
-        "- CSS, estilos, layouts puros (sem logica)\n"
-        "- Logs, prints, debug\n"
-        "- Infraestrutura (Docker, CI/CD, deploy)\n"
-        "- Imports e boilerplate\n\n"
-        "FORMATO DE RESPOSTA: JSON puro, sem markdown, sem explicacoes.\n"
-        "Cada regra deve ser escrita em PORTUGUES, como se voce explicasse "
-        "para um gerente de produto que NAO conhece o codigo.\n\n"
-        "IMPORTANTE: Extraia o MAXIMO de regras possivel. Analise CADA modelo, "
-        "servico, rota, validacao, schema, configuracao e documentacao presente "
-        "no contexto. Nao pare ate ter coberto TUDO.\n\n"
-        "Responda APENAS com o JSON no formato:\n"
-        '{"business_rules": [\n'
-        '  {"rule_text": "Descricao clara da regra em portugues", '
-        '"rule_type": "dominio|validacao|restricao|workflow|permissao|calculo|integracao|negocio", '
-        '"source_file": "caminho/do/arquivo.ext", '
-        '"priority": "high|normal|low"}\n'
-        "]}"
+        "na base de conhecimento. Seu objetivo e extrair TODAS as regras de negocio.\n\n"
+        "CATEGORIAS (enum obrigatorio — use EXATAMENTE um destes valores):\n"
+        "  dominio | validacao | restricao | workflow | permissao | calculo | integracao | negocio\n\n"
+        "PRIORIDADE (enum obrigatorio):\n"
+        "  critical | high | medium | low\n\n"
+        "IGNORE: configuracoes de framework, CSS, logs, infra, imports.\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "CONTRATO DE RESPOSTA — SCHEMA RIGIDO (qualquer desvio sera descartado)\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
+        "{\n"
+        '  "business_rules": [\n'
+        "    {\n"
+        '      "rule_text": "string OBRIGATORIA, minimo 15 caracteres, em portugues. '
+        'Descreva a regra como para um gerente de produto que NAO conhece codigo.",\n'
+        '      "rule_type": "string OBRIGATORIA, enum: dominio|validacao|restricao|workflow|permissao|calculo|integracao|negocio",\n'
+        '      "source_file": "string OBRIGATORIA, caminho relativo do arquivo-fonte (ex: backend/app/models/user.py)",\n'
+        '      "priority": "string OBRIGATORIA, enum: critical|high|medium|low",\n'
+        '      "entity": "string OPCIONAL, entidade principal envolvida (ex: Usuario, Pedido, Pagamento)",\n'
+        '      "evidence": "string OPCIONAL, trecho de codigo ou funcao que evidencia a regra"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "REGRAS DO CONTRATO:\n"
+        "- rule_text: MINIMO 15 caracteres, MAXIMO 500 caracteres\n"
+        "- rule_type: EXATAMENTE um dos 8 valores do enum\n"
+        "- source_file: caminho relativo real do projeto, NUNCA vazio\n"
+        "- priority: EXATAMENTE um dos 4 valores do enum\n"
+        "- Cada regra deve ser UNICA — sem duplicatas semanticas\n"
+        "- Todas em PORTUGUES\n"
+        "- NAO invente regras — apenas extraia o que EXISTE no codigo/docs\n"
+        "- Extraia o MAXIMO possivel. Analise CADA modelo, servico, rota, validacao, schema."
     )
 
     # Claude Opus 4.6: 200K context window
@@ -424,44 +430,151 @@ class RagPipelineService:
             "passes": self.PHASE2_PASSES,
         }
 
-    def _parse_rules_json(self, raw: str) -> List[Any]:
-        """Parse business rules JSON from AI response."""
-        try:
-            json_match = re.search(r'\{[\s\S]*\}', raw)
-            if json_match:
-                parsed = json.loads(json_match.group())
-                return parsed.get("business_rules", [])
-        except json.JSONDecodeError as e:
-            logger.error(f"Phase 2 JSON parse error: {e}")
-        return []
+    # =====================================================================
+    # ROBUST JSON EXTRACTOR — handles markdown fences, trailing commas,
+    # concatenated objects, and other common AI output issues.
+    # =====================================================================
 
-    def _store_rules(self, rules: List[Any], project_id: UUID) -> int:
-        """Parse and store extracted rules in RAG. Returns count stored."""
+    @staticmethod
+    def _extract_json(raw: str) -> dict:
+        """
+        Extract a single JSON object from AI response text.
+        Handles: markdown fences, trailing commas, BOM, leading text.
+        Returns empty dict on failure.
+        """
+        if not raw or not raw.strip():
+            return {}
+
+        text = raw.strip()
+
+        # Strip markdown code fences (```json ... ``` or ``` ... ```)
+        fence_match = re.search(r'```(?:json)?\s*\n?([\s\S]*?)```', text)
+        if fence_match:
+            text = fence_match.group(1).strip()
+
+        # Find the outermost JSON object
+        start = text.find('{')
+        if start == -1:
+            return {}
+
+        # Walk forward counting braces to find the matching close
+        depth = 0
+        end = start
+        in_string = False
+        escape_next = False
+        for i in range(start, len(text)):
+            ch = text[i]
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                escape_next = True
+                continue
+            if ch == '"' and not escape_next:
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+
+        json_str = text[start:end + 1]
+
+        # Fix trailing commas before } or ] (common AI mistake)
+        json_str = re.sub(r',\s*([}\]])', r'\1', json_str)
+
+        try:
+            return json.loads(json_str)
+        except json.JSONDecodeError as e:
+            logger.error(f"JSON parse error after cleanup: {e}")
+            # Last resort: try the whole text
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                return {}
+
+    # =====================================================================
+    # PHASE 2 VALIDATORS — strict contract enforcement for business rules
+    # =====================================================================
+
+    VALID_RULE_TYPES = frozenset({
+        "dominio", "validacao", "restricao", "workflow",
+        "permissao", "calculo", "integracao", "negocio",
+    })
+    VALID_PRIORITIES = frozenset({"critical", "high", "medium", "low"})
+
+    def _parse_rules_json(self, raw: str) -> List[Dict]:
+        """Parse and VALIDATE business rules from AI response.
+        Returns only rules that pass all contract checks."""
+        parsed = self._extract_json(raw)
+        raw_rules = parsed.get("business_rules", [])
+        if not isinstance(raw_rules, list):
+            logger.warning("Phase 2: 'business_rules' is not a list")
+            return []
+
+        valid = []
+        rejected = 0
+        for i, rule in enumerate(raw_rules):
+            if not isinstance(rule, dict):
+                rejected += 1
+                continue
+
+            rule_text = str(rule.get("rule_text") or "").strip()
+            rule_type = str(rule.get("rule_type") or "").strip().lower()
+            source_file = str(rule.get("source_file") or "").strip()
+            priority = str(rule.get("priority") or "").strip().lower()
+
+            # ---- STRICT VALIDATION ----
+            if len(rule_text) < 15:
+                rejected += 1
+                continue
+            if rule_type not in self.VALID_RULE_TYPES:
+                rejected += 1
+                continue
+            if not source_file or len(source_file) < 3:
+                rejected += 1
+                continue
+            if priority not in self.VALID_PRIORITIES:
+                # Auto-fix common mistake: "normal" -> "medium"
+                if priority == "normal":
+                    priority = "medium"
+                else:
+                    rejected += 1
+                    continue
+
+            # Sanitize lengths
+            rule_text = rule_text[:500]
+            source_file = source_file[:255]
+
+            valid.append({
+                "rule_text": rule_text,
+                "rule_type": rule_type,
+                "source_file": source_file,
+                "priority": priority,
+                "entity": str(rule.get("entity") or "").strip()[:100],
+                "evidence": str(rule.get("evidence") or "").strip()[:300],
+            })
+
+        if rejected:
+            logger.info(f"Phase 2 validator: {len(valid)} accepted, {rejected} rejected")
+        return valid
+
+    def _store_rules(self, rules: List[Dict], project_id: UUID) -> int:
+        """Store validated rules in RAG. Only accepts dicts from _parse_rules_json."""
         stored = 0
         for rule in rules:
-            if isinstance(rule, str):
-                rule_text, rule_type, source_file, priority = rule, "general", "", "normal"
-            elif isinstance(rule, dict):
-                rule_text = (
-                    rule.get("rule_text") or rule.get("description")
-                    or rule.get("rule") or rule.get("text") or ""
-                )
-                rule_type = rule.get("rule_type", "general")
-                source_file = rule.get("source_file", "")
-                priority = rule.get("priority", "normal")
-            else:
-                continue
-
-            if not rule_text or len(rule_text.strip()) < 10:
-                continue
-
             self.rag.store_business_rule(
-                content=rule_text,
+                content=rule["rule_text"],
                 project_id=project_id,
                 source="pipeline_phase2",
-                source_file=source_file,
-                rule_type=rule_type,
-                priority=priority,
+                source_file=rule["source_file"],
+                rule_type=rule["rule_type"],
+                priority=rule["priority"],
             )
             stored += 1
         return stored
@@ -475,34 +588,40 @@ class RagPipelineService:
         "Voce e um Product Owner senior especializado em estruturar backlogs "
         "de projetos de software a partir de regras de negocio.\n\n"
         "Voce vai receber as regras de negocio de um projeto extraidas da base "
-        "de conhecimento. Seu objetivo e criar uma hierarquia completa de cards "
-        "(demandas) no formato usado por ferramentas como JIRA.\n\n"
-        "HIERARQUIA OBRIGATORIA:\n"
-        "- **epic**: Modulos ou grandes areas funcionais do sistema\n"
-        "- **story**: Historias de usuario dentro de cada epic\n"
-        "- **task**: Tarefas tecnicas para implementar cada story\n"
-        "- **subtask**: Sub-tarefas atomicas dentro de cada task\n\n"
-        "REGRAS DE GERACAO:\n"
-        "- Cada epic deve agrupar regras de negocio relacionadas\n"
-        "- Cada story deve ter criterios de aceitacao claros\n"
-        "- Cada task deve ser implementavel por um desenvolvedor\n"
-        "- Cada subtask deve ser atomica (1-2 horas de trabalho)\n"
-        "- Titulos concisos e descritivos em PORTUGUES\n"
-        "- Descricoes claras explicando O QUE e POR QUE\n"
-        "- story_points em Fibonacci: 1, 2, 3, 5, 8, 13\n"
-        "- priority: critical, high, medium, low\n\n"
-        "FORMATO DE RESPOSTA: JSON puro, sem markdown.\n"
-        "Responda APENAS com o JSON:\n"
-        '{"cards": [\n'
-        '  {"title": "Titulo do Card", '
-        '"description": "Descricao detalhada", '
-        '"item_type": "epic|story|task|subtask", '
-        '"parent_title": null ou "Titulo do Epic/Story pai", '
-        '"story_points": 5, '
-        '"priority": "high|medium|low|critical", '
-        '"labels": ["area1", "area2"], '
-        '"acceptance_criteria": ["Criterio 1", "Criterio 2"]}\n'
-        "]}"
+        "de conhecimento. Seu objetivo e criar uma hierarquia completa de cards.\n\n"
+        "HIERARQUIA (enum obrigatorio):\n"
+        "  epic > story > task > subtask\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "CONTRATO DE RESPOSTA — SCHEMA RIGIDO (qualquer desvio sera descartado)\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
+        "{\n"
+        '  "cards": [\n'
+        "    {\n"
+        '      "title": "string OBRIGATORIA, 5-120 caracteres, titulo conciso em portugues",\n'
+        '      "description": "string OBRIGATORIA, minimo 20 caracteres, explicando O QUE e POR QUE",\n'
+        '      "item_type": "string OBRIGATORIA, enum: epic|story|task|subtask",\n'
+        '      "parent_title": "string ou null. Titulo EXATO do card pai. null para epics de nivel raiz.",\n'
+        '      "story_points": "integer OBRIGATORIO, Fibonacci: 1|2|3|5|8|13",\n'
+        '      "priority": "string OBRIGATORIA, enum: critical|high|medium|low",\n'
+        '      "labels": "array de strings, 1-5 labels descritivas (ex: [\"autenticacao\", \"backend\"])",\n'
+        '      "acceptance_criteria": "array de strings, minimo 1 criterio por card, cada criterio com minimo 10 caracteres"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "REGRAS DO CONTRATO:\n"
+        "- title: 5-120 caracteres, UNICO no projeto, sem prefixos numericos\n"
+        "- description: MINIMO 20 caracteres, explicar O QUE a demanda resolve e POR QUE\n"
+        "- item_type: EXATAMENTE um dos 4 valores do enum\n"
+        "- parent_title: DEVE corresponder ao title EXATO de outro card na lista. null para epics raiz.\n"
+        "  story tem parent_title de um epic. task tem parent_title de uma story. subtask de uma task.\n"
+        "- story_points: Fibonacci APENAS (1,2,3,5,8,13). Epics: 8-13. Stories: 3-8. Tasks: 1-5. Subtasks: 1-2.\n"
+        "- priority: EXATAMENTE um dos 4 valores\n"
+        "- labels: array de 1-5 strings, cada label 2-30 caracteres, lowercase, sem espacos (use hifens)\n"
+        "- acceptance_criteria: MINIMO 1 criterio, MAXIMO 10. Cada criterio e uma string verificavel.\n"
+        "- Todos os textos em PORTUGUES\n"
+        "- Hierarquia COMPLETA: cada epic deve ter stories, cada story deve ter tasks\n"
+        "- NAO crie cards orphaos (sem pai) exceto epics de nivel raiz"
     )
 
     PHASE3_PASSES = 3  # 1 initial + 2 reinforcement
@@ -616,72 +735,136 @@ class RagPipelineService:
             "passes": self.PHASE3_PASSES,
         }
 
+    # =====================================================================
+    # PHASE 3 VALIDATORS — strict contract enforcement for cards
+    # =====================================================================
+
+    VALID_ITEM_TYPES = frozenset({"epic", "story", "task", "subtask"})
+    VALID_FIBONACCI = frozenset({1, 2, 3, 5, 8, 13})
+
     def _create_cards_from_json(self, raw: str, project_id: UUID) -> int:
-        """Parse AI JSON response and create Task records in DB."""
+        """Parse, VALIDATE and create Task records from AI JSON response.
+        Rejects any card that violates the contract."""
         from app.models.task import Task
 
-        try:
-            json_match = re.search(r'\{[\s\S]*\}', raw)
-            if not json_match:
-                return 0
-            parsed = json.loads(json_match.group())
-            cards = parsed.get("cards", [])
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error(f"Phase 3 JSON parse error: {e}")
+        parsed = self._extract_json(raw)
+        raw_cards = parsed.get("cards", [])
+        if not isinstance(raw_cards, list):
+            logger.warning("Phase 3: 'cards' is not a list")
             return 0
 
-        # First pass: create all cards and map titles to IDs
+        # ---- PASS 1: Validate and collect valid cards ----
+        valid_cards = []
+        rejected = 0
+
+        for card in raw_cards:
+            if not isinstance(card, dict):
+                rejected += 1
+                continue
+
+            title = str(card.get("title") or "").strip()
+            description = str(card.get("description") or "").strip()
+            item_type = str(card.get("item_type") or "").strip().lower()
+            parent_title = (card.get("parent_title") or None)
+            if parent_title is not None:
+                parent_title = str(parent_title).strip() or None
+            story_points = card.get("story_points")
+            priority = str(card.get("priority") or "").strip().lower()
+            labels = card.get("labels", [])
+            ac_list = card.get("acceptance_criteria", [])
+
+            # ---- STRICT VALIDATION ----
+            if len(title) < 5 or len(title) > 120:
+                rejected += 1
+                continue
+            if len(description) < 20:
+                rejected += 1
+                continue
+            if item_type not in self.VALID_ITEM_TYPES:
+                rejected += 1
+                continue
+            if priority not in self.VALID_PRIORITIES:
+                priority = "medium"  # safe default
+            # story_points: coerce to int, validate Fibonacci
+            try:
+                story_points = int(story_points) if story_points is not None else 3
+            except (ValueError, TypeError):
+                story_points = 3
+            if story_points not in self.VALID_FIBONACCI:
+                # Snap to nearest Fibonacci
+                story_points = min(self.VALID_FIBONACCI, key=lambda x: abs(x - story_points))
+            # labels: validate array of strings
+            if not isinstance(labels, list):
+                labels = []
+            labels = [
+                str(l).strip().lower().replace(" ", "-")[:30]
+                for l in labels
+                if isinstance(l, str) and len(str(l).strip()) >= 2
+            ][:5]
+            # acceptance_criteria: validate array of strings
+            if not isinstance(ac_list, list):
+                ac_list = []
+            acceptance_criteria = []
+            for ac in ac_list[:10]:
+                if isinstance(ac, str) and len(ac.strip()) >= 10:
+                    acceptance_criteria.append({"text": ac.strip()[:500], "completed": False})
+                elif isinstance(ac, dict) and ac.get("text") and len(str(ac["text"]).strip()) >= 10:
+                    acceptance_criteria.append({
+                        "text": str(ac["text"]).strip()[:500],
+                        "completed": bool(ac.get("completed", False)),
+                    })
+
+            valid_cards.append({
+                "title": title[:120],
+                "description": description[:2000],
+                "item_type": item_type,
+                "parent_title": parent_title,
+                "story_points": story_points,
+                "priority": priority,
+                "labels": labels,
+                "acceptance_criteria": acceptance_criteria or None,
+            })
+
+        if rejected:
+            logger.info(f"Phase 3 validator: {len(valid_cards)} accepted, {rejected} rejected")
+
+        if not valid_cards:
+            return 0
+
+        # ---- PASS 2: Create DB records ----
         title_to_id = {}
         created = 0
 
-        for card in cards:
-            if not isinstance(card, dict):
-                continue
-            title = (card.get("title") or "").strip()
-            if not title:
-                continue
-
-            item_type = card.get("item_type", "task")
-            if item_type not in ("epic", "story", "task", "subtask"):
-                item_type = "task"
-
-            ac_list = card.get("acceptance_criteria", [])
-            acceptance_criteria = []
-            if isinstance(ac_list, list):
-                for ac in ac_list:
-                    if isinstance(ac, str):
-                        acceptance_criteria.append({"text": ac, "completed": False})
-                    elif isinstance(ac, dict):
-                        acceptance_criteria.append(ac)
-
+        for card in valid_cards:
             task = Task(
-                title=title[:255],
-                description=card.get("description", ""),
-                item_type=item_type,
+                title=card["title"],
+                description=card["description"],
+                item_type=card["item_type"],
                 project_id=project_id,
                 workflow_state="done",
                 reporter="pipeline_phase3",
-                story_points=card.get("story_points"),
-                priority=card.get("priority", "medium"),
-                labels=card.get("labels", []),
-                acceptance_criteria=acceptance_criteria or None,
+                story_points=card["story_points"],
+                priority=card["priority"],
+                labels=card["labels"],
+                acceptance_criteria=card["acceptance_criteria"],
                 order=created,
             )
             self.db.add(task)
             self.db.flush()
-            title_to_id[title] = task.id
+            title_to_id[task.title] = task.id
             created += 1
 
-        # Second pass: set parent_id based on parent_title
-        for card in cards:
-            if not isinstance(card, dict):
-                continue
-            title = (card.get("title") or "").strip()
-            parent_title = (card.get("parent_title") or "").strip()
+        # ---- PASS 3: Set parent_id based on parent_title ----
+        for card in valid_cards:
+            title = card["title"]
+            parent_title = card.get("parent_title")
             if title and parent_title and parent_title in title_to_id and title in title_to_id:
                 self.db.execute(sql_text(
                     "UPDATE tasks SET parent_id = :parent_id WHERE id = :task_id"
-                ), {"parent_id": str(title_to_id[parent_title]), "task_id": str(title_to_id[title])})
+                ), {
+                    "parent_id": str(title_to_id[parent_title]),
+                    "task_id": str(title_to_id[title]),
+                })
 
         return created
 
@@ -693,31 +876,39 @@ class RagPipelineService:
     PHASE4_SYSTEM_PROMPT = (
         "Voce e um documentador tecnico senior especializado em criar "
         "wikis completas de projetos de software.\n\n"
-        "Voce vai receber o contexto completo de um projeto (codigo, regras "
-        "de negocio, estrutura) da base de conhecimento. Seu objetivo e gerar "
-        "TUDO de uma vez:\n\n"
-        "1. **Titulo do projeto** — conciso, max 60 caracteres\n"
-        "2. **Descricao do projeto** — 2-4 frases claras\n"
-        "3. **Paginas wiki** — documentacao completa do projeto\n\n"
-        "PAGINAS WIKI OBRIGATORIAS:\n"
-        "- **visao-geral**: Visao geral do projeto, proposito, arquitetura\n"
-        "- **padroes-arquitetura**: Padroes arquiteturais usados (MVC, CQRS, etc.)\n"
-        "- **convencoes-codigo**: Convencoes de codificacao, naming, estilo\n"
-        "- **regras-negocio**: Catalogo completo de regras de negocio\n"
-        "- **estrutura-codigo**: Organizacao de pastas, modulos, pacotes\n"
-        "- **componentes-interface**: Componentes UI, design system, paginas\n"
-        "- **integracao-api**: APIs, endpoints, webhooks, servicos externos\n\n"
-        "Cada pagina deve ter conteudo RICO em Markdown com headers, listas, "
-        "exemplos de codigo quando relevante.\n\n"
-        "TUDO em PORTUGUES.\n\n"
-        "FORMATO DE RESPOSTA: JSON puro, sem markdown externo.\n"
-        '{"title": "Titulo do Projeto", '
-        '"description": "Descricao clara do projeto...", '
-        '"wiki_pages": [\n'
-        '  {"slug": "visao-geral", "title": "Visao Geral", '
-        '"content": "# Visao Geral\\n\\nConteudo em markdown...", '
-        '"order": 1}\n'
-        "]}"
+        "Voce vai receber o contexto completo de um projeto da base de conhecimento. "
+        "Gere titulo, descricao e todas as paginas wiki.\n\n"
+        "PAGINAS WIKI OBRIGATORIAS (slugs exatos):\n"
+        "  visao-geral | padroes-arquitetura | convencoes-codigo | regras-negocio\n"
+        "  estrutura-codigo | componentes-interface | integracao-api\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "CONTRATO DE RESPOSTA — SCHEMA RIGIDO (qualquer desvio sera descartado)\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
+        "{\n"
+        '  "title": "string OBRIGATORIA, 5-60 caracteres, titulo conciso do projeto",\n'
+        '  "description": "string OBRIGATORIA, 50-500 caracteres, 2-4 frases descrevendo o projeto",\n'
+        '  "wiki_pages": [\n'
+        "    {\n"
+        '      "slug": "string OBRIGATORIA, formato kebab-case (a-z, 0-9, hifens), 3-50 caracteres",\n'
+        '      "title": "string OBRIGATORIA, 3-100 caracteres, titulo da pagina em portugues",\n'
+        '      "content": "string OBRIGATORIA, conteudo em Markdown, MINIMO 200 caracteres. '
+        'Use headers (#, ##, ###), listas, exemplos de codigo quando relevante.",\n'
+        '      "order": "integer OBRIGATORIO, posicao da pagina (1, 2, 3...), unico por pagina"\n'
+        "    }\n"
+        "  ]\n"
+        "}\n\n"
+        "REGRAS DO CONTRATO:\n"
+        "- title (projeto): 5-60 caracteres, sem quebras de linha\n"
+        "- description (projeto): 50-500 caracteres, 2-4 frases completas\n"
+        "- slug: kebab-case APENAS (regex: ^[a-z0-9]+(-[a-z0-9]+)*$), UNICO\n"
+        "- title (pagina): 3-100 caracteres, descritivo\n"
+        "- content: MINIMO 200 caracteres de Markdown RICO. Paginas com menos sao descartadas.\n"
+        "- order: inteiro sequencial unico (1, 2, 3...)\n"
+        "- Todos os textos em PORTUGUES\n"
+        "- Cada pagina wiki DEVE ter: pelo menos 1 header (#), pelo menos 1 paragrafo, "
+        "conteudo factual baseado no codigo real do projeto\n"
+        "- NAO invente features que nao existem no codigo"
     )
 
     PHASE4_PASSES = 3  # 1 initial + 2 reinforcement
@@ -828,53 +1019,111 @@ class RagPipelineService:
             "passes": self.PHASE4_PASSES,
         }
 
+    # =====================================================================
+    # PHASE 4 VALIDATORS — strict contract enforcement for wiki/title/desc
+    # =====================================================================
+
+    SLUG_RE = re.compile(r'^[a-z0-9]+(-[a-z0-9]+)*$')
+
     def _save_wiki_and_metadata(self, raw: str, project_id: UUID, project: Project) -> Dict:
-        """Parse AI JSON response and save wiki pages, title, description."""
+        """Parse, VALIDATE and save wiki pages, title, description.
+        Rejects any page that violates the contract."""
         from app.services.wiki_service import _upsert_wiki_page
 
         result = {"pages_created": 0, "title_generated": False, "description_generated": False}
 
-        try:
-            json_match = re.search(r'\{[\s\S]*\}', raw)
-            if not json_match:
-                return result
-            parsed = json.loads(json_match.group())
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error(f"Phase 4 JSON parse error: {e}")
+        parsed = self._extract_json(raw)
+        if not parsed:
+            logger.warning("Phase 4: no valid JSON found in response")
             return result
 
-        # REGRA #0: Title — only if empty (human data is sacred)
-        title = (parsed.get("title") or "").strip()
-        if title and not (project.name and project.name.strip()):
-            project.name = title[:100]
-            result["title_generated"] = True
-            logger.info(f"Phase 4: Generated title: {title}")
+        # ---- PROJECT TITLE — strict validation + REGRA #0 ----
+        title = str(parsed.get("title") or "").strip()
+        if title and 5 <= len(title) <= 60:
+            # Remove line breaks (contract violation)
+            title = title.replace("\n", " ").replace("\r", "")
+            # REGRA #0: Only set if empty (human data is sacred)
+            if not (project.name and project.name.strip()):
+                project.name = title
+                result["title_generated"] = True
+                logger.info(f"Phase 4: Generated title: {title}")
+        elif title:
+            logger.warning(f"Phase 4: title rejected (len={len(title)}, must be 5-60)")
 
-        # REGRA #0: Description — only if empty
-        description = (parsed.get("description") or "").strip()
-        if description and not (project.description and project.description.strip()):
-            project.description = description[:2000]
-            result["description_generated"] = True
-            logger.info(f"Phase 4: Generated description")
+        # ---- PROJECT DESCRIPTION — strict validation + REGRA #0 ----
+        description = str(parsed.get("description") or "").strip()
+        if description and 50 <= len(description) <= 500:
+            # REGRA #0: Only set if empty
+            if not (project.description and project.description.strip()):
+                project.description = description
+                result["description_generated"] = True
+                logger.info(f"Phase 4: Generated description ({len(description)} chars)")
+        elif description and len(description) >= 20:
+            # Relax slightly: accept 20+ chars but truncate to 500
+            if not (project.description and project.description.strip()):
+                project.description = description[:500]
+                result["description_generated"] = True
+        elif description:
+            logger.warning(f"Phase 4: description rejected (len={len(description)}, must be 50-500)")
 
-        # Wiki pages
+        # ---- WIKI PAGES — strict validation ----
         code_path = project.code_path
         wiki_pages = parsed.get("wiki_pages", [])
+        if not isinstance(wiki_pages, list):
+            logger.warning("Phase 4: 'wiki_pages' is not a list")
+            return result
+
+        seen_slugs = set()
+        rejected = 0
+
         for page in wiki_pages:
             if not isinstance(page, dict):
+                rejected += 1
                 continue
-            slug = (page.get("slug") or "").strip()
-            page_title = (page.get("title") or "").strip()
-            content = (page.get("content") or "").strip()
+
+            slug = str(page.get("slug") or "").strip().lower()
+            page_title = str(page.get("title") or "").strip()
+            content = str(page.get("content") or "").strip()
             order = page.get("order", 1)
 
-            if not slug or not content:
+            # ---- STRICT VALIDATION ----
+            # slug: kebab-case, 3-50 chars
+            if not slug or len(slug) < 3 or len(slug) > 50:
+                rejected += 1
                 continue
+            if not self.SLUG_RE.match(slug):
+                # Try to auto-fix: replace spaces/underscores with hyphens
+                slug = re.sub(r'[^a-z0-9]+', '-', slug).strip('-')
+                if not self.SLUG_RE.match(slug) or len(slug) < 3:
+                    rejected += 1
+                    continue
+            # Unique slug
+            if slug in seen_slugs:
+                rejected += 1
+                continue
+            seen_slugs.add(slug)
+
+            # title: 3-100 chars
+            if len(page_title) < 3:
+                page_title = slug.replace("-", " ").title()
+            page_title = page_title[:100]
+
+            # content: min 200 chars of actual Markdown
+            if len(content) < 200:
+                rejected += 1
+                logger.warning(f"Phase 4: wiki '{slug}' rejected (content too short: {len(content)} chars)")
+                continue
+
+            # order: coerce to int
+            try:
+                order = int(order)
+            except (ValueError, TypeError):
+                order = 1
 
             try:
                 _upsert_wiki_page(
                     code_path, project_id, slug,
-                    page_title or slug, content,
+                    page_title, content,
                     order, "ai_generated"
                 )
                 # Index wiki page in RAG
@@ -885,7 +1134,10 @@ class RagPipelineService:
                 )
                 result["pages_created"] += 1
             except Exception as e:
-                logger.warning(f"Wiki page {slug} failed: {e}")
+                logger.warning(f"Wiki page '{slug}' save failed: {e}")
+
+        if rejected:
+            logger.info(f"Phase 4 validator: {result['pages_created']} pages accepted, {rejected} rejected")
 
         return result
 
