@@ -275,13 +275,19 @@ class RagPipelineService:
         "- source_file = caminho relativo do arquivo"
     )
 
+    # PROMPT #259 - Batch size: how many code_file docs per LLM call
+    PHASE2_BATCH_SIZE = 30
+    # Max chars of code context per batch (avoid payload too large)
+    PHASE2_MAX_CONTEXT_CHARS = 80000
+
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 2: Extract business rules via single AI call with RAG injection.
+        Phase 2: Extract business rules via MULTIPLE batched AI calls.
 
-        Uses enable_rag=True to inject code_file documents (indexed in Phase 1)
-        directly into the prompt context. Claudio Opus analyses all code and
-        returns a JSON with business rules. No batching, no CWD.
+        Reads code_file documents directly from rag_documents table,
+        groups them into batches (~30 files or 80k chars), and sends
+        each batch to the LLM for rule extraction. Accumulates rules
+        across all batches for comprehensive coverage (target: 200+ rules).
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
@@ -304,57 +310,107 @@ class RagPipelineService:
         except Exception:
             pass
 
-        # Verify code files exist in RAG
-        code_count = self.db.execute(sql_text(
-            "SELECT COUNT(*) FROM rag_documents "
-            "WHERE project_id = :pid AND metadata->>'type' = 'code_file'"
-        ), {"pid": str(project_id)}).scalar() or 0
+        # Load ALL code_file documents from RAG (content + metadata)
+        rows = self.db.execute(sql_text(
+            "SELECT content, metadata FROM rag_documents "
+            "WHERE project_id = :pid AND metadata->>'type' = 'code_file' "
+            "ORDER BY metadata->>'source_file'"
+        ), {"pid": str(project_id)}).fetchall()
 
+        code_count = len(rows)
         if code_count == 0:
             self._set_phase_status(project_id, 2, "failed")
             raise ValueError("Nenhum arquivo indexado. Execute Phase 1 primeiro.")
 
-        logger.info(f"Phase 2: {code_count} code files available in RAG")
-        jm.update_progress(job_id, 10.0, "Fase 2/4: Extraindo regras via Claudio Opus...")
+        logger.info(f"Phase 2: {code_count} code files loaded from RAG")
+
+        # Build batches respecting size limits
+        batches = []
+        current_batch = []
+        current_chars = 0
+        for row in rows:
+            content = row[0] or ""
+            meta = row[1] if isinstance(row[1], dict) else {}
+            source = meta.get("source_file", "unknown")
+            entry = f"=== {source} ===\n{content}\n"
+            entry_len = len(entry)
+
+            if current_batch and (
+                len(current_batch) >= self.PHASE2_BATCH_SIZE
+                or current_chars + entry_len > self.PHASE2_MAX_CONTEXT_CHARS
+            ):
+                batches.append(current_batch)
+                current_batch = []
+                current_chars = 0
+
+            current_batch.append(entry)
+            current_chars += entry_len
+
+        if current_batch:
+            batches.append(current_batch)
+
+        total_batches = len(batches)
+        logger.info(f"Phase 2: {code_count} files split into {total_batches} batches")
+        jm.update_progress(
+            job_id, 10.0,
+            f"Fase 2/4: Extraindo regras em {total_batches} lotes..."
+        )
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
-
         project_name = project.name or "Projeto"
 
-        user_prompt = (
-            f'O codigo-fonte do projeto "{project_name}" esta no CONTEXTO acima '
-            f'(secao RELEVANT CONTEXT FROM KNOWLEDGE BASE). '
-            f'Analise esse codigo e extraia todas as regras de negocio.\n\n'
-            f'Retorne APENAS o JSON com business_rules conforme o system prompt. '
-            f'NAO use ferramentas, NAO explore arquivos, NAO escreva texto explicativo.'
-        )
-
-        try:
-            response = await orchestrator.execute(
-                usage_type="rag_extraction",
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=self.PHASE2_SYSTEM_PROMPT,
-                max_tokens=8000,
-                project_id=project_id,
-                enable_rag=True,
-                rag_top_k=self.PHASE2_RAG_TOP_K,
-                rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
-                metadata={"phase": "rag_pipeline_phase2", "project_id": str(project_id)},
-                disable_cwd=True,
+        total_rules = 0
+        for batch_idx, batch in enumerate(batches):
+            batch_num = batch_idx + 1
+            progress = 10.0 + (80.0 * batch_num / total_batches)
+            jm.update_progress(
+                job_id, progress,
+                f"Fase 2/4: Lote {batch_num}/{total_batches} — {total_rules} regras ate agora"
             )
 
-            raw = response.get("content", "")
-            rules = self._parse_rules_json(raw)
-            total_rules = self._store_rules(rules, project_id)
-            self.db.commit()
+            code_context = "\n".join(batch)
 
-            logger.info(f"Phase 2: {total_rules} rules extracted from single call")
+            user_prompt = (
+                f'CODIGO-FONTE do projeto "{project_name}" '
+                f'(lote {batch_num} de {total_batches}):\n\n'
+                f'{code_context}\n\n'
+                f'---\n'
+                f'Analise TODO o codigo acima e extraia TODAS as regras de negocio.\n'
+                f'Retorne APENAS o JSON com business_rules. '
+                f'NAO use ferramentas, NAO explore arquivos.'
+            )
 
-        except Exception as e:
-            logger.error(f"Phase 2 failed: {e}")
-            self._set_phase_status(project_id, 2, "failed")
-            raise ValueError(f"Extracao falhou: {e}")
+            try:
+                response = await orchestrator.execute(
+                    usage_type="rag_extraction",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=self.PHASE2_SYSTEM_PROMPT,
+                    max_tokens=8000,
+                    project_id=project_id,
+                    metadata={
+                        "phase": "rag_pipeline_phase2",
+                        "project_id": str(project_id),
+                        "batch": batch_num,
+                        "total_batches": total_batches,
+                    },
+                    disable_cwd=True,
+                )
+
+                raw = response.get("content", "")
+                rules = self._parse_rules_json(raw)
+                batch_stored = self._store_rules(rules, project_id)
+                self.db.commit()
+                total_rules += batch_stored
+
+                logger.info(
+                    f"Phase 2: Batch {batch_num}/{total_batches} → "
+                    f"{batch_stored} rules (total: {total_rules})"
+                )
+
+            except Exception as e:
+                logger.warning(f"Phase 2: Batch {batch_num} failed: {e}")
+                continue  # skip failed batch, continue with others
 
         # Update rag_file_state
         try:
@@ -373,12 +429,13 @@ class RagPipelineService:
         self._set_phase_status(project_id, 2, "completed")
         jm.update_progress(
             job_id, 95.0,
-            f"Fase 2/4: Concluida — {total_rules} regras extraidas"
+            f"Fase 2/4: Concluida — {total_rules} regras em {total_batches} lotes"
         )
         return {
             "phase": "extract_rules",
             "rules_extracted": total_rules,
             "code_files": code_count,
+            "batches": total_batches,
         }
 
     # =====================================================================
