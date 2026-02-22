@@ -85,6 +85,9 @@ class TaskBase(BaseModel):
     # PROMPT #128 - Track which AI model generated the content
     created_by_ai_model: Optional[str] = Field(None, description="AI model that generated this content")
 
+    # Complexity level (determines which Claude model runs the task)
+    complexity: str = Field(default="medium", description="Complexity: low=Haiku, medium=Sonnet, high=Opus")
+
     # Legacy Kanban fields (for backward compatibility)
     status: TaskStatus = Field(default=TaskStatus.BACKLOG, description="Legacy Kanban status")
     column: str = Field(default="backlog", max_length=50, description="Legacy Kanban column")
@@ -138,6 +141,9 @@ class TaskUpdate(BaseModel):
 
     # Generated Prompt (Meta Prompt Feature)
     generated_prompt: Optional[str] = None
+
+    # Complexity level
+    complexity: Optional[str] = Field(None, description="Complexity: low|medium|high")
 
     # Legacy Kanban
     status: Optional[TaskStatus] = None

@@ -246,62 +246,24 @@ class RagPipelineService:
     # discarded by the validator.  No fuzzy fallbacks, no guessing.
     # =====================================================================
 
-    PHASE2_SYSTEM_PROMPT = (
-        "Voce e um analista de negocios senior especializado em engenharia reversa "
-        "de requisitos funcionais a partir de codebases existentes.\n\n"
-        "Voce vai receber o contexto completo de um projeto de software indexado "
-        "na base de conhecimento. Seu objetivo e extrair TODAS as regras de negocio.\n\n"
-        "CATEGORIAS (enum obrigatorio — use EXATAMENTE um destes valores):\n"
-        "  dominio | validacao | restricao | workflow | permissao | calculo | integracao | negocio\n\n"
-        "PRIORIDADE (enum obrigatorio):\n"
-        "  critical | high | medium | low\n\n"
-        "IGNORE: configuracoes de framework, CSS, logs, infra, imports.\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "CONTRATO DE RESPOSTA — SCHEMA RIGIDO (qualquer desvio sera descartado)\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
-        "{\n"
-        '  "business_rules": [\n'
-        "    {\n"
-        '      "rule_text": "string OBRIGATORIA, minimo 15 caracteres, em portugues. '
-        'Descreva a regra como para um gerente de produto que NAO conhece codigo.",\n'
-        '      "rule_type": "string OBRIGATORIA, enum: dominio|validacao|restricao|workflow|permissao|calculo|integracao|negocio",\n'
-        '      "source_file": "string OBRIGATORIA, caminho relativo do arquivo-fonte (ex: backend/app/models/user.py)",\n'
-        '      "priority": "string OBRIGATORIA, enum: critical|high|medium|low",\n'
-        '      "entity": "string OPCIONAL, entidade principal envolvida (ex: Usuario, Pedido, Pagamento)",\n'
-        '      "evidence": "string OPCIONAL, trecho de codigo ou funcao que evidencia a regra"\n'
-        "    }\n"
-        "  ]\n"
-        "}\n\n"
-        "REGRAS DO CONTRATO:\n"
-        "- rule_text: MINIMO 15 caracteres, MAXIMO 2000 caracteres. SEJA DETALHADO — "
-        "descreva a regra com contexto, condicoes, excecoes e impacto no negocio.\n"
-        "- rule_type: EXATAMENTE um dos 8 valores do enum\n"
-        "- source_file: caminho relativo real do projeto, NUNCA vazio\n"
-        "- priority: EXATAMENTE um dos 4 valores do enum\n"
-        "- entity: inclua SEMPRE que possivel a entidade envolvida\n"
-        "- evidence: inclua trecho de codigo, nome de funcao ou classe que comprova a regra (ate 1000 chars)\n"
-        "- Cada regra deve ser UNICA — sem duplicatas semanticas\n"
-        "- Todas em PORTUGUES\n"
-        "- NAO invente regras — apenas extraia o que EXISTE no codigo/docs\n"
-        "- Extraia o MAXIMO possivel. Analise CADA modelo, servico, rota, validacao, schema.\n"
-        "- PREFIRA regras DETALHADAS e RICAS a regras curtas e genericas."
-    )
-
-    # Claude Opus 4.6: 200K context window
-    # rag_top_k=300 → ~300 docs × ~500 tokens = ~150K tokens RAG context
-    # Sobram ~35K para prompts + 16K para resposta
-    PHASE2_RAG_TOP_K = 300
-    PHASE2_RAG_THRESHOLD = 0.1
     # PROMPT #253 - Thinking mode for deeper analysis
     THINKING_CONFIG = {"type": "enabled", "budget_tokens": 10000}
 
-    PHASE2_PASSES = 3  # 1 initial + 2 reinforcement
+    # Phase 2 uses Claudio with cwd — the agent reads the codebase directly.
+    # Output file where Claudio writes extracted rules.
+    PHASE2_OUTPUT_FILE = "satellite/knowledge/business_rules.json"
+
+    # RAG config reused by Phase 3 and Phase 4
+    PHASE2_RAG_TOP_K = 300
+    PHASE2_RAG_THRESHOLD = 0.1
 
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 2: Extract business rules via 3 AI passes with RAG injection.
-        Pass 1: initial extraction. Pass 2-3: reinforcement to find missed rules.
+        Phase 2: Extract business rules via Claudio agent.
+
+        Claudio runs with cwd=project.code_path, reads the actual codebase,
+        and writes a JSON file with extracted rules. We then read that file
+        and import into RAG.
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
@@ -310,9 +272,12 @@ class RagPipelineService:
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        jm.update_progress(job_id, 5.0, "Fase 2/4: Preparando extracao de regras...")
+        code_path = project.code_path
+        output_file = os.path.join(code_path, self.PHASE2_OUTPUT_FILE)
 
-        # Delete old business rules
+        jm.update_progress(job_id, 5.0, "Fase 2/4: Preparando extracao de regras via Claudio...")
+
+        # Delete old business rules from RAG
         try:
             deleted = self.db.execute(sql_text(
                 "DELETE FROM rag_documents WHERE project_id = :pid "
@@ -324,89 +289,95 @@ class RagPipelineService:
         except Exception:
             pass
 
-        # Verify Phase 1 has indexed files
-        code_file_count = self.db.execute(sql_text(
-            "SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid "
-            "AND metadata->>'type' = 'code_file'"
-        ), {"pid": str(project_id)}).scalar() or 0
+        # Ensure output directory exists
+        output_dir = os.path.dirname(output_file)
+        os.makedirs(output_dir, exist_ok=True)
 
-        if code_file_count == 0:
-            self._set_phase_status(project_id, 2, "failed")
-            raise ValueError("Nenhum arquivo indexado encontrado. Execute Phase 1 primeiro.")
-
-        logger.info(f"Phase 2: {code_file_count} code files indexed, {self.PHASE2_PASSES} passes")
+        # Delete old output file if exists
+        if os.path.exists(output_file):
+            os.remove(output_file)
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
 
         project_name = project.name or "Projeto"
-        total_rules = 0
 
-        for pass_num in range(1, self.PHASE2_PASSES + 1):
-            pct_base = 5 + (85 * (pass_num - 1) // self.PHASE2_PASSES)
-            pct_end = 5 + (85 * pass_num // self.PHASE2_PASSES)
+        jm.update_progress(job_id, 10.0, "Fase 2/4: Claudio analisando codebase...")
 
-            jm.update_progress(job_id, pct_base,
-                f"Fase 2/4: Passada {pass_num}/{self.PHASE2_PASSES} — "
-                f"{total_rules} regras ate agora...")
+        # Single prompt — Claudio reads the code and writes the output file
+        user_prompt = (
+            f"Voce esta no diretorio do projeto \"{project_name}\".\n\n"
+            f"SUA TAREFA: Analisar TODO o codigo-fonte do projeto e extrair "
+            f"TODAS as regras de negocio. Leia os arquivos de modelos, servicos, "
+            f"rotas, validacoes, schemas, migrations e configuracoes.\n\n"
+            f"CATEGORIAS de regras (use EXATAMENTE um destes valores):\n"
+            f"  dominio | validacao | restricao | workflow | permissao | calculo | integracao | negocio\n\n"
+            f"PRIORIDADE (use EXATAMENTE um destes valores):\n"
+            f"  critical | high | medium | low\n\n"
+            f"IGNORE: configuracoes puras de framework, CSS, logs de debug, infra Docker, imports.\n\n"
+            f"Para CADA regra encontrada, extraia:\n"
+            f"- rule_text: descricao detalhada em portugues (min 15 chars, ideal 100-500)\n"
+            f"- rule_type: uma das 8 categorias acima\n"
+            f"- source_file: caminho relativo do arquivo (ex: backend/app/models/user.py)\n"
+            f"- priority: critical|high|medium|low\n"
+            f"- entity: entidade principal (ex: Usuario, Pedido)\n"
+            f"- evidence: trecho de codigo ou funcao que comprova a regra\n\n"
+            f"GRAVE O RESULTADO no arquivo: {self.PHASE2_OUTPUT_FILE}\n\n"
+            f"O arquivo DEVE ser um JSON valido com esta estrutura:\n"
+            f'{{"business_rules": [{{"rule_text": "...", "rule_type": "...", '
+            f'"source_file": "...", "priority": "...", "entity": "...", "evidence": "..."}}]}}\n\n'
+            f"Extraia o MAXIMO de regras possivel. Analise CADA arquivo relevante. "
+            f"NAO invente regras — apenas extraia o que EXISTE no codigo. "
+            f"Todas em PORTUGUES. Seja DETALHADO nas descricoes."
+        )
 
-            if pass_num == 1:
-                user_prompt = (
-                    f"Extraia todas as regras de negocio possiveis a partir de todo o "
-                    f"codigo-fonte e documentacao do projeto \"{project_name}\" "
-                    f"que esta indexado na base de conhecimento.\n\n"
-                    f"O projeto tem {code_file_count} arquivos indexados. "
-                    f"Analise CADA modelo, servico, rota, validacao, schema, migration, "
-                    f"configuracao e documentacao presente no contexto.\n\n"
-                    f"Liste TODAS as regras encontradas em portugues, categorizadas por tipo "
-                    f"(dominio, validacao, restricao, workflow, permissao, calculo, integracao, negocio).\n\n"
-                    f"NAO pare ate ter extraido TODAS as regras possiveis do contexto fornecido."
-                )
-            else:
-                # Get current rules to send as context for reinforcement
-                current_rules = self.db.execute(sql_text(
-                    "SELECT content FROM rag_documents WHERE project_id = :pid "
-                    "AND metadata->>'type' = 'business_rule' LIMIT 200"
-                ), {"pid": str(project_id)}).fetchall()
-                rules_summary = "\n".join(f"- {r[0][:120]}" for r in current_rules)
+        try:
+            response = await orchestrator.execute(
+                usage_type="rag_extraction",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=(
+                    "Voce e um analista de negocios senior especializado em engenharia reversa "
+                    "de requisitos funcionais a partir de codebases existentes. "
+                    "Leia os arquivos do projeto, extraia regras de negocio, e grave o resultado "
+                    "no arquivo JSON especificado. Responda apenas com uma confirmacao curta."
+                ),
+                max_tokens=32000,
+                project_id=project_id,
+                metadata={"phase": "rag_pipeline_phase2", "pass": 1},
+                thinking=self.THINKING_CONFIG,
+            )
 
-                user_prompt = (
-                    f"Voce ja extraiu {total_rules} regras de negocio do projeto "
-                    f"\"{project_name}\". Aqui esta um resumo das regras ja encontradas:\n\n"
-                    f"{rules_summary}\n\n"
-                    f"Agora, faca uma NOVA varredura completa na base de conhecimento "
-                    f"e encontre TODAS as regras de negocio que AINDA NAO foram extraidas.\n\n"
-                    f"Foque em areas que podem ter sido ignoradas: validacoes sutis, "
-                    f"restricoes implicitas, regras de permissao, calculos escondidos, "
-                    f"workflows secundarios, integracao entre servicos, edge cases.\n\n"
-                    f"Retorne APENAS regras NOVAS que NAO estao na lista acima."
-                )
+            logger.info(f"Phase 2: Claudio response: {response.get('content', '')[:200]}")
 
-            try:
-                response = await orchestrator.execute(
-                    usage_type="rag_extraction",
-                    messages=[{"role": "user", "content": user_prompt}],
-                    system_prompt=self.PHASE2_SYSTEM_PROMPT,
-                    max_tokens=32000,
-                    project_id=project_id,
-                    enable_rag=True,
-                    rag_top_k=self.PHASE2_RAG_TOP_K,
-                    rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
-                    metadata={"phase": "rag_pipeline_phase2", "pass": pass_num},
-                    thinking=self.THINKING_CONFIG,
-                )
+        except Exception as e:
+            logger.error(f"Phase 2 Claudio execution failed: {e}")
+            self._set_phase_status(project_id, 2, "failed")
+            raise ValueError(f"Claudio falhou: {e}")
 
-                raw = response.get("content", "")
-                rules = self._parse_rules_json(raw)
-                pass_rules = self._store_rules(rules, project_id)
-                self.db.commit()
-                total_rules += pass_rules
+        jm.update_progress(job_id, 70.0, "Fase 2/4: Lendo regras extraidas pelo Claudio...")
 
-                logger.info(f"Phase 2 pass {pass_num}/{self.PHASE2_PASSES}: +{pass_rules} rules (total: {total_rules})")
+        # Read the output file written by Claudio
+        if not os.path.exists(output_file):
+            logger.error(f"Phase 2: Output file not found: {output_file}")
+            self._set_phase_status(project_id, 2, "failed")
+            raise ValueError(f"Claudio nao gerou o arquivo {self.PHASE2_OUTPUT_FILE}")
 
-            except Exception as e:
-                logger.error(f"Phase 2 pass {pass_num} failed: {e}")
-                continue
+        try:
+            with open(output_file, "r", encoding="utf-8") as f:
+                raw_content = f.read()
+        except Exception as e:
+            logger.error(f"Phase 2: Failed to read output file: {e}")
+            self._set_phase_status(project_id, 2, "failed")
+            raise ValueError(f"Erro ao ler arquivo de regras: {e}")
+
+        # Parse and validate rules
+        rules = self._parse_rules_json(raw_content)
+        total_rules = self._store_rules(rules, project_id)
+        self.db.commit()
+
+        logger.info(f"Phase 2: {total_rules} rules imported from {output_file}")
+
+        jm.update_progress(job_id, 90.0, f"Fase 2/4: {total_rules} regras importadas para RAG...")
 
         # Update rag_file_state
         try:
@@ -420,18 +391,17 @@ class RagPipelineService:
 
         if total_rules == 0:
             self._set_phase_status(project_id, 2, "failed")
-            raise ValueError("Extracao falhou: 0 regras extraidas")
+            raise ValueError("Extracao falhou: 0 regras extraidas do arquivo gerado pelo Claudio")
 
         self._set_phase_status(project_id, 2, "completed")
         jm.update_progress(
             job_id, 95.0,
-            f"Fase 2/4: Concluida — {total_rules} regras em {self.PHASE2_PASSES} passadas"
+            f"Fase 2/4: Concluida — {total_rules} regras extraidas pelo Claudio"
         )
         return {
             "phase": "extract_rules",
             "rules_extracted": total_rules,
-            "files_in_rag": code_file_count,
-            "passes": self.PHASE2_PASSES,
+            "output_file": self.PHASE2_OUTPUT_FILE,
         }
 
     # =====================================================================
@@ -612,7 +582,11 @@ class RagPipelineService:
         '      "priority": "string OBRIGATORIA, enum: critical|high|medium|low",\n'
         '      "labels": "array de strings, 1-10 labels descritivas (ex: [\"autenticacao\", \"backend\"])",\n'
         '      "acceptance_criteria": "array de strings, minimo 2 criterios por card, '
-        'cada criterio com minimo 15 caracteres, descrevendo condicao verificavel de aceite"\n'
+        'cada criterio com minimo 15 caracteres, descrevendo condicao verificavel de aceite",\n'
+        '      "complexity": "string OBRIGATORIA, enum: low|medium|high. '
+        'Indica o modelo Claude para executar: low=Haiku (tarefas simples, CRUD, config), '
+        'medium=Sonnet (logica moderada, integracao, validacao), '
+        'high=Opus (arquitetura complexa, algoritmos, refatoracao pesada)"\n'
         "    }\n"
         "  ]\n"
         "}\n\n"
@@ -626,13 +600,30 @@ class RagPipelineService:
         "  story tem parent_title de um epic. task tem parent_title de uma story. subtask de uma task.\n"
         "- story_points: Fibonacci APENAS (1,2,3,5,8,13). Epics: 8-13. Stories: 3-8. Tasks: 1-5. Subtasks: 1-2.\n"
         "- priority: EXATAMENTE um dos 4 valores\n"
+        "- complexity: EXATAMENTE um dos 3 valores (low|medium|high). "
+        "low=tarefas simples (CRUD, config, texto, CSS). "
+        "medium=logica moderada (validacao, integracao, API, testes). "
+        "high=complexidade alta (arquitetura, algoritmos, refatoracao critica, seguranca). "
+        "Epics: sempre high. Subtasks simples: low. Avalie pela dificuldade tecnica real.\n"
         "- labels: array de 1-10 strings, cada label 2-50 caracteres, lowercase, sem espacos (use hifens)\n"
         "- acceptance_criteria: MINIMO 2 criterios, MAXIMO 20. Cada criterio e uma string verificavel "
         "com minimo 15 caracteres. Criterios devem ser especificos e testáveis.\n"
         "- Todos os textos em PORTUGUES\n"
-        "- Hierarquia COMPLETA: cada epic deve ter stories, cada story deve ter tasks\n"
-        "- NAO crie cards orphaos (sem pai) exceto epics de nivel raiz\n"
-        "- PREFIRA descricoes RICAS e DETALHADAS a descricoes curtas e genericas."
+        "- PREFIRA descricoes RICAS e DETALHADAS a descricoes curtas e genericas.\n\n"
+        "ESTRUTURA HIERARQUICA OBRIGATORIA:\n"
+        "1. Comece SEMPRE pelos Epics (modulos macro do sistema)\n"
+        "2. Para CADA Epic, crie 3-8 Stories (funcionalidades do modulo)\n"
+        "3. Para CADA Story, crie 2-5 Tasks (trabalho tecnico)\n"
+        "4. Para CADA Task complexa, crie 1-3 Subtasks (trabalho atomico)\n\n"
+        "REGRA DE PARENTESCO:\n"
+        "- Epic: parent_title = null (raiz)\n"
+        "- Story: parent_title = titulo EXATO de um Epic\n"
+        "- Task: parent_title = titulo EXATO de uma Story\n"
+        "- Subtask: parent_title = titulo EXATO de uma Task\n"
+        "- NUNCA pule niveis (ex: task filha de epic e PROIBIDO)\n\n"
+        "ORDEM NO JSON: Epics primeiro, depois Stories, depois Tasks, depois Subtasks.\n"
+        "NAO crie cards orfaos (sem pai) exceto epics de nivel raiz.\n"
+        "Hierarquia COMPLETA: cada epic deve ter stories, cada story deve ter tasks."
     )
 
     PHASE3_PASSES = 3  # 1 initial + 2 reinforcement
@@ -752,6 +743,8 @@ class RagPipelineService:
 
     VALID_ITEM_TYPES = frozenset({"epic", "story", "task", "subtask"})
     VALID_FIBONACCI = frozenset({1, 2, 3, 5, 8, 13})
+    TYPE_ORDER = {"epic": 0, "story": 1, "task": 2, "subtask": 3}
+    EXPECTED_PARENT_TYPE = {"story": "epic", "task": "story", "subtask": "task"}
 
     def _create_cards_from_json(self, raw: str, project_id: UUID) -> int:
         """Parse, VALIDATE and create Task records from AI JSON response.
@@ -781,6 +774,7 @@ class RagPipelineService:
                 parent_title = str(parent_title).strip() or None
             story_points = card.get("story_points")
             priority = str(card.get("priority") or "").strip().lower()
+            complexity = str(card.get("complexity") or "").strip().lower()
             labels = card.get("labels", [])
             ac_list = card.get("acceptance_criteria", [])
 
@@ -796,6 +790,9 @@ class RagPipelineService:
                 continue
             if priority not in self.VALID_PRIORITIES:
                 priority = "medium"  # safe default
+            # complexity: validate enum, smart default by item_type
+            if complexity not in ("low", "medium", "high"):
+                complexity = {"epic": "high", "story": "medium", "task": "medium", "subtask": "low"}.get(item_type, "medium")
             # story_points: coerce to int, validate Fibonacci
             try:
                 story_points = int(story_points) if story_points is not None else 3
@@ -832,6 +829,7 @@ class RagPipelineService:
                 "parent_title": parent_title,
                 "story_points": story_points,
                 "priority": priority,
+                "complexity": complexity,
                 "labels": labels,
                 "acceptance_criteria": acceptance_criteria or None,
             })
@@ -842,8 +840,17 @@ class RagPipelineService:
         if not valid_cards:
             return 0
 
+        # ---- Sort by hierarchy level: epics first, then stories, tasks, subtasks ----
+        valid_cards.sort(key=lambda c: self.TYPE_ORDER.get(c["item_type"], 99))
+
         # ---- PASS 2: Create DB records ----
-        title_to_id = {}
+        # Pre-populate title_to_id with cards from previous passes (cross-pass linking)
+        existing = self.db.query(Task.title, Task.id, Task.item_type).filter(
+            Task.project_id == project_id,
+            Task.reporter == "pipeline_phase3",
+        ).all()
+        title_to_id = {t.title: t.id for t in existing}
+        title_to_type = {t.title: t.item_type for t in existing}
         created = 0
 
         for card in valid_cards:
@@ -856,6 +863,7 @@ class RagPipelineService:
                 reporter="pipeline_phase3",
                 story_points=card["story_points"],
                 priority=card["priority"],
+                complexity=card["complexity"],
                 labels=card["labels"],
                 acceptance_criteria=card["acceptance_criteria"],
                 order=created,
@@ -863,19 +871,48 @@ class RagPipelineService:
             self.db.add(task)
             self.db.flush()
             title_to_id[task.title] = task.id
+            title_to_type[task.title] = task.item_type
             created += 1
 
-        # ---- PASS 3: Set parent_id based on parent_title ----
+        # ---- PASS 3: Set parent_id with hierarchy validation ----
+        linked = 0
+        orphans = 0
         for card in valid_cards:
             title = card["title"]
             parent_title = card.get("parent_title")
-            if title and parent_title and parent_title in title_to_id and title in title_to_id:
-                self.db.execute(sql_text(
-                    "UPDATE tasks SET parent_id = :parent_id WHERE id = :task_id"
-                ), {
-                    "parent_id": str(title_to_id[parent_title]),
-                    "task_id": str(title_to_id[title]),
-                })
+            item_type = card["item_type"]
+
+            if not parent_title or item_type == "epic":
+                continue  # epics are root, no parent needed
+
+            if title not in title_to_id:
+                continue
+
+            if parent_title not in title_to_id:
+                orphans += 1
+                logger.warning(f"Phase 3 orphan: '{title}' ({item_type}) -> parent '{parent_title}' not found")
+                continue
+
+            # Validate parent type compatibility
+            expected_parent = self.EXPECTED_PARENT_TYPE.get(item_type)
+            actual_parent_type = title_to_type.get(parent_title)
+            if expected_parent and actual_parent_type and actual_parent_type != expected_parent:
+                logger.warning(
+                    f"Phase 3 hierarchy mismatch: '{title}' ({item_type}) -> '{parent_title}' "
+                    f"is {actual_parent_type}, expected {expected_parent}. Linking anyway."
+                )
+
+            self.db.execute(sql_text(
+                "UPDATE tasks SET parent_id = :parent_id WHERE id = :task_id"
+            ), {
+                "parent_id": str(title_to_id[parent_title]),
+                "task_id": str(title_to_id[title]),
+            })
+            linked += 1
+
+        if orphans:
+            logger.warning(f"Phase 3: {orphans} orphan cards (parent_title not found in DB)")
+        logger.info(f"Phase 3: {created} created, {linked} linked to parents")
 
         return created
 

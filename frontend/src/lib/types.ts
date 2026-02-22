@@ -261,6 +261,9 @@ export interface Task {
     interview_insights?: Record<string, any>;
   } | null;
 
+  // Complexity level (determines which Claude model runs the task)
+  complexity: 'low' | 'medium' | 'high';
+
   // Legacy Kanban fields (for backward compatibility)
   status: TaskStatus;
   column: string;

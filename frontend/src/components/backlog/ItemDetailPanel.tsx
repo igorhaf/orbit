@@ -803,6 +803,15 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   {item.story_points} pts
                 </span>
               )}
+              {item.complexity && (
+                <span className={`px-2 py-1 text-xs font-medium rounded border ${
+                  item.complexity === 'low' ? 'bg-green-50 text-green-700 border-green-200'
+                  : item.complexity === 'high' ? 'bg-purple-50 text-purple-700 border-purple-200'
+                  : 'bg-blue-50 text-blue-700 border-blue-200'
+                }`}>
+                  {item.complexity === 'low' ? 'Haiku' : item.complexity === 'high' ? 'Opus' : 'Sonnet'}
+                </span>
+              )}
               {/* PROMPT #96 - Show draft/suggested badge */}
               {isSuggestedItem && (
                 <span className="px-2 py-1 text-xs font-medium rounded bg-amber-100 text-amber-800 border border-amber-200">

@@ -9,11 +9,18 @@
 
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Button } from '@/components/ui';
 import { AIModelBadge } from '@/components/ui/AIModelBadge';
+import { tasksApi } from '@/lib/api';
 import { BacklogItem } from '@/lib/types';
+
+const COMPLEXITY_OPTIONS = [
+  { value: 'low', label: 'Haiku', color: 'bg-green-50 text-green-700 border-green-200' },
+  { value: 'medium', label: 'Sonnet', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { value: 'high', label: 'Opus', color: 'bg-purple-50 text-purple-700 border-purple-200' },
+] as const;
 
 export interface OverviewTabProps {
   item: BacklogItem;
@@ -71,6 +78,20 @@ export default function OverviewTab({
   formatQuote,
   formatTable,
 }: OverviewTabProps) {
+  const [savingComplexity, setSavingComplexity] = useState(false);
+
+  const handleComplexityChange = async (newValue: string) => {
+    setSavingComplexity(true);
+    try {
+      await tasksApi.update(item.id, { complexity: newValue });
+      if (onUpdate) onUpdate();
+    } catch (err) {
+      console.error('Failed to update complexity:', err);
+    } finally {
+      setSavingComplexity(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Description - PROMPT #97: Inline editable with Markdown toolbar */}
@@ -334,6 +355,29 @@ export default function OverviewTab({
         <div>
           <span className="text-xs font-semibold text-gray-500 uppercase">Prioridade</span>
           <p className="text-sm text-gray-900 mt-1">{item.priority}</p>
+        </div>
+        <div>
+          <span className="text-xs font-semibold text-gray-500 uppercase">Complexidade</span>
+          <div className="mt-1">
+            <select
+              value={item.complexity || 'medium'}
+              onChange={(e) => handleComplexityChange(e.target.value)}
+              disabled={savingComplexity}
+              className={`text-sm font-medium rounded-md border px-2 py-1 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                (item.complexity || 'medium') === 'low'
+                  ? 'bg-green-50 text-green-700 border-green-200'
+                  : (item.complexity || 'medium') === 'high'
+                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                  : 'bg-blue-50 text-blue-700 border-blue-200'
+              }`}
+            >
+              {COMPLEXITY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
         {item.reporter && (
           <div>

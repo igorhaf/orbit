@@ -306,15 +306,19 @@ class TaskExecutor:
             execute_task_func=self.execute_task
         )
 
-    def _select_model(self, complexity: int) -> str:
+    def _select_model(self, complexity) -> str:
         """
         Select model based on task complexity.
 
-        Complexity 1-2: Haiku (cheaper)
-        Complexity 3-5: Sonnet (more capable)
+        low: Haiku (cheaper, simple tasks)
+        medium: Sonnet (balanced)
+        high: Opus (powerful, complex tasks)
         """
-        if complexity <= 2:
+        c = str(complexity).strip().lower() if complexity else "medium"
+        if c == "low":
             return "claude-3-haiku-20240307"
+        elif c == "high":
+            return "claude-opus-4-20250514"
         else:
             return "claude-sonnet-4-20250514"
 

@@ -121,7 +121,7 @@ class Task(Base):
     type = Column(String(100), nullable=True)  # "model", "controller", "repository", etc.
     entity = Column(String(100), nullable=True)  # "Book", "User", etc.
     file_path = Column(String(500), nullable=True)  # "src/Models/Book.php"
-    complexity = Column(Integer, default=1, nullable=False)  # 1-5 (affects model selection)
+    complexity = Column(String(10), default="medium", nullable=False)  # low=haiku, medium=sonnet, high=opus
     depends_on = Column(JSON, nullable=True, default=list)  # List of task IDs this depends on
 
     # Timestamps
