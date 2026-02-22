@@ -235,16 +235,17 @@ class RagPipelineService:
         return result
 
     # =========================================================================
-    # PHASE 2: Extract business rules from indexed code files
-    # Reads actual code content from RAG documents, sends in batches to AI.
-    # Uses Claudio Opus 4.6 (rag_extraction) for each batch.
+    # PHASE 2: Extract business rules via single AI prompt + RAG injection
+    # Uses enable_rag=True with high top_k to fill Claude's 200K context.
+    # Single call — no batches, no file iteration.
     # =========================================================================
 
     PHASE2_SYSTEM_PROMPT = (
         "Voce e um analista de negocios senior especializado em engenharia reversa "
         "de requisitos funcionais a partir de codebases existentes.\n\n"
-        "Voce vai receber o CONTEUDO REAL de arquivos de codigo-fonte de um projeto. "
-        "Seu objetivo e extrair TODAS as regras de negocio presentes nesses arquivos.\n\n"
+        "Voce vai receber o contexto completo de um projeto de software indexado "
+        "na base de conhecimento. Seu objetivo e extrair TODAS as regras de negocio "
+        "possiveis a partir desse contexto.\n\n"
         "Regras de negocio sao qualquer logica que define COMO o sistema se comporta "
         "do ponto de vista do USUARIO ou do DOMINIO do negocio.\n\n"
         "CATEGORIAS DE REGRAS que voce deve procurar:\n"
@@ -265,25 +266,28 @@ class RagPipelineService:
         "FORMATO DE RESPOSTA: JSON puro, sem markdown, sem explicacoes.\n"
         "Cada regra deve ser escrita em PORTUGUES, como se voce explicasse "
         "para um gerente de produto que NAO conhece o codigo.\n\n"
+        "IMPORTANTE: Extraia o MAXIMO de regras possivel. Analise CADA modelo, "
+        "servico, rota, validacao, schema, configuracao e documentacao presente "
+        "no contexto. Nao pare ate ter coberto TUDO.\n\n"
         "Responda APENAS com o JSON no formato:\n"
         '{"business_rules": [\n'
         '  {"rule_text": "Descricao clara da regra em portugues", '
         '"rule_type": "dominio|validacao|restricao|workflow|permissao|calculo|integracao|negocio", '
         '"source_file": "caminho/do/arquivo.ext", '
         '"priority": "high|normal|low"}\n'
-        "]}\n\n"
-        "Se nenhum arquivo do lote contem regras de negocio, retorne: "
-        '{"business_rules": []}'
+        "]}"
     )
 
-    # Batch size: ~50 files per AI call (avg 737 chars/file = ~37K chars per batch)
-    PHASE2_BATCH_SIZE = 50
+    # Claude Opus 4.6: 200K context window
+    # rag_top_k=300 → ~300 docs × ~500 tokens = ~150K tokens RAG context
+    # Sobram ~35K para prompts + 16K para resposta
+    PHASE2_RAG_TOP_K = 300
+    PHASE2_RAG_THRESHOLD = 0.1
 
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 2: Extract business rules by reading actual code from RAG.
-        Fetches all code_file documents, groups into batches, sends each
-        batch to AI for rule extraction. Uses rag_extraction (Opus 4.6).
+        Phase 2: Extract business rules via single AI prompt with RAG injection.
+        Uses enable_rag=True with high top_k to leverage Claude's 200K context.
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
@@ -306,85 +310,61 @@ class RagPipelineService:
         except Exception:
             pass
 
-        # Fetch ALL code_file documents from RAG (indexed in Phase 1)
-        jm.update_progress(job_id, 8.0, "Fase 2/4: Carregando arquivos indexados...")
+        # Verify Phase 1 has indexed files
+        code_file_count = self.db.execute(sql_text(
+            "SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid "
+            "AND metadata->>'type' = 'code_file'"
+        ), {"pid": str(project_id)}).scalar() or 0
 
-        code_files = self.db.execute(sql_text(
-            "SELECT content, metadata->>'source_file' as source_file "
-            "FROM rag_documents WHERE project_id = :pid "
-            "AND metadata->>'type' = 'code_file' "
-            "ORDER BY metadata->>'source_file'"
-        ), {"pid": str(project_id)}).fetchall()
-
-        if not code_files:
+        if code_file_count == 0:
             self._set_phase_status(project_id, 2, "failed")
             raise ValueError("Nenhum arquivo indexado encontrado. Execute Phase 1 primeiro.")
 
-        total_files = len(code_files)
-        logger.info(f"Phase 2: {total_files} code files to process in batches of {self.PHASE2_BATCH_SIZE}")
+        logger.info(f"Phase 2: {code_file_count} code files indexed, using RAG injection")
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
 
-        total_rules = 0
-        total_batches = (total_files + self.PHASE2_BATCH_SIZE - 1) // self.PHASE2_BATCH_SIZE
+        jm.update_progress(job_id, 10.0,
+            f"Fase 2/4: Extraindo regras de negocio de {code_file_count} arquivos via IA...")
 
-        for batch_idx in range(0, total_files, self.PHASE2_BATCH_SIZE):
-            batch = code_files[batch_idx:batch_idx + self.PHASE2_BATCH_SIZE]
-            batch_num = (batch_idx // self.PHASE2_BATCH_SIZE) + 1
+        user_prompt = (
+            f"Extraia todas as regras de negocio possiveis a partir de todo o "
+            f"codigo-fonte e documentacao do projeto \"{project.name or 'Projeto'}\" "
+            f"que esta indexado na base de conhecimento.\n\n"
+            f"O projeto tem {code_file_count} arquivos indexados. "
+            f"Analise CADA modelo, servico, rota, validacao, schema, migration, "
+            f"configuracao e documentacao presente no contexto.\n\n"
+            f"Liste TODAS as regras encontradas em portugues, categorizadas por tipo "
+            f"(dominio, validacao, restricao, workflow, permissao, calculo, integracao, negocio).\n\n"
+            f"NAO pare ate ter extraido TODAS as regras possiveis do contexto fornecido."
+        )
 
-            # Build file contents for this batch
-            files_text = ""
-            for row in batch:
-                content = row[0] or ""
-                source = row[1] or "unknown"
-                if content.strip():
-                    files_text += f"\n### {source}\n```\n{content}\n```\n"
-
-            if not files_text.strip():
-                continue
-
-            # Progress update
-            pct = 10 + (80 * batch_num / total_batches)
-            jm.update_progress(
-                job_id, pct,
-                f"Fase 2/4: Lote {batch_num}/{total_batches} — "
-                f"{total_rules} regras ate agora..."
+        try:
+            response = await orchestrator.execute(
+                usage_type="rag_extraction",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=self.PHASE2_SYSTEM_PROMPT,
+                max_tokens=16384,
+                project_id=project_id,
+                enable_rag=True,
+                rag_top_k=self.PHASE2_RAG_TOP_K,
+                rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
+                metadata={"phase": "rag_pipeline_phase2"},
             )
 
-            # AI call for this batch
-            user_prompt = (
-                f"Analise os seguintes {len(batch)} arquivos do projeto "
-                f"\"{project.name or 'Projeto'}\" e extraia TODAS as regras "
-                f"de negocio que voce encontrar.\n\n"
-                f"{files_text}"
-            )
+            jm.update_progress(job_id, 70.0, "Fase 2/4: Processando regras extraidas...")
 
-            try:
-                response = await orchestrator.execute(
-                    usage_type="rag_extraction",
-                    messages=[{"role": "user", "content": user_prompt}],
-                    system_prompt=self.PHASE2_SYSTEM_PROMPT,
-                    max_tokens=8192,
-                    project_id=project_id,
-                    metadata={
-                        "phase": "rag_pipeline_phase2",
-                        "batch": batch_num,
-                        "total_batches": total_batches,
-                    },
-                )
+            raw = response.get("content", "")
+            rules = self._parse_rules_json(raw)
+            total_rules = self._store_rules(rules, project_id)
+            self.db.commit()
 
-                raw = response.get("content", "")
-                batch_rules = self._parse_rules_json(raw)
-                batch_stored = self._store_rules(batch_rules, project_id, f"batch_{batch_num}")
-                total_rules += batch_stored
-                self.db.commit()
+            logger.info(f"Phase 2: {total_rules} business rules extracted and stored")
 
-                logger.info(f"Phase 2 batch {batch_num}/{total_batches}: {batch_stored} rules")
-
-            except Exception as e:
-                logger.error(f"Phase 2 batch {batch_num} failed: {e}")
-                continue
+        except Exception as e:
+            self._set_phase_status(project_id, 2, "failed")
+            raise ValueError(f"Extracao falhou: {e}")
 
         # Update rag_file_state
         try:
@@ -403,14 +383,12 @@ class RagPipelineService:
         self._set_phase_status(project_id, 2, "completed")
         jm.update_progress(
             job_id, 95.0,
-            f"Fase 2/4: Concluida — {total_rules} regras extraidas "
-            f"de {total_files} arquivos em {total_batches} lotes"
+            f"Fase 2/4: Concluida — {total_rules} regras extraidas"
         )
         return {
             "phase": "extract_rules",
             "rules_extracted": total_rules,
-            "files_processed": total_files,
-            "batches": total_batches,
+            "files_in_rag": code_file_count,
         }
 
     def _parse_rules_json(self, raw: str) -> List[Any]:
@@ -424,7 +402,7 @@ class RagPipelineService:
             logger.error(f"Phase 2 JSON parse error: {e}")
         return []
 
-    def _store_rules(self, rules: List[Any], project_id: UUID, source: str) -> int:
+    def _store_rules(self, rules: List[Any], project_id: UUID) -> int:
         """Parse and store extracted rules in RAG. Returns count stored."""
         stored = 0
         for rule in rules:
@@ -447,7 +425,7 @@ class RagPipelineService:
             self.rag.store_business_rule(
                 content=rule_text,
                 project_id=project_id,
-                source=f"pipeline_phase2_{source}",
+                source="pipeline_phase2",
                 source_file=source_file,
                 rule_type=rule_type,
                 priority=priority,
