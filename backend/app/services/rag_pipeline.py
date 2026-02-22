@@ -253,9 +253,6 @@ class RagPipelineService:
     PHASE2_RAG_TOP_K = 300
     PHASE2_RAG_THRESHOLD = 0.1
 
-    # Phase 2: max chars of code per batch sent to the LLM
-    PHASE2_BATCH_MAX_CHARS = 60000  # ~15K tokens per batch
-
     PHASE2_SYSTEM_PROMPT = (
         "Voce e um analista de negocios senior especializado em engenharia reversa "
         "de requisitos funcionais a partir de codebases existentes.\n\n"
@@ -298,10 +295,11 @@ class RagPipelineService:
 
     async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 2: Extract business rules from code files already indexed in RAG.
+        Phase 2: Extract business rules via single AI call with RAG injection.
 
-        Reads code_file documents from RAG DB (indexed in Phase 1), splits into
-        batches that fit in LLM context, and extracts business rules from each batch.
+        Uses enable_rag=True to inject code_file documents (indexed in Phase 1)
+        directly into the prompt context. Claudio Opus analyses all code and
+        returns a JSON with business rules. No batching, no CWD.
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
@@ -324,94 +322,57 @@ class RagPipelineService:
         except Exception:
             pass
 
-        # Load all code files from RAG DB (indexed in Phase 1)
-        code_docs = self.db.execute(sql_text(
-            "SELECT content, metadata FROM rag_documents "
-            "WHERE project_id = :pid AND metadata->>'type' = 'code_file' "
-            "ORDER BY LENGTH(content) DESC"
-        ), {"pid": str(project_id)}).fetchall()
+        # Verify code files exist in RAG
+        code_count = self.db.execute(sql_text(
+            "SELECT COUNT(*) FROM rag_documents "
+            "WHERE project_id = :pid AND metadata->>'type' = 'code_file'"
+        ), {"pid": str(project_id)}).scalar() or 0
 
-        if not code_docs:
+        if code_count == 0:
             self._set_phase_status(project_id, 2, "failed")
             raise ValueError("Nenhum arquivo indexado. Execute Phase 1 primeiro.")
 
-        logger.info(f"Phase 2: {len(code_docs)} code files loaded from RAG DB")
-
-        # Split into batches
-        batches = []
-        current_batch = []
-        current_chars = 0
-
-        for doc in code_docs:
-            content = doc[0] or ""
-            if not content.strip():
-                continue
-            doc_chars = len(content)
-            if current_chars + doc_chars > self.PHASE2_BATCH_MAX_CHARS and current_batch:
-                batches.append(current_batch)
-                current_batch = []
-                current_chars = 0
-            current_batch.append(content)
-            current_chars += doc_chars
-
-        if current_batch:
-            batches.append(current_batch)
-
-        logger.info(f"Phase 2: {len(batches)} batches created from {len(code_docs)} files")
+        logger.info(f"Phase 2: {code_count} code files available in RAG")
+        jm.update_progress(job_id, 10.0, "Fase 2/4: Extraindo regras via Claudio Opus...")
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
 
         project_name = project.name or "Projeto"
-        total_rules = 0
 
-        for batch_idx, batch in enumerate(batches):
-            pct = 10 + (80 * batch_idx // max(len(batches), 1))
-            jm.update_progress(
-                job_id, pct,
-                f"Fase 2/4: Batch {batch_idx + 1}/{len(batches)} — "
-                f"{total_rules} regras ate agora..."
+        user_prompt = (
+            f'Analise TODOS os arquivos do projeto "{project_name}" disponiveis '
+            f'na base de conhecimento e extraia TODAS as regras de negocio.\n\n'
+            f'O projeto tem {code_count} arquivos indexados. Analise cada um e extraia '
+            f'o maximo de regras possivel.\n\n'
+            f'Retorne o JSON com as regras encontradas seguindo o contrato do system prompt.'
+        )
+
+        try:
+            response = await orchestrator.execute(
+                usage_type="rag_extraction",
+                messages=[{"role": "user", "content": user_prompt}],
+                system_prompt=self.PHASE2_SYSTEM_PROMPT,
+                max_tokens=16000,
+                project_id=project_id,
+                enable_rag=True,
+                rag_top_k=self.PHASE2_RAG_TOP_K,
+                rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
+                metadata={"phase": "rag_pipeline_phase2", "project_id": str(project_id)},
+                thinking=self.THINKING_CONFIG,
             )
 
-            # Join batch files into context
-            code_context = "\n\n---\n\n".join(batch)
+            raw = response.get("content", "")
+            rules = self._parse_rules_json(raw)
+            total_rules = self._store_rules(rules, project_id)
+            self.db.commit()
 
-            user_prompt = (
-                f"Analise os seguintes arquivos do projeto \"{project_name}\" "
-                f"e extraia TODAS as regras de negocio:\n\n"
-                f"{code_context}"
-            )
+            logger.info(f"Phase 2: {total_rules} rules extracted from single call")
 
-            try:
-                # NOTE: project_id omitted intentionally to prevent Claudio
-                # from entering agent mode (cwd). We want pure LLM response.
-                response = await orchestrator.execute(
-                    usage_type="rag_extraction",
-                    messages=[{"role": "user", "content": user_prompt}],
-                    system_prompt=self.PHASE2_SYSTEM_PROMPT,
-                    max_tokens=16000,
-                    metadata={
-                        "phase": "rag_pipeline_phase2",
-                        "batch": batch_idx + 1,
-                        "total_batches": len(batches),
-                        "project_id": str(project_id),
-                    },
-                )
-
-                raw = response.get("content", "")
-                rules = self._parse_rules_json(raw)
-                batch_rules = self._store_rules(rules, project_id)
-                self.db.commit()
-                total_rules += batch_rules
-
-                logger.info(
-                    f"Phase 2 batch {batch_idx + 1}/{len(batches)}: "
-                    f"+{batch_rules} rules (total: {total_rules})"
-                )
-
-            except Exception as e:
-                logger.error(f"Phase 2 batch {batch_idx + 1} failed: {e}")
-                continue
+        except Exception as e:
+            logger.error(f"Phase 2 failed: {e}")
+            self._set_phase_status(project_id, 2, "failed")
+            raise ValueError(f"Extracao falhou: {e}")
 
         # Update rag_file_state
         try:
@@ -425,20 +386,17 @@ class RagPipelineService:
 
         if total_rules == 0:
             self._set_phase_status(project_id, 2, "failed")
-            raise ValueError(
-                f"Extracao falhou: 0 regras extraidas de {len(batches)} batches"
-            )
+            raise ValueError("Extracao falhou: 0 regras extraidas")
 
         self._set_phase_status(project_id, 2, "completed")
         jm.update_progress(
             job_id, 95.0,
-            f"Fase 2/4: Concluida — {total_rules} regras em {len(batches)} batches"
+            f"Fase 2/4: Concluida — {total_rules} regras extraidas"
         )
         return {
             "phase": "extract_rules",
             "rules_extracted": total_rules,
-            "batches": len(batches),
-            "code_files": len(code_docs),
+            "code_files": code_count,
         }
 
     # =====================================================================
@@ -746,6 +704,7 @@ class RagPipelineService:
                     enable_rag=True,
                     rag_top_k=self.PHASE2_RAG_TOP_K,
                     rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
+                    rag_filter={"type": "business_rule"},
                     metadata={"phase": "rag_pipeline_phase3", "pass": pass_num},
                     thinking=self.THINKING_CONFIG,
                 )
