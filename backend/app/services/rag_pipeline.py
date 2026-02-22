@@ -395,6 +395,7 @@ class RagPipelineService:
                         "total_batches": total_batches,
                     },
                     disable_cwd=True,
+                    disable_tools=True,
                 )
 
                 raw = response.get("content", "")
@@ -709,6 +710,7 @@ class RagPipelineService:
                     project_id=project_id,
                     metadata={"phase": "rag_pipeline_phase3"},
                     disable_cwd=True,
+                    disable_tools=True,
                 )
 
                 raw = response.get("content", "")
@@ -1105,6 +1107,7 @@ class RagPipelineService:
                     project_id=project_id,
                     metadata={"phase": "rag_pipeline_phase4"},
                     disable_cwd=True,
+                    disable_tools=True,
                 )
 
                 raw = response.get("content", "")

@@ -875,6 +875,8 @@ class AIOrchestrator:
         thinking: Optional[Dict] = None,
         # PROMPT #259 - Disable CWD for RAG-only calls
         disable_cwd: bool = False,
+        # PROMPT #253 - Disable tools for pure text generation (prevents agent mode)
+        disable_tools: bool = False,
     ) -> Dict:
         """
         Executa chamada de IA usando modelo e configurações do banco
@@ -1069,6 +1071,8 @@ class AIOrchestrator:
                             overrides=_util_context if _util_context else None,
                             project_id=project_id,
                             thinking=thinking,
+                            disable_cwd=disable_cwd,
+                            disable_tools=disable_tools,
                         )
                         result["chain_position"] = chain_idx + 1
                         result["chain_total"] = len(chain_model_list)
@@ -1190,6 +1194,8 @@ class AIOrchestrator:
                                         overrides=_util_context if _util_context else None,
                                         project_id=project_id,
                                         thinking=thinking,
+                                        disable_cwd=disable_cwd,
+                                        disable_tools=disable_tools,
                                     )
                                     result = self.utility_executor.post_process(
                                         _utility_nodes, result, _effective_messages,
@@ -1283,6 +1289,8 @@ class AIOrchestrator:
                                             overrides=_util_context if _util_context else None,
                                             project_id=project_id,
                                             thinking=thinking,
+                                            disable_cwd=disable_cwd,
+                                            disable_tools=disable_tools,
                                         )
                                         logger.info(f"✅ Retry Node (error): success on attempt {retry_attempt+1}")
                                         # Post-process the retried result
@@ -2068,8 +2076,10 @@ class AIOrchestrator:
                     messages=messages,
                     system_prompt=system_prompt,
                     max_tokens=max_tokens,
-                    project_id=project_id,
-                    thinking=thinking,
+                    project_id=kwargs.get("project_id"),
+                    thinking=kwargs.get("thinking"),
+                    disable_cwd=kwargs.get("disable_cwd", False),
+                    disable_tools=kwargs.get("disable_tools", False),
                 )
 
                 result["chain_position"] = i + 1
@@ -2099,6 +2109,8 @@ class AIOrchestrator:
         overrides: Optional[Dict] = None,
         project_id: Optional[UUID] = None,
         thinking: Optional[Dict] = None,
+        disable_cwd: bool = False,
+        disable_tools: bool = False,
     ) -> Dict:
         """
         PROMPT #122 - Execute with a specific model config (for chain-based execution).
@@ -2203,17 +2215,22 @@ class AIOrchestrator:
         )
 
         # PROMPT #253 - Resolve cwd from project_id for Claudio calls
-        # PROMPT #259 - disable_cwd skips CWD resolution (RAG-only calls)
+        # PROMPT #259 - disable_cwd sends /tmp so Claude CLI runs in neutral dir
+        # (cwd=None would inherit poc_chat's working dir, causing agent mode)
         _claudio_cwd = None
-        if provider == "claudio" and project_id and not disable_cwd:
-            try:
-                from app.models.project import Project
-                _proj = self.db.query(Project).filter(Project.id == project_id).first()
-                if _proj and _proj.code_path:
-                    _claudio_cwd = _proj.code_path
-                    logger.info(f"📂 Claudio cwd: {_claudio_cwd}")
-            except Exception as _cwd_err:
-                logger.warning(f"Could not resolve cwd for Claudio: {_cwd_err}")
+        if provider == "claudio":
+            if disable_cwd:
+                _claudio_cwd = "/tmp"
+                logger.info("📂 Claudio cwd: /tmp (disable_cwd=True, neutral dir)")
+            elif project_id:
+                try:
+                    from app.models.project import Project
+                    _proj = self.db.query(Project).filter(Project.id == project_id).first()
+                    if _proj and _proj.code_path:
+                        _claudio_cwd = _proj.code_path
+                        logger.info(f"📂 Claudio cwd: {_claudio_cwd}")
+                except Exception as _cwd_err:
+                    logger.warning(f"Could not resolve cwd for Claudio: {_cwd_err}")
 
         try:
             try:
@@ -2228,7 +2245,7 @@ class AIOrchestrator:
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "claudio":
-                    result = await self._execute_claudio_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking)
+                    result = await self._execute_claudio_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -2252,7 +2269,7 @@ class AIOrchestrator:
                 elif provider == "cohere":
                     result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "claudio":
-                    result = await self._execute_claudio(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking)
+                    result = await self._execute_claudio(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -2326,6 +2343,7 @@ class AIOrchestrator:
         timeout_seconds: Optional[float] = None,
         cwd: Optional[str] = None,
         thinking: Optional[Dict] = None,
+        disable_tools: bool = False,
     ) -> Dict:
         """
         PROMPT #253 - Execute via Claudio proxy using httpx (not SDK).
@@ -2348,6 +2366,10 @@ class AIOrchestrator:
 
         if cwd:
             body["cwd"] = cwd
+
+        # PROMPT #253 - disable_tools sends tools=[] to proxy, which adds --tools "" to CLI
+        if disable_tools:
+            body["tools"] = []
 
         if thinking:
             body["thinking"] = thinking
@@ -2405,6 +2427,7 @@ class AIOrchestrator:
         timeout_seconds: Optional[float] = None,
         cwd: Optional[str] = None,
         thinking: Optional[Dict] = None,
+        disable_tools: bool = False,
     ) -> Dict:
         """
         PROMPT #253 - Claudio streaming via httpx SSE.
@@ -2427,6 +2450,10 @@ class AIOrchestrator:
 
         if cwd:
             body["cwd"] = cwd
+
+        # PROMPT #253 - disable_tools sends tools=[] to proxy, which adds --tools "" to CLI
+        if disable_tools:
+            body["tools"] = []
 
         if thinking:
             body["thinking"] = thinking
