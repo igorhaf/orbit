@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "Claudio API",
-    "description": "Claudio API - API local usando assinatura via CLI.\n\nBase URL: http://localhost:8001\n\nEndpoint principal: POST /v1/messages",
+    "description": "Claudio API - API local usando assinatura via CLI.\n\nBase URL: http://localhost:8001\n\nEndpoint principal: POST /v1/messages\n\nCaracteristicas:\n- Usa assinatura Claude (nao API key)\n- CLI executa com --permission-mode bypassPermissions (sem prompts interativos)\n- Suporta parametro cwd para executar em qualquer diretorio de projeto\n- Suporta thinking (extended thinking) com blocos thinking na resposta\n- Streaming via SSE (Server-Sent Events)\n- Compativel com formato Anthropic Messages API",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "_exporter_id": "poc_chat"
   },
@@ -66,7 +66,7 @@
               "host": ["{{base_url}}"],
               "path": ["v1", "messages"]
             },
-            "description": "Envia uma mensagem e recebe a resposta completa (sem streaming)."
+            "description": "Envia uma mensagem e recebe a resposta completa (sem streaming).\n\nO CLI executa com --permission-mode bypassPermissions, sem bloquear em prompts de permissao."
           },
           "response": [
             {
@@ -148,7 +148,7 @@
               "host": ["{{base_url}}"],
               "path": ["v1", "messages"]
             },
-            "description": "Conversa com multiplas mensagens (multi-turn). O historico completo e enviado no array messages."
+            "description": "Conversa com multiplas mensagens (multi-turn). O historico completo e enviado no array messages.\n\nO backend usa --resume <session_id> para manter contexto entre chamadas."
           },
           "response": []
         },
@@ -170,7 +170,7 @@
               "host": ["{{base_url}}"],
               "path": ["v1", "messages"]
             },
-            "description": "Usa o modelo Opus (mais capaz)."
+            "description": "Usa o modelo Opus (mais capaz).\n\nModelos disponiveis: claude-sonnet-4-6 (padrao), claude-opus-4-6 (mais capaz), claude-haiku-4-5 (mais rapido)."
           },
           "response": []
         },
@@ -214,7 +214,7 @@
               "host": ["{{base_url}}"],
               "path": ["v1", "messages"]
             },
-            "description": "Demonstra parametros que a API aceita mas IGNORA (nao suportados pelo CLI).\n\nA resposta incluira o campo '_ignored_params' listando os parametros ignorados.\n\nParametros ignorados: temperature, top_p, top_k, stop_sequences, metadata, tool_choice, thinking."
+            "description": "Demonstra parametros que a API aceita mas IGNORA (nao suportados pelo CLI).\n\nA resposta incluira o campo '_ignored_params' listando os parametros ignorados.\n\nParametros ignorados: temperature, top_p, top_k, stop_sequences, metadata, tool_choice.\n\nNota: thinking NAO e mais ignorado - agora e suportado (ver pasta Thinking)."
           },
           "response": [
             {
@@ -245,6 +245,254 @@
               "path": ["v1", "messages"]
             },
             "description": "Mensagem com content como array de blocks (formato avancado da API). Suporta multiplos blocos de texto."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "CWD - Diretorio de Trabalho",
+      "description": "O parametro 'cwd' define em qual pasta/diretorio o CLI do Claude sera executado.\n\nIsso permite que o Claudio tenha acesso ao contexto completo de um projeto: ler arquivos, analisar codigo, editar, criar, etc.\n\nSem cwd, o CLI roda no diretorio padrao do backend. Com cwd, voce aponta para qualquer projeto no sistema de arquivos.\n\nExemplo: cwd=/home/igorhaf/meu-projeto faz o Claude rodar como se estivesse dentro dessa pasta.\n\nO CLI roda com --permission-mode bypassPermissions, entao operacoes de leitura/escrita no diretorio sao permitidas sem interacao manual.",
+      "item": [
+        {
+          "name": "Com cwd (non-streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"max_tokens\": 1024,\n  \"cwd\": \"/home/igorhaf/meu-projeto\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Liste os arquivos do projeto e explique a estrutura.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Envia uma mensagem especificando o diretorio de trabalho (cwd) sem streaming.\n\nO campo 'cwd' deve ser um caminho absoluto para a pasta do projeto.\n\nO CLI sera executado dentro dessa pasta, tendo acesso a todos os arquivos.\n\nSe omitido, o CLI executa no diretorio padrao do backend."
+          },
+          "response": []
+        },
+        {
+          "name": "Com cwd + streaming",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"max_tokens\": 2048,\n  \"stream\": true,\n  \"cwd\": \"/home/igorhaf/meu-projeto\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Analise o codigo deste projeto e sugira melhorias.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Combina streaming SSE com cwd para executar no contexto de um projeto especifico.\n\nIdeal para analises longas onde voce quer ver o resultado conforme o modelo processa."
+          },
+          "response": []
+        },
+        {
+          "name": "Com cwd + system prompt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"max_tokens\": 2048,\n  \"cwd\": \"/home/igorhaf/meu-projeto\",\n  \"system\": \"Voce e um code reviewer senior. Analise o codigo com foco em seguranca, performance e boas praticas.\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Faca um code review completo deste projeto.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Combina cwd com system prompt para dar instrucoes especificas ao modelo sobre como analisar o projeto.\n\nExemplo: usar system prompt para definir o papel do modelo (code reviewer, arquiteto, etc) enquanto cwd aponta para o projeto alvo."
+          },
+          "response": []
+        },
+        {
+          "name": "Com cwd - criar arquivo",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"max_tokens\": 4096,\n  \"cwd\": \"/home/igorhaf/meu-projeto\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Crie um arquivo README.md para este projeto com base na estrutura existente.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Usa cwd para pedir ao Claude que crie/edite arquivos dentro do projeto.\n\nComo o CLI roda com --permission-mode bypassPermissions, ele pode criar, editar e excluir arquivos no diretorio especificado sem pedir confirmacao.\n\nATENCAO: Use com cuidado - o modelo tera permissao total sobre os arquivos na pasta."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Thinking (Extended Thinking)",
+      "description": "Extended thinking permite que o modelo 'pense' antes de responder, mostrando o raciocinio interno.\n\nIMPORTANTE: Blocos thinking so aparecem na resposta quando o parametro 'thinking' e explicitamente enviado no request. Sem o parametro (ou com thinking: null), a API filtra automaticamente os blocos thinking e retorna apenas o texto final.\n\n3 modos de thinking:\n\n1. DESATIVADO (null): Nao envie o parametro thinking, ou envie thinking: null. Nenhum bloco thinking na resposta.\n\n2. MANUAL (enabled): {\"type\": \"enabled\", \"budget_tokens\": N} - habilita com budget de N tokens (minimo 1024). budget_tokens deve ser menor que max_tokens. Nota: budget_tokens esta DEPRECATED para Opus 4.6 e Sonnet 4.6 - use adaptive.\n\n3. ADAPTIVE (recomendado para Opus 4.6 / Sonnet 4.6): {\"type\": \"adaptive\"} - o modelo decide automaticamente quanto pensar. Combine com output_config.effort para controlar profundidade.\n\nNiveis de effort (opcional, apenas adaptive):\n- \"low\": pensamento minimo\n- \"medium\": pensamento moderado\n- \"high\": pensamento profundo (padrao)\n- \"max\": pensamento maximo (apenas Opus 4.6)\n\nRestricoes: thinking NAO e compativel com temperature ou top_k. Quando thinking esta ativo, esses parametros sao ignorados.\n\nA resposta contem blocos na ordem:\n1. type=thinking (raciocinio interno)\n2. type=text (resposta final)\n\nNo streaming SSE:\n- content_block_start (type=thinking)\n- content_block_delta (type=thinking_delta)\n- content_block_stop\n- content_block_start (type=text)\n- content_block_delta (type=text_delta)\n- content_block_stop\n\nModelos compativeis: claude-opus-4-6, claude-sonnet-4-6, claude-haiku-4-5.",
+      "item": [
+        {
+          "name": "Thinking DESATIVADO (null)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"max_tokens\": 1024,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Quantos Rs existem na palavra strawberry?\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Thinking DESATIVADO: quando o parametro 'thinking' NAO e enviado (ou e null), a resposta contem APENAS blocos text. Nenhum bloco thinking aparece na resposta, mesmo que o modelo tenha pensado internamente.\n\nEste e o comportamento padrao."
+          },
+          "response": [
+            {
+              "name": "200 OK (sem thinking)",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"id\": \"msg_xxx\",\n  \"type\": \"message\",\n  \"role\": \"assistant\",\n  \"model\": \"claude-sonnet-4-6\",\n  \"content\": [\n    {\n      \"type\": \"text\",\n      \"text\": \"Existem 3 Rs na palavra strawberry.\"\n    }\n  ],\n  \"stop_reason\": \"end_turn\",\n  \"stop_sequence\": null,\n  \"usage\": {\"input_tokens\": 10, \"output_tokens\": 15}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Thinking MANUAL (enabled + budget_tokens)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"{{model}}\",\n  \"max_tokens\": 16000,\n  \"thinking\": {\n    \"type\": \"enabled\",\n    \"budget_tokens\": 10000\n  },\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Resolva: Se um trem sai de A as 8h a 60km/h e outro sai de B as 9h a 90km/h, a distancia entre A e B e 300km. A que horas se encontram?\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Thinking MANUAL: habilita extended thinking com budget de tokens.\n\n- budget_tokens: minimo 1024, deve ser menor que max_tokens\n- O modelo usa ate budget_tokens tokens para pensar\n- Resposta inclui bloco thinking + bloco text\n\nNota: budget_tokens esta DEPRECATED para Opus 4.6 e Sonnet 4.6. Use 'adaptive' para esses modelos."
+          },
+          "response": [
+            {
+              "name": "200 OK (com thinking)",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"id\": \"msg_xxx\",\n  \"type\": \"message\",\n  \"role\": \"assistant\",\n  \"model\": \"claude-sonnet-4-6\",\n  \"content\": [\n    {\n      \"type\": \"thinking\",\n      \"thinking\": \"Vou resolver passo a passo...\\n\\nTrem A: sai de A as 8h a 60km/h...\\nTrem B: sai de B as 9h a 90km/h...\\nDistancia: 300km...\"\n    },\n    {\n      \"type\": \"text\",\n      \"text\": \"Os trens se encontram as 11h.\"\n    }\n  ],\n  \"stop_reason\": \"end_turn\",\n  \"stop_sequence\": null,\n  \"usage\": {\"input_tokens\": 30, \"output_tokens\": 250}\n}"
+            }
+          ]
+        },
+        {
+          "name": "Thinking ADAPTIVE (recomendado)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 16000,\n  \"thinking\": {\n    \"type\": \"adaptive\"\n  },\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Quantos Rs existem na palavra strawberry? Pense passo a passo.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Thinking ADAPTIVE (RECOMENDADO para Opus 4.6 e Sonnet 4.6).\n\nO modelo decide automaticamente quanto pensar baseado na complexidade da pergunta.\n\nNao precisa definir budget_tokens - o modelo gerencia sozinho.\n\nCompativel apenas com: claude-opus-4-6, claude-sonnet-4-6."
+          },
+          "response": []
+        },
+        {
+          "name": "Thinking ADAPTIVE + effort",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 16000,\n  \"thinking\": {\n    \"type\": \"adaptive\"\n  },\n  \"output_config\": {\n    \"effort\": \"high\"\n  },\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Projete uma arquitetura completa para um sistema de e-commerce com microsservicos.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Thinking adaptive com controle de effort.\n\nNiveis de effort:\n- \"low\": pensamento minimo (respostas rapidas)\n- \"medium\": pensamento moderado\n- \"high\": pensamento profundo (padrao)\n- \"max\": pensamento maximo (apenas Opus 4.6)\n\nNote: output_config.effort e opcional. Se omitido, usa \"high\" como padrao."
+          },
+          "response": []
+        },
+        {
+          "name": "Thinking (streaming)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 16000,\n  \"thinking\": {\n    \"type\": \"adaptive\"\n  },\n  \"stream\": true,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Quantos Rs existem na palavra strawberry? Pense passo a passo.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Thinking com streaming SSE.\n\nVoce vera os blocos thinking chegando em tempo real antes da resposta final.\n\nEventos SSE:\n1. content_block_start (type=thinking)\n2. content_block_delta (type=thinking_delta, thinking=...)\n3. content_block_stop\n4. content_block_start (type=text)\n5. content_block_delta (type=text_delta, text=...)\n6. content_block_stop"
+          },
+          "response": []
+        },
+        {
+          "name": "Thinking + cwd (analise de projeto)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Content-Type", "value": "application/json"},
+              {"key": "anthropic-version", "value": "2023-06-01"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"claude-opus-4-6\",\n  \"max_tokens\": 16000,\n  \"thinking\": {\n    \"type\": \"adaptive\"\n  },\n  \"cwd\": \"/home/igorhaf/meu-projeto\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Analise a arquitetura deste projeto e sugira melhorias. Pense antes de responder.\"\n    }\n  ]\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/messages",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "messages"]
+            },
+            "description": "Combina thinking com cwd para analise profunda de projetos.\n\nO modelo primeiro pensa sobre a estrutura do projeto (bloco thinking), depois fornece a analise final (bloco text).\n\nIdeal para:\n- Code review com raciocinio visivel\n- Analise arquitetural\n- Debugging complexo\n- Refactoring planejado"
           },
           "response": []
         }

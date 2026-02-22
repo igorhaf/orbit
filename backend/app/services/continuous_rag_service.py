@@ -192,7 +192,15 @@ class ContinuousRAGService:
 
         for root, dirs, files in os.walk(code_path):
             # Prune ignored directories (reuse from CodebaseMemoryService)
-            dirs[:] = [d for d in dirs if not self._memory._should_ignore_dir(d)]
+            # Pass relative path so entries like "projects/suinda" are matched
+            root_rel = str(Path(root).relative_to(code_path)) if Path(root) != code_path else ""
+            dirs[:] = [
+                d for d in dirs
+                if not self._memory._should_ignore_dir(
+                    d,
+                    rel_dir_path=(root_rel + "/" + d).lstrip("/") if root_rel else d,
+                )
+            ]
 
             for filename in files:
                 file_path = Path(root) / filename

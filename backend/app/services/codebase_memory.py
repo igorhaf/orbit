@@ -462,6 +462,12 @@ class CodebaseMemoryService:
             if part in self._effective_ignore_dirs:
                 return True
 
+        # Check relative path against blocklist entries with '/' (e.g. "projects/suinda")
+        for ignored in self._effective_ignore_dirs:
+            if "/" in ignored:
+                if rel_str == ignored or rel_str.startswith(ignored + "/"):
+                    return True
+
         # Check file patterns (includes global blocklist patterns)
         for pattern in self._effective_file_patterns:
             if fnmatch.fnmatch(name, pattern):
@@ -482,7 +488,7 @@ class CodebaseMemoryService:
 
         return False
 
-    def _should_ignore_dir(self, dirname: str) -> bool:
+    def _should_ignore_dir(self, dirname: str, rel_dir_path: str = "") -> bool:
         """
         PROMPT #166 - Quick check if directory name should be ignored.
 
@@ -490,6 +496,7 @@ class CodebaseMemoryService:
 
         Args:
             dirname: Directory name (not full path)
+            rel_dir_path: Relative path from project root (e.g. "projects/suinda")
 
         Returns:
             True if directory should be skipped
@@ -497,6 +504,15 @@ class CodebaseMemoryService:
         # Check built-in + AI-detected ignore list (PROMPT #223)
         if dirname in self._effective_ignore_dirs:
             return True
+
+        # Check relative path against blocklist entries that contain '/'
+        # e.g. "projects/suinda" should match when rel_dir_path is "projects/suinda"
+        if rel_dir_path:
+            for ignored in self._effective_ignore_dirs:
+                if "/" in ignored:
+                    # Match if the relative path equals or starts with the ignored path
+                    if rel_dir_path == ignored or rel_dir_path.startswith(ignored + "/"):
+                        return True
 
         # Check .gitignore patterns (directory names only)
         for pattern in self._gitignore_patterns:
@@ -518,7 +534,14 @@ class CodebaseMemoryService:
         lines = []
         for root, dirs, files in os.walk(root_path):
             # Prune already-known ignored dirs
-            dirs[:] = sorted(d for d in dirs if not self._should_ignore_dir(d))
+            root_rel = str(Path(root).relative_to(root_path)) if Path(root) != root_path else ""
+            dirs[:] = sorted(
+                d for d in dirs
+                if not self._should_ignore_dir(
+                    d,
+                    rel_dir_path=(root_rel + "/" + d).lstrip("/") if root_rel else d,
+                )
+            )
             rel = Path(root).relative_to(root_path)
             depth = len(rel.parts)
             if depth > 2:
@@ -1210,7 +1233,14 @@ class CodebaseMemoryService:
 
         for root, dirs, files in os.walk(root_path):
             # PROMPT #166 - Skip ignored directories using new method
-            dirs[:] = [d for d in dirs if not self._should_ignore_dir(d)]
+            root_rel = str(Path(root).relative_to(root_path)) if Path(root) != root_path else ""
+            dirs[:] = [
+                d for d in dirs
+                if not self._should_ignore_dir(
+                    d,
+                    rel_dir_path=(root_rel + "/" + d).lstrip("/") if root_rel else d,
+                )
+            ]
 
             rel_root = Path(root).relative_to(root_path)
 
@@ -2791,10 +2821,27 @@ IMPORTANTE: Seja PROFUNDO e DETALHADO. Uma análise superficial não serve. Extr
             "errors": []
         }
 
-        ignore_dirs = indexer.IGNORE_DIRS
+        # Use full effective ignore dirs (built-in + blocklist + custom + user paths)
+        # Merge indexer's effective set with memory service's effective set
+        all_ignore_dirs = indexer._effective_ignore_dirs | self._effective_ignore_dirs
 
         for root, dirs, files in os.walk(root_path):
-            dirs[:] = [d for d in dirs if d not in ignore_dirs]
+            # Check both leaf name AND relative path for entries with '/'
+            root_rel = str(Path(root).relative_to(root_path)) if Path(root) != root_path else ""
+            new_dirs = []
+            for d in dirs:
+                rel_dir = (root_rel + "/" + d).lstrip("/") if root_rel else d
+                if d in all_ignore_dirs:
+                    continue
+                # Check relative path against blocklist entries with '/'
+                skip = False
+                for ignored in all_ignore_dirs:
+                    if "/" in ignored and (rel_dir == ignored or rel_dir.startswith(ignored + "/")):
+                        skip = True
+                        break
+                if not skip:
+                    new_dirs.append(d)
+            dirs[:] = new_dirs
 
             for filename in files:
                 file_path = Path(root) / filename

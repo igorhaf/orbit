@@ -160,7 +160,15 @@ class CodebaseIndexer:
         if not project_path.exists():
             raise ValueError(f"Pasta do projeto não existe: {project_path}")
 
-        logger.info(f"Starting codebase indexing for project {project_id} at {project_path}")
+        # Load project-specific ignore patterns
+        if project.custom_ignore_patterns:
+            custom_dirs = project.custom_ignore_patterns.get("directories", [])
+            if custom_dirs:
+                self._effective_ignore_dirs.update(custom_dirs)
+        if project.ignore_paths and isinstance(project.ignore_paths, list):
+            self._effective_ignore_dirs.update(project.ignore_paths)
+
+        logger.info(f"Starting codebase indexing for project {project_id} at {project_path} (ignoring {len(self._effective_ignore_dirs)} dirs)")
 
         # Statistics
         stats = {
@@ -217,8 +225,12 @@ class CodebaseIndexer:
         files = []
 
         for root, dirs, filenames in os.walk(directory):
-            # Filter out ignored directories
-            dirs[:] = [d for d in dirs if d not in self._effective_ignore_dirs]
+            # Filter out ignored directories (check both leaf name AND relative path)
+            root_rel = str(Path(root).relative_to(directory)) if Path(root) != directory else ""
+            dirs[:] = [
+                d for d in dirs
+                if not self._should_ignore_dir(d, (root_rel + "/" + d).lstrip("/") if root_rel else d)
+            ]
 
             for filename in filenames:
                 file_path = Path(root) / filename
@@ -230,6 +242,18 @@ class CodebaseIndexer:
                 files.append(file_path)
 
         return files
+
+    def _should_ignore_dir(self, dirname: str, rel_dir_path: str = "") -> bool:
+        """Check if directory should be ignored by name or relative path."""
+        if dirname in self._effective_ignore_dirs:
+            return True
+        # Check relative path against blocklist entries with '/' (e.g. "projects/suinda")
+        if rel_dir_path:
+            for ignored in self._effective_ignore_dirs:
+                if "/" in ignored:
+                    if rel_dir_path == ignored or rel_dir_path.startswith(ignored + "/"):
+                        return True
+        return False
 
     def _should_ignore_file(self, file_path: Path) -> bool:
         """

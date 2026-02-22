@@ -455,10 +455,14 @@ class RagPipelineService:
 
         text = raw.strip()
 
-        # Strip markdown code fences (```json ... ``` or ``` ... ```)
-        fence_match = re.search(r'```(?:json)?\s*\n?([\s\S]*?)```', text)
-        if fence_match:
-            text = fence_match.group(1).strip()
+        # Strip OUTER markdown code fences only.
+        # Use rfind for the closing ``` to handle content that itself
+        # contains ``` (e.g., wiki pages with code blocks).
+        if text.startswith('```'):
+            first_nl = text.find('\n')
+            last_fence = text.rfind('```')
+            if first_nl > 0 and last_fence > first_nl:
+                text = text[first_nl + 1:last_fence].strip()
 
         # Find the outermost JSON object
         start = text.find('{')
@@ -498,13 +502,31 @@ class RagPipelineService:
 
         try:
             return json.loads(json_str)
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parse error after cleanup: {e}")
-            # Last resort: try the whole text
+        except json.JSONDecodeError as e1:
+            logger.warning(f"JSON parse error, attempting repairs: {e1}")
+
+            # Fix: LLM sometimes generates ) instead of } at end of objects.
+            # Generic repair: any ) that sits where } should be.
+            # Step 1: replace ) followed by , { ] or } (object boundary)
+            repaired = re.sub(r'\)\s*,\s*\{', '},\n{', json_str)
+            repaired = re.sub(r'\)\s*\]', '}]', repaired)
+            repaired = re.sub(r'\)\s*\}', '}}', repaired)
+            # Step 2: fix ] used as } (array-close sitting where object-close should)
+            # Pattern: ..."field":"value"] ,{ → ..."field":"value"} ,{
+            repaired = re.sub(r'(":\s*"[^"]*")\]\s*,\s*\{', r'\1},\n{', repaired)
+            repaired = re.sub(r'(":\s*"[^"]*")\]\s*\]\s*\}', r'\1}]}', repaired)
+            repaired = re.sub(r'(":\s*\d+)\]\s*,\s*\{', r'\1},\n{', repaired)
+            repaired = re.sub(r'(":\s*\d+)\]\s*\]\s*\}', r'\1}]}', repaired)
+
             try:
-                return json.loads(text)
-            except json.JSONDecodeError:
-                return {}
+                return json.loads(repaired)
+            except json.JSONDecodeError as e2:
+                logger.error(f"JSON parse error after repair: {e2}")
+                # Last resort: try the whole text
+                try:
+                    return json.loads(text)
+                except json.JSONDecodeError:
+                    return {}
 
     # =====================================================================
     # PHASE 2 VALIDATORS — strict contract enforcement for business rules
@@ -588,79 +610,40 @@ class RagPipelineService:
         return stored
 
     # =========================================================================
-    # PHASE 3: Unified generation — cards + wiki + project metadata
-    # Single JSON schema per call. Phase 4 becomes a no-op (wiki done here).
+    # PHASE 3: Generate CARDS ONLY from business rules
     # =========================================================================
 
-    PHASE3_UNIFIED_PROMPT = (
-        "Voce e um Product Owner e documentador tecnico senior.\n\n"
-        "A partir das regras de negocio do projeto na base de conhecimento, "
-        "voce vai gerar TUDO de uma vez:\n"
-        "  1. Metadados do projeto (titulo e descricao)\n"
-        "  2. Hierarquia completa de cards (Epic > Story > Task > Subtask)\n"
-        "  3. Paginas wiki tecnicas\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "CONTRATO DE RESPOSTA — JSON UNIFICADO RIGIDO\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
-        "{\n"
-        '  "project": {\n'
-        '    "title": "string 5-120 chars, titulo conciso do projeto",\n'
-        '    "description": "string 50-2000 chars, proposito, stack, arquitetura"\n'
-        "  },\n"
-        '  "cards": [\n'
-        "    {\n"
-        '      "title": "string 5-255 chars, unico, sem prefixos numericos",\n'
-        '      "description": "string min 200 chars — contexto, motivacao, requisitos tecnicos, dependencias",\n'
-        '      "item_type": "epic|story|task|subtask",\n'
-        '      "parent_title": "titulo EXATO do card pai, ou null para epics raiz",\n'
-        '      "story_points": "integer Fibonacci: 1|2|3|5|8|13 — estime pela complexidade real",\n'
-        '      "priority": "critical|high|medium|low",\n'
-        '      "complexity": "low|medium|high — low=Haiku (CRUD, config), medium=Sonnet (logica, API), high=Opus (arquitetura, seguranca)",\n'
-        '      "labels": ["array", "de", "strings", "lowercase", "kebab-case"],\n'
-        '      "acceptance_criteria": ["criterio verificavel 1", "criterio verificavel 2"],\n'
-        '      "entity": "entidade principal (ex: Usuario, Projeto, Task)"\n'
-        "    }\n"
-        "  ],\n"
-        '  "wiki_pages": [\n'
-        "    {\n"
-        '      "slug": "kebab-case unico, 3-80 chars (ex: autenticacao-usuarios)",\n'
-        '      "title": "string 3-200 chars, titulo descritivo",\n'
-        '      "content": "string Markdown min 1000 chars — headers ##/###, listas, tabelas, exemplos de codigo",\n'
-        '      "order": "integer unico sequencial 1, 2, 3..."\n'
-        "    }\n"
-        "  ]\n"
-        "}\n\n"
-        "═══════════════════════ REGRAS DOS CARDS ═══════════════════════\n"
-        "HIERARQUIA OBRIGATORIA:\n"
-        "  Epic (parent_title=null) → modulo macro do sistema\n"
-        "    Story (parent=Epic) → funcionalidade do modulo\n"
-        "      Task (parent=Story) → trabalho tecnico\n"
-        "        Subtask (parent=Task) → trabalho atomico\n"
-        "  NUNCA pule niveis. NUNCA crie task filha de epic.\n\n"
-        "ORDEM NO JSON: Epics primeiro → Stories → Tasks → Subtasks.\n\n"
-        "STORY_POINTS: estime caso a caso pela dificuldade tecnica real.\n"
-        "  Nao use valores fixos por tipo — avalie o conteudo de cada card.\n\n"
-        "QUANTITY: cada Epic deve ter 3-8 Stories, cada Story 2-5 Tasks.\n"
-        "  Cubra TODAS as regras de negocio com cards correspondentes.\n\n"
-        "DESCRIPTION: minimo 200 chars. QUANTO MAIS DETALHE, MELHOR.\n\n"
-        "ACCEPTANCE_CRITERIA: minimo 2, maximo 20, cada um min 15 chars.\n\n"
-        "═══════════════════════ REGRAS DA WIKI ═══════════════════════\n"
-        "Paginas OBRIGATORIAS (inclua mesmo que a base seja limitada):\n"
-        "  visao-geral | arquitetura | regras-negocio | api-endpoints\n"
-        "  modelos-dados | autenticacao | guia-desenvolvimento\n\n"
-        "CONTENT: min 1000 chars por pagina. Use headers ##/###, listas, "
-        "tabelas, blocos de codigo ```. Conteudo factual do projeto — nao invente.\n\n"
-        "Todos os textos em PORTUGUES."
+    PHASE3_CARDS_PROMPT = (
+        "IMPORTANTE: Voce NAO tem acesso a ferramentas. NAO tente executar comandos "
+        "ou explorar arquivos. As regras de negocio ja estao na mensagem do usuario.\n\n"
+        "Voce e um Product Owner. A partir das regras fornecidas, gere uma "
+        "hierarquia FLAT de cards (array unico, NAO aninhado).\n\n"
+        "CONTRATO — JSON RIGIDO. Responda APENAS com JSON puro, sem markdown.\n\n"
+        "FORMATO OBRIGATORIO (array FLAT de cards, NAO aninhado):\n"
+        '{"cards":['
+        '{"title":"Modulo X","item_type":"epic","parent_title":null,"description":"...min 200 chars...","story_points":13,"priority":"high","complexity":"high","labels":["modulo-x"],"acceptance_criteria":["criterio 1","criterio 2"],"entity":"Entidade"},'
+        '{"title":"Feature Y","item_type":"story","parent_title":"Modulo X","description":"...min 200 chars...","story_points":5,"priority":"medium","complexity":"medium","labels":["feature-y"],"acceptance_criteria":["criterio 1"],"entity":"Entidade"},'
+        '{"title":"Implementar Z","item_type":"task","parent_title":"Feature Y","description":"...min 200 chars...","story_points":3,"priority":"medium","complexity":"low","labels":["impl-z"],"acceptance_criteria":["criterio 1"],"entity":"Entidade"}'
+        ']}\n\n'
+        "REGRAS CRITICAS:\n"
+        "- cards e um ARRAY FLAT. Cada card tem parent_title ligando ao pai.\n"
+        "- NAO use epics[] aninhado. NAO use stories[] dentro de epic.\n"
+        "- item_type: epic|story|task|subtask\n"
+        "- parent_title: null para epic, titulo EXATO do pai para os demais\n"
+        "- story_points: Fibonacci (1,2,3,5,8,13)\n"
+        "- priority: critical|high|medium|low\n"
+        "- Ordem: epics primeiro, depois stories, tasks, subtasks\n"
+        "- description: min 200 chars por card\n"
+        "- Retorne APENAS o JSON com cards. SEM wiki, SEM project metadata.\n"
+        "- Todos os textos em PORTUGUES"
     )
-
-    PHASE3_PASSES = 3  # pass 1: full generation; passes 2-3: reinforce gaps
 
     async def phase_3_generate_cards(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 3 (Unified): Generate project metadata + cards + wiki in a single
-        JSON schema per pass. Uses RAG injection to get business rules as context.
-        Phase 4 is now a no-op — wiki is produced here.
+        Phase 3: Generate CARDS ONLY from business rules.
+
+        Reads ALL business rules from rag_documents, sends them ALL in a
+        SINGLE prompt to the LLM. No batching.
         """
         self._set_phase_status(project_id, 3, "running")
         jm = JobManager(self.db)
@@ -669,180 +652,106 @@ class RagPipelineService:
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        jm.update_progress(job_id, 5.0, "Fase 3/4: Gerando cards, wiki e metadados...")
+        jm.update_progress(job_id, 5.0, "Fase 3/4: Carregando regras de negocio...")
 
-        rule_count = self.db.execute(sql_text(
-            "SELECT COUNT(*) FROM rag_documents WHERE project_id = :pid "
-            "AND metadata->>'type' = 'business_rule'"
-        ), {"pid": str(project_id)}).scalar() or 0
+        # Load ALL business rules from RAG
+        rule_rows = self.db.execute(sql_text(
+            "SELECT content, metadata FROM rag_documents "
+            "WHERE project_id = :pid AND metadata->>'type' = 'business_rule' "
+            "ORDER BY metadata->>'rule_type', created_at"
+        ), {"pid": str(project_id)}).fetchall()
 
+        rule_count = len(rule_rows)
         if rule_count == 0:
             self._set_phase_status(project_id, 3, "failed")
             raise ValueError("Nenhuma regra de negocio encontrada. Execute Phase 2 primeiro.")
 
+        # Build ALL rules as a single context
+        rule_lines = []
+        for idx, row in enumerate(rule_rows):
+            content = row[0] or ""
+            meta = row[1] if isinstance(row[1], dict) else {}
+            rtype = meta.get("rule_type", "?")
+            source = meta.get("source_file", "?")
+            rule_lines.append(f"{idx+1}. [{rtype}] {content} (fonte: {source})")
+
+        rules_context = "\n".join(rule_lines)
+
+        logger.info(f"Phase 3: sending ALL {rule_count} rules in single prompt")
+
         from app.services.ai_orchestrator import AIOrchestrator
-        from app.models.task import Task
         orchestrator = AIOrchestrator(self.db)
 
         project_name = project.name or "Projeto"
+
+        user_prompt = (
+            f'REGRAS DE NEGOCIO do projeto "{project_name}" '
+            f'({rule_count} regras):\n\n'
+            f'{rules_context}\n\n'
+            f'---\n'
+            f'Gere TODOS os cards (hierarquia FLAT: epic, story, task, subtask).\n'
+            f'Cubra TODAS as {rule_count} regras acima com cards correspondentes.\n'
+            f'Retorne: {{"cards": [...]}}'
+        )
+
+        jm.update_progress(job_id, 15.0, f"Fase 3/4: Enviando {rule_count} regras para IA...")
+
+        max_retries = 2
         total_cards = 0
-        total_pages = 0
 
-        for pass_num in range(1, self.PHASE3_PASSES + 1):
-            pct_base = 5 + (85 * (pass_num - 1) // self.PHASE3_PASSES)
-            jm.update_progress(
-                job_id, pct_base,
-                f"Fase 3/4: Passada {pass_num}/{self.PHASE3_PASSES} — "
-                f"{total_cards} cards, {total_pages} paginas wiki ate agora..."
-            )
-
-            if pass_num == 1:
-                user_prompt = (
-                    f"Analise todas as {rule_count} regras de negocio do projeto "
-                    f"\"{project_name}\" na base de conhecimento e gere:\n\n"
-                    f"1. METADADOS: titulo conciso e descricao detalhada do projeto\n"
-                    f"2. CARDS: hierarquia completa Epic > Story > Task > Subtask "
-                    f"cobrindo TODAS as regras. Estime story_points caso a caso.\n"
-                    f"3. WIKI: paginas tecnicas detalhadas com conteudo Markdown rico\n\n"
-                    f"Gere o MAXIMO possivel em cada categoria."
-                )
-            else:
-                existing_cards = self.db.query(Task.title, Task.item_type).filter(
-                    Task.project_id == project_id,
-                    Task.reporter == "pipeline_phase3",
-                ).all()
-                existing_pages = self.db.execute(sql_text(
-                    "SELECT metadata->>'slug' as slug FROM rag_documents "
-                    "WHERE project_id = :pid AND metadata->>'type' = 'wiki_page'"
-                ), {"pid": str(project_id)}).fetchall()
-
-                cards_summary = "\n".join(
-                    f"  [{c.item_type}] {c.title}" for c in existing_cards
-                )
-                pages_summary = ", ".join(p[0] for p in existing_pages if p[0])
-
-                user_prompt = (
-                    f"Passada de REFORCO para o projeto \"{project_name}\".\n\n"
-                    f"Cards ja criados ({total_cards}):\n{cards_summary}\n\n"
-                    f"Wiki pages ja criadas: {pages_summary or 'nenhuma'}\n\n"
-                    f"Analise as regras de negocio e gere:\n"
-                    f"- CARDS novos que NAO existem na lista acima (areas nao cobertas, "
-                    f"stories faltando em epics, tasks e subtasks ausentes)\n"
-                    f"- WIKI PAGES novas ou use o mesmo slug para expandir existentes\n"
-                    f"- Pode omitir 'project' nesta passada (ja foi gerado)\n\n"
-                    f"Retorne APENAS itens NOVOS ou atualizados."
-                )
-
+        for attempt in range(max_retries + 1):
             try:
                 response = await orchestrator.execute(
                     usage_type="content_generation",
                     messages=[{"role": "user", "content": user_prompt}],
-                    system_prompt=self.PHASE3_UNIFIED_PROMPT,
-                    max_tokens=32000,
+                    system_prompt=self.PHASE3_CARDS_PROMPT,
+                    max_tokens=16000,
                     project_id=project_id,
-                    enable_rag=True,
-                    rag_top_k=self.PHASE2_RAG_TOP_K,
-                    rag_similarity_threshold=self.PHASE2_RAG_THRESHOLD,
-                    rag_filter={"type": "business_rule"},
-                    metadata={"phase": "rag_pipeline_phase3", "pass": pass_num},
+                    metadata={"phase": "rag_pipeline_phase3"},
                     disable_cwd=True,
                 )
 
                 raw = response.get("content", "")
-                result = self._process_unified_json(raw, project_id, project)
-                self.db.commit()
-
-                total_cards += result["cards_created"]
-                total_pages += result["pages_created"]
-
                 logger.info(
-                    f"Phase 3 pass {pass_num}/{self.PHASE3_PASSES}: "
-                    f"+{result['cards_created']} cards, +{result['pages_created']} wiki pages "
-                    f"(totals: {total_cards} cards, {total_pages} pages)"
+                    f"Phase 3 attempt {attempt+1} "
+                    f"({len(raw)} chars): {raw[:300]}..."
                 )
 
-            except Exception as e:
-                logger.error(f"Phase 3 pass {pass_num} failed: {e}")
-                continue
+                if len(raw) < 50:
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"Phase 3: empty response, "
+                            f"retrying ({attempt+1}/{max_retries})..."
+                        )
+                        continue
+                    logger.error(f"Phase 3: empty after {max_retries+1} attempts")
+                    break
 
-        if total_cards == 0 and total_pages == 0:
+                total_cards = self._create_cards_from_json(raw, project_id)
+                self.db.commit()
+
+                logger.info(f"Phase 3: {total_cards} cards created from single prompt")
+                break
+
+            except Exception as e:
+                logger.error(f"Phase 3 attempt {attempt+1} failed: {e}")
+                if attempt >= max_retries:
+                    break
+
+        if total_cards == 0:
             self._set_phase_status(project_id, 3, "failed")
-            raise ValueError("Geracao falhou: 0 cards e 0 paginas wiki criadas")
+            raise ValueError("Geracao falhou: 0 cards criados")
 
         self._set_phase_status(project_id, 3, "completed")
         jm.update_progress(
             job_id, 95.0,
-            f"Fase 3/4: Concluida — {total_cards} cards e {total_pages} paginas wiki"
+            f"Fase 3/4: Concluida — {total_cards} cards"
         )
         return {
             "phase": "generate_cards",
             "cards_created": total_cards,
-            "wiki_pages_created": total_pages,
             "rules_in_rag": rule_count,
-            "passes": self.PHASE3_PASSES,
         }
-
-    # =====================================================================
-    # UNIFIED JSON PROCESSOR — handles project + cards + wiki_pages
-    # Called by phase_3_generate_cards for each pass.
-    # =====================================================================
-
-    def _process_unified_json(self, raw: str, project_id: UUID, project: Project) -> Dict:
-        """
-        Process the unified JSON response from Phase 3 unified prompt.
-        Handles:
-          1. project.title / project.description  (REGRA #0: only if empty)
-          2. cards[]                               (delegates to _create_cards_from_json)
-          3. wiki_pages[]                          (delegates to _save_wiki_and_metadata)
-        Returns: {cards_created, pages_created, title_generated, description_generated}
-        """
-        result = {
-            "cards_created": 0,
-            "pages_created": 0,
-            "title_generated": False,
-            "description_generated": False,
-        }
-
-        parsed = self._extract_json(raw)
-        if not parsed:
-            logger.warning("Phase 3 unified: no valid JSON found in response")
-            return result
-
-        # ---- 1. PROJECT METADATA (REGRA #0: only set if empty) ----
-        project_meta = parsed.get("project") or {}
-        if isinstance(project_meta, dict):
-            ai_title = str(project_meta.get("title") or "").strip()
-            ai_desc = str(project_meta.get("description") or "").strip()
-
-            if ai_title and 5 <= len(ai_title) <= 120:
-                if not (project.name and project.name.strip()):
-                    project.name = ai_title.replace("\n", " ").replace("\r", "")
-                    result["title_generated"] = True
-                    logger.info(f"Phase 3 unified: Generated title: {ai_title}")
-
-            if ai_desc and len(ai_desc) >= 20:
-                if not (project.description and project.description.strip()):
-                    project.description = ai_desc[:2000]
-                    result["description_generated"] = True
-                    logger.info(f"Phase 3 unified: Generated description ({len(ai_desc)} chars)")
-
-        # ---- 2. CARDS — pass raw string (method reads 'cards' key) ----
-        # _create_cards_from_json parses JSON and reads parsed["cards"]
-        # The unified JSON already has a "cards" key at root level.
-        result["cards_created"] = self._create_cards_from_json(raw, project_id)
-
-        # ---- 3. WIKI PAGES — build a Phase4-compatible dict for reuse ----
-        # _save_wiki_and_metadata expects "title", "description", "wiki_pages"
-        # We flatten project metadata to top-level for that method.
-        wiki_payload = {
-            "wiki_pages": parsed.get("wiki_pages", []),
-            # Don't pass title/description — already handled above (REGRA #0 applied)
-        }
-        wiki_raw = json.dumps(wiki_payload, ensure_ascii=False)
-        wiki_result = self._save_wiki_and_metadata(wiki_raw, project_id, project)
-        result["pages_created"] = wiki_result["pages_created"]
-
-        return result
 
     # =====================================================================
     # PHASE 3 VALIDATORS — strict contract enforcement for cards
@@ -853,16 +762,64 @@ class RagPipelineService:
     TYPE_ORDER = {"epic": 0, "story": 1, "task": 2, "subtask": 3}
     EXPECTED_PARENT_TYPE = {"story": "epic", "task": "story", "subtask": "task"}
 
+    @staticmethod
+    def _flatten_nested_to_cards(parsed: dict) -> list:
+        """
+        Fallback: convert nested epics[]/stories[]/tasks[] format
+        to flat cards[] array with parent_title links.
+        Handles any combination of nested keys.
+        """
+        flat = []
+
+        def _extract_children(items, parent_title, item_type):
+            if not isinstance(items, list):
+                return
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                card = {k: v for k, v in item.items()
+                        if k not in ("stories", "tasks", "subtasks", "children")}
+                card["item_type"] = card.get("item_type", item_type)
+                card["parent_title"] = parent_title
+                flat.append(card)
+                title = str(card.get("title", "")).strip()
+                # Recurse into nested children
+                for child_key, child_type in [
+                    ("stories", "story"), ("tasks", "task"),
+                    ("subtasks", "subtask"), ("children", None),
+                ]:
+                    if child_key in item:
+                        _extract_children(
+                            item[child_key],
+                            title,
+                            child_type or card["item_type"],
+                        )
+
+        # Try various nested keys
+        for root_key, root_type in [
+            ("epics", "epic"), ("modules", "epic"),
+            ("stories", "story"), ("tasks", "task"),
+        ]:
+            if root_key in parsed and isinstance(parsed[root_key], list):
+                _extract_children(parsed[root_key], None, root_type)
+
+        return flat
+
     def _create_cards_from_json(self, raw: str, project_id: UUID) -> int:
         """Parse, VALIDATE and create Task records from AI JSON response.
-        Rejects any card that violates the contract."""
+        Rejects any card that violates the contract.
+        Falls back to nested-to-flat conversion if 'cards' key is missing."""
         from app.models.task import Task
 
         parsed = self._extract_json(raw)
         raw_cards = parsed.get("cards", [])
-        if not isinstance(raw_cards, list):
-            logger.warning("Phase 3: 'cards' is not a list")
-            return 0
+        if not isinstance(raw_cards, list) or len(raw_cards) == 0:
+            # Fallback: try to flatten nested format (epics[]/stories[]/tasks[])
+            raw_cards = self._flatten_nested_to_cards(parsed)
+            if raw_cards:
+                logger.info(
+                    f"Phase 3: Converted nested format to {len(raw_cards)} flat cards"
+                )
 
         # ---- PASS 1: Validate and collect valid cards ----
         valid_cards = []
@@ -1072,23 +1029,127 @@ class RagPipelineService:
         "- PREFIRA paginas EXTENSAS e DETALHADAS a paginas curtas e superficiais."
     )
 
-    PHASE4_PASSES = 3  # 1 initial + 2 reinforcement
-
     async def phase_4_generate_wiki(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 4: NO-OP — wiki + title + description are now generated in Phase 3 (unified).
-        This phase is kept for backward compatibility but does nothing.
+        Phase 4: Generate wiki pages + project title + project description.
+
+        Reads ALL business rules from rag_documents, sends them ALL in a
+        SINGLE prompt to the LLM. No batching.
+        Same RAG approach: read from DB, call orchestrator with disable_cwd=True.
         """
         self._set_phase_status(project_id, 4, "running")
         jm = JobManager(self.db)
-        jm.update_progress(job_id, 50.0, "Fase 4/4: Wiki ja gerada na Fase 3 (no-op)...")
+
+        project = self.db.query(Project).filter(Project.id == project_id).first()
+        if not project or not project.code_path:
+            raise ValueError("Project not found or missing code_path")
+
+        jm.update_progress(job_id, 10.0, "Fase 4/4: Carregando regras para gerar wiki...")
+
+        # Load ALL business rules from RAG
+        rule_rows = self.db.execute(sql_text(
+            "SELECT content, metadata FROM rag_documents "
+            "WHERE project_id = :pid AND metadata->>'type' = 'business_rule' "
+            "ORDER BY metadata->>'rule_type', created_at"
+        ), {"pid": str(project_id)}).fetchall()
+
+        rule_count = len(rule_rows)
+        if rule_count == 0:
+            self._set_phase_status(project_id, 4, "failed")
+            raise ValueError("Nenhuma regra de negocio encontrada. Execute Phase 2 primeiro.")
+
+        # Build ALL rules as a single context
+        rule_lines = []
+        for idx, row in enumerate(rule_rows):
+            content = row[0] or ""
+            meta = row[1] if isinstance(row[1], dict) else {}
+            rtype = meta.get("rule_type", "?")
+            rule_lines.append(f"{idx+1}. [{rtype}] {content}")
+
+        rules_context = "\n".join(rule_lines)
+
+        logger.info(f"Phase 4: sending ALL {rule_count} rules in single prompt")
+
+        from app.services.ai_orchestrator import AIOrchestrator
+        orchestrator = AIOrchestrator(self.db)
+
+        project_name = project.name or "Projeto"
+
+        user_prompt = (
+            f'Projeto: "{project_name}"\n'
+            f'Total de regras de negocio: {rule_count}\n\n'
+            f'REGRAS DE NEGOCIO ({rule_count} regras):\n\n'
+            f'{rules_context}\n\n'
+            f'---\n'
+            f'A partir de TODAS as {rule_count} regras, gere:\n'
+            f'1. Titulo do projeto (se "{project_name}" for generico)\n'
+            f'2. Descricao detalhada do projeto\n'
+            f'3. Paginas wiki tecnicas obrigatorias\n\n'
+            f'Retorne o JSON conforme o contrato no system prompt.'
+        )
+
+        jm.update_progress(job_id, 30.0, "Fase 4/4: Gerando wiki e metadados do projeto...")
+
+        max_retries = 2
+        total_pages = 0
+        title_generated = False
+        desc_generated = False
+
+        for attempt in range(max_retries + 1):
+            try:
+                response = await orchestrator.execute(
+                    usage_type="content_generation",
+                    messages=[{"role": "user", "content": user_prompt}],
+                    system_prompt=self.PHASE4_SYSTEM_PROMPT,
+                    max_tokens=16000,
+                    project_id=project_id,
+                    metadata={"phase": "rag_pipeline_phase4"},
+                    disable_cwd=True,
+                )
+
+                raw = response.get("content", "")
+                logger.info(
+                    f"Phase 4 attempt {attempt+1} ({len(raw)} chars): {raw[:300]}..."
+                )
+
+                if len(raw) < 50:
+                    if attempt < max_retries:
+                        logger.warning(f"Phase 4: empty response, retrying ({attempt+1}/{max_retries})...")
+                        continue
+                    logger.error(f"Phase 4: empty after {max_retries+1} attempts")
+                    break
+
+                wiki_result = self._save_wiki_and_metadata(raw, project_id, project)
+                self.db.commit()
+
+                total_pages = wiki_result["pages_created"]
+                title_generated = wiki_result.get("title_generated", False)
+                desc_generated = wiki_result.get("description_generated", False)
+
+                logger.info(
+                    f"Phase 4: {total_pages} wiki pages, "
+                    f"title={'yes' if title_generated else 'no'}, "
+                    f"desc={'yes' if desc_generated else 'no'}"
+                )
+                break
+
+            except Exception as e:
+                logger.error(f"Phase 4 attempt {attempt+1} failed: {e}")
+                if attempt >= max_retries:
+                    break
+
+        if total_pages == 0:
+            self._set_phase_status(project_id, 4, "failed")
+            raise ValueError("Geracao falhou: 0 paginas wiki criadas")
+
         self._set_phase_status(project_id, 4, "completed")
-        jm.update_progress(job_id, 100.0, "Fase 4/4: Concluida (wiki gerada na Fase 3)")
+        jm.update_progress(job_id, 100.0, f"Fase 4/4: Concluida — {total_pages} wiki pages")
         return {
             "phase": "generate_wiki",
-            "pages_created": 0,
-            "passes": 0,
-            "note": "Wiki now generated in Phase 3 unified pass.",
+            "pages_created": total_pages,
+            "title_generated": title_generated,
+            "description_generated": desc_generated,
+            "rules_used": rule_count,
         }
 
     # =====================================================================
