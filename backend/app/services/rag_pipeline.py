@@ -10,13 +10,14 @@ PROMPT #252 - Progressive pipeline triggered by manual buttons:
 State stored in Redis: rag:pipeline:{project_id}
 """
 
+import fnmatch
 import json
 import logging
 import os
 import re
 import subprocess
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -57,6 +58,102 @@ class RagPipelineService:
         self.redis = _get_redis()
         self.rag = RAGService(db)
         self.continuous_rag = ContinuousRAGService(db)
+
+    @staticmethod
+    def _map_progress(local_pct: float, pmin: float, pmax: float) -> float:
+        """Map a local 0-100 percentage to a global [pmin, pmax] range."""
+        return pmin + (pmax - pmin) * local_pct / 100.0
+
+    # =========================================================================
+    # IGNORE PATTERNS — project-relative path filtering (PROMPT #253)
+    #
+    # Loads ignore patterns from:
+    #   1. Built-in IGNORE_DIRECTORIES (from CodebaseMemoryService)
+    #   2. Project.custom_ignore_patterns (AI-detected)
+    #   3. Project.ignore_paths (user-editable)
+    #   4. .gitignore from project root
+    # Applied in ALL phases when loading files from DB.
+    # =========================================================================
+
+    def _load_ignore_patterns(self, project: Project) -> Dict[str, Set[str]]:
+        """Load all ignore patterns for a project.
+
+        Returns dict with 'dirs' (directory names/paths) and 'files' (file globs).
+        """
+        from app.services.codebase_memory import CodebaseMemoryService
+
+        dirs: Set[str] = set(CodebaseMemoryService.IGNORE_DIRECTORIES)
+        files: Set[str] = set(CodebaseMemoryService.IGNORE_FILE_PATTERNS)
+
+        # AI-detected custom patterns (PROMPT #223)
+        if project.custom_ignore_patterns:
+            custom_dirs = project.custom_ignore_patterns.get("directories", [])
+            if custom_dirs:
+                dirs.update(custom_dirs)
+
+        # User-editable ignore paths (PROMPT #241)
+        if project.ignore_paths and isinstance(project.ignore_paths, list):
+            dirs.update(project.ignore_paths)
+
+        # .gitignore patterns
+        if project.code_path:
+            gitignore_path = Path(project.code_path) / ".gitignore"
+            if gitignore_path.exists():
+                try:
+                    content = gitignore_path.read_text(encoding="utf-8", errors="ignore")
+                    for line in content.splitlines():
+                        line = line.strip()
+                        if not line or line.startswith("#") or line.startswith("!"):
+                            continue
+                        if line.endswith("/"):
+                            line = line[:-1]
+                        dirs.add(line)
+                except Exception:
+                    pass
+
+        return {"dirs": dirs, "files": files}
+
+    @staticmethod
+    def _is_path_ignored(source_file: str, ignore_patterns: Dict[str, Set[str]]) -> bool:
+        """Check if a source_file path (relative) should be ignored.
+
+        Mirrors the logic in CodebaseMemoryService._should_ignore_path but
+        operates on string paths from DB metadata (no filesystem access needed).
+        """
+        if not source_file:
+            return False
+
+        dirs = ignore_patterns.get("dirs", set())
+        files = ignore_patterns.get("files", set())
+        parts = Path(source_file).parts
+        name = Path(source_file).name
+
+        # Check if any directory component is in ignore list
+        for part in parts[:-1]:  # exclude filename
+            if part in dirs:
+                return True
+
+        # Check relative path against blocklist entries with '/'
+        for ignored in dirs:
+            if "/" in ignored:
+                if source_file == ignored or source_file.startswith(ignored + "/"):
+                    return True
+
+        # Check file patterns
+        for pattern in files:
+            if fnmatch.fnmatch(name, pattern):
+                return True
+
+        # Check .gitignore-style patterns against name and full path
+        for pattern in dirs:
+            if fnmatch.fnmatch(name, pattern):
+                return True
+            if fnmatch.fnmatch(source_file, pattern):
+                return True
+            if fnmatch.fnmatch(source_file, f"*/{pattern}"):
+                return True
+
+        return False
 
     def _pipeline_key(self, project_id: UUID) -> str:
         return f"{PIPELINE_KEY_PREFIX}:{project_id}"
@@ -138,20 +235,23 @@ class RagPipelineService:
     # =========================================================================
     # PHASE 1: Index files (embedding only, no AI)
     # =========================================================================
-    async def phase_1_index_files(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
+    async def phase_1_index_files(self, project_id: UUID, job_id: UUID,
+                                   pmin: float = 0.0, pmax: float = 100.0) -> Dict[str, Any]:
         """
         Phase 1: Scan filesystem and embed all files via Nomic (no AI calls).
         Files go from PENDING → INDEXED status.
+        pmin/pmax: progress range for this phase (default 0-100 for standalone).
         """
         self._set_phase_status(project_id, 1, "running")
         jm = JobManager(self.db)
+        _p = lambda local: self._map_progress(local, pmin, pmax)
 
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
         # Step 1: Scan for changes (detect new/modified/deleted files)
-        jm.update_progress(job_id, 5.0, "Fase 1/4: Detectando arquivos...")
+        jm.update_progress(job_id, _p(5), "Fase 1/4: Detectando arquivos...")
         scan_result = await self.continuous_rag.scan_for_changes(project_id)
         logger.info(f"Phase 1 scan: {scan_result}")
 
@@ -163,6 +263,19 @@ class RagPipelineService:
             RAGFileState.project_id == project_id,
             RAGFileState.status == FileProcessingStatus.PENDING,
         ).all()
+
+        # Apply project-relative ignore patterns (PROMPT #253)
+        ignore_patterns = self._load_ignore_patterns(project)
+        files_before = len(pending_files)
+        pending_files = [
+            f for f in pending_files
+            if not self._is_path_ignored(f.file_path, ignore_patterns)
+        ]
+        if files_before != len(pending_files):
+            logger.info(
+                f"Phase 1: Filtered {files_before - len(pending_files)} ignored files "
+                f"({len(pending_files)} remaining of {files_before})"
+            )
 
         total = len(pending_files)
         indexed = 0
@@ -209,9 +322,9 @@ class RagPipelineService:
                 indexed += 1
 
                 # Progress update
-                pct = 10 + (80 * (i + 1) / max(total, 1))
+                local_pct = 10 + (80 * (i + 1) / max(total, 1))
                 if (i + 1) % 20 == 0 or i == total - 1:
-                    jm.update_progress(job_id, pct,
+                    jm.update_progress(job_id, _p(local_pct),
                                        f"Fase 1/4: Indexando arquivos... ({i + 1}/{total})")
                     self.db.commit()
 
@@ -231,7 +344,7 @@ class RagPipelineService:
             "errors": errors,
             "scan": scan_result,
         }
-        jm.update_progress(job_id, 95.0, f"Fase 1/4: Concluída — {indexed} arquivos indexados")
+        jm.update_progress(job_id, _p(95), f"Fase 1/4: Concluida — {indexed} arquivos indexados")
         return result
 
     # =========================================================================
@@ -249,9 +362,9 @@ class RagPipelineService:
     # PROMPT #259 - Thinking disabled to save credits
     THINKING_CONFIG = None
 
-    # RAG config - keep small to avoid payload too large errors
-    PHASE2_RAG_TOP_K = 20
-    PHASE2_RAG_THRESHOLD = 0.3
+    # Batch config for Phase 2 (process ALL files, not RAG-selected subset)
+    PHASE2_BATCH_SIZE = 30
+    PHASE2_MAX_CONTEXT_CHARS = 80000
 
     PHASE2_SYSTEM_PROMPT = (
         "IMPORTANTE: Voce NAO tem acesso a ferramentas. NAO tente executar comandos, "
@@ -270,28 +383,33 @@ class RagPipelineService:
         "REGRAS:\n"
         "- Extraia o MAXIMO de regras do codigo no contexto\n"
         "- NAO invente regras — apenas o que EXISTE no codigo fornecido\n"
-        "- Descricoes em PORTUGUES\n"
+        "- Descricoes SEMPRE em PORTUGUES. NUNCA em ingles.\n"
         "- Se nenhuma regra: {\"business_rules\": []}\n"
         "- source_file = caminho relativo do arquivo"
     )
 
-    async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
-        """
-        Phase 2: Extract business rules via SINGLE compact prompt + RAG injection.
+    # Number of extraction passes (each pass re-scans all files for missed rules)
+    PHASE2_NUM_PASSES = 3
 
-        Instead of loading all code_file documents inline (hundreds of KB),
-        uses enable_rag=True with rag_filter={"type": "code_file"} so the
-        orchestrator injects relevant code via RAG automatically.
-        Result: ~80% token reduction, single LLM call instead of 5+.
+    async def phase_2_extract_rules(self, project_id: UUID, job_id: UUID,
+                                     pmin: float = 0.0, pmax: float = 100.0) -> Dict[str, Any]:
+        """
+        Phase 2: Extract business rules via MULTI-PASS BATCH processing.
+
+        Runs PHASE2_NUM_PASSES passes over ALL code files. Each pass:
+        - Pass 1: Extract all rules (clean slate)
+        - Pass 2+: Re-extract with list of already-found rules so LLM
+                    focuses on MISSED rules (avoids duplicates)
         """
         self._set_phase_status(project_id, 2, "running")
         jm = JobManager(self.db)
+        _p = lambda local: self._map_progress(local, pmin, pmax)
 
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        jm.update_progress(job_id, 5.0, "Fase 2/4: Preparando extracao de regras...")
+        jm.update_progress(job_id, _p(5), "Fase 2/4: Preparando extracao de regras...")
 
         # Delete old business rules from RAG
         try:
@@ -305,64 +423,186 @@ class RagPipelineService:
         except Exception:
             pass
 
-        # Lightweight count check (no full content load)
-        code_count = self.db.execute(sql_text(
-            "SELECT COUNT(*) FROM rag_documents "
-            "WHERE project_id = :pid AND metadata->>'type' = 'code_file'"
-        ), {"pid": str(project_id)}).scalar() or 0
+        # Load ALL code_file documents from DB
+        rows = self.db.execute(sql_text(
+            "SELECT content, metadata FROM rag_documents "
+            "WHERE project_id = :pid AND metadata->>'type' = 'code_file' "
+            "ORDER BY metadata->>'source_file'"
+        ), {"pid": str(project_id)}).fetchall()
 
+        # Apply project-relative ignore patterns (PROMPT #253)
+        ignore_patterns = self._load_ignore_patterns(project)
+        rows_before = len(rows)
+        rows = [
+            r for r in rows
+            if not self._is_path_ignored(
+                (r[1] if isinstance(r[1], dict) else {}).get("source_file", ""),
+                ignore_patterns,
+            )
+        ]
+        if rows_before != len(rows):
+            logger.info(
+                f"Phase 2: Filtered {rows_before - len(rows)} ignored files "
+                f"({len(rows)} remaining of {rows_before})"
+            )
+
+        code_count = len(rows)
         if code_count == 0:
             self._set_phase_status(project_id, 2, "failed")
             raise ValueError("Nenhum arquivo indexado. Execute Phase 1 primeiro.")
 
-        # Compact summary by file extension (~500 bytes instead of ~375KB)
-        ext_rows = self.db.execute(sql_text(
-            "SELECT metadata->>'file_extension' as ext, COUNT(*) as cnt "
-            "FROM rag_documents "
-            "WHERE project_id = :pid AND metadata->>'type' = 'code_file' "
-            "GROUP BY metadata->>'file_extension' ORDER BY cnt DESC"
-        ), {"pid": str(project_id)}).fetchall()
+        logger.info(f"Phase 2: {code_count} code files loaded from DB")
 
-        ext_summary = "\n".join([f"- {r.ext or 'other'}: {r.cnt} arquivos" for r in ext_rows])
+        # Build batches respecting size limits
+        batches: List[List[str]] = []
+        current_batch: List[str] = []
+        current_chars = 0
 
-        logger.info(f"Phase 2: {code_count} code files — using RAG injection (single call)")
-        jm.update_progress(job_id, 10.0, "Fase 2/4: Extraindo regras via RAG...")
+        for row in rows:
+            content = row[0] or ""
+            meta = row[1] if isinstance(row[1], dict) else {}
+            source = meta.get("source_file", "unknown")
+            entry = f"=== {source} ===\n{content}\n"
+            entry_len = len(entry)
+
+            if current_batch and (
+                len(current_batch) >= self.PHASE2_BATCH_SIZE
+                or current_chars + entry_len > self.PHASE2_MAX_CONTEXT_CHARS
+            ):
+                batches.append(current_batch)
+                current_batch = []
+                current_chars = 0
+
+            current_batch.append(entry)
+            current_chars += entry_len
+
+        if current_batch:
+            batches.append(current_batch)
+
+        total_batches = len(batches)
+        num_passes = self.PHASE2_NUM_PASSES
+        total_steps = total_batches * num_passes
+
+        logger.info(
+            f"Phase 2: {code_count} files, {total_batches} batches, "
+            f"{num_passes} passes ({total_steps} total steps)"
+        )
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
         project_name = project.name or "Projeto"
 
-        user_prompt = (
-            f'Projeto: "{project_name}"\n'
-            f'Total de arquivos de codigo: {code_count}\n\n'
-            f'Distribuicao por extensao:\n{ext_summary}\n\n'
-            f'O codigo-fonte completo esta no contexto fornecido acima '
-            f'(RELEVANT CONTEXT FROM KNOWLEDGE BASE).\n\n'
-            f'Analise TODO o codigo do contexto e extraia TODAS as regras de negocio.\n'
-            f'Retorne APENAS o JSON com business_rules. '
-            f'NAO use ferramentas, NAO explore arquivos.'
-        )
+        total_rules = 0
+        # Track found rule texts across passes to build "already found" context
+        found_rule_summaries: List[str] = []
 
-        response = await orchestrator.execute(
-            usage_type="rag_extraction",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=self.PHASE2_SYSTEM_PROMPT,
-            project_id=project_id,
-            enable_rag=True,
-            rag_filter={"type": "code_file"},
-            rag_top_k=300,
-            rag_similarity_threshold=0.0,
-            metadata={"phase": "rag_pipeline_phase2", "skip_context_build": True},
-            disable_cwd=True,
-            disable_tools=True,
-        )
+        for pass_num in range(1, num_passes + 1):
+            pass_rules = 0
 
-        raw = response.get("content", "")
-        rules = self._parse_rules_json(raw)
-        total_rules = self._store_rules(rules, project_id)
-        self.db.commit()
+            # Build "already found" context for passes 2+
+            already_found_context = ""
+            if pass_num > 1 and found_rule_summaries:
+                # Truncate to fit in context (~10KB max for already-found list)
+                summary_lines = found_rule_summaries[:500]
+                already_found_context = (
+                    f"\n\nREGRAS JA ENCONTRADAS ({len(found_rule_summaries)} total) — "
+                    f"NAO repita estas, busque regras NOVAS:\n"
+                    + "\n".join(f"- {s}" for s in summary_lines)
+                )
+                if len(found_rule_summaries) > 500:
+                    already_found_context += f"\n... e mais {len(found_rule_summaries) - 500} regras"
 
-        logger.info(f"Phase 2: Single RAG call → {total_rules} rules extracted")
+            for batch_idx, batch in enumerate(batches):
+                batch_num = batch_idx + 1
+                step = (pass_num - 1) * total_batches + batch_num
+                local_progress = 5.0 + (90.0 * step / total_steps)
+                jm.update_progress(
+                    job_id, _p(local_progress),
+                    f"Fase 2/4: Passe {pass_num}/{num_passes}, "
+                    f"lote {batch_num}/{total_batches} — {total_rules} regras"
+                )
+
+                code_context = "\n".join(batch)
+
+                if pass_num == 1:
+                    user_prompt = (
+                        f'CODIGO-FONTE do projeto "{project_name}" '
+                        f'(lote {batch_num} de {total_batches}):\n\n'
+                        f'{code_context}\n\n'
+                        f'---\n'
+                        f'Analise TODO o codigo acima e extraia TODAS as regras de negocio.\n'
+                        f'Retorne APENAS o JSON com business_rules. '
+                        f'NAO use ferramentas, NAO explore arquivos.'
+                    )
+                else:
+                    user_prompt = (
+                        f'CODIGO-FONTE do projeto "{project_name}" '
+                        f'(passe {pass_num}, lote {batch_num} de {total_batches}):\n\n'
+                        f'{code_context}\n\n'
+                        f'{already_found_context}\n\n'
+                        f'---\n'
+                        f'PASSE {pass_num} DE EXTRACAO PROFUNDA.\n'
+                        f'Ja encontramos {len(found_rule_summaries)} regras nos passes anteriores.\n'
+                        f'Analise o codigo acima buscando regras que AINDA NAO FORAM extraidas:\n'
+                        f'- Validacoes implicitas (if/else que controlam fluxo)\n'
+                        f'- Regras de permissao e acesso\n'
+                        f'- Restricoes de dados (tamanhos, formatos, limites)\n'
+                        f'- Fluxos de workflow (estados, transicoes)\n'
+                        f'- Calculos e formulas de negocio\n'
+                        f'- Integracoes e dependencias entre modulos\n'
+                        f'Retorne APENAS regras NOVAS que NAO estejam na lista acima.\n'
+                        f'Se nenhuma regra nova: {{"business_rules": []}}'
+                    )
+
+                try:
+                    response = await orchestrator.execute(
+                        usage_type="rag_extraction",
+                        messages=[{"role": "user", "content": user_prompt}],
+                        system_prompt=self.PHASE2_SYSTEM_PROMPT,
+                        max_tokens=8000,
+                        project_id=project_id,
+                        metadata={
+                            "phase": "rag_pipeline_phase2",
+                            "project_id": str(project_id),
+                            "pass": pass_num,
+                            "batch": batch_num,
+                            "total_batches": total_batches,
+                        },
+                        disable_cwd=True,
+                        disable_tools=True,
+                    )
+
+                    raw = response.get("content", "")
+                    rules = self._parse_rules_json(raw)
+                    batch_stored = self._store_rules(rules, project_id)
+                    self.db.commit()
+                    total_rules += batch_stored
+                    pass_rules += batch_stored
+
+                    # Track found rules for next pass
+                    for rule in rules:
+                        rt = rule.get("rule_text", "")
+                        if rt and len(rt) >= 15:
+                            found_rule_summaries.append(rt[:120])
+
+                    logger.info(
+                        f"Phase 2: Pass {pass_num} Batch {batch_num}/{total_batches} -> "
+                        f"{batch_stored} rules (pass: {pass_rules}, total: {total_rules})"
+                    )
+
+                except Exception as e:
+                    logger.warning(f"Phase 2: Pass {pass_num} Batch {batch_num} failed: {e}")
+                    continue
+
+            logger.info(
+                f"Phase 2: Pass {pass_num}/{num_passes} complete — "
+                f"{pass_rules} new rules (total: {total_rules})"
+            )
+
+            # If a pass finds very few new rules, skip remaining passes
+            if pass_num > 1 and pass_rules < 5:
+                logger.info(f"Phase 2: Pass {pass_num} found only {pass_rules} new rules, stopping early")
+                break
 
         # Update rag_file_state
         try:
@@ -380,13 +620,15 @@ class RagPipelineService:
 
         self._set_phase_status(project_id, 2, "completed")
         jm.update_progress(
-            job_id, 95.0,
-            f"Fase 2/4: Concluida — {total_rules} regras extraidas (RAG injection)"
+            job_id, _p(95),
+            f"Fase 2/4: Concluida — {total_rules} regras em {num_passes} passes"
         )
         return {
             "phase": "extract_rules",
             "rules_extracted": total_rules,
             "code_files": code_count,
+            "batches": total_batches,
+            "passes": num_passes,
         }
 
     # =====================================================================
@@ -561,164 +803,302 @@ class RagPipelineService:
         return stored
 
     # =========================================================================
-    # PHASE 3: Generate CARDS ONLY from business rules
+    # PHASE 3: Generate CARDS from business rules (MULTI-BATCH)
+    #
+    # Two-pass approach:
+    #   Pass 1 (Epics): Compact summary of ALL rules → generate Epics only
+    #   Pass 2 (Details): One batch per entity group → Stories/Tasks/Subtasks
     # =========================================================================
 
-    PHASE3_CARDS_PROMPT = (
+    PHASE3_BATCH_MAX_RULES = 80
+    PHASE3_BATCH_MAX_CHARS = 60000
+
+    # System prompt shared by all Phase 3 batches
+    PHASE3_COMMON_PROMPT = (
         "IMPORTANTE: Voce NAO tem acesso a ferramentas. NAO tente executar comandos "
         "ou explorar arquivos. As regras de negocio ja estao na mensagem do usuario.\n\n"
-        "Voce e um Product Owner senior e Arquiteto de Software. A partir das regras "
-        "fornecidas, gere uma hierarquia FLAT de cards (array unico, NAO aninhado) "
-        "com TODOS os campos preenchidos de forma rica e completa.\n\n"
-        "CONTRATO — JSON RIGIDO. Responda APENAS com JSON puro, sem markdown.\n\n"
-        "FORMATO OBRIGATORIO (array FLAT de cards, NAO aninhado):\n"
-        '{"cards":['
-        '{"title":"Modulo X","item_type":"epic","parent_title":null,'
-        '"description":"Descricao detalhada do modulo com contexto tecnico, '
-        'justificativa de negocio e escopo funcional...min 300 chars...",'
-        '"generated_prompt":"Prompt semantico atomico para IA executar este card. '
-        'Inclui contexto completo, requisitos tecnicos, criterios de aceite, '
-        'dependencias e restricoes. Deve ser auto-suficiente para que uma IA '
-        'consiga implementar sem informacao adicional...min 500 chars...",'
-        '"story_points":13,"priority":"high","complexity":"high",'
-        '"labels":["modulo-x","backend"],'
-        '"acceptance_criteria":[{"text":"Criterio detalhado 1","completed":false},'
-        '{"text":"Criterio detalhado 2","completed":false}],'
-        '"components":["componente-afetado-1","componente-afetado-2"],'
-        '"type":"module","entity":"Entidade",'
-        '"depends_on_titles":[]},'
-        '{"title":"Feature Y","item_type":"story","parent_title":"Modulo X",'
-        '"description":"...min 300 chars...","generated_prompt":"...min 500 chars...",'
-        '"story_points":5,"priority":"medium","complexity":"medium",'
-        '"labels":["feature-y"],'
-        '"acceptance_criteria":[{"text":"criterio 1","completed":false}],'
-        '"components":["componente"],"type":"service","entity":"Entidade",'
-        '"depends_on_titles":[]},'
-        '{"title":"Implementar Z","item_type":"task","parent_title":"Feature Y",'
-        '"description":"...min 300 chars...","generated_prompt":"...min 500 chars...",'
-        '"story_points":3,"priority":"medium","complexity":"low",'
-        '"labels":["impl-z"],'
-        '"acceptance_criteria":[{"text":"criterio 1","completed":false}],'
-        '"components":["componente"],"type":"implementation","entity":"Entidade",'
-        '"depends_on_titles":["Feature Y"]}'
-        ']}\n\n'
+        "METODOLOGIA DE REFERENCIAS SEMANTICAS:\n"
+        "O campo 'generated_prompt' de CADA card DEVE usar identificadores semanticos.\n"
+        "Categorias: N(Entidades), P(Processos), E(Endpoints), D(Dados), "
+        "S(Servicos), C(Restricoes), AC(Aceite), F(Arquivos), M(Modelos).\n"
+        "generated_prompt COMECA com 'Mapa Semantico:' seguido dos identificadores.\n\n"
+        "DIFERENCA CRITICA:\n"
+        "- 'description' = texto HUMANO legivel, sem identificadores.\n"
+        "- 'generated_prompt' = instrucao SEMANTICA com Mapa Semantico.\n"
+        "- NUNCA copie um para o outro. Devem ser COMPLETAMENTE DIFERENTES.\n\n"
+        "CONTRATO JSON — Responda APENAS com JSON puro. Sem markdown, sem ```json.\n\n"
         "CAMPOS OBRIGATORIOS POR CARD:\n"
-        "- title: titulo claro e descritivo (5-255 chars)\n"
-        "- item_type: epic|story|task|subtask\n"
-        "- parent_title: null para epic, titulo EXATO do pai para demais\n"
-        "- description: descricao RICA e DETALHADA (min 300 chars). Inclua: contexto, "
-        "justificativa, escopo funcional, impacto tecnico, e como se relaciona ao sistema.\n"
-        "- generated_prompt: prompt SEMANTICO ATOMICO (min 500 chars) para IA executar. "
-        "Deve ser AUTO-SUFICIENTE: inclua contexto do projeto, requisitos tecnicos, "
-        "stack/frameworks relevantes, criterios de aceite, arquivos/entidades envolvidos, "
-        "restricoes e dependencias. Uma IA deve conseguir implementar lendo APENAS este campo.\n"
-        "- story_points: Fibonacci (1,2,3,5,8,13)\n"
-        "- priority: critical|high|medium|low\n"
-        "- complexity: low|medium|high\n"
-        "- labels: array de tags relevantes (ex: ['backend','api','auth'])\n"
-        "- acceptance_criteria: array de objetos {text, completed:false}. "
-        "Criterios CLAROS e VERIFICAVEIS (min 3 por card, min 20 chars cada)\n"
-        "- components: array de componentes/modulos afetados (ex: ['auth-service','user-model'])\n"
-        "- type: tipo tecnico (module|service|controller|model|migration|config|test|"
-        "implementation|integration|documentation)\n"
-        "- entity: entidade principal (ex: 'User','Project','Task')\n"
-        "- depends_on_titles: array de titulos de cards dos quais este depende ([] se nenhum)\n\n"
+        "- title (5-255 chars), item_type (epic|story|task|subtask)\n"
+        "- parent_title (null p/ epic, titulo EXATO do pai p/ demais)\n"
+        "- description (min 200 chars, humano legivel)\n"
+        "- generated_prompt (min 300 chars, semantico com Mapa)\n"
+        "- story_points (Fibonacci: 1,2,3,5,8,13)\n"
+        "- priority (critical|high|medium|low), complexity (low|medium|high)\n"
+        "- labels (array de tags), acceptance_criteria (array de {text,completed:false})\n"
+        "- components (array), type, entity, depends_on_titles (array)\n\n"
         "REGRAS CRITICAS:\n"
-        "- cards e um ARRAY FLAT. Cada card tem parent_title ligando ao pai.\n"
-        "- NAO use epics[] aninhado. NAO use stories[] dentro de epic.\n"
-        "- Ordem: epics primeiro, depois stories, tasks, subtasks\n"
-        "- acceptance_criteria DEVE ser array de OBJETOS {text, completed}\n"
-        "- generated_prompt e OBRIGATORIO para TODOS os cards, especialmente tasks/subtasks\n"
-        "- Retorne APENAS o JSON com cards. SEM wiki, SEM project metadata.\n"
-        "- Todos os textos em PORTUGUES"
+        "- cards e ARRAY FLAT. parent_title liga ao pai.\n"
+        "- Ordem: epics primeiro, stories, tasks, subtasks\n"
+        "- Todos os textos em PORTUGUES. NUNCA gere textos em ingles.\n"
+        "- Retorne APENAS: {\"cards\": [...]}"
     )
 
-    async def phase_3_generate_cards(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
-        """
-        Phase 3: Generate CARDS from business rules via RAG injection.
+    # Pass 1: Epic generation from compact summary
+    PHASE3_EPIC_PROMPT = (
+        PHASE3_COMMON_PROMPT + "\n\n"
+        "TAREFA ESPECIFICA: Gere APENAS EPICS (item_type='epic', parent_title=null).\n"
+        "Cada Epic representa um MODULO ou DOMINIO do sistema.\n"
+        "Gere 5-15 Epics cobrindo TODOS os dominios identificados nas regras.\n"
+        "Cada Epic deve ter description rica (min 300 chars) e generated_prompt\n"
+        "semantico (min 500 chars) com Mapa Semantico completo."
+    )
 
-        Uses enable_rag=True to inject business rules from RAG automatically.
-        Sends a compact prompt (~5KB) instead of all rules inline (~120KB).
+    # Pass 2: Detail generation (stories/tasks/subtasks) for specific entity
+    PHASE3_DETAIL_PROMPT = (
+        PHASE3_COMMON_PROMPT + "\n\n"
+        "TAREFA ESPECIFICA: Gere Stories, Tasks e Subtasks para o(s) Epic(s) indicado(s).\n"
+        "HIERARQUIA OBRIGATORIA:\n"
+        "  Cada Epic -> 2-5 Stories\n"
+        "  Cada Story -> 2-5 Tasks\n"
+        "  Cada Task -> 2-4 Subtasks\n"
+        "Subtasks sao acoes atomicas (criar arquivo, escrever teste, configurar rota).\n"
+        "Use parent_title EXATO do Epic/Story/Task pai."
+    )
+
+    async def phase_3_generate_cards(self, project_id: UUID, job_id: UUID,
+                                      pmin: float = 0.0, pmax: float = 100.0) -> Dict[str, Any]:
+        """
+        Phase 3: Generate CARDS via MULTI-BATCH processing.
+
+        Pass 1 (0-20% local): Compact summary → Epics only
+        Pass 2 (20-95% local): One batch per entity group → Stories/Tasks/Subtasks
         """
         self._set_phase_status(project_id, 3, "running")
         jm = JobManager(self.db)
+        _p = lambda local: self._map_progress(local, pmin, pmax)
 
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        jm.update_progress(job_id, 5.0, "Fase 3/4: Verificando regras de negocio...")
+        jm.update_progress(job_id, _p(2), "Fase 3/4: Carregando regras de negocio...")
 
-        # Count rules (lightweight check that Phase 2 ran)
-        rule_count = self.db.execute(sql_text(
-            "SELECT COUNT(*) FROM rag_documents "
-            "WHERE project_id = :pid AND metadata->>'type' = 'business_rule'"
-        ), {"pid": str(project_id)}).scalar() or 0
+        # Load ALL business rules from DB, grouped by entity
+        rule_rows = self.db.execute(sql_text(
+            "SELECT content, metadata FROM rag_documents "
+            "WHERE project_id = :pid AND metadata->>'type' = 'business_rule' "
+            "ORDER BY metadata->>'entity', metadata->>'rule_type'"
+        ), {"pid": str(project_id)}).fetchall()
 
+        # Apply project-relative ignore patterns (PROMPT #253)
+        ignore_patterns = self._load_ignore_patterns(project)
+        rules_before = len(rule_rows)
+        rule_rows = [
+            r for r in rule_rows
+            if not self._is_path_ignored(
+                (r[1] if isinstance(r[1], dict) else {}).get("source_file", ""),
+                ignore_patterns,
+            )
+        ]
+        if rules_before != len(rule_rows):
+            logger.info(
+                f"Phase 3: Filtered {rules_before - len(rule_rows)} rules from ignored paths "
+                f"({len(rule_rows)} remaining of {rules_before})"
+            )
+
+        rule_count = len(rule_rows)
         if rule_count == 0:
             self._set_phase_status(project_id, 3, "failed")
             raise ValueError("Nenhuma regra de negocio encontrada. Execute Phase 2 primeiro.")
 
-        # Build compact summary by rule_type (~500 bytes instead of 70KB)
-        type_counts = self.db.execute(sql_text(
-            "SELECT metadata->>'rule_type' as rtype, COUNT(*) as cnt "
-            "FROM rag_documents WHERE project_id = :pid AND metadata->>'type' = 'business_rule' "
-            "GROUP BY metadata->>'rule_type' ORDER BY cnt DESC"
-        ), {"pid": str(project_id)}).fetchall()
+        # Group rules by entity
+        entity_rules: Dict[str, List[str]] = {}
+        entity_summary: Dict[str, int] = {}
+        for row in rule_rows:
+            content = row[0] or ""
+            meta = row[1] if isinstance(row[1], dict) else {}
+            entity = meta.get("entity", "Geral") or "Geral"
+            rule_type = meta.get("rule_type", "outro")
+            source = meta.get("source_file", "?")
+            line = f"  [{rule_type}|{source}] {content}"
+            entity_rules.setdefault(entity, []).append(line)
+            entity_summary[entity] = entity_summary.get(entity, 0) + 1
 
-        summary_lines = [f"- {r.rtype}: {r.cnt} regras" for r in type_counts]
-        summary = "\n".join(summary_lines)
-
-        logger.info(f"Phase 3: {rule_count} rules via RAG injection (not inline)")
+        logger.info(
+            f"Phase 3: {rule_count} rules, {len(entity_rules)} entities"
+        )
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
-
         project_name = project.name or "Projeto"
+        total_cards = 0
 
-        user_prompt = (
+        # ==========================================
+        # PASS 1: Generate EPICS from compact summary
+        # ==========================================
+        jm.update_progress(job_id, _p(5), "Fase 3/4: Gerando epics...")
+
+        summary_lines = "\n".join(
+            f"- {e}: {c} regras" for e, c in sorted(entity_summary.items())
+        )
+        epic_user_prompt = (
             f'Projeto: "{project_name}"\n'
             f'Total de regras de negocio: {rule_count}\n\n'
-            f'Distribuicao por tipo:\n{summary}\n\n'
-            f'As regras detalhadas estao no contexto fornecido acima '
-            f'(RELEVANT CONTEXT FROM KNOWLEDGE BASE).\n\n'
-            f'Analise TODAS as regras do contexto e gere os cards hierarquicos '
-            f'(epics -> stories -> tasks) cobrindo TODOS os modulos do sistema.\n'
+            f'ENTIDADES/DOMINIOS IDENTIFICADOS:\n{summary_lines}\n\n'
+            f'---\n'
+            f'Gere APENAS os EPICS (modulos macro) do sistema.\n'
+            f'Cada entidade/dominio acima deve ter pelo menos 1 Epic.\n'
             f'Retorne: {{"cards": [...]}}'
         )
 
-        jm.update_progress(job_id, 15.0, f"Fase 3/4: Gerando cards via RAG ({rule_count} regras)...")
+        epic_titles = []
+        try:
+            resp = await orchestrator.execute(
+                usage_type="content_generation",
+                messages=[{"role": "user", "content": epic_user_prompt}],
+                system_prompt=self.PHASE3_EPIC_PROMPT,
+                max_tokens=8000,
+                project_id=project_id,
+                metadata={"phase": "rag_pipeline_phase3", "batch": "epics",
+                          "skip_context_build": True},
+                disable_cwd=True,
+                disable_tools=True,
+            )
+            raw = resp.get("content", "")
+            if len(raw) >= 50:
+                cards_created = self._create_cards_from_json(raw, project_id)
+                self.db.commit()
+                total_cards += cards_created
+                # Collect epic titles for reference in detail batches
+                from app.models.task import Task
+                epics = self.db.query(Task.title).filter(
+                    Task.project_id == project_id,
+                    Task.item_type == "epic",
+                    Task.reporter == "pipeline_phase3",
+                ).all()
+                epic_titles = [e.title for e in epics]
+                logger.info(f"Phase 3 Pass 1: {cards_created} epics created: {epic_titles}")
+        except Exception as e:
+            logger.error(f"Phase 3 Pass 1 (epics) failed: {e}")
 
-        total_cards = 0
+        if not epic_titles:
+            self._set_phase_status(project_id, 3, "failed")
+            raise ValueError("Geracao falhou: 0 epics criados no Pass 1")
 
-        response = await orchestrator.execute(
-            usage_type="content_generation",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=self.PHASE3_CARDS_PROMPT,
-            project_id=project_id,
-            enable_rag=True,
-            rag_filter={"type": "business_rule"},
-            rag_top_k=300,
-            rag_similarity_threshold=0.0,
-            metadata={"phase": "rag_pipeline_phase3", "skip_context_build": True},
-            disable_cwd=True,
-            disable_tools=True,
+        jm.update_progress(
+            job_id, _p(20),
+            f"Fase 3/4: {len(epic_titles)} epics criados, gerando detalhes..."
         )
 
-        raw = response.get("content", "")
-        logger.info(f"Phase 3 ({len(raw)} chars): {raw[:300]}...")
+        # ==========================================
+        # PASS 2: Generate Stories/Tasks/Subtasks per entity batch
+        # ==========================================
 
-        if len(raw) >= 50:
+        # Build domain batches (same logic as Phase 4)
+        domain_batches: List[Dict[str, Any]] = []
+        pending_entities: List[str] = []
+        pending_lines: List[str] = []
+        pending_chars = 0
+
+        for entity in sorted(entity_rules.keys()):
+            lines = entity_rules[entity]
+            entity_text = f"\n=== {entity} ({len(lines)} regras) ===\n" + "\n".join(lines)
+            entity_chars = len(entity_text)
+
+            if entity_chars > self.PHASE3_BATCH_MAX_CHARS // 2 or \
+               len(lines) > self.PHASE3_BATCH_MAX_RULES:
+                if pending_lines:
+                    domain_batches.append({
+                        "entities": pending_entities,
+                        "text": "\n".join(pending_lines),
+                        "rule_count": sum(len(entity_rules[e]) for e in pending_entities),
+                    })
+                    pending_entities, pending_lines, pending_chars = [], [], 0
+                domain_batches.append({
+                    "entities": [entity],
+                    "text": entity_text,
+                    "rule_count": len(lines),
+                })
+            else:
+                if pending_chars + entity_chars > self.PHASE3_BATCH_MAX_CHARS or \
+                   len(pending_entities) >= 8:
+                    domain_batches.append({
+                        "entities": pending_entities,
+                        "text": "\n".join(pending_lines),
+                        "rule_count": sum(len(entity_rules[e]) for e in pending_entities),
+                    })
+                    pending_entities, pending_lines, pending_chars = [], [], 0
+                pending_entities.append(entity)
+                pending_lines.append(entity_text)
+                pending_chars += entity_chars
+
+        if pending_lines:
+            domain_batches.append({
+                "entities": pending_entities,
+                "text": "\n".join(pending_lines),
+                "rule_count": sum(len(entity_rules[e]) for e in pending_entities),
+            })
+
+        num_detail_batches = len(domain_batches)
+        logger.info(f"Phase 3 Pass 2: {num_detail_batches} detail batches")
+
+        epic_titles_text = "\n".join(f"- {t}" for t in epic_titles)
+
+        for batch_idx, batch in enumerate(domain_batches):
+            batch_num = batch_idx + 1
+            local_progress = 20.0 + (75.0 * batch_num / num_detail_batches)
+            entities_label = ", ".join(batch["entities"][:3])
+            if len(batch["entities"]) > 3:
+                entities_label += f" +{len(batch['entities']) - 3}"
+
+            jm.update_progress(
+                job_id, _p(local_progress),
+                f"Fase 3/4: Lote {batch_num}/{num_detail_batches} "
+                f"({entities_label}) — {total_cards} cards"
+            )
+
+            detail_user_prompt = (
+                f'Projeto: "{project_name}"\n'
+                f'Dominio: {", ".join(batch["entities"])}\n'
+                f'Regras neste dominio: {batch["rule_count"]}\n\n'
+                f'EPICS JA CRIADOS (use parent_title EXATO):\n{epic_titles_text}\n\n'
+                f'REGRAS DE NEGOCIO DESTE DOMINIO:\n{batch["text"]}\n\n'
+                f'---\n'
+                f'Gere Stories, Tasks e Subtasks para os Epics acima '
+                f'que se relacionam com este dominio.\n'
+                f'Use parent_title EXATO de um dos Epics listados.\n'
+                f'Se nenhum Epic existente se encaixa, crie um novo Epic tambem.\n'
+                f'Retorne: {{"cards": [...]}}'
+            )
+
             try:
-                total_cards = self._create_cards_from_json(raw, project_id)
-                self.db.commit()
-                logger.info(f"Phase 3: {total_cards} cards created")
-            except Exception as card_err:
-                logger.error(f"Phase 3: _create_cards_from_json failed: {card_err}")
-                import traceback
-                logger.error(traceback.format_exc())
-        else:
-            logger.error(f"Phase 3: empty response ({len(raw)} chars)")
+                resp = await orchestrator.execute(
+                    usage_type="content_generation",
+                    messages=[{"role": "user", "content": detail_user_prompt}],
+                    system_prompt=self.PHASE3_DETAIL_PROMPT,
+                    max_tokens=16000,
+                    project_id=project_id,
+                    metadata={
+                        "phase": "rag_pipeline_phase3",
+                        "batch": batch_num,
+                        "entities": batch["entities"][:5],
+                        "skip_context_build": True,
+                    },
+                    disable_cwd=True,
+                    disable_tools=True,
+                )
+                raw = resp.get("content", "")
+                if len(raw) >= 50:
+                    batch_cards = self._create_cards_from_json(raw, project_id)
+                    self.db.commit()
+                    total_cards += batch_cards
+                    logger.info(
+                        f"Phase 3 batch {batch_num}/{num_detail_batches} "
+                        f"({entities_label}): {batch_cards} cards (total: {total_cards})"
+                    )
+            except Exception as e:
+                logger.warning(f"Phase 3 batch {batch_num} failed: {e}")
+                continue
 
         if total_cards == 0:
             self._set_phase_status(project_id, 3, "failed")
@@ -726,13 +1106,15 @@ class RagPipelineService:
 
         self._set_phase_status(project_id, 3, "completed")
         jm.update_progress(
-            job_id, 95.0,
-            f"Fase 3/4: Concluida — {total_cards} cards"
+            job_id, _p(95),
+            f"Fase 3/4: Concluida — {total_cards} cards em {num_detail_batches + 1} lotes"
         )
         return {
             "phase": "generate_cards",
             "cards_created": total_cards,
             "rules_in_rag": rule_count,
+            "epic_count": len(epic_titles),
+            "detail_batches": num_detail_batches,
         }
 
     # =====================================================================
@@ -1015,163 +1397,302 @@ class RagPipelineService:
     # Uses enable_rag=True to inject all project context from RAG.
     # =========================================================================
 
-    PHASE4_SYSTEM_PROMPT = (
-        "Voce e um documentador tecnico senior especializado em criar "
-        "wikis completas de projetos de software.\n\n"
-        "Voce vai receber o contexto completo de um projeto da base de conhecimento. "
-        "Gere titulo, descricao e todas as paginas wiki.\n\n"
-        "PAGINAS WIKI OBRIGATORIAS (slugs exatos):\n"
-        "  visao-geral | padroes-arquitetura | convencoes-codigo | regras-negocio\n"
-        "  estrutura-codigo | componentes-interface | integracao-api\n\n"
+    # Phase 4 system prompt for OVERVIEW batch (title + description + general pages)
+    PHASE4_OVERVIEW_PROMPT = (
+        "Voce e um documentador tecnico senior. Voce vai receber um RESUMO de todas "
+        "as regras de negocio de um projeto. Gere titulo, descricao e paginas wiki GERAIS.\n\n"
+        "PAGINAS GERAIS A GERAR (visao macro do projeto):\n"
+        "  visao-geral | padroes-arquitetura | convencoes-codigo | estrutura-codigo\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "CONTRATO DE RESPOSTA — SCHEMA RIGIDO (qualquer desvio sera descartado)\n"
+        "CONTRATO JSON RIGIDO — Responda APENAS com JSON puro, sem markdown.\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
         "{\n"
-        '  "title": "string OBRIGATORIA, 5-120 caracteres, titulo claro do projeto",\n'
-        '  "description": "string OBRIGATORIA, 50-2000 caracteres, descricao detalhada do projeto",\n'
-        '  "wiki_pages": [\n'
-        "    {\n"
-        '      "slug": "string OBRIGATORIA, formato kebab-case (a-z, 0-9, hifens), 3-80 caracteres",\n'
-        '      "title": "string OBRIGATORIA, 3-200 caracteres, titulo da pagina em portugues",\n'
-        '      "content": "string OBRIGATORIA, conteudo em Markdown, MINIMO 500 caracteres. '
-        'SEJA EXTENSO — cada pagina deve ter conteudo RICO e DETALHADO com headers (#, ##, ###), '
-        'listas, tabelas, exemplos de codigo, explicacoes profundas. '
-        'Paginas com menos de 500 caracteres serao DESCARTADAS.",\n'
-        '      "order": "integer OBRIGATORIO, posicao da pagina (1, 2, 3...), unico por pagina"\n'
-        "    }\n"
-        "  ]\n"
+        '  "title": "string, 5-120 chars, titulo claro do projeto",\n'
+        '  "description": "string, 50-2000 chars, descricao detalhada",\n'
+        '  "wiki_pages": [{"slug":"kebab-case","title":"Titulo","content":"Markdown RICO min 500 chars","order":1}]\n'
         "}\n\n"
-        "REGRAS DO CONTRATO:\n"
-        "- title (projeto): 5-120 caracteres, sem quebras de linha\n"
-        "- description (projeto): 50-2000 caracteres. Descreva o projeto em DETALHES: "
-        "proposito, stack tecnologica, arquitetura geral, publico alvo.\n"
-        "- slug: kebab-case APENAS (regex: ^[a-z0-9]+(-[a-z0-9]+)*$), UNICO\n"
-        "- title (pagina): 3-200 caracteres, descritivo\n"
-        "- content: MINIMO 500 caracteres de Markdown RICO. Paginas com menos sao DESCARTADAS.\n"
-        "  Cada pagina deve ter: multiplos headers (##, ###), paragrafos detalhados, "
-        "listas completas, exemplos de codigo com ``` quando aplicavel, tabelas quando util.\n"
-        "  QUANTO MAIS CONTEUDO, MELHOR. Idealmente 1000-5000 caracteres por pagina.\n"
-        "- order: inteiro sequencial unico (1, 2, 3...)\n"
-        "- Todos os textos em PORTUGUES\n"
-        "- Cada pagina wiki DEVE ter conteudo factual baseado no codigo real do projeto\n"
-        "- NAO invente features que nao existem no codigo\n"
-        "- PREFIRA paginas EXTENSAS e DETALHADAS a paginas curtas e superficiais."
+        "REGRAS:\n"
+        "- slug: kebab-case (^[a-z0-9]+(-[a-z0-9]+)*$), UNICO\n"
+        "- content: MINIMO 500 caracteres Markdown RICO (##, ###, listas, tabelas, codigo)\n"
+        "  Idealmente 2000-8000 chars por pagina. QUANTO MAIS DETALHADO, MELHOR.\n"
+        "- Todos os textos em PORTUGUES. NUNCA gere textos em ingles.\n"
+        "- Conteudo FACTUAL baseado nas regras fornecidas\n"
+        "- NAO invente features que nao existem nas regras"
     )
 
-    async def phase_4_generate_wiki(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
+    # Phase 4 system prompt for DOMAIN batches (one call per entity/domain)
+    PHASE4_DOMAIN_PROMPT = (
+        "Voce e um documentador tecnico senior. Voce vai receber regras de negocio "
+        "de um DOMINIO ESPECIFICO de um projeto. Gere paginas wiki DETALHADAS "
+        "cobrindo COMPLETAMENTE esse dominio.\n\n"
+        "TIPOS DE PAGINAS A GERAR (adapte ao dominio):\n"
+        "- Pagina principal do dominio (visao geral, entidades, relacionamentos)\n"
+        "- Regras de negocio do dominio (listagem completa, agrupada)\n"
+        "- Fluxos e workflows do dominio (se houver regras de workflow)\n"
+        "- Endpoints/API do dominio (se houver regras de integracao)\n"
+        "- Validacoes e restricoes (se houver regras de validacao)\n"
+        "- Gere QUANTAS paginas forem necessarias para cobrir o dominio COMPLETAMENTE\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "CONTRATO JSON RIGIDO — Responda APENAS com JSON puro, sem markdown.\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        '{"wiki_pages": [{"slug":"kebab-case","title":"Titulo","content":"Markdown RICO min 500 chars","order":1}]}\n\n'
+        "REGRAS:\n"
+        "- slug: kebab-case, UNICO, prefixe com dominio (ex: auth-visao-geral, task-regras)\n"
+        "- content: MINIMO 500 caracteres Markdown RICO (##, ###, listas, tabelas, codigo)\n"
+        "  Idealmente 2000-8000 chars por pagina. SEJA EXTENSO E DETALHADO.\n"
+        "  CITE: nomes de entidades, arquivos, endpoints, servicos REAIS das regras.\n"
+        "- Todos os textos em PORTUGUES. NUNCA gere textos em ingles.\n"
+        "- Conteudo 100% FACTUAL — apenas o que esta nas regras fornecidas\n"
+        "- Gere TODAS as paginas necessarias para cobertura TOTAL do dominio"
+    )
+
+    # Batch config for Phase 4
+    PHASE4_BATCH_MAX_RULES = 80
+    PHASE4_BATCH_MAX_CHARS = 60000
+
+    async def phase_4_generate_wiki(self, project_id: UUID, job_id: UUID,
+                                     pmin: float = 0.0, pmax: float = 100.0) -> Dict[str, Any]:
         """
         Phase 4: Generate wiki pages + project title + project description.
 
-        Uses enable_rag=True with combined filter (business_rule + code_file)
-        to inject context via RAG instead of loading all rules inline.
-        Result: compact prompt (~1KB) instead of ~70KB inline rules.
+        Multi-batch approach for UNLIMITED coverage:
+        - Batch 0: Overview (title, description, general architecture pages)
+        - Batch 1..N: One batch per entity/domain group of rules
+        Each batch generates its own wiki pages. No artificial page limit.
         """
         self._set_phase_status(project_id, 4, "running")
         jm = JobManager(self.db)
+        _p = lambda local: self._map_progress(local, pmin, pmax)
 
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        jm.update_progress(job_id, 10.0, "Fase 4/4: Preparando geracao de wiki via RAG...")
+        jm.update_progress(job_id, _p(5), "Fase 4/4: Carregando regras de negocio...")
 
-        # Lightweight count check (no full content load)
-        rule_count = self.db.execute(sql_text(
-            "SELECT COUNT(*) FROM rag_documents "
-            "WHERE project_id = :pid AND metadata->>'type' = 'business_rule'"
-        ), {"pid": str(project_id)}).scalar() or 0
+        # Load ALL business rules from DB, grouped by entity
+        rule_rows = self.db.execute(sql_text(
+            "SELECT content, metadata FROM rag_documents "
+            "WHERE project_id = :pid AND metadata->>'type' = 'business_rule' "
+            "ORDER BY metadata->>'entity', metadata->>'rule_type'"
+        ), {"pid": str(project_id)}).fetchall()
 
+        # Apply project-relative ignore patterns (PROMPT #253)
+        ignore_patterns = self._load_ignore_patterns(project)
+        rules_before = len(rule_rows)
+        rule_rows = [
+            r for r in rule_rows
+            if not self._is_path_ignored(
+                (r[1] if isinstance(r[1], dict) else {}).get("source_file", ""),
+                ignore_patterns,
+            )
+        ]
+        if rules_before != len(rule_rows):
+            logger.info(
+                f"Phase 4: Filtered {rules_before - len(rule_rows)} rules from ignored paths "
+                f"({len(rule_rows)} remaining of {rules_before})"
+            )
+
+        rule_count = len(rule_rows)
         if rule_count == 0:
             self._set_phase_status(project_id, 4, "failed")
             raise ValueError("Nenhuma regra de negocio encontrada. Execute Phase 2 primeiro.")
 
-        # Compact summary by rule_type (~500 bytes instead of ~70KB)
-        type_rows = self.db.execute(sql_text(
-            "SELECT metadata->>'rule_type' as rtype, COUNT(*) as cnt "
-            "FROM rag_documents "
-            "WHERE project_id = :pid AND metadata->>'type' = 'business_rule' "
-            "GROUP BY metadata->>'rule_type' ORDER BY cnt DESC"
-        ), {"pid": str(project_id)}).fetchall()
+        # Group rules by entity → domain batches
+        entity_rules: Dict[str, List[str]] = {}
+        summary_by_type: Dict[str, int] = {}
+        for row in rule_rows:
+            content = row[0] or ""
+            meta = row[1] if isinstance(row[1], dict) else {}
+            entity = meta.get("entity", "Geral") or "Geral"
+            rule_type = meta.get("rule_type", "outro")
+            source = meta.get("source_file", "?")
+            line = f"[{rule_type}|{source}] {content}"
+            entity_rules.setdefault(entity, []).append(line)
+            summary_by_type[rule_type] = summary_by_type.get(rule_type, 0) + 1
 
-        type_summary = "\n".join([f"- {r.rtype or 'other'}: {r.cnt} regras" for r in type_rows])
+        # Merge small entities into combined batches to avoid too many tiny calls
+        domain_batches: List[Dict[str, Any]] = []
+        pending_entities: List[str] = []
+        pending_lines: List[str] = []
+        pending_chars = 0
 
-        logger.info(f"Phase 4: {rule_count} rules — using RAG injection (single call)")
+        for entity in sorted(entity_rules.keys()):
+            lines = entity_rules[entity]
+            entity_text = f"\n=== Entidade: {entity} ({len(lines)} regras) ===\n" + "\n".join(lines)
+            entity_chars = len(entity_text)
+
+            # If single entity is big enough for its own batch
+            if entity_chars > self.PHASE4_BATCH_MAX_CHARS // 2 or len(lines) > self.PHASE4_BATCH_MAX_RULES:
+                # Flush pending first
+                if pending_lines:
+                    domain_batches.append({
+                        "entities": pending_entities,
+                        "text": "\n".join(pending_lines),
+                        "rule_count": sum(len(entity_rules[e]) for e in pending_entities),
+                    })
+                    pending_entities, pending_lines, pending_chars = [], [], 0
+                # Add as own batch
+                domain_batches.append({
+                    "entities": [entity],
+                    "text": entity_text,
+                    "rule_count": len(lines),
+                })
+            else:
+                # Accumulate into pending batch
+                if pending_chars + entity_chars > self.PHASE4_BATCH_MAX_CHARS or \
+                   len(pending_entities) >= 10:
+                    domain_batches.append({
+                        "entities": pending_entities,
+                        "text": "\n".join(pending_lines),
+                        "rule_count": sum(len(entity_rules[e]) for e in pending_entities),
+                    })
+                    pending_entities, pending_lines, pending_chars = [], [], 0
+                pending_entities.append(entity)
+                pending_lines.append(entity_text)
+                pending_chars += entity_chars
+
+        if pending_lines:
+            domain_batches.append({
+                "entities": pending_entities,
+                "text": "\n".join(pending_lines),
+                "rule_count": sum(len(entity_rules[e]) for e in pending_entities),
+            })
+
+        total_batches = len(domain_batches) + 1  # +1 for overview batch
+        logger.info(
+            f"Phase 4: {rule_count} rules, {len(entity_rules)} entities, "
+            f"{total_batches} batches (1 overview + {len(domain_batches)} domain)"
+        )
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
-
         project_name = project.name or "Projeto"
-
-        user_prompt = (
-            f'Projeto: "{project_name}"\n'
-            f'Total de regras de negocio: {rule_count}\n\n'
-            f'Distribuicao por tipo:\n{type_summary}\n\n'
-            f'As regras de negocio e o codigo do projeto estao no contexto fornecido acima '
-            f'(RELEVANT CONTEXT FROM KNOWLEDGE BASE).\n\n'
-            f'A partir de TODAS as regras e codigo no contexto, gere:\n'
-            f'1. Titulo do projeto (se "{project_name}" for generico)\n'
-            f'2. Descricao detalhada do projeto\n'
-            f'3. Paginas wiki tecnicas obrigatorias\n\n'
-            f'Retorne o JSON conforme o contrato no system prompt.'
-        )
-
-        jm.update_progress(job_id, 30.0, "Fase 4/4: Gerando wiki e metadados via RAG...")
 
         total_pages = 0
         title_generated = False
         desc_generated = False
+        page_order = 1
 
-        response = await orchestrator.execute(
-            usage_type="content_generation",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=self.PHASE4_SYSTEM_PROMPT,
-            project_id=project_id,
-            enable_rag=True,
-            rag_filter={"type__in": ["business_rule", "code_file"]},
-            rag_top_k=200,
-            rag_similarity_threshold=0.0,
-            metadata={"phase": "rag_pipeline_phase4", "skip_context_build": True},
-            disable_cwd=True,
-            disable_tools=True,
+        # ---- BATCH 0: Overview (title + description + general pages) ----
+        jm.update_progress(job_id, _p(10), "Fase 4/4: Gerando visao geral do projeto...")
+
+        type_summary = "\n".join([f"- {t}: {c} regras" for t, c in sorted(summary_by_type.items())])
+        entity_summary = "\n".join([
+            f"- {e}: {len(rules)} regras" for e, rules in sorted(entity_rules.items())
+        ])
+
+        overview_prompt = (
+            f'Projeto: "{project_name}"\n'
+            f'Total de regras de negocio: {rule_count}\n\n'
+            f'DISTRIBUICAO POR TIPO:\n{type_summary}\n\n'
+            f'DISTRIBUICAO POR ENTIDADE:\n{entity_summary}\n\n'
+            f'---\n'
+            f'Gere titulo, descricao e paginas wiki GERAIS do projeto:\n'
+            f'- visao-geral (overview completo do sistema)\n'
+            f'- padroes-arquitetura (arquitetura, design patterns)\n'
+            f'- convencoes-codigo (convencoes e boas praticas)\n'
+            f'- estrutura-codigo (organizacao de pastas e modulos)\n'
+            f'Retorne JSON conforme contrato.'
         )
 
-        raw = response.get("content", "")
-        logger.info(f"Phase 4 ({len(raw)} chars): {raw[:300]}...")
-
-        if len(raw) >= 50:
-            try:
+        try:
+            resp = await orchestrator.execute(
+                usage_type="content_generation",
+                messages=[{"role": "user", "content": overview_prompt}],
+                system_prompt=self.PHASE4_OVERVIEW_PROMPT,
+                max_tokens=16000,
+                project_id=project_id,
+                metadata={"phase": "rag_pipeline_phase4", "batch": "overview"},
+                disable_cwd=True,
+                disable_tools=True,
+            )
+            raw = resp.get("content", "")
+            if len(raw) >= 50:
                 wiki_result = self._save_wiki_and_metadata(raw, project_id, project)
                 self.db.commit()
-
-                total_pages = wiki_result["pages_created"]
+                batch_pages = wiki_result["pages_created"]
+                total_pages += batch_pages
+                page_order += batch_pages
                 title_generated = wiki_result.get("title_generated", False)
                 desc_generated = wiki_result.get("description_generated", False)
+                logger.info(f"Phase 4 overview: {batch_pages} pages")
+        except Exception as e:
+            logger.warning(f"Phase 4 overview batch failed: {e}")
 
-                logger.info(
-                    f"Phase 4: {total_pages} wiki pages, "
-                    f"title={'yes' if title_generated else 'no'}, "
-                    f"desc={'yes' if desc_generated else 'no'}"
+        # ---- BATCHES 1..N: Domain-specific pages ----
+        for batch_idx, batch in enumerate(domain_batches):
+            batch_num = batch_idx + 1
+            local_progress = 15.0 + (80.0 * batch_num / len(domain_batches))
+            entities_label = ", ".join(batch["entities"][:3])
+            if len(batch["entities"]) > 3:
+                entities_label += f" +{len(batch['entities']) - 3}"
+            jm.update_progress(
+                job_id, _p(local_progress),
+                f"Fase 4/4: Wiki dominio {batch_num}/{len(domain_batches)} "
+                f"({entities_label}) — {total_pages} paginas ate agora"
+            )
+
+            domain_prompt = (
+                f'Projeto: "{project_name}"\n'
+                f'Dominio: {", ".join(batch["entities"])}\n'
+                f'Regras neste dominio: {batch["rule_count"]}\n\n'
+                f'REGRAS DE NEGOCIO DESTE DOMINIO:\n'
+                f'{batch["text"]}\n\n'
+                f'---\n'
+                f'Gere paginas wiki DETALHADAS cobrindo COMPLETAMENTE este dominio.\n'
+                f'Gere QUANTAS paginas forem necessarias. Nao se limite.\n'
+                f'Cada pagina deve ter conteudo RICO e EXTENSO (2000-8000 chars).\n'
+                f'Use order sequencial comecando em {page_order}.\n'
+                f'Retorne JSON: {{"wiki_pages": [...]}}.'
+            )
+
+            try:
+                resp = await orchestrator.execute(
+                    usage_type="content_generation",
+                    messages=[{"role": "user", "content": domain_prompt}],
+                    system_prompt=self.PHASE4_DOMAIN_PROMPT,
+                    max_tokens=16000,
+                    project_id=project_id,
+                    metadata={
+                        "phase": "rag_pipeline_phase4",
+                        "batch": batch_num,
+                        "entities": batch["entities"][:5],
+                    },
+                    disable_cwd=True,
+                    disable_tools=True,
                 )
-            except Exception as wiki_err:
-                logger.error(f"Phase 4: _save_wiki_and_metadata failed: {wiki_err}")
-                import traceback
-                logger.error(traceback.format_exc())
-        else:
-            logger.error(f"Phase 4: empty response ({len(raw)} chars)")
+                raw = resp.get("content", "")
+                if len(raw) >= 50:
+                    wiki_result = self._save_wiki_and_metadata(raw, project_id, project)
+                    self.db.commit()
+                    batch_pages = wiki_result["pages_created"]
+                    total_pages += batch_pages
+                    page_order += batch_pages
+                    logger.info(
+                        f"Phase 4 domain {batch_num}/{len(domain_batches)} "
+                        f"({entities_label}): {batch_pages} pages (total: {total_pages})"
+                    )
+            except Exception as e:
+                logger.warning(f"Phase 4 domain batch {batch_num} failed: {e}")
+                continue
 
         if total_pages == 0:
             self._set_phase_status(project_id, 4, "failed")
             raise ValueError("Geracao falhou: 0 paginas wiki criadas")
 
         self._set_phase_status(project_id, 4, "completed")
-        jm.update_progress(job_id, 100.0, f"Fase 4/4: Concluida — {total_pages} wiki pages")
+        jm.update_progress(
+            job_id, _p(95),
+            f"Fase 4/4: Concluida — {total_pages} wiki pages em {total_batches} lotes"
+        )
         return {
             "phase": "generate_wiki",
             "pages_created": total_pages,
             "title_generated": title_generated,
             "description_generated": desc_generated,
             "rules_used": rule_count,
+            "batches": total_batches,
         }
 
     # =====================================================================
@@ -1295,6 +1816,65 @@ class RagPipelineService:
             logger.info(f"Phase 4 validator: {result['pages_created']} pages accepted, {rejected} rejected")
 
         return result
+
+    # =========================================================================
+    # FULL PIPELINE: Run all 4 phases sequentially (25% each)
+    # =========================================================================
+
+    async def run_full_pipeline(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
+        """
+        Run all 4 phases sequentially under a SINGLE job.
+        Progress is split evenly: 0-25% (Phase 1), 25-50% (Phase 2),
+        50-75% (Phase 3), 75-100% (Phase 4).
+        """
+        jm = JobManager(self.db)
+        results = {}
+
+        # Phase 1: Index files (0-25%)
+        jm.update_progress(job_id, 0.0, "Fase 1/4: Iniciando indexacao de arquivos...")
+        try:
+            r1 = await self.phase_1_index_files(project_id, job_id, pmin=0.0, pmax=25.0)
+            results["phase_1"] = r1
+            jm.update_progress(job_id, 25.0, "Fase 1/4: Concluida")
+        except Exception as e:
+            logger.error(f"Full pipeline: Phase 1 failed: {e}")
+            raise ValueError(f"Fase 1 falhou: {e}")
+
+        # Phase 2: Extract rules (25-50%)
+        jm.update_progress(job_id, 25.0, "Fase 2/4: Iniciando extracao de regras...")
+        try:
+            r2 = await self.phase_2_extract_rules(project_id, job_id, pmin=25.0, pmax=50.0)
+            results["phase_2"] = r2
+            jm.update_progress(job_id, 50.0, "Fase 2/4: Concluida")
+        except Exception as e:
+            logger.error(f"Full pipeline: Phase 2 failed: {e}")
+            raise ValueError(f"Fase 2 falhou: {e}")
+
+        # Phase 3: Generate cards (50-75%)
+        jm.update_progress(job_id, 50.0, "Fase 3/4: Iniciando geracao de cards...")
+        try:
+            r3 = await self.phase_3_generate_cards(project_id, job_id, pmin=50.0, pmax=75.0)
+            results["phase_3"] = r3
+            jm.update_progress(job_id, 75.0, "Fase 3/4: Concluida")
+        except Exception as e:
+            logger.error(f"Full pipeline: Phase 3 failed: {e}")
+            raise ValueError(f"Fase 3 falhou: {e}")
+
+        # Phase 4: Generate wiki (75-100%)
+        jm.update_progress(job_id, 75.0, "Fase 4/4: Iniciando geracao de wiki...")
+        try:
+            r4 = await self.phase_4_generate_wiki(project_id, job_id, pmin=75.0, pmax=100.0)
+            results["phase_4"] = r4
+            jm.update_progress(job_id, 100.0, "Pipeline completo!")
+        except Exception as e:
+            logger.error(f"Full pipeline: Phase 4 failed: {e}")
+            raise ValueError(f"Fase 4 falhou: {e}")
+
+        return {
+            "phase": "full_pipeline",
+            "phases_completed": 4,
+            **results,
+        }
 
     # =========================================================================
     # File helpers
