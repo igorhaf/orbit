@@ -31,6 +31,7 @@ export {
   CostGuardNode,
   RateLimiterNode,
   TimeoutNode,
+  ContractNode,
   nodeTypes,
 } from './FlowNodes';
 export type { NodeAnimationState } from './FlowNodes';
@@ -51,4 +52,4 @@ export type { OptimizeDialogProps } from './OptimizeDialog';
 
 // Utility functions
 export { buildFlowFromChain, computeEdgeProps } from './flowUtils';
-export type { EdgeProps } from './flowUtils';
+export type { EdgeProps, FlowContract } from './flowUtils';

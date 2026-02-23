@@ -72,6 +72,28 @@ export const aiFlowApi = {
     request<any>('/api/v1/ai-flow/utility-node-types'),
 };
 
+// PROMPT #257 - Contracts API (database-backed contracts for AI Flow)
+export const contractsApi = {
+  list: (params?: { domain?: string; usage_type?: string }) => {
+    const queryParams = new URLSearchParams();
+    if (params?.domain) queryParams.append('domain', params.domain);
+    if (params?.usage_type) queryParams.append('usage_type', params.usage_type);
+    const qs = queryParams.toString();
+    return request<any>(`/api/v1/contracts/${qs ? '?' + qs : ''}`);
+  },
+
+  get: (name: string) => request<any>(`/api/v1/contracts/${name}`),
+
+  byUsageType: (usageType: string) =>
+    request<any>(`/api/v1/contracts/by-usage-type/${usageType}`),
+
+  update: (name: string, data: any) =>
+    request<any>(`/api/v1/contracts/${name}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+};
+
 // AI Executions API (PROMPT #54 - AI Execution Logging)
 export const aiExecutionsApi = {
   list: (params?: {

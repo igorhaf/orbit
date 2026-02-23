@@ -1,28 +1,23 @@
 """
-ContractLoader - Loads and renders YAML contract templates
+ContractLoader - Loads and renders contracts from the database
 
 PROMPT #164 - Contracts Architecture: Unification and Governance
+PROMPT #257 - Contracts in Database + Visual Nodes in AI Flow
 
 Features:
-- YAML file parsing with Jinja2 templating
+- Database-backed contract storage (replaces YAML files)
+- Jinja2 template rendering
 - Component inclusion and reuse
 - Variable validation
 - Caching for performance
 - Semantic map support
-- Governance tracking
-- Backward compatibility with PromptLoader
-
-Based on PromptLoader (PROMPT #103) but extended for contracts.
+- Backward compatibility with all existing callers
 """
 
-import os
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Tuple, List
-from functools import lru_cache
-from datetime import date
 
-import yaml
 from jinja2 import Environment, BaseLoader, TemplateSyntaxError
 
 from app.contracts.models import (
@@ -37,18 +32,26 @@ from app.contracts.models import (
     ContractNotFoundError,
     ContractRenderError,
     ContractValidationError,
-    ComponentNotFoundError,
 )
 
 logger = logging.getLogger(__name__)
 
-# Base directory for contracts
+# Keep CONTRACTS_DIR for backward compatibility (used by some imports)
 CONTRACTS_DIR = Path(__file__).parent
+
+
+def _get_db_session():
+    """Get a database session for contract loading."""
+    from app.database import SessionLocal
+    return SessionLocal()
 
 
 class ContractLoader:
     """
-    Loads and renders YAML contract templates with Jinja2 support.
+    Loads and renders contracts from the database with Jinja2 support.
+
+    PROMPT #257: Now reads from PostgreSQL instead of YAML files.
+    All existing API (load, load_data, render, render_full, list_contracts) preserved.
 
     Usage:
         loader = ContractLoader()
@@ -61,22 +64,19 @@ class ContractLoader:
             "generation/epic_from_interview",
             {"conversation_text": "...", "project_name": "My Project"}
         )
-
-        # Or get full rendered result
-        result = loader.render_full(
-            "generation/epic_from_interview",
-            {"conversation_text": "...", "project_name": "My Project"}
-        )
     """
 
-    def __init__(self, contracts_dir: Path = None, enable_cache: bool = True):
+    def __init__(self, db=None, contracts_dir: Path = None, enable_cache: bool = True):
         """
         Initialize ContractLoader.
 
         Args:
-            contracts_dir: Directory containing contract YAML files. Defaults to app/contracts/
+            db: Optional SQLAlchemy session. If None, creates one internally.
+            contracts_dir: Deprecated. Kept for backward compatibility.
             enable_cache: Whether to cache loaded contracts (default True)
         """
+        self._db = db
+        self._owns_db = False  # Whether we created the session ourselves
         self.contracts_dir = Path(contracts_dir) if contracts_dir else CONTRACTS_DIR
         self.enable_cache = enable_cache
         self._contract_cache: Dict[str, Contract] = {}
@@ -90,73 +90,70 @@ class ContractLoader:
             autoescape=False,
         )
 
-        logger.info(f"ContractLoader initialized with contracts_dir: {self.contracts_dir}")
+        logger.debug("ContractLoader initialized (DB-backed)")
 
-    def _get_contract_path(self, contract_name: str) -> Path:
-        """Get full path for a contract file."""
-        # contract_name format: "category/name" -> "category/name.yaml"
-        if not contract_name.endswith('.yaml'):
-            contract_name = f"{contract_name}.yaml"
-        return self.contracts_dir / contract_name
+    def _get_db(self):
+        """Get database session, creating one if needed."""
+        if self._db is not None:
+            return self._db
+        # Create a session for this loader instance
+        self._db = _get_db_session()
+        self._owns_db = True
+        return self._db
 
-    def _get_component_path(self, component_name: str) -> Path:
-        """Get full path for a component file."""
-        if not component_name.endswith('.yaml'):
-            component_name = f"{component_name}.yaml"
-        return self.contracts_dir / "components" / component_name
+    def _db_row_to_contract(self, row) -> Contract:
+        """Convert a DB Contract row to a Pydantic Contract object."""
+        from app.models.contract import Contract as ContractModel  # SQLAlchemy model
 
-    def _parse_yaml(self, content: str) -> Dict[str, Any]:
-        """Parse YAML content."""
-        try:
-            return yaml.safe_load(content) or {}
-        except yaml.YAMLError as e:
-            raise ValueError(f"YAML inválido: {e}")
+        # Parse variables from JSON
+        vars_data = row.variables or {}
+        variables = self._parse_variables(vars_data)
 
-    def _load_component(self, component_name: str) -> str:
-        """
-        Load a component's content.
+        # Parse governance from JSON
+        governance = self._parse_governance(row.governance or {})
 
-        Args:
-            component_name: Name of the component (without .yaml extension)
+        # Parse execution from JSON
+        execution = self._parse_execution(row.execution or {})
 
-        Returns:
-            Component content as string
-        """
-        # Check cache
-        if self.enable_cache and component_name in self._component_cache:
-            return self._component_cache[component_name]
+        # Parse rules from JSON
+        rules_data = row.rules or {}
+        rules = ContractRules(
+            validations=rules_data.get('validations', []),
+            constraints=rules_data.get('constraints', []),
+            access_control=rules_data.get('access_control', [])
+        )
 
-        component_path = self._get_component_path(component_name)
+        # Build metadata
+        metadata = ContractMetadata(
+            name=row.name.split('/')[-1] if '/' in row.name else row.name,
+            version=row.version or 1,
+            domain=row.domain or 'generation',
+            category=row.category or '',
+            description=row.description or '',
+            usage_type=row.usage_type or 'general',
+            tags=row.tags or [],
+            components=row.components or []
+        )
 
-        if not component_path.exists():
-            logger.warning(f"Component not found: {component_name}")
-            return ""  # Return empty string instead of failing
-
-        try:
-            content = component_path.read_text(encoding='utf-8')
-            data = self._parse_yaml(content)
-
-            # Components can have 'content' field or 'system_prompt'
-            component_content = data.get('content', '')
-            if not component_content and 'system_prompt' in data:
-                component_content = data.get('system_prompt', '')
-
-            # Cache if enabled
-            if self.enable_cache:
-                self._component_cache[component_name] = component_content
-
-            return component_content
-
-        except Exception as e:
-            logger.error(f"Error loading component {component_name}: {e}")
-            return ""
+        return Contract(
+            metadata=metadata,
+            governance=governance,
+            semantic_map=row.semantic_map or {},
+            rules=rules,
+            variables=variables,
+            system_prompt=row.system_prompt or '',
+            user_prompt=row.user_prompt or '',
+            validators=row.validators or [],
+            execution=execution,
+            data=row.data or {},
+            raw_content=None
+        )
 
     def _parse_variables(self, vars_data: Dict) -> ContractVariables:
-        """Parse variables from YAML data."""
+        """Parse variables from data."""
         required = []
         optional = []
 
-        # Handle both old format (list of strings) and new format (list of dicts)
         for var in vars_data.get('required', []):
             if isinstance(var, str):
                 required.append(ContractVariable(name=var))
@@ -172,7 +169,7 @@ class ContractLoader:
         return ContractVariables(required=required, optional=optional)
 
     def _parse_governance(self, gov_data: Dict) -> ContractGovernance:
-        """Parse governance from YAML data."""
+        """Parse governance from data."""
         if not gov_data:
             return ContractGovernance()
 
@@ -185,7 +182,7 @@ class ContractLoader:
         )
 
     def _parse_execution(self, exec_data: Dict) -> ExecutionConfig:
-        """Parse execution config from YAML data."""
+        """Parse execution config from data."""
         if not exec_data:
             return ExecutionConfig()
 
@@ -198,97 +195,74 @@ class ContractLoader:
             cache_ttl=exec_data.get('cache_ttl', 86400)
         )
 
+    def _load_component(self, component_name: str) -> str:
+        """
+        Load a component's content from the database.
+
+        Components are stored as contracts with domain='component'.
+        """
+        if self.enable_cache and component_name in self._component_cache:
+            return self._component_cache[component_name]
+
+        try:
+            from app.models.contract import Contract as ContractModel
+            db = self._get_db()
+
+            # Components are stored as "components/{name}"
+            full_name = f"components/{component_name}"
+            row = db.query(ContractModel).filter_by(name=full_name, is_active=True).first()
+
+            if not row:
+                logger.warning(f"Component not found in DB: {component_name}")
+                return ""
+
+            # Components use system_prompt as their content
+            component_content = row.system_prompt or ''
+            if not component_content:
+                # Try data.content field
+                data = row.data or {}
+                component_content = data.get('content', '')
+
+            if self.enable_cache:
+                self._component_cache[component_name] = component_content
+
+            return component_content
+
+        except Exception as e:
+            logger.error(f"Error loading component {component_name}: {e}")
+            return ""
+
     def load(self, contract_name: str) -> Contract:
         """
-        Load a contract by name.
+        Load a contract by name from the database.
 
         Args:
             contract_name: Contract identifier (e.g., "business/project_creation")
 
         Returns:
-            Contract object
+            Contract object (Pydantic)
 
         Raises:
-            ContractNotFoundError: If contract file doesn't exist
+            ContractNotFoundError: If contract not found in database
         """
-        # Check cache
         if self.enable_cache and contract_name in self._contract_cache:
             return self._contract_cache[contract_name]
 
-        contract_path = self._get_contract_path(contract_name)
-
-        if not contract_path.exists():
-            raise ContractNotFoundError(contract_name)
-
         try:
-            content = contract_path.read_text(encoding='utf-8')
-            data = self._parse_yaml(content)
+            from app.models.contract import Contract as ContractModel
+            db = self._get_db()
 
-            # Determine domain from path or data
-            parts = contract_name.split('/')
-            inferred_domain = parts[0] if len(parts) > 1 else 'generation'
+            row = db.query(ContractModel).filter_by(name=contract_name, is_active=True).first()
 
-            # Map folder names to domains
-            domain_map = {
-                'business': 'business',
-                'generation': 'generation',
-                'interviews': 'interview',
-                'memory': 'memory',
-                'commits': 'generation',
-                'components': 'component',
-                'discovery': 'memory',
-                'backlog': 'generation',
-                'context': 'generation',
-                'execution': 'business',
-                'validation': 'business',
-            }
-            domain = data.get('domain', domain_map.get(inferred_domain, 'generation'))
+            if not row:
+                raise ContractNotFoundError(contract_name)
 
-            # Parse metadata
-            metadata = ContractMetadata(
-                name=data.get('name', contract_name.split('/')[-1]),
-                version=data.get('version', 1),
-                domain=domain,
-                category=data.get('category', inferred_domain),
-                description=data.get('description', ''),
-                usage_type=data.get('usage_type', 'general'),
-                tags=data.get('tags', []),
-                components=data.get('components', [])
-            )
+            contract = self._db_row_to_contract(row)
 
-            # Parse other sections
-            variables = self._parse_variables(data.get('variables', {}))
-            governance = self._parse_governance(data.get('governance', {}))
-            execution = self._parse_execution(data.get('execution', {}))
-
-            # Handle execution config at root level (backward compatibility)
-            if 'estimated_tokens' in data:
-                execution.estimated_tokens = data['estimated_tokens']
-
-            # Create contract
-            contract = Contract(
-                metadata=metadata,
-                governance=governance,
-                semantic_map=data.get('semantic_map', {}),
-                rules=ContractRules(
-                    validations=data.get('rules', {}).get('validations', []),
-                    constraints=data.get('rules', {}).get('constraints', []),
-                    access_control=data.get('rules', {}).get('access_control', [])
-                ),
-                variables=variables,
-                system_prompt=data.get('system_prompt', ''),
-                user_prompt=data.get('user_prompt', ''),
-                validators=data.get('validators', []),
-                execution=execution,
-                data=data.get('data', {}),
-                raw_content=content
-            )
-
-            # Cache if enabled
             if self.enable_cache:
                 self._contract_cache[contract_name] = contract
 
-            logger.debug(f"Loaded contract: {contract_name}")
+            logger.debug(f"Loaded contract from DB: {contract_name}")
             return contract
 
         except ContractNotFoundError:
@@ -299,9 +273,8 @@ class ContractLoader:
 
     def load_data(self, contract_name: str) -> Dict[str, Any]:
         """
-        PROMPT #256 - Load structured data from a data-only contract.
-        Returns the 'data' section of the contract YAML.
-        Useful for business rules, thresholds, configs that aren't AI prompts.
+        Load structured data from a data-only contract.
+        Returns the 'data' section of the contract.
 
         Args:
             contract_name: Contract identifier (e.g., "business/workflow_states")
@@ -325,7 +298,6 @@ class ContractLoader:
             raise ContractRenderError("unknown", f"Template syntax error: {e}")
         except Exception as e:
             logger.error(f"Error rendering template: {e}")
-            # Return original template if rendering fails
             return template_str
 
     def render(
@@ -344,17 +316,11 @@ class ContractLoader:
 
         Returns:
             Tuple of (system_prompt, user_prompt)
-
-        Raises:
-            ContractNotFoundError: If contract file doesn't exist
-            ContractValidationError: If strict=True and required variables are missing
         """
         variables = variables or {}
 
-        # Load contract
         contract = self.load(contract_name)
 
-        # Validate required variables if strict mode
         if strict:
             missing = contract.validate_variables(variables)
             if missing:
@@ -365,14 +331,12 @@ class ContractLoader:
         for component_name in contract.metadata.components:
             components[component_name] = self._load_component(component_name)
 
-        # Add components and semantic_map to render context
         render_vars = {
             **variables,
             'components': components,
             'semantic_map': contract.semantic_map
         }
 
-        # Render system and user prompts
         system_prompt = self._render_template(contract.system_prompt, render_vars)
         user_prompt = self._render_template(contract.user_prompt, render_vars)
 
@@ -386,21 +350,9 @@ class ContractLoader:
     ) -> RenderedContract:
         """
         Load and render a contract, returning full result object.
-
-        Args:
-            contract_name: Contract identifier
-            variables: Dictionary of variables to substitute
-            strict: If True, raise error on missing required variables
-
-        Returns:
-            RenderedContract object with all metadata
         """
         variables = variables or {}
-
-        # Load contract
         contract = self.load(contract_name)
-
-        # Render
         system_prompt, user_prompt = self.render(contract_name, variables, strict)
 
         return RenderedContract(
@@ -423,64 +375,97 @@ class ContractLoader:
 
     def list_contracts(self, domain: str = None, category: str = None) -> List[str]:
         """
-        List available contracts.
+        List available contracts from the database.
 
         Args:
-            domain: Optional domain filter (business, interview, generation, memory, component)
+            domain: Optional domain filter
             category: Optional category filter
 
         Returns:
             List of contract names
         """
-        contracts = []
+        try:
+            from app.models.contract import Contract as ContractModel
+            db = self._get_db()
 
-        for yaml_file in self.contracts_dir.rglob("*.yaml"):
-            # Skip schema files
-            if "schema" in yaml_file.parts:
-                continue
+            query = db.query(ContractModel.name).filter_by(is_active=True)
 
-            # Get relative path without extension
-            rel_path = yaml_file.relative_to(self.contracts_dir)
-            contract_name = str(rel_path.with_suffix(''))
-
-            # Skip if it's not in a subdirectory (like __init__.py level files)
-            if '/' not in contract_name and '\\' not in contract_name:
-                continue
-
-            # Filter by category if specified
-            if category:
-                if not contract_name.startswith(f"{category}/"):
-                    continue
-
-            # Filter by domain if specified
             if domain:
-                try:
-                    contract = self.load(contract_name)
-                    if contract.domain != domain:
-                        continue
-                except Exception:
-                    continue
+                query = query.filter_by(domain=domain)
+            if category:
+                query = query.filter(ContractModel.name.like(f"{category}/%"))
 
-            contracts.append(contract_name)
+            rows = query.order_by(ContractModel.name).all()
+            return [row[0] for row in rows]
 
-        return sorted(contracts)
+        except Exception as e:
+            logger.error(f"Error listing contracts: {e}")
+            return []
+
+    def list_by_usage_type(self, usage_type: str) -> List[str]:
+        """
+        List contracts filtered by usage_type.
+
+        Args:
+            usage_type: The AI Flow usage type (e.g., "content_generation")
+
+        Returns:
+            List of contract names
+        """
+        try:
+            from app.models.contract import Contract as ContractModel
+            db = self._get_db()
+
+            rows = (
+                db.query(ContractModel.name)
+                .filter_by(usage_type=usage_type, is_active=True)
+                .order_by(ContractModel.name)
+                .all()
+            )
+            return [row[0] for row in rows]
+
+        except Exception as e:
+            logger.error(f"Error listing contracts by usage_type: {e}")
+            return []
 
     def exists(self, contract_name: str) -> bool:
-        """Check if a contract exists."""
-        return self._get_contract_path(contract_name).exists()
+        """Check if a contract exists in the database."""
+        try:
+            from app.models.contract import Contract as ContractModel
+            db = self._get_db()
+            return db.query(ContractModel).filter_by(name=contract_name, is_active=True).first() is not None
+        except Exception:
+            return False
 
     def get_domains(self) -> List[str]:
         """Get list of available domains."""
         return ["business", "interview", "generation", "memory", "component"]
 
     def get_categories(self) -> List[str]:
-        """Get list of available categories (top-level folders)."""
-        categories = set()
-        for item in self.contracts_dir.iterdir():
-            if item.is_dir() and not item.name.startswith('_') and not item.name.startswith('.'):
-                if item.name not in ['schema', '__pycache__']:
-                    categories.add(item.name)
-        return sorted(categories)
+        """Get list of available categories from DB."""
+        try:
+            from app.models.contract import Contract as ContractModel
+            db = self._get_db()
+
+            rows = (
+                db.query(ContractModel.category)
+                .filter_by(is_active=True)
+                .distinct()
+                .all()
+            )
+            return sorted(set(row[0] for row in rows if row[0]))
+
+        except Exception as e:
+            logger.error(f"Error getting categories: {e}")
+            return []
+
+    def __del__(self):
+        """Clean up DB session if we own it."""
+        if self._owns_db and self._db is not None:
+            try:
+                self._db.close()
+            except Exception:
+                pass
 
 
 # Global singleton instance

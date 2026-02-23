@@ -52,6 +52,7 @@ export const UTILITY_NODE_COLORS: Record<string, string> = {
   rate_limiter: '#ec4899',
   timeout: '#f97316',
   prompt_node: '#6366f1',
+  contract_node: '#0d9488',  // PROMPT #257 - Contract nodes (teal)
 };
 
 export const UTILITY_NODE_BG: Record<string, string> = {
@@ -65,6 +66,7 @@ export const UTILITY_NODE_BG: Record<string, string> = {
   rate_limiter: 'bg-pink-50 border-pink-200',
   timeout: 'bg-orange-50 border-orange-200',
   prompt_node: 'bg-indigo-50 border-indigo-200',
+  contract_node: 'bg-teal-50 border-teal-200',  // PROMPT #257
 };
 
 // Map utility node type string to ReactFlow node type string

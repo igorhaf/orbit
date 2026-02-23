@@ -83,6 +83,18 @@ export function computeEdgeProps(
 // Build ReactFlow nodes & edges from chain
 // ---------------------------------------------------------------------------
 
+// PROMPT #257 - Contract data shape for flow positioning
+export interface FlowContract {
+  id: string;
+  name: string;
+  domain: string;
+  version: number;
+  description: string;
+  system_prompt?: string;
+  user_prompt?: string;
+  usage_type?: string;
+}
+
 export function buildFlowFromChain(
   chainModels: AIFlowChainModel[],
   savedPositions?: Record<string, { x: number; y: number }> | null,
@@ -92,6 +104,7 @@ export function buildFlowFromChain(
   utilityNodes?: AIFlowUtilityNode[],
   onRemoveUtility?: (nodeId: string) => void,
   modelOverridesMap?: Record<string, ModelOverrides>,
+  contracts?: FlowContract[],
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -99,9 +112,34 @@ export function buildFlowFromChain(
   // PROMPT #225 - Linear pipeline layout constants
   const MODEL_SPACING_X = 300;
   const UTILITY_SPACING_X = 230;
-  const START_X = 50;
+  const CONTRACT_SPACING_Y = 120;
+  const CONTRACT_COLUMN_X = 50;
   const MAIN_Y = 150;
   const ERROR_Y_OFFSET = 200;
+
+  // --- PROMPT #257 - Contract nodes (column to the left of start) ---
+  const hasContracts = contracts && contracts.length > 0;
+  const START_X = hasContracts ? CONTRACT_COLUMN_X + 280 : 50;
+
+  if (hasContracts) {
+    const contractStartY = Math.max(0, MAIN_Y - ((contracts.length - 1) * CONTRACT_SPACING_Y) / 2);
+    contracts.forEach((contract, index) => {
+      const nodeId = `contract-${contract.id}`;
+      const defaultPos = { x: CONTRACT_COLUMN_X, y: contractStartY + index * CONTRACT_SPACING_Y };
+      const pos = savedPositions?.[nodeId] || defaultPos;
+      const shortName = contract.name.includes('/') ? contract.name.split('/').pop() : contract.name;
+      nodes.push({
+        id: nodeId,
+        type: 'contractNode',
+        data: {
+          ...contract,
+          label: shortName,
+          hasPrompt: !!(contract.system_prompt || contract.user_prompt),
+        },
+        position: pos,
+      });
+    });
+  }
 
   // --- Classify utility nodes into pre/post-process ---
   const preNodes: AIFlowUtilityNode[] = [];
@@ -117,10 +155,11 @@ export function buildFlowFromChain(
   let cursorX = START_X;
 
   // --- 1. Start node (blue circle) ---
+  // Use 'default' type when contracts are present so start has a target handle
   const startPos = savedPositions?.['start'] || { x: cursorX, y: MAIN_Y };
   nodes.push({
     id: 'start',
-    type: 'input',
+    type: hasContracts ? 'default' : 'input',
     data: { label: 'Requisicao' },
     position: startPos,
     style: {
@@ -283,6 +322,23 @@ export function buildFlowFromChain(
         ...(props.dashed ? { strokeDasharray: '4,4' } : {}),
       },
       markerEnd: { type: MarkerType.ArrowClosed, color: props.color },
+    });
+  }
+
+  // --- PROMPT #257 - Contract → Start edges ---
+  if (hasContracts) {
+    const contractColor = '#0d9488'; // teal
+    contracts.forEach((contract) => {
+      const nodeId = `contract-${contract.id}`;
+      edges.push({
+        id: `edge-${nodeId}-start`,
+        source: nodeId,
+        target: 'start',
+        label: '',
+        style: { stroke: contractColor, strokeWidth: 1.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: contractColor },
+        animated: false,
+      });
     });
   }
 

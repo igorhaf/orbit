@@ -38,7 +38,7 @@ import '@xyflow/react/dist/style.css';
 
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
-import { aiModelsApi, aiFlowApi } from '@/lib/api';
+import { aiModelsApi, aiFlowApi, contractsApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import type {
   AIModel,
@@ -66,7 +66,7 @@ import {
   OptimizeDialog,
   buildFlowFromChain,
 } from '@/components/ai-flow';
-import type { NodeAnimationState, ModelOverrides } from '@/components/ai-flow';
+import type { NodeAnimationState, ModelOverrides, FlowContract } from '@/components/ai-flow';
 
 // ---------------------------------------------------------------------------
 // PROMPT #124 - WebSocket hook for live chain execution events
@@ -121,6 +121,9 @@ export default function AIFlowPage() {
   // PROMPT #226 - Edit model node dialog (per-flow overrides)
   const [editingModel, setEditingModel] = useState<AIFlowChainModel | null>(null);
   const [modelOverrides, setModelOverrides] = useState<Record<string, ModelOverrides>>({});
+
+  // PROMPT #257 - Contract nodes state
+  const [flowContracts, setFlowContracts] = useState<FlowContract[]>([]);
 
   // PROMPT #124 - WebSocket animations
   const nodeAnimations = useAIFlowWebSocket(selectedUsageType);
@@ -263,6 +266,19 @@ export default function AIFlowPage() {
     fetchTemplates();
   }, [selectedUsageType]);
 
+  // PROMPT #257 - Fetch contracts by usage_type when operation changes
+  useEffect(() => {
+    const fetchContracts = async () => {
+      try {
+        const res = await contractsApi.byUsageType(selectedUsageType);
+        setFlowContracts(Array.isArray(res) ? res : []);
+      } catch {
+        setFlowContracts([]);
+      }
+    };
+    fetchContracts();
+  }, [selectedUsageType]);
+
   // PROMPT #124 - Fetch analytics
   const loadAnalytics = useCallback(async () => {
     setAnalyticsLoading(true);
@@ -309,10 +325,11 @@ export default function AIFlowPage() {
       workingUtilityNodes,
       handleRemoveUtilityNode,
       modelOverrides,
+      flowContracts,
     );
     setNodes(n);
     setEdges(e);
-  }, [workingChainModels, handleRemoveFromChain, handleRemoveUtilityNode, setNodes, setEdges, currentChain?.node_positions, metricsMap, nodeAnimations, workingUtilityNodes, modelOverrides]);
+  }, [workingChainModels, handleRemoveFromChain, handleRemoveUtilityNode, setNodes, setEdges, currentChain?.node_positions, metricsMap, nodeAnimations, workingUtilityNodes, modelOverrides, flowContracts]);
 
   // Edge reconnection handlers
   const onReconnectStart = useCallback(() => {
@@ -524,10 +541,11 @@ export default function AIFlowPage() {
               ))}
             </select>
 
-            {(workingChain.length > 0 || workingUtilityNodes.length > 0) && (
+            {(workingChain.length > 0 || workingUtilityNodes.length > 0 || flowContracts.length > 0) && (
               <span className="text-xs text-gray-500">
                 {workingChain.length} modelo{workingChain.length !== 1 ? 's' : ''}
                 {workingUtilityNodes.length > 0 && ` + ${workingUtilityNodes.length} no${workingUtilityNodes.length !== 1 ? 's' : ''}`}
+                {flowContracts.length > 0 && ` + ${flowContracts.length} contrato${flowContracts.length !== 1 ? 's' : ''}`}
               </span>
             )}
             {hasUnsavedChanges && (
@@ -570,7 +588,7 @@ export default function AIFlowPage() {
         <div className="flex gap-3 flex-1 min-h-0">
           {/* ReactFlow Canvas */}
           <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
-            {(workingChain.length > 0 || workingUtilityNodes.length > 0) ? (
+            {(workingChain.length > 0 || workingUtilityNodes.length > 0 || flowContracts.length > 0) ? (
               <ReactFlow
                 nodes={nodes}
                 edges={edges}

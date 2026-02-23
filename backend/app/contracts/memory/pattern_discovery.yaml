@@ -21,10 +21,9 @@ variables:
     - files_text
   optional: []
 
-system_prompt: ""
-
+system_prompt: |
   ## REGRA GERAL
-  - NUNCA use emojis ou símbolos especiais nas respostas
+  - NUNCA use emojis ou simbolos especiais nas respostas
 
 user_prompt: |
   Você esta analisando um codebase para descobrir padrões repetitivos de código.

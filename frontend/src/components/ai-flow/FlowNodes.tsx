@@ -446,6 +446,55 @@ export function PromptNodeNode({ data }: { data: any }) {
 }
 
 // ---------------------------------------------------------------------------
+// PROMPT #257 - Contract Node (visual prompt/contract in the flow)
+// ---------------------------------------------------------------------------
+
+export function ContractNode({ data }: { data: any }) {
+  const color = UTILITY_NODE_COLORS.contract_node;
+  const domainColors: Record<string, string> = {
+    business: 'bg-yellow-100 text-yellow-700',
+    interview: 'bg-purple-100 text-purple-700',
+    generation: 'bg-blue-100 text-blue-700',
+    memory: 'bg-green-100 text-green-700',
+    component: 'bg-gray-100 text-gray-700',
+  };
+  const domainBadge = domainColors[data.domain] || 'bg-gray-100 text-gray-700';
+
+  return (
+    <div
+      className="bg-white rounded-lg shadow-md border-2 min-w-[200px] max-w-[240px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}
+    >
+      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-500 transition-all" />
+      <div className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <UtilityNodeIcon type="contract_node" />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900 truncate">{data.label || data.name}</div>
+            <div className="text-xs text-teal-600">Contrato</div>
+          </div>
+        </div>
+        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
+          <div className="flex items-center gap-1.5">
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${domainBadge}`}>
+              {data.domain}
+            </span>
+            <span className="text-[10px] text-gray-400">v{data.version || 1}</span>
+          </div>
+          {data.description && (
+            <div className="text-[10px] text-gray-500 truncate">{data.description}</div>
+          )}
+          {data.hasPrompt && (
+            <div className="text-[10px] text-teal-600 font-medium">Prompt configurado</div>
+          )}
+        </div>
+      </div>
+      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-500 transition-all" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Node Type Registry
 // ---------------------------------------------------------------------------
 
@@ -461,4 +510,5 @@ export const nodeTypes = {
   rateLimiterNode: RateLimiterNode,
   timeoutNode: TimeoutNode,
   promptNodeNode: PromptNodeNode,
+  contractNode: ContractNode,  // PROMPT #257
 };

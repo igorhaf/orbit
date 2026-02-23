@@ -1,23 +1,25 @@
 """
 Contracts API Router
-Full CRUD for YAML contract management.
+Full CRUD for database-backed contract management.
 
-PROMPT #104 - Contracts Área (Initial)
-PROMPT #114 - Fix YAML display and add editing
+PROMPT #104 - Contracts Area (Initial)
 PROMPT #164 - Full CRUD with ContractLoader
+PROMPT #257 - Contracts in Database + Visual Nodes in AI Flow
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
-from pathlib import Path
+from uuid import UUID, uuid4
+from datetime import datetime
 import logging
 import yaml
-import shutil
-from datetime import datetime
 
-from app.contracts.loader import ContractLoader, CONTRACTS_DIR
-from app.contracts.models import ContractNotFoundError
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.models.contract import Contract as ContractModel
+from app.contracts.loader import get_contract_loader
 
 logger = logging.getLogger(__name__)
 
@@ -30,44 +32,81 @@ router = APIRouter()
 
 class ContractCreateRequest(BaseModel):
     """Request body for creating a contract."""
-    path: str  # e.g., "business/new_contract"
-    content: str
-    create_backup: bool = False
+    name: str  # e.g., "business/new_contract"
+    version: int = 1
+    domain: str = "generation"
+    category: str = ""
+    usage_type: str = "general"
+    description: str = ""
+    system_prompt: str = ""
+    user_prompt: str = ""
+    semantic_map: Dict[str, Any] = {}
+    variables: Dict[str, Any] = {}
+    governance: Dict[str, Any] = {}
+    rules: Dict[str, Any] = {}
+    validators: List[Any] = []
+    execution: Dict[str, Any] = {}
+    data: Dict[str, Any] = {}
+    components: List[str] = []
+    tags: List[str] = []
 
 
 class ContractUpdateRequest(BaseModel):
     """Request body for updating a contract."""
-    content: str
-    create_backup: bool = False
-
-
-class ContractValidateRequest(BaseModel):
-    """Request body for validating contract YAML."""
-    content: str
+    version: Optional[int] = None
+    domain: Optional[str] = None
+    category: Optional[str] = None
+    usage_type: Optional[str] = None
+    description: Optional[str] = None
+    system_prompt: Optional[str] = None
+    user_prompt: Optional[str] = None
+    semantic_map: Optional[Dict[str, Any]] = None
+    variables: Optional[Dict[str, Any]] = None
+    governance: Optional[Dict[str, Any]] = None
+    rules: Optional[Dict[str, Any]] = None
+    validators: Optional[List[Any]] = None
+    execution: Optional[Dict[str, Any]] = None
+    data: Optional[Dict[str, Any]] = None
+    components: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
 
 
 class ContractResponse(BaseModel):
     """Standard contract response."""
+    id: str
     name: str
-    path: str
-    category: str
-    domain: str
-    description: str
     version: int
-    status: str
-    content: Optional[str] = None
+    domain: str
+    category: str
+    usage_type: str
+    description: str
+    system_prompt: str
+    user_prompt: str
+    semantic_map: Dict[str, Any]
+    variables: Dict[str, Any]
+    governance: Dict[str, Any]
+    rules: Dict[str, Any]
+    validators: List[Any]
+    execution: Dict[str, Any]
+    data: Dict[str, Any]
+    components: List[Any]
+    tags: List[Any]
+    is_active: bool
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 
 class ContractListResponse(BaseModel):
     """Contract list item."""
+    id: str
     name: str
-    path: str
-    category: str
     domain: str
+    category: str
+    usage_type: str
     description: str
     version: int
-    status: str
-    tags: List[str]
+    tags: List[Any]
+    is_active: bool
 
 
 class ValidationResult(BaseModel):
@@ -75,7 +114,52 @@ class ValidationResult(BaseModel):
     valid: bool
     errors: List[str]
     warnings: List[str]
-    schema_version: str = "1.0"
+
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+def _row_to_response(row: ContractModel) -> ContractResponse:
+    """Convert a DB row to a ContractResponse."""
+    return ContractResponse(
+        id=str(row.id),
+        name=row.name,
+        version=row.version or 1,
+        domain=row.domain or "generation",
+        category=row.category or "",
+        usage_type=row.usage_type or "general",
+        description=row.description or "",
+        system_prompt=row.system_prompt or "",
+        user_prompt=row.user_prompt or "",
+        semantic_map=row.semantic_map or {},
+        variables=row.variables or {},
+        governance=row.governance or {},
+        rules=row.rules or {},
+        validators=row.validators or [],
+        execution=row.execution or {},
+        data=row.data or {},
+        components=row.components or [],
+        tags=row.tags or [],
+        is_active=row.is_active,
+        created_at=row.created_at.isoformat() if row.created_at else None,
+        updated_at=row.updated_at.isoformat() if row.updated_at else None,
+    )
+
+
+def _row_to_list_response(row: ContractModel) -> ContractListResponse:
+    """Convert a DB row to a ContractListResponse."""
+    return ContractListResponse(
+        id=str(row.id),
+        name=row.name,
+        domain=row.domain or "generation",
+        category=row.category or "",
+        usage_type=row.usage_type or "general",
+        description=row.description or "",
+        version=row.version or 1,
+        tags=row.tags or [],
+        is_active=row.is_active,
+    )
 
 
 # =============================================================================
@@ -86,57 +170,34 @@ class ValidationResult(BaseModel):
 async def list_contracts(
     domain: Optional[str] = Query(None, description="Filter by domain"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    status: Optional[str] = Query(None, description="Filter by status"),
-    tags: Optional[str] = Query(None, description="Comma-separated tags")
+    usage_type: Optional[str] = Query(None, description="Filter by usage_type"),
+    tags: Optional[str] = Query(None, description="Comma-separated tags"),
+    db: Session = Depends(get_db),
 ) -> List[ContractListResponse]:
-    """
-    List all contracts with optional filters.
-
-    Filters:
-    - domain: business, interview, generation, memory, component
-    - category: folder name (business, generation, interviews, etc.)
-    - status: draft, active, deprecated
-    - tags: comma-separated list of tags
-    """
+    """List all contracts with optional filters."""
     try:
-        loader = ContractLoader()
-        contracts = []
+        query = db.query(ContractModel).filter_by(is_active=True)
 
-        # Get all contracts
-        contract_names = loader.list_contracts(domain=domain, category=category)
+        if domain:
+            query = query.filter_by(domain=domain)
+        if category:
+            query = query.filter(ContractModel.name.like(f"{category}/%"))
+        if usage_type:
+            query = query.filter_by(usage_type=usage_type)
 
-        for contract_name in contract_names:
-            try:
-                contract = loader.load(contract_name)
+        rows = query.order_by(ContractModel.domain, ContractModel.name).all()
 
-                # Filter by status
-                if status and contract.governance.status != status:
-                    continue
+        results = [_row_to_list_response(r) for r in rows]
 
-                # Filter by tags
-                if tags:
-                    required_tags = [t.strip() for t in tags.split(',')]
-                    if not all(tag in contract.metadata.tags for tag in required_tags):
-                        continue
+        # Filter by tags if specified
+        if tags:
+            required_tags = [t.strip() for t in tags.split(",")]
+            results = [
+                r for r in results
+                if all(tag in (r.tags or []) for tag in required_tags)
+            ]
 
-                contracts.append(ContractListResponse(
-                    name=contract.metadata.name,
-                    path=contract_name,
-                    category=contract.metadata.category,
-                    domain=contract.metadata.domain,
-                    description=contract.metadata.description or "",
-                    version=contract.metadata.version,
-                    status=contract.governance.status,
-                    tags=contract.metadata.tags
-                ))
-            except Exception as e:
-                logger.warning(f"Failed to load contract {contract_name}: {e}")
-                continue
-
-        # Sort by domain, then category, then name
-        contracts.sort(key=lambda x: (x.domain, x.category, x.name))
-
-        return contracts
+        return results
 
     except Exception as e:
         logger.error(f"Error listing contracts: {e}")
@@ -144,59 +205,80 @@ async def list_contracts(
 
 
 @router.get("/domains")
-async def list_domains() -> List[str]:
+async def list_domains(db: Session = Depends(get_db)) -> List[str]:
     """Get list of available domains."""
-    loader = ContractLoader()
-    return loader.get_domains()
+    rows = (
+        db.query(ContractModel.domain)
+        .filter_by(is_active=True)
+        .distinct()
+        .all()
+    )
+    return sorted(set(row[0] for row in rows if row[0]))
 
 
 @router.get("/categories")
-async def list_categories() -> List[str]:
-    """Get list of available categories (top-level folders)."""
-    loader = ContractLoader()
-    return loader.get_categories()
+async def list_categories(db: Session = Depends(get_db)) -> List[str]:
+    """Get list of available categories."""
+    rows = (
+        db.query(ContractModel.category)
+        .filter_by(is_active=True)
+        .distinct()
+        .all()
+    )
+    return sorted(set(row[0] for row in rows if row[0]))
+
+
+@router.get("/by-usage-type/{usage_type}")
+async def get_contracts_by_usage_type(
+    usage_type: str,
+    db: Session = Depends(get_db),
+) -> List[ContractResponse]:
+    """
+    PROMPT #257 - Get contracts filtered by usage_type.
+    Used by AI Flow to show contract nodes for a specific operation.
+    """
+    try:
+        rows = (
+            db.query(ContractModel)
+            .filter_by(usage_type=usage_type, is_active=True)
+            .order_by(ContractModel.name)
+            .all()
+        )
+        return [_row_to_response(r) for r in rows]
+
+    except Exception as e:
+        logger.error(f"Error getting contracts by usage_type: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/search")
 async def search_contracts(
     q: str = Query(..., description="Search query"),
     domain: Optional[str] = None,
-    category: Optional[str] = None
+    category: Optional[str] = None,
+    db: Session = Depends(get_db),
 ) -> List[ContractListResponse]:
-    """
-    Search contracts by name, description, or tags.
-    """
+    """Search contracts by name, description, or tags."""
     try:
-        loader = ContractLoader()
-        contracts = []
-        query_lower = q.lower()
+        query_lower = f"%{q.lower()}%"
+        query = db.query(ContractModel).filter_by(is_active=True)
 
-        contract_names = loader.list_contracts(domain=domain, category=category)
+        if domain:
+            query = query.filter_by(domain=domain)
+        if category:
+            query = query.filter(ContractModel.name.like(f"{category}/%"))
 
-        for contract_name in contract_names:
-            try:
-                contract = loader.load(contract_name)
+        # Search in name and description
+        from sqlalchemy import or_, func
+        query = query.filter(
+            or_(
+                func.lower(ContractModel.name).like(query_lower),
+                func.lower(ContractModel.description).like(query_lower),
+            )
+        )
 
-                # Search in name, description, and tags
-                name_match = query_lower in contract.metadata.name.lower()
-                desc_match = query_lower in (contract.metadata.description or "").lower()
-                tags_match = any(query_lower in tag.lower() for tag in contract.metadata.tags)
-
-                if name_match or desc_match or tags_match:
-                    contracts.append(ContractListResponse(
-                        name=contract.metadata.name,
-                        path=contract_name,
-                        category=contract.metadata.category,
-                        domain=contract.metadata.domain,
-                        description=contract.metadata.description or "",
-                        version=contract.metadata.version,
-                        status=contract.governance.status,
-                        tags=contract.metadata.tags
-                    ))
-            except Exception as e:
-                continue
-
-        return contracts
+        rows = query.order_by(ContractModel.name).all()
+        return [_row_to_list_response(r) for r in rows]
 
     except Exception as e:
         logger.error(f"Error searching contracts: {e}")
@@ -204,325 +286,174 @@ async def search_contracts(
 
 
 @router.post("/validate")
-async def validate_contract(request: ContractValidateRequest) -> ValidationResult:
-    """
-    Validate contract YAML syntax and schema.
-    """
+async def validate_contract(content: str) -> ValidationResult:
+    """Validate contract YAML syntax."""
     errors = []
     warnings = []
 
-    # 1. Validate YAML syntax
     try:
-        data = yaml.safe_load(request.content)
+        data = yaml.safe_load(content)
         if data is None:
-            errors.append("Conteúdo YAML esta vazio")
+            errors.append("YAML content is empty")
             return ValidationResult(valid=False, errors=errors, warnings=warnings)
     except yaml.YAMLError as e:
-        errors.append(f"Sintaxe YAML inválida: {e}")
+        errors.append(f"Invalid YAML syntax: {e}")
         return ValidationResult(valid=False, errors=errors, warnings=warnings)
 
-    # 2. Validate required fields
-    required_fields = ['name', 'version', 'category']
+    required_fields = ["name", "version", "category"]
     for field in required_fields:
         if field not in data:
-            errors.append(f"Campo obrigatório ausente: {field}")
+            errors.append(f"Missing required field: {field}")
 
-    # 3. Validate domain if present
-    valid_domains = ['business', 'interview', 'generation', 'memory', 'component']
-    if 'domain' in data and data['domain'] not in valid_domains:
-        warnings.append(f"Dominio inválido '{data['domain']}'. Dominios validos: {valid_domains}")
-
-    # 4. Validate governance status if present
-    if 'governance' in data and 'status' in data['governance']:
-        valid_statuses = ['draft', 'active', 'deprecated']
-        if data['governance']['status'] not in valid_statuses:
-            warnings.append(f"Status inválido. Status validos: {valid_statuses}")
-
-    # 5. Validate variables structure
-    if 'variables' in data:
-        if 'required' in data['variables']:
-            if not isinstance(data['variables']['required'], list):
-                errors.append("variables.required deve ser uma lista")
-        if 'optional' in data['variables']:
-            if not isinstance(data['variables']['optional'], list):
-                errors.append("variables.optional deve ser uma lista")
-
-    # 6. Check for prompts in non-component contracts
-    if data.get('domain') != 'business' and data.get('domain') != 'component':
-        if not data.get('system_prompt') and not data.get('user_prompt'):
-            warnings.append("Contrato não possui system_prompt ou user_prompt definido")
+    valid_domains = ["business", "interview", "generation", "memory", "component"]
+    if "domain" in data and data["domain"] not in valid_domains:
+        warnings.append(f"Invalid domain '{data['domain']}'. Valid: {valid_domains}")
 
     return ValidationResult(
         valid=len(errors) == 0,
         errors=errors,
-        warnings=warnings
+        warnings=warnings,
     )
 
 
 @router.post("/")
-async def create_contract(request: ContractCreateRequest) -> Dict[str, Any]:
-    """
-    Create a new contract.
-
-    The path should be in format: category/name (e.g., "business/new_rule")
-    """
+async def create_contract(
+    request: ContractCreateRequest,
+    db: Session = Depends(get_db),
+) -> ContractResponse:
+    """Create a new contract."""
     try:
-        # Validate YAML first
-        validation = await validate_contract(ContractValidateRequest(content=request.content))
-        if not validation.valid:
-            raise HTTPException(status_code=400, detail=f"YAML inválido: {validation.errors}")
+        # Check if name already exists
+        existing = db.query(ContractModel).filter_by(name=request.name).first()
+        if existing:
+            raise HTTPException(status_code=409, detail=f"Contract already exists: {request.name}")
 
-        # Build file path
-        path = request.path
-        if not path.endswith('.yaml'):
-            path = f"{path}.yaml"
+        contract = ContractModel(
+            id=uuid4(),
+            name=request.name,
+            version=request.version,
+            domain=request.domain,
+            category=request.category,
+            usage_type=request.usage_type,
+            description=request.description,
+            system_prompt=request.system_prompt,
+            user_prompt=request.user_prompt,
+            semantic_map=request.semantic_map,
+            variables=request.variables,
+            governance=request.governance,
+            rules=request.rules,
+            validators=request.validators,
+            execution=request.execution,
+            data=request.data,
+            components=request.components,
+            tags=request.tags,
+        )
+        db.add(contract)
+        db.commit()
+        db.refresh(contract)
 
-        file_path = CONTRACTS_DIR / path
+        # Clear loader cache
+        try:
+            get_contract_loader().clear_cache()
+        except Exception:
+            pass
 
-        # Check if file already exists
-        if file_path.exists():
-            raise HTTPException(status_code=409, detail=f"Contrato ja existe: {request.path}")
-
-        # Create parent directories if needed
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Write the file
-        file_path.write_text(request.content, encoding='utf-8')
-
-        # Clear cache
-        loader = ContractLoader()
-        loader.clear_cache()
-
-        logger.info(f"Contract created: {request.path}")
-
-        return {
-            "success": True,
-            "path": request.path,
-            "message": "Contrato criado com sucesso"
-        }
+        logger.info(f"Contract created: {request.name}")
+        return _row_to_response(contract)
 
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
         logger.error(f"Error creating contract: {e}")
-        raise HTTPException(status_code=500, detail=f"Falha ao criar contrato: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{path:path}")
-async def get_contract(path: str) -> ContractResponse:
-    """
-    Get a specific contract by path.
-
-    Path format: category/name (e.g., "business/project_creation")
-    """
+async def get_contract(
+    path: str,
+    db: Session = Depends(get_db),
+) -> ContractResponse:
+    """Get a specific contract by path/name."""
     try:
-        loader = ContractLoader()
-        contract = loader.load(path)
+        row = db.query(ContractModel).filter_by(name=path).first()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Contract not found: {path}")
 
-        return ContractResponse(
-            name=contract.metadata.name,
-            path=path,
-            category=contract.metadata.category,
-            domain=contract.metadata.domain,
-            description=contract.metadata.description or "",
-            version=contract.metadata.version,
-            status=contract.governance.status,
-            content=contract.raw_content
-        )
+        return _row_to_response(row)
 
-    except ContractNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Contrato não encontrado: {path}")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error loading contract {path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.put("/{path:path}")
-async def update_contract(path: str, request: ContractUpdateRequest) -> Dict[str, Any]:
-    """
-    Update a specific contract.
-
-    Path format: category/name (e.g., "business/project_creation")
-    """
+async def update_contract(
+    path: str,
+    request: ContractUpdateRequest,
+    db: Session = Depends(get_db),
+) -> ContractResponse:
+    """Update a specific contract."""
     try:
-        # Validate YAML first
-        validation = await validate_contract(ContractValidateRequest(content=request.content))
-        if not validation.valid:
-            raise HTTPException(status_code=400, detail=f"YAML inválido: {validation.errors}")
+        row = db.query(ContractModel).filter_by(name=path).first()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Contract not found: {path}")
 
-        # Get the file path
-        if not path.endswith('.yaml'):
-            file_path = CONTRACTS_DIR / f"{path}.yaml"
-        else:
-            file_path = CONTRACTS_DIR / path
+        # Update only provided fields
+        update_data = request.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(row, key, value)
 
-        # Check if file exists
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"Contrato não encontrado: {path}")
+        row.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(row)
 
-        # Create backup if requested
-        if request.create_backup:
-            backup_dir = CONTRACTS_DIR / ".backups" / path.replace('/', '_')
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_path = backup_dir / f"{timestamp}.yaml"
-            shutil.copy2(file_path, backup_path)
-            logger.info(f"Backup created: {backup_path}")
-
-        # Write the content
-        file_path.write_text(request.content, encoding='utf-8')
-
-        # Clear the cache
-        loader = ContractLoader()
-        loader.clear_cache()
+        # Clear loader cache
+        try:
+            get_contract_loader().clear_cache()
+        except Exception:
+            pass
 
         logger.info(f"Contract updated: {path}")
-
-        return {
-            "success": True,
-            "path": path,
-            "message": "Contrato salvo com sucesso"
-        }
+        return _row_to_response(row)
 
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
         logger.error(f"Error updating contract {path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Falha ao salvar contrato: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.delete("/{path:path}")
 async def delete_contract(
     path: str,
-    backup: bool = Query(True, description="Create backup before deleting")
+    db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
-    """
-    Delete a contract.
-
-    By default, creates a backup before deletion.
-    """
+    """Soft-delete a contract (set is_active=False)."""
     try:
-        # Get the file path
-        if not path.endswith('.yaml'):
-            file_path = CONTRACTS_DIR / f"{path}.yaml"
-        else:
-            file_path = CONTRACTS_DIR / path
+        row = db.query(ContractModel).filter_by(name=path).first()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Contract not found: {path}")
 
-        # Check if file exists
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail=f"Contrato não encontrado: {path}")
+        row.is_active = False
+        row.updated_at = datetime.utcnow()
+        db.commit()
 
-        backup_path = None
+        # Clear loader cache
+        try:
+            get_contract_loader().clear_cache()
+        except Exception:
+            pass
 
-        # Create backup if requested
-        if backup:
-            backup_dir = CONTRACTS_DIR / ".backups" / path.replace('/', '_')
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_path = backup_dir / f"{timestamp}_deleted.yaml"
-            shutil.copy2(file_path, backup_path)
-            logger.info(f"Backup created before deletion: {backup_path}")
-
-        # Delete the file
-        file_path.unlink()
-
-        # Clear the cache
-        loader = ContractLoader()
-        loader.clear_cache()
-
-        logger.info(f"Contract deleted: {path}")
-
-        return {
-            "success": True,
-            "path": path,
-            "message": "Contrato excluido com sucesso",
-            "backup_path": str(backup_path) if backup_path else None
-        }
+        logger.info(f"Contract deactivated: {path}")
+        return {"success": True, "path": path, "message": "Contract deactivated"}
 
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
         logger.error(f"Error deleting contract {path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Falha ao excluir contrato: {e}")
-
-
-@router.get("/{path:path}/versions")
-async def list_contract_versions(path: str) -> List[Dict[str, Any]]:
-    """
-    List backup versions of a contract.
-    """
-    try:
-        backup_dir = CONTRACTS_DIR / ".backups" / path.replace('/', '_')
-
-        if not backup_dir.exists():
-            return []
-
-        versions = []
-        for backup_file in sorted(backup_dir.glob("*.yaml"), reverse=True):
-            stat = backup_file.stat()
-            versions.append({
-                "filename": backup_file.name,
-                "timestamp": backup_file.stem.split('_')[0] + "_" + backup_file.stem.split('_')[1] if '_' in backup_file.stem else backup_file.stem,
-                "size": stat.st_size,
-                "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                "is_deleted": "_deleted" in backup_file.name
-            })
-
-        return versions
-
-    except Exception as e:
-        logger.error(f"Error listing versions for {path}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/{path:path}/restore")
-async def restore_contract_version(
-    path: str,
-    filename: str = Query(..., description="Backup filename to restore")
-) -> Dict[str, Any]:
-    """
-    Restore a contract from a backup version.
-    """
-    try:
-        backup_dir = CONTRACTS_DIR / ".backups" / path.replace('/', '_')
-        backup_file = backup_dir / filename
-
-        if not backup_file.exists():
-            raise HTTPException(status_code=404, detail=f"Backup não encontrado: {filename}")
-
-        # Get current file path
-        if not path.endswith('.yaml'):
-            file_path = CONTRACTS_DIR / f"{path}.yaml"
-        else:
-            file_path = CONTRACTS_DIR / path
-
-        # Create backup of current state before restore
-        if file_path.exists():
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            current_backup = backup_dir / f"{timestamp}_before_restore.yaml"
-            shutil.copy2(file_path, current_backup)
-
-        # Create parent directories if needed (for deleted contracts)
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Restore
-        shutil.copy2(backup_file, file_path)
-
-        # Clear cache
-        loader = ContractLoader()
-        loader.clear_cache()
-
-        logger.info(f"Contract restored: {path} from {filename}")
-
-        return {
-            "success": True,
-            "path": path,
-            "restored_from": filename,
-            "message": "Contrato restaurado com sucesso"
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error restoring contract {path}: {e}")
         raise HTTPException(status_code=500, detail=str(e))

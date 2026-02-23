@@ -9,7 +9,7 @@ export { tasksApi } from './tasks';
 export { backlogGenerationApi, backlogApi } from './backlog';
 export { interviewsApi } from './interviews';
 export { promptsApi } from './prompts';
-export { aiModelsApi, aiFlowApi, aiExecutionsApi } from './ai';
+export { aiModelsApi, aiFlowApi, aiExecutionsApi, contractsApi } from './ai';
 export type { JobStatus } from './jobs';
 export type { JobResponse } from './jobs';
 export { jobsApi } from './jobs';
