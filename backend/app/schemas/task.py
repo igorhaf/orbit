@@ -5,7 +5,7 @@ JIRA Transformation - Phase 2: Extended with 28+ new fields
 """
 
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from uuid import UUID
 from pydantic import BaseModel, Field, field_validator
 
@@ -86,7 +86,8 @@ class TaskBase(BaseModel):
     created_by_ai_model: Optional[str] = Field(None, description="AI model that generated this content")
 
     # Complexity level (determines which Claude model runs the task)
-    complexity: str = Field(default="medium", description="Complexity: low=Haiku, medium=Sonnet, high=Opus")
+    # DB stores integer (1=low, 2=medium, 3=high), schema accepts both
+    complexity: Union[str, int] = Field(default="medium", description="Complexity: low=Haiku, medium=Sonnet, high=Opus")
 
     # Legacy Kanban fields (for backward compatibility)
     status: TaskStatus = Field(default=TaskStatus.BACKLOG, description="Legacy Kanban status")
@@ -143,7 +144,7 @@ class TaskUpdate(BaseModel):
     generated_prompt: Optional[str] = None
 
     # Complexity level
-    complexity: Optional[str] = Field(None, description="Complexity: low|medium|high")
+    complexity: Optional[Union[str, int]] = Field(None, description="Complexity: low|medium|high")
 
     # Legacy Kanban
     status: Optional[TaskStatus] = None

@@ -617,34 +617,78 @@ class RagPipelineService:
     PHASE3_CARDS_PROMPT = (
         "IMPORTANTE: Voce NAO tem acesso a ferramentas. NAO tente executar comandos "
         "ou explorar arquivos. As regras de negocio ja estao na mensagem do usuario.\n\n"
-        "Voce e um Product Owner. A partir das regras fornecidas, gere uma "
-        "hierarquia FLAT de cards (array unico, NAO aninhado).\n\n"
+        "Voce e um Product Owner senior e Arquiteto de Software. A partir das regras "
+        "fornecidas, gere uma hierarquia FLAT de cards (array unico, NAO aninhado) "
+        "com TODOS os campos preenchidos de forma rica e completa.\n\n"
         "CONTRATO — JSON RIGIDO. Responda APENAS com JSON puro, sem markdown.\n\n"
         "FORMATO OBRIGATORIO (array FLAT de cards, NAO aninhado):\n"
         '{"cards":['
-        '{"title":"Modulo X","item_type":"epic","parent_title":null,"description":"...min 200 chars...","story_points":13,"priority":"high","complexity":"high","labels":["modulo-x"],"acceptance_criteria":["criterio 1","criterio 2"],"entity":"Entidade"},'
-        '{"title":"Feature Y","item_type":"story","parent_title":"Modulo X","description":"...min 200 chars...","story_points":5,"priority":"medium","complexity":"medium","labels":["feature-y"],"acceptance_criteria":["criterio 1"],"entity":"Entidade"},'
-        '{"title":"Implementar Z","item_type":"task","parent_title":"Feature Y","description":"...min 200 chars...","story_points":3,"priority":"medium","complexity":"low","labels":["impl-z"],"acceptance_criteria":["criterio 1"],"entity":"Entidade"}'
+        '{"title":"Modulo X","item_type":"epic","parent_title":null,'
+        '"description":"Descricao detalhada do modulo com contexto tecnico, '
+        'justificativa de negocio e escopo funcional...min 300 chars...",'
+        '"generated_prompt":"Prompt semantico atomico para IA executar este card. '
+        'Inclui contexto completo, requisitos tecnicos, criterios de aceite, '
+        'dependencias e restricoes. Deve ser auto-suficiente para que uma IA '
+        'consiga implementar sem informacao adicional...min 500 chars...",'
+        '"story_points":13,"priority":"high","complexity":"high",'
+        '"labels":["modulo-x","backend"],'
+        '"acceptance_criteria":[{"text":"Criterio detalhado 1","completed":false},'
+        '{"text":"Criterio detalhado 2","completed":false}],'
+        '"components":["componente-afetado-1","componente-afetado-2"],'
+        '"type":"module","entity":"Entidade",'
+        '"depends_on_titles":[]},'
+        '{"title":"Feature Y","item_type":"story","parent_title":"Modulo X",'
+        '"description":"...min 300 chars...","generated_prompt":"...min 500 chars...",'
+        '"story_points":5,"priority":"medium","complexity":"medium",'
+        '"labels":["feature-y"],'
+        '"acceptance_criteria":[{"text":"criterio 1","completed":false}],'
+        '"components":["componente"],"type":"service","entity":"Entidade",'
+        '"depends_on_titles":[]},'
+        '{"title":"Implementar Z","item_type":"task","parent_title":"Feature Y",'
+        '"description":"...min 300 chars...","generated_prompt":"...min 500 chars...",'
+        '"story_points":3,"priority":"medium","complexity":"low",'
+        '"labels":["impl-z"],'
+        '"acceptance_criteria":[{"text":"criterio 1","completed":false}],'
+        '"components":["componente"],"type":"implementation","entity":"Entidade",'
+        '"depends_on_titles":["Feature Y"]}'
         ']}\n\n'
+        "CAMPOS OBRIGATORIOS POR CARD:\n"
+        "- title: titulo claro e descritivo (5-255 chars)\n"
+        "- item_type: epic|story|task|subtask\n"
+        "- parent_title: null para epic, titulo EXATO do pai para demais\n"
+        "- description: descricao RICA e DETALHADA (min 300 chars). Inclua: contexto, "
+        "justificativa, escopo funcional, impacto tecnico, e como se relaciona ao sistema.\n"
+        "- generated_prompt: prompt SEMANTICO ATOMICO (min 500 chars) para IA executar. "
+        "Deve ser AUTO-SUFICIENTE: inclua contexto do projeto, requisitos tecnicos, "
+        "stack/frameworks relevantes, criterios de aceite, arquivos/entidades envolvidos, "
+        "restricoes e dependencias. Uma IA deve conseguir implementar lendo APENAS este campo.\n"
+        "- story_points: Fibonacci (1,2,3,5,8,13)\n"
+        "- priority: critical|high|medium|low\n"
+        "- complexity: low|medium|high\n"
+        "- labels: array de tags relevantes (ex: ['backend','api','auth'])\n"
+        "- acceptance_criteria: array de objetos {text, completed:false}. "
+        "Criterios CLAROS e VERIFICAVEIS (min 3 por card, min 20 chars cada)\n"
+        "- components: array de componentes/modulos afetados (ex: ['auth-service','user-model'])\n"
+        "- type: tipo tecnico (module|service|controller|model|migration|config|test|"
+        "implementation|integration|documentation)\n"
+        "- entity: entidade principal (ex: 'User','Project','Task')\n"
+        "- depends_on_titles: array de titulos de cards dos quais este depende ([] se nenhum)\n\n"
         "REGRAS CRITICAS:\n"
         "- cards e um ARRAY FLAT. Cada card tem parent_title ligando ao pai.\n"
         "- NAO use epics[] aninhado. NAO use stories[] dentro de epic.\n"
-        "- item_type: epic|story|task|subtask\n"
-        "- parent_title: null para epic, titulo EXATO do pai para os demais\n"
-        "- story_points: Fibonacci (1,2,3,5,8,13)\n"
-        "- priority: critical|high|medium|low\n"
         "- Ordem: epics primeiro, depois stories, tasks, subtasks\n"
-        "- description: min 200 chars por card\n"
+        "- acceptance_criteria DEVE ser array de OBJETOS {text, completed}\n"
+        "- generated_prompt e OBRIGATORIO para TODOS os cards, especialmente tasks/subtasks\n"
         "- Retorne APENAS o JSON com cards. SEM wiki, SEM project metadata.\n"
         "- Todos os textos em PORTUGUES"
     )
 
     async def phase_3_generate_cards(self, project_id: UUID, job_id: UUID) -> Dict[str, Any]:
         """
-        Phase 3: Generate CARDS ONLY from business rules.
+        Phase 3: Generate CARDS from business rules via RAG injection.
 
-        Reads ALL business rules from rag_documents, sends them ALL in a
-        SINGLE prompt to the LLM. No batching.
+        Uses enable_rag=True to inject business rules from RAG automatically.
+        Sends a compact prompt (~5KB) instead of all rules inline (~120KB).
         """
         self._set_phase_status(project_id, 3, "running")
         jm = JobManager(self.db)
@@ -653,32 +697,29 @@ class RagPipelineService:
         if not project or not project.code_path:
             raise ValueError("Project not found or missing code_path")
 
-        jm.update_progress(job_id, 5.0, "Fase 3/4: Carregando regras de negocio...")
+        jm.update_progress(job_id, 5.0, "Fase 3/4: Verificando regras de negocio...")
 
-        # Load ALL business rules from RAG
-        rule_rows = self.db.execute(sql_text(
-            "SELECT content, metadata FROM rag_documents "
-            "WHERE project_id = :pid AND metadata->>'type' = 'business_rule' "
-            "ORDER BY metadata->>'rule_type', created_at"
-        ), {"pid": str(project_id)}).fetchall()
+        # Count rules (lightweight check that Phase 2 ran)
+        rule_count = self.db.execute(sql_text(
+            "SELECT COUNT(*) FROM rag_documents "
+            "WHERE project_id = :pid AND metadata->>'type' = 'business_rule'"
+        ), {"pid": str(project_id)}).scalar() or 0
 
-        rule_count = len(rule_rows)
         if rule_count == 0:
             self._set_phase_status(project_id, 3, "failed")
             raise ValueError("Nenhuma regra de negocio encontrada. Execute Phase 2 primeiro.")
 
-        # Build ALL rules as a single context
-        rule_lines = []
-        for idx, row in enumerate(rule_rows):
-            content = row[0] or ""
-            meta = row[1] if isinstance(row[1], dict) else {}
-            rtype = meta.get("rule_type", "?")
-            source = meta.get("source_file", "?")
-            rule_lines.append(f"{idx+1}. [{rtype}] {content} (fonte: {source})")
+        # Build compact summary by rule_type (~500 bytes instead of 70KB)
+        type_counts = self.db.execute(sql_text(
+            "SELECT metadata->>'rule_type' as rtype, COUNT(*) as cnt "
+            "FROM rag_documents WHERE project_id = :pid AND metadata->>'type' = 'business_rule' "
+            "GROUP BY metadata->>'rule_type' ORDER BY cnt DESC"
+        ), {"pid": str(project_id)}).fetchall()
 
-        rules_context = "\n".join(rule_lines)
+        summary_lines = [f"- {r.rtype}: {r.cnt} regras" for r in type_counts]
+        summary = "\n".join(summary_lines)
 
-        logger.info(f"Phase 3: sending ALL {rule_count} rules in single prompt")
+        logger.info(f"Phase 3: {rule_count} rules via RAG injection (not inline)")
 
         from app.services.ai_orchestrator import AIOrchestrator
         orchestrator = AIOrchestrator(self.db)
@@ -686,16 +727,17 @@ class RagPipelineService:
         project_name = project.name or "Projeto"
 
         user_prompt = (
-            f'REGRAS DE NEGOCIO do projeto "{project_name}" '
-            f'({rule_count} regras):\n\n'
-            f'{rules_context}\n\n'
-            f'---\n'
-            f'Gere TODOS os cards (hierarquia FLAT: epic, story, task, subtask).\n'
-            f'Cubra TODAS as {rule_count} regras acima com cards correspondentes.\n'
+            f'Projeto: "{project_name}"\n'
+            f'Total de regras de negocio: {rule_count}\n\n'
+            f'Distribuicao por tipo:\n{summary}\n\n'
+            f'As regras detalhadas estao no contexto fornecido acima '
+            f'(RELEVANT CONTEXT FROM KNOWLEDGE BASE).\n\n'
+            f'Analise TODAS as regras do contexto e gere os cards hierarquicos '
+            f'(epics -> stories -> tasks) cobrindo TODOS os modulos do sistema.\n'
             f'Retorne: {{"cards": [...]}}'
         )
 
-        jm.update_progress(job_id, 15.0, f"Fase 3/4: Enviando {rule_count} regras para IA...")
+        jm.update_progress(job_id, 15.0, f"Fase 3/4: Gerando cards via RAG ({rule_count} regras)...")
 
         total_cards = 0
 
@@ -705,6 +747,10 @@ class RagPipelineService:
             system_prompt=self.PHASE3_CARDS_PROMPT,
             max_tokens=16000,
             project_id=project_id,
+            enable_rag=True,
+            rag_filter={"type": "business_rule"},
+            rag_top_k=300,
+            rag_similarity_threshold=0.0,
             metadata={"phase": "rag_pipeline_phase3", "skip_context_build": True},
             disable_cwd=True,
             disable_tools=True,
@@ -873,6 +919,19 @@ class RagPipelineService:
                         "completed": bool(ac.get("completed", False)),
                     })
 
+            # ---- Extract new fields ----
+            generated_prompt = str(card.get("generated_prompt") or "").strip()
+            components = card.get("components", [])
+            if not isinstance(components, list):
+                components = []
+            components = [str(c).strip()[:100] for c in components if isinstance(c, str) and len(str(c).strip()) >= 2][:20]
+            card_type = str(card.get("type") or "").strip().lower()[:100] or None
+            entity = str(card.get("entity") or "").strip()[:100] or None
+            depends_on_titles = card.get("depends_on_titles", [])
+            if not isinstance(depends_on_titles, list):
+                depends_on_titles = []
+            depends_on_titles = [str(d).strip() for d in depends_on_titles if isinstance(d, str) and len(str(d).strip()) >= 2]
+
             valid_cards.append({
                 "title": title[:255],
                 "description": description[:10000],
@@ -883,6 +942,11 @@ class RagPipelineService:
                 "complexity": complexity,
                 "labels": labels,
                 "acceptance_criteria": acceptance_criteria or None,
+                "generated_prompt": generated_prompt[:20000] if generated_prompt else None,
+                "components": components,
+                "type": card_type,
+                "entity": entity,
+                "depends_on_titles": depends_on_titles,
             })
 
         if rejected:
@@ -913,13 +977,20 @@ class RagPipelineService:
                 description=card["description"],
                 item_type=card["item_type"],
                 project_id=project_id,
-                workflow_state="done",
+                workflow_state="open",
                 reporter="pipeline_phase3",
                 story_points=card["story_points"],
                 priority=card["priority"],
                 complexity=COMPLEXITY_MAP.get(card["complexity"], 2),
                 labels=card["labels"],
                 acceptance_criteria=card["acceptance_criteria"],
+                generated_prompt=card.get("generated_prompt"),
+                components=card.get("components", []),
+                type=card.get("type"),
+                entity=card.get("entity"),
+                description_edited_by="ai",
+                prompt_edited_by="ai" if card.get("generated_prompt") else None,
+                created_by_ai_model="pipeline_phase3_sonnet",
                 order=created,
             )
             self.db.add(task)
@@ -966,7 +1037,27 @@ class RagPipelineService:
 
         if orphans:
             logger.warning(f"Phase 3: {orphans} orphan cards (parent_title not found in DB)")
-        logger.info(f"Phase 3: {created} created, {linked} linked to parents")
+
+        # ---- PASS 4: Resolve depends_on_titles to task IDs ----
+        deps_resolved = 0
+        for card in valid_cards:
+            dep_titles = card.get("depends_on_titles", [])
+            if not dep_titles:
+                continue
+            title = card["title"]
+            if title not in title_to_id:
+                continue
+            dep_ids = []
+            for dt in dep_titles:
+                if dt in title_to_id:
+                    dep_ids.append(str(title_to_id[dt]))
+            if dep_ids:
+                self.db.execute(sql_text(
+                    "UPDATE tasks SET depends_on = :deps WHERE id = :task_id"
+                ), {"deps": json.dumps(dep_ids), "task_id": str(title_to_id[title])})
+                deps_resolved += 1
+
+        logger.info(f"Phase 3: {created} created, {linked} linked to parents, {deps_resolved} with dependencies")
 
         return created
 

@@ -540,6 +540,7 @@ class AIOrchestrator:
     _RAG_TYPE_BOOSTS = {
         "prompt_generation": {"business_rule": 0.15, "interview_answer": 0.10, "spec": 0.05},
         "task_execution": {"spec": 0.15, "code_context": 0.10},
+        "content_generation": {"business_rule": 0.35},
     }
 
     def _score_and_filter_rag_results(
@@ -560,7 +561,8 @@ class AIOrchestrator:
         for r in rag_results:
             sim = r.get("similarity", 0.0)
             kw = self._keyword_overlap_score(r.get("content", ""), query)
-            doc_type = r.get("type", "")
+            _meta = r.get("metadata", {}) or {}
+            doc_type = _meta.get("type", "") if isinstance(_meta, dict) else r.get("type", "")
             boost = type_boosts.get(doc_type, 0.0)
 
             combined = sim * 0.6 + kw * 0.3 + boost
