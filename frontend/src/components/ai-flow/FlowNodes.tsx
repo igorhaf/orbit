@@ -495,6 +495,34 @@ export function ContractNode({ data }: { data: any }) {
 }
 
 // ---------------------------------------------------------------------------
+// PROMPT #258 - Contracts Hub Node (aggregation point for contract → pipeline)
+// ---------------------------------------------------------------------------
+
+export function ContractsHubNode({ data }: { data: any }) {
+  const color = '#0d9488'; // teal
+  const count = data.contractCount || 0;
+
+  return (
+    <div
+      className="bg-teal-50 rounded-xl shadow-md border-2 border-teal-300 min-w-[160px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
+    >
+      <Handle type="target" position={Position.Left} className="!bg-teal-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-600 transition-all" />
+      <div className="px-4 py-3 text-center">
+        <div className="flex items-center justify-center gap-2 mb-1">
+          <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+          <span className="font-bold text-sm text-teal-800">Montagem</span>
+        </div>
+        <div className="text-xs text-teal-600 font-medium">{count} contrato{count !== 1 ? 's' : ''}</div>
+        <div className="text-[10px] text-teal-500 mt-0.5">system_prompt + user_prompt</div>
+      </div>
+      <Handle type="source" position={Position.Right} className="!bg-teal-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-600 transition-all" />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Node Type Registry
 // ---------------------------------------------------------------------------
 
@@ -511,4 +539,5 @@ export const nodeTypes = {
   timeoutNode: TimeoutNode,
   promptNodeNode: PromptNodeNode,
   contractNode: ContractNode,  // PROMPT #257
+  contractsHubNode: ContractsHubNode,  // PROMPT #258
 };

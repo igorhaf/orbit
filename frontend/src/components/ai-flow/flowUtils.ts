@@ -117,9 +117,10 @@ export function buildFlowFromChain(
   const MAIN_Y = 150;
   const ERROR_Y_OFFSET = 200;
 
-  // --- PROMPT #257 - Contract nodes (column to the left of start) ---
+  // --- PROMPT #258 - Contract nodes + hub (column → hub → start) ---
   const hasContracts = contracts && contracts.length > 0;
-  const START_X = hasContracts ? CONTRACT_COLUMN_X + 280 : 50;
+  const HUB_X = CONTRACT_COLUMN_X + 290;
+  const START_X = hasContracts ? HUB_X + 230 : 50;
 
   if (hasContracts) {
     const contractStartY = Math.max(0, MAIN_Y - ((contracts.length - 1) * CONTRACT_SPACING_Y) / 2);
@@ -139,6 +140,15 @@ export function buildFlowFromChain(
         position: pos,
       });
     });
+
+    // Hub node: aggregation point between contracts and pipeline
+    const hubPos = savedPositions?.['contracts-hub'] || { x: HUB_X, y: MAIN_Y - 10 };
+    nodes.push({
+      id: 'contracts-hub',
+      type: 'contractsHubNode',
+      data: { contractCount: contracts.length },
+      position: hubPos,
+    });
   }
 
   // --- Classify utility nodes into pre/post-process ---
@@ -155,7 +165,7 @@ export function buildFlowFromChain(
   let cursorX = START_X;
 
   // --- 1. Start node (blue circle) ---
-  // Use 'default' type when contracts are present so start has a target handle
+  // Use 'default' when hub exists so start has a target handle for the hub→start edge
   const startPos = savedPositions?.['start'] || { x: cursorX, y: MAIN_Y };
   nodes.push({
     id: 'start',
@@ -325,20 +335,34 @@ export function buildFlowFromChain(
     });
   }
 
-  // --- PROMPT #257 - Contract → Start edges ---
+  // --- PROMPT #258 - Contract → Hub → Pipeline edges ---
   if (hasContracts) {
     const contractColor = '#0d9488'; // teal
+    // Each contract → hub
     contracts.forEach((contract) => {
       const nodeId = `contract-${contract.id}`;
       edges.push({
-        id: `edge-${nodeId}-start`,
+        id: `edge-${nodeId}-hub`,
         source: nodeId,
-        target: 'start',
+        target: 'contracts-hub',
         label: '',
         style: { stroke: contractColor, strokeWidth: 1.5 },
         markerEnd: { type: MarkerType.ArrowClosed, color: contractColor },
         animated: false,
       });
+    });
+    // Hub → first node in pipeline (start)
+    const firstPipelineNode = pipeline[0]; // 'start'
+    edges.push({
+      id: 'edge-hub-pipeline',
+      source: 'contracts-hub',
+      target: firstPipelineNode,
+      label: 'prompts',
+      labelStyle: { fontSize: 10, fontWeight: 600, fill: '#0d9488' },
+      labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
+      style: { stroke: contractColor, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: contractColor },
+      animated: true,
     });
   }
 

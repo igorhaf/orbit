@@ -32,6 +32,7 @@ export {
   RateLimiterNode,
   TimeoutNode,
   ContractNode,
+  ContractsHubNode,
   nodeTypes,
 } from './FlowNodes';
 export type { NodeAnimationState } from './FlowNodes';
