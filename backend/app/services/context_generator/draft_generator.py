@@ -343,7 +343,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                 usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=8000,
+                max_tokens=16000,
                 enable_rag=True,
                 project_id=str(project.id)
             )
@@ -352,8 +352,13 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             stories_data = self._parse_json_response(response_content)
 
             if not stories_data or not isinstance(stories_data, list):
-                logger.warning("AI did not return valid stories array, falling back to title-only")
-                return await self._generate_draft_stories_fallback(epic, project, count)
+                logger.warning("AI did not return valid stories array, trying to extract from raw content")
+                # Try to extract content from raw response before falling back
+                extracted = _extract_content_from_raw_response(response_content)
+                if extracted and isinstance(extracted, list):
+                    stories_data = extracted
+                else:
+                    return await self._generate_draft_stories_fallback(epic, project, count)
 
             stories_data = stories_data[:count]
             logger.info(f"Generated {len(stories_data)} complete story objects for epic: {epic.title}")
@@ -1350,14 +1355,14 @@ IMPORTANTE:
         features_list = "\n".join([f"- [JA EXISTE] {f}" for f in existing_features]) if existing_features else "Nenhuma"
 
         system_prompt = f"""Você é um Product Owner especialista em decomposição de software.
-Gere EXATAMENTE {epics_per_batch} épicos de software para o projeto.
+Gere até {epics_per_batch} épicos de software para o projeto.
 
 ## REGRAS CRÍTICAS:
 
-1. Gere APENAS {epics_per_batch} épicos nesta resposta (nem mais, nem menos)
+1. Gere entre 1 e {epics_per_batch} épicos nesta resposta (quanto mais relevantes, melhor)
 2. NÃO repita épicos já gerados em batches anteriores (lista abaixo)
 3. NÃO sugira épicos para funcionalidades que JÁ EXISTEM no código
-4. Se não houver mais {epics_per_batch} épicos RELEVANTES a sugerir, retorne lista vazia
+4. Se não houver mais épicos RELEVANTES a sugerir, retorne "has_more": false com a lista parcial
 5. Responda APENAS com JSON válido, sem texto adicional
 
 ## ÉPICOS JÁ GERADOS (NÃO REPETIR):
@@ -1372,7 +1377,7 @@ Gere EXATAMENTE {epics_per_batch} épicos de software para o projeto.
     "epics": [
         {{
             "title": "Título claro e conciso",
-            "description": "Descrição breve do módulo (1-2 frases)",
+            "description": "Descrição detalhada do módulo (3-5 frases cobrindo escopo, objetivo e principais funcionalidades)",
             "priority": "high|medium|low"
         }}
     ],
@@ -1380,14 +1385,13 @@ Gere EXATAMENTE {epics_per_batch} épicos de software para o projeto.
 }}
 ```
 
-Se não houver mais épicos relevantes, retorne:
-```json
-{{"epics": [], "has_more": false}}
-```
+Se não houver mais épicos relevantes, retorne os que encontrar com "has_more": false.
+Retorne lista vazia SOMENTE se realmente não existir nenhum épico novo a sugerir.
 
 IMPORTANTE:
 - Foque em: integrações, automações, melhorias de UX, relatórios, APIs, segurança
 - Prioridades: high (essencial), medium (importante), low (nice-to-have)
+- Cada description deve ter NO MÍNIMO 200 caracteres com detalhes do escopo
 - Seja específico e prático"""
 
         # Build user prompt
@@ -1413,7 +1417,7 @@ IMPORTANTE:
                 usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=2000,  # Smaller since only 5 epics
+                max_tokens=4000,  # Enough for 5 rich epics with descriptions
                 project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 

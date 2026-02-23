@@ -848,9 +848,17 @@ class RagPipelineService:
         PHASE3_COMMON_PROMPT + "\n\n"
         "TAREFA ESPECIFICA: Gere APENAS EPICS (item_type='epic', parent_title=null).\n"
         "Cada Epic representa um MODULO ou DOMINIO do sistema.\n"
-        "Gere 5-15 Epics cobrindo TODOS os dominios identificados nas regras.\n"
-        "Cada Epic deve ter description rica (min 300 chars) e generated_prompt\n"
-        "semantico (min 500 chars) com Mapa Semantico completo."
+        "Gere entre 10 e 30 Epics cobrindo TODOS os dominios identificados nas regras.\n"
+        "Quanto mais dominios/entidades existirem, mais Epics devem ser gerados.\n"
+        "CADA dominio/entidade listada deve ter pelo menos 1 Epic.\n\n"
+        "QUALIDADE OBRIGATORIA POR EPIC:\n"
+        "- description: MINIMO 300 chars, texto humano detalhado com escopo e objetivo\n"
+        "- generated_prompt: MINIMO 500 chars, DEVE comecar com 'Mapa Semantico:'\n"
+        "  seguido de identificadores (N:, P:, E:, D:, S:, C:) e instrucoes semanticas\n"
+        "- acceptance_criteria: MINIMO 3 criterios por Epic\n"
+        "- story_points: Fibonacci (5, 8, 13, 21)\n"
+        "- labels: array com pelo menos 2 tags relevantes\n\n"
+        "NAO gere Epics vazios ou com campos minimos. Cada Epic deve ser RICO e COMPLETO."
     )
 
     # Pass 2: Detail generation (stories/tasks/subtasks) for specific entity
@@ -943,11 +951,15 @@ class RagPipelineService:
         )
         epic_user_prompt = (
             f'Projeto: "{project_name}"\n'
-            f'Total de regras de negocio: {rule_count}\n\n'
+            f'Total de regras de negocio: {rule_count}\n'
+            f'Total de dominios/entidades: {len(entity_summary)}\n\n'
             f'ENTIDADES/DOMINIOS IDENTIFICADOS:\n{summary_lines}\n\n'
             f'---\n'
-            f'Gere APENAS os EPICS (modulos macro) do sistema.\n'
-            f'Cada entidade/dominio acima deve ter pelo menos 1 Epic.\n'
+            f'Gere EPICS (modulos macro) para TODOS os dominios acima.\n'
+            f'Cada entidade/dominio deve ter pelo menos 1 Epic dedicado.\n'
+            f'Espera-se entre {max(10, len(entity_summary))} e {max(20, len(entity_summary) * 2)} Epics.\n'
+            f'Cada Epic DEVE ter description rica (min 300 chars), generated_prompt semantico\n'
+            f'(min 500 chars com Mapa Semantico), e acceptance_criteria (min 3 itens).\n'
             f'Retorne: {{"cards": [...]}}'
         )
 
@@ -957,7 +969,7 @@ class RagPipelineService:
                 usage_type="content_generation",
                 messages=[{"role": "user", "content": epic_user_prompt}],
                 system_prompt=self.PHASE3_EPIC_PROMPT,
-                max_tokens=8000,
+                max_tokens=16000,
                 project_id=project_id,
                 metadata={"phase": "rag_pipeline_phase3", "batch": "epics",
                           "skip_context_build": True},
