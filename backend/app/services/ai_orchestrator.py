@@ -541,6 +541,7 @@ class AIOrchestrator:
         "prompt_generation": {"business_rule": 0.15, "interview_answer": 0.10, "spec": 0.05},
         "task_execution": {"spec": 0.15, "code_context": 0.10},
         "content_generation": {"business_rule": 0.35},
+        "rag_extraction": {"code_file": 0.35},
     }
 
     def _score_and_filter_rag_results(
