@@ -10,7 +10,7 @@ version: 1
 domain: business
 category: execution
 description: Alocacao de orçamento de tokens por story points e tipo de item
-usage_type: business_rule
+usage_type: _config
 
 governance:
   status: active

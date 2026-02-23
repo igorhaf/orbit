@@ -10,7 +10,7 @@ version: 1
 domain: business
 category: business
 description: Contagens padrão de geração para cada nível da hierarquia de cards
-usage_type: business_rule
+usage_type: _config
 
 governance:
   status: active

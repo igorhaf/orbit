@@ -11,7 +11,7 @@ version: 1
 domain: business
 category: execution
 description: Limiares de similaridade para deduplicacao, cache e pontuação de relevancia
-usage_type: business_rule
+usage_type: _config
 
 governance:
   status: active

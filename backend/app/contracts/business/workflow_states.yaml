@@ -10,7 +10,7 @@ version: 1
 domain: business
 category: business
 description: Maquinas de estado de workflow para todos os tipos de item (Epic, Story, Task, Bug, Subtask)
-usage_type: business_rule
+usage_type: _config
 
 governance:
   status: active

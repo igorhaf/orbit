@@ -2,7 +2,7 @@ name: wiki_page_merge
 version: 2
 category: pipeline
 description: Merge incremental de paginas wiki com novas regras de negocio por lote
-usage_type: memory
+usage_type: content_generation
 estimated_tokens: 3000
 tags:
   - pipeline

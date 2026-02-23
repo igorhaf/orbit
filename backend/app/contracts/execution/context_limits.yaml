@@ -10,7 +10,7 @@ version: 1
 domain: business
 category: execution
 description: Limites por nível de complexidade para histórico de mensagens, system prompt e blocos de código
-usage_type: business_rule
+usage_type: _config
 
 governance:
   status: active

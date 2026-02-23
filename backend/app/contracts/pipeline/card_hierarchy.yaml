@@ -2,7 +2,7 @@ name: card_hierarchy
 version: 1
 category: pipeline
 description: Gera stories a partir de regras de negocio para um dominio/epic existente
-usage_type: memory
+usage_type: content_generation
 estimated_tokens: 3000
 tags:
   - pipeline

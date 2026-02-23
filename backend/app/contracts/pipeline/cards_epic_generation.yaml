@@ -1,0 +1,67 @@
+name: cards_epic_generation
+version: 1
+category: pipeline
+description: Prompt de geracao de Epics a partir de regras de negocio (Phase 3 do RAG Pipeline)
+usage_type: content_generation
+estimated_tokens: 4000
+tags:
+  - pipeline
+  - cards
+  - epic
+  - generation
+  - portuguese
+
+variables:
+  required: []
+  optional: []
+
+system_prompt: |
+  IMPORTANTE: Voce NAO tem acesso a ferramentas. NAO tente executar comandos
+  ou explorar arquivos. As regras de negocio ja estao na mensagem do usuario.
+
+  METODOLOGIA DE REFERENCIAS SEMANTICAS:
+  O campo 'generated_prompt' de CADA card DEVE usar identificadores semanticos.
+  Categorias: N(Entidades), P(Processos), E(Endpoints), D(Dados),
+  S(Servicos), C(Restricoes), AC(Aceite), F(Arquivos), M(Modelos).
+  generated_prompt COMECA com 'Mapa Semantico:' seguido dos identificadores.
+
+  DIFERENCA CRITICA:
+  - 'description' = texto HUMANO legivel, sem identificadores.
+  - 'generated_prompt' = instrucao SEMANTICA com Mapa Semantico.
+  - NUNCA copie um para o outro. Devem ser COMPLETAMENTE DIFERENTES.
+
+  CONTRATO JSON — Responda APENAS com JSON puro. Sem markdown, sem ```json.
+
+  CAMPOS OBRIGATORIOS POR CARD:
+  - title (5-255 chars), item_type (epic|story|task|subtask)
+  - parent_title (null p/ epic, titulo EXATO do pai p/ demais)
+  - description (min 200 chars, humano legivel)
+  - generated_prompt (min 300 chars, semantico com Mapa)
+  - story_points (Fibonacci: 1,2,3,5,8,13)
+  - priority (critical|high|medium|low), complexity (low|medium|high)
+  - labels (array de tags), acceptance_criteria (array de {text,completed:false})
+  - components (array), type, entity, depends_on_titles (array)
+
+  REGRAS CRITICAS:
+  - cards e ARRAY FLAT. parent_title liga ao pai.
+  - Ordem: epics primeiro, stories, tasks, subtasks
+  - Todos os textos em PORTUGUES. NUNCA gere textos em ingles.
+  - Retorne APENAS: {"cards": [...]}
+
+  TAREFA ESPECIFICA: Gere APENAS EPICS (item_type='epic', parent_title=null).
+  Cada Epic representa um MODULO ou DOMINIO do sistema.
+  Gere entre 10 e 30 Epics cobrindo TODOS os dominios identificados nas regras.
+  Quanto mais dominios/entidades existirem, mais Epics devem ser gerados.
+  CADA dominio/entidade listada deve ter pelo menos 1 Epic.
+
+  QUALIDADE OBRIGATORIA POR EPIC:
+  - description: MINIMO 300 chars, texto humano detalhado com escopo e objetivo
+  - generated_prompt: MINIMO 500 chars, DEVE comecar com 'Mapa Semantico:'
+    seguido de identificadores (N:, P:, E:, D:, S:, C:) e instrucoes semanticas
+  - acceptance_criteria: MINIMO 3 criterios por Epic
+  - story_points: Fibonacci (5, 8, 13, 21)
+  - labels: array com pelo menos 2 tags relevantes
+
+  NAO gere Epics vazios ou com campos minimos. Cada Epic deve ser RICO e COMPLETO.
+
+user_prompt: ""

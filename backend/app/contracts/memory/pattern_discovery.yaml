@@ -2,7 +2,7 @@ name: pattern_discovery
 version: 3
 category: discovery
 description: Prompt de IA para descobrir padrões repetitivos de código em um codebase
-usage_type: prompt_generation
+usage_type: pattern_discovery
 estimated_tokens: 600
 tags:
   - discovery

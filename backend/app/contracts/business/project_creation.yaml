@@ -9,7 +9,7 @@ version: 1
 domain: business
 category: business
 description: Regras de negocio que governam o fluxo de criação de projetos no ORBIT
-usage_type: business_rule
+usage_type: _config
 
 governance:
   status: active

@@ -26,6 +26,7 @@ from sqlalchemy import text as sql_text
 from app.models.async_job import AsyncJob, JobType, JobStatus
 from app.models.project import Project
 from app.models.rag_file_state import RAGFileState, FileProcessingStatus, FileSemanticLayer
+from app.contracts.loader import ContractLoader
 from app.services.job_manager import JobManager
 from app.services.rag_service import RAGService
 from app.services.continuous_rag_service import ContinuousRAGService
@@ -58,6 +59,16 @@ class RagPipelineService:
         self.redis = _get_redis()
         self.rag = RAGService(db)
         self.continuous_rag = ContinuousRAGService(db)
+        self._contract_loader = ContractLoader(db)
+
+    def _load_contract_prompt(self, contract_name: str, fallback: str = "") -> str:
+        """PROMPT #258 - Load system_prompt from ContractLoader with fallback."""
+        try:
+            system_prompt, _ = self._contract_loader.render(contract_name)
+            return system_prompt
+        except Exception as e:
+            logger.warning(f"Failed to load contract '{contract_name}', using fallback: {e}")
+            return fallback
 
     @staticmethod
     def _map_progress(local_pct: float, pmin: float, pmax: float) -> float:
@@ -558,7 +569,7 @@ class RagPipelineService:
                     response = await orchestrator.execute(
                         usage_type="rag_extraction",
                         messages=[{"role": "user", "content": user_prompt}],
-                        system_prompt=self.PHASE2_SYSTEM_PROMPT,
+                        system_prompt=self._load_contract_prompt("pipeline/rag_rules_extraction", self.PHASE2_SYSTEM_PROMPT),
                         max_tokens=16384,
                         project_id=project_id,
                         metadata={
@@ -968,7 +979,7 @@ class RagPipelineService:
             resp = await orchestrator.execute(
                 usage_type="content_generation",
                 messages=[{"role": "user", "content": epic_user_prompt}],
-                system_prompt=self.PHASE3_EPIC_PROMPT,
+                system_prompt=self._load_contract_prompt("pipeline/cards_epic_generation", self.PHASE3_EPIC_PROMPT),
                 max_tokens=16384,
                 project_id=project_id,
                 metadata={"phase": "rag_pipeline_phase3", "batch": "epics",
@@ -1087,7 +1098,7 @@ class RagPipelineService:
                 resp = await orchestrator.execute(
                     usage_type="content_generation",
                     messages=[{"role": "user", "content": detail_user_prompt}],
-                    system_prompt=self.PHASE3_DETAIL_PROMPT,
+                    system_prompt=self._load_contract_prompt("pipeline/cards_detail_generation", self.PHASE3_DETAIL_PROMPT),
                     max_tokens=16384,
                     project_id=project_id,
                     metadata={
@@ -1612,7 +1623,7 @@ class RagPipelineService:
             resp = await orchestrator.execute(
                 usage_type="content_generation",
                 messages=[{"role": "user", "content": overview_prompt}],
-                system_prompt=self.PHASE4_OVERVIEW_PROMPT,
+                system_prompt=self._load_contract_prompt("pipeline/wiki_overview_generation", self.PHASE4_OVERVIEW_PROMPT),
                 max_tokens=16384,
                 project_id=project_id,
                 metadata={"phase": "rag_pipeline_phase4", "batch": "overview"},
@@ -1663,7 +1674,7 @@ class RagPipelineService:
                 resp = await orchestrator.execute(
                     usage_type="content_generation",
                     messages=[{"role": "user", "content": domain_prompt}],
-                    system_prompt=self.PHASE4_DOMAIN_PROMPT,
+                    system_prompt=self._load_contract_prompt("pipeline/wiki_domain_generation", self.PHASE4_DOMAIN_PROMPT),
                     max_tokens=16384,
                     project_id=project_id,
                     metadata={

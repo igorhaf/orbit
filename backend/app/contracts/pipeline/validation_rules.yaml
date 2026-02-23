@@ -2,7 +2,7 @@ name: validation_rules
 version: 1
 category: pipeline
 description: Regras de validacao para outputs de IA no pipeline incremental
-usage_type: validation
+usage_type: _config
 tags:
   - pipeline
   - validation

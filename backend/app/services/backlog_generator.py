@@ -22,6 +22,7 @@ try:
 except ImportError:
     PROMPTER_AVAILABLE = False
     PrompterFacade = None
+from app.contracts.loader import ContractLoader
 from app.prompts import PromptService, get_prompt_service
 from app.services.rag_service import RAGService
 
@@ -163,6 +164,8 @@ class BacklogGeneratorService:
         self.orchestrator = AIOrchestrator(db)
         # PROMPT #103 - Use PromptService for external prompts
         self.prompt_service = get_prompt_service(db)
+        # PROMPT #258 - ContractLoader for externalized prompts
+        self._contract_loader = ContractLoader(db)
 
     async def generate_epic_from_interview(
         self,
@@ -368,8 +371,15 @@ class BacklogGeneratorService:
         if not epic:
             raise ValueError(f"Epic {epic_id} não encontrado ou não é um Epic")
 
-        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
-        system_prompt = """Você é um Product Owner especialista decompondo Epics em Stories.
+        # 2. Build AI prompt (PROMPT #258 - Load from ContractLoader, fallback to hardcoded)
+        try:
+            system_prompt, _ = self._contract_loader.render("generation/stories_decomposition")
+        except Exception:
+            logger.warning("Failed to load stories_decomposition contract, using hardcoded fallback")
+            system_prompt = ""
+
+        if not system_prompt:
+            system_prompt = """Você é um Product Owner especialista decompondo Epics em Stories.
 
 METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
 
@@ -447,7 +457,7 @@ Retorne APENAS array JSON válido (sem markdown code blocks, sem explicação):
 - NUNCA substitua identificadores por seus significados
 """
 
-        # PROMPT #83 - Extract semantic_map from Epic if available
+        # PROMPT #258 - Extract semantic_map from Epic if available
         epic_semantic_map = None
         if epic.interview_insights and isinstance(epic.interview_insights, dict):
             epic_semantic_map = epic.interview_insights.get("semantic_map", {})
@@ -682,9 +692,15 @@ LEMBRE-SE:
         if not story:
             raise ValueError(f"Story {story_id} não encontrada ou não é uma Story")
 
-        # 2. Build AI prompt (EM PORTUGUÊS - PROMPT #83 - Semantic References Methodology)
-        # PROMPT #54.2 - FIX: Specs removed from decomposition (only for execution)
-        system_prompt = """Você é um Product Owner especialista decompondo Stories em Tasks.
+        # 2. Build AI prompt (PROMPT #258 - Load from ContractLoader, fallback to hardcoded)
+        try:
+            system_prompt, _ = self._contract_loader.render("generation/tasks_decomposition")
+        except Exception:
+            logger.warning("Failed to load tasks_decomposition contract, using hardcoded fallback")
+            system_prompt = ""
+
+        if not system_prompt:
+            system_prompt = """Você é um Product Owner especialista decompondo Stories em Tasks.
 
 METODOLOGIA DE REFERÊNCIAS SEMÂNTICAS:
 

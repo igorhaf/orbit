@@ -10,7 +10,7 @@ version: 1
 domain: business
 category: validation
 description: Padrões de validação de resposta, limiares e marcadores de idioma
-usage_type: business_rule
+usage_type: _config
 
 governance:
   status: active

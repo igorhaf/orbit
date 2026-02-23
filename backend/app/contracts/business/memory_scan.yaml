@@ -9,7 +9,7 @@ version: 1
 domain: business
 category: business
 description: Regras de negocio para scan de memória do codebase durante criação de projeto
-usage_type: business_rule
+usage_type: _config
 
 governance:
   status: active

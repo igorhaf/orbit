@@ -13,7 +13,6 @@ export const USAGE_TYPE_OPTIONS = [
   { value: 'commit_generation', label: 'Geracao de Commits' },
   { value: 'pattern_discovery', label: 'Descoberta de Padroes' },
   { value: 'memory', label: 'Memoria (Scan de Codebase)' },
-  { value: 'queue_orchestration', label: 'Orquestração de Fila' },
   { value: 'content_generation', label: 'Geração de Conteúdo (Wiki/Cards)' },
   { value: 'rag_extraction', label: 'Extração RAG (Regras de Negócio)' },
   { value: 'general', label: 'Geral' },

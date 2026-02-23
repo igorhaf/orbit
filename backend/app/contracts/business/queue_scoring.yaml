@@ -10,7 +10,7 @@ version: 1
 domain: business
 category: business
 description: Pesos e estratégias de pontuação para ordenação da fila de prompts
-usage_type: business_rule
+usage_type: _config
 
 governance:
   status: active
