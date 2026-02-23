@@ -1213,11 +1213,12 @@ class AIOrchestrator:
 
                         # PROMPT #235 - General response validator as default safety net
                         # Only runs if no validator utility node already handled it
+                        # Skip for RAG pipeline calls (skip_context_build=True)
                         _has_validator_node = any(
                             n.get("type") == "validator" and n.get("enabled", True)
                             for n in (_utility_nodes or [])
                         )
-                        if not _has_validator_node and not result.get("error"):
+                        if not _has_validator_node and not result.get("error") and not _skip_context:
                             try:
                                 from app.services.general_response_validator import validate_response
                                 _val = validate_response(
@@ -2494,6 +2495,11 @@ class AIOrchestrator:
                             parsed = json.loads(event_data)
                         except (json.JSONDecodeError, Exception):
                             continue
+
+                        # SSE error events → raise so non-streaming fallback triggers
+                        if event_type == "error":
+                            err_msg = parsed.get("error", {}).get("message", str(parsed))
+                            raise RuntimeError(f"Claudio streaming error: {err_msg}")
 
                         if event_type == "content_block_delta":
                             delta = parsed.get("delta", {})

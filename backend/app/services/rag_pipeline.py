@@ -389,7 +389,7 @@ class RagPipelineService:
                     max_tokens=8000,
                     project_id=project_id,
                     metadata={
-                        "phase": "rag_pipeline_phase2",
+                        "phase": "rag_pipeline_phase2", "skip_context_build": True,
                         "project_id": str(project_id),
                         "batch": batch_num,
                         "total_batches": total_batches,
@@ -697,48 +697,33 @@ class RagPipelineService:
 
         jm.update_progress(job_id, 15.0, f"Fase 3/4: Enviando {rule_count} regras para IA...")
 
-        max_retries = 2
         total_cards = 0
 
-        for attempt in range(max_retries + 1):
+        response = await orchestrator.execute(
+            usage_type="content_generation",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=self.PHASE3_CARDS_PROMPT,
+            max_tokens=16000,
+            project_id=project_id,
+            metadata={"phase": "rag_pipeline_phase3", "skip_context_build": True},
+            disable_cwd=True,
+            disable_tools=True,
+        )
+
+        raw = response.get("content", "")
+        logger.info(f"Phase 3 ({len(raw)} chars): {raw[:300]}...")
+
+        if len(raw) >= 50:
             try:
-                response = await orchestrator.execute(
-                    usage_type="content_generation",
-                    messages=[{"role": "user", "content": user_prompt}],
-                    system_prompt=self.PHASE3_CARDS_PROMPT,
-                    max_tokens=16000,
-                    project_id=project_id,
-                    metadata={"phase": "rag_pipeline_phase3"},
-                    disable_cwd=True,
-                    disable_tools=True,
-                )
-
-                raw = response.get("content", "")
-                logger.info(
-                    f"Phase 3 attempt {attempt+1} "
-                    f"({len(raw)} chars): {raw[:300]}..."
-                )
-
-                if len(raw) < 50:
-                    if attempt < max_retries:
-                        logger.warning(
-                            f"Phase 3: empty response, "
-                            f"retrying ({attempt+1}/{max_retries})..."
-                        )
-                        continue
-                    logger.error(f"Phase 3: empty after {max_retries+1} attempts")
-                    break
-
                 total_cards = self._create_cards_from_json(raw, project_id)
                 self.db.commit()
-
-                logger.info(f"Phase 3: {total_cards} cards created from single prompt")
-                break
-
-            except Exception as e:
-                logger.error(f"Phase 3 attempt {attempt+1} failed: {e}")
-                if attempt >= max_retries:
-                    break
+                logger.info(f"Phase 3: {total_cards} cards created")
+            except Exception as card_err:
+                logger.error(f"Phase 3: _create_cards_from_json failed: {card_err}")
+                import traceback
+                logger.error(traceback.format_exc())
+        else:
+            logger.error(f"Phase 3: empty response ({len(raw)} chars)")
 
         if total_cards == 0:
             self._set_phase_status(project_id, 3, "failed")
@@ -919,6 +904,9 @@ class RagPipelineService:
         title_to_type = {t.title: t.item_type for t in existing}
         created = 0
 
+        # DB column complexity is integer: low=1, medium=2, high=3
+        COMPLEXITY_MAP = {"low": 1, "medium": 2, "high": 3}
+
         for card in valid_cards:
             task = Task(
                 title=card["title"],
@@ -929,7 +917,7 @@ class RagPipelineService:
                 reporter="pipeline_phase3",
                 story_points=card["story_points"],
                 priority=card["priority"],
-                complexity=card["complexity"],
+                complexity=COMPLEXITY_MAP.get(card["complexity"], 2),
                 labels=card["labels"],
                 acceptance_criteria=card["acceptance_criteria"],
                 order=created,
@@ -1092,36 +1080,26 @@ class RagPipelineService:
 
         jm.update_progress(job_id, 30.0, "Fase 4/4: Gerando wiki e metadados do projeto...")
 
-        max_retries = 2
         total_pages = 0
         title_generated = False
         desc_generated = False
 
-        for attempt in range(max_retries + 1):
+        response = await orchestrator.execute(
+            usage_type="content_generation",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=self.PHASE4_SYSTEM_PROMPT,
+            max_tokens=16000,
+            project_id=project_id,
+            metadata={"phase": "rag_pipeline_phase4", "skip_context_build": True},
+            disable_cwd=True,
+            disable_tools=True,
+        )
+
+        raw = response.get("content", "")
+        logger.info(f"Phase 4 ({len(raw)} chars): {raw[:300]}...")
+
+        if len(raw) >= 50:
             try:
-                response = await orchestrator.execute(
-                    usage_type="content_generation",
-                    messages=[{"role": "user", "content": user_prompt}],
-                    system_prompt=self.PHASE4_SYSTEM_PROMPT,
-                    max_tokens=16000,
-                    project_id=project_id,
-                    metadata={"phase": "rag_pipeline_phase4"},
-                    disable_cwd=True,
-                    disable_tools=True,
-                )
-
-                raw = response.get("content", "")
-                logger.info(
-                    f"Phase 4 attempt {attempt+1} ({len(raw)} chars): {raw[:300]}..."
-                )
-
-                if len(raw) < 50:
-                    if attempt < max_retries:
-                        logger.warning(f"Phase 4: empty response, retrying ({attempt+1}/{max_retries})...")
-                        continue
-                    logger.error(f"Phase 4: empty after {max_retries+1} attempts")
-                    break
-
                 wiki_result = self._save_wiki_and_metadata(raw, project_id, project)
                 self.db.commit()
 
@@ -1134,12 +1112,12 @@ class RagPipelineService:
                     f"title={'yes' if title_generated else 'no'}, "
                     f"desc={'yes' if desc_generated else 'no'}"
                 )
-                break
-
-            except Exception as e:
-                logger.error(f"Phase 4 attempt {attempt+1} failed: {e}")
-                if attempt >= max_retries:
-                    break
+            except Exception as wiki_err:
+                logger.error(f"Phase 4: _save_wiki_and_metadata failed: {wiki_err}")
+                import traceback
+                logger.error(traceback.format_exc())
+        else:
+            logger.error(f"Phase 4: empty response ({len(raw)} chars)")
 
         if total_pages == 0:
             self._set_phase_status(project_id, 4, "failed")
