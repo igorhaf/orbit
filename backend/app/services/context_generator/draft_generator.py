@@ -162,7 +162,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             usage_type=self._get_usage_type(),
             messages=messages,
             system_prompt=system_prompt,
-            max_tokens=4000,
+            max_tokens=16384,
             enable_rag=True,  # PROMPT #124 - Enable RAG for context generation
             project_id=str(project.id)  # PROMPT #125 - Log to prompts table
         )
@@ -343,7 +343,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                 usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=16000,
+                max_tokens=16384,
                 enable_rag=True,
                 project_id=str(project.id)
             )
@@ -601,7 +601,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                 usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=6000,
+                max_tokens=16384,
                 enable_rag=True,
                 project_id=str(project.id)
             )
@@ -817,7 +817,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                 usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=4000,
+                max_tokens=8192,
                 enable_rag=True,
                 project_id=str(project.id)
             )
@@ -1177,7 +1177,7 @@ IMPORTANTE:
                 usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=3000,
+                max_tokens=8192,
                 project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 
@@ -1417,7 +1417,7 @@ IMPORTANTE:
                 usage_type=self._get_usage_type(),
                 messages=[{"role": "user", "content": user_prompt}],
                 system_prompt=system_prompt,
-                max_tokens=4000,  # Enough for 5 rich epics with descriptions
+                max_tokens=8192,
                 project_id=str(project.id)  # PROMPT #125 - Log to prompts table
             )
 

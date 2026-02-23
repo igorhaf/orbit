@@ -7,9 +7,9 @@ for all 10 usage types with performance utility nodes.
 Preset: CUSTO MÍNIMO - Prioriza modelos locais (Ollama) para zero custo de API.
 Modelos cloud ficam como fallback final apenas se necessário.
 
-PROMPT #252 additions:
-- content_generation:  Claudio Opus 4.6 (Wiki, Cards, Description, Title)
-- rag_extraction:      Claudio Opus 4.6 (Business rules extraction)
+PROMPT #252 additions (PROMPT #255 - switched to Sonnet for richer semantic text):
+- content_generation:  Claudio Sonnet 4.6 (Wiki, Cards, Description, Title)
+- rag_extraction:      Claudio Sonnet 4.6 (Business rules extraction)
 - memory:              Claudio Opus 4.6 (upgraded from Sonnet)
 
 Strategy per operation (cost-optimized):
@@ -21,8 +21,8 @@ Strategy per operation (cost-optimized):
 - memory:              Claudio Opus 4.6
 - queue_orchestration: Qwen3 8B → Gemma3 12B → Phi-4 14B
 - general:             Qwen3 8B → Gemma3 12B → DeepSeek-R1 14B
-- content_generation:  Claudio Opus 4.6
-- rag_extraction:      Claudio Opus 4.6
+- content_generation:  Claudio Sonnet 4.6
+- rag_extraction:      Claudio Sonnet 4.6
 
 Usage:
     python scripts/seed_ai_flow_chains.py
@@ -160,15 +160,15 @@ CHAIN_STRATEGY = {
         ("gemma3:12b", None),
         ("deepseek-r1:14b", None),
     ],
-    # PROMPT #252 - Content generation: Wiki, Cards, Description, Title
-    # Claudio Opus 4.6 for rich, high-quality content
+    # PROMPT #255 - Content generation: Wiki, Cards, Description, Title
+    # Sonnet 4.6 for richer semantic text (Opus is too conservative/literal)
     "content_generation": [
-        (None, "Claudio Opus 4.6 (Content)"),
+        (None, "Claudio Sonnet 4.6 (Content)"),
     ],
-    # PROMPT #252 - RAG extraction: business rules from codebase
-    # Claudio Opus 4.6 for precise rule extraction
+    # PROMPT #255 - RAG extraction: business rules from codebase
+    # Sonnet 4.6 for comprehensive rule extraction with richer output
     "rag_extraction": [
-        (None, "Claudio Opus 4.6 (RAG Extraction)"),
+        (None, "Claudio Sonnet 4.6 (RAG Extraction)"),
     ],
 }
 
@@ -869,20 +869,30 @@ def seed_ai_flow_chains():
         logger.info(f"  {updated_count} Ollama models updated.")
 
         # ==================================================================
-        # Step 1.5: Ensure Claudio Opus 4.6 models exist (PROMPT #252)
+        # Step 1.5: Ensure Claudio Sonnet 4.6 models exist (PROMPT #255)
+        # Switched from Opus to Sonnet for richer semantic text generation.
+        # Opus is too conservative/literal for Mapa Semantico content.
         # ==================================================================
-        logger.info("\n[1.5/3] Ensuring Claudio Opus 4.6 models exist...")
+        logger.info("\n[1.5/3] Ensuring Claudio Sonnet 4.6 models exist...")
 
         claudio_models = {
-            "Claudio Opus 4.6 (Content)": {
+            "Claudio Sonnet 4.6 (Content)": {
                 "usage_type": AIModelUsageType.CONTENT_GENERATION,
-                "config": {"model_id": "claude-opus-4-6", "max_tokens": 8192, "temperature": 0.7},
+                "config": {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.7},
             },
-            "Claudio Opus 4.6 (RAG Extraction)": {
+            "Claudio Sonnet 4.6 (RAG Extraction)": {
                 "usage_type": AIModelUsageType.RAG_EXTRACTION,
-                "config": {"model_id": "claude-opus-4-6", "max_tokens": 8192, "temperature": 0.3},
+                "config": {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.3},
             },
         }
+
+        # PROMPT #255 - Deactivate old Opus models for content_generation/rag_extraction
+        old_opus_names = ["Claudio Opus 4.6 (Content)", "Claudio Opus 4.6 (RAG Extraction)"]
+        for old_name in old_opus_names:
+            old_model = db.query(AIModel).filter(AIModel.name == old_name, AIModel.is_active == True).first()
+            if old_model:
+                old_model.is_active = False
+                logger.info(f"  Deactivated old model: {old_name}")
 
         for model_name, model_cfg in claudio_models.items():
             existing = db.query(AIModel).filter(AIModel.name == model_name).first()
@@ -901,7 +911,10 @@ def seed_ai_flow_chains():
                 db.add(new_model)
                 logger.info(f"  Created: {model_name}")
             else:
-                logger.info(f"  Exists: {model_name}")
+                # Update existing to ensure correct config
+                existing.config = model_cfg["config"]
+                existing.is_active = True
+                logger.info(f"  Updated: {model_name} (max_tokens={model_cfg['config']['max_tokens']})")
 
         # Upgrade memory model to Opus 4.6
         memory_model = db.query(AIModel).filter(
@@ -909,10 +922,10 @@ def seed_ai_flow_chains():
             AIModel.provider == "claudio",
             AIModel.is_active == True,
         ).first()
-        if memory_model and "sonnet" in (memory_model.config or {}).get("model_id", "").lower():
-            memory_model.config = {"model_id": "claude-opus-4-6", "max_tokens": 8192, "temperature": 0.5}
+        if memory_model:
+            memory_model.config = {"model_id": "claude-opus-4-6", "max_tokens": 16384, "temperature": 0.5}
             memory_model.name = "Claudio Opus 4.6 (Memory)"
-            logger.info(f"  Upgraded memory model to Opus 4.6")
+            logger.info(f"  Updated memory model: Opus 4.6 (max_tokens=16384)")
 
         db.commit()
 
