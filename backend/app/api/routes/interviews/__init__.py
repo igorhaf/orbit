@@ -8,7 +8,6 @@ This module provides interview management endpoints and utilities:
 - Fixed questions (Q1-Q7 stack configuration)
 - AI-generated business questions
 - Async backlog generation
-- Project provisioning
 
 Refactored from single 2465-line file into focused modules:
 - response_cleaners.py: AI response cleaning (~100 lines)

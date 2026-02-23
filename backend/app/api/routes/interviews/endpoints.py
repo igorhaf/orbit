@@ -5,8 +5,7 @@ PROMPT #69 - Refactor interviews.py
 HTTP endpoints for interview management:
 - CRUD operations
 - Dual-mode interview routing
-- Async job creation (backlog generation, task generation, provisioning)
-- Project provisioning
+- Async job creation (backlog generation, task generation)
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,7 +15,6 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from pydantic import BaseModel
-import subprocess
 import logging
 
 # Database and dependencies
@@ -36,7 +34,6 @@ from app.schemas.interview import (
 from app.api.dependencies import get_interview_or_404
 
 # Services
-from app.services.provisioning import ProvisioningService
 from app.services.project_state_detector import ProjectStateDetector
 # PROMPT #103 - External prompts support
 from app.prompts import get_prompt_service
@@ -1354,10 +1351,8 @@ async def save_interview_stack(
     Returns:
         - success: Boolean
         - message: Confirmation message
-        - provisioning: Provisioning result (if attempted)
 
     PROMPT #67 - Mobile support added
-    PROMPT #60 - Automatic provisioning
     """
     # Buscar interview
     interview = db.query(Interview).filter(Interview.id == interview_id).first()
@@ -1394,249 +1389,10 @@ async def save_interview_stack(
     stack_description = " + ".join(stack_parts)
     logger.info(f"Stack configuration saved for project {project.id}: {stack_description}")
 
-    # PROMPT #60 - AUTOMATIC PROVISIONING
-    provisioning_result = None
-    provisioning_error = None
-
-    try:
-        logger.info(f"Starting automatic provisioning for project {project.name}...")
-        provisioning_service = ProvisioningService(db)
-
-        # Validate stack against database specs
-        is_valid, error_msg = provisioning_service.validate_stack(project.stack)
-        if not is_valid:
-            logger.warning(f"Stack validation failed: {error_msg}")
-            provisioning_error = error_msg
-        else:
-            # Execute provisioning
-            provisioning_result = provisioning_service.provision_project(project)
-            logger.info(f"✅ Project provisioned successfully at: {provisioning_result['project_path']}")
-
-    except ValueError as e:
-        logger.warning(f"Provisioning not available for this stack: {str(e)}")
-        provisioning_error = str(e)
-    except FileNotFoundError as e:
-        logger.error(f"Provisioning script not found: {str(e)}")
-        provisioning_error = str(e)
-    except subprocess.TimeoutExpired:
-        logger.error(f"Provisioning timed out after 5 minutes")
-        provisioning_error = "Provisioning timed out after 5 minutes"
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Provisioning script failed: {e.stderr}")
-        provisioning_error = f"Provisioning script failed: {e.stderr}"
-    except Exception as e:
-        logger.error(f"Unexpected error during provisioning: {str(e)}")
-        provisioning_error = f"Unexpected error: {str(e)}"
-
-    # Return response with provisioning info
-    response = {
+    return {
         "success": True,
         "message": f"Configuração de stack salva: {stack_description}",
-        "provisioning": {
-            "attempted": True,
-            "success": provisioning_result is not None and provisioning_result.get("success", False),
-        }
     }
-
-    # Add provisioning details if it succeeded
-    if provisioning_result and provisioning_result.get("success"):
-        response["provisioning"]["project_path"] = provisioning_result.get("project_path")
-        response["provisioning"]["project_name"] = provisioning_result.get("project_name")
-        response["provisioning"]["credentials"] = provisioning_result.get("credentials", {})
-        response["provisioning"]["next_steps"] = provisioning_result.get("next_steps")
-        response["provisioning"]["scripts_executed"] = provisioning_result.get("scripts_executed", [])
-    # Add error details if provisioning failed or was skipped
-    else:
-        if provisioning_result and provisioning_result.get("error"):
-            response["provisioning"]["error"] = provisioning_result["error"]
-        elif provisioning_error:
-            response["provisioning"]["error"] = provisioning_error
-
-    return response
-
-
-@router.post("/{interview_id}/save-stack-async", status_code=status.HTTP_202_ACCEPTED)
-async def save_interview_stack_async(
-    interview_id: UUID,
-    stack: StackConfiguration,
-    db: Session = Depends(get_db)
-):
-    """
-    Saves tech stack and provisions project ASYNCHRONOUSLY.
-
-    PROMPT #65 - Async Job System (Expansion)
-
-    This endpoint prevents UI blocking during project provisioning which can take 1-5 minutes.
-
-    Returns:
-        {
-            "job_id": "...",
-            "status": "pending",
-            "message": "Project provisioning started. This may take 1-5 minutes."
-        }
-    """
-    from app.services.job_manager import JobManager
-    from app.models.async_job import JobType
-
-    # Validate interview exists
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
-    if not interview:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Entrevista {interview_id} não encontrada"
-        )
-
-    # Validate project exists
-    project = db.query(Project).filter(Project.id == interview.project_id).first()
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Projeto não encontrado"
-        )
-
-    # Save stack configuration immediately (synchronous, fast)
-    project.stack_backend = stack.backend
-    project.stack_database = stack.database
-    project.stack_frontend = stack.frontend
-    project.stack_css = stack.css
-    project.stack_mobile = stack.mobile  # PROMPT #67
-    db.commit()
-    db.refresh(project)
-
-    # Build stack description
-    stack_parts = [stack.backend, stack.database, stack.frontend, stack.css]
-    if stack.mobile:
-        stack_parts.append(stack.mobile)
-    stack_description = " + ".join(stack_parts)
-    logger.info(f"Stack saved for project {project.id}: {stack_description}")
-
-    # Create async job for provisioning
-    job_manager = JobManager(db)
-    job = job_manager.create_job(
-        job_type=JobType.PROJECT_PROVISIONING,
-        input_data={
-            "interview_id": str(interview_id),
-            "project_id": str(project.id),
-            "stack": {
-                "backend": stack.backend,
-                "database": stack.database,
-                "frontend": stack.frontend,
-                "css": stack.css,
-                "mobile": stack.mobile
-            }
-        },
-        project_id=project.id,
-        interview_id=interview_id
-    )
-
-    logger.info(f"Created provisioning job {job.id} for project {project.name}")
-
-    # Execute in background via priority queue
-    from app.services.job_executor import PriorityJobExecutor
-    executor = PriorityJobExecutor.get_instance()
-    await executor.submit(job.priority, _provision_project_async, job.id, project.id)
-
-    return {
-        "job_id": str(job.id),
-        "status": "pending",
-        "message": f"Provisionamento do projeto iniciado. Isso pode levar 1-5 minutos. Consulte GET /api/v1/jobs/{job.id} para o progresso."
-    }
-
-
-async def _provision_project_async(
-    job_id: UUID,
-    project_id: UUID
-):
-    """
-    Background task to provision project (create files, install dependencies, etc.).
-
-    Updates job progress at each step.
-    """
-    from app.database import SessionLocal
-    from app.services.job_manager import JobManager
-
-    # Create new DB session
-    db = SessionLocal()
-
-    try:
-        job_manager = JobManager(db)
-        job_manager.start_job(job_id)
-        logger.info(f"🚀 Starting project provisioning for job {job_id}")
-
-        # Get project
-        project = db.query(Project).filter(Project.id == project_id).first()
-        if not project:
-            job_manager.fail_job(job_id, f"Projeto {project_id} não encontrado")
-            return
-
-        provisioning_service = ProvisioningService(db)
-
-        # STEP 1: Validate stack (0-20%)
-        job_manager.update_progress(job_id, 10.0, "Validando configuração de stack...")
-        logger.info(f"📋 Validating stack: {project.stack}")
-
-        is_valid, error_msg = provisioning_service.validate_stack(project.stack)
-        if not is_valid:
-            logger.warning(f"Stack validation failed: {error_msg}")
-            job_manager.fail_job(job_id, f"Validação de stack falhou: {error_msg}")
-            return
-
-        job_manager.update_progress(job_id, 20.0, "Stack validada com sucesso")
-
-        # STEP 2: Execute provisioning (20-90%)
-        job_manager.update_progress(job_id, 30.0, f"Criando estrutura do projeto para {project.name}...")
-        logger.info(f"🏗️  Provisioning project {project.name}...")
-
-        try:
-            provisioning_result = provisioning_service.provision_project(project)
-
-            if not provisioning_result or not provisioning_result.get("success"):
-                error = provisioning_result.get("error", "Erro desconhecido no provisionamento") if provisioning_result else "Provisionamento não retornou resultado"
-                job_manager.fail_job(job_id, error)
-                return
-
-            job_manager.update_progress(job_id, 90.0, "Projeto criado com sucesso")
-            logger.info(f"✅ Project provisioned at: {provisioning_result.get('project_path')}")
-
-        except ValueError as e:
-            logger.warning(f"Stack not supported: {str(e)}")
-            job_manager.fail_job(job_id, f"Combinacao de stack não suportada: {str(e)}")
-            return
-        except FileNotFoundError as e:
-            logger.error(f"Provisioning script not found: {str(e)}")
-            job_manager.fail_job(job_id, f"Script de provisionamento não encontrado: {str(e)}")
-            return
-        except subprocess.TimeoutExpired:
-            logger.error("Provisioning timed out after 5 minutes")
-            job_manager.fail_job(job_id, "Provisionamento expirou apos 5 minutos. O projeto pode ter sido criado parcialmente.")
-            return
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Provisioning script failed: {e.stderr}")
-            job_manager.fail_job(job_id, f"Script de provisionamento falhou: {e.stderr}")
-            return
-
-        # STEP 3: Complete (90-100%)
-        job_manager.update_progress(job_id, 95.0, "Finalizando configuração do projeto...")
-
-        # Complete job with result
-        job_manager.complete_job(job_id, {
-            "success": True,
-            "project_name": provisioning_result.get("project_name"),
-            "project_path": provisioning_result.get("project_path"),
-            "credentials": provisioning_result.get("credentials", {}),
-            "next_steps": provisioning_result.get("next_steps", []),
-            "scripts_executed": provisioning_result.get("scripts_executed", []),
-            "message": f"Projeto '{project.name}' provisionado com sucesso!"
-        })
-
-        logger.info(f"✅ Provisioning job {job_id} completed successfully")
-
-    except Exception as e:
-        logger.error(f"❌ Provisioning job {job_id} failed: {str(e)}", exc_info=True)
-        job_manager.fail_job(job_id, f"Erro inesperado: {str(e)}")
-
-    finally:
-        db.close()
 
 
 @router.post("/{interview_id}/send-message", status_code=status.HTTP_200_OK)
@@ -1891,124 +1647,6 @@ async def update_project_info(
             "description": project.description
         }
     }
-
-
-@router.post("/{interview_id}/provision", status_code=status.HTTP_200_OK)
-async def provision_project(
-    interview_id: UUID,
-    db: Session = Depends(get_db)
-):
-    """
-    Provision a project based on stack configuration from interview.
-
-    PROMPT #59 - Automated Project Provisioning
-
-    Creates complete project scaffold in ./projects/<project-name>/ using the
-    stack technologies selected during interview (questions 3-7).
-
-    Supported Stack Combinations:
-    - Laravel + PostgreSQL + Tailwind CSS
-    - Next.js + PostgreSQL + Tailwind CSS
-    - FastAPI + React + PostgreSQL + Tailwind CSS
-
-    Returns:
-        {
-            "success": bool,
-            "project_name": str,
-            "project_path": str,
-            "stack": dict,
-            "credentials": dict,
-            "next_steps": list[str]
-        }
-
-    Raises:
-        404: Interview or project not found
-        400: Stack not configured or unsupported
-        500: Provisioning script execution failed
-    """
-    from app.services.provisioning import get_provisioning_service
-
-    # Find interview and associated project
-    interview = db.query(Interview).filter(Interview.id == interview_id).first()
-    if not interview:
-        logger.error(f"Interview {interview_id} not found")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Entrevista não encontrada"
-        )
-
-    project = db.query(Project).filter(Project.id == interview.project_id).first()
-    if not project:
-        logger.error(f"Project {interview.project_id} not found for interview {interview_id}")
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Projeto associado não encontrado"
-        )
-
-    # Validate stack is configured
-    if not project.stack:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Stack do projeto não configurada. Complete as perguntas de stack da entrevista primeiro (perguntas 3-6)."
-        )
-
-    logger.info(f"Provisioning project '{project.name}' with stack: {project.stack}")
-
-    # Validate stack configuration
-    provisioning_service = get_provisioning_service(db)
-    is_valid, error_msg = provisioning_service.validate_stack(project.stack)
-
-    if not is_valid:
-        logger.error(f"Invalid stack for project {project.id}: {error_msg}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=error_msg
-        )
-
-    # Execute provisioning
-    try:
-        result = provisioning_service.provision_project(project)
-
-        if not result.get("success"):
-            logger.warning(f"Provisioning failed for project {project.id}: {result.get('error')}")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=result.get("error", "Provisionamento falhou")
-            )
-
-        logger.info(f"✓ Successfully provisioned project '{project.name}' at {result['project_path']}")
-
-        return {
-            "success": True,
-            "message": f"Projeto '{project.name}' provisionado com sucesso",
-            "project_name": result["project_name"],
-            "project_path": result["project_path"],
-            "stack": result["stack"],
-            "credentials": result.get("credentials", {}),
-            "next_steps": result["next_steps"],
-            "script_used": result["script_used"]
-        }
-
-    except ValueError as e:
-        logger.error(f"Provisioning validation error: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-
-    except FileNotFoundError as e:
-        logger.error(f"Provisioning script not found: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Script de provisionamento não encontrado. Contate o administrador."
-        )
-
-    except Exception as e:
-        logger.error(f"Unexpected error during provisioning: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Provisionamento falhou: {str(e)}"
-        )
 
 
 @router.post("/{interview_id}/send-message-async", status_code=status.HTTP_202_ACCEPTED)

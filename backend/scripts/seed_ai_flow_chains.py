@@ -25,7 +25,7 @@ Strategy per operation (cost-optimized):
 - rag_extraction:      Claudio Opus 4.6
 
 Usage:
-    docker exec -w /app orbit-backend python scripts/seed_ai_flow_chains.py
+    python scripts/seed_ai_flow_chains.py
 """
 
 import sys

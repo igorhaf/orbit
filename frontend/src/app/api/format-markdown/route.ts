@@ -28,8 +28,7 @@ export async function POST(request: NextRequest) {
 
   try {
     // Call backend AI service to format text to Markdown
-    // Use Docker service name for server-side calls, fallback to localhost
-    const backendUrl = process.env.BACKEND_URL || 'http://backend:8000';
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:8000';
 
     const response = await fetch(`${backendUrl}/api/v1/ai/format-markdown`, {
       method: 'POST',

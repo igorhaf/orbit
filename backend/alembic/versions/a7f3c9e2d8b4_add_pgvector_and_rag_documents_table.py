@@ -25,9 +25,8 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     # 1. Add pgvector extension (OPTIONAL - can be added later for performance)
-    # Note: pgvector extension not yet installed in PostgreSQL container
     # Using ARRAY(Float) for now, which works but is less optimized than vector type
-    # To add pgvector later: docker-compose exec db psql -U postgres -c "CREATE EXTENSION vector"
+    # To add pgvector later: psql -U postgres -c "CREATE EXTENSION vector"
     # op.execute('CREATE EXTENSION IF NOT EXISTS vector')
 
     # 2. Create rag_documents table

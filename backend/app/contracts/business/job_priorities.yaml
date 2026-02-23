@@ -60,7 +60,6 @@ data:
     backlog_generation: 3
     task_generation: 3
     batch_execution: 3
-    project_provisioning: 3
     rag_continuous_scan: 3
 
 rules:

@@ -6,11 +6,8 @@ Tests multiple Ollama models against the same PHP file to compare:
 - Quality of extracted business rules
 - JSON compliance and field validation
 
-Usage (inside orbit-backend container):
+Usage:
     python scripts/benchmark_ollama_models.py
-
-Or from host:
-    docker exec -w /app orbit-backend python scripts/benchmark_ollama_models.py
 """
 
 import json

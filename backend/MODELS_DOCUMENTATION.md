@@ -304,11 +304,7 @@ Migrations are managed by Alembic:
 
 To apply migrations:
 ```bash
-# Using Docker
-./scripts/apply_migrations.sh
-
-# Or manually
-docker-compose exec backend poetry run alembic upgrade head
+cd backend && alembic upgrade head
 ```
 
 ---

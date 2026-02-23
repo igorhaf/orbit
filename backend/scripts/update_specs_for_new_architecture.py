@@ -2,7 +2,7 @@
 """
 Update Specs for New Architecture (PROMPT #51)
 
-This script updates the specs database to reflect the new provisioning architecture:
+This script updates the specs database to reflect the new architecture:
 - Only Laravel, Next.js, PostgreSQL, and Tailwind are supported
 - Tailwind is a component of Next.js (installed automatically)
 - All other technologies are deactivated

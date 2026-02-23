@@ -28,8 +28,8 @@ Orbit is a platform that allows:
 - **Poetry** for dependency management
 - **Redis** for caching
 
-### DevOps
-- **Docker** and **Docker Compose** for containerization
+### Infrastructure
+- **Native Linux/WSL2** services (PostgreSQL, Redis, Ollama)
 - **Monorepo** architecture
 
 ---
@@ -40,8 +40,12 @@ Orbit is a platform that allows:
 
 Before starting, make sure you have installed:
 
-- [Docker](https://www.docker.com/get-started) (version 20.10+)
-- [Docker Compose](https://docs.docker.com/compose/install/) (version 2.0+)
+- **Linux / WSL2** environment
+- **Python 3.11+** with Poetry
+- **Node.js 18+** with npm
+- **PostgreSQL 15+** with pgvector extension
+- **Redis**
+- **Ollama** (for local AI models)
 - Git
 
 ### Step 1: Clone the Repository
@@ -51,50 +55,24 @@ git clone https://github.com/igorhaf/orbit.git
 cd orbit
 ```
 
-### Step 2: Create Environment File (Optional)
-
-The project works with default values, but you can customize:
+### Step 2: Install and Setup
 
 ```bash
-# Create .env file in project root (optional)
-cat > .env << EOF
-# Database
-POSTGRES_USER=orbit
-POSTGRES_PASSWORD=orbit_password
-POSTGRES_DB=orbit
-
-# Backend
-SECRET_KEY=your-secret-key-change-in-production
-ENVIRONMENT=development
-
-# Frontend
-NEXT_PUBLIC_API_URL=http://localhost:8000
-NEXT_PUBLIC_APP_NAME=Orbit
-EOF
+# Install all dependencies and configure services
+./scripts/orbit install
+./scripts/orbit setup
 ```
 
 ### Step 3: Start All Services
 
 ```bash
-# Clean any previous containers (recommended for first install)
-docker rm -f $(docker ps -aq --filter "name=orbit") 2>/dev/null || true
-
-# Start all services with project name 'orbit'
-docker-compose -p orbit up -d
+orbit start
 ```
 
-### Step 4: Wait for Services to Initialize
+### Step 4: Check Status
 
 ```bash
-# Check status (wait until all services are "healthy" or "Up")
-docker-compose -p orbit ps
-
-# Expected output:
-# NAME             STATUS
-# orbit-backend    Up (healthy)
-# orbit-db         Up (healthy)
-# orbit-frontend   Up
-# orbit-redis      Up (healthy)
+orbit status
 ```
 
 ### Step 5: Access the Application
@@ -108,42 +86,15 @@ docker-compose -p orbit ps
 
 ## Configure AI Models
 
-The system requires AI model API keys to function. API keys are **automatically seeded from .env during database migrations**.
+The system requires AI model API keys to function. API keys are stored in the **database** (not .env).
 
-### Automatic Seed (Recommended)
-
-1. **Add API keys to .env file**:
-   ```bash
-   # Edit .env file
-   ANTHROPIC_API_KEY=sk-ant-...
-   OPENAI_API_KEY=sk-...
-   GOOGLE_AI_API_KEY=...
-   ```
-
-2. **Restart containers** (migrations auto-run on startup):
-   ```bash
-   docker-compose -p orbit down
-   docker-compose -p orbit up -d
-   ```
-
-   The migration will automatically create 9 AI models (3 per provider):
-   - **Anthropic:** Claude Sonnet 4.5, Opus 4.5, Haiku 4
-   - **OpenAI:** GPT-4o, GPT-4 Turbo, GPT-3.5 Turbo
-   - **Google:** Gemini 1.5 Pro, 2.0 Flash, 1.5 Flash
-
-   Models with API keys will be **ACTIVE**, models without keys will be **INACTIVE** (placeholders).
-
-### Manual Configuration (Alternative)
-
-If you don't add API keys to .env, models will be created as inactive placeholders. Configure later:
-
-**Via Web Interface:**
+### Via Web Interface (Recommended)
 
 1. Go to http://localhost:3000/ai-models
 2. Click "Edit" on each model you want to use
 3. Add your API key and toggle "Active"
 
-**Via Backend API:**
+### Via Backend API
 
 ```bash
 # Example: Configure Claude Sonnet 4.5
@@ -152,87 +103,46 @@ curl -X PATCH http://localhost:8000/api/v1/ai-models/{model_id} \
   -d '{"api_key": "sk-ant-...", "is_active": true}'
 ```
 
-> **Why .env + Database?**
-> - ✅ Automatic setup on first run (reads from .env during migration)
-> - ✅ Keys stored in database (not environment variables)
-> - ✅ Granular control per model via CRUD
-> - ✅ Business logic, validations, and audit trail
-> - ✅ .env never committed (in .gitignore)
-
 ---
 
 ## Common Commands
 
 ### Start Services
 ```bash
-docker-compose -p orbit up -d
+orbit start
 ```
 
 ### Stop Services
 ```bash
-docker-compose -p orbit down
+orbit stop
 ```
 
 ### View Logs
 ```bash
 # All services
-docker-compose -p orbit logs -f
+orbit logs
 
 # Specific service
-docker-compose -p orbit logs -f backend
-docker-compose -p orbit logs -f frontend
+orbit logs backend
+orbit logs frontend
+orbit logs backend -f  # Follow mode
 ```
 
 ### Restart a Service
 ```bash
-docker-compose -p orbit restart backend
-```
-
-### Rebuild After Code Changes
-```bash
-docker-compose -p orbit build backend
-docker-compose -p orbit up -d backend
-```
-
-### Full Rebuild (Clean Start)
-```bash
-docker-compose -p orbit down --volumes --remove-orphans
-docker rm -f $(docker ps -aq --filter "name=orbit") 2>/dev/null || true
-docker-compose -p orbit up -d --build
+orbit restart backend
 ```
 
 ---
 
 ## Troubleshooting
 
-### Error: "container name already in use"
-
-```bash
-# Remove conflicting containers
-docker rm -f $(docker ps -aq --filter "name=orbit") 2>/dev/null
-docker-compose -p orbit up -d
-```
-
-### Error: "No such container"
-
-```bash
-# Clean Docker state and restart
-docker-compose -p orbit down --volumes --remove-orphans
-docker container prune -f
-docker network prune -f
-docker-compose -p orbit up -d
-```
-
 ### Error: "relation does not exist" (Database)
 
 Migrations need to be applied:
 
 ```bash
-# Restart backend (migrations run automatically on startup)
-docker-compose -p orbit restart backend
-
-# Or run manually
-docker-compose -p orbit exec backend poetry run alembic upgrade head
+cd backend && alembic upgrade head
 ```
 
 ### Backend Not Starting
@@ -240,15 +150,7 @@ docker-compose -p orbit exec backend poetry run alembic upgrade head
 Check logs for errors:
 
 ```bash
-docker-compose -p orbit logs backend --tail 100
-```
-
-### Frontend Build Issues
-
-```bash
-# Rebuild frontend
-docker-compose -p orbit build frontend --no-cache
-docker-compose -p orbit up -d frontend
+orbit logs backend
 ```
 
 ---
@@ -258,11 +160,9 @@ docker-compose -p orbit up -d frontend
 ```
 orbit/
 ├── README.md                 # This file
-├── docker-compose.yml        # Container orchestration
-├── docker/
-│   ├── backend.Dockerfile    # Backend Docker image
-│   ├── frontend.Dockerfile   # Frontend Docker image
-│   └── init-db.sh           # Database initialization script
+├── CLAUDE.md                 # AI assistant instructions
+├── scripts/
+│   └── orbit                 # Service manager CLI
 ├── backend/                  # FastAPI API
 │   ├── app/
 │   │   ├── main.py          # Application entry point
@@ -273,21 +173,23 @@ orbit/
 │   │   ├── api/             # API routes
 │   │   └── services/        # Business logic
 │   └── alembic/             # Database migrations
-└── frontend/                # Next.js application
-    ├── src/
-    │   ├── app/             # Next.js App Router
-    │   ├── components/      # React components
-    │   └── lib/             # Utilities and helpers
-    └── public/              # Static files
+├── frontend/                # Next.js application
+│   ├── src/
+│   │   ├── app/             # Next.js App Router
+│   │   ├── components/      # React components
+│   │   └── lib/             # Utilities and helpers
+│   └── public/              # Static files
+└── satellite/               # Knowledge base and AI memory
+    ├── memory/              # AI execution logs
+    ├── docs/                # External documents (RAG-indexed)
+    └── knowledge/           # Structured knowledge base
 ```
 
 ---
 
 ## Development
 
-### Local Development (Without Docker)
-
-#### Backend
+### Backend
 
 ```bash
 cd backend
@@ -296,7 +198,7 @@ poetry run alembic upgrade head
 poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-#### Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -308,16 +210,16 @@ npm run dev
 
 ```bash
 # Create new migration
-docker-compose -p orbit exec backend poetry run alembic revision --autogenerate -m "description"
+cd backend && alembic revision --autogenerate -m "description"
 
 # Apply migrations
-docker-compose -p orbit exec backend poetry run alembic upgrade head
+cd backend && alembic upgrade head
 
 # Check current version
-docker-compose -p orbit exec backend poetry run alembic current
+cd backend && alembic current
 
 # Rollback one migration
-docker-compose -p orbit exec backend poetry run alembic downgrade -1
+cd backend && alembic downgrade -1
 ```
 
 ---
@@ -336,16 +238,17 @@ docker-compose -p orbit exec backend poetry run alembic downgrade -1
 
 ## Environment Variables
 
-### Backend (docker-compose.yml)
+### Backend (.env)
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection URL | `postgresql://orbit:orbit_password@postgres:5432/orbit` |
+| `DATABASE_URL` | PostgreSQL connection URL | `postgresql://orbit:orbit_password@localhost:5432/orbit` |
 | `SECRET_KEY` | Secret key for JWT | `dev-secret-key-change-in-production` |
 | `ENVIRONMENT` | Execution environment | `development` |
-| `REDIS_HOST` | Redis host | `redis` |
+| `REDIS_HOST` | Redis host | `localhost` |
 | `REDIS_PORT` | Redis port | `6379` |
+| `OLLAMA_HOST` | Ollama API URL | `http://localhost:11434` |
 
-### Frontend (docker-compose.yml)
+### Frontend
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `NEXT_PUBLIC_API_URL` | Backend API URL | `http://localhost:8000` |
@@ -362,45 +265,25 @@ docker-compose -p orbit exec backend poetry run alembic downgrade -1
 | PostgreSQL | 5432 | Database with pgvector (supports RAG) |
 | Redis | 6379 | Cache server |
 | Ollama | 11434 | Local LLM Server |
-| Qdrant | 6333, 6334 | Vector Database (REST, gRPC) |
 
 ---
 
 ## RAG / Local AI Services
 
-Orbit includes optional services for local AI and RAG (Retrieval-Augmented Generation):
+Orbit includes Ollama for local AI and RAG (Retrieval-Augmented Generation).
 
-### Data Persistence
-
-All RAG services use **bind mounts** for data persistence. Data is stored in the `./data/` folder:
-
-```
-orbit/
-└── data/                    # All persistent data (git-ignored, except .gitkeep)
-    ├── ollama/              # Ollama models (~4-40GB per model)
-    └── qdrant/              # Qdrant vector storage
-```
-
-> **Note:** Vector embeddings for RAG are stored in the main PostgreSQL database using pgvector extension.
-
-### Starting RAG Services
+### Installing Models in Ollama
 
 ```bash
-# Start all services (including RAG)
-docker compose up -d
+# Pull a model
+ollama pull qwen3:8b
+ollama pull nomic-embed-text
 
-# Or start specific RAG services
-docker compose up -d ollama qdrant
-```
+# List installed models
+ollama list
 
-### Viewing Logs
-
-```bash
-# Ollama logs
-docker compose logs -f ollama
-
-# Qdrant logs
-docker compose logs -f qdrant
+# Or via API
+curl http://localhost:11434/api/pull -d '{"name": "qwen3:8b"}'
 ```
 
 ### Quick Tests
@@ -409,50 +292,8 @@ docker compose logs -f qdrant
 # Test Ollama (list installed models)
 curl http://localhost:11434/api/tags
 
-# Test Qdrant (list collections)
-curl http://localhost:6333/collections
-
 # Test pgvector extension
-docker compose exec postgres psql -U orbit -d orbit -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
-```
-
-### Installing Models in Ollama
-
-```bash
-# Pull a model (run inside container or via API)
-docker compose exec ollama ollama pull llama3.2
-docker compose exec ollama ollama pull nomic-embed-text
-
-# List installed models
-docker compose exec ollama ollama list
-
-# Or via API
-curl http://localhost:11434/api/pull -d '{"name": "llama3.2"}'
-```
-
-### GPU Support for Ollama
-
-GPU support is disabled by default. To enable NVIDIA GPU:
-
-1. Install NVIDIA drivers on host
-2. Install [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html)
-3. Uncomment the `deploy` section in `docker-compose.yml` under the `ollama` service
-
-### Qdrant API Examples
-
-```bash
-# Create a collection
-curl -X PUT http://localhost:6333/collections/my_collection \
-  -H "Content-Type: application/json" \
-  -d '{
-    "vectors": {
-      "size": 768,
-      "distance": "Cosine"
-    }
-  }'
-
-# List collections
-curl http://localhost:6333/collections
+psql -U orbit -d orbit -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
 ```
 
 ---

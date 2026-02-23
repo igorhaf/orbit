@@ -33,7 +33,7 @@ async def test_code_indexing():
         test_project = Project(
             id=uuid4(),
             name="Test Laravel Project",
-            project_folder="/app/projects/final-test-laravel",  # Docker-mapped path
+            project_folder="/tmp/test-projects/final-test-laravel",
             stack_backend="Laravel",
             stack_frontend="Blade",
             stack_database="MySQL"

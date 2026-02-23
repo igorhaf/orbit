@@ -13,7 +13,7 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
 
-  // Output standalone for Docker optimization
+  // Output standalone for optimized production builds
   output: 'standalone',
 
   // Environment variables exposed to the browser

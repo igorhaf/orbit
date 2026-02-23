@@ -65,7 +65,7 @@ LAYER_MAP = {
     "routes": "routes", "api": "routes", "controllers": "routes", "endpoints": "routes",
     "services": "logic", "utils": "logic", "helpers": "logic",
     "components": "presentation", "pages": "presentation", "app": "presentation",
-    "config": "config", "scripts": "config", "provisioning": "config",
+    "config": "config", "scripts": "config",
 }
 
 

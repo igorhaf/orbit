@@ -60,24 +60,24 @@ async def browse_folders(
     path: str = Query("", description="Relative path within /projects to browse")
 ):
     """
-    Browse folders within the mounted /projects directory.
+    Browse folders starting from PROJECTS_BASE_PATH (default: user home).
 
     PROMPT #111 - Folder picker for project creation
 
     Returns a list of directories at the specified path.
-    Path is relative to /projects (the mounted volume).
+    Path is relative to PROJECTS_BASE_PATH.
 
     Example:
-    - GET /browse-folders?path= → lists /projects/*
-    - GET /browse-folders?path=my-app → lists /projects/my-app/*
+    - GET /browse-folders?path= → lists PROJECTS_BASE_PATH/*
+    - GET /browse-folders?path=my-app → lists PROJECTS_BASE_PATH/my-app/*
     """
     # Ensure base path exists
     if not PROJECTS_BASE_PATH.exists():
         return {
-            "current_path": "/projects",
+            "current_path": str(PROJECTS_BASE_PATH),
             "parent_path": None,
             "folders": [],
-            "error": "Pasta de projetos não montada"
+            "error": f"Pasta base nao encontrada: {PROJECTS_BASE_PATH}"
         }
 
     # Build full path (sanitize to prevent directory traversal)
@@ -94,24 +94,26 @@ async def browse_folders(
         if not str(full_path).startswith(str(PROJECTS_BASE_PATH.resolve())):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Caminho inválido: deve estar dentro de /projects"
+                detail=f"Caminho invalido: deve estar dentro de {PROJECTS_BASE_PATH}"
             )
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Caminho inválido"
+            detail="Caminho invalido"
         )
 
     if not full_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Caminho não encontrado: {path}"
+            detail=f"Caminho nao encontrado: {path}"
         )
 
     if not full_path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Caminho não é um diretório"
+            detail="Caminho nao e um diretorio"
         )
 
     # List directories only (not files)
@@ -159,18 +161,18 @@ async def browse_files(
     path: str = Query("", description="Relative path within /projects to browse")
 ):
     """
-    Browse files and folders within the mounted /projects directory.
+    Browse files and folders starting from PROJECTS_BASE_PATH (default: user home).
 
     Returns folders (for navigation) and files (for selection).
-    Path is relative to /projects (the mounted volume).
+    Path is relative to PROJECTS_BASE_PATH.
     """
     if not PROJECTS_BASE_PATH.exists():
         return {
-            "current_path": "/projects",
+            "current_path": str(PROJECTS_BASE_PATH),
             "parent_path": None,
             "folders": [],
             "files": [],
-            "error": "Pasta de projetos não montada"
+            "error": f"Pasta base nao encontrada: {PROJECTS_BASE_PATH}"
         }
 
     if path:
@@ -184,24 +186,26 @@ async def browse_files(
         if not str(full_path).startswith(str(PROJECTS_BASE_PATH.resolve())):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Caminho inválido: deve estar dentro de /projects"
+                detail=f"Caminho invalido: deve estar dentro de {PROJECTS_BASE_PATH}"
             )
+    except HTTPException:
+        raise
     except Exception:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Caminho inválido"
+            detail="Caminho invalido"
         )
 
     if not full_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Caminho não encontrado: {path}"
+            detail=f"Caminho nao encontrado: {path}"
         )
 
     if not full_path.is_dir():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Caminho não é um diretório"
+            detail="Caminho nao e um diretorio"
         )
 
     folders = []

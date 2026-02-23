@@ -239,6 +239,78 @@ async def trigger_generate_cards(
     return {"message": "Fase 3: Geração de cards iniciada", "job_id": str(job.id), "status": "pending"}
 
 
+@router.post("/{project_id}/rag/run-pipeline")
+async def trigger_full_pipeline(
+    project_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Run the FULL 4-phase pipeline as a single job.
+    Progress is split evenly: 0-25% (index), 25-50% (rules),
+    50-75% (cards), 75-100% (wiki).
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    if not project.code_path:
+        raise HTTPException(status_code=400, detail="Projeto não tem code_path configurado")
+
+    # Check for any running pipeline/RAG/cards/wiki job
+    existing = db.query(AsyncJob).filter(
+        AsyncJob.project_id == project_id,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+        AsyncJob.parent_job_id.is_(None),
+        AsyncJob.job_type.in_([
+            JobType.RAG_CONTINUOUS_SCAN,
+            JobType.CARDS_FROM_MEMORY,
+            JobType.WIKI_GENERATION,
+            JobType.PROJECT_PIPELINE,
+        ]),
+    ).first()
+    if existing:
+        return {
+            "message": "Uma operação já está em andamento",
+            "job_id": str(existing.id),
+            "status": existing.status.value,
+        }
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.PROJECT_PIPELINE,
+        input_data={"project_id": str(project_id), "phase": "full_pipeline"},
+        project_id=project_id,
+        notification_title=f"Pipeline completo — {project.name or 'Projeto'}",
+        deep_link=f"/projects/{project_id}",
+    )
+
+    async def _run_full_pipeline(job_id, proj_id):
+        from app.database import get_db as get_db_gen
+        db_session = next(get_db_gen())
+        try:
+            from app.services.rag_pipeline import RagPipelineService
+            jm = JobManager(db_session)
+            jm.start_job(job_id)
+            pipeline = RagPipelineService(db_session)
+            result = await pipeline.run_full_pipeline(proj_id, job_id)
+            jm.complete_job(job_id, result)
+        except Exception as e:
+            try:
+                jm.fail_job(job_id, str(e))
+            except Exception:
+                pass
+        finally:
+            db_session.close()
+
+    background_tasks.add_task(_run_full_pipeline, job.id, project_id)
+
+    return {
+        "message": "Pipeline completo iniciado (4 fases, 25% cada)",
+        "job_id": str(job.id),
+        "status": "pending",
+    }
+
+
 @router.post("/{project_id}/rag/generate-wiki")
 async def trigger_generate_wiki(
     project_id: UUID,
@@ -499,14 +571,21 @@ async def get_enrichment_status(
             "AND input_data->>'phase' = :phase LIMIT 1"
         ), {"pid": str(project_id), "phase": phase_name}).first() is not None
 
+    # Check if full pipeline completed (marks ALL phases as done)
+    full_pipeline_done = db.execute(sql_text(
+        "SELECT 1 FROM async_jobs WHERE project_id = :pid "
+        "AND status = 'completed' AND job_type = 'project_pipeline' "
+        "AND input_data->>'phase' = 'full_pipeline' LIMIT 1"
+    ), {"pid": str(project_id)}).first() is not None
+
     # Phase 1: completed if pipeline job OR memory_scan indexed files
-    phase_1_done = _phase_job_completed("index_files") or has_indexed_files
+    phase_1_done = full_pipeline_done or _phase_job_completed("index_files") or has_indexed_files
 
     pipeline_state = {
         "phase_1": "completed" if phase_1_done else "pending",
-        "phase_2": "completed" if _phase_job_completed("extract_rules") else "pending",
-        "phase_3": "completed" if _phase_job_completed("generate_cards") else "pending",
-        "phase_4": "completed" if _phase_job_completed("generate_wiki") else "pending",
+        "phase_2": "completed" if (full_pipeline_done or _phase_job_completed("extract_rules")) else "pending",
+        "phase_3": "completed" if (full_pipeline_done or _phase_job_completed("generate_cards")) else "pending",
+        "phase_4": "completed" if (full_pipeline_done or _phase_job_completed("generate_wiki")) else "pending",
     }
 
     # Check for running phase jobs (PENDING or RUNNING override to "running")
@@ -517,6 +596,12 @@ async def get_enrichment_status(
             continue
         if j.input_data and isinstance(j.input_data, dict):
             phase = j.input_data.get("phase", "")
+            # Full pipeline marks all phases as running
+            if phase == "full_pipeline":
+                for pk in ["phase_1", "phase_2", "phase_3", "phase_4"]:
+                    if pipeline_state[pk] != "completed":
+                        pipeline_state[pk] = "running"
+                continue
             phase_map = {
                 "index_files": "phase_1",
                 "extract_rules": "phase_2",

@@ -155,7 +155,7 @@ PROMPTER_USE_CACHE=true
 **Antes de habilitar qualquer flag, coletar baseline:**
 ```bash
 # Executar por 1 semana
-docker-compose exec backend python -m app.scripts.collect_baseline_metrics
+python -m app.scripts.collect_baseline_metrics
 ```
 
 **Métricas a monitorar:**
@@ -214,10 +214,10 @@ ls backend/app/prompter/templates/base/*_v2.yaml
 ### Cache não funcionando
 ```bash
 # Verificar Redis
-docker-compose ps redis
+orbit status redis
 
 # Ver logs do cache
-docker-compose logs backend | grep "cache"
+orbit logs backend | grep "cache"
 ```
 
 ### Performance degradada
@@ -240,7 +240,7 @@ PROMPTER_USE_TEMPLATES=true
 PROMPTER_USE_STRUCTURED_TEMPLATES=true
 
 # Restart backend
-docker-compose restart backend
+orbit restart backend
 
 # Testar
 curl -X POST http://localhost:8000/api/interviews/{id}/messages \

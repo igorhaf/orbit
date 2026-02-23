@@ -25,7 +25,7 @@ Recommended Ollama environment for Nave profile:
   OLLAMA_KV_CACHE_TYPE=q8_0
 
 Usage:
-    docker exec -w /app orbit-backend python scripts/seed_nave_profile.py
+    python scripts/seed_nave_profile.py
 """
 
 import sys
@@ -515,7 +515,7 @@ def seed_nave_profile():
         logger.info(f"  Total chains: {chains_created + chains_updated}")
         logger.info("")
         logger.info("  HARDWARE OPTIMIZATION TIPS:")
-        logger.info("  Set these in your .env or docker-compose.yml:")
+        logger.info("  Set these in your .env:")
         logger.info("    OLLAMA_NUM_PARALLEL=1        # All GPU for one request")
         logger.info("    OLLAMA_FLASH_ATTENTION=1     # Faster attention computation")
         logger.info("    OLLAMA_KV_CACHE_TYPE=q8_0    # 50% less VRAM for KV cache")

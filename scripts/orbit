@@ -2,7 +2,7 @@
 # =============================================================================
 # ORBIT - Native WSL2 Service Manager
 # =============================================================================
-# Replaces Docker Compose with native Linux services.
+# Native Linux service manager for ORBIT.
 # Usage: orbit <command> [service]
 #
 # Commands:
@@ -255,7 +255,7 @@ cmd_setup() {
     # -- Configure Redis for persistence --------------------------------------
     header "Redis Configuration"
     if [[ -f /etc/redis/redis.conf ]]; then
-        # Set maxmemory and eviction policy (matching Docker config)
+        # Set maxmemory and eviction policy
         if ! grep -q "^maxmemory 512mb" /etc/redis/redis.conf 2>/dev/null; then
             info "Configuring Redis (512mb, allkeys-lru, appendonly)..."
             sudo_run bash -c "cat >> /etc/redis/redis.conf << 'REDIS_EOF'
@@ -841,7 +841,7 @@ cmd_logs() {
             fi
             ;;
         all)
-            # Show both logs interleaved (like docker-compose logs)
+            # Show both logs interleaved
             echo -e "${BOLD}${CYAN}━━━ ORBIT Logs (last $lines lines per service) ━━━${NC}"
             echo ""
             if [[ -f "$BACKEND_LOG" ]]; then
@@ -854,7 +854,7 @@ cmd_logs() {
                 tail -n "$lines" "$FRONTEND_LOG" | tail -n 20
                 echo ""
             fi
-            echo -e "${CYAN}Tip: orbit logs backend -f   (follow mode, like docker-compose logs -f)${NC}"
+            echo -e "${CYAN}Tip: orbit logs backend -f   (follow mode)${NC}"
             echo -e "${CYAN}     orbit logs backend 200  (last 200 lines)${NC}"
             ;;
         *)
@@ -972,7 +972,7 @@ cmd_help() {
     echo -e "    orbit status           # Check all services"
     echo -e "    orbit logs             # View all logs (summary)"
     echo -e "    orbit logs backend     # Last 100 backend lines"
-    echo -e "    orbit logs backend -f  # Follow mode (like docker-compose logs -f)"
+    echo -e "    orbit logs backend -f  # Follow mode"
     echo -e "    orbit logs backend 200 # Last 200 lines"
     echo -e "    orbit stop             # Stop everything"
     echo ""

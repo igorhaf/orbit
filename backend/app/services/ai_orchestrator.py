@@ -1019,6 +1019,88 @@ class AIOrchestrator:
         # PROMPT #205 - Get retry config from utility nodes
         _retry_config = UtilityNodeExecutor.get_retry_config(_utility_nodes) if _utility_nodes else None
 
+        # PROMPT #253 - RAG Enhancement: inject context BEFORE chain/choose_model execution
+        # Previously this was in the choose_model path only, so chain executions never got RAG context
+        rag_context_injected = False
+        rag_metrics = {
+            "rag_enabled": enable_rag,
+            "rag_hit": False,
+            "rag_results_count": 0,
+            "rag_top_similarity": None,
+            "rag_retrieval_time_ms": None
+        }
+
+        if enable_rag and self.rag_service and _effective_messages:
+            try:
+                # Extract query from last user message
+                query = None
+                for msg in reversed(_effective_messages):
+                    if msg.get("role") == "user":
+                        query = msg.get("content", "")
+                        break
+
+                if query:
+                    # Build filter dict
+                    filter_dict = rag_filter or {}
+                    if project_id and "project_id" not in filter_dict:
+                        filter_dict["project_id"] = project_id
+
+                    # Measure RAG retrieval time
+                    rag_start_time = time.time()
+
+                    # Retrieve relevant knowledge
+                    rag_results = self.rag_service.retrieve(
+                        query=query,
+                        filter=filter_dict,
+                        top_k=rag_top_k,
+                        similarity_threshold=rag_similarity_threshold
+                    )
+
+                    # Calculate retrieval time
+                    rag_metrics["rag_retrieval_time_ms"] = (time.time() - rag_start_time) * 1000
+
+                    if rag_results:
+                        # Score and filter RAG results by relevance
+                        scored_results = self._score_and_filter_rag_results(
+                            rag_results, query, usage_type
+                        )
+                        rag_metrics["rag_hit"] = True
+                        rag_metrics["rag_results_count"] = len(scored_results)
+                        rag_metrics["rag_filtered_out"] = len(rag_results) - len(scored_results)
+                        rag_metrics["rag_top_similarity"] = scored_results[0]["similarity"] if scored_results else None
+
+                        if scored_results:
+                            # Format RAG context for injection (with relevance scores)
+                            rag_context_text = "\n".join([
+                                f"[{i+1}] (relevance: {r.get('relevance_score', r['similarity']):.2f})\n{r['content']}"
+                                for i, r in enumerate(scored_results)
+                            ])
+
+                            # Merge RAG context into last user message
+                            if _effective_messages and _effective_messages[-1].get("role") == "user":
+                                _effective_messages[-1]["content"] = (
+                                    f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]\n\n"
+                                    + _effective_messages[-1]["content"]
+                                )
+                            else:
+                                # Fallback: insert as separate message if last isn't user
+                                rag_message = {
+                                    "role": "user",
+                                    "content": f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]"
+                                }
+                                _effective_messages.insert(-1, rag_message)
+                            rag_context_injected = True
+
+                        logger.info(
+                            f"🔍 RAG scored: {len(rag_results)} → {len(scored_results)} results "
+                            f"({rag_metrics['rag_filtered_out']} discarded, "
+                            f"retrieval: {rag_metrics['rag_retrieval_time_ms']:.1f}ms)"
+                        )
+                    else:
+                        logger.info(f"🔍 RAG MISS: No relevant docs found (threshold: {rag_similarity_threshold})")
+            except Exception as e:
+                logger.warning(f"⚠️  RAG retrieval failed: {e}")
+
         if chains_to_try:
             last_error = None
             _skip_providers = set()  # PROMPT #229 - Smart fallback: skip providers on OOM
@@ -1081,6 +1163,7 @@ class AIOrchestrator:
                         result["chain_total"] = len(chain_model_list)
                         result["chain_fallback"] = chain_idx > 0 or chain_source == "general"
                         result["chain_source"] = chain_source
+                        result["rag_enhanced"] = rag_context_injected
                         # PROMPT #124 - Broadcast chain attempt success
                         _safe_broadcast("chain_attempt_success", {
                             "usage_type": usage_type,
@@ -1444,89 +1527,6 @@ class AIOrchestrator:
                 model_config['rate_limit_window_seconds']
             )
 
-        # PROMPT #83 - RAG Enhancement (before cache check)
-        # PROMPT #89 - RAG Metrics Tracking
-        rag_context_injected = False
-        rag_metrics = {
-            "rag_enabled": enable_rag,
-            "rag_hit": False,
-            "rag_results_count": 0,
-            "rag_top_similarity": None,
-            "rag_retrieval_time_ms": None
-        }
-
-        if enable_rag and self.rag_service and _effective_messages:
-            try:
-                # Extract query from last user message
-                query = None
-                for msg in reversed(_effective_messages):
-                    if msg.get("role") == "user":
-                        query = msg.get("content", "")
-                        break
-
-                if query:
-                    # Build filter dict
-                    filter_dict = rag_filter or {}
-                    if project_id and "project_id" not in filter_dict:
-                        filter_dict["project_id"] = project_id
-
-                    # PROMPT #89 - Measure RAG retrieval time
-                    rag_start_time = time.time()
-
-                    # Retrieve relevant knowledge
-                    rag_results = self.rag_service.retrieve(
-                        query=query,
-                        filter=filter_dict,
-                        top_k=rag_top_k,
-                        similarity_threshold=rag_similarity_threshold
-                    )
-
-                    # Calculate retrieval time
-                    rag_metrics["rag_retrieval_time_ms"] = (time.time() - rag_start_time) * 1000
-
-                    if rag_results:
-                        # PROMPT #232 - Score and filter RAG results by relevance
-                        scored_results = self._score_and_filter_rag_results(
-                            rag_results, query, usage_type
-                        )
-                        rag_metrics["rag_hit"] = True
-                        rag_metrics["rag_results_count"] = len(scored_results)
-                        rag_metrics["rag_filtered_out"] = len(rag_results) - len(scored_results)
-                        rag_metrics["rag_top_similarity"] = scored_results[0]["similarity"] if scored_results else None
-
-                        if scored_results:
-                            # Format RAG context for injection (with relevance scores)
-                            rag_context_text = "\n".join([
-                                f"[{i+1}] (relevance: {r.get('relevance_score', r['similarity']):.2f})\n{r['content']}"
-                                for i, r in enumerate(scored_results)
-                            ])
-
-                            # PROMPT #233 - LI-3 fix: merge RAG context into last user message
-                            # instead of creating a separate user message (which breaks alternating roles for OpenAI/Gemini)
-                            if _effective_messages and _effective_messages[-1].get("role") == "user":
-                                _effective_messages[-1]["content"] = (
-                                    f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]\n\n"
-                                    + _effective_messages[-1]["content"]
-                                )
-                            else:
-                                # Fallback: insert as separate message if last isn't user
-                                rag_message = {
-                                    "role": "user",
-                                    "content": f"[RELEVANT CONTEXT FROM KNOWLEDGE BASE]\n\n{rag_context_text}\n\n[END CONTEXT]"
-                                }
-                                _effective_messages.insert(-1, rag_message)
-                            rag_context_injected = True
-
-                        logger.info(
-                            f"🔍 RAG scored: {len(rag_results)} → {len(scored_results)} results "
-                            f"({rag_metrics['rag_filtered_out']} discarded, "
-                            f"retrieval: {rag_metrics['rag_retrieval_time_ms']:.1f}ms)"
-                        )
-                    else:
-                        logger.info(f"🔍 RAG MISS: No relevant docs found (threshold: {rag_similarity_threshold})")
-            except Exception as e:
-                logger.warning(f"⚠️  RAG retrieval failed: {e}")
-
         # PROMPT #74 - Check cache before execution
         if self.cache_service:
             # Prepare cache input (messages converted to single prompt string for caching)
@@ -1613,6 +1613,20 @@ class AIOrchestrator:
         # PROMPT #207 - Resolve timeout using hierarchy: diagram node → model → settings
         _resolved_timeout = self._resolve_timeout(model_config, _utility_nodes)
 
+        # PROMPT #253 - Resolve cwd for Claudio calls (choose_model path)
+        _claudio_cwd = None
+        if provider == "claudio":
+            if disable_cwd:
+                _claudio_cwd = "/tmp"
+            elif project_id:
+                try:
+                    from app.models.project import Project as _CwdProject
+                    _cwd_proj = self.db.query(_CwdProject).filter(_CwdProject.id == project_id).first()
+                    if _cwd_proj and _cwd_proj.code_path:
+                        _claudio_cwd = _cwd_proj.code_path
+                except Exception:
+                    pass
+
         # PROMPT #217 - Create streaming callback for real-time console output
         import uuid as _uuid
         _stream_id = str(_uuid.uuid4())
@@ -1659,11 +1673,13 @@ class AIOrchestrator:
                         timeout_seconds=_resolved_timeout
                     )
                 elif provider == "claudio":
-                    # PROMPT #246 - Claudio uses Anthropic protocol via local proxy
-                    result = await self._execute_anthropic_streaming(
+                    # PROMPT #253 - Claudio uses httpx streaming (not SDK) to avoid
+                    # SDK pre-checks that reject high max_tokens
+                    result = await self._execute_claudio_streaming(
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
                         stream_callback=_stream_cb, flush_callback=_flush_cb,
-                        timeout_seconds=_resolved_timeout, client_key="claudio"
+                        timeout_seconds=_resolved_timeout, cwd=_claudio_cwd,
+                        thinking=thinking, disable_tools=disable_tools
                     )
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
@@ -1710,10 +1726,12 @@ class AIOrchestrator:
                         timeout_seconds=_resolved_timeout
                     )
                 elif provider == "claudio":
-                    # PROMPT #246 - Claudio non-streaming fallback
-                    result = await self._execute_anthropic(
+                    # PROMPT #253 - Claudio non-streaming fallback uses httpx (not SDK)
+                    # to avoid SDK "Streaming is required" pre-check with high max_tokens
+                    result = await self._execute_claudio(
                         model_name, _effective_messages, _effective_system_prompt, tokens_limit, temperature,
-                        timeout_seconds=_resolved_timeout, client_key="claudio"
+                        timeout_seconds=_resolved_timeout, cwd=_claudio_cwd,
+                        thinking=thinking, disable_tools=disable_tools
                     )
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")

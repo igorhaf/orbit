@@ -59,7 +59,7 @@ export const FolderPicker: React.FC<FolderPickerProps> = ({
       const data = result.data || result;
       setBrowseResult(data);
       setFolders(data.folders || []);
-      setCurrentPath(data.current_path || '/projects');
+      setCurrentPath(data.current_path || '');
       if (data.error) {
         setError(data.error);
       }

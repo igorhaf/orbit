@@ -3,6 +3,7 @@ Application Configuration
 Handles all environment variables and settings using Pydantic Settings
 """
 
+from pathlib import Path
 from typing import List
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field, validator
@@ -59,8 +60,12 @@ class Settings(BaseSettings):
         alias="USE_EXTERNAL_PROMPTS"
     )
 
-    # Projects base path (Docker: /projects, Native: configurable)
-    projects_base_path: str = Field(default="/projects", alias="PROJECTS_BASE_PATH")
+    # Projects base path — default: user home directory
+    # Override via PROJECTS_BASE_PATH env var if needed
+    projects_base_path: str = Field(
+        default_factory=lambda: str(Path.home()),
+        alias="PROJECTS_BASE_PATH",
+    )
 
     # Logging
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")

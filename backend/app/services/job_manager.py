@@ -141,18 +141,18 @@ class JobManager:
         JobType.TASK_ACTIVATION: AIModelUsageType.PROMPT_GENERATION,
         JobType.SUBTASK_ACTIVATION: AIModelUsageType.PROMPT_GENERATION,
         JobType.SUGGESTED_EPICS: AIModelUsageType.PROMPT_GENERATION,
-        JobType.CARDS_FROM_MEMORY: AIModelUsageType.PROMPT_GENERATION,
-        JobType.CHILDREN_GENERATION: AIModelUsageType.PROMPT_GENERATION,
+        JobType.CARDS_FROM_MEMORY: AIModelUsageType.CONTENT_GENERATION,
+        JobType.CHILDREN_GENERATION: AIModelUsageType.CONTENT_GENERATION,
         JobType.TASK_EXECUTION: AIModelUsageType.TASK_EXECUTION,
         JobType.BATCH_EXECUTION: AIModelUsageType.TASK_EXECUTION,
         JobType.COMMIT_GENERATION: AIModelUsageType.COMMIT_GENERATION,
         JobType.MEMORY_SCAN: AIModelUsageType.MEMORY,
-        JobType.RAG_CONTINUOUS_SCAN: AIModelUsageType.MEMORY,
+        JobType.RAG_CONTINUOUS_SCAN: AIModelUsageType.RAG_EXTRACTION,
         JobType.CONTEXT_GENERATION: AIModelUsageType.GENERAL,
         JobType.PROJECT_TITLE: AIModelUsageType.GENERAL,
         JobType.PROJECT_PIPELINE: AIModelUsageType.GENERAL,
-        JobType.PROJECT_PROVISIONING: AIModelUsageType.GENERAL,
-        JobType.WIKI_RULE_ENRICHMENT: AIModelUsageType.GENERAL,
+        JobType.WIKI_GENERATION: AIModelUsageType.CONTENT_GENERATION,
+        JobType.WIKI_RULE_ENRICHMENT: AIModelUsageType.CONTENT_GENERATION,
     }
 
     def _resolve_ai_model_name(self, job_type: JobType) -> Optional[str]:

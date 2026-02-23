@@ -2,7 +2,7 @@
 Async Job Model for tracking long-running background tasks.
 
 PROMPT #65 - Async Job System
-Tracks status of asynchronous operations like AI calls, provisioning, backlog generation.
+Tracks status of asynchronous operations like AI calls, backlog generation.
 """
 
 from sqlalchemy import Column, String, Text, Enum as SQLEnum, DateTime, JSON, Float, Integer, ForeignKey
@@ -39,8 +39,6 @@ class JobType(str, enum.Enum):
     INTERVIEW_MESSAGE = "interview_message"        # AI response for interview
     BACKLOG_GENERATION = "backlog_generation"      # Epic → Stories → Tasks generation
     TASK_GENERATION = "task_generation"            # PROMPT #68: Direct task from task-focused interview
-    PROJECT_PROVISIONING = "project_provisioning"  # Project scaffolding
-
     # PROMPT #108: Background queue for all prompt executions (except interviews)
     EPIC_ACTIVATION = "epic_activation"            # Activate suggested epic → generate stories
     STORY_ACTIVATION = "story_activation"          # Activate suggested story → generate tasks
@@ -116,7 +114,6 @@ def _load_job_priorities() -> dict:
             JobType.BACKLOG_GENERATION: JobPriority.LOW,
             JobType.TASK_GENERATION: JobPriority.LOW,
             JobType.BATCH_EXECUTION: JobPriority.LOW,
-            JobType.PROJECT_PROVISIONING: JobPriority.LOW,
             JobType.RAG_CONTINUOUS_SCAN: JobPriority.LOW,
             JobType.WIKI_RULE_ENRICHMENT: JobPriority.LOW,
             JobType.WIKI_GENERATION: JobPriority.NORMAL,
