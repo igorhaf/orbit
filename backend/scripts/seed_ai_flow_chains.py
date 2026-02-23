@@ -1,5 +1,5 @@
 """
-Seed AI Flow Chains - Preset: Custo Mínimo (Ollama-first) + Claudio Opus pipelines
+Seed AI Flow Chains - Preset: Custo Mínimo (Ollama-first) + Claudio Sonnet pipelines
 
 Configure all Ollama models with top_p/top_k and create optimal AI Flow chains
 for all 10 usage types with performance utility nodes.
@@ -10,7 +10,7 @@ Modelos cloud ficam como fallback final apenas se necessário.
 PROMPT #252 additions (PROMPT #255 - switched to Sonnet for richer semantic text):
 - content_generation:  Claudio Sonnet 4.6 (Wiki, Cards, Description, Title)
 - rag_extraction:      Claudio Sonnet 4.6 (Business rules extraction)
-- memory:              Claudio Opus 4.6 (upgraded from Sonnet)
+- memory:              Claudio Sonnet 4.6 (PROMPT #256 - all phases Sonnet)
 
 Strategy per operation (cost-optimized):
 - interview:           Gemma3 12B → Qwen3 8B
@@ -18,7 +18,7 @@ Strategy per operation (cost-optimized):
 - task_execution:      Qwen3 8B → Gemma3 12B
 - commit_generation:   Gemma3 12B → Qwen3 8B
 - pattern_discovery:   DeepSeek-R1 14B → Gemma3 12B
-- memory:              Claudio Opus 4.6
+- memory:              Claudio Sonnet 4.6
 - queue_orchestration: Qwen3 8B → Gemma3 12B → Phi-4 14B
 - general:             Qwen3 8B → Gemma3 12B → DeepSeek-R1 14B
 - content_generation:  Claudio Sonnet 4.6
@@ -811,7 +811,7 @@ CHAIN_POSITIONS = {
             {"x": 1460, "y": 120},  # DeepSeek-R1
         ],
     },
-    # PROMPT #252 - Content generation: single Opus model
+    # PROMPT #256 - Content generation: Sonnet for richer semantic text
     "content_generation": {
         "fixed": {
             "start": {"x": 50, "y": 150},
@@ -819,10 +819,10 @@ CHAIN_POSITIONS = {
             "response": {"x": 850, "y": 150},
         },
         "models": [
-            {"x": 400, "y": 130},   # Claudio Opus 4.6 (Content)
+            {"x": 400, "y": 130},   # Claudio Sonnet 4.6 (Content)
         ],
     },
-    # PROMPT #252 - RAG extraction: single Opus model
+    # PROMPT #256 - RAG extraction: Sonnet for comprehensive output
     "rag_extraction": {
         "fixed": {
             "start": {"x": 50, "y": 150},
@@ -830,7 +830,7 @@ CHAIN_POSITIONS = {
             "response": {"x": 850, "y": 150},
         },
         "models": [
-            {"x": 400, "y": 130},   # Claudio Opus 4.6 (RAG Extraction)
+            {"x": 400, "y": 130},   # Claudio Sonnet 4.6 (RAG Extraction)
         ],
     },
 }
@@ -886,8 +886,8 @@ def seed_ai_flow_chains():
             },
         }
 
-        # PROMPT #255 - Deactivate old Opus models for content_generation/rag_extraction
-        old_opus_names = ["Claudio Opus 4.6 (Content)", "Claudio Opus 4.6 (RAG Extraction)"]
+        # PROMPT #256 - Deactivate ALL old Opus models (switched to Sonnet for all phases)
+        old_opus_names = ["Claudio Opus 4.6 (Content)", "Claudio Opus 4.6 (RAG Extraction)", "Claudio Opus 4.6 (Memory)"]
         for old_name in old_opus_names:
             old_model = db.query(AIModel).filter(AIModel.name == old_name, AIModel.is_active == True).first()
             if old_model:
@@ -916,16 +916,31 @@ def seed_ai_flow_chains():
                 existing.is_active = True
                 logger.info(f"  Updated: {model_name} (max_tokens={model_cfg['config']['max_tokens']})")
 
-        # Upgrade memory model to Opus 4.6
+        # PROMPT #256 - Create/update memory model to Sonnet 4.6
         memory_model = db.query(AIModel).filter(
             AIModel.usage_type == AIModelUsageType.MEMORY,
             AIModel.provider == "claudio",
             AIModel.is_active == True,
         ).first()
         if memory_model:
-            memory_model.config = {"model_id": "claude-opus-4-6", "max_tokens": 16384, "temperature": 0.5}
-            memory_model.name = "Claudio Opus 4.6 (Memory)"
-            logger.info(f"  Updated memory model: Opus 4.6 (max_tokens=16384)")
+            memory_model.config = {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.5}
+            memory_model.name = "Claudio Sonnet 4.6 (Memory)"
+            logger.info(f"  Updated memory model: Sonnet 4.6 (max_tokens=16384)")
+        else:
+            # Create if doesn't exist
+            new_mem = AIModel(
+                id=uuid4(),
+                name="Claudio Sonnet 4.6 (Memory)",
+                provider="claudio",
+                api_key="not-needed",
+                usage_type=AIModelUsageType.MEMORY,
+                is_active=True,
+                config={"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.5},
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+            )
+            db.add(new_mem)
+            logger.info(f"  Created: Claudio Sonnet 4.6 (Memory)")
 
         db.commit()
 
