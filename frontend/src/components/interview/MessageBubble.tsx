@@ -144,7 +144,7 @@ export function MessageBubble({
               )}
               {!readOnly && (
                 <div className={`text-xs font-semibold text-gray-700 ${compact ? 'mb-2' : 'mb-3'}`}>
-                  {isSingleChoice ? <span className="inline-flex items-center gap-1"><IconPin className="w-3 h-3" /> Selecione uma opcao:</span> : <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-3 h-3" /> Selecione uma ou mais opcoes:</span>}
+                  {isSingleChoice ? <span className="inline-flex items-center gap-1"><IconPin className="w-3 h-3" /> Selecione uma opção:</span> : <span className="inline-flex items-center gap-1"><IconCheckCircle className="w-3 h-3" /> Selecione uma ou mais opções:</span>}
                 </div>
               )}
               {effectiveOptions!.choices.map((option) => {
@@ -198,11 +198,11 @@ export function MessageBubble({
                     {submitted ? (
                       <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Enviado</span>
                     ) : isSingleChoice ? (
-                      selectedOptions.length > 0 ? <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Enviar Resposta</span> : 'Selecione uma opcao'
+                      selectedOptions.length > 0 ? <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Enviar Resposta</span> : 'Selecione uma opção'
                     ) : (
                       selectedOptions.length > 0
                         ? <span className="inline-flex items-center gap-1"><IconCheck className="w-3 h-3" /> Enviar Selecionadas ({selectedOptions.length})</span>
-                        : 'Selecione pelo menos uma opcao'
+                        : 'Selecione pelo menos uma opção'
                     )}
                   </Button>
 
@@ -227,7 +227,7 @@ export function MessageBubble({
           {/* User's Selected Options Display */}
           {isUser && message.selected_options && message.selected_options.length > 0 && (
             <div className={`${compact ? 'mt-2 pt-2' : 'mt-3 pt-3'} border-t border-blue-400`}>
-              <div className="text-xs text-blue-100 mb-1">Opcoes selecionadas:</div>
+              <div className="text-xs text-blue-100 mb-1">Opções selecionadas:</div>
               <div className="flex flex-wrap gap-1">
                 {message.selected_options.map((optionId) => (
                   <Badge key={optionId} variant="default" size="sm" className="bg-blue-400 text-white">

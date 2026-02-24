@@ -31,8 +31,7 @@ export {
   CostGuardNode,
   RateLimiterNode,
   TimeoutNode,
-  ContractNode,
-  ContractsHubNode,
+  ContractsListNode,
   nodeTypes,
 } from './FlowNodes';
 export type { NodeAnimationState } from './FlowNodes';
@@ -50,6 +49,9 @@ export type { AnalyticsPanelProps } from './AnalyticsPanel';
 
 export { default as OptimizeDialog } from './OptimizeDialog';
 export type { OptimizeDialogProps } from './OptimizeDialog';
+
+// Custom edge with collision avoidance
+export { default as SmartEdge } from './SmartEdge';
 
 // Utility functions
 export { buildFlowFromChain, computeEdgeProps } from './flowUtils';

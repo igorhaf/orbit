@@ -38,7 +38,7 @@ const PHASE_COLORS = [
 ];
 
 function getDurationBadge(ms: number): { label: string; className: string } {
-  if (ms < 3000) return { label: 'Rapido', className: 'text-green-400' };
+  if (ms < 3000) return { label: 'Rápido', className: 'text-green-400' };
   if (ms < 15000) return { label: 'Moderado', className: 'text-yellow-400' };
   return { label: 'Lento', className: 'text-red-400' };
 }
@@ -58,7 +58,7 @@ export default function OperationSummaryCard({
     <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4 space-y-3">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold text-gray-200">
-          Resumo da Operacao: {operationName}
+          Resumo da Operação: {operationName}
         </h4>
         <div className="flex items-center gap-3 text-xs">
           <span className={badge.className}>{badge.label}</span>
@@ -91,7 +91,7 @@ export default function OperationSummaryCard({
           <thead>
             <tr className="text-gray-500 border-b border-gray-700">
               <th className="text-left py-1 font-normal">Fase</th>
-              <th className="text-right py-1 font-normal">Duracao</th>
+              <th className="text-right py-1 font-normal">Duração</th>
               <th className="text-right py-1 font-normal">Tokens</th>
               <th className="text-right py-1 font-normal">Custo</th>
               <th className="text-right py-1 font-normal">Modelo</th>
@@ -136,7 +136,7 @@ export default function OperationSummaryCard({
       {/* Diagnostics */}
       {diagnostics && diagnostics.length > 0 && (
         <div className="space-y-1">
-          <span className="text-xs text-yellow-400 font-semibold">Diagnostico e Sugestoes:</span>
+          <span className="text-xs text-yellow-400 font-semibold">Diagnóstico e Sugestões:</span>
           <ul className="space-y-1">
             {diagnostics.map((d, i) => (
               <li key={i} className="text-xs text-yellow-300/80 flex items-start gap-1">

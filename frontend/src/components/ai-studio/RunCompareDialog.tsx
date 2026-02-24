@@ -18,7 +18,7 @@ interface RunCompareDialogProps {
 
 const PHASE_LABELS: Record<string, string> = {
   phase_0: 'Scan',
-  phase_1: 'Analise',
+  phase_1: 'Análise',
   phase_2: 'Regras',
   phase_3: 'Arquitetura',
   phase_4: 'Cards',
@@ -59,7 +59,7 @@ export function RunCompareDialog({ open, onClose, projectId, runId1, runId2 }: R
   const phases = comparison?.score_comparison ? Object.keys(comparison.score_comparison).sort() : [];
 
   return (
-    <Dialog open={open} onClose={onClose} title="Comparar Execucoes" size="2xl">
+    <Dialog open={open} onClose={onClose} title="Comparar Execuções" size="2xl">
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <svg className="animate-spin h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24">
@@ -68,7 +68,7 @@ export function RunCompareDialog({ open, onClose, projectId, runId1, runId2 }: R
           </svg>
         </div>
       ) : !comparison ? (
-        <div className="py-8 text-center text-gray-500">Dados nao encontrados.</div>
+        <div className="py-8 text-center text-gray-500">Dados não encontrados.</div>
       ) : (
         <div className="space-y-5">
           {/* Overall score comparison */}
@@ -130,7 +130,7 @@ export function RunCompareDialog({ open, onClose, projectId, runId1, runId2 }: R
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-xs text-gray-500 border-b border-gray-200">
-                  <th className="pb-2 text-left">Metrica</th>
+                  <th className="pb-2 text-left">Métrica</th>
                   <th className="pb-2 text-center">Run 1</th>
                   <th className="pb-2 text-center">Run 2</th>
                 </tr>

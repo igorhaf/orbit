@@ -61,7 +61,7 @@ export default function AnalyticsTab({
                   <span className="text-3xl font-bold text-red-600">{analyticsData.total_blocked}</span>
                   <span className="ml-2 text-sm text-gray-500">tarefas</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Pendente de aprovacao do usuário</p>
+                <p className="text-xs text-gray-400 mt-1">Pendente de aprovação do usuário</p>
               </CardContent>
             </Card>
 
@@ -72,9 +72,9 @@ export default function AnalyticsTab({
               <CardContent>
                 <div className="flex items-baseline">
                   <span className="text-3xl font-bold text-green-600">{analyticsData.total_approved}</span>
-                  <span className="ml-2 text-sm text-gray-500">modificacoes</span>
+                  <span className="ml-2 text-sm text-gray-500">modificações</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">{(analyticsData.approval_rate * 100).toFixed(1)}% taxa de aprovacao</p>
+                <p className="text-xs text-gray-400 mt-1">{(analyticsData.approval_rate * 100).toFixed(1)}% taxa de aprovação</p>
               </CardContent>
             </Card>
 
@@ -85,21 +85,21 @@ export default function AnalyticsTab({
               <CardContent>
                 <div className="flex items-baseline">
                   <span className="text-3xl font-bold text-orange-600">{analyticsData.total_rejected}</span>
-                  <span className="ml-2 text-sm text-gray-500">modificacoes</span>
+                  <span className="ml-2 text-sm text-gray-500">modificações</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">{(analyticsData.rejection_rate * 100).toFixed(1)}% taxa de rejeicao</p>
+                <p className="text-xs text-gray-400 mt-1">{(analyticsData.rejection_rate * 100).toFixed(1)}% taxa de rejeição</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm font-medium text-gray-500">Similaridade Media</CardTitle>
+                <CardTitle className="text-sm font-medium text-gray-500">Similaridade Média</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="flex items-baseline">
                   <span className="text-3xl font-bold text-blue-600">{(analyticsData.avg_similarity_score * 100).toFixed(1)}%</span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1">Precisao de detecção da IA</p>
+                <p className="text-xs text-gray-400 mt-1">Precisão de detecção da IA</p>
               </CardContent>
             </Card>
           </div>
@@ -109,7 +109,7 @@ export default function AnalyticsTab({
             {/* Similarity Distribution */}
             <Card>
               <CardHeader>
-                <CardTitle>Distribuicao de Pontuacao de Similaridade</CardTitle>
+                <CardTitle>Distribuição de Pontuação de Similaridade</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -182,7 +182,7 @@ export default function AnalyticsTab({
 
                   <div className="pt-4 border-t">
                     <div className="text-sm text-gray-600">
-                      <strong>Total Resolvidos:</strong> {analyticsData.total_approved + analyticsData.total_rejected} modificacoes
+                      <strong>Total Resolvidos:</strong> {analyticsData.total_approved + analyticsData.total_rejected} modificações
                     </div>
                     <div className="text-sm text-gray-600 mt-1">
                       <strong>Taxa de Bloqueio:</strong> {(analyticsData.blocking_rate * 100).toFixed(1)}% de todas as tarefas
@@ -216,7 +216,7 @@ export default function AnalyticsTab({
         <Card>
           <CardContent className="py-12 text-center text-gray-500">
             <p>Nenhuma análise de bloqueios disponível ainda</p>
-            <p className="text-sm mt-2">Análises aparecerao apos a IA sugerir modificacoes nas tarefas</p>
+            <p className="text-sm mt-2">Análises aparecerão após a IA sugerir modificações nas tarefas</p>
           </CardContent>
         </Card>
       )}

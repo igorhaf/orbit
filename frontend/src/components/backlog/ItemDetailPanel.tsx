@@ -286,7 +286,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       await interviewsApi.updateStatus(selectedInterviewId, 'completed');
       await fetchCardInterview();
       onUpdate?.();
-      showSuccess('Entrevista concluida com sucesso');
+      showSuccess('Entrevista concluída com sucesso');
     } catch (error) {
       console.error('Failed to complete interview:', error);
       showError('Falha ao concluir entrevista');
@@ -373,7 +373,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           false,
           item.id // task_id for persistent loading state
         );
-        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificacoes.');
+        showSuccess('Ativação iniciada! Acompanhe o progresso no sino de notificações.');
         return;
       } else {
         // Legacy flow (synchronous response)
@@ -461,7 +461,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
           false,
           item.id // PROMPT #176 - Track which task is generating children for persistent loading
         );
-        showSuccess(`Geracao de ${count} ${childType} iniciada! Acompanhe o progresso nas notificacoes.`);
+        showSuccess(`Geração de ${count} ${childType} iniciada! Acompanhe o progresso nas notificações.`);
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
@@ -495,7 +495,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('Failed to save description:', error);
-      showError(`Falha ao salvar descricao: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao salvar descrição: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsSavingDescription(false);
     }
@@ -531,7 +531,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('Failed to save title:', error);
-      showError(`Falha ao salvar titulo: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao salvar título: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsSavingTitle(false);
     }
@@ -563,7 +563,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       }
     } catch (error: any) {
       console.error('Failed to suggest title:', error);
-      showError('Sugestao da IA falhou. Tente novamente.');
+      showError('Sugestão da IA falhou. Tente novamente.');
     } finally {
       setIsGeneratingTitle(false);
       titleInputRef.current?.focus();
@@ -586,17 +586,17 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         addJob(
           result.job_id,
           jobType,
-          `Gerando conteudo: ${item.title.substring(0, 30)}...`,
+          `Gerando conteúdo: ${item.title.substring(0, 30)}...`,
           item.title,
           false,
           item.id
         );
-        showSuccess('Geracao de conteudo iniciada! Acompanhe o progresso nas notificacoes.');
+        showSuccess('Geração de conteúdo iniciada! Acompanhe o progresso nas notificações.');
       }
       if (onUpdate) onUpdate();
     } catch (error: any) {
       console.error('Failed to generate content:', error);
-      showError(`Falha na geracao de conteudo IA: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha na geração de conteúdo IA: ${error.message || 'Erro desconhecido'}`);
     } finally {
       setIsGeneratingContent(false);
     }
@@ -612,7 +612,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       setIsAddingCriterion(false);
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      showError(`Falha ao adicionar criterio: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao adicionar critério: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -622,7 +622,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       await tasksApi.update(item.id, { acceptance_criteria: updated });
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      showError(`Falha ao excluir criterio: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao excluir critério: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -636,7 +636,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       setEditingCriterionText('');
       if (onUpdate) onUpdate();
     } catch (error: any) {
-      showError(`Falha ao atualizar criterio: ${error.message || 'Erro desconhecido'}`);
+      showError(`Falha ao atualizar critério: ${error.message || 'Erro desconhecido'}`);
     }
   };
 
@@ -772,13 +772,13 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   // PROMPT #131 - Removed AI Suggestions tab (now handled by card interviews)
   // PROMPT #213 - Hide Interview tab for cards created from codebase memory scan
   const tabs: Array<{ id: string; label: string; icon: React.ReactNode; count?: number; hasPrompt?: boolean }> = [
-    { id: 'overview', label: 'Visao Geral', icon: <IconClipboard className="w-4 h-4" /> },
+    { id: 'overview', label: 'Visão Geral', icon: <IconClipboard className="w-4 h-4" /> },
     { id: 'hierarchy', label: 'Hierarquia', icon: <IconTree className="w-4 h-4" /> },
-    { id: 'comments', label: 'Comentarios', icon: <IconChat className="w-4 h-4" />, count: comments.length },
-    { id: 'transitions', label: 'Historico', icon: <IconChart className="w-4 h-4" />, count: transitions.length },
+    { id: 'comments', label: 'Comentários', icon: <IconChat className="w-4 h-4" />, count: comments.length },
+    { id: 'transitions', label: 'Histórico', icon: <IconChart className="w-4 h-4" />, count: transitions.length },
     ...(!isFromCode ? [{ id: 'interview', label: 'Entrevista', icon: <IconMicrophone className="w-4 h-4" />, count: cardInterviews.length }] : []),
     { id: 'prompt', label: 'Prompt', icon: <IconPencil className="w-4 h-4" />, hasPrompt: !!item.generated_prompt },
-    { id: 'acceptance', label: 'Criterios', icon: <IconCheckCircle className="w-4 h-4" />, count: item.acceptance_criteria?.length || 0 },
+    { id: 'acceptance', label: 'Critérios', icon: <IconCheckCircle className="w-4 h-4" />, count: item.acceptance_criteria?.length || 0 },
   ];
 
   // PROMPT #131 - Check if we're in interview chat mode (needs flex layout)
@@ -858,7 +858,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                       handleSuggestTitle();
                     }}
                     disabled={!editedTitle.trim() || isGeneratingTitle}
-                    title="Sugerir um titulo melhor com IA"
+                    title="Sugerir um título melhor com IA"
                     className="flex-shrink-0 flex items-center gap-1 px-2 py-1.5 text-xs font-medium text-purple-700 bg-purple-50 border border-purple-200 rounded-md hover:bg-purple-100 hover:border-purple-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     {isGeneratingTitle ? (
@@ -879,7 +879,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 <h2
                   className="text-2xl font-bold text-gray-900 cursor-pointer hover:bg-gray-100 rounded px-1 -mx-1 transition-colors"
                   onClick={handleTitleClick}
-                  title="Clique para editar titulo"
+                  title="Clique para editar título"
                 >
                   {item.title}
                 </h2>
@@ -1047,7 +1047,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                     <textarea
                       value={newComment}
                       onChange={(e) => setNewComment(e.target.value)}
-                      placeholder="Adicionar um comentario..."
+                      placeholder="Adicionar um comentário..."
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                       rows={3}
                     />
@@ -1059,7 +1059,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                         isLoading={isAddingComment}
                         disabled={!newComment.trim()}
                       >
-                        Adicionar Comentario
+                        Adicionar Comentário
                       </Button>
                     </div>
                   </div>
@@ -1068,7 +1068,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   <div className="space-y-3">
                     {comments.length === 0 ? (
                       <p className="text-sm text-gray-500 italic text-center py-8">
-                        Nenhum comentario ainda. Seja o primeiro a comentar!
+                        Nenhum comentário ainda. Seja o primeiro a comentar!
                       </p>
                     ) : (
                       comments.map((comment) => (
@@ -1110,7 +1110,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   {/* Workflow Actions */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                      Transicao de Status
+                      Transição de Status
                     </h3>
                     <WorkflowActions
                       item={item}
@@ -1124,11 +1124,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                   {/* Status History */}
                   <div>
                     <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                      Historico de Status ({transitions.length})
+                      Histórico de Status ({transitions.length})
                     </h3>
 
                     {transitions.length === 0 ? (
-                      <p className="text-sm text-gray-500 italic">Nenhuma transicao de status ainda</p>
+                      <p className="text-sm text-gray-500 italic">Nenhuma transição de status ainda</p>
                     ) : (
                       <div className="space-y-2">
                         {transitions.map((transition, idx) => (
@@ -1240,7 +1240,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
                 Excluir &quot;{item.title}&quot;?
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Isso excluira permanentemente este {item.item_type} e todas as entrevistas relacionadas. Esta acao nao pode ser desfeita.
+                Isso excluirá permanentemente este {item.item_type} e todas as entrevistas relacionadas. Esta ação não pode ser desfeita.
               </p>
             </div>
           </div>

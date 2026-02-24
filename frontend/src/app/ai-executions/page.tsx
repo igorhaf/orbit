@@ -86,7 +86,7 @@ export default function AIExecutionsPage() {
       setStats(statsData);
     } catch (err: any) {
       console.error('Failed to load executions:', err);
-      setError(err.message || 'Falha ao carregar execucoes');
+      setError(err.message || 'Falha ao carregar execuções');
     } finally {
       setLoading(false);
     }
@@ -153,7 +153,7 @@ export default function AIExecutionsPage() {
               <Activity className="w-6 h-6 text-indigo-600" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Execucoes IA</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Execuções IA</h1>
               <p className="text-gray-600 mt-1">
                 Monitore e análise logs de execução de modelos IA
               </p>
@@ -176,7 +176,7 @@ export default function AIExecutionsPage() {
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Total de Execucoes</p>
+                    <p className="text-sm text-gray-600">Total de Execuções</p>
                     <p className="text-2xl font-bold text-gray-900">{formatNumber(stats.total_executions)}</p>
                   </div>
                   <Database className="w-8 h-8 text-indigo-500" />
@@ -301,20 +301,20 @@ export default function AIExecutionsPage() {
         {/* Executions Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Histórico de Execucoes ({executions.length})</CardTitle>
+            <CardTitle>Histórico de Execuções ({executions.length})</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
               <div className="text-center py-12">
                 <RefreshCw className="w-8 h-8 text-gray-400 animate-spin mx-auto mb-3" />
-                <p className="text-gray-600">Carregando execucoes...</p>
+                <p className="text-gray-600">Carregando execuções...</p>
               </div>
             ) : executions.length === 0 ? (
               <div className="text-center py-12">
                 <Activity className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                 <p className="text-gray-600">Nenhuma execução encontrada</p>
                 <p className="text-sm text-gray-500 mt-1">
-                  Execucoes aparecerao aqui conforme os modelos IA forem usados
+                  Execuções aparecerão aqui conforme os modelos IA forem usados
                 </p>
               </div>
             ) : (
@@ -476,7 +476,7 @@ export default function AIExecutionsPage() {
 
                   {/* Parameters */}
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Parametros</h3>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Parâmetros</h3>
                     <div className="bg-gray-50 p-4 rounded-lg space-y-2">
                       <div>
                         <span className="text-sm font-medium text-gray-500">Temperature:</span>

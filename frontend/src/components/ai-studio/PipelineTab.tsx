@@ -31,10 +31,10 @@ import { RunCompareDialog } from './RunCompareDialog';
 // ── Phase definitions (fixed sequence, matches deep_pipeline.py) ────────
 const PIPELINE_PHASES = [
   { key: 'phase_0', label: 'Scan', description: 'Scan Estrutural', defaultModel: '', provider: '', hasAI: false },
-  { key: 'phase_1', label: 'Analise', description: 'Analise de Arquivos', defaultModel: 'claude-haiku-4-5', provider: 'anthropic', hasAI: true },
-  { key: 'phase_2', label: 'Regras', description: 'Sintese de Regras', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
+  { key: 'phase_1', label: 'Análise', description: 'Análise de Arquivos', defaultModel: 'claude-haiku-4-5', provider: 'anthropic', hasAI: true },
+  { key: 'phase_2', label: 'Regras', description: 'Síntese de Regras', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
   { key: 'phase_3', label: 'Arquitetura', description: 'Mapa Arquitetural', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_4a', label: 'Epics', description: 'Geracao de Epics', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
+  { key: 'phase_4a', label: 'Epics', description: 'Geração de Epics', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
   { key: 'phase_4b', label: 'Stories', description: 'Decomp. Stories', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
   { key: 'phase_4c', label: 'Tasks', description: 'Decomp. Tasks', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
   { key: 'phase_4d', label: 'Subtasks', description: 'Decomp. Subtasks', defaultModel: 'claude-haiku-4-5', provider: 'anthropic', hasAI: true },
@@ -271,7 +271,7 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
             {profiles.map((p) => (
               <option key={p.name} value={p.name}>
                 {p.name.charAt(0).toUpperCase() + p.name.slice(1)}
-                {p.is_default ? ' (padrao)' : ''}
+                {p.is_default ? ' (padrão)' : ''}
               </option>
             ))}
           </select>
@@ -345,7 +345,7 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
             className="w-full flex items-center justify-between px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50"
           >
             <span className="font-medium">
-              Historico de Execucoes {runs.length > 0 ? `(${runs.length})` : ''}
+              Histórico de Execuções {runs.length > 0 ? `(${runs.length})` : ''}
             </span>
             <svg className={`w-4 h-4 transition-transform ${showHistory ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

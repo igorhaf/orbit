@@ -131,7 +131,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
               <p className="font-semibold text-lg mt-1">{analysis.detected_stack || 'Desconhecido'}</p>
             </div>
             <div>
-              <p className="text-sm text-gray-600">Confianca</p>
+              <p className="text-sm text-gray-600">Confiança</p>
               <p className="font-semibold text-lg mt-1">
                 {analysis.confidence_score ? `${analysis.confidence_score}%` : 'N/A'}
               </p>
@@ -148,9 +148,9 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
       <div className="border-b border-gray-200">
         <nav className="flex gap-4">
           {[
-            { id: 'overview', label: 'Visao Geral' },
+            { id: 'overview', label: 'Visão Geral' },
             { id: 'structure', label: 'Estrutura de Arquivos' },
-            { id: 'conventions', label: 'Convencoes' },
+            { id: 'conventions', label: 'Convenções' },
             { id: 'patterns', label: 'Padrões' },
           ].map((tab) => (
             <button
@@ -181,7 +181,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
                     <span className="font-medium">{analysis.detected_stack || 'Desconhecido'}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Confianca:</span>
+                    <span className="text-gray-600">Confiança:</span>
                     <span className="font-medium">{analysis.confidence_score || 0}%</span>
                   </div>
                   {analysis.orchestrator_key && (
@@ -195,7 +195,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
 
               {analysis.dependencies && (
                 <div>
-                  <h3 className="font-semibold text-gray-900 mb-3">Dependencias</h3>
+                  <h3 className="font-semibold text-gray-900 mb-3">Dependências</h3>
                   <div className="bg-gray-900 rounded-lg p-4 font-mono text-sm text-gray-100 overflow-auto max-h-64">
                     <pre>{JSON.stringify(analysis.dependencies, null, 2)}</pre>
                   </div>
@@ -219,7 +219,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
 
           {activeTab === 'conventions' && (
             <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Convencoes de Código</h3>
+              <h3 className="font-semibold text-gray-900 mb-3">Convenções de Código</h3>
               {analysis.conventions ? (
                 <div className="space-y-4">
                   {Object.entries(analysis.conventions).map(([key, value]) => (
@@ -234,7 +234,7 @@ export function AnalysisResults({ analysis, onGenerateOrchestrator }: Props) {
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500">Nenhum dado de convencoes disponível</p>
+                <p className="text-gray-500">Nenhum dado de convenções disponível</p>
               )}
             </div>
           )}

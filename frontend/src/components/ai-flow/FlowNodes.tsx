@@ -72,6 +72,7 @@ export function ModelNode({ data }: { data: any }) {
       <Handle
         type="target"
         position={Position.Left}
+        id="left"
         className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 hover:!w-4 hover:!h-4 transition-all"
       />
 
@@ -90,15 +91,15 @@ export function ModelNode({ data }: { data: any }) {
         {data.position_label && (
           <div className="mt-1.5 flex items-center gap-1.5">
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-              data.position_label === 'Primario'
+              data.position_label === 'Primário'
                 ? 'bg-blue-100 text-blue-700'
                 : 'bg-amber-100 text-amber-700'
             }`}>
               {data.position_label}
             </span>
             {data.hasOverrides && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700" title="Sobreposicoes aplicadas por fluxo">
-                Sobreposicoes
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700" title="Sobreposições aplicadas por fluxo">
+                Sobreposições
               </span>
             )}
           </div>
@@ -113,7 +114,7 @@ export function ModelNode({ data }: { data: any }) {
               }`}>{metrics.success_rate.toFixed(1)}%</span> sucesso
             </div>
             <div className="text-[10px] text-gray-500">
-              <span className="font-semibold text-gray-700">{metrics.avg_latency_ms >= 1000 ? `${(metrics.avg_latency_ms / 1000).toFixed(1)}s` : `${Math.round(metrics.avg_latency_ms)}ms`}</span> media
+              <span className="font-semibold text-gray-700">{metrics.avg_latency_ms >= 1000 ? `${(metrics.avg_latency_ms / 1000).toFixed(1)}s` : `${Math.round(metrics.avg_latency_ms)}ms`}</span> média
             </div>
             <div className="text-[10px] text-gray-500">
               <span className="font-semibold text-gray-700">${metrics.avg_cost_per_call.toFixed(4)}</span>/chamada
@@ -137,7 +138,14 @@ export function ModelNode({ data }: { data: any }) {
       <Handle
         type="source"
         position={Position.Right}
+        id="right"
         className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 hover:!w-4 hover:!h-4 transition-all"
+      />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        id="bottom"
+        className="!bg-red-400 !w-3 !h-3 !border-2 !border-white hover:!bg-red-500 transition-all"
       />
     </div>
   );
@@ -152,26 +160,26 @@ export function CacheNode({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-violet-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-violet-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="cache" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Cache'}</div>
-            <div className="text-xs text-violet-600">Verificacao de Cache Redis</div>
+            <div className="text-xs text-violet-600">Verificação de Cache Redis</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-violet-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
           <div className="text-[10px] text-gray-500">TTL: <span className="font-semibold text-gray-700">{data.config?.ttl_seconds || 86400}s</span></div>
-          <div className="text-[10px] text-gray-500">Nivel: <span className="font-semibold text-gray-700">{data.config?.cache_level || 'exact'}</span></div>
+          <div className="text-[10px] text-gray-500">Nível: <span className="font-semibold text-gray-700">{data.config?.cache_level || 'exact'}</span></div>
         </div>
       </div>
       {data.onRemove && (
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-violet-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-violet-500 transition-all" />
     </div>
   );
 }
@@ -181,13 +189,13 @@ export function RAGContextNode({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-cyan-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-cyan-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="rag_context" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Contexto RAG'}</div>
-            <div className="text-xs text-cyan-600">Contexto Semantico</div>
+            <div className="text-xs text-cyan-600">Contexto Semântico</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-cyan-500' : 'bg-gray-400'}`} />
         </div>
@@ -200,7 +208,7 @@ export function RAGContextNode({ data }: { data: any }) {
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-cyan-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-cyan-500 transition-all" />
     </div>
   );
 }
@@ -210,13 +218,13 @@ export function PromptTransformerNode({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-amber-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-amber-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="prompt_transformer" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Transformer'}</div>
-            <div className="text-xs text-amber-600">Transformacao de Prompt</div>
+            <div className="text-xs text-amber-600">Transformação de Prompt</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-amber-500' : 'bg-gray-400'}`} />
         </div>
@@ -229,7 +237,7 @@ export function PromptTransformerNode({ data }: { data: any }) {
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-amber-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-amber-500 transition-all" />
     </div>
   );
 }
@@ -239,7 +247,7 @@ export function RouterNode({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-emerald-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-emerald-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="router" />
@@ -250,7 +258,7 @@ export function RouterNode({ data }: { data: any }) {
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-emerald-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="text-[10px] text-gray-500">Condicao: <span className="font-semibold text-gray-700">{data.config?.condition || 'complexity'}</span></div>
+          <div className="text-[10px] text-gray-500">Condição: <span className="font-semibold text-gray-700">{data.config?.condition || 'complexity'}</span></div>
           <div className="text-[10px] text-gray-500">Limiar: <span className="font-semibold text-gray-700">{data.config?.threshold || 'medium'}</span></div>
         </div>
       </div>
@@ -258,7 +266,7 @@ export function RouterNode({ data }: { data: any }) {
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-emerald-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-emerald-500 transition-all" />
     </div>
   );
 }
@@ -268,7 +276,7 @@ export function RetryNode({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="retry" />
@@ -287,7 +295,7 @@ export function RetryNode({ data }: { data: any }) {
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-blue-500 transition-all" />
     </div>
   );
 }
@@ -297,26 +305,26 @@ export function ValidatorNode({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-green-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-green-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="validator" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Validador'}</div>
-            <div className="text-xs text-green-600">Validacao de Saida</div>
+            <div className="text-xs text-green-600">Validação de Saída</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-green-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
           <div className="text-[10px] text-gray-500">Tipo: <span className="font-semibold text-gray-700">{data.config?.validation_type || 'json'}</span></div>
-          <div className="text-[10px] text-gray-500">Retry: <span className="font-semibold text-gray-700">{data.config?.retry_on_fail !== false ? 'Sim' : 'Nao'}</span></div>
+          <div className="text-[10px] text-gray-500">Retry: <span className="font-semibold text-gray-700">{data.config?.retry_on_fail !== false ? 'Sim' : 'Não'}</span></div>
         </div>
       </div>
       {data.onRemove && (
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-green-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-green-500 transition-all" />
     </div>
   );
 }
@@ -326,26 +334,26 @@ export function CostGuardNode({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-red-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-red-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="cost_guard" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Controle de Custo'}</div>
-            <div className="text-xs text-red-600">Limitador de Orcamento</div>
+            <div className="text-xs text-red-600">Limitador de Orçamento</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-red-500' : 'bg-gray-400'}`} />
         </div>
         <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
           <div className="text-[10px] text-gray-500">Por Chamada: <span className="font-semibold text-gray-700">${data.config?.max_cost_per_call || 0.10}</span></div>
-          <div className="text-[10px] text-gray-500">Diario: <span className="font-semibold text-gray-700">${data.config?.daily_budget || 10.0}</span></div>
+          <div className="text-[10px] text-gray-500">Diário: <span className="font-semibold text-gray-700">${data.config?.daily_budget || 10.0}</span></div>
         </div>
       </div>
       {data.onRemove && (
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-red-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-red-500 transition-all" />
     </div>
   );
 }
@@ -355,13 +363,13 @@ export function RateLimiterNode({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-pink-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-pink-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="rate_limiter" />
           <div className="flex-1 min-w-0">
             <div className="font-semibold text-sm text-gray-900">{data.label || 'Limitador de Taxa'}</div>
-            <div className="text-xs text-pink-600">Limitacao de Requisicoes</div>
+            <div className="text-xs text-pink-600">Limitação de Requisições</div>
           </div>
           <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${data.enabled !== false ? 'bg-pink-500' : 'bg-gray-400'}`} />
         </div>
@@ -374,7 +382,7 @@ export function RateLimiterNode({ data }: { data: any }) {
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-pink-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-pink-500 transition-all" />
     </div>
   );
 }
@@ -384,7 +392,7 @@ export function TimeoutNode({ data }: { data: any }) {
   return (
     <div className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}>
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-orange-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-orange-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="timeout" />
@@ -402,7 +410,7 @@ export function TimeoutNode({ data }: { data: any }) {
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-orange-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-orange-500 transition-all" />
     </div>
   );
 }
@@ -418,7 +426,7 @@ export function PromptNodeNode({ data }: { data: any }) {
       className="bg-white rounded-lg shadow-md border-2 min-w-[180px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
       style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}
     >
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-indigo-500 transition-all" />
+      <Handle type="target" position={Position.Left} id="left" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-indigo-500 transition-all" />
       <div className="px-4 py-3">
         <div className="flex items-center gap-2">
           <UtilityNodeIcon type="prompt_node" />
@@ -440,84 +448,124 @@ export function PromptNodeNode({ data }: { data: any }) {
         <button onClick={(e) => { e.stopPropagation(); data.onRemove(); }}
           className="absolute -top-2 -right-2 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center hover:bg-red-600 shadow-sm">x</button>
       )}
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-indigo-500 transition-all" />
+      <Handle type="source" position={Position.Right} id="right" className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-indigo-500 transition-all" />
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// PROMPT #257 - Contract Node (visual prompt/contract in the flow)
+// PROMPT #258 - Contracts List Node (aggregator with ordered list + drop zone)
 // ---------------------------------------------------------------------------
 
-export function ContractNode({ data }: { data: any }) {
-  const color = UTILITY_NODE_COLORS.contract_node;
+export function ContractsListNode({ data }: { data: any }) {
+  const contracts: any[] = data.contracts || [];
+  const [dragOver, setDragOver] = React.useState(false);
+
   const domainColors: Record<string, string> = {
     business: 'bg-yellow-100 text-yellow-700',
     interview: 'bg-purple-100 text-purple-700',
     generation: 'bg-blue-100 text-blue-700',
     memory: 'bg-green-100 text-green-700',
     component: 'bg-gray-100 text-gray-700',
+    pipeline: 'bg-teal-100 text-teal-700',
+    execution: 'bg-orange-100 text-orange-700',
+    validation: 'bg-red-100 text-red-700',
+    commits: 'bg-indigo-100 text-indigo-700',
   };
-  const domainBadge = domainColors[data.domain] || 'bg-gray-100 text-gray-700';
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (raw && data.onDropPrompt) {
+        const promptData = JSON.parse(raw);
+        data.onDropPrompt(promptData);
+      }
+    } catch {
+      // ignore invalid data
+    }
+  };
+
+  const handleItemDoubleClick = (e: React.MouseEvent, contract: any) => {
+    e.stopPropagation();
+    if (data.onViewContract) {
+      data.onViewContract(contract);
+    }
+  };
 
   return (
     <div
-      className="bg-white rounded-lg shadow-md border-2 min-w-[200px] max-w-[240px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
-      style={{ borderLeftColor: color, borderLeftWidth: '4px', borderTopColor: '#e5e7eb', borderRightColor: '#e5e7eb', borderBottomColor: '#e5e7eb' }}
+      className={`bg-white rounded-xl shadow-md border-2 relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all ${dragOver ? 'border-teal-400 ring-2 ring-teal-200' : 'border-teal-300'}`}
+      style={{ width: 280 }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
     >
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-500 transition-all" />
-      <div className="px-4 py-3">
-        <div className="flex items-center gap-2">
-          <UtilityNodeIcon type="contract_node" />
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-sm text-gray-900 truncate">{data.label || data.name}</div>
-            <div className="text-xs text-teal-600">Contrato</div>
-          </div>
-        </div>
-        <div className="mt-2 pt-2 border-t border-gray-100 space-y-1">
-          <div className="flex items-center gap-1.5">
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${domainBadge}`}>
-              {data.domain}
-            </span>
-            <span className="text-[10px] text-gray-400">v{data.version || 1}</span>
-          </div>
-          {data.description && (
-            <div className="text-[10px] text-gray-500 truncate">{data.description}</div>
-          )}
-          {data.hasPrompt && (
-            <div className="text-[10px] text-teal-600 font-medium">Prompt configurado</div>
-          )}
-        </div>
+      <Handle type="source" position={Position.Right} id="right" className="!bg-teal-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-600 transition-all" />
+
+      {/* Header */}
+      <div className="px-3 py-2 bg-teal-50 rounded-t-xl border-b border-teal-200 flex items-center gap-2">
+        <svg className="w-4 h-4 text-teal-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <span className="font-bold text-xs text-teal-800 flex-1">Contratos</span>
+        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-200 text-teal-800 font-semibold">
+          {contracts.length}
+        </span>
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-500 transition-all" />
-    </div>
-  );
-}
 
-// ---------------------------------------------------------------------------
-// PROMPT #258 - Contracts Hub Node (aggregation point for contract → pipeline)
-// ---------------------------------------------------------------------------
-
-export function ContractsHubNode({ data }: { data: any }) {
-  const color = '#0d9488'; // teal
-  const count = data.contractCount || 0;
-
-  return (
-    <div
-      className="bg-teal-50 rounded-xl shadow-md border-2 border-teal-300 min-w-[160px] relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all"
-    >
-      <Handle type="target" position={Position.Left} className="!bg-teal-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-600 transition-all" />
-      <div className="px-4 py-3 text-center">
-        <div className="flex items-center justify-center gap-2 mb-1">
-          <svg className="w-5 h-5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-          </svg>
-          <span className="font-bold text-sm text-teal-800">Montagem</span>
-        </div>
-        <div className="text-xs text-teal-600 font-medium">{count} contrato{count !== 1 ? 's' : ''}</div>
-        <div className="text-[10px] text-teal-500 mt-0.5">system_prompt + user_prompt</div>
+      {/* List */}
+      <div className="max-h-[220px] overflow-y-auto">
+        {contracts.length > 0 ? (
+          <div className="divide-y divide-gray-100">
+            {contracts.map((contract, index) => {
+              const shortName = contract.name?.includes('/') ? contract.name.split('/').pop() : (contract.name || contract.label || 'Prompt');
+              const domainBadge = domainColors[contract.domain] || 'bg-gray-100 text-gray-700';
+              const hasPrompt = !!(contract.system_prompt || contract.user_prompt);
+              return (
+                <div
+                  key={contract.id || index}
+                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-teal-50 cursor-pointer transition-colors"
+                  onDoubleClick={(e) => handleItemDoubleClick(e, contract)}
+                  title="Duplo-clique para ver detalhes"
+                >
+                  <span className="text-[10px] font-bold text-gray-400 w-4 text-right flex-shrink-0">{index + 1}</span>
+                  <span className="text-[11px] text-gray-800 truncate flex-1 font-medium">{shortName}</span>
+                  <span className={`text-[8px] px-1 py-0.5 rounded font-medium flex-shrink-0 ${domainBadge}`}>
+                    {contract.domain}
+                  </span>
+                  {hasPrompt && (
+                    <span className="text-[8px] text-teal-600 font-semibold flex-shrink-0">P</span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="px-3 py-4 text-center text-[11px] text-gray-400">Nenhum contrato</div>
+        )}
       </div>
-      <Handle type="source" position={Position.Right} className="!bg-teal-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-600 transition-all" />
+
+      {/* Drop zone */}
+      <div
+        className={`mx-2 mb-2 mt-1 border-2 border-dashed rounded-lg px-3 py-2 text-center transition-colors ${dragOver ? 'border-teal-400 bg-teal-50 text-teal-600' : 'border-gray-200 text-gray-400'}`}
+      >
+        <span className="text-[10px] font-medium">Arraste prompts aqui</span>
+      </div>
     </div>
   );
 }
@@ -538,6 +586,5 @@ export const nodeTypes = {
   rateLimiterNode: RateLimiterNode,
   timeoutNode: TimeoutNode,
   promptNodeNode: PromptNodeNode,
-  contractNode: ContractNode,  // PROMPT #257
-  contractsHubNode: ContractsHubNode,  // PROMPT #258
+  contractsListNode: ContractsListNode,  // PROMPT #258 - aggregator with list
 };

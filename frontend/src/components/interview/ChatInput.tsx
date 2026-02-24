@@ -58,12 +58,12 @@ export default function ChatInput({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
               <span className="text-sm text-blue-800 font-medium">
-                {selectedOptions.length} opcao(oes) selecionada(s)
+                {selectedOptions.length} opção(ões) selecionada(s)
               </span>
               <button
                 onClick={() => setSelectedOptions([])}
                 className="ml-auto text-blue-600 hover:text-blue-800"
-                title="Limpar selecao"
+                title="Limpar seleção"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -115,7 +115,7 @@ export default function ChatInput({
       ) : (
         <div className="text-center text-gray-400 py-4 bg-gray-100 rounded-lg">
           <p className="text-sm font-medium">
-            Esta entrevista esta {interviewStatus === 'completed' ? 'completa' : interviewStatus === 'cancelled' ? 'cancelada' : interviewStatus}. Nao e possivel enviar mensagens.
+            Esta entrevista está {interviewStatus === 'completed' ? 'completa' : interviewStatus === 'cancelled' ? 'cancelada' : interviewStatus}. Não é possível enviar mensagens.
           </p>
         </div>
       )}

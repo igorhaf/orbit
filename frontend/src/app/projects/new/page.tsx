@@ -41,7 +41,7 @@ export default function NewProjectPage() {
   // PROMPT #301 - Create project and redirect immediately
   const handleGenerate = async () => {
     if (!codePath) {
-      showWarning('Selecione uma pasta de codigo primeiro');
+      showWarning('Selecione uma pasta de código primeiro');
       return;
     }
 
@@ -84,15 +84,15 @@ export default function NewProjectPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Selecionar Pasta de Codigo</CardTitle>
+            <CardTitle>Selecionar Pasta de Código</CardTitle>
             <p className="text-sm text-gray-600 mt-1">
-              Escolha sua pasta de codigo existente e a profundidade de analise. O ORBIT escaneara o codebase e expandira o projeto automaticamente em segundo plano.
+              Escolha sua pasta de código existente e a profundidade de análise. O ORBIT escaneará o codebase e expandirá o projeto automaticamente em segundo plano.
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
             {/* Folder Picker */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Caminho da Pasta de Codigo *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Caminho da Pasta de Código *</label>
               <div className="flex gap-2">
                 <input
                   value={codePath}
@@ -115,15 +115,15 @@ export default function NewProjectPage() {
                 </Button>
               </div>
               <p className="text-xs text-gray-500 mt-1">
-                Selecione o caminho para sua pasta de codigo existente.
-                <strong className="block text-gray-600 mt-1">Este caminho nao pode ser alterado apos a criacao do projeto.</strong>
+                Selecione o caminho para sua pasta de código existente.
+                <strong className="block text-gray-600 mt-1">Este caminho não pode ser alterado após a criação do projeto.</strong>
               </p>
 
               <FolderPicker
                 open={showFolderPicker}
                 onClose={() => setShowFolderPicker(false)}
                 onSelect={handleFolderSelect}
-                title="Selecionar Pasta de Codigo"
+                title="Selecionar Pasta de Código"
               />
             </div>
 

@@ -112,9 +112,9 @@ export function AIErrorBanner({ aiError, onDismiss }: AIErrorBannerProps) {
             aiError.type === 'auth' ? 'text-yellow-900' :
             'text-orange-900'
           }`}>
-            {aiError.type === 'credits' ? 'Creditos Esgotados' :
-             aiError.type === 'auth' ? 'Erro de Autenticacao' :
-             'Limite de Requisicoes Excedido'}
+            {aiError.type === 'credits' ? 'Créditos Esgotados' :
+             aiError.type === 'auth' ? 'Erro de Autenticação' :
+             'Limite de Requisições Excedido'}
             {aiError.provider && ` - ${aiError.provider}`}
           </h3>
           <p className={`text-sm ${

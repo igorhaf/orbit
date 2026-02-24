@@ -78,7 +78,7 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
   };
 
   const handleExecuteDirect = async () => {
-    if (!confirm('Executar esta tarefa com IA? A IA analisara a tarefa e o prompt para fornecer uma solucao.')) {
+    if (!confirm('Executar esta tarefa com IA? A IA analisará a tarefa e o prompt para fornecer uma solução.')) {
       return;
     }
 

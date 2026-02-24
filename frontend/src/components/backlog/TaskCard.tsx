@@ -64,13 +64,13 @@ const getStatusBadge = (status: string | undefined) => {
     return <Badge className="bg-red-100 text-red-800 border-red-300 font-semibold"><span className="inline-flex items-center gap-1"><IconAlert className="w-3 h-3" /> BLOQUEADO</span></Badge>;
   }
   if (statusLower === 'done' || statusLower === 'completed') {
-    return <Badge className="bg-green-100 text-green-800 border-green-200">Concluido</Badge>;
+    return <Badge className="bg-green-100 text-green-800 border-green-200">Concluído</Badge>;
   }
   if (statusLower === 'in_progress' || statusLower === 'in progress') {
     return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Em Progresso</Badge>;
   }
   if (statusLower === 'review') {
-    return <Badge className="bg-purple-100 text-purple-800 border-purple-200">Revisao</Badge>;
+    return <Badge className="bg-purple-100 text-purple-800 border-purple-200">Revisão</Badge>;
   }
   if (statusLower === 'backlog' || statusLower === 'todo') {
     return <Badge className="bg-gray-100 text-gray-800 border-gray-200">Backlog</Badge>;
@@ -199,7 +199,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           false,
           task.id // task_id for persistent loading state
         );
-        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificações.');
+        showSuccess('Ativação iniciada! Acompanhe o progresso no sino de notificações.');
         return;
       } else {
         // Legacy flow (synchronous response)
@@ -239,7 +239,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
       }
     } catch (error: any) {
       console.error('❌ Failed to reject epic:', error);
-      showError(`Falha ao rejeitar epico: ${error.message}`);
+      showError(`Falha ao rejeitar épico: ${error.message}`);
     } finally {
       setRejectingEpic(false);
     }

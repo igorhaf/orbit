@@ -54,12 +54,12 @@ export default function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('ttl_seconds', parseInt(e.target.value) || 86400)}
             />
             <Select
-              label="Nivel de Cache"
+              label="Nível de Cache"
               value={config.cache_level ?? 'exact'}
               onChange={(e) => updateConfig('cache_level', e.target.value)}
               options={[
-                { value: 'exact', label: 'Correspondencia Exata' },
-                { value: 'semantic', label: 'Correspondencia Semantica' },
+                { value: 'exact', label: 'Correspondência Exata' },
+                { value: 'semantic', label: 'Correspondência Semântica' },
                 { value: 'template', label: 'Cache de Template' },
               ]}
             />
@@ -97,24 +97,24 @@ export default function EditUtilityNodeDialog({
               <label htmlFor="include-metadata" className="text-sm text-gray-700">Incluir Metadados</label>
             </div>
             <div className="border-t border-gray-200 pt-3 mt-3">
-              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">PROMPT #229 - Otimizacao RAG</p>
+              <p className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">PROMPT #229 - Otimização RAG</p>
             </div>
             <Input
-              label="Filtrar Tipos (separados por virgula)"
+              label="Filtrar Tipos (separados por vírgula)"
               placeholder="ex: spec, business_rule, feature"
               value={config.filter_types ?? ''}
               onChange={(e) => updateConfig('filter_types', e.target.value || null)}
               helperText="Incluir apenas estes tipos de documento. Deixe vazio para todos."
             />
             <Input
-              label="Excluir Tipos (separados por virgula)"
+              label="Excluir Tipos (separados por vírgula)"
               placeholder="ex: commit, log"
               value={config.exclude_types ?? ''}
               onChange={(e) => updateConfig('exclude_types', e.target.value || null)}
               helperText="Excluir estes tipos de documento dos resultados."
             />
             <Input
-              label="Limiar de Deduplicacao (0-1)"
+              label="Limiar de Deduplicação (0-1)"
               type="number"
               min="0"
               max="1"
@@ -133,12 +133,12 @@ export default function EditUtilityNodeDialog({
               helperText="Comprimir contexto para este tamanho antes de enviar ao LLM."
             />
             <Select
-              label="Estrategia de Compressao"
+              label="Estratégia de Compressão"
               value={config.compression_strategy ?? 'key_sentences'}
               onChange={(e) => updateConfig('compression_strategy', e.target.value)}
               options={[
-                { value: 'key_sentences', label: 'Frases-Chave (pontuacao por posicao + tamanho)' },
-                { value: 'extractive', label: 'Extrativa (primeira + ultima + melhores do meio)' },
+                { value: 'key_sentences', label: 'Frases-Chave (pontuação por posição + tamanho)' },
+                { value: 'extractive', label: 'Extrativa (primeira + última + melhores do meio)' },
                 { value: 'truncate', label: 'Truncar (corte simples no max de caracteres)' },
               ]}
             />
@@ -149,7 +149,7 @@ export default function EditUtilityNodeDialog({
               max="20"
               value={config.rerank_top_k ?? 3}
               onChange={(e) => updateConfig('rerank_top_k', parseInt(e.target.value) || 3)}
-              helperText="Apos a recuperacao inicial, manter apenas os K documentos mais relevantes."
+              helperText="Após a recuperação inicial, manter apenas os K documentos mais relevantes."
             />
           </>
         );
@@ -158,13 +158,13 @@ export default function EditUtilityNodeDialog({
         return (
           <>
             <Select
-              label="Transformacao"
+              label="Transformação"
               value={config.transformation ?? 'compress'}
               onChange={(e) => updateConfig('transformation', e.target.value)}
               options={[
                 { value: 'compress', label: 'Comprimir (truncar mensagens longas)' },
-                { value: 'summarize_context', label: 'Resumir Contexto (manter ultimos N)' },
-                { value: 'add_instructions', label: 'Adicionar Instrucoes' },
+                { value: 'summarize_context', label: 'Resumir Contexto (manter últimos N)' },
+                { value: 'add_instructions', label: 'Adicionar Instruções' },
               ]}
             />
             <Input
@@ -178,10 +178,10 @@ export default function EditUtilityNodeDialog({
               label="Sobrescrever Max Tokens"
               type="number"
               min="0"
-              placeholder="Deixe vazio para usar padrao do modelo"
+              placeholder="Deixe vazio para usar padrão do modelo"
               value={config.override_max_tokens ?? ''}
               onChange={(e) => updateConfig('override_max_tokens', e.target.value ? parseInt(e.target.value) : null)}
-              helperText="Limitado pelo max_tokens do modelo. Deixe vazio para nao sobrescrever."
+              helperText="Limitado pelo max_tokens do modelo. Deixe vazio para não sobrescrever."
             />
             <Input
               label="Sobrescrever Temperature"
@@ -189,10 +189,10 @@ export default function EditUtilityNodeDialog({
               min="0"
               max="2"
               step="0.1"
-              placeholder="Deixe vazio para usar padrao do modelo"
+              placeholder="Deixe vazio para usar padrão do modelo"
               value={config.override_temperature ?? ''}
               onChange={(e) => updateConfig('override_temperature', e.target.value ? parseFloat(e.target.value) : null)}
-              helperText="Valor livre (0.0-2.0). Deixe vazio para nao sobrescrever."
+              helperText="Valor livre (0.0-2.0). Deixe vazio para não sobrescrever."
             />
           </>
         );
@@ -201,7 +201,7 @@ export default function EditUtilityNodeDialog({
         return (
           <>
             <Select
-              label="Condicao"
+              label="Condição"
               value={config.condition ?? 'complexity'}
               onChange={(e) => updateConfig('condition', e.target.value)}
               options={[
@@ -216,7 +216,7 @@ export default function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('threshold', e.target.value)}
               options={[
                 { value: 'low', label: 'Baixo' },
-                { value: 'medium', label: 'Medio' },
+                { value: 'medium', label: 'Médio' },
                 { value: 'high', label: 'Alto' },
               ]}
             />
@@ -260,7 +260,7 @@ export default function EditUtilityNodeDialog({
               />
               <label htmlFor="skip-permanent-errors" className="text-sm text-gray-700">Ignorar Erros Permanentes (401, 404)</label>
             </div>
-            <p className="text-xs text-gray-500 ml-6">Quando ativado, erros permanentes nunca sao retentados - passa direto para o fallback da cadeia.</p>
+            <p className="text-xs text-gray-500 ml-6">Quando ativado, erros permanentes nunca são retentados - passa direto para o fallback da cadeia.</p>
           </>
         );
 
@@ -268,25 +268,25 @@ export default function EditUtilityNodeDialog({
         return (
           <>
             <Select
-              label="Tipo de Validacao"
+              label="Tipo de Validação"
               value={config.validation_type ?? 'json'}
               onChange={(e) => updateConfig('validation_type', e.target.value)}
               options={[
                 { value: 'json', label: 'Parsing JSON' },
-                { value: 'length', label: 'Verificacao de Tamanho' },
-                { value: 'keywords', label: 'Palavras-chave Obrigatorias' },
-                { value: 'not_empty', label: 'Nao Vazio' },
+                { value: 'length', label: 'Verificação de Tamanho' },
+                { value: 'keywords', label: 'Palavras-chave Obrigatórias' },
+                { value: 'not_empty', label: 'Não Vazio' },
               ]}
             />
             <Input
-              label="Tamanho Maximo (0 = sem limite)"
+              label="Tamanho Máximo (0 = sem limite)"
               type="number"
               min="0"
               value={config.max_length ?? 0}
               onChange={(e) => updateConfig('max_length', parseInt(e.target.value) || 0)}
             />
             <Input
-              label="Palavras-chave Obrigatorias (separadas por virgula)"
+              label="Palavras-chave Obrigatórias (separadas por vírgula)"
               placeholder="ex: result, status, data"
               value={Array.isArray(config.required_keywords) ? config.required_keywords.join(', ') : (config.required_keywords || '')}
               onChange={(e) => updateConfig('required_keywords', e.target.value ? e.target.value.split(',').map((s: string) => s.trim()).filter(Boolean) : [])}
@@ -299,7 +299,7 @@ export default function EditUtilityNodeDialog({
                 checked={config.retry_on_fail ?? true}
                 onChange={(e) => updateConfig('retry_on_fail', e.target.checked)}
               />
-              <label htmlFor="retry-on-fail" className="text-sm text-gray-700">Retentar em Falha de Validacao</label>
+              <label htmlFor="retry-on-fail" className="text-sm text-gray-700">Retentar em Falha de Validação</label>
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -311,7 +311,7 @@ export default function EditUtilityNodeDialog({
               />
               <label htmlFor="auto-repair-json" className="text-sm text-gray-700">Auto-reparar JSON</label>
             </div>
-            <p className="text-xs text-gray-500 ml-6">Tentar corrigir JSON malformado (virgulas finais, aspas simples, blocos de codigo) antes de acionar retry.</p>
+            <p className="text-xs text-gray-500 ml-6">Tentar corrigir JSON malformado (vírgulas finais, aspas simples, blocos de código) antes de acionar retry.</p>
           </>
         );
 
@@ -319,7 +319,7 @@ export default function EditUtilityNodeDialog({
         return (
           <>
             <Input
-              label="Custo Maximo por Chamada ($)"
+              label="Custo Máximo por Chamada ($)"
               type="number"
               min="0.01"
               step="0.01"
@@ -327,7 +327,7 @@ export default function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('max_cost_per_call', parseFloat(e.target.value) || 0.10)}
             />
             <Input
-              label="Orcamento Diario ($)"
+              label="Orçamento Diário ($)"
               type="number"
               min="0"
               step="0.50"
@@ -335,7 +335,7 @@ export default function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('daily_budget', parseFloat(e.target.value) || 10.0)}
             />
             <Input
-              label="Orcamento Mensal ($)"
+              label="Orçamento Mensal ($)"
               type="number"
               min="0"
               step="1"
@@ -343,11 +343,11 @@ export default function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('monthly_budget', parseFloat(e.target.value) || 100.0)}
             />
             <Select
-              label="Acao ao Exceder"
+              label="Ação ao Exceder"
               value={config.action_on_exceed ?? 'block'}
               onChange={(e) => updateConfig('action_on_exceed', e.target.value)}
               options={[
-                { value: 'block', label: 'Bloquear Requisicao' },
+                { value: 'block', label: 'Bloquear Requisição' },
                 { value: 'warn', label: 'Apenas Avisar' },
               ]}
             />
@@ -358,7 +358,7 @@ export default function EditUtilityNodeDialog({
         return (
           <>
             <Input
-              label="Max Requisicoes"
+              label="Max Requisições"
               type="number"
               min="1"
               value={config.max_requests ?? 60}
@@ -372,12 +372,12 @@ export default function EditUtilityNodeDialog({
               onChange={(e) => updateConfig('window_seconds', parseInt(e.target.value) || 60)}
             />
             <Select
-              label="Acao ao Exceder"
+              label="Ação ao Exceder"
               value={config.action_on_exceed ?? 'queue'}
               onChange={(e) => updateConfig('action_on_exceed', e.target.value)}
               options={[
                 { value: 'queue', label: 'Fila (aguardar)' },
-                { value: 'block', label: 'Bloquear Requisicao' },
+                { value: 'block', label: 'Bloquear Requisição' },
               ]}
             />
           </>
@@ -391,7 +391,7 @@ export default function EditUtilityNodeDialog({
             min="1"
             value={config.timeout_seconds ?? 120}
             onChange={(e) => updateConfig('timeout_seconds', parseInt(e.target.value) || 120)}
-            helperText="Sobrescreve o timeout do Modelo de IA e o padrao das Configuracoes do Sistema."
+            helperText="Sobrescreve o timeout do Modelo de IA e o padrão das Configurações do Sistema."
           />
         );
 
@@ -406,17 +406,17 @@ export default function EditUtilityNodeDialog({
               helperText="Caminho relativo em backend/app/prompts/ (sem .yaml)"
             />
             <Input
-              label="Repeticoes"
+              label="Repetições"
               type="number"
               min="1"
               max="10"
               value={config.repeat ?? 1}
               onChange={(e) => updateConfig('repeat', parseInt(e.target.value) || 1)}
-              helperText="Numero de vezes que o prompt sera executado"
+              helperText="Número de vezes que o prompt será executado"
             />
             <Input
-              label="Descricao"
-              placeholder="Extrair regras de negocio do codebase..."
+              label="Descrição"
+              placeholder="Extrair regras de negócio do codebase..."
               value={config.description ?? ''}
               onChange={(e) => updateConfig('description', e.target.value)}
             />
@@ -424,7 +424,7 @@ export default function EditUtilityNodeDialog({
         );
 
       default:
-        return <p className="text-sm text-gray-500">Nenhuma configuracao editavel para este tipo de no.</p>;
+        return <p className="text-sm text-gray-500">Nenhuma configuração editável para este tipo de nó.</p>;
     }
   };
 
@@ -438,10 +438,10 @@ export default function EditUtilityNodeDialog({
           </div>
           <div className="flex-1">
             <Input
-              label="Rotulo"
+              label="Rótulo"
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Rotulo do no"
+              placeholder="Rótulo do nó"
             />
           </div>
         </div>
@@ -460,7 +460,7 @@ export default function EditUtilityNodeDialog({
 
         {/* Type-specific fields */}
         <div className="space-y-3">
-          <h4 className="text-sm font-semibold text-gray-900">Configuracao</h4>
+          <h4 className="text-sm font-semibold text-gray-900">Configuração</h4>
           {renderFields()}
         </div>
 

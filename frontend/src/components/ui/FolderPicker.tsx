@@ -1,6 +1,6 @@
 /**
  * FolderPicker Component
- * PROMPT #111 - Browse and select folders from mounted /projects directory
+ * PROMPT #111 - Browse and select folders from user home directory
  */
 
 'use client';

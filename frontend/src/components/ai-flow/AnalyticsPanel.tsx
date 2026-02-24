@@ -37,7 +37,7 @@ export default function AnalyticsPanel({
   if (!analytics) {
     return (
       <div className="text-center py-6 text-sm text-gray-400">
-        Nenhum dado analitico disponivel. Execucoes da cadeia aparecerao aqui.
+        Nenhum dado analitico disponivel. Execuções da cadeia aparecerao aqui.
       </div>
     );
   }
@@ -75,11 +75,11 @@ export default function AnalyticsPanel({
           <table className="w-full text-xs">
             <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-3 py-2 text-left font-medium text-gray-600">Operacao</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Execucoes</th>
+                <th className="px-3 py-2 text-left font-medium text-gray-600">Operação</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Execuções</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Taxa de Fallback</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Sucesso Primario</th>
-                <th className="px-3 py-2 text-right font-medium text-gray-600">Prof. Media</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Sucesso Primário</th>
+                <th className="px-3 py-2 text-right font-medium text-gray-600">Prof. Média</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Custo Total</th>
                 <th className="px-3 py-2 text-right font-medium text-gray-600">Economia</th>
               </tr>
@@ -113,7 +113,7 @@ export default function AnalyticsPanel({
 
       <div className="flex justify-end">
         <button onClick={onRefresh} className="text-xs text-blue-600 hover:text-blue-800 font-medium">
-          Atualizar Analiticos
+          Atualizar Analíticos
         </button>
       </div>
     </div>

@@ -8,11 +8,11 @@
 
 export const USAGE_TYPE_OPTIONS = [
   { value: 'interview', label: 'Entrevista' },
-  { value: 'task_execution', label: 'Execucao de Tarefas' },
-  { value: 'prompt_generation', label: 'Geracao de Prompts' },
-  { value: 'commit_generation', label: 'Geracao de Commits' },
-  { value: 'pattern_discovery', label: 'Descoberta de Padroes' },
-  { value: 'memory', label: 'Memoria (Scan de Codebase)' },
+  { value: 'task_execution', label: 'Execução de Tarefas' },
+  { value: 'prompt_generation', label: 'Geração de Prompts' },
+  { value: 'commit_generation', label: 'Geração de Commits' },
+  { value: 'pattern_discovery', label: 'Descoberta de Padrões' },
+  { value: 'memory', label: 'Memória (Scan de Codebase)' },
   { value: 'content_generation', label: 'Geração de Conteúdo (Wiki/Cards)' },
   { value: 'rag_extraction', label: 'Extração RAG (Regras de Negócio)' },
   { value: 'general', label: 'Geral' },

@@ -44,7 +44,7 @@ export function ModificationApprovalModal({
       await onApprove();
       onClose();
     } catch (error) {
-      console.error('Falha ao aprovar modificacao:', error);
+      console.error('Falha ao aprovar modificação:', error);
     } finally {
       setLoading(false);
     }
@@ -56,7 +56,7 @@ export function ModificationApprovalModal({
       await onReject(rejectionReason || undefined);
       onClose();
     } catch (error) {
-      console.error('Falha ao rejeitar modificacao:', error);
+      console.error('Falha ao rejeitar modificação:', error);
     } finally {
       setLoading(false);
     }
@@ -94,7 +94,7 @@ export function ModificationApprovalModal({
     <Dialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Revisar Modificacao Proposta"
+      title="Revisar Modificação Proposta"
       size="xl"
     >
       <div className="space-y-6">
@@ -102,10 +102,10 @@ export function ModificationApprovalModal({
         <div className="flex items-center justify-between pb-4 border-b">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">
-              Modificacao Sugerida pela IA
+              Modificação Sugerida pela IA
             </h3>
             <p className="text-sm text-gray-600 mt-1">
-              Revise as alterações e aprove ou rejeite a modificacao
+              Revise as alterações e aprove ou rejeite a modificação
             </p>
           </div>
           <SimilarityBadge score={modification.similarity_score} className="text-base px-3 py-1.5" />
@@ -139,7 +139,7 @@ export function ModificationApprovalModal({
           {/* Story points diff (if changed) */}
           {modification.story_points !== undefined && modification.story_points !== task.story_points && (
             <div className="mb-4">
-              <h4 className="text-sm font-semibold text-gray-700 mb-2">Pontos de Historia</h4>
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Pontos de História</h4>
               <div className="flex items-center gap-4">
                 <Badge className="bg-red-100 text-red-800 border-red-200">
                   Original: {task.story_points || 'Nenhum'}
@@ -198,11 +198,11 @@ export function ModificationApprovalModal({
         {showRejectionInput && (
           <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Motivo da Rejeicao (opcional)
+              Motivo da Rejeição (opcional)
             </label>
             <Input
               type="text"
-              placeholder="Por que esta rejeitando esta modificacao?"
+              placeholder="Por que está rejeitando esta modificação?"
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
               className="w-full"
@@ -234,7 +234,7 @@ export function ModificationApprovalModal({
                 onClick={handleApprove}
                 disabled={loading}
               >
-                {loading ? 'Aprovando...' : 'Aprovar Modificacao'}
+                {loading ? 'Aprovando...' : 'Aprovar Modificação'}
               </Button>
             </>
           ) : (
@@ -243,7 +243,7 @@ export function ModificationApprovalModal({
               onClick={handleReject}
               disabled={loading}
             >
-              {loading ? 'Rejeitando...' : 'Confirmar Rejeicao'}
+              {loading ? 'Rejeitando...' : 'Confirmar Rejeição'}
             </Button>
           )}
         </div>

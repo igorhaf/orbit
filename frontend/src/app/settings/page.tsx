@@ -56,7 +56,7 @@ const MODEL_CONFIGS = [
   { key: 'commit_generation', label: 'Geração de Commits', usageType: AIModelUsageType.COMMIT_GENERATION, icon: GitCommit, color: 'text-green-600 bg-green-50', description: 'Geração de mensagens de commit Git' },
   { key: 'task_execution', label: 'Execução de Tarefas', usageType: AIModelUsageType.TASK_EXECUTION, icon: Cpu, color: 'text-orange-600 bg-orange-50', description: 'Executando prompts de tarefas e geração de código' },
   { key: 'pattern_discovery', label: 'Descoberta de Padrões', usageType: AIModelUsageType.PATTERN_DISCOVERY, icon: Search, color: 'text-cyan-600 bg-cyan-50', description: 'Descoberta de padrões de código e specs por IA' },
-  { key: 'queue_orchestration', label: 'Orquestracao de Fila', usageType: AIModelUsageType.QUEUE_ORCHESTRATION, icon: Layers, color: 'text-pink-600 bg-pink-50', description: 'Execução de prompts da fila de orquestracao' },
+  { key: 'queue_orchestration', label: 'Orquestração de Fila', usageType: AIModelUsageType.QUEUE_ORCHESTRATION, icon: Layers, color: 'text-pink-600 bg-pink-50', description: 'Execução de prompts da fila de orquestração' },
   { key: 'general', label: 'Geral', usageType: AIModelUsageType.GENERAL, icon: Globe, color: 'text-gray-600 bg-gray-100', description: 'Modelo fallback para todas as outras operações' },
 ];
 
@@ -370,7 +370,7 @@ export default function SettingsPage() {
     setSavingProtection(true);
     const newValue = !allowProtectedDeletion;
     try {
-      await settingsApi.set('allow_protected_project_deletion', String(newValue), 'Permitir exclusao de projetos protegidos (true/false)');
+      await settingsApi.set('allow_protected_project_deletion', String(newValue), 'Permitir exclusão de projetos protegidos (true/false)');
       setAllowProtectedDeletion(newValue);
       setSaveSuccess(newValue ? 'Exclusao de projetos protegidos ATIVADA' : 'Exclusao de projetos protegidos DESATIVADA');
     } catch (err: any) {
@@ -415,7 +415,7 @@ export default function SettingsPage() {
             <div>
               <h1 className="text-2xl font-bold text-gray-900">Configurações</h1>
               <p className="text-sm text-gray-500 mt-0.5">
-                Configuração do sistema e preferencias padrão
+                Configuração do sistema e preferências padrão
               </p>
             </div>
           </div>
@@ -561,7 +561,7 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <p className="text-sm text-gray-500">
-                Controle como a fila de orquestracao de prompts processa e ordena a execução.
+                Controle como a fila de orquestração de prompts processa e ordena a execução.
               </p>
               <Button onClick={handleSaveQueueSettings} disabled={savingQueue}>
                 <Save className="w-4 h-4 mr-2" />
@@ -577,7 +577,7 @@ export default function SettingsPage() {
                       <ListOrdered className="w-4 h-4 text-blue-600" />
                     </div>
                     <div className="flex-1">
-                      <Label htmlFor="queue-strategy" className="text-sm font-medium text-gray-900">Estratégia de Ordenacao Automática</Label>
+                      <Label htmlFor="queue-strategy" className="text-sm font-medium text-gray-900">Estratégia de Ordenação Automática</Label>
                       <p className="text-xs text-gray-500 mt-0.5 mb-2">Determina como os cards são ordenados automaticamente na fila de execução</p>
                       <Select
                         id="queue-strategy"
@@ -587,7 +587,7 @@ export default function SettingsPage() {
                           { value: 'balanced', label: 'Balanceado (35% hierarquia, 30% prioridade, 25% dependência, 10% idade)' },
                           { value: 'hierarchy_first', label: 'Hierarquia Primeiro (epics > stories > tasks > subtasks)' },
                           { value: 'priority_first', label: 'Prioridade Primeiro (critico > alto > medio > baixo)' },
-                          { value: 'dependency_first', label: 'Dependência Primeiro (resolver dependencias primeiro)' },
+                          { value: 'dependency_first', label: 'Dependência Primeiro (resolver dependências primeiro)' },
                           { value: 'age_first', label: 'Idade Primeiro (cards mais antigos primeiro)' },
                         ]}
                       />
@@ -604,8 +604,8 @@ export default function SettingsPage() {
                         <Cpu className="w-4 h-4 text-orange-600" />
                       </div>
                       <div className="flex-1">
-                        <Label htmlFor="queue-concurrent" className="text-sm font-medium text-gray-900">Max Simultaneos</Label>
-                        <p className="text-xs text-gray-500 mt-0.5 mb-2">Execucoes de prompts simultaneas</p>
+                        <Label htmlFor="queue-concurrent" className="text-sm font-medium text-gray-900">Max Simultâneos</Label>
+                        <p className="text-xs text-gray-500 mt-0.5 mb-2">Execuções de prompts simultâneas</p>
                         <Select
                           id="queue-concurrent"
                           value={queueSettings.queue_max_concurrent}
@@ -956,14 +956,14 @@ export default function SettingsPage() {
                   </div>
                   <div>
                     <span className="text-sm font-medium text-gray-900">Segurança</span>
-                    <p className="text-xs text-gray-500 mt-0.5">Protecao contra exclusao acidental de projetos</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Proteção contra exclusão acidental de projetos</p>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900">Permitir exclusao de projetos protegidos</span>
+                      <span className="text-sm font-medium text-gray-900">Permitir exclusão de projetos protegidos</span>
                       {allowProtectedDeletion && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">Ativo</span>
                       )}

@@ -114,7 +114,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     if (isFallback) {
       console.log('Fallback mode detected:', result?.usage?.error);
       setFallbackWarning({
-        message: 'A IA esta temporariamente indisponivel. O sistema esta usando respostas de fallback.',
+        message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
         error: result?.usage?.error
       });
     }
@@ -161,7 +161,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     setNotificationDialog({
       open: true,
       title: 'Sucesso!',
-      message: `${storiesCount} stories e ${tasksCount} tasks foram criadas automaticamente a partir da sua entrevista.\n\nConfira seu Backlog para visualiza-las!`,
+      message: `${storiesCount} stories e ${tasksCount} tasks foram criadas automaticamente a partir da sua entrevista.\n\nConfira seu Backlog para visualizá-las!`,
       type: 'success'
     });
 
@@ -181,7 +181,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     if (errorLower.includes('credit') || errorLower.includes('balance') || errorLower.includes('quota')) {
       setAiError({
         type: 'credits',
-        message: 'Creditos de IA esgotados. Adicione creditos a sua conta de IA ou configure uma nova API key.',
+        message: 'Créditos de IA esgotados. Adicione créditos à sua conta de IA ou configure uma nova API key.',
       });
     } else {
       setNotificationDialog({
@@ -347,7 +347,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       console.log('Interview loaded:', interviewData);
       setInterview(interviewData || null);
 
-      // Se nao tem mensagens, iniciar automaticamente com IA
+      // Se não tem mensagens, iniciar automaticamente com IA
       const hasMessages = interviewData?.conversation_data && interviewData.conversation_data.length > 0;
       console.log('Has messages:', hasMessages, 'Count:', interviewData?.conversation_data?.length);
 
@@ -398,8 +398,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       if (startData?.model === 'system/fallback' || startData?.message?.model === 'system/fallback') {
         console.log('Fallback mode detected on start');
         setFallbackWarning({
-          message: 'A IA esta temporariamente indisponivel. O sistema esta usando respostas de fallback.',
-          error: 'API indisponivel no momento'
+          message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
+          error: 'API indisponível no momento'
         });
       }
 
@@ -414,8 +414,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       const firstMessage = data?.conversation_data?.[0];
       if (firstMessage?.model === 'system/fallback') {
         setFallbackWarning({
-          message: 'A IA esta temporariamente indisponivel. O sistema esta usando respostas de fallback.',
-          error: 'API indisponivel no momento'
+          message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
+          error: 'API indisponível no momento'
         });
       }
 
@@ -436,7 +436,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       setNotificationDialog({
         open: true,
         title: 'Falha ao iniciar entrevista',
-        message: `${formatErrorMessage(errorMessage)}\n\nVoce pode enviar uma mensagem manualmente para comecar a conversa.`,
+        message: `${formatErrorMessage(errorMessage)}\n\nVocê pode enviar uma mensagem manualmente para começar a conversa.`,
         type: 'error'
       });
     } finally {
@@ -488,7 +488,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         }
       }
 
-      // PROMPT #65 - Enviar mensagem ASYNC (nao bloqueia UI)
+      // PROMPT #65 - Enviar mensagem ASYNC (não bloqueia UI)
       console.log('Sending message async...');
       const response = await interviewsApi.sendMessageAsync(interviewId, {
         content: userMessage || optionsToSend.join(', '),
@@ -531,8 +531,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     if (validLabels.length === 0) {
       setNotificationDialog({
         open: true,
-        title: 'Opcao invalida',
-        message: 'Por favor, selecione uma opcao valida ou digite sua resposta no campo de texto.',
+        title: 'Opção inválida',
+        message: 'Por favor, selecione uma opção válida ou digite sua resposta no campo de texto.',
         type: 'warning'
       });
       return;
@@ -634,7 +634,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       open: true,
       title: isCardInference ? 'Completar e Atualizar Card' : 'Completar Entrevista',
       message: isCardInference
-        ? 'Completar esta entrevista e atualizar o card com as informacoes coletadas?'
+        ? 'Completar esta entrevista e atualizar o card com as informações coletadas?'
         : 'Marcar esta entrevista como completa?',
       type: 'info',
       confirmLabel: isCardInference ? 'Completar e Atualizar' : 'Completar',
@@ -676,7 +676,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     // PROMPT #118 - Use ConfirmDialog instead of native confirm()
     const isContextInterview = interview?.interview_mode === 'context';
     const confirmMessage = isContextInterview
-      ? 'Cancelar esta entrevista? O projeto sera excluido pois ainda nao tem contexto definido.'
+      ? 'Cancelar esta entrevista? O projeto será excluído pois ainda não tem contexto definido.'
       : 'Cancelar esta entrevista?';
 
     setConfirmDialog({
@@ -731,7 +731,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
     const hasMessages = interview.conversation_data && interview.conversation_data.length > 0;
     if (!hasMessages) {
-      setEpicResult({ error: 'Nao e possivel gerar Epic de uma entrevista vazia. Adicione algumas mensagens primeiro.' });
+      setEpicResult({ error: 'Não é possível gerar Epic de uma entrevista vazia. Adicione algumas mensagens primeiro.' });
       setShowEpicErrorModal(true);
       return;
     }
@@ -756,7 +756,7 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       const data = generateResponse.data || generateResponse;
 
       if (!data.suggestions || data.suggestions.length === 0) {
-        throw new Error('Nenhuma sugestao de Epic foi gerada');
+        throw new Error('Nenhuma sugestão de Epic foi gerada');
       }
 
       const epicSuggestion = data.suggestions[0];

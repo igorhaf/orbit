@@ -111,13 +111,13 @@ const getStatusBadge = (status: string) => {
   const statusLower = status.toLowerCase();
 
   if (statusLower === 'done' || statusLower === 'completed') {
-    return <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800 border border-green-200">Concluido</span>;
+    return <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800 border border-green-200">Concluído</span>;
   }
   if (statusLower === 'in_progress' || statusLower === 'in progress') {
     return <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800 border border-blue-200">Em Progresso</span>;
   }
   if (statusLower === 'review') {
-    return <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-800 border border-purple-200">Revisao</span>;
+    return <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-800 border border-purple-200">Revisão</span>;
   }
   if (statusLower === 'backlog') {
     return <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-800 border border-gray-200">Backlog</span>;
@@ -479,7 +479,7 @@ export default function BacklogListView({
           false,
           item.id // task_id for persistent loading state
         );
-        showSuccess('Ativacao iniciada! Acompanhe o progresso no sino de notificações.');
+        showSuccess('Ativação iniciada! Acompanhe o progresso no sino de notificações.');
         return;
       }
 
@@ -530,7 +530,7 @@ export default function BacklogListView({
         try {
           const deletePromises = Array.from(selectedIds).map(id => tasksApi.delete(id));
           await Promise.all(deletePromises);
-          showSuccess(`${count} item(ns) excluido(s) com sucesso`);
+          showSuccess(`${count} item(ns) excluído(s) com sucesso`);
           onSelectionChange?.(new Set());
           fetchBacklog();
         } catch (error: any) {

@@ -57,7 +57,7 @@ function getDurationBadgeClass(ms: number): string {
 }
 
 function getDurationLabel(ms: number): string {
-  if (ms < 15000) return 'Rapido';
+  if (ms < 15000) return 'Rápido';
   if (ms < 60000) return 'Moderado';
   return 'Lento';
 }
@@ -82,7 +82,7 @@ export default function TimelineView({ logs }: TimelineViewProps) {
       if (!opsMap.has(log.trace_id)) {
         opsMap.set(log.trace_id, {
           trace_id: log.trace_id,
-          operation_name: log.operation_name || 'Operacao',
+          operation_name: log.operation_name || 'Operação',
           events: [],
           phases: [],
           total_duration_ms: 0,
@@ -192,8 +192,8 @@ export default function TimelineView({ logs }: TimelineViewProps) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
         <div className="text-center">
-          <p className="text-lg">Nenhuma operacao registrada</p>
-          <p className="text-xs mt-1">Operacoes com trace_id aparecerao aqui</p>
+          <p className="text-lg">Nenhuma operação registrada</p>
+          <p className="text-xs mt-1">Operações com trace_id aparecerão aqui</p>
         </div>
       </div>
     );

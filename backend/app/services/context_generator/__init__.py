@@ -5,7 +5,11 @@ Modularized from monolithic context_generator.py (6000 lines) into focused modul
 - utils.py: JSON parsing, text cleaning, semantic conversion
 - context_interview.py: Context interview processing and locking
 - business_rules.py: Business rule classification (Epic > Story)
-- card_activator.py: Card activation with rich content generation
+- card_activator.py: Card activation aggregator (composes sub-mixins below)
+  - content_formatter.py: Shared validation and formatting methods
+  - epic_activator.py: Epic activation and content generation
+  - story_activator.py: Story activation and content generation
+  - task_activator.py: Task/Subtask activation and content generation
 - draft_generator.py: Draft generation and batch processing
 - service.py: Main ContextGeneratorService (composes all mixins)
 

@@ -96,7 +96,7 @@ export function InterviewList({
     // Find the target project to check its context
     const targetProject = projectProp || projects.find(p => p.id === targetProjectId);
     if (targetProject && !targetProject.context_locked && !targetProject.context_human) {
-      showWarning('Complete a Entrevista de Contexto antes de criar Epics. Va para a página do projeto e clique em "Configurar Contexto".');
+      showWarning('Complete a Entrevista de Contexto antes de criar Epics. Vá para a página do projeto e clique em "Configurar Contexto".');
       setIsCreateOpen(false);
       return;
     }
@@ -226,7 +226,7 @@ export function InterviewList({
           className="block w-48 rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
         >
           <option value="active">Entrevistas abertas</option>
-          <option value="completed">Entrevistas concluidas</option>
+          <option value="completed">Entrevistas concluídas</option>
           <option value="all">Todas as entrevistas</option>
         </select>
         <span className="text-sm text-gray-500">
@@ -373,7 +373,7 @@ export function InterviewList({
             <div className="text-sm text-gray-600 bg-gray-50 p-4 rounded">
               <p className="font-medium mb-1">Pronto para iniciar entrevista</p>
               <p className="text-xs text-gray-500">
-                A entrevista sera criada para o projeto atual e iniciara imediatamente.
+                A entrevista será criada para o projeto atual e iniciará imediatamente.
               </p>
             </div>
           )}
@@ -384,16 +384,16 @@ export function InterviewList({
             <div className="text-sm text-gray-600 bg-amber-50 p-4 rounded border border-amber-200">
               <p className="font-medium text-gray-900 mb-1">Entrevista de Contexto (Primeiro Passo Obrigatório)</p>
               <p className="text-xs text-gray-600">
-                Esta entrevista estabelecera o contexto fundamental do seu projeto.
-                Apos concluir, o contexto sera travado e você podera criar Epics.
+                Esta entrevista estabelecerá o contexto fundamental do seu projeto.
+                Após concluir, o contexto será travado e você poderá criar Epics.
               </p>
             </div>
           ) : (
             <div className="text-sm text-gray-600 bg-blue-50 p-4 rounded border border-blue-200">
               <p className="font-medium text-gray-900 mb-1">Entrevista de Epic</p>
               <p className="text-xs text-gray-600">
-                Esta entrevista criara um Epic para seu projeto.
-                Modo focado em cards (com tipos de motivacao) esta disponível para entrevistas hierarquicas
+                Esta entrevista criará um Epic para seu projeto.
+                Modo focado em cards (com tipos de motivação) está disponível para entrevistas hierárquicas
                 (Stories, Tasks, Subtasks) criadas a partir deste Epic.
               </p>
             </div>
@@ -444,7 +444,7 @@ export function InterviewList({
                 Excluir esta entrevista?
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Isso excluira permanentemente a entrevista e todas as suas mensagens. Esta ação não pode ser desfeita.
+                Isso excluirá permanentemente a entrevista e todas as suas mensagens. Esta ação não pode ser desfeita.
               </p>
             </div>
           </div>

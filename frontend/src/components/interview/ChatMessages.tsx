@@ -77,7 +77,7 @@ export default function ChatMessages({
             />
           </svg>
           <p className="text-base mb-1 font-medium">Iniciando IA...</p>
-          <p className="text-sm">O assistente ira cumprimentar voce em breve</p>
+          <p className="text-sm">O assistente irá cumprimentar você em breve</p>
         </div>
       ) : (
         <>
@@ -139,7 +139,7 @@ export default function ChatMessages({
             <span className="text-sm text-green-700">Analisando entrevista e criando Epic...</span>
           </div>
           <p className="text-xs text-green-700 mt-2">
-            O Epic sera criado automaticamente com base na sua conversa.
+            O Epic será criado automaticamente com base na sua conversa.
           </p>
         </div>
       )}
@@ -154,7 +154,7 @@ export default function ChatMessages({
             status={provisioningJob.status}
           />
           <p className="text-xs text-purple-700 mt-2">
-            Criando estrutura do projeto, instalando dependencias e configurando ambiente. Isso pode levar 1-3 minutos.
+            Criando estrutura do projeto, instalando dependências e configurando ambiente. Isso pode levar 1-3 minutos.
           </p>
         </div>
       )}
@@ -169,7 +169,7 @@ export default function ChatMessages({
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
                 <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
               </div>
-              <span className="text-sm text-gray-600 ml-2">A IA esta pensando...</span>
+              <span className="text-sm text-gray-600 ml-2">A IA está pensando...</span>
             </div>
           </div>
         </div>

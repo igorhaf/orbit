@@ -75,12 +75,12 @@ export default function EditModelNodeDialog({
 
         {/* Info */}
         <div className="bg-blue-50 rounded-lg p-3 text-xs text-blue-700">
-          Sobrescrever padroes do modelo para esta posicao especifica do fluxo. Deixe campos vazios para usar as configuracoes globais do modelo.
+          Sobrescrever padrões do modelo para esta posição específica do fluxo. Deixe campos vazios para usar as configurações globais do modelo.
         </div>
 
         {/* Override fields */}
         <div className="space-y-3">
-          <h4 className="text-sm font-semibold text-gray-900">Sobreposicoes por Fluxo</h4>
+          <h4 className="text-sm font-semibold text-gray-900">Sobreposições por Fluxo</h4>
 
           <Input
             label="Temperature"
@@ -88,58 +88,58 @@ export default function EditModelNodeDialog({
             min="0"
             max="2"
             step="0.1"
-            placeholder={`Padrao: ${model.config?.temperature ?? 'padrao do modelo'}`}
+            placeholder={`Padrão: ${model.config?.temperature ?? 'padrão do modelo'}`}
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
-            helperText="0.0 = deterministico, 2.0 = muito criativo. Vazio = usar padrao do modelo."
+            helperText="0.0 = determinístico, 2.0 = muito criativo. Vazio = usar padrão do modelo."
           />
 
           <Input
             label="Max Tokens"
             type="number"
             min="1"
-            placeholder={`Padrao: ${model.config?.max_tokens ?? 'padrao do modelo'}`}
+            placeholder={`Padrão: ${model.config?.max_tokens ?? 'padrão do modelo'}`}
             value={maxTokens}
             onChange={(e) => setMaxTokens(e.target.value)}
-            helperText="Tamanho maximo da resposta. Vazio = usar padrao do modelo."
+            helperText="Tamanho máximo da resposta. Vazio = usar padrão do modelo."
           />
 
           <Input
             label="Timeout (segundos)"
             type="number"
             min="1"
-            placeholder="Padrao: padrao do modelo/sistema"
+            placeholder="Padrão: padrão do modelo/sistema"
             value={timeoutSeconds}
             onChange={(e) => setTimeoutSeconds(e.target.value)}
-            helperText="Timeout da chamada API. Vazio = usar padrao do modelo."
+            helperText="Timeout da chamada API. Vazio = usar padrão do modelo."
           />
 
           <Input
-            label="Max Requisicoes Simultaneas"
+            label="Max Requisições Simultâneas"
             type="number"
             min="1"
-            placeholder={`Padrao: ${model.max_concurrent_requests || 'Ilimitado'}`}
+            placeholder={`Padrão: ${model.max_concurrent_requests || 'Ilimitado'}`}
             value={maxConcurrent}
             onChange={(e) => setMaxConcurrent(e.target.value)}
-            helperText="Max chamadas API em paralelo. Vazio = usar padrao do modelo."
+            helperText="Máx. chamadas API em paralelo. Vazio = usar padrão do modelo."
           />
         </div>
 
         {/* Current global settings (read-only) */}
         <div className="space-y-1 pt-2 border-t border-gray-200">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase">Configuracoes Globais do Modelo</h4>
+          <h4 className="text-xs font-semibold text-gray-500 uppercase">Configurações Globais do Modelo</h4>
           <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
             <div>Max Tokens: <span className="font-medium text-gray-900">{model.config?.max_tokens || 'N/A'}</span></div>
             <div>Temperature: <span className="font-medium text-gray-900">{model.config?.temperature ?? 'N/A'}</span></div>
             <div>Limite de Taxa: <span className="font-medium text-gray-900">{model.rate_limit_requests ? `${model.rate_limit_requests} req/${model.rate_limit_window_seconds}s` : 'Nenhum'}</span></div>
-            <div>Concorrencia: <span className="font-medium text-gray-900">{model.max_concurrent_requests ? `${model.max_concurrent_requests}x` : 'Ilimitado'}</span></div>
+            <div>Concorrência: <span className="font-medium text-gray-900">{model.max_concurrent_requests ? `${model.max_concurrent_requests}x` : 'Ilimitado'}</span></div>
           </div>
         </div>
 
         {/* Footer */}
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200">
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={handleSave}>Salvar Sobreposicoes</Button>
+          <Button variant="primary" onClick={handleSave}>Salvar Sobreposições</Button>
         </div>
       </div>
     </Dialog>

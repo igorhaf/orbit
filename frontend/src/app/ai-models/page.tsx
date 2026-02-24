@@ -415,7 +415,7 @@ export default function AIModelsPage() {
                         {/* PROMPT #228 - Concurrency Display */}
                         {model.max_concurrent_requests && (
                           <div>
-                            <div className="text-gray-500 text-xs">Concorrencia</div>
+                            <div className="text-gray-500 text-xs">Concorrência</div>
                             <div className="font-semibold text-gray-900">
                               {model.max_concurrent_requests}x
                             </div>
@@ -513,7 +513,7 @@ export default function AIModelsPage() {
           open={showCreateDialog}
           onClose={() => setShowCreateDialog(false)}
           title="Adicionar Modelo IA"
-          description="Configure um novo modelo IA para o sistema de orquestracao"
+          description="Configure um novo modelo IA para o sistema de orquestração"
         >
           <form onSubmit={handleCreateModel}>
             <div className="space-y-4">
@@ -556,7 +556,7 @@ export default function AIModelsPage() {
               <Input
                 label={['ollama', 'claudio'].includes(createFormData.provider) ? 'Chave API (opcional)' : 'Chave API'}
                 type="password"
-                placeholder={['ollama', 'claudio'].includes(createFormData.provider) ? 'Deixe vazio (nao necessario)' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
+                placeholder={['ollama', 'claudio'].includes(createFormData.provider) ? 'Deixe vazio (não necessário)' : 'Insira a chave API (sk-..., AIza..., co-..., etc)'}
                 required={!['ollama', 'claudio'].includes(createFormData.provider)}
                 value={createFormData.api_key}
                 onChange={(e) =>
@@ -645,7 +645,7 @@ export default function AIModelsPage() {
                 <h4 className="text-sm font-medium text-gray-700 mb-3">Limite de Taxa</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <Input
-                    label="Max Requisicoes"
+                    label="Max Requisições"
                     type="number"
                     min="1"
                     placeholder="ex: 3"
@@ -672,7 +672,7 @@ export default function AIModelsPage() {
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Deixe vazio para sem limite. Exemplo: 3 requisicoes por 60 segundos.
+                  Deixe vazio para sem limite. Exemplo: 3 requisições por 60 segundos.
                 </p>
               </div>
 
@@ -693,15 +693,15 @@ export default function AIModelsPage() {
                   }
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Deixe vazio para usar padrão do sistema. Substituido pelo No de Timeout no diagrama AI Flow.
+                  Deixe vazio para usar padrão do sistema. Substituído pelo Nó de Timeout no diagrama AI Flow.
                 </p>
               </div>
 
               {/* Concurrency Section (PROMPT #228) */}
               <div className="border-t pt-4 mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Concorrencia</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Concorrência</h4>
                 <Input
-                  label="Max Requisicoes Simultaneas"
+                  label="Max Requisições Simultâneas"
                   type="number"
                   min="1"
                   placeholder="Ilimitado"
@@ -886,7 +886,7 @@ export default function AIModelsPage() {
                 <h4 className="text-sm font-medium text-gray-700 mb-3">Limite de Taxa</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <Input
-                    label="Max Requisicoes"
+                    label="Max Requisições"
                     type="number"
                     min="1"
                     placeholder="ex: 3"
@@ -913,7 +913,7 @@ export default function AIModelsPage() {
                   />
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Deixe vazio para sem limite. Exemplo: 3 requisicoes por 60 segundos.
+                  Deixe vazio para sem limite. Exemplo: 3 requisições por 60 segundos.
                 </p>
               </div>
 
@@ -934,15 +934,15 @@ export default function AIModelsPage() {
                   }
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Deixe vazio para usar padrão do sistema. Substituido pelo No de Timeout no diagrama AI Flow.
+                  Deixe vazio para usar padrão do sistema. Substituído pelo Nó de Timeout no diagrama AI Flow.
                 </p>
               </div>
 
               {/* Concurrency Section (PROMPT #228) */}
               <div className="border-t pt-4 mt-4">
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Concorrencia</h4>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Concorrência</h4>
                 <Input
-                  label="Max Requisicoes Simultaneas"
+                  label="Max Requisições Simultâneas"
                   type="number"
                   min="1"
                   placeholder="Ilimitado"

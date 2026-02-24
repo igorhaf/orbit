@@ -82,7 +82,7 @@ export default function TestDragPage() {
       </DragDropContext>
 
       <div className="mt-6 p-4 bg-yellow-50 rounded">
-        <p className="text-sm font-medium mb-2">Informações de Depuracao:</p>
+        <p className="text-sm font-medium mb-2">Informações de Depuração:</p>
         <ul className="text-xs space-y-1">
           <li>✓ DragDropContext: Initialized</li>
           <li>✓ Droppable: droppableId="test-droppable"</li>

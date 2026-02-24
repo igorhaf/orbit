@@ -44,7 +44,7 @@ export default function OptimizeDialog({
     } catch (err: any) {
       const msg = err?.message || 'Falha ao otimizar';
       if (msg.includes('No chain configured')) {
-        setError('Nenhuma cadeia configurada para esta operacao. Adicione modelos a cadeia primeiro.');
+        setError('Nenhuma cadeia configurada para esta operação. Adicione modelos à cadeia primeiro.');
       } else {
         setError(msg);
       }
@@ -77,7 +77,7 @@ export default function OptimizeDialog({
         <div className="p-5 space-y-4">
           {/* Strategy selector */}
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-2">Estrategia</label>
+            <label className="text-sm font-medium text-gray-700 block mb-2">Estratégia</label>
             <div className="grid grid-cols-2 gap-2">
               {[
                 { value: 'balanced', label: 'Equilibrado', desc: 'Melhor geral' },
@@ -135,7 +135,7 @@ export default function OptimizeDialog({
                     <span className="font-bold text-gray-500 w-5">{i + 1}</span>
                     <ProviderIcon provider={m.provider} size="w-4 h-4" />
                     <span className="flex-1 font-medium">{m.model_name}</span>
-                    <span className="text-gray-500">Pontuacao: {m.score.toFixed(2)}</span>
+                    <span className="text-gray-500">Pontuação: {m.score.toFixed(2)}</span>
                   </div>
                 ))}
               </div>

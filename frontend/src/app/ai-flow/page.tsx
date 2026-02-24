@@ -544,7 +544,7 @@ function AIFlowPageContent() {
       if (workingChain.length === 0 && workingUtilityNodes.length === 0 && currentChain) {
         // Chain was emptied -- delete it
         await aiFlowApi.deleteChain(selectedUsageType);
-        showSuccess('Cadeia de fluxo excluida');
+        showSuccess('Cadeia de fluxo excluída');
       } else if (workingChain.length > 0 || workingUtilityNodes.length > 0) {
         await aiFlowApi.upsertChain(selectedUsageType, {
           chain: workingChain,
@@ -570,14 +570,14 @@ function AIFlowPageContent() {
     if (template.utility_nodes && template.utility_nodes.length > 0) {
       setWorkingUtilityNodes(template.utility_nodes);
     }
-    showSuccess(`Template "${template.name}" aplicado (nao salvo)`);
+    showSuccess(`Template "${template.name}" aplicado (não salvo)`);
   };
 
   // PROMPT #124 - Apply optimize result
   const handleApplyOptimize = (order: string[]) => {
     setWorkingChain(order);
     setShowOptimize(false);
-    showSuccess('Ordem otimizada aplicada (nao salvo)');
+    showSuccess('Ordem otimizada aplicada (não salvo)');
   };
 
   if (loading) {
@@ -650,7 +650,7 @@ function AIFlowPageContent() {
         {/* Controls bar */}
         <div className="flex items-center justify-between px-3 py-2 bg-white border rounded-lg mb-3 flex-shrink-0">
           <div className="flex items-center gap-3">
-            <label className="text-sm font-medium text-gray-700">Operacao:</label>
+            <label className="text-sm font-medium text-gray-700">Operação:</label>
             <select
               value={selectedUsageType}
               onChange={(e) => setSelectedUsageType(e.target.value)}
@@ -671,7 +671,7 @@ function AIFlowPageContent() {
               </span>
             )}
             {hasUnsavedChanges && (
-              <span className="text-xs text-amber-600 font-medium">Alteracoes nao salvas</span>
+              <span className="text-xs text-amber-600 font-medium">Alterações não salvas</span>
             )}
           </div>
 
@@ -764,7 +764,7 @@ function AIFlowPageContent() {
           <div className="w-72 border rounded-lg bg-white overflow-hidden flex flex-col flex-shrink-0">
             {/* PROMPT #124 - Quick Actions */}
             <div className="border-b p-3">
-              <h3 className="text-sm font-semibold text-gray-900 mb-2">Acoes Rapidas</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-2">Ações Rápidas</h3>
               <div className="space-y-1.5">
                 <button
                   onClick={() => setShowOptimize(true)}
@@ -856,7 +856,7 @@ function AIFlowPageContent() {
             <div className="flex-1 overflow-y-auto">
               {/* Available models */}
               <div className="border-b p-3">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Modelos Disponiveis</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">Modelos Disponíveis</h3>
                 {availableModels.length === 0 ? (
                   <p className="text-xs text-gray-400 italic">Todos os modelos ativos estao na cadeia</p>
                 ) : (
@@ -887,7 +887,7 @@ function AIFlowPageContent() {
 
               {/* PROMPT #204 - Utility Nodes */}
               <div className="p-3">
-                <h3 className="text-sm font-semibold text-gray-900 mb-2">Nos do Fluxo</h3>
+                <h3 className="text-sm font-semibold text-gray-900 mb-2">Nós do Fluxo</h3>
                 {workingUtilityNodes.length > 0 && (
                   <div className="mb-3 space-y-1">
                     <div className="text-[10px] text-gray-500 font-medium uppercase tracking-wide mb-1">Ativos</div>
@@ -942,7 +942,7 @@ function AIFlowPageContent() {
         {showAnalytics && (
           <div className="mt-3 border rounded-lg bg-white p-4 flex-shrink-0 max-h-[300px] overflow-y-auto">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-900">Analiticos da Cadeia</h3>
+              <h3 className="text-sm font-semibold text-gray-900">Analíticos da Cadeia</h3>
               <button onClick={() => setShowAnalytics(false)} className="text-gray-400 hover:text-gray-600">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -963,9 +963,9 @@ function AIFlowPageContent() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span>
-            Os modelos sao testados em ordem. Se um falhar, o proximo e usado automaticamente.
-            Adicione nos utilitarios (Cache, RAG, Validador, etc.) para pre/pos-processamento.
-            Metricas atualizam a cada 30s.
+            Os modelos são testados em ordem. Se um falhar, o próximo é usado automaticamente.
+            Adicione nós utilitários (Cache, RAG, Validador, etc.) para pré/pós-processamento.
+            Métricas atualizam a cada 30s.
             {' '}<a href="/ai-models" className="underline font-medium">Gerenciar modelos</a>
           </span>
         </div>
@@ -1077,7 +1077,7 @@ function AIFlowPageContent() {
                   <svg className="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
-                  <p className="text-sm">Este contrato nao possui prompts configurados</p>
+                  <p className="text-sm">Este contrato não possui prompts configurados</p>
                 </div>
               )}
             </div>

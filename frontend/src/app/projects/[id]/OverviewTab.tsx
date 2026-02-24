@@ -132,9 +132,9 @@ export default function OverviewTab({
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex space-x-8">
           {[
-            { id: 'description', label: 'Descricao do Projeto' },
-            { id: 'statistics', label: 'Estatisticas' },
-            { id: 'settings', label: 'Configuracoes' },
+            { id: 'description', label: 'Descrição do Projeto' },
+            { id: 'statistics', label: 'Estatísticas' },
+            { id: 'settings', label: 'Configurações' },
           ].map((sub) => (
             <button
               key={sub.id}
@@ -160,7 +160,7 @@ export default function OverviewTab({
         {/* PROMPT #272 - Wiki stats moved to Wiki tab */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Descricao do Projeto</CardTitle>
+            <CardTitle>Descrição do Projeto</CardTitle>
             <div className="flex items-center gap-2">
               {isFormattingDescription && (
                 <span className="text-xs text-gray-500 italic">Formatando para Markdown...</span>
@@ -181,14 +181,14 @@ export default function OverviewTab({
                   {/* Text Formatting */}
                   <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
                     <button type="button" onClick={formatBold} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-bold text-sm" title="Negrito (Ctrl+B)">B</button>
-                    <button type="button" onClick={formatItalic} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm" title="Italico (Ctrl+I)">I</button>
-                    <button type="button" onClick={formatCode} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm" title="Codigo Inline">{'</>'}</button>
+                    <button type="button" onClick={formatItalic} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm" title="Itálico (Ctrl+I)">I</button>
+                    <button type="button" onClick={formatCode} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm" title="Código Inline">{'</>'}</button>
                   </div>
                   {/* Headings */}
                   <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                    <button type="button" onClick={formatHeading1} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Titulo 1">H1</button>
-                    <button type="button" onClick={formatHeading2} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Titulo 2">H2</button>
-                    <button type="button" onClick={formatHeading3} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Titulo 3">H3</button>
+                    <button type="button" onClick={formatHeading1} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 1">H1</button>
+                    <button type="button" onClick={formatHeading2} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 2">H2</button>
+                    <button type="button" onClick={formatHeading3} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 3">H3</button>
                   </div>
                   {/* Lists */}
                   <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
@@ -201,10 +201,10 @@ export default function OverviewTab({
                   </div>
                   {/* Blocks */}
                   <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-                    <button type="button" onClick={formatQuote} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Citacao">
+                    <button type="button" onClick={formatQuote} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Citação">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
                     </button>
-                    <button type="button" onClick={formatCodeBlock} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono" title="Bloco de Codigo">{'```'}</button>
+                    <button type="button" onClick={formatCodeBlock} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono" title="Bloco de Código">{'```'}</button>
                     <button type="button" onClick={formatTable} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Tabela">
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M9 10v8m6-8v8M3 6h18v12H3V6z" /></svg>
                     </button>
@@ -223,7 +223,7 @@ export default function OverviewTab({
                   value={editedDescription}
                   onChange={(e) => setEditedDescription(e.target.value)}
                   className="w-full p-4 min-h-[300px] text-sm text-gray-900 font-mono focus:outline-none resize-y"
-                  placeholder="Digite a descricao usando Markdown..."
+                  placeholder="Digite a descrição usando Markdown..."
                   onKeyDown={(e) => {
                     if (e.ctrlKey && e.key === 'b') { e.preventDefault(); formatBold(); }
                     if (e.ctrlKey && e.key === 'i') { e.preventDefault(); formatItalic(); }
@@ -262,7 +262,7 @@ export default function OverviewTab({
                 className="text-gray-500 text-sm italic cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
                 onDoubleClick={handleDescriptionDoubleClick}
               >
-                Nenhuma descricao ainda. Clique duplo para adicionar uma.
+                Nenhuma descrição ainda. Clique duplo para adicionar uma.
               </p>
             )}
           </CardContent>
@@ -276,7 +276,7 @@ export default function OverviewTab({
           {/* Statistics */}
           <Card>
             <CardHeader>
-              <CardTitle>Estatisticas</CardTitle>
+              <CardTitle>Estatísticas</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -445,11 +445,11 @@ export default function OverviewTab({
           {/* Project Info (read-only) */}
           <Card>
             <CardHeader>
-              <CardTitle>Informacoes do Projeto</CardTitle>
+              <CardTitle>Informações do Projeto</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Caminho do Codigo</p>
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Caminho do Código</p>
                 <code className="text-sm text-gray-800">{project.code_path}</code>
               </div>
               <div>

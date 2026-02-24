@@ -88,7 +88,7 @@ async def browse_folders(
     else:
         full_path = PROJECTS_BASE_PATH
 
-    # Verify path is within /projects (prevent directory traversal)
+    # Verify path is within PROJECTS_BASE_PATH (prevent directory traversal)
     try:
         full_path = full_path.resolve()
         if not str(full_path).startswith(str(PROJECTS_BASE_PATH.resolve())):

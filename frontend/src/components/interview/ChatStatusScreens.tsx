@@ -57,11 +57,11 @@ export function NotFoundScreen({ notFound, onRetry }: NotFoundScreenProps) {
             />
           </svg>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            {notFound ? 'Entrevista Nao Encontrada' : 'Falha ao Carregar Entrevista'}
+            {notFound ? 'Entrevista Não Encontrada' : 'Falha ao Carregar Entrevista'}
           </h3>
           <p className="text-gray-600 mb-6">
             {notFound
-              ? 'A entrevista que voce procura nao existe ou pode ter sido excluida.'
+              ? 'A entrevista que você procura não existe ou pode ter sido excluída.'
               : 'Ocorreu um erro inesperado ao carregar a entrevista.'}
           </p>
         </div>

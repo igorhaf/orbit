@@ -61,13 +61,13 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
       },
       'review': {
         to_status: 'review',
-        label: 'Enviar para Revisao',
+        label: 'Enviar para Revisão',
         color: 'warning',
         icon: <IconEye className="w-4 h-4" />,
       },
       'done': {
         to_status: 'done',
-        label: 'Marcar como Concluido',
+        label: 'Marcar como Concluído',
         color: 'success',
         icon: <IconCheckCircle className="w-4 h-4" />,
       },
@@ -125,7 +125,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
   if (validTransitions.length === 0) {
     return (
       <div className="text-sm text-gray-500 italic">
-        Nenhuma transicao disponível a partir do status atual
+        Nenhuma transição disponível a partir do status atual
       </div>
     );
   }
@@ -165,7 +165,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
         <div className="mt-4 p-4 border-2 border-blue-500 rounded-lg bg-blue-50">
           <div className="mb-3">
             <p className="text-sm font-semibold text-gray-900 mb-1">
-              Confirmar Transicao de Status
+              Confirmar Transição de Status
             </p>
             <p className="text-xs text-gray-600">
               Mudar status de <strong>{item.workflow_state}</strong> para{' '}
@@ -181,7 +181,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
             <textarea
               value={transitionReason}
               onChange={(e) => setTransitionReason(e.target.value)}
-              placeholder="Por que você esta fazendo esta mudanca?"
+              placeholder="Por que você está fazendo esta mudança?"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               rows={2}
             />
@@ -206,7 +206,7 @@ export default function WorkflowActions({ item, onTransition }: WorkflowActionsP
               onClick={() => handleTransition(showConfirm)}
               isLoading={loading}
             >
-              Confirmar Transicao
+              Confirmar Transição
             </Button>
           </div>
         </div>

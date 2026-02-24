@@ -1131,12 +1131,12 @@ export default function JobsPage() {
             {/* Performance Metrics */}
             <Card>
               <CardHeader>
-                <CardTitle>Metricas de Desempenho</CardTitle>
+                <CardTitle>Métricas de Desempenho</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                    <span className="text-sm text-gray-600">Duração Media</span>
+                    <span className="text-sm text-gray-600">Duração Média</span>
                     <span className="font-medium">
                       {formatDuration(stats.avg_duration_seconds)}
                     </span>

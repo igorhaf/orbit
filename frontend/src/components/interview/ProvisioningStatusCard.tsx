@@ -57,7 +57,7 @@ Porta da Aplicação: ${provisioning.credentials.application_port}
 Porta do Banco: ${provisioning.credentials.database_port}
 Porta do Adminer: ${provisioning.credentials.adminer_port}
 
-Proximos Passos:
+Próximos Passos:
 ${provisioning.next_steps?.join('\n')}
 `.trim();
 
@@ -78,9 +78,9 @@ ${provisioning.next_steps?.join('\n')}
               Provisionamento Não Disponível
             </h3>
             <div className="mt-2 text-sm text-yellow-700">
-              <p>{provisioning.error || 'O provisionamento do projeto não esta disponível para esta combinacao de stack.'}</p>
+              <p>{provisioning.error || 'O provisionamento do projeto não está disponível para esta combinação de stack.'}</p>
               <p className="mt-2">
-                Stack salvo com sucesso, mas o provisionamento automático não pode ser concluido.
+                Stack salvo com sucesso, mas o provisionamento automático não pode ser concluído.
               </p>
             </div>
           </div>
@@ -210,7 +210,7 @@ ${provisioning.next_steps?.join('\n')}
           {/* Next Steps */}
           {provisioning.next_steps && provisioning.next_steps.length > 0 && (
             <div className="mt-4">
-              <h4 className="text-sm font-medium text-green-800 mb-2">Proximos Passos:</h4>
+              <h4 className="text-sm font-medium text-green-800 mb-2">Próximos Passos:</h4>
               <div className="bg-white border border-green-200 rounded-md p-3">
                 <ol className="list-decimal list-inside space-y-1 text-sm text-gray-700 font-mono">
                   {provisioning.next_steps.map((step, index) => (

@@ -32,17 +32,17 @@ interface PhaseConfigPanelProps {
 
 const PHASE_DESCRIPTIONS: Record<string, string> = {
   phase_0: 'Scan estrutural do sistema de arquivos. Sem chamadas de IA.',
-  phase_1: 'Analise individual de cada arquivo do codebase.',
-  phase_2: 'Sintese cross-file de regras de negocio por dominio.',
-  phase_3: 'Construcao do mapa arquitetural com Extended Thinking.',
-  phase_4a: 'Geracao de Epics a partir do mapa e regras.',
-  phase_4b: 'Decomposicao de Epics em Stories.',
-  phase_4c: 'Decomposicao de Stories em Tasks.',
-  phase_4d: 'Decomposicao de Tasks em Subtasks.',
+  phase_1: 'Análise individual de cada arquivo do codebase.',
+  phase_2: 'Síntese cross-file de regras de negocio por dominio.',
+  phase_3: 'Construção do mapa arquitetural com Extended Thinking.',
+  phase_4a: 'Geração de Epics a partir do mapa e regras.',
+  phase_4b: 'Decomposição de Epics em Stories.',
+  phase_4c: 'Decomposição de Stories em Tasks.',
+  phase_4d: 'Decomposição de Tasks em Subtasks.',
   phase_5a: 'Planejamento da estrutura da wiki.',
-  phase_5b: 'Geracao de paginas de visao geral.',
-  phase_5c: 'Geracao de paginas por dominio.',
-  phase_5d: 'Geracao de paginas de fluxos cross-domain.',
+  phase_5b: 'Geração de páginas de visão geral.',
+  phase_5c: 'Geração de páginas por dominio.',
+  phase_5d: 'Geração de páginas de fluxos cross-domain.',
   phase_6: 'Quality Assurance com Extended Thinking.',
 };
 
@@ -116,7 +116,7 @@ export function PhaseConfigPanel({
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Concorrencia</label>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Concorrência</label>
           <input
             type="number"
             value={config.concurrency}
@@ -151,7 +151,7 @@ export function PhaseConfigPanel({
 
       {/* Last Run Stats */}
       <div className="px-4 py-3 border-t border-gray-200">
-        <h4 className="text-xs font-medium text-gray-500 mb-2">Ultima Execucao</h4>
+        <h4 className="text-xs font-medium text-gray-500 mb-2">Última Execução</h4>
         <div className="space-y-1">
           <div className="flex justify-between text-xs">
             <span className="text-gray-500">Score</span>
@@ -160,7 +160,7 @@ export function PhaseConfigPanel({
             </span>
           </div>
           <div className="flex justify-between text-xs">
-            <span className="text-gray-500">Duracao</span>
+            <span className="text-gray-500">Duração</span>
             <span className="text-gray-700">{formatDuration(stats.duration)}</span>
           </div>
         </div>

@@ -89,7 +89,7 @@ export function RunHistoryTable({ runs, loading, onViewDetail, onCompare }: RunH
   if (runs.length === 0) {
     return (
       <div className="text-center py-8 text-sm text-gray-500">
-        Nenhuma execucao registrada ainda.
+        Nenhuma execução registrada ainda.
       </div>
     );
   }
@@ -107,7 +107,7 @@ export function RunHistoryTable({ runs, loading, onViewDetail, onCompare }: RunH
               <th className="pb-2 text-center">Score</th>
               <th className="pb-2 text-center">Cards</th>
               <th className="pb-2 text-center">Wiki</th>
-              <th className="pb-2">Duracao</th>
+              <th className="pb-2">Duração</th>
               <th className="pb-2 w-10"></th>
             </tr>
           </thead>

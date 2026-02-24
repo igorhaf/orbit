@@ -105,50 +105,35 @@ export function buildFlowFromChain(
   onRemoveUtility?: (nodeId: string) => void,
   modelOverridesMap?: Record<string, ModelOverrides>,
   contracts?: FlowContract[],
+  onViewContract?: (contract: FlowContract) => void,
+  onDropPromptToAggregator?: (promptData: any) => void,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
 
-  // PROMPT #225 - Linear pipeline layout constants
+  // Layout constants
   const MODEL_SPACING_X = 300;
   const UTILITY_SPACING_X = 230;
-  const CONTRACT_SPACING_Y = 120;
-  const CONTRACT_COLUMN_X = 50;
-  const MAIN_Y = 150;
   const ERROR_Y_OFFSET = 200;
+  const MAIN_Y = 150;
 
-  // --- PROMPT #258 - Contract nodes + hub (column → hub → start) ---
+  // --- Contracts aggregator node (single node with internal list) ---
   const hasContracts = contracts && contracts.length > 0;
-  const HUB_X = CONTRACT_COLUMN_X + 290;
-  const START_X = hasContracts ? HUB_X + 230 : 50;
+  let cursorX = 50;
 
   if (hasContracts) {
-    const contractStartY = Math.max(0, MAIN_Y - ((contracts.length - 1) * CONTRACT_SPACING_Y) / 2);
-    contracts.forEach((contract, index) => {
-      const nodeId = `contract-${contract.id}`;
-      const defaultPos = { x: CONTRACT_COLUMN_X, y: contractStartY + index * CONTRACT_SPACING_Y };
-      const pos = savedPositions?.[nodeId] || defaultPos;
-      const shortName = contract.name.includes('/') ? contract.name.split('/').pop() : contract.name;
-      nodes.push({
-        id: nodeId,
-        type: 'contractNode',
-        data: {
-          ...contract,
-          label: shortName,
-          hasPrompt: !!(contract.system_prompt || contract.user_prompt),
-        },
-        position: pos,
-      });
-    });
-
-    // Hub node: aggregation point between contracts and pipeline
-    const hubPos = savedPositions?.['contracts-hub'] || { x: HUB_X, y: MAIN_Y - 10 };
+    const listPos = savedPositions?.['contracts-list'] || { x: cursorX, y: MAIN_Y - 80 };
     nodes.push({
-      id: 'contracts-hub',
-      type: 'contractsHubNode',
-      data: { contractCount: contracts.length },
-      position: hubPos,
+      id: 'contracts-list',
+      type: 'contractsListNode',
+      data: {
+        contracts,
+        onViewContract,
+        onDropPrompt: onDropPromptToAggregator,
+      },
+      position: listPos,
     });
+    cursorX += 340;
   }
 
   // --- Classify utility nodes into pre/post-process ---
@@ -162,15 +147,12 @@ export function buildFlowFromChain(
     }
   }
 
-  let cursorX = START_X;
-
   // --- 1. Start node (blue circle) ---
-  // Use 'default' when hub exists so start has a target handle for the hub→start edge
   const startPos = savedPositions?.['start'] || { x: cursorX, y: MAIN_Y };
   nodes.push({
     id: 'start',
     type: hasContracts ? 'default' : 'input',
-    data: { label: 'Requisicao' },
+    data: { label: 'Requisição' },
     position: startPos,
     style: {
       background: '#3b82f6',
@@ -205,7 +187,6 @@ export function buildFlowFromChain(
     cursorX += UTILITY_SPACING_X;
   }
 
-  // Extra gap between pre-process and models for visual separation
   if (preNodes.length > 0 && chainModels.length > 0) {
     cursorX += 40;
   }
@@ -222,7 +203,7 @@ export function buildFlowFromChain(
       type: 'modelNode',
       data: {
         ...model,
-        position_label: index === 0 ? 'Primario' : `Fallback ${index}`,
+        position_label: index === 0 ? 'Primário' : `Fallback ${index}`,
         onRemove: onRemove ? () => onRemove(model.id) : undefined,
         metrics: metricsMap?.[model.id],
         animation: animationsMap?.[nodeId] || 'idle',
@@ -234,7 +215,6 @@ export function buildFlowFromChain(
     cursorX += MODEL_SPACING_X;
   });
 
-  // Extra gap between models and post-process
   if (chainModels.length > 0 && postNodes.length > 0) {
     cursorX += 40;
   }
@@ -303,22 +283,53 @@ export function buildFlowFromChain(
     });
   }
 
-  // --- 7. Build pipeline edges (linear chain) ---
+  // --- 7. Aggregator → Start edge (smart routing, right→left) ---
+  if (hasContracts) {
+    const contractColor = '#0d9488';
+    edges.push({
+      id: 'edge-contracts-list-start',
+      source: 'contracts-list',
+      target: 'start',
+      sourceHandle: 'right',
+      type: 'smartEdge',
+      label: 'prompts',
+      labelStyle: { fontSize: 11, fontWeight: 600, fill: '#0d9488' },
+      labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
+      style: { stroke: contractColor, strokeWidth: 2 },
+      markerEnd: { type: MarkerType.ArrowClosed, color: contractColor, width: 16, height: 16 },
+      animated: true,
+    } as Edge);
+  }
+
+  // --- 8. Build pipeline edges (smart routing with collision avoidance) ---
   const pipeline: string[] = ['start'];
   preNodes.forEach((n) => pipeline.push(n.id));
   chainModels.forEach((m) => pipeline.push(`model-${m.id}`));
   postNodes.forEach((n) => pipeline.push(n.id));
   pipeline.push('response');
 
+  // Set of custom node IDs (have named handles left/right)
+  const customNodeIds = new Set<string>();
+  preNodes.forEach((n) => customNodeIds.add(n.id));
+  postNodes.forEach((n) => customNodeIds.add(n.id));
+  chainModels.forEach((m) => customNodeIds.add(`model-${m.id}`));
+
   for (let i = 0; i < pipeline.length - 1; i++) {
     const sourceId = pipeline[i];
     const targetId = pipeline[i + 1];
     const props = computeEdgeProps(sourceId, targetId, chainModels, preNodes, postNodes, animationsMap);
 
+    // Magnetic handle direction: always exit right, enter left for custom nodes
+    const sourceHasHandles = customNodeIds.has(sourceId);
+    const targetHasHandles = customNodeIds.has(targetId);
+
     edges.push({
       id: `edge-${sourceId}-${targetId}`,
       source: sourceId,
       target: targetId,
+      sourceHandle: sourceHasHandles ? 'right' : undefined,
+      targetHandle: targetHasHandles ? 'left' : undefined,
+      type: 'smartEdge',
       label: props.label,
       labelStyle: {
         fontSize: (props.label === 'tentar' || props.label === 'fallback') ? 11 : 9,
@@ -331,55 +342,26 @@ export function buildFlowFromChain(
         strokeWidth: props.strokeWidth,
         ...(props.dashed ? { strokeDasharray: '4,4' } : {}),
       },
-      markerEnd: { type: MarkerType.ArrowClosed, color: props.color },
-    });
+      markerEnd: { type: MarkerType.ArrowClosed, color: props.color, width: 16, height: 16 },
+    } as Edge);
   }
 
-  // --- PROMPT #258 - Contract → Hub → Pipeline edges ---
-  if (hasContracts) {
-    const contractColor = '#0d9488'; // teal
-    // Each contract → hub
-    contracts.forEach((contract) => {
-      const nodeId = `contract-${contract.id}`;
-      edges.push({
-        id: `edge-${nodeId}-hub`,
-        source: nodeId,
-        target: 'contracts-hub',
-        label: '',
-        style: { stroke: contractColor, strokeWidth: 1.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: contractColor },
-        animated: false,
-      });
-    });
-    // Hub → first node in pipeline (start)
-    const firstPipelineNode = pipeline[0]; // 'start'
-    edges.push({
-      id: 'edge-hub-pipeline',
-      source: 'contracts-hub',
-      target: firstPipelineNode,
-      label: 'prompts',
-      labelStyle: { fontSize: 10, fontWeight: 600, fill: '#0d9488' },
-      labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
-      style: { stroke: contractColor, strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: contractColor },
-      animated: true,
-    });
-  }
-
-  // --- 8. "All failed" edge from last model to Error ---
+  // --- 9. "All failed" edge from last model to Error (smart routing) ---
   if (chainModels.length > 0) {
     const lastModelId = `model-${chainModels[chainModels.length - 1].id}`;
     edges.push({
       id: `edge-${lastModelId}-error`,
       source: lastModelId,
       target: 'error',
+      sourceHandle: 'bottom',
+      type: 'smartEdge',
       label: 'todos falharam',
       labelStyle: { fontSize: 10, fontWeight: 500 },
       labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
       style: { stroke: '#ef4444', strokeWidth: 1.5, strokeDasharray: '5,5' },
-      markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' },
+      markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444', width: 14, height: 14 },
       animated: false,
-    });
+    } as Edge);
   }
 
   return { nodes, edges };

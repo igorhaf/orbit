@@ -959,7 +959,7 @@ export default function ProjectDetailsPage() {
                       {pipelineProfiles.map((p) => (
                         <option key={p.name} value={p.name}>
                           {p.name.charAt(0).toUpperCase() + p.name.slice(1)}
-                          {p.is_default ? ' (padrao)' : ''}
+                          {p.is_default ? ' (padrão)' : ''}
                         </option>
                       ))}
                     </select>

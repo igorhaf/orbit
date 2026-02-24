@@ -48,9 +48,9 @@ type Category = 'validation' | 'workflow' | 'calculation' | 'permission' | 'inte
 
 const CATEGORIES: { value: Category; label: string; description: string }[] = [
   { value: 'validation', label: 'Validação', description: 'Email único, CPF válido, senha mínima' },
-  { value: 'workflow', label: 'Fluxo de Trabalho', description: 'Fluxos de aprovacao, processos de pedido' },
-  { value: 'calculation', label: 'Calculo', description: 'Limites de desconto, calculo de frete' },
-  { value: 'permission', label: 'Permissão', description: 'Apenas admin, acesso do proprietario' },
+  { value: 'workflow', label: 'Fluxo de Trabalho', description: 'Fluxos de aprovação, processos de pedido' },
+  { value: 'calculation', label: 'Cálculo', description: 'Limites de desconto, cálculo de frete' },
+  { value: 'permission', label: 'Permissão', description: 'Apenas admin, acesso do proprietário' },
   { value: 'integration', label: 'Integração', description: 'APIs externas, webhooks' },
 ];
 
@@ -65,7 +65,7 @@ const SOURCE_LABELS: Record<string, { label: string; color: string }> = {
 const CATEGORY_LABELS: Record<string, { label: string; color: string }> = {
   validation: { label: 'Validação', color: 'bg-red-100 text-red-800' },
   workflow: { label: 'Fluxo de Trabalho', color: 'bg-yellow-100 text-yellow-800' },
-  calculation: { label: 'Calculo', color: 'bg-cyan-100 text-cyan-800' },
+  calculation: { label: 'Cálculo', color: 'bg-cyan-100 text-cyan-800' },
   permission: { label: 'Permissão', color: 'bg-pink-100 text-pink-800' },
   integration: { label: 'Integração', color: 'bg-indigo-100 text-indigo-800' },
 };

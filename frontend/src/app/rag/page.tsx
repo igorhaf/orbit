@@ -122,9 +122,9 @@ export default function RagPage() {
               <Database className="w-6 h-6 text-blue-600" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Analitico RAG</h1>
+              <h1 className="text-3xl font-bold text-gray-900">Analítico RAG</h1>
               <p className="text-gray-600 mt-1">
-                Estatisticas da base de conhecimento para todos os projetos
+                Estatísticas da base de conhecimento para todos os projetos
               </p>
             </div>
           </div>
@@ -252,7 +252,7 @@ export default function RagPage() {
                             <button
                               onClick={() => goToProjectRag(project.project_id)}
                               className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                              title="Ver Analitico RAG"
+                              title="Ver Analítico RAG"
                             >
                               <Database className="w-4 h-4" />
                             </button>

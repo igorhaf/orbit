@@ -98,7 +98,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               {prompt.is_reusable && (
                 <Badge variant="success">
                   <Tag className="w-3 h-3 mr-1" />
-                  Reutilizavel
+                  Reutilizável
                 </Badge>
               )}
               {prompt.parent_id && (
@@ -184,7 +184,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               id="prompt-type"
               value={type}
               onChange={(e) => setType(e.target.value)}
-              placeholder="Ex: Feature, Bug Fix, Refatoracao"
+              placeholder="Ex: Feature, Bug Fix, Refatoração"
               disabled={!editing}
               className="mt-1"
             />
@@ -200,7 +200,7 @@ export const PromptEditor: React.FC<PromptEditorProps> = ({
               className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
             />
             <Label htmlFor="is-reusable" className="cursor-pointer">
-              Marcar como reutilizavel (pode ser usado em vários projetos)
+              Marcar como reutilizável (pode ser usado em vários projetos)
             </Label>
           </div>
         </CardContent>
