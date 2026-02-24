@@ -1,14 +1,18 @@
 'use client';
 
 /**
- * PipelinePhaseNode - ReactFlow node representing a Deep Pipeline phase.
- * Shows: phase name, description, model, max_tokens, concurrency, score, duration.
- * Double-click opens the configuration panel.
+ * PipelinePhaseNode - ReactFlow node for Deep Pipeline phases.
+ * Follows the same visual pattern as ModelNode in AI Flow Operations tab:
+ * - Left accent border with provider color
+ * - ProviderIcon + name + subtitle
+ * - Health dot
+ * - Same handle sizes and padding
  */
 
 import React from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
 import { PROVIDER_COLORS } from '@/components/ai-flow/FlowConstants';
+import { ProviderIcon } from '@/components/ai-flow/FlowIcons';
 
 export interface PipelinePhaseData {
   phaseKey: string;
@@ -19,32 +23,16 @@ export interface PipelinePhaseData {
   provider: string;
   maxTokens: number;
   concurrency: number;
-  contract?: string;
   score?: number | null;
   duration?: number | null;
-  isConditional?: boolean;
   onSelect?: (phaseKey: string) => void;
 }
 
-const SCORE_COLORS = {
-  good: 'bg-green-500',
-  ok: 'bg-yellow-500',
-  bad: 'bg-red-500',
-  none: 'bg-gray-300',
-};
-
 function getScoreColor(score: number | null | undefined): string {
-  if (score == null) return SCORE_COLORS.none;
-  if (score >= 75) return SCORE_COLORS.good;
-  if (score >= 50) return SCORE_COLORS.ok;
-  return SCORE_COLORS.bad;
-}
-
-function getScoreBg(score: number | null | undefined): string {
-  if (score == null) return 'bg-gray-100 text-gray-500';
-  if (score >= 75) return 'bg-green-100 text-green-700';
-  if (score >= 50) return 'bg-yellow-100 text-yellow-700';
-  return 'bg-red-100 text-red-700';
+  if (score == null) return 'bg-gray-400';
+  if (score >= 75) return 'bg-green-500';
+  if (score >= 50) return 'bg-yellow-500';
+  return 'bg-red-500';
 }
 
 function formatDuration(ms: number | null | undefined): string {
@@ -65,71 +53,79 @@ function formatTokens(tokens: number): string {
 
 export function PipelinePhaseNode({ data }: NodeProps) {
   const d = data as unknown as PipelinePhaseData;
-  const borderColor = PROVIDER_COLORS[d.provider] || '#6b7280';
+  const providerColor = PROVIDER_COLORS[d.provider] || '#6b7280';
 
   return (
     <div
-      className="relative bg-white rounded-lg shadow-md border-2 cursor-pointer hover:shadow-lg hover:ring-2 hover:ring-purple-200 transition-all"
-      style={{ borderColor, width: 180, minHeight: 130 }}
+      className="bg-white rounded-lg shadow-md border-2 min-w-[200px] relative cursor-pointer hover:shadow-lg transition-all"
+      style={{
+        borderLeftColor: providerColor,
+        borderLeftWidth: '4px',
+        borderTopColor: '#e5e7eb',
+        borderRightColor: '#e5e7eb',
+        borderBottomColor: '#e5e7eb',
+      }}
       onClick={() => d.onSelect?.(d.phaseKey)}
       onDoubleClick={() => d.onSelect?.(d.phaseKey)}
-      title="Clique para configurar esta fase"
     >
-      <Handle type="target" position={Position.Left} className="!w-2 !h-2 !bg-gray-400" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        id="left"
+        className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-purple-500 hover:!w-4 hover:!h-4 transition-all"
+      />
 
-      {/* Header */}
-      <div
-        className="px-3 py-1.5 rounded-t-md text-white text-xs font-semibold flex items-center justify-between"
-        style={{ backgroundColor: borderColor }}
-      >
-        <span className="truncate">{d.label}</span>
-        {d.score != null && (
-          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${getScoreBg(d.score)}`}>
-            {d.score}
+      <div className="px-4 py-3">
+        {/* Row 1: Icon + Label + Health dot */}
+        <div className="flex items-center gap-3">
+          <ProviderIcon provider={d.provider || 'unknown'} />
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-sm text-gray-900 truncate">{d.label}</div>
+            <div className="text-xs text-gray-500">{d.description}</div>
+          </div>
+          <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${getScoreColor(d.score)}`} />
+        </div>
+
+        {/* Row 2: Model name */}
+        <div className="text-[10px] text-gray-400 mt-1.5 font-mono truncate" title={d.model}>
+          {d.modelShort}
+        </div>
+
+        {/* Row 3: Config badges */}
+        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-purple-100 text-purple-700">
+            {formatTokens(d.maxTokens)} tokens
           </span>
+          {d.concurrency > 1 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-blue-100 text-blue-700">
+              {d.concurrency}x conc.
+            </span>
+          )}
+        </div>
+
+        {/* Row 4: Score + Duration (matches metrics area in ModelNode) */}
+        {(d.score != null || d.duration != null) && (
+          <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between">
+            <span className={`text-[10px] font-semibold ${
+              d.score == null ? 'text-gray-400' :
+              d.score >= 75 ? 'text-green-600' :
+              d.score >= 50 ? 'text-yellow-600' : 'text-red-600'
+            }`}>
+              {d.score != null ? `${d.score}/100` : '--'}
+            </span>
+            <span className="text-[10px] text-gray-400">
+              {formatDuration(d.duration)}
+            </span>
+          </div>
         )}
       </div>
 
-      {/* Body */}
-      <div className="px-3 py-2 space-y-1">
-        {/* Description */}
-        <div className="text-[10px] text-gray-500 leading-tight">{d.description}</div>
-
-        {/* Model */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-[10px] text-gray-400">Modelo:</span>
-          <span className="text-[10px] font-semibold text-gray-700" title={d.model}>
-            {d.modelShort}
-          </span>
-        </div>
-
-        {/* Max Tokens + Concurrency row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-gray-400">Tokens:</span>
-            <span className="text-[10px] font-medium text-gray-600">{formatTokens(d.maxTokens)}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-gray-400">Conc:</span>
-            <span className="text-[10px] font-medium text-gray-600">{d.concurrency || 1}</span>
-          </div>
-        </div>
-
-        {/* Score + Duration row */}
-        <div className="flex items-center justify-between pt-1 border-t border-gray-100">
-          <div className="flex items-center gap-1">
-            <span className={`w-2 h-2 rounded-full inline-block ${getScoreColor(d.score)}`} />
-            <span className="text-[10px] font-medium text-gray-600">
-              {d.score != null ? `${d.score}/100` : '--'}
-            </span>
-          </div>
-          <span className="text-[10px] text-gray-400">
-            {formatDuration(d.duration)}
-          </span>
-        </div>
-      </div>
-
-      <Handle type="source" position={Position.Right} className="!w-2 !h-2 !bg-gray-400" />
+      <Handle
+        type="source"
+        position={Position.Right}
+        id="right"
+        className="!bg-gray-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-purple-500 hover:!w-4 hover:!h-4 transition-all"
+      />
     </div>
   );
 }

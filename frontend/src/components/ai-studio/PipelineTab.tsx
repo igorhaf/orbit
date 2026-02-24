@@ -15,6 +15,7 @@ import {
   useNodesState,
   useEdgesState,
   MarkerType,
+  ConnectionLineType,
   type Node,
   type Edge,
 } from '@xyflow/react';
@@ -27,6 +28,7 @@ import { PhaseConfigPanel } from './PhaseConfigPanel';
 import { RunHistoryTable } from './RunHistoryTable';
 import { RunDetailDialog } from './RunDetailDialog';
 import { RunCompareDialog } from './RunCompareDialog';
+import SmartEdge from '@/components/ai-flow/SmartEdge';
 
 // ── Phase definitions (fixed sequence, matches deep_pipeline.py) ────────
 const PIPELINE_PHASES = [
@@ -45,11 +47,11 @@ const PIPELINE_PHASES = [
   { key: 'phase_6', label: 'QA', description: 'Quality Assurance', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
 ];
 
-// ── Node layout (2 rows) ────────────────────────────────────────────────
-const NODE_W = 180;
-const NODE_H = 140;
-const GAP_X = 50;
-const GAP_Y = 60;
+// ── Node layout (2 rows, matching Operations tab node sizing) ───────────
+const NODE_W = 200;
+const NODE_H = 150;
+const GAP_X = 60;
+const GAP_Y = 80;
 const START_X = 40;
 const START_Y = 40;
 const COLS_ROW1 = 7; // phases 0-6 (first 7)
@@ -85,10 +87,11 @@ function getProviderFromModel(model: string): string {
   return 'claudio';
 }
 
-// ── Custom node types ───────────────────────────────────────────────────
+// ── Custom node & edge types (matching Operations tab) ──────────────────
 const nodeTypes = {
   pipelinePhase: PipelinePhaseNode,
 };
+const edgeTypes = { smartEdge: SmartEdge };
 
 // ── Main Component ──────────────────────────────────────────────────────
 interface PipelineTabProps {
@@ -180,10 +183,8 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
           provider: phase.hasAI ? provider : 'claudio',
           maxTokens: cfg.max_tokens || 0,
           concurrency: cfg.concurrency || 1,
-          contract: cfg.contract,
           score: lastRunScores[phase.key] ?? null,
           duration: lastRunDurations[phase.key] ?? null,
-          isConditional: phase.key === 'phase_7',
           onSelect: (key: string) => setSelectedPhase(key),
         } satisfies PipelinePhaseData,
         draggable: false,
@@ -196,10 +197,12 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
         id: `e-${PIPELINE_PHASES[i - 1].key}-${PIPELINE_PHASES[i].key}`,
         source: PIPELINE_PHASES[i - 1].key,
         target: PIPELINE_PHASES[i].key,
-        type: 'smoothstep',
+        sourceHandle: 'right',
+        targetHandle: 'left',
+        type: 'smartEdge',
         animated: false,
-        style: { stroke: '#9333ea', strokeWidth: 2 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#9333ea', width: 12, height: 12 },
+        style: { stroke: '#6b7280', strokeWidth: 2 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#6b7280', width: 16, height: 16 },
       });
     }
 
@@ -244,7 +247,6 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
         model: cfg.model || phase.defaultModel,
         max_tokens: cfg.max_tokens || 4000,
         concurrency: cfg.concurrency || 5,
-        contract: cfg.contract,
         thinking_budget: cfg.thinking_budget,
       },
       stats: {
@@ -259,19 +261,16 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
     setSelectedPhase(node.id);
   }, []);
 
-  // ── Canvas height ─────────────────────────────────────────────────
-  const canvasHeight = 400;
-
   return (
     <div className="h-full flex flex-col">
-      {/* Top bar: Profile selector + last run score */}
-      <div className="flex items-center justify-between px-4 py-3 bg-white border-b border-gray-200">
+      {/* Controls bar (matches Operations tab pattern) */}
+      <div className="flex items-center justify-between px-3 py-2 bg-white border rounded-lg mb-3 flex-shrink-0">
         <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-gray-600">Perfil:</label>
+          <label className="text-sm font-medium text-gray-700">Perfil:</label>
           <select
             value={selectedProfile}
             onChange={(e) => applyProfile(e.target.value)}
-            className="text-sm border border-gray-300 rounded-md px-3 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+            className="px-2 py-1.5 border border-gray-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
           >
             {profiles.map((p) => (
               <option key={p.name} value={p.name}>
@@ -281,55 +280,64 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
             ))}
           </select>
           {profiles.find((p) => p.name === selectedProfile)?.description && (
-            <span className="text-xs text-gray-400 max-w-xs truncate">
+            <span className="text-xs text-gray-500 max-w-xs truncate">
               {profiles.find((p) => p.name === selectedProfile)?.description}
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {lastRunScore != null && (
             <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full ${
               lastRunScore >= 75 ? 'bg-green-100 text-green-700' :
               lastRunScore >= 50 ? 'bg-yellow-100 text-yellow-700' :
               'bg-red-100 text-red-700'
             }`}>
-              Ultimo Score: {lastRunScore}/100
+              Score: {lastRunScore}/100
             </span>
           )}
         </div>
       </div>
 
-      {/* Canvas + optional side panel */}
-      <div className="flex flex-1 min-h-0">
-        <div className="flex-1" style={{ height: canvasHeight }}>
+      {/* Main content (matches Operations tab: flex gap-3 flex-1 min-h-0) */}
+      <div className="flex gap-3 flex-1 min-h-0">
+        {/* ReactFlow Canvas (matches Operations tab wrapper) */}
+        <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
           <ReactFlow
             nodes={nodes}
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            defaultEdgeOptions={{ type: 'smartEdge' }}
+            connectionLineType={ConnectionLineType.SmoothStep}
+            connectionLineStyle={{ stroke: '#6b7280', strokeWidth: 2 }}
             onNodeDoubleClick={handleNodeDoubleClick}
             fitView
-            fitViewOptions={{ padding: 0.15 }}
+            fitViewOptions={{ padding: 0.5, minZoom: 0.8, maxZoom: 1.2 }}
             proOptions={{ hideAttribution: true }}
             nodesDraggable={false}
             nodesConnectable={false}
             elementsSelectable={true}
+            snapToGrid={true}
+            snapGrid={[20, 20]}
+            minZoom={0.2}
+            maxZoom={2}
             panOnDrag
             zoomOnScroll
           >
-            <Background gap={20} size={1} color="#f3f4f6" />
-            <Controls showInteractive={false} position="bottom-left" />
+            <Background color="#e5e7eb" gap={20} />
+            <Controls />
             <MiniMap
-              nodeColor="#e9d5ff"
-              maskColor="rgba(0,0,0,0.05)"
-              style={{ width: 120, height: 80 }}
-              position="bottom-right"
+              nodeStrokeWidth={3}
+              zoomable
+              pannable
+              style={{ height: 90, width: 140 }}
             />
           </ReactFlow>
         </div>
 
-        {/* Side panel */}
+        {/* Side panel (matches Operations tab right sidebar wrapper) */}
         {selectedPhaseConfig && (
           <PhaseConfigPanel
             phaseKey={selectedPhaseConfig.phaseKey}

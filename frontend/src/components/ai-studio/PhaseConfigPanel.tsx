@@ -2,7 +2,7 @@
 
 /**
  * PhaseConfigPanel - Side panel for configuring a pipeline phase.
- * Shows model selector, max_tokens, concurrency, contract, and last run stats.
+ * Shows model selector, max_tokens, concurrency, and last run stats.
  */
 
 import React from 'react';
@@ -11,7 +11,6 @@ interface PhaseConfig {
   model: string;
   max_tokens: number;
   concurrency: number;
-  contract?: string;
   thinking_budget?: number;
 }
 
@@ -72,7 +71,7 @@ export function PhaseConfigPanel({
     'text-red-600';
 
   return (
-    <div className="w-72 bg-white border-l border-gray-200 h-full overflow-y-auto shadow-lg">
+    <div className="w-72 border rounded-lg bg-white overflow-hidden flex flex-col flex-shrink-0">
       {/* Header */}
       <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between bg-gray-50">
         <h3 className="text-sm font-semibold text-gray-800">{label}</h3>
