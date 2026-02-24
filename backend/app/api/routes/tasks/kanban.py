@@ -224,11 +224,14 @@ async def get_kanban_board(
         "todo": [],
         "in_progress": [],
         "review": [],
-        "done": []
+        "done": [],
+        "blocked": []
     }
 
     for task in tasks:
         status_key = task.status.value
+        if status_key not in kanban:
+            status_key = "backlog"
         kanban[status_key].append({
             "id": task.id,
             "project_id": task.project_id,
