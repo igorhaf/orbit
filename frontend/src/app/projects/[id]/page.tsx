@@ -119,6 +119,9 @@ export default function ProjectDetailsPage() {
   const [deepPipelineCompleted, setDeepPipelineCompleted] = useState(false);
   const [deepPipelineProgress, setDeepPipelineProgress] = useState<string | null>(null);
   const [deepPipelineScore, setDeepPipelineScore] = useState<string | null>(null);
+  // PROMPT #263 - Pipeline profile selector
+  const [pipelineProfiles, setPipelineProfiles] = useState<any[]>([]);
+  const [selectedPipelineProfile, setSelectedPipelineProfile] = useState<string>('');
 
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
@@ -157,6 +160,16 @@ export default function ProjectDetailsPage() {
   useEffect(() => {
     loadProjectData();
   }, [loadProjectData]);
+
+  // PROMPT #263 - Load pipeline profiles
+  useEffect(() => {
+    ragApi.pipelineProfiles().then((data) => {
+      const list = Array.isArray(data) ? data : [];
+      setPipelineProfiles(list);
+      const defaultP = list.find((p: any) => p.is_default) || list[0];
+      if (defaultP) setSelectedPipelineProfile(defaultP.name);
+    }).catch(() => {});
+  }, []);
 
   // PROMPT #301 - Poll enrichment status and auto-refresh project data while enriching
   // This covers initial scan, wiki enrichment, card generation, and watchdog
@@ -897,62 +910,103 @@ export default function ProjectDetailsPage() {
             </p>
 
             {/* PROMPT #260 - Deep Pipeline (7-phase via Claudio) */}
-            <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <button
-                  disabled={deepPipelineRunning}
-                  onClick={async () => {
-                    try {
-                      setDeepPipelineRunning(true);
-                      setDeepPipelineProgress('Iniciando...');
-                      await ragApi.deepPipeline(projectId);
-                      showSuccess('Deep Pipeline (7 fases) iniciado via Claudio');
-                    } catch (err: any) {
-                      setDeepPipelineRunning(false);
-                      setDeepPipelineProgress(null);
-                      showError(err?.message || 'Erro ao iniciar Deep Pipeline');
-                    }
-                  }}
-                  className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
-                    deepPipelineRunning
-                      ? 'bg-purple-50 text-purple-600 border border-purple-200 cursor-wait'
-                      : deepPipelineCompleted
-                      ? 'bg-purple-50 text-purple-700 border border-purple-300 hover:bg-purple-100'
-                      : 'bg-purple-600 text-white hover:bg-purple-700'
-                  }`}
-                  title="Executa pipeline completo de 7 fases usando Claudio (Haiku + Sonnet + Opus)"
-                >
-                  {deepPipelineRunning ? (
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
+            {/* PROMPT #263 - Profile selector + AI Studio links */}
+            <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <button
+                    disabled={deepPipelineRunning}
+                    onClick={async () => {
+                      try {
+                        setDeepPipelineRunning(true);
+                        setDeepPipelineProgress('Iniciando...');
+                        await ragApi.deepPipeline(projectId, selectedPipelineProfile || undefined);
+                        showSuccess(`Deep Pipeline iniciado (perfil: ${selectedPipelineProfile || 'default'})`);
+                      } catch (err: any) {
+                        setDeepPipelineRunning(false);
+                        setDeepPipelineProgress(null);
+                        showError(err?.message || 'Erro ao iniciar Deep Pipeline');
+                      }
+                    }}
+                    className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                      deepPipelineRunning
+                        ? 'bg-purple-50 text-purple-600 border border-purple-200 cursor-wait'
+                        : deepPipelineCompleted
+                        ? 'bg-purple-50 text-purple-700 border border-purple-300 hover:bg-purple-100'
+                        : 'bg-purple-600 text-white hover:bg-purple-700'
+                    }`}
+                    title="Executa pipeline completo de 7 fases usando Claudio"
+                  >
+                    {deepPipelineRunning ? (
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                      </svg>
+                    ) : (
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    )}
+                    {deepPipelineRunning ? 'Pipeline em execucao...' : deepPipelineCompleted ? 'Re-executar Pipeline' : 'Deep Pipeline'}
+                  </button>
+                  {pipelineProfiles.length > 0 && (
+                    <select
+                      value={selectedPipelineProfile}
+                      onChange={(e) => setSelectedPipelineProfile(e.target.value)}
+                      disabled={deepPipelineRunning}
+                      className="text-xs border border-gray-300 rounded-md px-2 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 disabled:opacity-50"
+                    >
+                      {pipelineProfiles.map((p) => (
+                        <option key={p.name} value={p.name}>
+                          {p.name.charAt(0).toUpperCase() + p.name.slice(1)}
+                          {p.is_default ? ' (padrao)' : ''}
+                        </option>
+                      ))}
+                    </select>
                   )}
-                  {deepPipelineRunning ? 'Deep Pipeline em execucao...' : deepPipelineCompleted ? 'Re-executar Deep Pipeline' : 'Deep Pipeline v2'}
-                </button>
-                {deepPipelineProgress && (
-                  <span className="text-xs text-purple-600 max-w-[300px] truncate">{deepPipelineProgress}</span>
-                )}
+                  {deepPipelineProgress && (
+                    <span className="text-xs text-purple-600 max-w-[300px] truncate">{deepPipelineProgress}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {deepPipelineScore && (
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full ${
+                      parseInt(deepPipelineScore) >= 75 ? 'bg-green-100 text-green-700' :
+                      parseInt(deepPipelineScore) >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                      'bg-red-100 text-red-700'
+                    }`}>
+                      Score: {deepPipelineScore}/100
+                    </span>
+                  )}
+                  {deepPipelineCompleted && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-700">
+                      v2
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {deepPipelineScore && (
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full ${
-                    parseInt(deepPipelineScore) >= 75 ? 'bg-green-100 text-green-700' :
-                    parseInt(deepPipelineScore) >= 50 ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    Score: {deepPipelineScore}/100
-                  </span>
-                )}
-                {deepPipelineCompleted && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-700">
-                    v2
-                  </span>
-                )}
+              {/* AI Studio links */}
+              <div className="flex items-center gap-3 text-xs">
+                <a
+                  href={`/ai-flow?tab=pipeline&project=${projectId}`}
+                  className="text-purple-600 hover:text-purple-800 hover:underline inline-flex items-center gap-1"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Configurar no AI Studio
+                </a>
+                <span className="text-gray-300">|</span>
+                <a
+                  href={`/ai-flow?tab=pipeline&project=${projectId}`}
+                  className="text-purple-600 hover:text-purple-800 hover:underline inline-flex items-center gap-1"
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Ver historico completo
+                </a>
               </div>
             </div>
           </div>

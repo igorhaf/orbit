@@ -326,11 +326,24 @@ export const ragApi = {
     request<any>(`/api/v1/projects/${projectId}/rag/enrichment-status`),
 
   // PROMPT #260 - Deep Pipeline (7-phase via Claudio)
-  deepPipeline: (projectId: string) =>
-    request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline`, {
+  deepPipeline: (projectId: string, profile?: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline${profile ? '?profile=' + encodeURIComponent(profile) : ''}`, {
       method: 'POST',
     }),
 
   deepPipelineStatus: (projectId: string) =>
     request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline/status`),
+
+  // PROMPT #263 - Pipeline Profiles & Run History
+  pipelineProfiles: () =>
+    request<any[]>('/api/v1/projects/pipeline/profiles'),
+
+  deepPipelineRuns: (projectId: string, limit: number = 20) =>
+    request<any[]>(`/api/v1/projects/${projectId}/rag/deep-pipeline/runs?limit=${limit}`),
+
+  deepPipelineRunDetail: (projectId: string, runId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline/runs/${runId}`),
+
+  deepPipelineCompare: (projectId: string, run1: string, run2: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline/compare?run1=${run1}&run2=${run2}`),
 };
