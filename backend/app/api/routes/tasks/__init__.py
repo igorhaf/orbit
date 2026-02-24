@@ -37,8 +37,10 @@ from .orbit_integration import router as orbit_integration_router
 router = APIRouter()
 
 # Include all sub-routers (no prefix - parent sets the prefix)
-router.include_router(crud_router)
+# IMPORTANT: kanban_router must come before crud_router because
+# GET /blocked would otherwise match crud's GET /{task_id} first.
 router.include_router(kanban_router)
+router.include_router(crud_router)
 router.include_router(execution_router)
 router.include_router(hierarchy_router)
 router.include_router(relationships_router)
