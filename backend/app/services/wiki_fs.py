@@ -152,8 +152,8 @@ def _page_to_response(
         ),
         "order_index": order_index,
         "source": source,
-        "created_at": created_at,
-        "updated_at": updated_at,
+        "created_at": created_at or datetime.now(timezone.utc).isoformat(),
+        "updated_at": updated_at or datetime.now(timezone.utc).isoformat(),
     }
 
 
