@@ -117,6 +117,14 @@ class Project(Base):
     # "allow_protected_project_deletion" is set to "true"
     protected = Column(Boolean, default=False, nullable=False, server_default="false")
 
+    # Deep Pipeline fields (7-phase Claudio pipeline)
+    # Phase 3 output: architectural map with domains, cross-domain flows, patterns
+    project_architecture = Column(JSON, nullable=True)
+    # Phase 6 output: overall quality score (0-100)
+    pipeline_quality_score = Column(String(10), nullable=True)
+    # Pipeline version used: "v1" (legacy 4-phase) or "v2" (deep 7-phase)
+    pipeline_version = Column(String(10), nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(

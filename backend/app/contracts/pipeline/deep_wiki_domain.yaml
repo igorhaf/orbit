@@ -1,0 +1,63 @@
+name: deep_wiki_domain
+version: 1
+category: pipeline
+description: Phase 5c - Geracao de paginas de wiki por dominio (Opus, multi-turn)
+usage_type: content_generation
+estimated_tokens: 10000
+tags:
+  - pipeline
+  - deep
+  - phase5
+  - wiki
+  - domain
+  - portuguese
+
+variables:
+  required:
+    - domain_name
+    - domain_rules_json
+    - domain_cards_json
+    - page_plan_json
+  optional:
+    - project_name
+
+system_prompt: |
+  Voce e um technical writer senior. Gere paginas completas para o dominio "{{ domain_name }}".
+
+  Recebera: as regras de negocio do dominio, os cards gerados, e o plano de paginas.
+
+  RESPONDA APENAS COM JSON PURO:
+  {
+    "domain": "{{ domain_name }}",
+    "pages": [
+      {
+        "slug": "dominio-slug",
+        "title": "Titulo da Pagina",
+        "content": "# Titulo\n\n## Descricao\n\nConteudo Markdown rico...",
+        "word_count": N
+      }
+    ]
+  }
+
+  REGRAS PARA CONTEUDO:
+  - Markdown rico: headers, listas, tabelas, code blocks, diagramas Mermaid
+  - Minimo 400 palavras por pagina
+  - REFERENCIE regras de negocio especificas (ex: "Conforme regra R003: ...")
+  - REFERENCIE cards especificos (ex: "Este fluxo esta coberto pelo Epic 'Titulo'")
+  - Inclua exemplos de codigo com evidencia real
+  - Descreva fluxos com diagramas Mermaid (flowchart ou sequence)
+  - TODO conteudo em PORTUGUES
+  - Secoes obrigatorias: Descricao, Entidades, Regras de Negocio, Fluxos
+
+user_prompt: |
+  Dominio: {{ domain_name }}
+  Projeto: {{ project_name }}
+
+  Plano de paginas:
+  {{ page_plan_json }}
+
+  Regras de negocio:
+  {{ domain_rules_json }}
+
+  Cards gerados:
+  {{ domain_cards_json }}

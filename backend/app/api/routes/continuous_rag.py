@@ -3,9 +3,11 @@ Continuous RAG Evolution API Routes
 
 PROMPT #218 - Endpoints for managing continuous RAG processing per project.
 PROMPT #252 - 4-phase pipeline with progressive button unlocking.
+PROMPT #260 - Deep Pipeline (7-phase Claudio pipeline).
 
 Provides manual scan triggers, status monitoring, file listing, and reset.
 Phase endpoints: scan, extract-rules, generate-cards, generate-wiki.
+Deep pipeline endpoints: deep-pipeline (run), deep-pipeline/status.
 """
 
 from typing import Optional
@@ -475,6 +477,156 @@ async def reset_rag_state(
     }
 
 
+@router.post("/{project_id}/rag/deep-pipeline")
+async def trigger_deep_pipeline(
+    project_id: UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #260 - Start the 7-phase deep pipeline via Claudio.
+    Phases: Scan → File Analysis (Haiku) → Rule Synthesis (Sonnet) →
+    Architectural Map (Sonnet+Thinking) → Cards (Opus/Sonnet/Haiku) →
+    Wiki (Opus) → QA (Sonnet+Thinking) → Gap Fill (conditional).
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    if not project.code_path:
+        raise HTTPException(status_code=400, detail="Projeto não tem code_path configurado")
+
+    # Check for existing running deep pipeline or legacy pipeline
+    existing = db.query(AsyncJob).filter(
+        AsyncJob.project_id == project_id,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+        AsyncJob.parent_job_id.is_(None),
+        AsyncJob.job_type.in_([
+            JobType.DEEP_PIPELINE,
+            JobType.PROJECT_PIPELINE,
+        ]),
+    ).first()
+    if existing:
+        return {
+            "message": "Um pipeline já está em andamento",
+            "job_id": str(existing.id),
+            "status": existing.status.value,
+        }
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.DEEP_PIPELINE,
+        input_data={"project_id": str(project_id), "phase": "deep_pipeline_v2"},
+        project_id=project_id,
+        notification_title=f"Deep Pipeline (7 fases) — {project.name or 'Projeto'}",
+        deep_link=f"/projects/{project_id}",
+    )
+
+    async def _run_deep_pipeline(job_id, proj_id):
+        from app.database import get_db as get_db_gen
+        db_session = next(get_db_gen())
+        try:
+            from app.services.deep_pipeline import DeepPipelineService
+            jm = JobManager(db_session)
+            jm.start_job(job_id)
+
+            pipeline = DeepPipelineService(db_session)
+
+            async def _update_progress(phase, pct, msg):
+                try:
+                    overall_pct = min(99, int(pct * 0.14 + phase * 14))
+                    jm.update_progress(job_id, overall_pct, f"[Fase {phase}] {msg}")
+                except Exception:
+                    pass
+
+            result = await pipeline.run(proj_id, progress_callback=_update_progress)
+            jm.complete_job(job_id, result)
+        except Exception as e:
+            try:
+                jm.fail_job(job_id, str(e))
+            except Exception:
+                pass
+        finally:
+            db_session.close()
+
+    background_tasks.add_task(_run_deep_pipeline, job.id, project_id)
+
+    return {
+        "message": "Deep Pipeline (7 fases) iniciado via Claudio",
+        "job_id": str(job.id),
+        "status": "pending",
+        "pipeline_version": "v2",
+    }
+
+
+@router.get("/{project_id}/rag/deep-pipeline/status")
+async def get_deep_pipeline_status(
+    project_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #260 - Get detailed deep pipeline status.
+    Shows per-phase progress, quality score, and artifact counts.
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+
+    # Find active or most recent deep pipeline job
+    active_job = db.query(AsyncJob).filter(
+        AsyncJob.project_id == project_id,
+        AsyncJob.job_type == JobType.DEEP_PIPELINE,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+        AsyncJob.parent_job_id.is_(None),
+    ).first()
+
+    last_completed = None
+    if not active_job:
+        last_completed = db.query(AsyncJob).filter(
+            AsyncJob.project_id == project_id,
+            AsyncJob.job_type == JobType.DEEP_PIPELINE,
+            AsyncJob.status == JobStatus.COMPLETED,
+        ).order_by(AsyncJob.updated_at.desc()).first()
+
+    # Count artifacts per phase
+    from app.models.pipeline_artifact import PipelineArtifact
+    from sqlalchemy import func as sql_func
+
+    artifact_counts = dict(
+        db.query(PipelineArtifact.phase, sql_func.count(PipelineArtifact.id))
+        .filter(PipelineArtifact.project_id == project_id)
+        .group_by(PipelineArtifact.phase)
+        .all()
+    )
+
+    response = {
+        "pipeline_version": project.pipeline_version or "v1",
+        "quality_score": project.pipeline_quality_score,
+        "has_architecture": project.project_architecture is not None,
+        "is_running": active_job is not None,
+        "artifacts": {
+            f"phase_{p}": artifact_counts.get(p, 0)
+            for p in range(8)
+        },
+    }
+
+    if active_job:
+        response["active_job"] = {
+            "id": str(active_job.id),
+            "status": active_job.status.value,
+            "progress_percent": active_job.progress_percent,
+            "progress_message": active_job.progress_message,
+            "started_at": active_job.started_at.isoformat() if active_job.started_at else None,
+        }
+    elif last_completed:
+        response["last_completed"] = {
+            "id": str(last_completed.id),
+            "completed_at": last_completed.updated_at.isoformat() if last_completed.updated_at else None,
+            "result": last_completed.result,
+        }
+
+    return response
+
+
 @router.get("/{project_id}/rag/enrichment-status")
 async def get_enrichment_status(
     project_id: UUID,
@@ -628,6 +780,17 @@ async def get_enrichment_status(
     except Exception:
         pass
 
+    # PROMPT #260 - Deep pipeline state
+    deep_pipeline_active = db.query(AsyncJob).filter(
+        AsyncJob.project_id == project_id,
+        AsyncJob.job_type == JobType.DEEP_PIPELINE,
+        AsyncJob.status.in_([JobStatus.PENDING, JobStatus.RUNNING]),
+    ).first()
+    deep_pipeline_done = db.execute(sql_text(
+        "SELECT 1 FROM async_jobs WHERE project_id = :pid "
+        "AND status = 'completed' AND job_type = 'deep_pipeline' LIMIT 1"
+    ), {"pid": str(project_id)}).first() is not None
+
     return {
         "is_enriching": is_enriching,
         "active_jobs": [
@@ -658,4 +821,13 @@ async def get_enrichment_status(
         "pipeline_phase_2": pipeline_state["phase_2"],
         "pipeline_phase_3": pipeline_state["phase_3"],
         "pipeline_phase_4": pipeline_state["phase_4"],
+        # PROMPT #260 - Deep Pipeline (v2) state
+        "deep_pipeline_version": project.pipeline_version or "v1",
+        "deep_pipeline_quality_score": project.pipeline_quality_score,
+        "deep_pipeline_running": deep_pipeline_active is not None,
+        "deep_pipeline_completed": deep_pipeline_done,
+        "deep_pipeline_progress": {
+            "percent": deep_pipeline_active.progress_percent if deep_pipeline_active else None,
+            "message": deep_pipeline_active.progress_message if deep_pipeline_active else None,
+        } if deep_pipeline_active else None,
     }

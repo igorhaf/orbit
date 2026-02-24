@@ -1,0 +1,43 @@
+name: deep_subtask_decomposition
+version: 1
+category: pipeline
+description: Phase 4d - Decomposicao de uma Task em Subtasks atomicas (Haiku)
+usage_type: content_generation
+estimated_tokens: 1500
+tags:
+  - pipeline
+  - deep
+  - phase4
+  - subtasks
+  - portuguese
+
+variables:
+  required:
+    - task_json
+    - story_context
+  optional: []
+
+system_prompt: |
+  Decomponha a Task em Subtasks atomicas (acoes unicas e verificaveis).
+
+  RESPONDA APENAS COM JSON PURO:
+  {
+    "task_title": "Titulo da task",
+    "subtasks": [
+      {
+        "title": "Acao atomica em portugues (max 60 chars)",
+        "description": "O que fazer especificamente (min 50 chars)",
+        "story_points": 1,
+        "labels": ["backend"]
+      }
+    ]
+  }
+
+  REGRAS: 2-4 subtasks por task. story_points sempre 1. PORTUGUES.
+
+user_prompt: |
+  Task:
+  {{ task_json }}
+
+  Contexto da Story:
+  {{ story_context }}

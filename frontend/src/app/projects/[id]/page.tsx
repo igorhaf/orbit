@@ -114,6 +114,12 @@ export default function ProjectDetailsPage() {
   // Track when phases are locally triggered to prevent stale poll overrides
   const phaseTriggeredAt = useRef<Record<string, number>>({});
 
+  // PROMPT #260 - Deep Pipeline (7-phase via Claudio)
+  const [deepPipelineRunning, setDeepPipelineRunning] = useState(false);
+  const [deepPipelineCompleted, setDeepPipelineCompleted] = useState(false);
+  const [deepPipelineProgress, setDeepPipelineProgress] = useState<string | null>(null);
+  const [deepPipelineScore, setDeepPipelineScore] = useState<string | null>(null);
+
   // Epic count dialog states
   const [showEpicCountDialog, setShowEpicCountDialog] = useState(false);
   const [epicCount, setEpicCount] = useState(10);
@@ -200,6 +206,16 @@ export default function ProjectDetailsPage() {
             delete phaseTriggeredAt.current[key]; // Backend confirmed, clear cooldown
           }
           setter(pollValue);
+        }
+
+        // PROMPT #260 - Deep Pipeline state from enrichment status
+        setDeepPipelineRunning(status.deep_pipeline_running || false);
+        setDeepPipelineCompleted(status.deep_pipeline_completed || false);
+        setDeepPipelineScore(status.deep_pipeline_quality_score || null);
+        if (status.deep_pipeline_progress) {
+          setDeepPipelineProgress(status.deep_pipeline_progress.message || null);
+        } else if (!status.deep_pipeline_running) {
+          setDeepPipelineProgress(null);
         }
 
         // Reset generatingHierarchy when epics appear or enrichment finishes
@@ -879,6 +895,66 @@ export default function ProjectDetailsPage() {
                 ? 'Indexando arquivos do projeto...'
                 : 'Clique em "Scan" para indexar os arquivos do projeto.'}
             </p>
+
+            {/* PROMPT #260 - Deep Pipeline (7-phase via Claudio) */}
+            <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button
+                  disabled={deepPipelineRunning}
+                  onClick={async () => {
+                    try {
+                      setDeepPipelineRunning(true);
+                      setDeepPipelineProgress('Iniciando...');
+                      await ragApi.deepPipeline(projectId);
+                      showSuccess('Deep Pipeline (7 fases) iniciado via Claudio');
+                    } catch (err: any) {
+                      setDeepPipelineRunning(false);
+                      setDeepPipelineProgress(null);
+                      showError(err?.message || 'Erro ao iniciar Deep Pipeline');
+                    }
+                  }}
+                  className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                    deepPipelineRunning
+                      ? 'bg-purple-50 text-purple-600 border border-purple-200 cursor-wait'
+                      : deepPipelineCompleted
+                      ? 'bg-purple-50 text-purple-700 border border-purple-300 hover:bg-purple-100'
+                      : 'bg-purple-600 text-white hover:bg-purple-700'
+                  }`}
+                  title="Executa pipeline completo de 7 fases usando Claudio (Haiku + Sonnet + Opus)"
+                >
+                  {deepPipelineRunning ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  )}
+                  {deepPipelineRunning ? 'Deep Pipeline em execucao...' : deepPipelineCompleted ? 'Re-executar Deep Pipeline' : 'Deep Pipeline v2'}
+                </button>
+                {deepPipelineProgress && (
+                  <span className="text-xs text-purple-600 max-w-[300px] truncate">{deepPipelineProgress}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {deepPipelineScore && (
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full ${
+                    parseInt(deepPipelineScore) >= 75 ? 'bg-green-100 text-green-700' :
+                    parseInt(deepPipelineScore) >= 50 ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    Score: {deepPipelineScore}/100
+                  </span>
+                )}
+                {deepPipelineCompleted && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full bg-purple-100 text-purple-700">
+                    v2
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
         )}
 

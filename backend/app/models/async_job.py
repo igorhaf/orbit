@@ -73,6 +73,9 @@ class JobType(str, enum.Enum):
     # PROMPT #228: Wiki page generation as sub-jobs (like file reading)
     WIKI_GENERATION = "wiki_generation"
 
+    # PROMPT #260: Deep Pipeline (7-phase Claudio pipeline)
+    DEEP_PIPELINE = "deep_pipeline"
+
     # PROMPT #282: RAG Chat message (user asks, AI answers from RAG)
     CHAT_MESSAGE = "chat_message"
 

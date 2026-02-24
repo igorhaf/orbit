@@ -28,6 +28,7 @@ from app.models.prompt_queue import PromptQueue, QueueItemStatus  # PROMPT #215 
 from app.models.wiki_page import WikiPage  # PROMPT #261 - Multi-page Wiki System
 from app.models.project_chat import ProjectChat  # PROMPT #282 - RAG Chat Sessions
 from app.models.contract import Contract  # PROMPT #257 - Contracts in Database
+from app.models.pipeline_artifact import PipelineArtifact, ArtifactType  # Deep Pipeline Artifacts
 
 __all__ = [
     # Models
@@ -67,4 +68,6 @@ __all__ = [
     "WikiPage",  # PROMPT #261 - Multi-page Wiki System
     "ProjectChat",  # PROMPT #282 - RAG Chat Sessions
     "Contract",  # PROMPT #257 - Contracts in Database
+    "PipelineArtifact",  # Deep Pipeline Artifacts
+    "ArtifactType",  # Deep Pipeline Artifact Types
 ]

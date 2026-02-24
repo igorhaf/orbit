@@ -324,4 +324,13 @@ export const ragApi = {
   // PROMPT #239 - Enrichment status for living wiki
   enrichmentStatus: (projectId: string) =>
     request<any>(`/api/v1/projects/${projectId}/rag/enrichment-status`),
+
+  // PROMPT #260 - Deep Pipeline (7-phase via Claudio)
+  deepPipeline: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline`, {
+      method: 'POST',
+    }),
+
+  deepPipelineStatus: (projectId: string) =>
+    request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline/status`),
 };
