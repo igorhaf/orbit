@@ -127,15 +127,6 @@ export function PhaseConfigPanel({
           />
         </div>
 
-        {config.contract && (
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Contrato</label>
-            <div className="text-xs text-teal-700 bg-teal-50 px-2 py-1.5 rounded-md border border-teal-200 truncate">
-              {config.contract}
-            </div>
-          </div>
-        )}
-
         {config.thinking_budget != null && (
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Thinking Budget</label>

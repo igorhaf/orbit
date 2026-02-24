@@ -83,18 +83,6 @@ export function computeEdgeProps(
 // Build ReactFlow nodes & edges from chain
 // ---------------------------------------------------------------------------
 
-// PROMPT #257 - Contract data shape for flow positioning
-export interface FlowContract {
-  id: string;
-  name: string;
-  domain: string;
-  version: number;
-  description: string;
-  system_prompt?: string;
-  user_prompt?: string;
-  usage_type?: string;
-}
-
 export function buildFlowFromChain(
   chainModels: AIFlowChainModel[],
   savedPositions?: Record<string, { x: number; y: number }> | null,
@@ -104,9 +92,6 @@ export function buildFlowFromChain(
   utilityNodes?: AIFlowUtilityNode[],
   onRemoveUtility?: (nodeId: string) => void,
   modelOverridesMap?: Record<string, ModelOverrides>,
-  contracts?: FlowContract[],
-  onViewContract?: (contract: FlowContract) => void,
-  onDropPromptToAggregator?: (promptData: any) => void,
 ): { nodes: Node[]; edges: Edge[] } {
   const nodes: Node[] = [];
   const edges: Edge[] = [];
@@ -117,24 +102,7 @@ export function buildFlowFromChain(
   const ERROR_Y_OFFSET = 200;
   const MAIN_Y = 150;
 
-  // --- Contracts aggregator node (single node with internal list) ---
-  const hasContracts = contracts && contracts.length > 0;
   let cursorX = 50;
-
-  if (hasContracts) {
-    const listPos = savedPositions?.['contracts-list'] || { x: cursorX, y: MAIN_Y - 80 };
-    nodes.push({
-      id: 'contracts-list',
-      type: 'contractsListNode',
-      data: {
-        contracts,
-        onViewContract,
-        onDropPrompt: onDropPromptToAggregator,
-      },
-      position: listPos,
-    });
-    cursorX += 340;
-  }
 
   // --- Classify utility nodes into pre/post-process ---
   const preNodes: AIFlowUtilityNode[] = [];
@@ -151,7 +119,7 @@ export function buildFlowFromChain(
   const startPos = savedPositions?.['start'] || { x: cursorX, y: MAIN_Y };
   nodes.push({
     id: 'start',
-    type: hasContracts ? 'default' : 'input',
+    type: 'input',
     data: { label: 'Requisição' },
     position: startPos,
     style: {
@@ -283,25 +251,7 @@ export function buildFlowFromChain(
     });
   }
 
-  // --- 7. Aggregator → Start edge (smart routing, right→left) ---
-  if (hasContracts) {
-    const contractColor = '#0d9488';
-    edges.push({
-      id: 'edge-contracts-list-start',
-      source: 'contracts-list',
-      target: 'start',
-      sourceHandle: 'right',
-      type: 'smartEdge',
-      label: 'prompts',
-      labelStyle: { fontSize: 11, fontWeight: 600, fill: '#0d9488' },
-      labelBgStyle: { fill: 'white', fillOpacity: 0.9 },
-      style: { stroke: contractColor, strokeWidth: 2 },
-      markerEnd: { type: MarkerType.ArrowClosed, color: contractColor, width: 16, height: 16 },
-      animated: true,
-    } as Edge);
-  }
-
-  // --- 8. Build pipeline edges (smart routing with collision avoidance) ---
+  // --- 7. Build pipeline edges (smart routing with collision avoidance) ---
   const pipeline: string[] = ['start'];
   preNodes.forEach((n) => pipeline.push(n.id));
   chainModels.forEach((m) => pipeline.push(`model-${m.id}`));

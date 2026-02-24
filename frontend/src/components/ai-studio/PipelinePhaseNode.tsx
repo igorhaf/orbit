@@ -2,7 +2,8 @@
 
 /**
  * PipelinePhaseNode - ReactFlow node representing a Deep Pipeline phase.
- * Shows: phase name, model used, score badge, provider-colored border.
+ * Shows: phase name, description, model, max_tokens, concurrency, score, duration.
+ * Double-click opens the configuration panel.
  */
 
 import React from 'react';
@@ -39,6 +40,13 @@ function getScoreColor(score: number | null | undefined): string {
   return SCORE_COLORS.bad;
 }
 
+function getScoreBg(score: number | null | undefined): string {
+  if (score == null) return 'bg-gray-100 text-gray-500';
+  if (score >= 75) return 'bg-green-100 text-green-700';
+  if (score >= 50) return 'bg-yellow-100 text-yellow-700';
+  return 'bg-red-100 text-red-700';
+}
+
 function formatDuration(ms: number | null | undefined): string {
   if (ms == null) return '--';
   if (ms < 1000) return `${ms}ms`;
@@ -49,52 +57,76 @@ function formatDuration(ms: number | null | undefined): string {
   return `${m}m ${rem}s`;
 }
 
+function formatTokens(tokens: number): string {
+  if (!tokens) return '--';
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(0)}K`;
+  return `${tokens}`;
+}
+
 export function PipelinePhaseNode({ data }: NodeProps) {
   const d = data as unknown as PipelinePhaseData;
   const borderColor = PROVIDER_COLORS[d.provider] || '#6b7280';
 
   return (
     <div
-      className="relative bg-white rounded-lg shadow-md border-2 cursor-pointer hover:shadow-lg transition-shadow"
-      style={{ borderColor, width: 160, minHeight: 100 }}
+      className="relative bg-white rounded-lg shadow-md border-2 cursor-pointer hover:shadow-lg hover:ring-2 hover:ring-purple-200 transition-all"
+      style={{ borderColor, width: 180, minHeight: 130 }}
       onClick={() => d.onSelect?.(d.phaseKey)}
+      onDoubleClick={() => d.onSelect?.(d.phaseKey)}
+      title="Clique para configurar esta fase"
     >
       <Handle type="target" position={Position.Left} className="!w-2 !h-2 !bg-gray-400" />
 
       {/* Header */}
       <div
-        className="px-3 py-1.5 rounded-t-md text-white text-xs font-semibold truncate"
+        className="px-3 py-1.5 rounded-t-md text-white text-xs font-semibold flex items-center justify-between"
         style={{ backgroundColor: borderColor }}
       >
-        {d.label}
+        <span className="truncate">{d.label}</span>
+        {d.score != null && (
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${getScoreBg(d.score)}`}>
+            {d.score}
+          </span>
+        )}
       </div>
 
       {/* Body */}
-      <div className="px-3 py-2 space-y-1.5">
+      <div className="px-3 py-2 space-y-1">
+        {/* Description */}
+        <div className="text-[10px] text-gray-500 leading-tight">{d.description}</div>
+
         {/* Model */}
-        <div className="text-xs text-gray-600 truncate" title={d.model}>
-          {d.modelShort}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-gray-400">Modelo:</span>
+          <span className="text-[10px] font-semibold text-gray-700" title={d.model}>
+            {d.modelShort}
+          </span>
+        </div>
+
+        {/* Max Tokens + Concurrency row */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-400">Tokens:</span>
+            <span className="text-[10px] font-medium text-gray-600">{formatTokens(d.maxTokens)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-400">Conc:</span>
+            <span className="text-[10px] font-medium text-gray-600">{d.concurrency || 1}</span>
+          </div>
         </div>
 
         {/* Score + Duration row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <span className={`w-2.5 h-2.5 rounded-full inline-block ${getScoreColor(d.score)}`} />
-            <span className="text-xs font-medium text-gray-700">
-              {d.score != null ? d.score : '--'}
+        <div className="flex items-center justify-between pt-1 border-t border-gray-100">
+          <div className="flex items-center gap-1">
+            <span className={`w-2 h-2 rounded-full inline-block ${getScoreColor(d.score)}`} />
+            <span className="text-[10px] font-medium text-gray-600">
+              {d.score != null ? `${d.score}/100` : '--'}
             </span>
           </div>
           <span className="text-[10px] text-gray-400">
             {formatDuration(d.duration)}
           </span>
         </div>
-
-        {/* Conditional badge */}
-        {d.isConditional && (
-          <div className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded text-center">
-            condicional
-          </div>
-        )}
       </div>
 
       <Handle type="source" position={Position.Right} className="!w-2 !h-2 !bg-gray-400" />

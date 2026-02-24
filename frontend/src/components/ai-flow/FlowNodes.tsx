@@ -105,23 +105,15 @@ export function ModelNode({ data }: { data: any }) {
           </div>
         )}
 
-        {/* PROMPT #124 - Metrics display */}
+        {/* Health summary (simplified) */}
         {metrics && metrics.total_executions > 0 && (
-          <div className="mt-2 pt-2 border-t border-gray-100 grid grid-cols-2 gap-x-3 gap-y-1">
-            <div className="text-[10px] text-gray-500">
-              <span className={`font-semibold ${
-                metrics.health === 'green' ? 'text-green-600' : metrics.health === 'yellow' ? 'text-yellow-600' : 'text-red-600'
-              }`}>{metrics.success_rate.toFixed(1)}%</span> sucesso
-            </div>
-            <div className="text-[10px] text-gray-500">
-              <span className="font-semibold text-gray-700">{metrics.avg_latency_ms >= 1000 ? `${(metrics.avg_latency_ms / 1000).toFixed(1)}s` : `${Math.round(metrics.avg_latency_ms)}ms`}</span> média
-            </div>
-            <div className="text-[10px] text-gray-500">
-              <span className="font-semibold text-gray-700">${metrics.avg_cost_per_call.toFixed(4)}</span>/chamada
-            </div>
-            <div className="text-[10px] text-gray-500">
-              <span className="font-semibold text-gray-700">{metrics.total_executions}</span> chamadas
-            </div>
+          <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between">
+            <span className={`text-[10px] font-semibold ${
+              metrics.health === 'green' ? 'text-green-600' : metrics.health === 'yellow' ? 'text-yellow-600' : 'text-red-600'
+            }`}>{metrics.success_rate.toFixed(0)}% sucesso</span>
+            <span className="text-[10px] text-gray-400">
+              {metrics.avg_latency_ms >= 1000 ? `${(metrics.avg_latency_ms / 1000).toFixed(1)}s` : `${Math.round(metrics.avg_latency_ms)}ms`}
+            </span>
           </div>
         )}
       </div>
@@ -457,119 +449,6 @@ export function PromptNodeNode({ data }: { data: any }) {
 // PROMPT #258 - Contracts List Node (aggregator with ordered list + drop zone)
 // ---------------------------------------------------------------------------
 
-export function ContractsListNode({ data }: { data: any }) {
-  const contracts: any[] = data.contracts || [];
-  const [dragOver, setDragOver] = React.useState(false);
-
-  const domainColors: Record<string, string> = {
-    business: 'bg-yellow-100 text-yellow-700',
-    interview: 'bg-purple-100 text-purple-700',
-    generation: 'bg-blue-100 text-blue-700',
-    memory: 'bg-green-100 text-green-700',
-    component: 'bg-gray-100 text-gray-700',
-    pipeline: 'bg-teal-100 text-teal-700',
-    execution: 'bg-orange-100 text-orange-700',
-    validation: 'bg-red-100 text-red-700',
-    commits: 'bg-indigo-100 text-indigo-700',
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragOver(false);
-    try {
-      const raw = e.dataTransfer.getData('application/json');
-      if (raw && data.onDropPrompt) {
-        const promptData = JSON.parse(raw);
-        data.onDropPrompt(promptData);
-      }
-    } catch {
-      // ignore invalid data
-    }
-  };
-
-  const handleItemDoubleClick = (e: React.MouseEvent, contract: any) => {
-    e.stopPropagation();
-    if (data.onViewContract) {
-      data.onViewContract(contract);
-    }
-  };
-
-  return (
-    <div
-      className={`bg-white rounded-xl shadow-md border-2 relative cursor-grab active:cursor-grabbing hover:shadow-lg transition-all ${dragOver ? 'border-teal-400 ring-2 ring-teal-200' : 'border-teal-300'}`}
-      style={{ width: 280 }}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-    >
-      <Handle type="source" position={Position.Right} id="right" className="!bg-teal-400 !w-3.5 !h-3.5 !border-2 !border-white hover:!bg-teal-600 transition-all" />
-
-      {/* Header */}
-      <div className="px-3 py-2 bg-teal-50 rounded-t-xl border-b border-teal-200 flex items-center gap-2">
-        <svg className="w-4 h-4 text-teal-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-        <span className="font-bold text-xs text-teal-800 flex-1">Contratos</span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-200 text-teal-800 font-semibold">
-          {contracts.length}
-        </span>
-      </div>
-
-      {/* List */}
-      <div className="max-h-[220px] overflow-y-auto">
-        {contracts.length > 0 ? (
-          <div className="divide-y divide-gray-100">
-            {contracts.map((contract, index) => {
-              const shortName = contract.name?.includes('/') ? contract.name.split('/').pop() : (contract.name || contract.label || 'Prompt');
-              const domainBadge = domainColors[contract.domain] || 'bg-gray-100 text-gray-700';
-              const hasPrompt = !!(contract.system_prompt || contract.user_prompt);
-              return (
-                <div
-                  key={contract.id || index}
-                  className="flex items-center gap-2 px-3 py-1.5 hover:bg-teal-50 cursor-pointer transition-colors"
-                  onDoubleClick={(e) => handleItemDoubleClick(e, contract)}
-                  title="Duplo-clique para ver detalhes"
-                >
-                  <span className="text-[10px] font-bold text-gray-400 w-4 text-right flex-shrink-0">{index + 1}</span>
-                  <span className="text-[11px] text-gray-800 truncate flex-1 font-medium">{shortName}</span>
-                  <span className={`text-[8px] px-1 py-0.5 rounded font-medium flex-shrink-0 ${domainBadge}`}>
-                    {contract.domain}
-                  </span>
-                  {hasPrompt && (
-                    <span className="text-[8px] text-teal-600 font-semibold flex-shrink-0">P</span>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="px-3 py-4 text-center text-[11px] text-gray-400">Nenhum contrato</div>
-        )}
-      </div>
-
-      {/* Drop zone */}
-      <div
-        className={`mx-2 mb-2 mt-1 border-2 border-dashed rounded-lg px-3 py-2 text-center transition-colors ${dragOver ? 'border-teal-400 bg-teal-50 text-teal-600' : 'border-gray-200 text-gray-400'}`}
-      >
-        <span className="text-[10px] font-medium">Arraste prompts aqui</span>
-      </div>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Node Type Registry
 // ---------------------------------------------------------------------------
@@ -586,5 +465,4 @@ export const nodeTypes = {
   rateLimiterNode: RateLimiterNode,
   timeoutNode: TimeoutNode,
   promptNodeNode: PromptNodeNode,
-  contractsListNode: ContractsListNode,  // PROMPT #258 - aggregator with list
 };

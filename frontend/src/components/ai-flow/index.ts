@@ -31,7 +31,6 @@ export {
   CostGuardNode,
   RateLimiterNode,
   TimeoutNode,
-  ContractsListNode,
   nodeTypes,
 } from './FlowNodes';
 export type { NodeAnimationState } from './FlowNodes';
@@ -55,4 +54,4 @@ export { default as SmartEdge } from './SmartEdge';
 
 // Utility functions
 export { buildFlowFromChain, computeEdgeProps } from './flowUtils';
-export type { EdgeProps, FlowContract } from './flowUtils';
+export type { EdgeProps } from './flowUtils';

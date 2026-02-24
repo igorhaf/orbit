@@ -46,8 +46,8 @@ const PIPELINE_PHASES = [
 ];
 
 // ── Node layout (2 rows) ────────────────────────────────────────────────
-const NODE_W = 160;
-const NODE_H = 110;
+const NODE_W = 180;
+const NODE_H = 140;
 const GAP_X = 50;
 const GAP_Y = 60;
 const START_X = 40;
@@ -254,8 +254,13 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
     };
   }, [selectedPhase, phaseConfigs, lastRunScores, lastRunDurations]);
 
+  // ── Double-click handler for nodes ────────────────────────────────
+  const handleNodeDoubleClick = useCallback((_event: React.MouseEvent, node: Node) => {
+    setSelectedPhase(node.id);
+  }, []);
+
   // ── Canvas height ─────────────────────────────────────────────────
-  const canvasHeight = 340;
+  const canvasHeight = 400;
 
   return (
     <div className="h-full flex flex-col">
@@ -303,12 +308,13 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             nodeTypes={nodeTypes}
+            onNodeDoubleClick={handleNodeDoubleClick}
             fitView
-            fitViewOptions={{ padding: 0.2 }}
+            fitViewOptions={{ padding: 0.15 }}
             proOptions={{ hideAttribution: true }}
             nodesDraggable={false}
             nodesConnectable={false}
-            elementsSelectable={false}
+            elementsSelectable={true}
             panOnDrag
             zoomOnScroll
           >

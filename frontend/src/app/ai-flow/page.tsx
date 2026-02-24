@@ -35,7 +35,7 @@ import '@xyflow/react/dist/style.css';
 
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Button } from '@/components/ui/Button';
-import { aiModelsApi, aiFlowApi, contractsApi } from '@/lib/api';
+import { aiModelsApi, aiFlowApi } from '@/lib/api';
 import { useNotification } from '@/hooks';
 import { PipelineTab } from '@/components/ai-studio';
 import type {
@@ -65,7 +65,7 @@ import {
   buildFlowFromChain,
   SmartEdge,
 } from '@/components/ai-flow';
-import type { NodeAnimationState, ModelOverrides, FlowContract } from '@/components/ai-flow';
+import type { NodeAnimationState, ModelOverrides } from '@/components/ai-flow';
 
 // Custom edge types with collision-aware routing
 const edgeTypes = { smartEdge: SmartEdge };
@@ -132,11 +132,6 @@ function AIFlowPageContent() {
   const [editingModel, setEditingModel] = useState<AIFlowChainModel | null>(null);
   const [modelOverrides, setModelOverrides] = useState<Record<string, ModelOverrides>>({});
 
-  // PROMPT #257 - Contract nodes state
-  const [flowContracts, setFlowContracts] = useState<FlowContract[]>([]);
-  const [viewingContract, setViewingContract] = useState<FlowContract | null>(null);
-  // PROMPT #258 - Items dropped into the aggregator (persisted alongside positions)
-  const [aggregatorItems, setAggregatorItems] = useState<FlowContract[]>([]);
 
   // PROMPT #124 - WebSocket animations
   const nodeAnimations = useAIFlowWebSocket(selectedUsageType);
@@ -223,9 +218,6 @@ function AIFlowPageContent() {
     // PROMPT #226 - Load model overrides from node_positions
     const savedOverrides = (currentChain?.node_positions as any)?.__model_overrides;
     setModelOverrides(savedOverrides && typeof savedOverrides === 'object' ? savedOverrides : {});
-    // PROMPT #258 - Load aggregator items from saved positions
-    const savedAggItems = (currentChain?.node_positions as any)?.__aggregator_items;
-    setAggregatorItems(Array.isArray(savedAggItems) ? savedAggItems : []);
   }, [currentChain, selectedUsageType]);
 
   // PROMPT #204 - Fetch utility node types catalog
@@ -282,19 +274,6 @@ function AIFlowPageContent() {
     fetchTemplates();
   }, [selectedUsageType]);
 
-  // PROMPT #257 - Fetch contracts by usage_type when operation changes
-  useEffect(() => {
-    const fetchContracts = async () => {
-      try {
-        const res = await contractsApi.byUsageType(selectedUsageType);
-        setFlowContracts(Array.isArray(res) ? res : []);
-      } catch {
-        setFlowContracts([]);
-      }
-    };
-    fetchContracts();
-  }, [selectedUsageType]);
-
   // PROMPT #124 - Fetch analytics
   const loadAnalytics = useCallback(async () => {
     setAnalyticsLoading(true);
@@ -330,27 +309,6 @@ function AIFlowPageContent() {
     []
   );
 
-  // PROMPT #258 - View contract detail (passed into aggregator node)
-  const handleViewContract = useCallback((contract: FlowContract) => {
-    setViewingContract(contract);
-  }, []);
-
-  // PROMPT #258 - Drop prompt into aggregator
-  const handleDropPromptToAggregator = useCallback((promptData: any) => {
-    const newItem: FlowContract = {
-      id: `dropped-${Date.now()}`,
-      name: promptData.label || promptData.type || 'Prompt',
-      domain: 'custom',
-      version: 1,
-      description: promptData.description || '',
-      usage_type: selectedUsageType,
-    };
-    setAggregatorItems(prev => [...prev, newItem]);
-  }, [selectedUsageType]);
-
-  // Combined contracts: API contracts + dropped items
-  const allContracts = useMemo(() => [...flowContracts, ...aggregatorItems], [flowContracts, aggregatorItems]);
-
   useEffect(() => {
     const savedPositions = currentChain?.node_positions;
     const { nodes: n, edges: e } = buildFlowFromChain(
@@ -362,13 +320,10 @@ function AIFlowPageContent() {
       workingUtilityNodes,
       handleRemoveUtilityNode,
       modelOverrides,
-      allContracts,
-      handleViewContract,
-      handleDropPromptToAggregator,
     );
     setNodes(n);
     setEdges(e);
-  }, [workingChainModels, handleRemoveFromChain, handleRemoveUtilityNode, setNodes, setEdges, currentChain?.node_positions, metricsMap, nodeAnimations, workingUtilityNodes, modelOverrides, allContracts, handleViewContract, handleDropPromptToAggregator]);
+  }, [workingChainModels, handleRemoveFromChain, handleRemoveUtilityNode, setNodes, setEdges, currentChain?.node_positions, metricsMap, nodeAnimations, workingUtilityNodes, modelOverrides]);
 
   // Edge reconnection handlers
   const onReconnectStart = useCallback(() => {
@@ -463,41 +418,6 @@ function AIFlowPageContent() {
     }
   }, [workingUtilityNodes, workingChainModels]);
 
-  // PROMPT #258 - Detect when a canvas node is dropped over the aggregator
-  const handleNodeDragStop = useCallback((_event: React.MouseEvent, node: Node) => {
-    // Only absorb prompt-type utility nodes
-    if (!node.id.startsWith('prompt_node-') && !node.id.startsWith('prompt-')) return;
-
-    const aggregatorNode = nodesRef.current.find(n => n.id === 'contracts-list');
-    if (!aggregatorNode) return;
-
-    // Check if the dragged node overlaps with the aggregator bounds
-    const aggX = aggregatorNode.position.x;
-    const aggY = aggregatorNode.position.y;
-    const aggW = 280;
-    const aggH = 300; // approximate height
-
-    const nodeX = node.position.x;
-    const nodeY = node.position.y;
-
-    if (nodeX >= aggX - 50 && nodeX <= aggX + aggW + 50 && nodeY >= aggY - 50 && nodeY <= aggY + aggH + 50) {
-      // Absorb the node into the aggregator list
-      const utilityNode = workingUtilityNodes.find(n => n.id === node.id);
-      if (utilityNode) {
-        const newItem: FlowContract = {
-          id: `absorbed-${Date.now()}`,
-          name: utilityNode.label || utilityNode.type,
-          domain: 'custom',
-          version: 1,
-          description: `Prompt node: ${utilityNode.type}`,
-          usage_type: selectedUsageType,
-        };
-        setAggregatorItems(prev => [...prev, newItem]);
-        setWorkingUtilityNodes(prev => prev.filter(n => n.id !== node.id));
-      }
-    }
-  }, [workingUtilityNodes, selectedUsageType]);
-
   // PROMPT #204 - Add utility node
   const handleAddUtilityNode = (nodeType: AIFlowUtilityNodeType) => {
     const existingCount = workingUtilityNodes.filter((n) => n.type === nodeType.type).length;
@@ -535,11 +455,9 @@ function AIFlowPageContent() {
     try {
       const nodePositions = getNodePositions();
       // PROMPT #226 - Store model overrides alongside positions
-      // PROMPT #258 - Store aggregator items alongside positions
       const positionsWithOverrides = {
         ...nodePositions,
         ...(Object.keys(modelOverrides).length > 0 ? { __model_overrides: modelOverrides } : {}),
-        ...(aggregatorItems.length > 0 ? { __aggregator_items: aggregatorItems } : {}),
       };
       if (workingChain.length === 0 && workingUtilityNodes.length === 0 && currentChain) {
         // Chain was emptied -- delete it
@@ -663,11 +581,10 @@ function AIFlowPageContent() {
               ))}
             </select>
 
-            {(workingChain.length > 0 || workingUtilityNodes.length > 0 || allContracts.length > 0) && (
+            {(workingChain.length > 0 || workingUtilityNodes.length > 0) && (
               <span className="text-xs text-gray-500">
                 {workingChain.length} modelo{workingChain.length !== 1 ? 's' : ''}
-                {workingUtilityNodes.length > 0 && ` + ${workingUtilityNodes.length} no${workingUtilityNodes.length !== 1 ? 's' : ''}`}
-                {allContracts.length > 0 && ` + ${allContracts.length} contrato${allContracts.length !== 1 ? 's' : ''}`}
+                {workingUtilityNodes.length > 0 && ` + ${workingUtilityNodes.length} nó${workingUtilityNodes.length !== 1 ? 's' : ''}`}
               </span>
             )}
             {hasUnsavedChanges && (
@@ -710,7 +627,7 @@ function AIFlowPageContent() {
         <div className="flex gap-3 flex-1 min-h-0">
           {/* ReactFlow Canvas */}
           <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
-            {(workingChain.length > 0 || workingUtilityNodes.length > 0 || allContracts.length > 0) ? (
+            {(workingChain.length > 0 || workingUtilityNodes.length > 0) ? (
               <ReactFlow
                 nodes={nodes}
                 edges={edges}
@@ -721,7 +638,6 @@ function AIFlowPageContent() {
                 onReconnectStart={onReconnectStart}
                 onReconnectEnd={onReconnectEnd}
                 onNodeDoubleClick={handleNodeDoubleClick}
-                onNodeDragStop={handleNodeDragStop}
                 nodeTypes={nodeTypes}
                 edgeTypes={edgeTypes}
                 defaultEdgeOptions={{ type: 'smartEdge' }}
@@ -997,102 +913,6 @@ function AIFlowPageContent() {
           onSave={handleSaveModelOverride}
           onClose={() => setEditingModel(null)}
         />
-      )}
-
-      {/* PROMPT #258 - Contract Detail Dialog (double-click on contract node) */}
-      {viewingContract && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b bg-teal-50">
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-teal-100 flex items-center justify-center">
-                  <svg className="w-4 h-4 text-teal-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">{viewingContract.name}</h2>
-                  <p className="text-xs text-gray-500">v{viewingContract.version} &middot; {viewingContract.domain}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setViewingContract(null)}
-                className="p-1.5 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-              {/* Metadata badges */}
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-teal-100 text-teal-800">
-                  {viewingContract.domain}
-                </span>
-                {viewingContract.usage_type && (
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                    {viewingContract.usage_type}
-                  </span>
-                )}
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                  v{viewingContract.version}
-                </span>
-              </div>
-
-              {/* Description */}
-              {viewingContract.description && (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-1">Descricao</h3>
-                  <p className="text-sm text-gray-600">{viewingContract.description}</p>
-                </div>
-              )}
-
-              {/* System Prompt */}
-              {viewingContract.system_prompt && (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-1">System Prompt</h3>
-                  <pre className="text-xs text-gray-700 bg-gray-50 border rounded-lg p-3 whitespace-pre-wrap max-h-60 overflow-y-auto font-mono">
-                    {viewingContract.system_prompt}
-                  </pre>
-                </div>
-              )}
-
-              {/* User Prompt */}
-              {viewingContract.user_prompt && (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-1">User Prompt</h3>
-                  <pre className="text-xs text-gray-700 bg-gray-50 border rounded-lg p-3 whitespace-pre-wrap max-h-60 overflow-y-auto font-mono">
-                    {viewingContract.user_prompt}
-                  </pre>
-                </div>
-              )}
-
-              {/* No prompts message */}
-              {!viewingContract.system_prompt && !viewingContract.user_prompt && (
-                <div className="text-center py-6 text-gray-400">
-                  <svg className="w-10 h-10 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <p className="text-sm">Este contrato não possui prompts configurados</p>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 py-3 border-t bg-gray-50 flex justify-end">
-              <button
-                onClick={() => setViewingContract(null)}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {NotificationComponent}
