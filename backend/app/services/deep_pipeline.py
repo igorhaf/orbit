@@ -689,8 +689,8 @@ class DeepPipelineService:
                 project_id=project.id,
                 title=epic.get("title", "Epic sem titulo"),
                 description=epic.get("description", ""),
-                item_type=ItemType.epic,
-                status=TaskStatus.backlog,
+                item_type=ItemType.EPIC,
+                status=TaskStatus.BACKLOG,
                 priority=self._map_priority(epic.get("priority", "medium")),
                 story_points=epic.get("story_points", 13),
                 labels=epic.get("labels", []),
@@ -745,8 +745,8 @@ class DeepPipelineService:
                 project_id=project.id,
                 title=story.get("title", "Story sem titulo"),
                 description=story.get("description", ""),
-                item_type=ItemType.story,
-                status=TaskStatus.backlog,
+                item_type=ItemType.STORY,
+                status=TaskStatus.BACKLOG,
                 priority=self._map_priority(story.get("priority", "medium")),
                 story_points=story.get("story_points", 5),
                 parent_id=parent.id if parent else None,
@@ -800,8 +800,8 @@ class DeepPipelineService:
                 project_id=project.id,
                 title=t.get("title", "Task sem titulo"),
                 description=t.get("description", ""),
-                item_type=ItemType.task,
-                status=TaskStatus.backlog,
+                item_type=ItemType.TASK,
+                status=TaskStatus.BACKLOG,
                 priority=self._map_priority(t.get("priority", "medium")),
                 story_points=t.get("story_points", 3),
                 parent_id=parent.id if parent else None,
@@ -847,8 +847,8 @@ class DeepPipelineService:
                         project_id=project.id,
                         title=st.get("title", "Subtask sem titulo"),
                         description=st.get("description", ""),
-                        item_type=ItemType.subtask,
-                        status=TaskStatus.backlog,
+                        item_type=ItemType.SUBTASK,
+                        status=TaskStatus.BACKLOG,
                         story_points=st.get("story_points", 1),
                         parent_id=parent.id if parent else None,
                         labels=st.get("labels", []),
@@ -1149,9 +1149,9 @@ class DeepPipelineService:
     def _map_priority(priority_str: str) -> PriorityLevel:
         """Map string priority to PriorityLevel enum."""
         mapping = {
-            "critical": PriorityLevel.critical,
-            "high": PriorityLevel.high,
-            "medium": PriorityLevel.medium,
-            "low": PriorityLevel.low,
+            "critical": PriorityLevel.CRITICAL,
+            "high": PriorityLevel.HIGH,
+            "medium": PriorityLevel.MEDIUM,
+            "low": PriorityLevel.LOW,
         }
-        return mapping.get(priority_str.lower(), PriorityLevel.medium)
+        return mapping.get(priority_str.lower(), PriorityLevel.MEDIUM)
