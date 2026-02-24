@@ -29,6 +29,8 @@ from app.models.wiki_page import WikiPage  # PROMPT #261 - Multi-page Wiki Syste
 from app.models.project_chat import ProjectChat  # PROMPT #282 - RAG Chat Sessions
 from app.models.contract import Contract  # PROMPT #257 - Contracts in Database
 from app.models.pipeline_artifact import PipelineArtifact, ArtifactType  # Deep Pipeline Artifacts
+from app.models.pipeline_profile import PipelineProfile  # Deep Pipeline Configurable Profiles
+from app.models.pipeline_run import PipelineRun  # Deep Pipeline Run History
 
 __all__ = [
     # Models
@@ -70,4 +72,6 @@ __all__ = [
     "Contract",  # PROMPT #257 - Contracts in Database
     "PipelineArtifact",  # Deep Pipeline Artifacts
     "ArtifactType",  # Deep Pipeline Artifact Types
+    "PipelineProfile",  # Deep Pipeline Configurable Profiles
+    "PipelineRun",  # Deep Pipeline Run History
 ]

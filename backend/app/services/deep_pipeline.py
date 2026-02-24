@@ -29,6 +29,8 @@ from sqlalchemy.orm import Session
 
 from app.contracts.loader import ContractLoader
 from app.models.pipeline_artifact import PipelineArtifact, ArtifactType
+from app.models.pipeline_profile import PipelineProfile
+from app.models.pipeline_run import PipelineRun
 from app.models.project import Project
 from app.models.task import Task, ItemType, TaskStatus, PriorityLevel
 from app.services.claudio_pipeline import (
@@ -40,6 +42,30 @@ from app.services.claudio_pipeline import (
 )
 
 logger = logging.getLogger(__name__)
+
+# ── Reinforcement rules: when a phase score is below threshold, adjust next run
+REINFORCEMENT_RULES = {
+    "phase_1": {
+        "threshold": 70,
+        "adjustments": {"max_tokens": 8000},
+        "reason": "Low parse success rate — doubling max_tokens for deeper analysis",
+    },
+    "phase_2": {
+        "threshold": 60,
+        "adjustments": {"multi_turn_threshold": 10, "max_tokens": 24000},
+        "reason": "Low rule density — enabling multi-turn for more domains",
+    },
+    "phase_4a": {
+        "threshold": 50,
+        "adjustments": {"max_tokens": 80000},
+        "reason": "Low hierarchy ratio — increasing epic generation budget",
+    },
+    "phase_5b": {
+        "threshold": 60,
+        "adjustments": {"max_tokens": 80000},
+        "reason": "Thin wiki pages — increasing wiki generation budget",
+    },
+}
 
 # Directories always excluded from scanning
 IGNORE_DIRECTORIES = {
@@ -85,10 +111,47 @@ IMPORT_PATTERNS = [
 class DeepPipelineService:
     """Orchestrates the 7-phase deep pipeline using Claudio."""
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session, profile_name: str = None):
         self.db = db
         self.claudio = ClaudioPipelineService()
         self._contract_loader = ContractLoader(db)
+        self._profile = self._load_profile(profile_name)
+        self._phase_configs = self._profile.phase_configs if self._profile else {}
+
+    def _load_profile(self, profile_name: str = None) -> Optional[PipelineProfile]:
+        """Load a named profile or the default one."""
+        if profile_name:
+            profile = self.db.query(PipelineProfile).filter(PipelineProfile.name == profile_name).first()
+            if profile:
+                return profile
+            logger.warning(f"Profile '{profile_name}' not found, falling back to default")
+        # Try default
+        profile = self.db.query(PipelineProfile).filter(PipelineProfile.is_default == True).first()
+        if profile:
+            return profile
+        # Try quality as last resort
+        return self.db.query(PipelineProfile).filter(PipelineProfile.name == "quality").first()
+
+    def _get_phase_config(self, phase_key: str, field: str, default=None):
+        """Get a config value for a phase from the loaded profile."""
+        cfg = self._phase_configs.get(phase_key, {})
+        return cfg.get(field, default)
+
+    def _get_model(self, phase_key: str, default: str = MODEL_SONNET) -> str:
+        """Get model for a phase from profile config."""
+        return self._get_phase_config(phase_key, "model", default)
+
+    def _get_max_tokens(self, phase_key: str, default: int = 8000) -> int:
+        """Get max_tokens for a phase from profile config."""
+        return self._get_phase_config(phase_key, "max_tokens", default)
+
+    def _get_concurrency(self, phase_key: str, default: int = 5) -> int:
+        """Get concurrency for a phase from profile config."""
+        return self._get_phase_config(phase_key, "concurrency", default)
+
+    def _get_contract_name(self, phase_key: str, default: str = None) -> Optional[str]:
+        """Get contract name for a phase from profile config."""
+        return self._get_phase_config(phase_key, "contract", default)
 
     def _load_contract(self, name: str, variables: dict = None) -> tuple[str, str]:
         """Load a contract and render with variables."""
@@ -97,6 +160,84 @@ class DeepPipelineService:
         except Exception as e:
             logger.warning(f"Failed to load contract 'pipeline/{name}': {e}")
             return ("", "")
+
+    # ── Phase Scoring (heuristic, no AI) ─────────────────────────────────────
+
+    @staticmethod
+    def _compute_phase_score(phase_key: str, data: dict) -> int:
+        """Compute a 0-100 quality score for a phase based on heuristic metrics."""
+        if phase_key == "phase_0":
+            files = data.get("files_found", 0)
+            return min(100, int(files / 5 * 10)) if files > 0 else 0
+
+        if phase_key == "phase_1":
+            total = data.get("files_total", 1)
+            analyzed = data.get("files_analyzed", 0)
+            rate = analyzed / max(total, 1) * 100
+            return min(100, int(rate))
+
+        if phase_key == "phase_2":
+            rules = data.get("total_rules", 0)
+            domains = data.get("domains", 1)
+            density = rules / max(domains, 1)
+            # 10+ rules per domain = 100, <3 = poor
+            return min(100, int(density * 10))
+
+        if phase_key == "phase_3":
+            arch = data.get("arch_map", {})
+            fields = ["domains", "cross_domain_flows", "tech_stack", "patterns"]
+            filled = sum(1 for f in fields if arch.get(f))
+            return min(100, int(filled / len(fields) * 100))
+
+        if phase_key == "phase_4":
+            epics = data.get("epics", 0)
+            stories = data.get("stories", 0)
+            tasks = data.get("tasks", 0)
+            if epics == 0:
+                return 0
+            # Healthy ratio: ~3 stories per epic, ~3 tasks per story
+            story_ratio = min(1.0, stories / max(epics * 2, 1))
+            task_ratio = min(1.0, tasks / max(stories * 2, 1))
+            return min(100, int((story_ratio * 50 + task_ratio * 50)))
+
+        if phase_key == "phase_5":
+            pages = data.get("total_pages", 0)
+            avg_chars = data.get("avg_chars_per_page", 0)
+            page_score = min(50, pages * 5)
+            richness = min(50, int(avg_chars / 100 * 10))
+            return min(100, page_score + richness)
+
+        if phase_key == "phase_6":
+            return data.get("overall_score", 50)
+
+        return 50  # unknown phase
+
+    def _apply_reinforcement(self, project_id: UUID) -> dict:
+        """Check previous run scores and apply reinforcement adjustments."""
+        prev_run = (
+            self.db.query(PipelineRun)
+            .filter(PipelineRun.project_id == project_id, PipelineRun.status == "completed")
+            .order_by(PipelineRun.created_at.desc())
+            .first()
+        )
+        if not prev_run or not prev_run.phase_scores:
+            return {}
+
+        adjustments = {}
+        for phase_key, rule in REINFORCEMENT_RULES.items():
+            score = prev_run.phase_scores.get(phase_key, 100)
+            if score < rule["threshold"]:
+                logger.info(f"Reinforcement: {phase_key} score was {score} (< {rule['threshold']}). {rule['reason']}")
+                # Apply adjustments to current profile config
+                if phase_key in self._phase_configs:
+                    self._phase_configs[phase_key].update(rule["adjustments"])
+                adjustments[phase_key] = {
+                    "previous_score": score,
+                    "threshold": rule["threshold"],
+                    "applied": rule["adjustments"],
+                    "reason": rule["reason"],
+                }
+        return adjustments
 
     # =========================================================================
     # MAIN ORCHESTRATOR
@@ -117,6 +258,8 @@ class DeepPipelineService:
         Returns:
             Dict with pipeline results and quality score
         """
+        import time as _time
+
         run_id = uuid4()
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
@@ -125,7 +268,33 @@ class DeepPipelineService:
         if not project.code_path or not os.path.isdir(project.code_path):
             raise ValueError(f"Invalid code_path: {project.code_path}")
 
-        logger.info(f"Starting deep pipeline for project '{project.name}' (run_id={run_id})")
+        profile_name = self._profile.name if self._profile else "quality"
+        logger.info(f"Starting deep pipeline for project '{project.name}' "
+                     f"(run_id={run_id}, profile={profile_name})")
+
+        # ── Create PipelineRun record ────────────────────────────────────
+        pipeline_run = PipelineRun(
+            id=run_id,
+            project_id=project.id,
+            profile_id=self._profile.id if self._profile else None,
+            profile_name=profile_name,
+            profile_snapshot=self._phase_configs,
+            version="v2",
+            status="running",
+            phase_scores={},
+            phase_durations={},
+            started_at=datetime.utcnow(),
+        )
+        self.db.add(pipeline_run)
+        self.db.commit()
+
+        # ── Apply reinforcement from previous run ────────────────────────
+        reinforcement = self._apply_reinforcement(project.id)
+        if reinforcement:
+            pipeline_run.reinforcement_applied = reinforcement
+            self.db.commit()
+
+        quality_threshold = self._profile.quality_threshold if self._profile else 60
 
         async def _progress(phase: int, pct: float, msg: str):
             logger.info(f"[Phase {phase}] {pct:.0f}% - {msg}")
@@ -138,103 +307,167 @@ class DeepPipelineService:
         # Check Claudio health
         healthy = await self.claudio.health_check()
         if not healthy:
+            pipeline_run.status = "failed"
+            pipeline_run.error = f"Claudio not reachable at {self.claudio.base_url}"
+            pipeline_run.completed_at = datetime.utcnow()
+            self.db.commit()
             raise ClaudioPipelineError(
                 f"Claudio is not reachable at {self.claudio.base_url}. Start it first."
             )
 
         results = {}
+        phase_scores = {}
+        phase_durations = {}
+
+        def _phase_timer():
+            return _time.monotonic()
 
         try:
             # Phase 0: Structural Scan (0-5%)
+            t0 = _phase_timer()
             await _progress(0, 0, "Iniciando scan estrutural...")
             file_inventory = await self._phase0_structural_scan(project)
             results["phase0"] = {"files_found": len(file_inventory)}
-            await _progress(0, 100, f"Scan completo: {len(file_inventory)} arquivos")
+            phase_scores["phase_0"] = self._compute_phase_score("phase_0", results["phase0"])
+            phase_durations["phase_0"] = int((_phase_timer() - t0) * 1000)
+            await _progress(0, 100, f"Scan completo: {len(file_inventory)} arquivos (score: {phase_scores['phase_0']})")
 
             # Phase 1: Per-file Analysis (5-25%)
-            await _progress(1, 0, f"Analisando {len(file_inventory)} arquivos com Haiku...")
+            t0 = _phase_timer()
+            model_1 = self._get_model("phase_1", MODEL_HAIKU)
+            await _progress(1, 0, f"Analisando {len(file_inventory)} arquivos com {model_1.split('-')[1].title()}...")
             file_analyses = await self._phase1_file_analysis(
                 project, file_inventory, run_id, _progress
             )
-            results["phase1"] = {
+            p1_data = {
                 "files_analyzed": len(file_analyses),
+                "files_total": len(file_inventory),
                 "domains_found": len(set(a.get("domain_classification", "?") for a in file_analyses)),
             }
-            await _progress(1, 100, f"Analise completa: {len(file_analyses)} arquivos")
+            results["phase1"] = p1_data
+            phase_scores["phase_1"] = self._compute_phase_score("phase_1", p1_data)
+            phase_durations["phase_1"] = int((_phase_timer() - t0) * 1000)
+            await _progress(1, 100, f"Analise completa: {len(file_analyses)} arquivos (score: {phase_scores['phase_1']})")
 
             # Phase 2: Cross-file Rule Synthesis (25-40%)
-            await _progress(2, 0, "Sintetizando regras cross-file com Sonnet...")
+            t0 = _phase_timer()
+            model_2 = self._get_model("phase_2", MODEL_SONNET)
+            await _progress(2, 0, f"Sintetizando regras cross-file com {model_2.split('-')[1].title()}...")
             domain_rules = await self._phase2_rule_synthesis(
                 project, file_analyses, run_id, _progress
             )
             total_rules = sum(len(d.get("consolidated_rules", [])) for d in domain_rules.values())
-            results["phase2"] = {
-                "domains": len(domain_rules),
-                "total_rules": total_rules,
-            }
-            await _progress(2, 100, f"Sintese completa: {total_rules} regras em {len(domain_rules)} dominios")
+            p2_data = {"domains": len(domain_rules), "total_rules": total_rules}
+            results["phase2"] = p2_data
+            phase_scores["phase_2"] = self._compute_phase_score("phase_2", p2_data)
+            phase_durations["phase_2"] = int((_phase_timer() - t0) * 1000)
+            await _progress(2, 100, f"Sintese completa: {total_rules} regras em {len(domain_rules)} dominios (score: {phase_scores['phase_2']})")
 
             # Phase 3: Architectural Map (40-45%)
-            await _progress(3, 0, "Construindo mapa arquitetural com Sonnet + Extended Thinking...")
+            t0 = _phase_timer()
+            await _progress(3, 0, "Construindo mapa arquitetural com Extended Thinking...")
             arch_map = await self._phase3_architectural_map(
                 project, domain_rules, file_inventory, run_id
             )
-            results["phase3"] = {
+            p3_data = {
                 "domains": len(arch_map.get("domains", [])),
                 "cross_domain_flows": len(arch_map.get("cross_domain_flows", [])),
+                "arch_map": arch_map,
             }
+            results["phase3"] = {"domains": p3_data["domains"], "cross_domain_flows": p3_data["cross_domain_flows"]}
+            phase_scores["phase_3"] = self._compute_phase_score("phase_3", p3_data)
+            phase_durations["phase_3"] = int((_phase_timer() - t0) * 1000)
             # Save to project
             project.project_architecture = arch_map
             project.pipeline_version = "v2"
             self.db.commit()
-            await _progress(3, 100, "Mapa arquitetural construido")
+            await _progress(3, 100, f"Mapa arquitetural construido (score: {phase_scores['phase_3']})")
 
             # Phase 4: Card Generation (45-70%)
+            t0 = _phase_timer()
             await _progress(4, 0, "Gerando cards hierarquicos...")
             card_stats = await self._phase4_card_generation(
                 project, arch_map, domain_rules, run_id, _progress
             )
             results["phase4"] = card_stats
-            await _progress(4, 100, f"Cards gerados: {card_stats.get('total_cards', 0)}")
+            phase_scores["phase_4"] = self._compute_phase_score("phase_4", card_stats)
+            phase_durations["phase_4"] = int((_phase_timer() - t0) * 1000)
+            await _progress(4, 100, f"Cards gerados: {card_stats.get('total_cards', 0)} (score: {phase_scores['phase_4']})")
 
             # Phase 5: Wiki Generation (70-85%)
-            await _progress(5, 0, "Gerando wiki com Opus...")
+            t0 = _phase_timer()
+            await _progress(5, 0, "Gerando wiki...")
             wiki_stats = await self._phase5_wiki_generation(
                 project, arch_map, domain_rules, card_stats, run_id, _progress
             )
             results["phase5"] = wiki_stats
-            await _progress(5, 100, f"Wiki gerada: {wiki_stats.get('total_pages', 0)} paginas")
+            phase_scores["phase_5"] = self._compute_phase_score("phase_5", wiki_stats)
+            phase_durations["phase_5"] = int((_phase_timer() - t0) * 1000)
+            await _progress(5, 100, f"Wiki gerada: {wiki_stats.get('total_pages', 0)} paginas (score: {phase_scores['phase_5']})")
 
             # Phase 6: Quality Assurance (85-95%)
-            await _progress(6, 0, "Executando Quality Assurance com Sonnet + Thinking...")
+            t0 = _phase_timer()
+            await _progress(6, 0, "Executando Quality Assurance com Thinking...")
             qa_result = await self._phase6_quality_assurance(
                 project, arch_map, domain_rules, card_stats, wiki_stats, run_id
             )
             results["phase6"] = qa_result
+            phase_scores["phase_6"] = self._compute_phase_score("phase_6", qa_result)
+            phase_durations["phase_6"] = int((_phase_timer() - t0) * 1000)
             project.pipeline_quality_score = str(qa_result.get("overall_score", 0))
             self.db.commit()
             await _progress(6, 100, f"QA completo. Score: {qa_result.get('overall_score', 0)}/100")
 
             # Phase 7: Gap Filling (95-100%) - conditional
-            if qa_result.get("overall_score", 100) < 60:
-                await _progress(7, 0, "Score < 60 - executando correcao de gaps...")
+            t0 = _phase_timer()
+            if qa_result.get("overall_score", 100) < quality_threshold:
+                await _progress(7, 0, f"Score < {quality_threshold} - executando correcao de gaps...")
                 gap_result = await self._phase7_gap_filling(
                     project, qa_result, arch_map, domain_rules, run_id
                 )
                 results["phase7"] = gap_result
                 await _progress(7, 100, "Correcao de gaps concluida")
             else:
-                results["phase7"] = {"skipped": True, "reason": "Score >= 60"}
-                await _progress(7, 100, "Score >= 60 - gap filling nao necessario")
+                results["phase7"] = {"skipped": True, "reason": f"Score >= {quality_threshold}"}
+                await _progress(7, 100, f"Score >= {quality_threshold} - gap filling nao necessario")
+            phase_durations["phase_7"] = int((_phase_timer() - t0) * 1000)
+
+            # ── Update PipelineRun with final results ────────────────────
+            pipeline_run.status = "completed"
+            pipeline_run.overall_score = qa_result.get("overall_score", 0)
+            pipeline_run.phase_scores = phase_scores
+            pipeline_run.phase_durations = phase_durations
+            pipeline_run.total_files_scanned = len(file_inventory)
+            pipeline_run.total_rules_extracted = total_rules
+            pipeline_run.total_domains = len(domain_rules)
+            pipeline_run.total_cards_created = card_stats.get("total_cards", 0)
+            pipeline_run.total_wiki_pages = wiki_stats.get("total_pages", 0)
+            pipeline_run.completed_at = datetime.utcnow()
+            self.db.commit()
 
         except Exception as e:
             logger.error(f"Deep pipeline failed at run {run_id}: {e}", exc_info=True)
             results["error"] = str(e)
+            # Update run as failed
+            try:
+                pipeline_run.status = "failed"
+                pipeline_run.error = str(e)[:1000]
+                pipeline_run.phase_scores = phase_scores
+                pipeline_run.phase_durations = phase_durations
+                pipeline_run.completed_at = datetime.utcnow()
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
             raise
         finally:
             await self.claudio.close()
 
-        logger.info(f"Deep pipeline completed for project '{project.name}' (run_id={run_id})")
+        logger.info(f"Deep pipeline completed for project '{project.name}' "
+                     f"(run_id={run_id}, profile={profile_name}, "
+                     f"score={pipeline_run.overall_score})")
+        results["run_id"] = str(run_id)
+        results["profile"] = profile_name
+        results["phase_scores"] = phase_scores
         return results
 
     # =========================================================================
@@ -413,19 +646,23 @@ class DeepPipelineService:
         if not system_prompt:
             system_prompt = "Analyze the code file and extract business rules. Respond with JSON only."
 
-        # Build batch requests
+        # Build batch requests (model/tokens/concurrency from profile)
+        p1_model = self._get_model("phase_1", MODEL_HAIKU)
+        p1_max_tokens = self._get_max_tokens("phase_1", 4000)
+        p1_concurrency = self._get_concurrency("phase_1", 10)
+
         requests = []
         for item in inventory:
             user_prompt = f"Arquivo: {item['path']}\n\nCodigo:\n{item['content']}"
             requests.append({
-                "model": MODEL_HAIKU,
+                "model": p1_model,
                 "system_prompt": system_prompt,
                 "user_prompt": user_prompt,
-                "max_tokens": 4000,
+                "max_tokens": p1_max_tokens,
             })
 
         # Execute in parallel batches
-        results = await self.claudio.call_batch(requests, max_concurrency=10)
+        results = await self.claudio.call_batch(requests, max_concurrency=p1_concurrency)
 
         file_analyses = []
         for i, result in enumerate(results):
@@ -504,13 +741,17 @@ class DeepPipelineService:
 
             user_prompt = f"Dominio: {domain}\n\nAnalises individuais dos arquivos:\n{json.dumps(analyses_summary, ensure_ascii=False, indent=2)}"
 
+            p2_model = self._get_model("phase_2", MODEL_SONNET)
+            p2_max_tokens = self._get_max_tokens("phase_2", 16000)
+            p2_multi_turn_threshold = self._get_phase_config("phase_2", "multi_turn_threshold", 30)
+
             try:
                 result = await self.claudio.call(
-                    model=MODEL_SONNET,
+                    model=p2_model,
                     system_prompt=system_prompt or "Synthesize business rules from file analyses. Respond with JSON.",
                     user_prompt=user_prompt,
                     session_key=session_key,
-                    max_tokens=16000,
+                    max_tokens=p2_max_tokens,
                 )
 
                 parsed = self.claudio.extract_json(result.get("text", ""))
@@ -529,12 +770,12 @@ class DeepPipelineService:
                     self.db.add(artifact)
 
                     # Multi-turn follow-up for large domains
-                    if len(analyses) > 30:
+                    if len(analyses) > p2_multi_turn_threshold:
                         followup = await self.claudio.call_followup(
-                            model=MODEL_SONNET,
+                            model=p2_model,
                             session_key=session_key,
                             user_prompt="Revise as regras sintetizadas. Ha regras cross-file que voce perdeu? Gaps importantes? Adicione ao resultado anterior.",
-                            max_tokens=8000,
+                            max_tokens=p2_max_tokens // 2,
                         )
                         followup_parsed = self.claudio.extract_json(followup.get("text", ""))
                         if followup_parsed and isinstance(followup_parsed, dict):
@@ -616,12 +857,16 @@ class DeepPipelineService:
             f"Dominios e regras sintetizadas:\n{json.dumps(domains_summary, ensure_ascii=False, indent=2)}"
         )
 
+        p3_model = self._get_model("phase_3", MODEL_SONNET)
+        p3_max_tokens = self._get_max_tokens("phase_3", 32000)
+        p3_thinking = self._get_phase_config("phase_3", "thinking_budget", 10000)
+
         result = await self.claudio.call(
-            model=MODEL_SONNET,
+            model=p3_model,
             system_prompt=system_prompt or "Build an architectural map. Respond with JSON.",
             user_prompt=user_prompt,
-            thinking={"type": "enabled", "budget_tokens": 10000},
-            max_tokens=32000,
+            thinking={"type": "enabled", "budget_tokens": p3_thinking} if p3_thinking else None,
+            max_tokens=p3_max_tokens,
         )
 
         arch_map = self.claudio.extract_json(result.get("text", "")) or {}
@@ -656,8 +901,9 @@ class DeepPipelineService:
 
         stats = {"epics": 0, "stories": 0, "tasks": 0, "subtasks": 0, "total_cards": 0}
 
-        # Phase 4a: Generate ALL epics with Opus
-        await progress_cb(4, 5, "Gerando Epics com Opus...")
+        # Phase 4a: Generate ALL epics
+        p4a_label = self._get_model("phase_4a", MODEL_OPUS).split("-")[1].title()
+        await progress_cb(4, 5, f"Gerando Epics com {p4a_label}...")
 
         all_rules_summary = {}
         for domain, data in domain_rules.items():
@@ -672,11 +918,14 @@ class DeepPipelineService:
             "project_name": project.name,
         })
 
+        p4a_model = self._get_model("phase_4a", MODEL_OPUS)
+        p4a_max_tokens = self._get_max_tokens("phase_4a", 64000)
+
         epic_result = await self.claudio.call(
-            model=MODEL_OPUS,
+            model=p4a_model,
             system_prompt=system_prompt or "Generate project epics. Respond with JSON.",
             user_prompt=f"Projeto: {project.name}\n\nMapa Arquitetural:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}\n\nRegras:\n{json.dumps(all_rules_summary, ensure_ascii=False, indent=2)}",
-            max_tokens=64000,
+            max_tokens=p4a_max_tokens,
         )
 
         epics_data = self.claudio.extract_json(epic_result.get("text", ""))
@@ -718,13 +967,13 @@ class DeepPipelineService:
             })
 
             story_requests.append({
-                "model": MODEL_OPUS,
+                "model": self._get_model("phase_4b", MODEL_OPUS),
                 "system_prompt": system_prompt or "Decompose this epic into stories. Respond with JSON.",
                 "user_prompt": f"Epic:\n{json.dumps(epic, ensure_ascii=False, indent=2)}\n\nRegras do dominio:\n{rules_json}",
-                "max_tokens": 32000,
+                "max_tokens": self._get_max_tokens("phase_4b", 32000),
             })
 
-        story_results = await self.claudio.call_batch(story_requests, max_concurrency=3)
+        story_results = await self.claudio.call_batch(story_requests, max_concurrency=self._get_concurrency("phase_4b", 3))
 
         # Process stories and create Tasks + Subtasks
         all_stories = []  # (epic_title, story_data)
@@ -773,14 +1022,14 @@ class DeepPipelineService:
             })
 
             task_requests.append({
-                "model": MODEL_SONNET,
+                "model": self._get_model("phase_4c", MODEL_SONNET),
                 "system_prompt": system_prompt or "Decompose this story into tasks. Respond with JSON.",
                 "user_prompt": f"Story:\n{json.dumps(story, ensure_ascii=False, indent=2)}\n\nContexto do Epic:\n{json.dumps(epic_data, ensure_ascii=False)}",
-                "max_tokens": 8000,
+                "max_tokens": self._get_max_tokens("phase_4c", 8000),
             })
             story_titles_for_tasks.append(story.get("title", ""))
 
-        task_results = await self.claudio.call_batch(task_requests, max_concurrency=5)
+        task_results = await self.claudio.call_batch(task_requests, max_concurrency=self._get_concurrency("phase_4c", 5))
 
         all_tasks = []  # (story_title, task_data)
         for i, result in enumerate(task_results):
@@ -826,14 +1075,14 @@ class DeepPipelineService:
             })
 
             subtask_requests.append({
-                "model": MODEL_HAIKU,
+                "model": self._get_model("phase_4d", MODEL_HAIKU),
                 "system_prompt": system_prompt or "Decompose this task into subtasks. Respond with JSON.",
                 "user_prompt": f"Task:\n{json.dumps(t, ensure_ascii=False, indent=2)}\n\nContexto da Story: {story_title}",
-                "max_tokens": 2000,
+                "max_tokens": self._get_max_tokens("phase_4d", 2000),
             })
             task_titles_for_subtasks.append(t.get("title", ""))
 
-        subtask_results = await self.claudio.call_batch(subtask_requests, max_concurrency=10)
+        subtask_results = await self.claudio.call_batch(subtask_requests, max_concurrency=self._get_concurrency("phase_4d", 10))
 
         for i, result in enumerate(subtask_results):
             if isinstance(result, ClaudioPipelineError):
@@ -903,10 +1152,10 @@ class DeepPipelineService:
         })
 
         structure_result = await self.claudio.call(
-            model=MODEL_SONNET,
+            model=self._get_model("phase_5a", MODEL_SONNET),
             system_prompt=system_prompt or "Plan wiki structure. Respond with JSON.",
             user_prompt=f"Projeto: {project.name}\n\nMapa:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}\n\nCards:\n{json.dumps(card_stats, ensure_ascii=False)}",
-            max_tokens=8000,
+            max_tokens=self._get_max_tokens("phase_5a", 8000),
         )
 
         wiki_plan = self.claudio.extract_json(structure_result.get("text", "")) or {}
@@ -934,10 +1183,10 @@ class DeepPipelineService:
             })
 
             overview_result = await self.claudio.call(
-                model=MODEL_OPUS,
+                model=self._get_model("phase_5b", MODEL_OPUS),
                 system_prompt=system_prompt or "Generate wiki overview pages. Respond with JSON.",
                 user_prompt=f"Plano:\n{json.dumps(general_pages, ensure_ascii=False, indent=2)}\n\nMapa:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}",
-                max_tokens=64000,
+                max_tokens=self._get_max_tokens("phase_5b", 64000),
             )
 
             pages_data = self.claudio.extract_json(overview_result.get("text", ""))
@@ -965,14 +1214,14 @@ class DeepPipelineService:
             })
 
             domain_requests.append({
-                "model": MODEL_OPUS,
+                "model": self._get_model("phase_5c", MODEL_OPUS),
                 "system_prompt": system_prompt or "Generate domain wiki pages. Respond with JSON.",
                 "user_prompt": f"Dominio: {domain}\n\nPlano:\n{json.dumps(group.get('pages', []), ensure_ascii=False, indent=2)}\n\nRegras:\n{json.dumps(domain_data.get('consolidated_rules', [])[:30], ensure_ascii=False, indent=2)}",
-                "max_tokens": 32000,
+                "max_tokens": self._get_max_tokens("phase_5c", 32000),
             })
 
         if domain_requests:
-            domain_results = await self.claudio.call_batch(domain_requests, max_concurrency=3)
+            domain_results = await self.claudio.call_batch(domain_requests, max_concurrency=self._get_concurrency("phase_5c", 3))
             for result in domain_results:
                 if isinstance(result, ClaudioPipelineError):
                     continue
@@ -989,10 +1238,10 @@ class DeepPipelineService:
         for flow in flow_pages:
             try:
                 result = await self.claudio.call(
-                    model=MODEL_SONNET,
+                    model=self._get_model("phase_5d", MODEL_SONNET),
                     system_prompt="Gere uma pagina de wiki detalhada para este fluxo cross-domain. Responda com JSON: {\"pages\": [{\"slug\": \"...\", \"title\": \"...\", \"content\": \"markdown...\", \"word_count\": N}]}",
                     user_prompt=f"Fluxo: {json.dumps(flow, ensure_ascii=False, indent=2)}\n\nMapa: {json.dumps(arch_map, ensure_ascii=False)}",
-                    max_tokens=16000,
+                    max_tokens=self._get_max_tokens("phase_5d", 16000),
                 )
                 pages_data = self.claudio.extract_json(result.get("text", ""))
                 if pages_data and isinstance(pages_data, dict):
@@ -1071,8 +1320,12 @@ class DeepPipelineService:
             "project_name": project.name,
         })
 
+        p6_model = self._get_model("phase_6", MODEL_SONNET)
+        p6_max_tokens = self._get_max_tokens("phase_6", 16000)
+        p6_thinking = self._get_phase_config("phase_6", "thinking_budget", 10000)
+
         result = await self.claudio.call(
-            model=MODEL_SONNET,
+            model=p6_model,
             system_prompt=system_prompt or "Review the quality of all pipeline artifacts. Respond with JSON.",
             user_prompt=(
                 f"Projeto: {project.name}\n\n"
@@ -1081,8 +1334,8 @@ class DeepPipelineService:
                 f"Cards: {json.dumps(card_stats, ensure_ascii=False)}\n\n"
                 f"Wiki: {json.dumps(wiki_summary, ensure_ascii=False)}"
             ),
-            thinking={"type": "enabled", "budget_tokens": 10000},
-            max_tokens=16000,
+            thinking={"type": "enabled", "budget_tokens": p6_thinking} if p6_thinking else None,
+            max_tokens=p6_max_tokens,
         )
 
         qa_result = self.claudio.extract_json(result.get("text", "")) or {

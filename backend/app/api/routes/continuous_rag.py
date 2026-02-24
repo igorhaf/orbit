@@ -78,6 +78,7 @@ async def trigger_rag_scan(
             jm.complete_job(job_id, result)
         except Exception as e:
             try:
+                db_session.rollback()
                 jm.fail_job(job_id, str(e))
                 from app.services.rag_pipeline import _get_redis
                 rc = _get_redis()
@@ -156,6 +157,7 @@ async def trigger_extract_rules(
             jm.complete_job(job_id, result)
         except Exception as e:
             try:
+                db_session.rollback()
                 jm.fail_job(job_id, str(e))
                 # Clean Redis state on failure
                 from app.services.rag_pipeline import _get_redis
@@ -226,6 +228,7 @@ async def trigger_generate_cards(
             jm.complete_job(job_id, result)
         except Exception as e:
             try:
+                db_session.rollback()
                 jm.fail_job(job_id, str(e))
                 from app.services.rag_pipeline import _get_redis
                 rc = _get_redis()
@@ -298,6 +301,7 @@ async def trigger_full_pipeline(
             jm.complete_job(job_id, result)
         except Exception as e:
             try:
+                db_session.rollback()
                 jm.fail_job(job_id, str(e))
             except Exception:
                 pass
@@ -364,6 +368,7 @@ async def trigger_generate_wiki(
             jm.complete_job(job_id, result)
         except Exception as e:
             try:
+                db_session.rollback()
                 jm.fail_job(job_id, str(e))
                 from app.services.rag_pipeline import _get_redis
                 rc = _get_redis()
@@ -481,6 +486,7 @@ async def reset_rag_state(
 async def trigger_deep_pipeline(
     project_id: UUID,
     background_tasks: BackgroundTasks,
+    profile: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
     """
@@ -488,6 +494,9 @@ async def trigger_deep_pipeline(
     Phases: Scan → File Analysis (Haiku) → Rule Synthesis (Sonnet) →
     Architectural Map (Sonnet+Thinking) → Cards (Opus/Sonnet/Haiku) →
     Wiki (Opus) → QA (Sonnet+Thinking) → Gap Fill (conditional).
+
+    Optional query param `profile`: 'economy', 'balanced', or 'quality'.
+    If not provided, uses the default profile.
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -512,12 +521,14 @@ async def trigger_deep_pipeline(
             "status": existing.status.value,
         }
 
+    profile_name = profile  # capture for closure
+
     job_manager = JobManager(db)
     job = job_manager.create_job(
         job_type=JobType.DEEP_PIPELINE,
-        input_data={"project_id": str(project_id), "phase": "deep_pipeline_v2"},
+        input_data={"project_id": str(project_id), "phase": "deep_pipeline_v2", "profile": profile_name},
         project_id=project_id,
-        notification_title=f"Deep Pipeline (7 fases) — {project.name or 'Projeto'}",
+        notification_title=f"Deep Pipeline (7 fases) — {project.name or 'Projeto'}" + (f" [{profile_name}]" if profile_name else ""),
         deep_link=f"/projects/{project_id}",
     )
 
@@ -529,7 +540,7 @@ async def trigger_deep_pipeline(
             jm = JobManager(db_session)
             jm.start_job(job_id)
 
-            pipeline = DeepPipelineService(db_session)
+            pipeline = DeepPipelineService(db_session, profile_name=profile_name)
 
             async def _update_progress(phase, pct, msg):
                 try:
@@ -542,9 +553,18 @@ async def trigger_deep_pipeline(
             jm.complete_job(job_id, result)
         except Exception as e:
             try:
+                db_session.rollback()
                 jm.fail_job(job_id, str(e))
             except Exception:
-                pass
+                # Last resort: try with a fresh session
+                try:
+                    db_session.rollback()
+                    from app.database import get_db as get_db_gen2
+                    fresh = next(get_db_gen2())
+                    JobManager(fresh).fail_job(job_id, str(e)[:500])
+                    fresh.close()
+                except Exception:
+                    pass
         finally:
             db_session.close()
 
@@ -555,6 +575,7 @@ async def trigger_deep_pipeline(
         "job_id": str(job.id),
         "status": "pending",
         "pipeline_version": "v2",
+        "profile": profile_name or "default",
     }
 
 
@@ -625,6 +646,164 @@ async def get_deep_pipeline_status(
         }
 
     return response
+
+
+# =========================================================================
+# PIPELINE PROFILES & RUNS ENDPOINTS
+# =========================================================================
+
+@router.get("/pipeline/profiles")
+async def list_pipeline_profiles(db: Session = Depends(get_db)):
+    """List all available pipeline execution profiles."""
+    from app.models.pipeline_profile import PipelineProfile
+    profiles = db.query(PipelineProfile).order_by(PipelineProfile.name).all()
+    return [
+        {
+            "id": str(p.id),
+            "name": p.name,
+            "description": p.description,
+            "quality_threshold": p.quality_threshold,
+            "is_default": p.is_default,
+            "phase_configs": p.phase_configs,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        }
+        for p in profiles
+    ]
+
+
+@router.get("/{project_id}/rag/deep-pipeline/runs")
+async def list_pipeline_runs(
+    project_id: UUID,
+    limit: int = Query(default=20, le=100),
+    db: Session = Depends(get_db),
+):
+    """List pipeline run history for a project, ordered by most recent."""
+    from app.models.pipeline_run import PipelineRun
+    runs = (
+        db.query(PipelineRun)
+        .filter(PipelineRun.project_id == project_id)
+        .order_by(PipelineRun.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": str(r.id),
+            "profile_name": r.profile_name,
+            "version": r.version,
+            "status": r.status,
+            "overall_score": r.overall_score,
+            "phase_scores": r.phase_scores,
+            "phase_durations": r.phase_durations,
+            "total_files_scanned": r.total_files_scanned,
+            "total_rules_extracted": r.total_rules_extracted,
+            "total_domains": r.total_domains,
+            "total_cards_created": r.total_cards_created,
+            "total_wiki_pages": r.total_wiki_pages,
+            "total_input_tokens": r.total_input_tokens,
+            "total_output_tokens": r.total_output_tokens,
+            "estimated_cost_usd": float(r.estimated_cost_usd) if r.estimated_cost_usd else None,
+            "reinforcement_applied": r.reinforcement_applied,
+            "error": r.error,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+        }
+        for r in runs
+    ]
+
+
+@router.get("/{project_id}/rag/deep-pipeline/runs/{run_id}")
+async def get_pipeline_run_detail(
+    project_id: UUID,
+    run_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Get detailed info for a specific pipeline run."""
+    from app.models.pipeline_run import PipelineRun
+    run = (
+        db.query(PipelineRun)
+        .filter(PipelineRun.id == run_id, PipelineRun.project_id == project_id)
+        .first()
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="Pipeline run not found")
+
+    return {
+        "id": str(run.id),
+        "project_id": str(run.project_id),
+        "profile_id": str(run.profile_id) if run.profile_id else None,
+        "profile_name": run.profile_name,
+        "profile_snapshot": run.profile_snapshot,
+        "version": run.version,
+        "status": run.status,
+        "overall_score": run.overall_score,
+        "phase_scores": run.phase_scores,
+        "phase_durations": run.phase_durations,
+        "total_files_scanned": run.total_files_scanned,
+        "total_rules_extracted": run.total_rules_extracted,
+        "total_domains": run.total_domains,
+        "total_cards_created": run.total_cards_created,
+        "total_wiki_pages": run.total_wiki_pages,
+        "total_input_tokens": run.total_input_tokens,
+        "total_output_tokens": run.total_output_tokens,
+        "estimated_cost_usd": float(run.estimated_cost_usd) if run.estimated_cost_usd else None,
+        "reinforcement_applied": run.reinforcement_applied,
+        "error": run.error,
+        "started_at": run.started_at.isoformat() if run.started_at else None,
+        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "created_at": run.created_at.isoformat() if run.created_at else None,
+    }
+
+
+@router.get("/{project_id}/rag/deep-pipeline/compare")
+async def compare_pipeline_runs(
+    project_id: UUID,
+    run1: UUID = Query(..., description="First run ID"),
+    run2: UUID = Query(..., description="Second run ID"),
+    db: Session = Depends(get_db),
+):
+    """Compare two pipeline runs side-by-side."""
+    from app.models.pipeline_run import PipelineRun
+
+    r1 = db.query(PipelineRun).filter(PipelineRun.id == run1, PipelineRun.project_id == project_id).first()
+    r2 = db.query(PipelineRun).filter(PipelineRun.id == run2, PipelineRun.project_id == project_id).first()
+
+    if not r1 or not r2:
+        raise HTTPException(status_code=404, detail="One or both runs not found")
+
+    def _run_summary(r):
+        return {
+            "id": str(r.id),
+            "profile_name": r.profile_name,
+            "status": r.status,
+            "overall_score": r.overall_score,
+            "phase_scores": r.phase_scores or {},
+            "phase_durations": r.phase_durations or {},
+            "total_cards_created": r.total_cards_created,
+            "total_wiki_pages": r.total_wiki_pages,
+            "total_files_scanned": r.total_files_scanned,
+            "total_rules_extracted": r.total_rules_extracted,
+            "estimated_cost_usd": float(r.estimated_cost_usd) if r.estimated_cost_usd else None,
+            "started_at": r.started_at.isoformat() if r.started_at else None,
+            "completed_at": r.completed_at.isoformat() if r.completed_at else None,
+        }
+
+    s1, s2 = _run_summary(r1), _run_summary(r2)
+
+    # Compute diffs for phase scores
+    score_diffs = {}
+    all_phases = set(list((s1["phase_scores"] or {}).keys()) + list((s2["phase_scores"] or {}).keys()))
+    for phase in sorted(all_phases):
+        v1 = (s1["phase_scores"] or {}).get(phase, 0)
+        v2 = (s2["phase_scores"] or {}).get(phase, 0)
+        score_diffs[phase] = {"run1": v1, "run2": v2, "diff": v2 - v1}
+
+    return {
+        "run1": s1,
+        "run2": s2,
+        "score_comparison": score_diffs,
+        "overall_diff": (s2.get("overall_score") or 0) - (s1.get("overall_score") or 0),
+    }
 
 
 @router.get("/{project_id}/rag/enrichment-status")
