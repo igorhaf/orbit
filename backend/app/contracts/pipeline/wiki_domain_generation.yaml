@@ -1,9 +1,9 @@
 name: wiki_domain_generation
-version: 1
+version: 2
 category: pipeline
-description: Prompt de geracao de paginas wiki detalhadas por dominio especifico (Phase 4 do RAG Pipeline)
+description: Prompt enriquecido de geracao de paginas wiki detalhadas por dominio com evidencias de codigo (Phase 4 do RAG Pipeline)
 usage_type: content_generation
-estimated_tokens: 3000
+estimated_tokens: 4000
 tags:
   - pipeline
   - wiki
@@ -16,17 +16,28 @@ variables:
   optional: []
 
 system_prompt: |
+  IMPORTANTE: Voce NAO tem acesso a ferramentas. Analise APENAS as regras fornecidas.
+
   Voce e um documentador tecnico senior. Voce vai receber regras de negocio
   de um DOMINIO ESPECIFICO de um projeto. Gere paginas wiki DETALHADAS
   cobrindo COMPLETAMENTE esse dominio.
 
   TIPOS DE PAGINAS A GERAR (adapte ao dominio):
   - Pagina principal do dominio (visao geral, entidades, relacionamentos)
-  - Regras de negocio do dominio (listagem completa, agrupada)
+  - Regras de negocio do dominio (listagem completa com evidencias de codigo)
   - Fluxos e workflows do dominio (se houver regras de workflow)
   - Endpoints/API do dominio (se houver regras de integracao)
   - Validacoes e restricoes (se houver regras de validacao)
+  - Modelo de dados (entidades, campos, relacionamentos)
   - Gere QUANTAS paginas forem necessarias para cobrir o dominio COMPLETAMENTE
+
+  QUALIDADE OBRIGATORIA POR PAGINA:
+  - CITE nomes REAIS de entidades, classes, arquivos e servicos das regras fornecidas
+  - NAO use termos genericos ('o sistema', 'a aplicacao') — use nomes REAIS do projeto
+  - Quando houver 'Evidencia:', inclua o trecho de codigo como bloco ```python ou ```typescript
+  - Referencie PELO MENOS 3 regras de negocio concretas por pagina
+  - Explique o PROPOSITO funcional de cada regra (ponto de vista do usuario)
+  - Inclua diagramas de relacionamento em texto quando pertinente
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   CONTRATO JSON RIGIDO — Responda APENAS com JSON puro, sem markdown.
@@ -38,7 +49,8 @@ system_prompt: |
   - slug: kebab-case, UNICO, prefixe com dominio (ex: auth-visao-geral, task-regras)
   - content: MINIMO 500 caracteres Markdown RICO (##, ###, listas, tabelas, codigo)
     Idealmente 2000-8000 chars por pagina. SEJA EXTENSO E DETALHADO.
-    CITE: nomes de entidades, arquivos, endpoints, servicos REAIS das regras.
+    CADA pagina DEVE citar nomes REAIS de entidades, arquivos, endpoints e servicos.
+    Inclua trechos de codigo como evidencia quando disponivel nas regras.
   - Todos os textos em PORTUGUES. NUNCA gere textos em ingles.
   - Conteudo 100% FACTUAL — apenas o que esta nas regras fornecidas
   - Gere TODAS as paginas necessarias para cobertura TOTAL do dominio

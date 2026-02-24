@@ -374,27 +374,43 @@ class RagPipelineService:
     THINKING_CONFIG = None
 
     # Batch config for Phase 2 (process ALL files, not RAG-selected subset)
-    PHASE2_BATCH_SIZE = 30
-    PHASE2_MAX_CONTEXT_CHARS = 80000
+    PHASE2_BATCH_SIZE = 15
+    PHASE2_MAX_CONTEXT_CHARS = 50000
 
     PHASE2_SYSTEM_PROMPT = (
-        "IMPORTANTE: Voce NAO tem acesso a ferramentas. NAO tente executar comandos, "
-        "ler arquivos ou explorar diretorios. Todo o codigo necessario ja esta incluido "
-        "na mensagem do usuario como CONTEXTO. Analise APENAS o texto fornecido.\n\n"
-        "Voce e um analista de negocios. Extraia regras de negocio do codigo fornecido.\n\n"
+        "IMPORTANTE: Voce NAO tem acesso a ferramentas. Analise APENAS o codigo fornecido.\n\n"
+        "Voce e um analista de negocios e arquiteto de software senior.\n"
+        "Extraia regras de negocio DETALHADAS e RICAS do codigo fornecido.\n\n"
+        "PARA CADA REGRA, identifique:\n"
+        "1. A ENTIDADE PRINCIPAL (nome do modelo/classe/tabela)\n"
+        "2. O DOMINIO DE NEGOCIO (modulo funcional: ex. Autenticacao, Pagamentos, Gestao de Projetos)\n"
+        "3. O CONTEXTO FUNCIONAL (o que esta regra significa do ponto de vista do USUARIO)\n"
+        "4. ENTIDADES RELACIONADAS\n"
+        "5. A EVIDENCIA (trecho de codigo que comprova, max 200 chars)\n\n"
         "CATEGORIAS (use EXATAMENTE um destes):\n"
         "  dominio | validacao | restricao | workflow | permissao | calculo | integracao | negocio\n\n"
         "PRIORIDADE (use EXATAMENTE um destes):\n"
         "  critical | high | medium | low\n\n"
-        "IGNORE: config boilerplate, CSS, logs, Docker, imports.\n\n"
-        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes, sem texto antes ou depois.\n\n"
-        '{"business_rules": [{"rule_text": "descricao em portugues min 15 chars", '
-        '"rule_type": "dominio", "source_file": "caminho/arquivo.py", '
-        '"priority": "medium", "entity": "Entidade", "evidence": "trecho de codigo"}]}\n\n'
-        "REGRAS:\n"
-        "- Extraia o MAXIMO de regras do codigo no contexto\n"
-        "- NAO invente regras — apenas o que EXISTE no codigo fornecido\n"
-        "- Descricoes SEMPRE em PORTUGUES. NUNCA em ingles.\n"
+        "IGNORE: config boilerplate, CSS puro, logs, Docker, imports sem logica.\n\n"
+        "Responda APENAS com JSON puro. Sem markdown, sem ```json, sem explicacoes.\n\n"
+        '{"business_rules": [{\n'
+        '  "rule_text": "descricao funcional RICA em portugues (min 30 chars)",\n'
+        '  "rule_type": "dominio",\n'
+        '  "source_file": "caminho/arquivo.py",\n'
+        '  "priority": "medium",\n'
+        '  "entity": "NomeDaEntidade",\n'
+        '  "domain": "Nome do Modulo de Negocio",\n'
+        '  "evidence": "trecho de codigo (max 200 chars)",\n'
+        '  "related_entities": ["EntidadeA", "EntidadeB"]\n'
+        '}]}\n\n'
+        "QUALIDADE OBRIGATORIA:\n"
+        "- rule_text: MINIMO 30 chars, descricao funcional em portugues\n"
+        "- entity: nome da classe/modelo/tabela principal (NUNCA vazio)\n"
+        "- domain: modulo de negocio (ex: Autenticacao, Gestao de Projetos, API Proxy)\n"
+        "- evidence: trecho REAL do codigo\n"
+        "- Extraia o MAXIMO de regras — validacoes, restricoes, workflows, permissoes, calculos\n"
+        "- NAO invente regras — apenas o que EXISTE no codigo\n"
+        "- Descricoes SEMPRE em PORTUGUES\n"
         "- Se nenhuma regra: {\"business_rules\": []}\n"
         "- source_file = caminho relativo do arquivo"
     )
@@ -541,8 +557,13 @@ class RagPipelineService:
                         f'(lote {batch_num} de {total_batches}):\n\n'
                         f'{code_context}\n\n'
                         f'---\n'
-                        f'Analise TODO o codigo acima e extraia TODAS as regras de negocio.\n'
-                        f'Retorne APENAS o JSON com business_rules. '
+                        f'INSTRUCOES DE EXTRACAO PROFUNDA:\n'
+                        f'1. Identifique TODOS os modulos/dominios de negocio presentes nestes arquivos\n'
+                        f'2. Para CADA regra, identifique a ENTIDADE principal e o DOMINIO de negocio\n'
+                        f'3. Descreva cada regra do ponto de vista FUNCIONAL (o que o usuario experimenta)\n'
+                        f'4. Inclua RELACIONAMENTOS entre entidades\n'
+                        f'5. Extraia regras implicitas (validacoes em if/else, restricoes em queries, etc)\n\n'
+                        f'Retorne APENAS o JSON com business_rules.\n'
                         f'NAO use ferramentas, NAO explore arquivos.'
                     )
                 else:
@@ -764,7 +785,7 @@ class RagPipelineService:
             priority = str(rule.get("priority") or "").strip().lower()
 
             # ---- STRICT VALIDATION ----
-            if len(rule_text) < 15:
+            if len(rule_text) < 20:
                 rejected += 1
                 continue
             if rule_type not in self.VALID_RULE_TYPES:
@@ -785,12 +806,26 @@ class RagPipelineService:
             rule_text = rule_text[:2000]
             source_file = source_file[:500]
 
+            # Extract entity and domain (critical for Phase 3 grouping)
+            entity = str(rule.get("entity") or "").strip()[:200]
+            domain = str(rule.get("domain") or "").strip()[:200]
+
+            # If domain is empty, try to derive from entity or source_file path
+            if not domain and entity:
+                domain = entity
+            if not domain and source_file:
+                # Use first directory component as domain hint
+                parts = source_file.replace("\\", "/").split("/")
+                if len(parts) > 1:
+                    domain = parts[-2].replace("_", " ").replace("-", " ").title()
+
             valid.append({
                 "rule_text": rule_text,
                 "rule_type": rule_type,
                 "source_file": source_file,
                 "priority": priority,
-                "entity": str(rule.get("entity") or "").strip()[:200],
+                "entity": entity if entity else "Geral",
+                "domain": domain if domain else "Geral",
                 "evidence": str(rule.get("evidence") or "").strip()[:1000],
             })
 
@@ -809,6 +844,9 @@ class RagPipelineService:
                 source_file=rule["source_file"],
                 rule_type=rule["rule_type"],
                 priority=rule["priority"],
+                entity=rule.get("entity"),
+                evidence=rule.get("evidence"),
+                domain=rule.get("domain"),
             )
             stored += 1
         return stored
@@ -854,18 +892,35 @@ class RagPipelineService:
         "- Retorne APENAS: {\"cards\": [...]}"
     )
 
-    # Pass 1: Epic generation from compact summary
+    # Pass 1: Epic generation from actual rules per domain
     PHASE3_EPIC_PROMPT = (
         PHASE3_COMMON_PROMPT + "\n\n"
         "TAREFA ESPECIFICA: Gere APENAS EPICS (item_type='epic', parent_title=null).\n"
-        "Cada Epic representa um MODULO ou DOMINIO do sistema.\n"
-        "Gere entre 10 e 30 Epics cobrindo TODOS os dominios identificados nas regras.\n"
-        "Quanto mais dominios/entidades existirem, mais Epics devem ser gerados.\n"
-        "CADA dominio/entidade listada deve ter pelo menos 1 Epic.\n\n"
-        "QUALIDADE OBRIGATORIA POR EPIC:\n"
-        "- description: MINIMO 300 chars, texto humano detalhado com escopo e objetivo\n"
-        "- generated_prompt: MINIMO 500 chars, DEVE comecar com 'Mapa Semantico:'\n"
-        "  seguido de identificadores (N:, P:, E:, D:, S:, C:) e instrucoes semanticas\n"
+        "Cada Epic representa um MODULO ou COMPONENTE REAL do sistema analisado.\n"
+        "CADA dominio listado nas regras DEVE ter pelo menos 1 Epic dedicado.\n\n"
+        "EPIC = MODULO DO SISTEMA. Exemplos:\n"
+        "- Plataforma de ensino: 'Gestao de Alunos', 'Gestao de Professores', 'Matriculas'\n"
+        "- E-commerce: 'Catalogo de Produtos', 'Carrinho de Compras', 'Pagamentos'\n"
+        "- API Proxy: 'Gerenciamento de Sessoes', 'Streaming SSE', 'Roteamento de Modelos'\n\n"
+        "PROIBIDO gerar Epics genericos como:\n"
+        "- 'Configuracao do Sistema', 'Melhoria de Performance', 'Infraestrutura Geral'\n"
+        "- 'Testes', 'Documentacao', 'DevOps'\n"
+        "Cada Epic DEVE estar ligado a REGRAS DE NEGOCIO CONCRETAS.\n\n"
+        "FORMATO OBRIGATORIO DA DESCRIPTION (Markdown, min 500 chars):\n"
+        "## Objetivo\n"
+        "[O que este modulo faz no sistema — descricao funcional rica]\n\n"
+        "## Regras de Negocio Principais\n"
+        "- [Regra concreta extraida do codigo com evidencia]\n"
+        "- [Regra concreta extraida do codigo com evidencia]\n"
+        "- [Mais regras...]\n\n"
+        "## Entidades e Relacionamentos\n"
+        "- [Entidade A] → [como se relaciona com Entidade B]\n\n"
+        "## Componentes Tecnicos\n"
+        "- Arquivos-chave: [lista de arquivos reais do projeto]\n"
+        "- Servicos/Classes: [servicos envolvidos]\n\n"
+        "QUALIDADE OBRIGATORIA:\n"
+        "- description: Markdown RICO, MINIMO 500 chars com as secoes acima\n"
+        "- generated_prompt: MINIMO 500 chars, comeca com 'Mapa Semantico:'\n"
         "- acceptance_criteria: MINIMO 3 criterios por Epic\n"
         "- story_points: Fibonacci (5, 8, 13, 21)\n"
         "- labels: array com pelo menos 2 tags relevantes\n\n"
@@ -879,8 +934,16 @@ class RagPipelineService:
         "HIERARQUIA OBRIGATORIA:\n"
         "  Cada Epic -> 2-5 Stories\n"
         "  Cada Story -> 2-5 Tasks\n"
-        "  Cada Task -> 2-4 Subtasks\n"
-        "Subtasks sao acoes atomicas (criar arquivo, escrever teste, configurar rota).\n"
+        "  Cada Task -> 2-4 Subtasks\n\n"
+        "STORIES = camada CONCEITUAL que expande o Epic:\n"
+        "- Cada Story foca num ASPECTO FUNCIONAL do modulo\n"
+        "- Description em Markdown (min 300 chars) com secoes:\n"
+        "  ## Contexto | ## Funcionalidade | ## Regras Envolvidas | ## Cenarios de Uso\n"
+        "- Baseada em regras de negocio REAIS do dominio\n\n"
+        "TASKS = camada TECNICA que implementa a Story:\n"
+        "- Description tecnica (min 200 chars) com: arquivos, logica, validacoes\n"
+        "- Referencia arquivos e servicos REAIS do projeto\n\n"
+        "SUBTASKS = acoes atomicas (criar arquivo, escrever teste, configurar rota).\n\n"
         "Use parent_title EXATO do Epic/Story/Task pai."
     )
 
@@ -930,13 +993,14 @@ class RagPipelineService:
             self._set_phase_status(project_id, 3, "failed")
             raise ValueError("Nenhuma regra de negocio encontrada. Execute Phase 2 primeiro.")
 
-        # Group rules by entity
+        # Group rules by domain (falls back to entity for backward compat)
         entity_rules: Dict[str, List[str]] = {}
         entity_summary: Dict[str, int] = {}
         for row in rule_rows:
             content = row[0] or ""
             meta = row[1] if isinstance(row[1], dict) else {}
-            entity = meta.get("entity", "Geral") or "Geral"
+            entity = meta.get("domain") or meta.get("entity") or "Geral"
+            entity = entity.strip() if entity else "Geral"
             rule_type = meta.get("rule_type", "outro")
             source = meta.get("source_file", "?")
             line = f"  [{rule_type}|{source}] {content}"
@@ -953,24 +1017,50 @@ class RagPipelineService:
         total_cards = 0
 
         # ==========================================
-        # PASS 1: Generate EPICS from compact summary
+        # PASS 1: Generate EPICS from ACTUAL RULES per domain
         # ==========================================
         jm.update_progress(job_id, _p(5), "Fase 3/4: Gerando epics...")
 
-        summary_lines = "\n".join(
-            f"- {e}: {c} regras" for e, c in sorted(entity_summary.items())
-        )
+        # Build RICH domain context with actual rule content
+        domain_blocks = []
+        for domain_name in sorted(entity_rules.keys()):
+            rules_list = entity_rules[domain_name]
+            # Include up to 15 representative rules per domain (full text)
+            sample = rules_list[:15]
+            block = (
+                f"\n=== DOMINIO: {domain_name} ({len(rules_list)} regras) ===\n"
+                + "\n".join(sample)
+            )
+            domain_blocks.append(block)
+
+        all_domains_text = "\n".join(domain_blocks)
+        # Cap context to avoid exceeding model limits
+        MAX_EPIC_CONTEXT = 100000
+        if len(all_domains_text) > MAX_EPIC_CONTEXT:
+            all_domains_text = all_domains_text[:MAX_EPIC_CONTEXT] + "\n\n... (truncado por limite de contexto)"
+
         epic_user_prompt = (
             f'Projeto: "{project_name}"\n'
             f'Total de regras de negocio: {rule_count}\n'
-            f'Total de dominios/entidades: {len(entity_summary)}\n\n'
-            f'ENTIDADES/DOMINIOS IDENTIFICADOS:\n{summary_lines}\n\n'
+            f'Total de dominios: {len(entity_summary)}\n\n'
+            f'REGRAS DE NEGOCIO POR DOMINIO:\n{all_domains_text}\n\n'
             f'---\n'
-            f'Gere EPICS (modulos macro) para TODOS os dominios acima.\n'
-            f'Cada entidade/dominio deve ter pelo menos 1 Epic dedicado.\n'
-            f'Espera-se entre {max(10, len(entity_summary))} e {max(20, len(entity_summary) * 2)} Epics.\n'
-            f'Cada Epic DEVE ter description rica (min 300 chars), generated_prompt semantico\n'
-            f'(min 500 chars com Mapa Semantico), e acceptance_criteria (min 3 itens).\n'
+            f'INSTRUCOES:\n'
+            f'Gere EPICS onde cada Epic representa um MODULO/COMPONENTE REAL do sistema.\n'
+            f'Cada dominio listado acima DEVE ter pelo menos 1 Epic dedicado.\n\n'
+            f'A DESCRIPTION de cada Epic DEVE ser em Markdown rico (min 500 chars) com:\n'
+            f'## Objetivo\n'
+            f'[Descricao funcional do que este modulo faz]\n\n'
+            f'## Regras de Negocio Principais\n'
+            f'- [Regra concreta extraida do codigo]\n'
+            f'- [Regra concreta extraida do codigo]\n\n'
+            f'## Entidades e Relacionamentos\n'
+            f'- [Entidade e como se relaciona]\n\n'
+            f'## Componentes Tecnicos\n'
+            f'- Arquivos: [arquivos-chave]\n'
+            f'- Servicos: [servicos envolvidos]\n\n'
+            f'NAO gere epics genericos (ex: "Configuracao do Sistema").\n'
+            f'Cada Epic DEVE estar ligado a regras CONCRETAS fornecidas acima.\n'
             f'Retorne: {{"cards": [...]}}'
         )
 
@@ -1065,7 +1155,18 @@ class RagPipelineService:
         num_detail_batches = len(domain_batches)
         logger.info(f"Phase 3 Pass 2: {num_detail_batches} detail batches")
 
-        epic_titles_text = "\n".join(f"- {t}" for t in epic_titles)
+        # Get full epic data (title + description) for rich context
+        from app.models.task import Task as TaskModel
+        epics_data = self.db.query(TaskModel.title, TaskModel.description).filter(
+            TaskModel.project_id == project_id,
+            TaskModel.item_type == "epic",
+            TaskModel.reporter == "pipeline_phase3",
+        ).all()
+        epic_context_lines = []
+        for e in epics_data:
+            desc_preview = (e.description or "")[:400].replace("\n", " ")
+            epic_context_lines.append(f"EPIC: {e.title}\n  Descricao: {desc_preview}")
+        epic_context_text = "\n\n".join(epic_context_lines)
 
         for batch_idx, batch in enumerate(domain_batches):
             batch_num = batch_idx + 1
@@ -1084,11 +1185,15 @@ class RagPipelineService:
                 f'Projeto: "{project_name}"\n'
                 f'Dominio: {", ".join(batch["entities"])}\n'
                 f'Regras neste dominio: {batch["rule_count"]}\n\n'
-                f'EPICS JA CRIADOS (use parent_title EXATO):\n{epic_titles_text}\n\n'
+                f'EPICS JA CRIADOS (use parent_title EXATO):\n{epic_context_text}\n\n'
                 f'REGRAS DE NEGOCIO DESTE DOMINIO:\n{batch["text"]}\n\n'
                 f'---\n'
                 f'Gere Stories, Tasks e Subtasks para os Epics acima '
-                f'que se relacionam com este dominio.\n'
+                f'que se relacionam com este dominio.\n\n'
+                f'STORIES devem ser conceituais — expandem aspectos funcionais do Epic.\n'
+                f'A description de cada Story DEVE ser em Markdown (min 300 chars) com:\n'
+                f'## Contexto\n## Funcionalidade\n## Regras Envolvidas\n## Cenarios de Uso\n\n'
+                f'TASKS devem ser tecnicas — referenciam arquivos, logica, validacoes concretas.\n\n'
                 f'Use parent_title EXATO de um dos Epics listados.\n'
                 f'Se nenhum Epic existente se encaixa, crie um novo Epic tambem.\n'
                 f'Retorne: {{"cards": [...]}}'
@@ -1422,8 +1527,8 @@ class RagPipelineService:
 
     # Phase 4 system prompt for OVERVIEW batch (title + description + general pages)
     PHASE4_OVERVIEW_PROMPT = (
-        "Voce e um documentador tecnico senior. Voce vai receber um RESUMO de todas "
-        "as regras de negocio de um projeto. Gere titulo, descricao e paginas wiki GERAIS.\n\n"
+        "Voce e um documentador tecnico senior. Voce vai receber regras de negocio "
+        "REAIS de um projeto com exemplos concretos. Gere titulo, descricao e paginas wiki GERAIS.\n\n"
         "PAGINAS GERAIS A GERAR (visao macro do projeto):\n"
         "  visao-geral | padroes-arquitetura | convencoes-codigo | estrutura-codigo\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -1438,6 +1543,9 @@ class RagPipelineService:
         "- slug: kebab-case (^[a-z0-9]+(-[a-z0-9]+)*$), UNICO\n"
         "- content: MINIMO 500 caracteres Markdown RICO (##, ###, listas, tabelas, codigo)\n"
         "  Idealmente 2000-8000 chars por pagina. QUANTO MAIS DETALHADO, MELHOR.\n"
+        "- CITE nomes REAIS de entidades, classes, arquivos e servicos das regras fornecidas\n"
+        "- NAO use termos genericos ('o sistema', 'a aplicacao') — use nomes REAIS do projeto\n"
+        "- Cada pagina deve referenciar pelo menos 3 regras de negocio concretas\n"
         "- Todos os textos em PORTUGUES. NUNCA gere textos em ingles.\n"
         "- Conteudo FACTUAL baseado nas regras fornecidas\n"
         "- NAO invente features que nao existem nas regras"
@@ -1445,16 +1553,25 @@ class RagPipelineService:
 
     # Phase 4 system prompt for DOMAIN batches (one call per entity/domain)
     PHASE4_DOMAIN_PROMPT = (
+        "IMPORTANTE: Voce NAO tem acesso a ferramentas. Analise APENAS as regras fornecidas.\n\n"
         "Voce e um documentador tecnico senior. Voce vai receber regras de negocio "
         "de um DOMINIO ESPECIFICO de um projeto. Gere paginas wiki DETALHADAS "
         "cobrindo COMPLETAMENTE esse dominio.\n\n"
         "TIPOS DE PAGINAS A GERAR (adapte ao dominio):\n"
         "- Pagina principal do dominio (visao geral, entidades, relacionamentos)\n"
-        "- Regras de negocio do dominio (listagem completa, agrupada)\n"
+        "- Regras de negocio do dominio (listagem completa com evidencias de codigo)\n"
         "- Fluxos e workflows do dominio (se houver regras de workflow)\n"
         "- Endpoints/API do dominio (se houver regras de integracao)\n"
         "- Validacoes e restricoes (se houver regras de validacao)\n"
+        "- Modelo de dados (entidades, campos, relacionamentos)\n"
         "- Gere QUANTAS paginas forem necessarias para cobrir o dominio COMPLETAMENTE\n\n"
+        "QUALIDADE OBRIGATORIA POR PAGINA:\n"
+        "- CITE nomes REAIS de entidades, classes, arquivos e servicos das regras fornecidas\n"
+        "- NAO use termos genericos ('o sistema', 'a aplicacao') — use nomes REAIS do projeto\n"
+        "- Quando houver 'Evidencia:', inclua o trecho de codigo como bloco ```python ou ```typescript\n"
+        "- Referencie PELO MENOS 3 regras de negocio concretas por pagina\n"
+        "- Explique o PROPOSITO funcional de cada regra (ponto de vista do usuario)\n"
+        "- Inclua diagramas de relacionamento em texto quando pertinente\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "CONTRATO JSON RIGIDO — Responda APENAS com JSON puro, sem markdown.\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1463,7 +1580,8 @@ class RagPipelineService:
         "- slug: kebab-case, UNICO, prefixe com dominio (ex: auth-visao-geral, task-regras)\n"
         "- content: MINIMO 500 caracteres Markdown RICO (##, ###, listas, tabelas, codigo)\n"
         "  Idealmente 2000-8000 chars por pagina. SEJA EXTENSO E DETALHADO.\n"
-        "  CITE: nomes de entidades, arquivos, endpoints, servicos REAIS das regras.\n"
+        "  CADA pagina DEVE citar nomes REAIS de entidades, arquivos, endpoints e servicos.\n"
+        "  Inclua trechos de codigo como evidencia quando disponivel nas regras.\n"
         "- Todos os textos em PORTUGUES. NUNCA gere textos em ingles.\n"
         "- Conteudo 100% FACTUAL — apenas o que esta nas regras fornecidas\n"
         "- Gere TODAS as paginas necessarias para cobertura TOTAL do dominio"
@@ -1527,10 +1645,13 @@ class RagPipelineService:
         for row in rule_rows:
             content = row[0] or ""
             meta = row[1] if isinstance(row[1], dict) else {}
-            entity = meta.get("entity", "Geral") or "Geral"
+            entity = meta.get("domain") or meta.get("entity") or "Geral"
             rule_type = meta.get("rule_type", "outro")
             source = meta.get("source_file", "?")
+            evidence = meta.get("evidence", "")
             line = f"[{rule_type}|{source}] {content}"
+            if evidence:
+                line += f"\n  Evidencia: {evidence[:200]}"
             entity_rules.setdefault(entity, []).append(line)
             summary_by_type[rule_type] = summary_by_type.get(rule_type, 0) + 1
 
@@ -1601,21 +1722,37 @@ class RagPipelineService:
         jm.update_progress(job_id, _p(10), "Fase 4/4: Gerando visao geral do projeto...")
 
         type_summary = "\n".join([f"- {t}: {c} regras" for t, c in sorted(summary_by_type.items())])
-        entity_summary = "\n".join([
-            f"- {e}: {len(rules)} regras" for e, rules in sorted(entity_rules.items())
-        ])
+
+        # Build rich entity summary with sample rules (3-5 per domain)
+        entity_summary_lines = []
+        for e in sorted(entity_rules.keys()):
+            rules = entity_rules[e]
+            entity_summary_lines.append(f"\n=== {e} ({len(rules)} regras) ===")
+            for sample_rule in rules[:5]:
+                entity_summary_lines.append(f"  - {sample_rule[:300]}")
+        entity_summary = "\n".join(entity_summary_lines)
+
+        # Truncate if too large
+        MAX_OVERVIEW_CONTEXT = 80000
+        if len(entity_summary) > MAX_OVERVIEW_CONTEXT:
+            entity_summary = entity_summary[:MAX_OVERVIEW_CONTEXT] + "\n... (truncado)"
 
         overview_prompt = (
             f'Projeto: "{project_name}"\n'
             f'Total de regras de negocio: {rule_count}\n\n'
             f'DISTRIBUICAO POR TIPO:\n{type_summary}\n\n'
-            f'DISTRIBUICAO POR ENTIDADE:\n{entity_summary}\n\n'
+            f'REGRAS DE NEGOCIO POR DOMINIO (com exemplos):\n{entity_summary}\n\n'
             f'---\n'
-            f'Gere titulo, descricao e paginas wiki GERAIS do projeto:\n'
-            f'- visao-geral (overview completo do sistema)\n'
-            f'- padroes-arquitetura (arquitetura, design patterns)\n'
-            f'- convencoes-codigo (convencoes e boas praticas)\n'
-            f'- estrutura-codigo (organizacao de pastas e modulos)\n'
+            f'INSTRUCOES:\n'
+            f'1. Analise as regras REAIS acima para entender o projeto\n'
+            f'2. Gere um titulo e descricao que reflitam o que o projeto REALMENTE faz\n'
+            f'3. Gere paginas wiki GERAIS do projeto:\n'
+            f'   - visao-geral (overview completo do sistema, citando modulos REAIS)\n'
+            f'   - padroes-arquitetura (arquitetura, design patterns encontrados nas regras)\n'
+            f'   - convencoes-codigo (convencoes e boas praticas identificadas no codigo)\n'
+            f'   - estrutura-codigo (organizacao de pastas e modulos baseada nos arquivos reais)\n'
+            f'4. CITE nomes REAIS de entidades, arquivos e servicos das regras acima\n'
+            f'5. NAO use termos genericos — use nomes do projeto\n'
             f'Retorne JSON conforme contrato.'
         )
 
@@ -1660,12 +1797,19 @@ class RagPipelineService:
                 f'Projeto: "{project_name}"\n'
                 f'Dominio: {", ".join(batch["entities"])}\n'
                 f'Regras neste dominio: {batch["rule_count"]}\n\n'
-                f'REGRAS DE NEGOCIO DESTE DOMINIO:\n'
+                f'REGRAS DE NEGOCIO DESTE DOMINIO (com evidencias de codigo):\n'
                 f'{batch["text"]}\n\n'
                 f'---\n'
-                f'Gere paginas wiki DETALHADAS cobrindo COMPLETAMENTE este dominio.\n'
-                f'Gere QUANTAS paginas forem necessarias. Nao se limite.\n'
-                f'Cada pagina deve ter conteudo RICO e EXTENSO (2000-8000 chars).\n'
+                f'INSTRUCOES DE DOCUMENTACAO:\n'
+                f'1. Analise TODAS as regras acima — cada regra deve aparecer na wiki\n'
+                f'2. Gere paginas wiki DETALHADAS cobrindo COMPLETAMENTE este dominio\n'
+                f'3. Gere QUANTAS paginas forem necessarias. Nao se limite.\n'
+                f'4. Cada pagina deve ter conteudo RICO e EXTENSO (2000-8000 chars)\n'
+                f'5. CITE nomes REAIS de entidades, classes, arquivos e servicos das regras\n'
+                f'6. Quando a regra incluir "Evidencia:", cite o trecho de codigo na wiki\n'
+                f'7. Explique cada regra do ponto de vista FUNCIONAL (experiencia do usuario)\n'
+                f'8. Inclua secoes: ## Visao Geral, ## Regras de Negocio, ## Modelo de Dados,\n'
+                f'   ## Fluxos e Workflows, ## Endpoints/API (quando aplicavel)\n'
                 f'Use order sequencial comecando em {page_order}.\n'
                 f'Retorne JSON: {{"wiki_pages": [...]}}.'
             )

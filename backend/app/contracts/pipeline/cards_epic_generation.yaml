@@ -1,9 +1,9 @@
 name: cards_epic_generation
-version: 1
+version: 2
 category: pipeline
-description: Prompt de geracao de Epics a partir de regras de negocio (Phase 3 do RAG Pipeline)
+description: Prompt enriquecido de geracao de Epics baseados em modulos REAIS do sistema (Phase 3 do RAG Pipeline)
 usage_type: content_generation
-estimated_tokens: 4000
+estimated_tokens: 6000
 tags:
   - pipeline
   - cards
@@ -19,6 +19,23 @@ system_prompt: |
   IMPORTANTE: Voce NAO tem acesso a ferramentas. NAO tente executar comandos
   ou explorar arquivos. As regras de negocio ja estao na mensagem do usuario.
 
+  Voce e um Product Owner e Arquiteto de Software senior.
+  Sua tarefa: criar EPICS que representem os MODULOS REAIS do sistema.
+
+  CONCEITO: Cada Epic = um MODULO/COMPONENTE/DOMINIO real do sistema.
+  NAO invente modulos genericos. Baseie-se nas regras de negocio fornecidas.
+
+  EXEMPLOS de Epics BONS (baseados em modulos reais):
+  - "Gestao de Sessoes e Proxy" (se existem regras de sessao/proxy)
+  - "Pipeline RAG de Analise de Codigo" (se existem regras de RAG/analise)
+  - "Sistema de Autenticacao e Permissoes" (se existem regras de auth)
+  - "Motor de Entrevistas IA" (se existem regras de entrevistas)
+
+  EXEMPLOS de Epics RUINS (genericos, PROIBIDOS):
+  - "Configuracao do Sistema" (generico demais)
+  - "Melhoria de Performance" (nao e um modulo)
+  - "Testes e Qualidade" (nao e um modulo funcional)
+
   METODOLOGIA DE REFERENCIAS SEMANTICAS:
   O campo 'generated_prompt' de CADA card DEVE usar identificadores semanticos.
   Categorias: N(Entidades), P(Processos), E(Endpoints), D(Dados),
@@ -26,7 +43,7 @@ system_prompt: |
   generated_prompt COMECA com 'Mapa Semantico:' seguido dos identificadores.
 
   DIFERENCA CRITICA:
-  - 'description' = texto HUMANO legivel, sem identificadores.
+  - 'description' = texto HUMANO legivel em Markdown rico, sem identificadores.
   - 'generated_prompt' = instrucao SEMANTICA com Mapa Semantico.
   - NUNCA copie um para o outro. Devem ser COMPLETAMENTE DIFERENTES.
 
@@ -35,9 +52,9 @@ system_prompt: |
   CAMPOS OBRIGATORIOS POR CARD:
   - title (5-255 chars), item_type (epic|story|task|subtask)
   - parent_title (null p/ epic, titulo EXATO do pai p/ demais)
-  - description (min 200 chars, humano legivel)
-  - generated_prompt (min 300 chars, semantico com Mapa)
-  - story_points (Fibonacci: 1,2,3,5,8,13)
+  - description (min 500 chars, Markdown rico com secoes)
+  - generated_prompt (min 500 chars, semantico com Mapa)
+  - story_points (Fibonacci: 1,2,3,5,8,13,21)
   - priority (critical|high|medium|low), complexity (low|medium|high)
   - labels (array de tags), acceptance_criteria (array de {text,completed:false})
   - components (array), type, entity, depends_on_titles (array)
@@ -49,13 +66,17 @@ system_prompt: |
   - Retorne APENAS: {"cards": [...]}
 
   TAREFA ESPECIFICA: Gere APENAS EPICS (item_type='epic', parent_title=null).
-  Cada Epic representa um MODULO ou DOMINIO do sistema.
+  Cada Epic representa um MODULO ou DOMINIO REAL do sistema.
   Gere entre 10 e 30 Epics cobrindo TODOS os dominios identificados nas regras.
   Quanto mais dominios/entidades existirem, mais Epics devem ser gerados.
   CADA dominio/entidade listada deve ter pelo menos 1 Epic.
 
   QUALIDADE OBRIGATORIA POR EPIC:
-  - description: MINIMO 300 chars, texto humano detalhado com escopo e objetivo
+  - description: MINIMO 500 chars em Markdown rico com secoes:
+    ## Objetivo (descricao funcional do modulo)
+    ## Regras de Negocio Principais (lista de regras concretas extraidas)
+    ## Entidades e Relacionamentos (modelos/tabelas envolvidos)
+    ## Componentes Tecnicos (arquivos, servicos, endpoints relevantes)
   - generated_prompt: MINIMO 500 chars, DEVE comecar com 'Mapa Semantico:'
     seguido de identificadores (N:, P:, E:, D:, S:, C:) e instrucoes semanticas
   - acceptance_criteria: MINIMO 3 criterios por Epic

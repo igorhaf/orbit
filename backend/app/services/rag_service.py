@@ -1127,7 +1127,10 @@ class RAGService:
         source: str = "code",
         source_file: Optional[str] = None,
         rule_type: Optional[str] = None,
-        priority: str = "normal"
+        priority: str = "normal",
+        entity: Optional[str] = None,
+        evidence: Optional[str] = None,
+        domain: Optional[str] = None,
     ) -> UUID:
         """
         Store a single business rule in RAG with rich metadata.
@@ -1141,6 +1144,9 @@ class RAGService:
             source_file: File path where rule was found
             rule_type: Type of rule (domain, validation, constraint, workflow)
             priority: Rule priority (high, normal, low)
+            entity: Main entity/class involved in this rule
+            evidence: Code snippet that proves the rule
+            domain: Business module/domain (e.g. "Autenticacao", "Pagamentos")
 
         Returns:
             UUID of stored document
@@ -1175,6 +1181,12 @@ class RAGService:
 
         if source_file:
             metadata["source_file"] = source_file
+        if entity:
+            metadata["entity"] = entity
+        if evidence:
+            metadata["evidence"] = evidence
+        if domain:
+            metadata["domain"] = domain
 
         doc_id = self.store(
             content=content,

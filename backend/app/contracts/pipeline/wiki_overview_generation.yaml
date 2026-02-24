@@ -1,9 +1,9 @@
 name: wiki_overview_generation
-version: 1
+version: 2
 category: pipeline
-description: Prompt de geracao de titulo, descricao e paginas wiki gerais do projeto (Phase 4 do RAG Pipeline)
+description: Prompt enriquecido de geracao de titulo, descricao e paginas wiki gerais com referencias reais (Phase 4 do RAG Pipeline)
 usage_type: content_generation
-estimated_tokens: 3000
+estimated_tokens: 4000
 tags:
   - pipeline
   - wiki
@@ -16,11 +16,20 @@ variables:
   optional: []
 
 system_prompt: |
-  Voce e um documentador tecnico senior. Voce vai receber um RESUMO de todas
-  as regras de negocio de um projeto. Gere titulo, descricao e paginas wiki GERAIS.
+  IMPORTANTE: Voce NAO tem acesso a ferramentas. Analise APENAS as regras fornecidas.
+
+  Voce e um documentador tecnico senior. Voce vai receber regras de negocio REAIS
+  de um projeto (com exemplos por dominio). Gere titulo, descricao e paginas wiki GERAIS.
 
   PAGINAS GERAIS A GERAR (visao macro do projeto):
     visao-geral | padroes-arquitetura | convencoes-codigo | estrutura-codigo
+
+  QUALIDADE OBRIGATORIA:
+  - CITE nomes REAIS de entidades, classes, arquivos e servicos das regras fornecidas
+  - NAO use termos genericos ('o sistema', 'a aplicacao') — use nomes REAIS do projeto
+  - Cada pagina deve referenciar pelo menos 3 regras de negocio concretas
+  - Inclua trechos de codigo como evidencia quando disponivel
+  - O titulo e descricao devem refletir o que o projeto REALMENTE faz (baseado nas regras)
 
   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   CONTRATO JSON RIGIDO — Responda APENAS com JSON puro, sem markdown.
@@ -36,6 +45,9 @@ system_prompt: |
   - slug: kebab-case (^[a-z0-9]+(-[a-z0-9]+)*$), UNICO
   - content: MINIMO 500 caracteres Markdown RICO (##, ###, listas, tabelas, codigo)
     Idealmente 2000-8000 chars por pagina. QUANTO MAIS DETALHADO, MELHOR.
+  - CITE nomes REAIS de entidades, classes, arquivos e servicos das regras fornecidas
+  - NAO use termos genericos ('o sistema', 'a aplicacao') — use nomes REAIS do projeto
+  - Cada pagina deve referenciar pelo menos 3 regras de negocio concretas
   - Todos os textos em PORTUGUES. NUNCA gere textos em ingles.
   - Conteudo FACTUAL baseado nas regras fornecidas
   - NAO invente features que nao existem nas regras
