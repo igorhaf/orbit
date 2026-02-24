@@ -233,8 +233,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     return null;
   };
 
-  // Sidebar shows only root pages. Sub-pages are accessible via links inside parent page content.
-  const renderSidebarItem = (item: WikiTreeItem) => {
+  const renderSidebarItem = (item: WikiTreeItem, depth = 0) => {
     const isActive = item.slug === selectedSlug;
     return (
       <div key={item.id}>
@@ -243,7 +242,8 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
             setEditing(false);
             setSelectedSlug(item.slug);
           }}
-          className={`w-full text-left px-3 py-1.5 rounded text-sm transition-colors ${
+          style={{ paddingLeft: `${0.75 + depth * 0.875}rem` }}
+          className={`w-full text-left pr-3 py-1.5 rounded text-sm transition-colors ${
             isActive
               ? 'bg-blue-100 text-blue-700 font-medium'
               : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
@@ -251,6 +251,9 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         >
           <span className="truncate block">{item.title}</span>
         </button>
+        {item.children && item.children.length > 0 && (
+          <div>{item.children.map((child) => renderSidebarItem(child, depth + 1))}</div>
+        )}
       </div>
     );
   };
@@ -573,26 +576,6 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                     >
                       {selectedPage.content}
                     </ReactMarkdown>
-                    {/* Child page links only for root pages (sidebar items) */}
-                    {(() => {
-                      // Only show auto-links for root-level pages. Sub-pages manage their own links in content.
-                      const treeItem = selectedSlug ? tree.find(t => t.slug === selectedSlug) : null;
-                      if (!treeItem || !treeItem.children || treeItem.children.length === 0) return null;
-                      return (
-                        <ul className="mt-8 space-y-1 list-disc pl-5">
-                          {treeItem.children.map((child) => (
-                            <li key={child.id}>
-                              <button
-                                onClick={() => { setEditing(false); setSelectedSlug(child.slug); }}
-                                className="text-blue-600 hover:text-blue-800 hover:underline text-sm"
-                              >
-                                {child.title}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      );
-                    })()}
                   </div>
                 )}
               </Card>
