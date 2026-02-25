@@ -192,3 +192,40 @@ class ChainTemplate(BaseModel):
 
 class ChainTemplatesResponse(BaseModel):
     templates: List[ChainTemplate] = Field(default_factory=list)
+
+
+# ============================================================================
+# AI Flow Profiles (Versioned, Named Profiles)
+# ============================================================================
+
+class AIFlowProfileCreate(BaseModel):
+    name: str = Field(description="Free-form profile name")
+    usage_type: AIModelUsageType = Field(description="Usage type tag")
+    chain: List[str] = Field(default_factory=list)
+    utility_nodes: Optional[List[Dict[str, Any]]] = None
+    node_positions: Optional[Dict[str, Any]] = None
+
+
+class AIFlowProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    usage_type: Optional[AIModelUsageType] = None
+    chain: Optional[List[str]] = None
+    utility_nodes: Optional[List[Dict[str, Any]]] = None
+    node_positions: Optional[Dict[str, Any]] = None
+
+
+class AIFlowProfileResponse(BaseModel):
+    id: UUID
+    name: str
+    usage_type: str
+    version: int
+    chain: List[str] = Field(default_factory=list)
+    utility_nodes: Optional[List[Dict[str, Any]]] = None
+    node_positions: Optional[Dict[str, Any]] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+        use_enum_values = True

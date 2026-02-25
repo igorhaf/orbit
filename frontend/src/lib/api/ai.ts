@@ -70,6 +70,27 @@ export const aiFlowApi = {
   // PROMPT #204 - Utility Node Types
   utilityNodeTypes: () =>
     request<any>('/api/v1/ai-flow/utility-node-types'),
+
+  // AI Flow Profiles (Named, Versioned)
+  listProfiles: () => request<any[]>('/api/v1/ai-flow/profiles'),
+
+  createProfile: (data: { name: string; usage_type: string; chain?: string[]; utility_nodes?: any[]; node_positions?: Record<string, any> }) =>
+    request<any>('/api/v1/ai-flow/profiles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateProfile: (id: string, data: { name?: string; usage_type?: string; chain?: string[]; utility_nodes?: any[]; node_positions?: Record<string, any> }) =>
+    request<any>(`/api/v1/ai-flow/profiles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteProfile: (id: string) =>
+    request<any>(`/api/v1/ai-flow/profiles/${id}`, { method: 'DELETE' }),
+
+  activateProfile: (id: string) =>
+    request<any>(`/api/v1/ai-flow/profiles/${id}/activate`, { method: 'POST' }),
 };
 
 // PROMPT #257 - Contracts API (database-backed contracts for AI Flow)

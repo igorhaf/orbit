@@ -19,6 +19,7 @@ from app.models.ai_model import AIModel, AIModelUsageType
 from app.models.ai_flow_chain import AIFlowChain
 from app.models.ai_execution import AIExecution
 from app.utils.pricing import calculate_cost, get_model_pricing
+from app.models.ai_flow_profile import AIFlowProfile
 from app.schemas.ai_flow_chain import (
     AIFlowChainBase,
     AIFlowChainCreate,
@@ -35,6 +36,9 @@ from app.schemas.ai_flow_chain import (
     ChainTemplate,
     ChainTemplatesResponse,
     UTILITY_NODE_TYPES,
+    AIFlowProfileCreate,
+    AIFlowProfileUpdate,
+    AIFlowProfileResponse,
 )
 
 import logging
@@ -873,3 +877,119 @@ UTILITY_NODE_CATALOG = {
 async def list_utility_node_types():
     """List all available utility node types with their default configurations."""
     return {"node_types": list(UTILITY_NODE_CATALOG.values())}
+
+
+# ============================================================================
+# AI Flow Profiles - Named, Versioned Flow Configurations
+# ============================================================================
+
+@router.get("/profiles", response_model=List[AIFlowProfileResponse])
+async def list_profiles(db: Session = Depends(get_db)):
+    """List all AI Flow profiles."""
+    profiles = db.query(AIFlowProfile).order_by(
+        AIFlowProfile.is_active.desc(),
+        AIFlowProfile.updated_at.desc(),
+    ).all()
+    return profiles
+
+
+@router.post("/profiles", response_model=AIFlowProfileResponse, status_code=status.HTTP_201_CREATED)
+async def create_profile(
+    data: AIFlowProfileCreate,
+    db: Session = Depends(get_db),
+):
+    """Create a new AI Flow profile."""
+    profile = AIFlowProfile(
+        id=uuid4(),
+        name=data.name,
+        usage_type=data.usage_type,
+        version=1,
+        chain=data.chain or [],
+        utility_nodes=data.utility_nodes,
+        node_positions=data.node_positions,
+        is_active=False,
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    logger.info(f"✅ Created AI Flow profile: {profile.name} ({profile.usage_type})")
+    return profile
+
+
+@router.put("/profiles/{profile_id}", response_model=AIFlowProfileResponse)
+async def update_profile(
+    profile_id: UUID,
+    data: AIFlowProfileUpdate,
+    db: Session = Depends(get_db),
+):
+    """Update an AI Flow profile. Increments version automatically."""
+    profile = db.query(AIFlowProfile).filter(AIFlowProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    if data.name is not None:
+        profile.name = data.name
+    if data.usage_type is not None:
+        profile.usage_type = data.usage_type
+    if data.chain is not None:
+        profile.chain = data.chain
+    if data.utility_nodes is not None:
+        profile.utility_nodes = data.utility_nodes
+    if data.node_positions is not None:
+        profile.node_positions = data.node_positions
+
+    profile.version += 1
+    db.commit()
+    db.refresh(profile)
+    logger.info(f"✅ Updated AI Flow profile: {profile.name} v{profile.version}")
+    return profile
+
+
+@router.delete("/profiles/{profile_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_profile(
+    profile_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Delete an AI Flow profile."""
+    profile = db.query(AIFlowProfile).filter(AIFlowProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    db.delete(profile)
+    db.commit()
+    logger.info(f"🗑️ Deleted AI Flow profile: {profile.name}")
+
+
+@router.post("/profiles/{profile_id}/activate", response_model=AIFlowProfileResponse)
+async def activate_profile(
+    profile_id: UUID,
+    db: Session = Depends(get_db),
+):
+    """Activate a profile. Deactivates all other profiles with the same usage_type."""
+    profile = db.query(AIFlowProfile).filter(AIFlowProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    # Deactivate all other profiles with the same usage_type
+    db.query(AIFlowProfile).filter(
+        AIFlowProfile.usage_type == profile.usage_type,
+        AIFlowProfile.id != profile_id,
+    ).update({"is_active": False})
+
+    profile.is_active = True
+    db.commit()
+    db.refresh(profile)
+
+    # Also sync to ai_flow_chains for backward compatibility
+    existing_chain = db.query(AIFlowChain).filter(
+        AIFlowChain.usage_type == profile.usage_type
+    ).first()
+    if existing_chain:
+        existing_chain.chain = profile.chain
+        existing_chain.utility_nodes = profile.utility_nodes
+        existing_chain.node_positions = profile.node_positions
+        existing_chain.is_active = True
+        db.commit()
+
+    logger.info(f"✅ Activated AI Flow profile: {profile.name} ({profile.usage_type})")
+    return profile

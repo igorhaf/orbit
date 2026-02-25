@@ -792,6 +792,23 @@ export interface AIFlowUtilityNodeType {
 }
 
 // ============================================================================
+// AI FLOW PROFILES (Named, Versioned)
+// ============================================================================
+
+export interface AIFlowProfile {
+  id: string;
+  name: string;
+  usage_type: string;
+  version: number;
+  chain: string[];
+  utility_nodes?: AIFlowUtilityNode[] | null;
+  node_positions?: Record<string, { x: number; y: number }> | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // CHAT SESSION
 // ============================================================================
 

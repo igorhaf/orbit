@@ -31,6 +31,7 @@ from app.models.contract import Contract  # PROMPT #257 - Contracts in Database
 from app.models.pipeline_artifact import PipelineArtifact, ArtifactType  # Deep Pipeline Artifacts
 from app.models.pipeline_profile import PipelineProfile  # Deep Pipeline Configurable Profiles
 from app.models.pipeline_run import PipelineRun  # Deep Pipeline Run History
+from app.models.ai_flow_profile import AIFlowProfile  # AI Flow Versioned Profiles
 
 __all__ = [
     # Models
@@ -74,4 +75,5 @@ __all__ = [
     "ArtifactType",  # Deep Pipeline Artifact Types
     "PipelineProfile",  # Deep Pipeline Configurable Profiles
     "PipelineRun",  # Deep Pipeline Run History
+    "AIFlowProfile",  # AI Flow Versioned Profiles
 ]
