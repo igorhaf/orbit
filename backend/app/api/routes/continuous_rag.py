@@ -13,7 +13,7 @@ Deep pipeline endpoints: deep-pipeline (run), deep-pipeline/status.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -669,6 +669,96 @@ async def list_pipeline_profiles(db: Session = Depends(get_db)):
         }
         for p in profiles
     ]
+
+
+def _profile_to_dict(p):
+    """Helper to serialize a PipelineProfile to dict."""
+    return {
+        "id": str(p.id),
+        "name": p.name,
+        "description": p.description,
+        "quality_threshold": p.quality_threshold,
+        "is_default": p.is_default,
+        "phase_configs": p.phase_configs,
+        "created_at": p.created_at.isoformat() if p.created_at else None,
+        "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+    }
+
+
+@router.post("/pipeline/profiles")
+async def create_pipeline_profile(data: dict = Body(...), db: Session = Depends(get_db)):
+    """Create a new pipeline execution profile."""
+    from app.models.pipeline_profile import PipelineProfile
+
+    if not data.get("name"):
+        raise HTTPException(status_code=400, detail="Name is required")
+
+    profile = PipelineProfile(
+        name=data["name"],
+        description=data.get("description", ""),
+        phase_configs=data.get("phase_configs", {}),
+        quality_threshold=data.get("quality_threshold", 60),
+        is_default=False,
+    )
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    return _profile_to_dict(profile)
+
+
+@router.put("/pipeline/profiles/{profile_id}")
+async def update_pipeline_profile(profile_id: UUID, data: dict = Body(...), db: Session = Depends(get_db)):
+    """Update a pipeline execution profile."""
+    from app.models.pipeline_profile import PipelineProfile
+
+    profile = db.query(PipelineProfile).filter(PipelineProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Pipeline profile not found")
+
+    if "name" in data:
+        profile.name = data["name"]
+    if "description" in data:
+        profile.description = data["description"]
+    if "phase_configs" in data:
+        profile.phase_configs = data["phase_configs"]
+    if "quality_threshold" in data:
+        profile.quality_threshold = data["quality_threshold"]
+
+    db.commit()
+    db.refresh(profile)
+    return _profile_to_dict(profile)
+
+
+@router.delete("/pipeline/profiles/{profile_id}")
+async def delete_pipeline_profile(profile_id: UUID, db: Session = Depends(get_db)):
+    """Delete a pipeline execution profile."""
+    from app.models.pipeline_profile import PipelineProfile
+
+    profile = db.query(PipelineProfile).filter(PipelineProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Pipeline profile not found")
+    if profile.is_default:
+        raise HTTPException(status_code=400, detail="Cannot delete the default profile")
+
+    db.delete(profile)
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/pipeline/profiles/{profile_id}/set-default")
+async def set_default_pipeline_profile(profile_id: UUID, db: Session = Depends(get_db)):
+    """Set a pipeline profile as the default (unsets all others)."""
+    from app.models.pipeline_profile import PipelineProfile
+
+    profile = db.query(PipelineProfile).filter(PipelineProfile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Pipeline profile not found")
+
+    db.query(PipelineProfile).update({"is_default": False})
+    profile.is_default = True
+    db.commit()
+    db.refresh(profile)
+    return _profile_to_dict(profile)
 
 
 @router.get("/{project_id}/rag/deep-pipeline/runs")

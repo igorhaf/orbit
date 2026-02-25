@@ -346,4 +346,23 @@ export const ragApi = {
 
   deepPipelineCompare: (projectId: string, run1: string, run2: string) =>
     request<any>(`/api/v1/projects/${projectId}/rag/deep-pipeline/compare?run1=${run1}&run2=${run2}`),
+
+  // Pipeline Profile CRUD
+  createPipelineProfile: (data: { name: string; description?: string; phase_configs?: any; quality_threshold?: number }) =>
+    request<any>('/api/v1/projects/pipeline/profiles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updatePipelineProfile: (id: string, data: { name?: string; description?: string; phase_configs?: any; quality_threshold?: number }) =>
+    request<any>(`/api/v1/projects/pipeline/profiles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deletePipelineProfile: (id: string) =>
+    request<any>(`/api/v1/projects/pipeline/profiles/${id}`, { method: 'DELETE' }),
+
+  setDefaultPipelineProfile: (id: string) =>
+    request<any>(`/api/v1/projects/pipeline/profiles/${id}/set-default`, { method: 'POST' }),
 };
