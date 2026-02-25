@@ -111,6 +111,9 @@ function AIFlowPageContent() {
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileUsageType, setNewProfileUsageType] = useState('interview');
+  const [editingProfile, setEditingProfile] = useState<AIFlowProfile | null>(null);
+  const [editProfileName, setEditProfileName] = useState('');
+  const [editProfileUsageType, setEditProfileUsageType] = useState('interview');
 
   // The working chain for the selected usage_type (always editable)
   const [workingChain, setWorkingChain] = useState<string[]>([]);
@@ -580,6 +583,31 @@ function AIFlowPageContent() {
     }
   };
 
+  // ── Open edit profile modal ──────────────────────────────────────
+  const handleOpenEditProfile = (profile: AIFlowProfile) => {
+    setEditingProfile(profile);
+    setEditProfileName(profile.name);
+    setEditProfileUsageType(profile.usage_type);
+  };
+
+  const handleSaveEditProfile = async () => {
+    if (!editingProfile?.id || !editProfileName.trim()) return;
+    try {
+      const updated = await aiFlowApi.updateProfile(editingProfile.id, {
+        name: editProfileName.trim(),
+        usage_type: editProfileUsageType as any,
+      });
+      setProfiles(prev => prev.map(p => (p.id === updated.id ? updated : p)));
+      if (selectedProfile?.id === updated.id) {
+        setSelectedProfile(updated);
+      }
+      setEditingProfile(null);
+      showSuccess(`Profile "${updated.name}" atualizado`);
+    } catch {
+      showError('Falha ao atualizar profile');
+    }
+  };
+
   // PROMPT #124 / #209 - Apply template (models + utility nodes)
   const handleApplyTemplate = (template: AIFlowChainTemplate) => {
     setWorkingChain(template.chain);
@@ -745,6 +773,7 @@ function AIFlowPageContent() {
                     <div
                       key={profile.id}
                       onClick={() => handleSelectProfile(profile)}
+                      onDoubleClick={() => handleOpenEditProfile(profile)}
                       className={`group relative cursor-pointer p-2.5 rounded-md border transition-colors ${
                         isSelected
                           ? 'bg-blue-50 border-blue-200'
@@ -1094,6 +1123,66 @@ function AIFlowPageContent() {
           onSave={handleSaveModelOverride}
           onClose={() => setEditingModel(null)}
         />
+      )}
+
+      {/* Edit Profile Dialog */}
+      {editingProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditingProfile(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between bg-gray-50">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Editar Profile</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Altere o nome e o tipo de uso do profile.</p>
+              </div>
+              <button onClick={() => setEditingProfile(null)} className="text-gray-400 hover:text-gray-600 ml-4 flex-shrink-0 mt-0.5">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
+                <input
+                  type="text"
+                  value={editProfileName}
+                  onChange={(e) => setEditProfileName(e.target.value)}
+                  className="w-full text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveEditProfile()}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Tipo de Uso</label>
+                <select
+                  value={editProfileUsageType}
+                  onChange={(e) => setEditProfileUsageType(e.target.value)}
+                  className="w-full text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                >
+                  {USAGE_TYPE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setEditingProfile(null)}
+                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveEditProfile}
+                disabled={!editProfileName.trim()}
+                className="px-3 py-1.5 text-sm text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors disabled:opacity-40"
+              >
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {NotificationComponent}

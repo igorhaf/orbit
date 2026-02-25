@@ -111,6 +111,9 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileDescription, setNewProfileDescription] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<any | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
 
   // State — run data
   const [lastRunScores, setLastRunScores] = useState<Record<string, number>>({});
@@ -243,6 +246,31 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
       // silent
     }
   }, []);
+
+  // ── Open edit profile modal ──────────────────────────────────────
+  const handleOpenEditProfile = useCallback((profile: any) => {
+    setEditingProfile(profile);
+    setEditName(profile.name || '');
+    setEditDescription(profile.description || '');
+  }, []);
+
+  // ── Save edit profile ───────────────────────────────────────────
+  const handleSaveEditProfile = useCallback(async () => {
+    if (!editingProfile?.id || !editName.trim()) return;
+    try {
+      const updated = await ragApi.updatePipelineProfile(editingProfile.id, {
+        name: editName.trim(),
+        description: editDescription.trim(),
+      });
+      setProfiles((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+      if (selectedProfileObj?.id === updated.id) {
+        setSelectedProfileObj(updated);
+      }
+      setEditingProfile(null);
+    } catch {
+      // silent
+    }
+  }, [editingProfile, editName, editDescription, selectedProfileObj]);
 
   // ── Build ReactFlow nodes & edges ─────────────────────────────────
   useEffect(() => {
@@ -405,6 +433,7 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
                   <div
                     key={profile.id}
                     onClick={() => handleSelectProfile(profile)}
+                    onDoubleClick={() => handleOpenEditProfile(profile)}
                     className={`group relative cursor-pointer p-2.5 rounded-md border transition-colors ${
                       isSelected
                         ? 'bg-blue-50 border-blue-200'
@@ -616,6 +645,63 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
           )}
         </div>
       </div>
+
+      {/* Profile edit dialog (double-click on profile card) */}
+      {editingProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditingProfile(null)} />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between bg-gray-50">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">Editar Profile</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Altere o nome e a descrição do profile.</p>
+              </div>
+              <button onClick={() => setEditingProfile(null)} className="text-gray-400 hover:text-gray-600 ml-4 flex-shrink-0 mt-0.5">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-5 py-4 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nome</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                  autoFocus
+                  onKeyDown={(e) => e.key === 'Enter' && handleSaveEditProfile()}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Descrição</label>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={3}
+                  className="w-full text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500 resize-none"
+                />
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => setEditingProfile(null)}
+                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveEditProfile}
+                disabled={!editName.trim()}
+                className="px-3 py-1.5 text-sm text-white bg-purple-600 rounded-md hover:bg-purple-700 transition-colors disabled:opacity-40"
+              >
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Phase config dialog (double-click on node or click on right column) */}
       {selectedPhaseConfig && (
