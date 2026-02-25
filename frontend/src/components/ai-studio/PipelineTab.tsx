@@ -24,7 +24,7 @@ import '@xyflow/react/dist/style.css';
 import { ragApi } from '@/lib/api/knowledge';
 import { aiModelsApi } from '@/lib/api';
 import { PipelinePhaseNode, type PipelinePhaseData } from './PipelinePhaseNode';
-import { PhaseConfigPanel } from './PhaseConfigPanel';
+import { PhaseConfigDialog } from './PhaseConfigDialog';
 import { RunHistoryTable } from './RunHistoryTable';
 import { RunDetailDialog } from './RunDetailDialog';
 import { RunCompareDialog } from './RunCompareDialog';
@@ -298,58 +298,55 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
         </div>
       </div>
 
-      {/* Main content (matches Operations tab: flex gap-3 flex-1 min-h-0) */}
-      <div className="flex gap-3 flex-1 min-h-0">
-        {/* ReactFlow Canvas (matches Operations tab wrapper) */}
-        <div className="flex-1 border rounded-lg overflow-hidden bg-gray-50">
-          <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            nodeTypes={nodeTypes}
-            edgeTypes={edgeTypes}
-            defaultEdgeOptions={{ type: 'smartEdge' }}
-            connectionLineType={ConnectionLineType.SmoothStep}
-            connectionLineStyle={{ stroke: '#6b7280', strokeWidth: 2 }}
-            onNodeDoubleClick={handleNodeDoubleClick}
-            fitView
-            fitViewOptions={{ padding: 0.5, minZoom: 0.8, maxZoom: 1.2 }}
-            proOptions={{ hideAttribution: true }}
-            nodesDraggable={false}
-            nodesConnectable={false}
-            elementsSelectable={true}
-            snapToGrid={true}
-            snapGrid={[20, 20]}
-            minZoom={0.2}
-            maxZoom={2}
-            panOnDrag
-            zoomOnScroll
-          >
-            <Background color="#e5e7eb" gap={20} />
-            <Controls />
-            <MiniMap
-              nodeStrokeWidth={3}
-              zoomable
-              pannable
-              style={{ height: 90, width: 140 }}
-            />
-          </ReactFlow>
-        </div>
-
-        {/* Side panel (matches Operations tab right sidebar wrapper) */}
-        {selectedPhaseConfig && (
-          <PhaseConfigPanel
-            phaseKey={selectedPhaseConfig.phaseKey}
-            label={selectedPhaseConfig.label}
-            config={selectedPhaseConfig.config}
-            stats={selectedPhaseConfig.stats}
-            models={models.map((m) => ({ id: m.id, name: m.name || m.model_name, provider: m.provider }))}
-            onChange={handlePhaseChange}
-            onClose={() => setSelectedPhase(null)}
+      {/* Canvas — full width, dialog opens on double-click */}
+      <div className="flex-1 min-h-0 border rounded-lg overflow-hidden bg-gray-50">
+        <ReactFlow
+          nodes={nodes}
+          edges={edges}
+          onNodesChange={onNodesChange}
+          onEdgesChange={onEdgesChange}
+          nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
+          defaultEdgeOptions={{ type: 'smartEdge' }}
+          connectionLineType={ConnectionLineType.SmoothStep}
+          connectionLineStyle={{ stroke: '#6b7280', strokeWidth: 2 }}
+          onNodeDoubleClick={handleNodeDoubleClick}
+          fitView
+          fitViewOptions={{ padding: 0.5, minZoom: 0.8, maxZoom: 1.2 }}
+          proOptions={{ hideAttribution: true }}
+          nodesDraggable={false}
+          nodesConnectable={false}
+          elementsSelectable={true}
+          snapToGrid={true}
+          snapGrid={[20, 20]}
+          minZoom={0.2}
+          maxZoom={2}
+          panOnDrag
+          zoomOnScroll
+        >
+          <Background color="#e5e7eb" gap={20} />
+          <Controls />
+          <MiniMap
+            nodeStrokeWidth={3}
+            zoomable
+            pannable
+            style={{ height: 90, width: 140 }}
           />
-        )}
+        </ReactFlow>
       </div>
+
+      {/* Phase config dialog (double-click on node) */}
+      {selectedPhaseConfig && (
+        <PhaseConfigDialog
+          phaseKey={selectedPhaseConfig.phaseKey}
+          label={selectedPhaseConfig.label}
+          config={selectedPhaseConfig.config}
+          stats={selectedPhaseConfig.stats}
+          models={models.map((m) => ({ id: m.id, name: m.name || m.model_name, provider: m.provider }))}
+          onSave={handlePhaseChange}
+          onClose={() => setSelectedPhase(null)}
+        />
+      )}
 
       {/* Run History Section */}
       {projectId && (
