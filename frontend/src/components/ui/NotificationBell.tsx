@@ -117,13 +117,13 @@ export function NotificationBell() {
       {/* Bell Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+        className="relative p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-md transition-colors"
         title="Notificações"
       >
         {/* Bell Icon */}
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          className="h-5 w-5"
+          className="h-4 w-4"
           fill="none"
           viewBox="0 0 24 24"
           stroke="currentColor"
@@ -138,14 +138,14 @@ export function NotificationBell() {
 
         {/* Badge */}
         {badgeCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-bold leading-none text-white transform bg-red-500 rounded-full min-w-[18px]">
+          <span className="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center px-1 py-0.5 text-[9px] font-bold leading-none text-white transform bg-red-500 rounded-full min-w-[14px]">
             {badgeCount > 99 ? '99+' : badgeCount}
           </span>
         )}
 
         {/* Pulsing indicator for active jobs */}
         {activeJobs.length > 0 && (
-          <span className="absolute top-0 right-0 block h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+          <span className="absolute top-0 right-0 block h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
         )}
       </button>
 
