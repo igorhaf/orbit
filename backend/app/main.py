@@ -133,6 +133,27 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Watchdog bootstrap skipped (non-fatal): {e}")
 
+    # Crash recovery: mark jobs that were RUNNING when server crashed/restarted as FAILED
+    # (Graceful shutdown handles this too, but crashes bypass that cleanup)
+    try:
+        from app.database import SessionLocal
+        from app.models.async_job import AsyncJob, JobStatus
+        startup_db = SessionLocal()
+        try:
+            stale_jobs = startup_db.query(AsyncJob).filter(
+                AsyncJob.status == JobStatus.RUNNING
+            ).all()
+            for job in stale_jobs:
+                job.status = JobStatus.FAILED
+                job.result = {"error": "Backend reiniciou enquanto job estava em execução (crash recovery)"}
+            if stale_jobs:
+                startup_db.commit()
+                logger.info(f"Startup: marcou {len(stale_jobs)} job(s) 'running' como 'failed' (crash recovery)")
+        finally:
+            startup_db.close()
+    except Exception as e:
+        logger.warning(f"Startup job cleanup error (non-fatal): {e}")
+
     yield
 
     # PROMPT #226 - Graceful shutdown: clean up background resources

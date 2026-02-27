@@ -474,66 +474,91 @@ class DeepPipelineService:
     # PHASE 0: STRUCTURAL SCAN
     # =========================================================================
 
+    def _read_file_to_inventory(
+        self, rel_path: str, code_path: Path, ignore_patterns: List[str]
+    ) -> Optional[Dict[str, Any]]:
+        """Read a single file and return its inventory dict, or None if skipped."""
+        ext = os.path.splitext(rel_path)[1].lower()
+        if ext in SKIP_EXTENSIONS or ext not in CODE_EXTENSIONS:
+            return None
+        if self._is_ignored(rel_path, ignore_patterns):
+            return None
+
+        fpath = str(code_path / rel_path)
+        try:
+            stat = os.stat(fpath)
+            if stat.st_size > MAX_FILE_SIZE or stat.st_size == 0:
+                return None
+        except OSError:
+            return None
+
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+        except Exception:
+            return None
+
+        lines = content.count("\n") + 1
+        complexity = len(COMPLEXITY_KEYWORDS.findall(content))
+        imports = self._extract_imports(content)
+        lang = self._detect_language(ext)
+        file_type = self._classify_file_type(rel_path, content)
+
+        return {
+            "path": rel_path,
+            "abs_path": fpath,
+            "extension": ext,
+            "language": lang,
+            "lines": lines,
+            "size": stat.st_size,
+            "complexity_score": complexity,
+            "imports": imports,
+            "file_type": file_type,
+            "content": content,
+        }
+
     async def _phase0_structural_scan(
         self, project: Project
     ) -> List[Dict[str, Any]]:
         """
         Walk the codebase and collect structural metadata.
         No AI calls - pure filesystem analysis.
+
+        If the project already has a completed memory scan with cached
+        code_file_paths, reuse that list to skip the os.walk traversal.
         """
         code_path = Path(project.code_path)
         ignore_patterns = self._build_ignore_patterns(project)
         inventory = []
 
-        for root, dirs, files in os.walk(code_path):
-            # Filter directories in-place
-            dirs[:] = [d for d in dirs if d not in IGNORE_DIRECTORIES
-                       and not self._is_ignored(os.path.relpath(os.path.join(root, d), code_path), ignore_patterns)]
+        # Try to reuse file paths from memory scan
+        cached_paths = None
+        if project.initial_scan_complete and project.initial_memory_context:
+            scan_summary = project.initial_memory_context.get("scan_summary", {})
+            cached_paths = scan_summary.get("code_file_paths")
+            if cached_paths:
+                logger.info(
+                    f"Phase 0: Reusing {len(cached_paths)} cached paths "
+                    f"from memory scan (skipping os.walk)"
+                )
 
-            for fname in files:
-                fpath = os.path.join(root, fname)
-                rel_path = os.path.relpath(fpath, code_path)
-                ext = os.path.splitext(fname)[1].lower()
+        if cached_paths:
+            for rel_path in cached_paths:
+                item = self._read_file_to_inventory(rel_path, code_path, ignore_patterns)
+                if item:
+                    inventory.append(item)
+        else:
+            for root, dirs, files in os.walk(code_path):
+                # Filter directories in-place
+                dirs[:] = [d for d in dirs if d not in IGNORE_DIRECTORIES
+                           and not self._is_ignored(os.path.relpath(os.path.join(root, d), code_path), ignore_patterns)]
 
-                # Skip non-code and too-large files
-                if ext in SKIP_EXTENSIONS or ext not in CODE_EXTENSIONS:
-                    continue
-                if self._is_ignored(rel_path, ignore_patterns):
-                    continue
-
-                try:
-                    stat = os.stat(fpath)
-                    if stat.st_size > MAX_FILE_SIZE or stat.st_size == 0:
-                        continue
-                except OSError:
-                    continue
-
-                # Read file content
-                try:
-                    with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
-                        content = f.read()
-                except Exception:
-                    continue
-
-                # Structural metadata
-                lines = content.count("\n") + 1
-                complexity = len(COMPLEXITY_KEYWORDS.findall(content))
-                imports = self._extract_imports(content)
-                lang = self._detect_language(ext)
-                file_type = self._classify_file_type(rel_path, content)
-
-                inventory.append({
-                    "path": rel_path,
-                    "abs_path": fpath,
-                    "extension": ext,
-                    "language": lang,
-                    "lines": lines,
-                    "size": stat.st_size,
-                    "complexity_score": complexity,
-                    "imports": imports,
-                    "file_type": file_type,
-                    "content": content,
-                })
+                for fname in files:
+                    fpath = os.path.join(root, fname)
+                    rel_path = os.path.relpath(fpath, code_path)
+                    item = self._read_file_to_inventory(rel_path, code_path, ignore_patterns)
+                    if item:
+                        inventory.append(item)
 
         logger.info(f"Phase 0: Scanned {len(inventory)} code files from {code_path}")
         return inventory
@@ -703,35 +728,25 @@ class DeepPipelineService:
     # PHASE 2: CROSS-FILE RULE SYNTHESIS (Sonnet, multi-turn)
     # =========================================================================
 
-    async def _phase2_rule_synthesis(
+    async def _synthesize_domain(
         self,
+        domain: str,
+        analyses: List[Dict],
         project: Project,
-        file_analyses: List[Dict],
         run_id: UUID,
+        p2_model: str,
+        p2_max_tokens: int,
+        p2_multi_turn_threshold: int,
+        semaphore: asyncio.Semaphore,
+        progress_state: Dict,
         progress_cb: Any,
-    ) -> Dict[str, Dict]:
-        """Synthesize rules across files, grouped by domain."""
-
-        # Group analyses by domain
-        domain_groups = defaultdict(list)
-        for analysis in file_analyses:
-            domain = analysis.get("domain_classification", "Geral")
-            domain_groups[domain].append(analysis)
-
-        domain_rules = {}
-        total = len(domain_groups)
-
-        for idx, (domain, analyses) in enumerate(domain_groups.items()):
-            if domain in ("Infraestrutura", "Configuracao") and len(analyses) < 3:
-                continue  # Skip small infra domains
-
+    ) -> tuple[str, Dict | None]:
+        """Synthesize rules for a single domain. Returns (domain, result_dict | None)."""
+        async with semaphore:
             session_key = f"pipeline:{project.id}:phase2:domain:{domain.lower().replace(' ', '_')}"
 
             # Prepare analyses summary (remove full content to save tokens)
-            analyses_summary = []
-            for a in analyses:
-                summary = {k: v for k, v in a.items() if k != "content"}
-                analyses_summary.append(summary)
+            analyses_summary = [{k: v for k, v in a.items() if k != "content"} for a in analyses]
 
             system_prompt, _ = self._load_contract("deep_rule_synthesis", {
                 "domain_name": domain,
@@ -740,10 +755,6 @@ class DeepPipelineService:
             })
 
             user_prompt = f"Dominio: {domain}\n\nAnalises individuais dos arquivos:\n{json.dumps(analyses_summary, ensure_ascii=False, indent=2)}"
-
-            p2_model = self._get_model("phase_2", MODEL_SONNET)
-            p2_max_tokens = self._get_max_tokens("phase_2", 16000)
-            p2_multi_turn_threshold = self._get_phase_config("phase_2", "multi_turn_threshold", 30)
 
             try:
                 result = await self.claudio.call(
@@ -756,19 +767,6 @@ class DeepPipelineService:
 
                 parsed = self.claudio.extract_json(result.get("text", ""))
                 if parsed and isinstance(parsed, dict):
-                    domain_rules[domain] = parsed
-
-                    # Store artifact
-                    artifact = PipelineArtifact(
-                        project_id=project.id,
-                        artifact_type=ArtifactType.synthesized_rules,
-                        phase=2,
-                        domain=domain,
-                        content=parsed,
-                        run_id=run_id,
-                    )
-                    self.db.add(artifact)
-
                     # Multi-turn follow-up for large domains
                     if len(analyses) > p2_multi_turn_threshold:
                         followup = await self.claudio.call_followup(
@@ -779,25 +777,95 @@ class DeepPipelineService:
                         )
                         followup_parsed = self.claudio.extract_json(followup.get("text", ""))
                         if followup_parsed and isinstance(followup_parsed, dict):
-                            # Merge additional rules
                             existing = parsed.get("consolidated_rules", [])
                             new_rules = followup_parsed.get("consolidated_rules", [])
                             if new_rules:
                                 existing.extend(new_rules)
                                 parsed["consolidated_rules"] = existing
-                                domain_rules[domain] = parsed
 
-                # Clean up session
+                    await self.claudio.delete_session(session_key)
+
+                    # Update shared progress counter
+                    progress_state["done"] += 1
+                    pct = (progress_state["done"] / progress_state["total"]) * 100
+                    await progress_cb(2, pct, f"Sintetizado {progress_state['done']}/{progress_state['total']} dominios")
+
+                    return domain, parsed
+
                 await self.claudio.delete_session(session_key)
 
             except ClaudioPipelineError as e:
                 logger.error(f"Phase 2: Failed to synthesize domain '{domain}': {e}")
+                await self.claudio.delete_session(session_key)
 
-            pct = ((idx + 1) / total) * 100
-            await progress_cb(2, pct, f"Sintetizado {idx + 1}/{total} dominios")
+            return domain, None
+
+    async def _phase2_rule_synthesis(
+        self,
+        project: Project,
+        file_analyses: List[Dict],
+        run_id: UUID,
+        progress_cb: Any,
+    ) -> Dict[str, Dict]:
+        """Synthesize rules across files, grouped by domain (parallel execution)."""
+
+        # Group analyses by domain
+        domain_groups = defaultdict(list)
+        for analysis in file_analyses:
+            domain = analysis.get("domain_classification", "Geral")
+            domain_groups[domain].append(analysis)
+
+        # Filter out small infra/config domains
+        valid_domains = {
+            domain: analyses
+            for domain, analyses in domain_groups.items()
+            if not (domain in ("Infraestrutura", "Configuracao") and len(analyses) < 3)
+        }
+
+        p2_model = self._get_model("phase_2", MODEL_SONNET)
+        p2_max_tokens = self._get_max_tokens("phase_2", 16000)
+        p2_multi_turn_threshold = self._get_phase_config("phase_2", "multi_turn_threshold", 30)
+        p2_concurrency = self._get_concurrency("phase_2", 5)
+
+        logger.info(
+            f"Phase 2: processing {len(valid_domains)} domains with concurrency={p2_concurrency} "
+            f"(skipped {len(domain_groups) - len(valid_domains)} small domains)"
+        )
+
+        semaphore = asyncio.Semaphore(p2_concurrency)
+        progress_state = {"done": 0, "total": len(valid_domains)}
+
+        tasks = [
+            self._synthesize_domain(
+                domain, analyses, project, run_id,
+                p2_model, p2_max_tokens, p2_multi_turn_threshold,
+                semaphore, progress_state, progress_cb,
+            )
+            for domain, analyses in valid_domains.items()
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        domain_rules = {}
+        for item in results:
+            if isinstance(item, Exception):
+                logger.error(f"Phase 2: domain task raised exception: {item}")
+                continue
+            if item and item[1] is not None:
+                domain, parsed = item
+                domain_rules[domain] = parsed
+                artifact = PipelineArtifact(
+                    project_id=project.id,
+                    artifact_type=ArtifactType.synthesized_rules,
+                    phase=2,
+                    domain=domain,
+                    content=parsed,
+                    run_id=run_id,
+                )
+                self.db.add(artifact)
 
         self.db.commit()
-        logger.info(f"Phase 2: Synthesized rules for {len(domain_rules)} domains")
+        logger.info(f"Phase 2: Synthesized rules for {len(domain_rules)}/{len(valid_domains)} domains")
         return domain_rules
 
     # =========================================================================

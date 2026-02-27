@@ -27,7 +27,7 @@ QUALITY_CONFIGS = {
     "phase_2": {
         "model": "claude-sonnet-4-6",
         "max_tokens": 16000,
-        "concurrency": 1,
+        "concurrency": 3,
         "contract": "deep_rule_synthesis",
         "thinking_budget": None,
         "multi_turn_threshold": 30,
@@ -120,7 +120,7 @@ def _derive(base: dict, overrides: dict) -> dict:
 
 ECONOMY_CONFIGS = _derive(QUALITY_CONFIGS, {
     "phase_1":  {"model": "claude-haiku-4-5", "max_tokens": 2000, "concurrency": 15},
-    "phase_2":  {"model": "claude-haiku-4-5", "max_tokens": 8000},
+    "phase_2":  {"model": "claude-haiku-4-5", "max_tokens": 8000, "concurrency": 10},
     "phase_3":  {"model": "claude-sonnet-4-6", "max_tokens": 16000, "thinking_budget": 5000},
     "phase_4a": {"model": "claude-sonnet-4-6", "max_tokens": 32000},
     "phase_4b": {"model": "claude-sonnet-4-6", "max_tokens": 16000, "concurrency": 5},
@@ -134,6 +134,7 @@ ECONOMY_CONFIGS = _derive(QUALITY_CONFIGS, {
 })
 
 BALANCED_CONFIGS = _derive(QUALITY_CONFIGS, {
+    "phase_2":  {"concurrency": 5},
     "phase_4b": {"model": "claude-sonnet-4-6", "max_tokens": 16000, "concurrency": 5},
     "phase_4c": {"model": "claude-haiku-4-5", "max_tokens": 4000, "concurrency": 10},
     "phase_5b": {"model": "claude-sonnet-4-6", "max_tokens": 32000},
