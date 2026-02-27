@@ -796,7 +796,15 @@ class DeepPipelineService:
 
             except ClaudioPipelineError as e:
                 logger.error(f"Phase 2: Failed to synthesize domain '{domain}': {e}")
-                await self.claudio.delete_session(session_key)
+                try:
+                    await self.claudio.delete_session(session_key)
+                except Exception:
+                    pass
+
+            # Update progress even on failure so it reaches 100%
+            progress_state["done"] += 1
+            pct = (progress_state["done"] / progress_state["total"]) * 100
+            await progress_cb(2, pct, f"Sintetizado {progress_state['done']}/{progress_state['total']} dominios")
 
             return domain, None
 

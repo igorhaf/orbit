@@ -145,7 +145,8 @@ async def lifespan(app: FastAPI):
             ).all()
             for job in stale_jobs:
                 job.status = JobStatus.FAILED
-                job.result = {"error": "Backend reiniciou enquanto job estava em execução (crash recovery)"}
+                job.error = "Backend reiniciou enquanto job estava em execução (crash recovery)"
+                job.result = {"error": job.error}
             if stale_jobs:
                 startup_db.commit()
                 logger.info(f"Startup: marcou {len(stale_jobs)} job(s) 'running' como 'failed' (crash recovery)")
@@ -177,7 +178,8 @@ async def lifespan(app: FastAPI):
             ).all()
             for job in running_jobs:
                 job.status = JobStatus.FAILED
-                job.result = {"error": "Servidor reiniciando (graceful shutdown)"}
+                job.error = "Servidor reiniciando (graceful shutdown)"
+                job.result = {"error": job.error}
             if running_jobs:
                 shutdown_db.commit()
                 logger.info(f"Marked {len(running_jobs)} running jobs as failed during shutdown")
