@@ -16,7 +16,6 @@ const navigation = [
   { name: 'Painel', href: '/' },
   { name: 'Projetos', href: '/projects' },
   { name: 'Prompts', href: '/prompts' },
-  { name: 'Modelos IA', href: '/ai-models' },
   { name: 'AI Studio', href: '/ai-flow' },
   { name: 'RAG', href: '/rag' },
   { name: 'Jobs', href: '/jobs' },

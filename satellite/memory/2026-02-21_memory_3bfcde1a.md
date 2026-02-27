@@ -1,0 +1,617 @@
+# memory — 2026-02-21
+
+**Model:** claudio/claude-sonnet-4-6
+**Status:** success
+**Tokens:** 0 in / 0 out | Cost: $0.0000
+
+## System Prompt
+
+Você é um ANALISTA DE NEGÓCIOS experiente analisando código-fonte para extrair regras de negócio FUNCIONAIS.
+
+Sua perspectiva é de NEGÓCIO, não de tecnologia. Imagine que você está escrevendo um documento
+para o GERENTE DE PRODUTO ou DONO DO NEGÓCIO que não entende código.
+
+EXTRAIA regras que respondam:
+- O que o USUÁRIO pode ou não pode fazer?
+- Quais são as PERMISSÕES e RESTRIÇÕES de acesso?
+- Como funcionam os FLUXOS e PROCESSOS do sistema?
+- Quais CÁLCULOS de negócio existem (preços, comissões, notas)?
+- Quais LIMITES e QUOTAS o sistema impõe?
+- Quais VALIDAÇÕES afetam a experiência do usuário?
+- Como as ENTIDADES do negócio se relacionam?
+
+IGNORE COMPLETAMENTE (não são regras de negócio):
+- Tipos de campos (booleano, string, integer)
+- Configurações de framework (drivers, sessões, guards, middleware)
+- Detalhes de banco (foreign keys, NOT NULL, migrations)
+- CSS, layout, estilização
+- Logs, cache, filas, timeouts
+- Imports, dependências, bibliotecas
+- Configurações de ambiente (.env, configs)
+- Código boilerplate ou padrões técnicos
+
+FORMATO das regras (escreva como linguagem de negócio):
+✅ BOM: "O aluno só pode avaliar um curso após completar pelo menos 50% das aulas"
+✅ BOM: "O instrutor recebe 70% do valor de cada inscrição em seu curso"
+✅ BOM: "Cupons de desconto expiram após a data limite definida pelo instrutor"
+❌ RUIM: "O campo 'rating' deve ser um integer entre 1 e 5"
+❌ RUIM: "A tabela enrollments tem foreign key para courses"
+❌ RUIM: "O guard 'web' usa driver de sessão"
+
+Responda APENAS em JSON válido, sem markdown, sem explicações adicionais.
+
+## User Prompt
+
+Arquivo: backend/app/api/websocket.py
+Linguagem: python
+
+```
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from typing import Dict, Set
+from datetime import datetime
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+# Gerenciar conexões ativas por projeto
+# {project_id: Set[WebSocket]}
+active_connections: Dict[str, Set[WebSocket]] = {}
+
+# PROMPT #134 - Conexões globais para notificações de jobs
+# Todas as conexões recebem updates de jobs (não filtrado por projeto)
+notification_connections: Set[WebSocket] = set()
+
+
+class ConnectionManager:
+    """
+    Gerencia conexões WebSocket por projeto
+    
+    Cada projeto tem sua própria "room" de conexões.
+    Quando um evento acontece em um projeto, todos os clientes
+    conectados àquele projeto recebem o update.
+    """
+    
+    @staticmethod
+    async def connect(websocket: WebSocket, project_id: str):
+        """Adiciona conexão ao projeto"""
+        await websocket.accept()
+        
+        if project_id not in active_connections:
+            active_connections[project_id] = set()
+        
+        active_connections[project_id].add(websocket)
+        logger.info(f"✅ WebSocket connected to project {project_id} (total: {len(active_connections[project_id])})")
+    
+    @staticmethod
+    async def disconnect(websocket: WebSocket, project_id: str):
+        """Remove conexão do projeto"""
+        if project_id in active_connections:
+            active_connections[project_id].discard(websocket)
+            
+            # Limpar se não há mais conexões
+            if not active_connections[project_id]:
+                del active_connections[project_id]
+                logger.info(f"🗑️  Project {project_id} room closed (no connections)")
+        
+        logger.info(f"❌ WebSocket disconnected from project {project_id}")
+    
+    @staticmethod
+    async def broadcast(project_id: str, message: dict):
+        """
+        Envia mensagem para todas conexões do projeto
+        
+        Args:
+            project_id: ID do projeto
+            message: Mensagem dict (será convertida para JSON)
+        """
+        if project_id not in active_connections:
+            logger.debug(f"No connections for project {project_id}, skipping broadcast")
+            return
+        
+        # Converter dict para JSON
+        message_json = json.dumps(message)
+        
+        # Enviar para todas conexões
+        disconnected = set()
+        
+        for connection in active_connections[project_id]:
+            try:
+                await connection.send_text(message_json)
+            except Exception as e:
+                logger.error(f"Failed to send message: {e}")
+                disconnected.add(connection)
+        
+        # Remover conexões que falharam
+        for conn in disconnected:
+            active_connections[project_id].discard(conn)
+        
+        logger.debug(f"📡 Broadcasted {message['event']} to {len(active_connections[project_id])} clients")
+
+
+@router.websocket("/ws/projects/{project_id}")
+async def websocket_endpoint(websocket: WebSocket, project_id: str):
+    """
+    WebSocket endpoint para receber updates de execução em tempo real
+    
+    URL: ws://localhost:8000/api/v1/ws/projects/{project_id}
+    
+    Events enviados ao cliente:
+    - batch_started: Batch de tasks iniciou
+    - task_started: Task começou a executar
+    - task_completed: Task completou com sucesso
+    - task_failed: Task falhou após tentativas
+    - validation_failed: Validação falhou (vai tentar novamente)
+    - batch_progress: Progresso do batch atualizado
+    - batch_completed: Batch completou
+    
+    Example message:
+    {
+      "event": "task_completed",
+      "timestamp": "2025-12-27T20:15:32.123Z",
+      "data": {
+        "task_id": "...",
+        "task_title": "Create Book Model",
+        "cost": 0.0052,
+        "execution_time": 3.2
+      }
+    }
+    """
+    
+    await ConnectionManager.connect(websocket, project_id)
+    
+    try:
+        # Manter conexão aberta
+        while True:
+            # Aguardar mensagem do cliente (keepalive ou comandos)
+            data = await websocket.receive_text()
+            
+            # Processar comandos do cliente se necessário
+            # Ex: {"command": "pause"}, {"command": "stop"}
+            try:
+                message = json.loads(data)
+                if message.get("command") == "ping":
+                    await websocket.send_text(json.dumps({"event": "pong"}))
+            except json.JSONDecodeError:
+                pass
+            
+    except WebSocketDisconnect:
+        await ConnectionManager.disconnect(websocket, project_id)
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await ConnectionManager.disconnect(websocket, project_id)
+
+
+# Função helper para broadcast (usar no TaskExecutor)
+async def broadcast_event(
+    project_id: str,
+    event_type: str,
+    data: dict
+):
+    """
+    Broadcast evento para todas conexões do projeto
+    
+    Args:
+        project_id: ID do projeto (string)
+        event_type: Tipo do evento (task_started, task_completed, etc)
+        data: Dados do evento
+    """
+    
+    message = {
+        "event": event_type,
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": data
+    }
+    
+    await ConnectionManager.broadcast(project_id, message)
+
+
+# ============================================================================
+# PROMPT #134 - WebSocket para Notificações de Jobs (Global)
+# ============================================================================
+
+class NotificationManager:
+    """
+    Gerencia conexões WebSocket globais para notificações de jobs.
+
+    Diferente do ConnectionManager (por projeto), este gerencia conexões
+    globais onde todos os clientes recebem updates de todos os jobs.
+
+    PROMPT #134 - Migração de polling para WebSocket
+    """
+
+    @staticmethod
+    async def connect(websocket: WebSocket):
+        """Adiciona conexão global de notificações"""
+        await websocket.accept()
+        notification_connections.add(websocket)
+        logger.info(f"🔔 Notification WebSocket connected (total: {len(notification_connections)})")
+
+    @staticmethod
+    async def disconnect(websocket: WebSocket):
+        """Remove conexão de notificações"""
+        notification_connections.discard(websocket)
+        logger.info(f"🔕 Notification WebSocket disconnected (total: {len(notification_connections)})")
+
+    @staticmethod
+    async def broadcast(message: dict):
+        """
+        Envia mensagem para TODAS as conexões de notificação.
+
+        Args:
+            message: Mensagem dict (será convertida para JSON)
+        """
+        if not notification_connections:
+            logger.debug("No notification connections, skipping broadcast")
+            return
+
+        message_json = json.dumps(message)
+        disconnected = set()
+
+        for connection in notification_connections.copy():
+            try:
+                await connection.send_text(message_json)
+            except Exception as e:
+                logger.error(f"Failed to send notification: {e}")
+                disconnected.add(connection)
+
+        # Remover conexões que falharam
+        for conn in disconnected:
+            notification_connections.discard(conn)
+
+        logger.debug(f"🔔 Broadcasted {message.get('event')} to {len(notification_connections)} notification clients")
+
+
+@router.websocket("/ws/notifications")
+async def notification_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint global para notificações de jobs em tempo real.
+
+    PROMPT #134 - Migração de polling para WebSocket
+
+    URL: ws://localhost:8000/api/v1/ws/notifications
+
+    Eventos enviados ao cliente:
+    - job_started: Job iniciou processamento
+    - job_progress: Progresso do job atualizado
+    - job_completed: Job completou com sucesso
+    - job_failed: Job falhou
+    - job_cancelled: Job foi cancelado
+
+    Exemplo de mensagem:
+    {
+      "event": "job_completed",
+      "timestamp": "2026-02-01T12:00:00.000Z",
+      "data": {
+        "job_id": "...",
+        "job_type": "memory_scan",
+        "status": "completed",
+        "notification_title": "✅ Análise concluída: 'MeuProjeto'",
+        "deep_link": "/projects/new?projectId=xxx&step=1",
+        "result": {...}
+      }
+    }
+    """
+    await NotificationManager.connect(websocket)
+
+    try:
+        while True:
+            # Aguardar mensagem do cliente (keepalive)
+            data = await websocket.receive_text()
+
+            try:
+                message = json.loads(data)
+                if message.get("command") == "ping":
+                    await websocket.send_text(json.dumps({"event": "pong"}))
+            except json.JSONDecodeError:
+                pass
+
+    except WebSocketDisconnect:
+        await NotificationManager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"Notification WebSocket error: {e}")
+        await NotificationManager.disconnect(websocket)
+
+
+async def broadcast_job_event(event_type: str, job_data: dict):
+    """
+    Broadcast evento de job para todos os clientes de notificação.
+
+    PROMPT #134 - Usar no JobManager para enviar updates em tempo real.
+
+    Args:
+        event_type: Tipo do evento (job_started, job_progress, job_completed, job_failed, job_cancelled)
+        job_data: Dados do job (job_id, status, progress, result, etc.)
+
+    Exemplo:
+        await broadcast_job_event(
+            "job_completed",
+            {
+                "job_id": "abc123",
+                "job_type": "memory_scan",
+                "status": "completed",
+                "notification_title": "✅ Análise concluída",
+                "deep_link": "/projects/new?projectId=xxx"
+            }
+        )
+    """
+    message = {
+        "event": event_type,
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": job_data
+    }
+
+    await NotificationManager.broadcast(message)
+
+
+# ============================================================================
+# PROMPT #124 - WebSocket para AI Flow Chain Execution (Global)
+# ============================================================================
+
+ai_flow_connections: Set[WebSocket] = set()
+
+
+class AIFlowManager:
+    """
+    Manages WebSocket connections for AI Flow execution visualization.
+
+    PROMPT #124 - Real-time chain execution animation
+    """
+
+    @staticmethod
+    async def connect(websocket: WebSocket):
+        await websocket.accept()
+        ai_flow_connections.add(websocket)
+        logger.info(f"🔗 AI Flow WebSocket connected (total: {len(ai_flow_connections)})")
+
+    @staticmethod
+    async def disconnect(websocket: WebSocket):
+        ai_flow_connections.discard(websocket)
+        logger.info(f"🔗 AI Flow WebSocket disconnected (total: {len(ai_flow_connections)})")
+
+    @staticmethod
+    async def broadcast(message: dict):
+        if not ai_flow_connections:
+            return
+        message_json = json.dumps(message)
+        disconnected = set()
+        for conn in ai_flow_connections.copy():
+            try:
+                await conn.send_text(message_json)
+            except Exception:
+                disconnected.add(conn)
+        for conn in disconnected:
+            ai_flow_connections.discard(conn)
+
+
+@router.websocket("/ws/ai-flow")
+async def ai_flow_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for AI Flow chain execution visualization.
+
+    PROMPT #124 - Real-time execution animation
+
+    Events:
+    - chain_attempt_start: Model execution starting
+    - chain_attempt_success: Model execution succeeded
+    - chain_attempt_failed: Model execution failed, trying next
+    - chain_exhausted: All models in chain failed
+    """
+    await AIFlowManager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            try:
+                message = json.loads(data)
+                if message.get("command") == "ping":
+                    await websocket.send_text(json.dumps({"event": "pong"}))
+            except json.JSONDecodeError:
+                pass
+    except WebSocketDisconnect:
+        await AIFlowManager.disconnect(websocket)
+    except Exception as e:
+        logger.error(f"AI Flow WebSocket error: {e}")
+        await AIFlowManager.disconnect(websocket)
+
+
+async def broadcast_chain_event(event_type: str, data: dict):
+    """
+    Broadcast chain execution event to AI Flow page.
+
+    PROMPT #124 - Used in AIOrchestrator chain loop.
+    """
+    message = {
+        "event": event_type,
+        "timestamp": datetime.utcnow().isoformat(),
+        "data": data,
+    }
+    await AIFlowManager.broadcast(message)
+
+
+# ============================================================================
+# PROMPT #247 - WebSocket para Console Logs (Global, substitui SSE)
+# ============================================================================
+
+console_connections: Set[WebSocket] = set()
+
+
+class ConsoleWSManager:
+    """
+    Manages WebSocket connections for real-time console log streaming.
+
+    PROMPT #247 - Replaces SSE (EventSource) to avoid blocking during
+    long-running AI calls (Claudio proxy).
+    """
+
+    @staticmethod
+    async def connect(websocket: WebSocket):
+        await websocket.accept()
+        console_connections.add(websocket)
+        logger.info(f"📋 Console WebSocket connected (total: {len(console_connections)})")
+
+    @staticmethod
+    async def disconnect(websocket: WebSocket):
+        console_connections.discard(websocket)
+        logger.info(f"📋 Console WebSocket disconnected (total: {len(console_connections)})")
+
+    @staticmethod
+    async def broadcast(message: dict):
+        if not console_connections:
+            return
+        message_json = json.dumps(message, default=str)
+        disconnected = set()
+        for conn in console_connections.copy():
+            try:
+                await conn.send_text(message_json)
+            except Exception:
+                disconnected.add(conn)
+        for conn in disconnected:
+            console_connections.discard(conn)
+
+
+@router.websocket("/ws/console")
+async def console_websocket(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time console log streaming.
+
+    PROMPT #247 - Replaces SSE /console/stream endpoint.
+
+    Events sent to client:
+    - console_log: A new log entry (same format as SSE data)
+
+    URL: ws://localhost:8000/api/v1/ws/console
+    """
+    await ConsoleWSManager.connect(websocket)
+    try:
+        # Send recent logs on connect
+        try:
+            from app.services.console_logger import get_console_logger
+            console = get_console_logger()
+            recent_logs = await console.get_recent_logs(limit=50)
+            for log in recent_logs:
+                await websocket.send_text(json.dumps({
+                    "event": "console_log",
+                    "data": log.to_dict(),
+                }, default=str))
+        except Exception as e:
+            logger.warning(f"Failed to send recent logs: {e}")
+
+        while True:
+            data = await websocket.receive_text()
+            
+```
+
+Extraia as regras de negócio FUNCIONAIS deste arquivo.
+Escreva cada regra como se explicasse para um GERENTE DE PRODUTO.
+Responda em JSON com este formato exato:
+
+{
+  "business_rules": [
+    {
+      "rule_text": "Descrição funcional da regra em linguagem de negócio",
+      "rule_type": "domain|validation|constraint|workflow|permission|calculation",
+      "confidence": "high|medium|low",
+      "source_context": "trecho relevante do código (max 100 chars)"
+    }
+  ],
+  "entities_found": ["Entidade1", "Entidade2"],
+  "file_purpose": "Breve descrição do propósito do arquivo (1 frase)",
+  "file_layer": "schema|routes|logic|presentation|config"
+}
+
+Se não houver regras de negócio FUNCIONAIS, retorne: {"business_rules": [], "entities_found": [], "file_purpose": "..."}
+Arquivos de configuração, estilização e infraestrutura geralmente NÃO contêm regras de negócio.
+
+## Response
+
+```json
+{
+  "business_rules": [
+    {
+      "rule_text": "Cada projeto possui sua própria sala de comunicação em tempo real: apenas os clientes conectados a um projeto específico recebem as atualizações e eventos daquele projeto.",
+      "rule_type": "domain",
+      "confidence": "high",
+      "source_context": "Cada projeto tem sua própria \"room\" de conexões. Quando um evento acontece em um projeto..."
+    },
+    {
+      "rule_text": "Notificações de jobs são transmitidas globalmente: todos os clientes conectados ao canal de notificações recebem atualizações de todos os jobs, independentemente do projeto ao qual pertencem.",
+      "rule_type": "domain",
+      "confidence": "high",
+      "source_context": "notification_connections: Set[WebSocket] = set() ... todos os clientes recebem updates de todos os jobs"
+    },
+    {
+      "rule_text": "O ciclo de vida de um Job possui cinco estados rastreáveis em tempo real: iniciado, em progresso, concluído com sucesso, falhou e cancelado.",
+      "rule_type": "workflow",
+      "confidence": "high",
+      "source_context": "job_started, job_progress, job_completed, job_failed, job_cancelled"
+    },
+    {
+      "rule_text": "O ciclo de vida de uma Task dentro de um projeto possui seis eventos rastreáveis: batch iniciado, task iniciada, task concluída, task falhou, validação falhou (com nova tentativa) e batch concluído.",
+      "rule_type": "workflow",
+      "confidence": "high",
+      "source_context": "batch_started, task_started, task_completed, task_failed, validation_failed, batch_completed"
+    },
+    {
+      "rule_text": "Quando uma validação falha em uma task, o sistema não a abandona imediatamente — ela entra em fila para ser tentada novamente.",
+      "rule_type": "workflow",
+      "confidence": "high",
+      "source_context": "validation_failed: Validação falhou (vai tentar novamente)"
+    },
+    {
+      "rule_text": "Ao completar uma task, o sistema registra e expõe o custo financeiro da operação e o tempo de execução para acompanhamento do gestor.",
+      "rule_type": "domain",
+      "confidence": "high",
+      "source_context": "\"cost\": 0.0052, \"execution_time\": 3.2"
+    },
+    {
+      "rule_text": "A execução de AI em cadeia (AI Flow) possui quatro estados visíveis: tentativa iniciada, sucesso na tentativa, falha com troca para próximo modelo e esgotamento de todos os modelos disponíveis.",
+      "rule_type": "workflow",
+      "confidence": "high",
+      "source_context": "chain_attempt_start, chain_attempt_success, chain_attempt_failed, chain_exhausted"
+    },
+    {
+      "rule_text": "Quando um modelo de AI falha, o sistema automaticamente tenta o próximo modelo disponível na cadeia antes de declarar falha total.",
+      "rule_type": "workflow",
+      "confidence": "high",
+      "source_context": "chain_attempt_failed: Model execution failed, trying next ... chain_exhausted: All models in chain failed"
+    },
+    {
+      "rule_text": "Ao concluir um job, o sistema gera um link direto (deep link) para que o usuário possa navegar imediatamente para o resultado ou próxima etapa do processo.",
+      "rule_type": "workflow",
+      "confidence": "high",
+      "source_context": "\"deep_link\": \"/projects/new?projectId=xxx&step=1\""
+    },
+    {
+      "rule_text": "Ao conectar-se ao canal de console, o usuário recebe automaticamente os últimos 50 registros de log gerados anteriormente à conexão.",
+      "rule_type": "constraint",
+      "confidence": "high",
+      "source_context": "recent_logs = await console.get_recent_logs(limit=50)"
+    },
+    {
+      "rule_text": "Se não houver nenhum cliente conectado a um projeto no momento de um evento, a mensagem é descartada silenciosamente — não há fila de mensagens pendentes.",
+      "rule_type": "constraint",
+      "confidence": "high",
+      "source_context": "No connections for project {project_id}, skipping broadcast"
+    },
+    {
+      "rule_text": "Quando a sala de um projeto fica sem nenhum cliente conectado, ela é encerrada automaticamente — não permanece ativa aguardando reconexões.",
+      "rule_type": "constraint",
+      "confidence": "high",
+      "source_context": "if not active_connections[project_id]: del active_connections[project_id]"
+    }
+  ],
+  "entities_found": [
+    "Projeto",
+    "Task",
+    "Batch",
+    "Job",
+    "AI Flow",
+    "Console Log",
+    "Notificação"
+  ],
+  "file_purpose": "Gerencia a comunicação em tempo real entre o sistema e os clientes via WebSocket, transmitindo eventos de execução de tasks por projeto, notificações globais de jobs, visualização de cadeia de AI e streaming de logs de console.",
+  "file_layer": "routes"
+}
+```

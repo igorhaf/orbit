@@ -55,6 +55,8 @@ class ProvidersMixin:
         _num_ctx = model_config.get("context_length")
         _num_batch = model_config.get("num_batch")
         _keep_alive = model_config.get("keep_alive")
+        # Claudio business_mode from model config
+        _business_mode = model_config.get("business_mode", False)
 
         # PROMPT #206 - Apply utility node overrides
         if overrides:
@@ -168,7 +170,7 @@ class ProvidersMixin:
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "claudio":
-                    result = await self._execute_claudio_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools)
+                    result = await self._execute_claudio_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools, business_mode=_business_mode)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -192,7 +194,7 @@ class ProvidersMixin:
                 elif provider == "cohere":
                     result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "claudio":
-                    result = await self._execute_claudio(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools)
+                    result = await self._execute_claudio(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools, business_mode=_business_mode)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -267,6 +269,7 @@ class ProvidersMixin:
         cwd: Optional[str] = None,
         thinking: Optional[Dict] = None,
         disable_tools: bool = False,
+        business_mode: bool = False,
     ) -> Dict:
         """
         PROMPT #253 - Execute via Claudio proxy using httpx (not SDK).
@@ -298,6 +301,9 @@ class ProvidersMixin:
             body["thinking"] = thinking
         else:
             body["temperature"] = temperature
+
+        if business_mode:
+            body["business_mode"] = True
 
         _timeout = timeout_seconds or 600.0
 

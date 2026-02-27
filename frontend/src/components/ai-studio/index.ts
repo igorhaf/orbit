@@ -1,3 +1,4 @@
+export { ModelsTab } from './ModelsTab';
 export { PipelineTab } from './PipelineTab';
 export { PipelinePhaseNode } from './PipelinePhaseNode';
 export { PhaseConfigPanel } from './PhaseConfigPanel';

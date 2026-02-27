@@ -372,7 +372,8 @@ class CodebaseMemoryService(
                 "total_files": scan_data["total_files"],
                 "code_files": scan_data["code_files"],
                 "languages": scan_data["languages"],
-                "config_files_found": scan_data["config_files"]
+                "config_files_found": scan_data["config_files"],
+                "code_file_paths": scan_data.get("code_file_paths", []),
             }
             logger.info(f"   Found {scan_data['total_files']} files, {scan_data['code_files']} code files")
             if jm and child2_id:

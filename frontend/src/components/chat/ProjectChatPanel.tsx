@@ -202,7 +202,7 @@ export function ProjectChatPanel({ projectId }: Props) {
   return (
     <div className="flex h-[calc(100vh-280px)] min-h-[400px] border border-gray-200 rounded-lg overflow-hidden bg-white">
       {/* Left sidebar - Sessions list */}
-      <div className="w-64 border-r border-gray-200 flex flex-col bg-gray-50">
+      <div className="w-1/4 border-r border-gray-200 flex flex-col bg-gray-50">
         <div className="p-3 border-b border-gray-200">
           <Button
             variant="primary"

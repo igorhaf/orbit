@@ -878,11 +878,11 @@ def seed_ai_flow_chains():
         claudio_models = {
             "Claudio Sonnet 4.6 (Content)": {
                 "usage_type": AIModelUsageType.CONTENT_GENERATION,
-                "config": {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.7},
+                "config": {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.7, "business_mode": True},
             },
             "Claudio Sonnet 4.6 (RAG Extraction)": {
                 "usage_type": AIModelUsageType.RAG_EXTRACTION,
-                "config": {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.3},
+                "config": {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.3, "business_mode": True},
             },
         }
 
@@ -923,7 +923,7 @@ def seed_ai_flow_chains():
             AIModel.is_active == True,
         ).first()
         if memory_model:
-            memory_model.config = {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.5}
+            memory_model.config = {"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.5, "business_mode": True}
             memory_model.name = "Claudio Sonnet 4.6 (Memory)"
             logger.info(f"  Updated memory model: Sonnet 4.6 (max_tokens=16384)")
         else:
@@ -935,7 +935,7 @@ def seed_ai_flow_chains():
                 api_key="not-needed",
                 usage_type=AIModelUsageType.MEMORY,
                 is_active=True,
-                config={"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.5},
+                config={"model_id": "claude-sonnet-4-6", "max_tokens": 16384, "temperature": 0.5, "business_mode": True},
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow(),
             )

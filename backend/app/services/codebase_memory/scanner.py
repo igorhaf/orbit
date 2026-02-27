@@ -200,7 +200,8 @@ class ScannerMixin:
             "languages": {},
             "config_files": [],
             "directory_structure": [],
-            "key_files": []
+            "key_files": [],
+            "code_file_paths": [],
         }
 
         for root, dirs, files in os.walk(root_path):
@@ -238,6 +239,7 @@ class ScannerMixin:
                 ext = file_path.suffix.lower()
                 if ext in self.ANALYSIS_EXTENSIONS:
                     stats["code_files"] += 1
+                    stats["code_file_paths"].append(str(file_path.relative_to(root_path)))
 
                     # Count by language
                     lang = self._extension_to_language(ext)

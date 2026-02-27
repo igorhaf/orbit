@@ -75,6 +75,8 @@ class ModelSelectorMixin:
                     "context_length": db_model.config.get("context_length"),
                     "num_batch": db_model.config.get("num_batch"),
                     "keep_alive": db_model.config.get("keep_alive"),
+                    # Claudio business_mode: translate technical output to business language
+                    "business_mode": db_model.config.get("business_mode", False),
                 })
             else:
                 logger.warning(
@@ -311,6 +313,8 @@ class ModelSelectorMixin:
                     "context_length": db_model.config.get("context_length"),
                     "num_batch": db_model.config.get("num_batch"),
                     "keep_alive": db_model.config.get("keep_alive"),
+                    # Claudio business_mode: translate technical output to business language
+                    "business_mode": db_model.config.get("business_mode", False),
                 })
             else:
                 logger.warning(
@@ -357,6 +361,7 @@ class ModelSelectorMixin:
                 "context_length": fallback_model.config.get("context_length"),
                 "num_batch": fallback_model.config.get("num_batch"),
                 "keep_alive": fallback_model.config.get("keep_alive"),
+                "business_mode": fallback_model.config.get("business_mode", False),
             })
 
         # 3. Fallback: tentar diagrama 'general' (chain) se existir

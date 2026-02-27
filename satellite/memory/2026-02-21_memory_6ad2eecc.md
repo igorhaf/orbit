@@ -1,0 +1,139 @@
+# memory — 2026-02-21
+
+**Model:** ollama/qwen3:8b
+**Status:** success
+**Tokens:** 741 in / 1027 out | Cost: $0.0059
+
+## System Prompt
+
+Voce e um analista de negocios. Extraia APENAS regras de NEGOCIO FUNCIONAIS do codigo. FOQUE em: o que o USUARIO pode fazer, permissoes, fluxos, limites, calculos de negocio. IGNORE completamente: tipos de campo, configs de framework, drivers, sessoes, CSS, logs, booleanos, chaves estrangeiras, detalhes tecnicos de infraestrutura. Escreva cada regra como se explicasse para um GERENTE DE PRODUTO, nao para um programador. Responda APENAS com JSON valido, em portugues brasileiro: {"business_rules":[{"rule_text":"...","rule_type":"validation|workflow|constraint|domain","confidence":"high|medium"}]}
+
+## User Prompt
+
+backend/app/models/commit.py (python):
+"""
+Commit Model
+Represents an AI-generated commit following Conventional Commits
+"""
+
+from datetime import datetime
+from uuid import uuid4
+from sqlalchemy import Column, String, Text, DateTime, JSON, ForeignKey, Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
+import enum
+
+from app.database import Base
+
+
+class CommitType(str, enum.Enum):
+    """Commit type enum following Conventional Commits"""
+    FEAT = "feat"
+    FIX = "fix"
+    DOCS = "docs"
+    STYLE = "style"
+    REFACTOR = "refactor"
+    TEST = "test"
+    CHORE = "chore"
+    PERF = "perf"
+
+
+class Commit(Base):
+    """
+    Commit model - Represents an AI-generated commit
+
+    Attributes:
+        id: Unique identifier
+        type: Type of commit (feat, fix, docs, etc.)
+        message: Commit message
+        changes: JSON containing details of changes
+        created_by_ai_model: Name of the AI model that generated the commit
+        task_id: Reference to the associated task
+        project_id: Reference to the project
+        timestamp: Timestamp of the commit
+        author: Author of the commit (default: AI System)
+    """
+
+    __tablename__ = "commits"
+
+    # Primary key
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4, index=True)
+
+    # Foreign keys
+    task_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tasks.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # Basic fields
+    type = Column(
+        SQLEnum(CommitType, name="commit_type", values_callable=lambda x: [e.value for e in x]),
+        nullable=False,
+        index=True
+    )
+    message = Column(Text, nullable=False)
+    changes = Column(JSON, nullable=True, default=dict)
+    created_by_ai_model = Column(String(100), nullable=False)
+    author = Column(String(100), default="AI System", nullable=False)
+
+    # Timestamp
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    # Relationships
+    task = relationship("Task", back_populates="commits")
+    project = relationship("Project", back_populates="commits")
+
+    def __repr__(self) -> str:
+        return f"<Commit(id={self.id}, type={self.type}, task_id={self.task_id})>"
+
+
+## Response
+
+{
+  "business_rules": [
+    {
+      "rule_text": "O tipo de commit deve ser um dos pré-definidos conforme Conventional Commits (feat, fix, docs, style, refactor, test, chore, perf).",
+      "rule_type": "validation",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "O campo 'message' é obrigatório e deve conter a mensagem do commit.",
+      "rule_type": "validation",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "Cada commit deve estar associado a uma tarefa e a um projeto (task_id e project_id são obrigatórios).",
+      "rule_type": "constraint",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "O autor do commit é predefinido como 'AI System' e não pode ser alterado pelo usuário.",
+      "rule_type": "constraint",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "O commit deve ser gerado por um modelo de IA, e o nome do modelo deve ser especificado no campo 'created_by_ai_model'.",
+      "rule_type": "constraint",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "O commit é automaticamente marcado com a data e hora de criação (timestamp) ao ser salvo.",
+      "rule_type": "workflow",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "O campo 'changes' permite armazenar dados estruturados sobre as modificações, mas não impõe limites de formato ou tamanho.",
+      "rule_type": "domain",
+      "confidence": "medium"
+    }
+  ]
+}

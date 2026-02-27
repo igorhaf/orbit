@@ -242,11 +242,11 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
             setEditing(false);
             setSelectedSlug(item.slug);
           }}
-          style={{ paddingLeft: `${0.75 + depth * 0.875}rem` }}
-          className={`w-full text-left pr-3 py-1.5 rounded text-sm transition-colors ${
+          style={{ paddingLeft: `${0.5 + depth * 0.75}rem`, paddingRight: '0.5rem' }}
+          className={`w-full text-left py-2 rounded text-sm transition-colors ${
             isActive
-              ? 'bg-blue-100 text-blue-700 font-medium'
-              : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              ? 'bg-blue-50 text-blue-700 font-medium'
+              : 'text-gray-700 hover:bg-gray-50'
           }`}
         >
           <span className="truncate block">{item.title}</span>
@@ -377,19 +377,21 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         </div>
       </div>
 
-      <div className="flex gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Sidebar tree */}
-        <div className="w-72 flex-shrink-0">
-          <Card className="p-3">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Páginas</h2>
-            <div className="space-y-0.5">
-              {tree.map((item) => renderSidebarItem(item))}
+        <div className="lg:col-span-1">
+          <div className="sticky top-4">
+            <div className="border-2 border-gray-300 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Páginas</h3>
+              <div className="space-y-1">
+                {tree.map((item) => renderSidebarItem(item))}
+              </div>
             </div>
-          </Card>
+          </div>
         </div>
 
         {/* Content área */}
-        <div className="flex-1 min-w-0">
+        <div className="lg:col-span-3">
           {!selectedSlug ? (
             // Grid of page cards when no page selected
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

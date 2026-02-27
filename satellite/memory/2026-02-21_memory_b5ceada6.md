@@ -1,0 +1,525 @@
+# memory — 2026-02-21
+
+**Model:** claudio/claude-sonnet-4-6
+**Status:** success
+**Tokens:** 0 in / 0 out | Cost: $0.0000
+
+## System Prompt
+
+Você é um ANALISTA DE NEGÓCIOS experiente analisando código-fonte para extrair regras de negócio FUNCIONAIS.
+
+Sua perspectiva é de NEGÓCIO, não de tecnologia. Imagine que você está escrevendo um documento
+para o GERENTE DE PRODUTO ou DONO DO NEGÓCIO que não entende código.
+
+EXTRAIA regras que respondam:
+- O que o USUÁRIO pode ou não pode fazer?
+- Quais são as PERMISSÕES e RESTRIÇÕES de acesso?
+- Como funcionam os FLUXOS e PROCESSOS do sistema?
+- Quais CÁLCULOS de negócio existem (preços, comissões, notas)?
+- Quais LIMITES e QUOTAS o sistema impõe?
+- Quais VALIDAÇÕES afetam a experiência do usuário?
+- Como as ENTIDADES do negócio se relacionam?
+
+IGNORE COMPLETAMENTE (não são regras de negócio):
+- Tipos de campos (booleano, string, integer)
+- Configurações de framework (drivers, sessões, guards, middleware)
+- Detalhes de banco (foreign keys, NOT NULL, migrations)
+- CSS, layout, estilização
+- Logs, cache, filas, timeouts
+- Imports, dependências, bibliotecas
+- Configurações de ambiente (.env, configs)
+- Código boilerplate ou padrões técnicos
+
+FORMATO das regras (escreva como linguagem de negócio):
+✅ BOM: "O aluno só pode avaliar um curso após completar pelo menos 50% das aulas"
+✅ BOM: "O instrutor recebe 70% do valor de cada inscrição em seu curso"
+✅ BOM: "Cupons de desconto expiram após a data limite definida pelo instrutor"
+❌ RUIM: "O campo 'rating' deve ser um integer entre 1 e 5"
+❌ RUIM: "A tabela enrollments tem foreign key para courses"
+❌ RUIM: "O guard 'web' usa driver de sessão"
+
+Responda APENAS em JSON válido, sem markdown, sem explicações adicionais.
+
+## User Prompt
+
+Arquivo: backend/app/services/console_logger.py
+Linguagem: python
+
+```
+"""
+Console Logger Service - PROMPT #168
+Central logging service for real-time console output
+
+Captures and streams:
+- AI prompts and responses
+- Specs loaded
+- Job progress
+- RAG operations
+- System events
+"""
+
+import logging
+import logging.handlers
+import asyncio
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Dict, List, Optional, Any, Callable
+from collections import deque
+from enum import Enum
+from dataclasses import dataclass, asdict
+import uuid
+
+logger = logging.getLogger(__name__)
+
+
+class LogLevel(str, Enum):
+    DEBUG = "debug"
+    INFO = "info"
+    WARNING = "warning"
+    ERROR = "error"
+    SUCCESS = "success"
+
+
+class LogCategory(str, Enum):
+    AI_PROMPT = "ai_prompt"
+    AI_RESPONSE = "ai_response"
+    AI_STREAMING = "ai_streaming"  # PROMPT #217 - Real-time streaming chunks
+    SPEC_LOADED = "spec_loaded"
+    RAG_OPERATION = "rag_operation"
+    JOB_EVENT = "job_event"
+    MEMORY_SCAN = "memory_scan"
+    CACHE_EVENT = "cache_event"
+    PERFORMANCE = "performance"  # PROMPT #296 - Operation timing and diagnostics
+    SYSTEM = "system"
+    ERROR = "error"
+
+
+@dataclass
+class ConsoleLogEntry:
+    """Single log entry for console output"""
+    id: str
+    timestamp: str
+    level: LogLevel
+    category: LogCategory
+    title: str
+    message: str
+    details: Optional[Dict[str, Any]] = None
+    project_id: Optional[str] = None  # UUID as string
+    job_id: Optional[str] = None  # UUID as string
+    duration_ms: Optional[int] = None
+    tokens_used: Optional[int] = None
+    # PROMPT #296 - Observability fields
+    trace_id: Optional[str] = None        # Groups related events into one operation
+    operation_name: Optional[str] = None   # e.g. "Memory Scan"
+    phase_name: Optional[str] = None       # e.g. "Detecção de Stack"
+    cost_usd: Optional[float] = None       # Estimated cost in USD
+    model_name: Optional[str] = None       # AI model used
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+
+    def to_dict(self) -> Dict:
+        return asdict(self)
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False)
+
+
+class ConsoleLogger:
+    """
+    Singleton console logger that maintains log buffer and notifies subscribers
+    """
+    _instance = None
+    _lock = asyncio.Lock()
+
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+
+        # Buffer to store recent logs (max 1000 entries)
+        self.buffer: deque = deque(maxlen=1000)
+
+        # Subscribers waiting for new logs (SSE connections)
+        self.subscribers: List[asyncio.Queue] = []
+
+        # Lock for thread-safe operations
+        self._buffer_lock = asyncio.Lock()
+
+        # PROMPT #296 - File-based logging with rotation (5 files max, 2MB each)
+        self._file_logger = self._setup_file_logger()
+
+        self._initialized = True
+        logger.info("📋 ConsoleLogger initialized")
+
+    def _setup_file_logger(self) -> Optional[logging.Logger]:
+        """Set up rotating file logger. Keeps 5 files max (2MB each)."""
+        try:
+            log_dir = Path(__file__).parent.parent.parent / "logs"
+            log_dir.mkdir(exist_ok=True)
+            log_path = log_dir / "console.log"
+
+            file_logger = logging.getLogger("orbit.console.file")
+            file_logger.setLevel(logging.DEBUG)
+            file_logger.propagate = False
+
+            # Remove existing handlers to avoid duplicates on re-init
+            file_logger.handlers.clear()
+
+            handler = logging.handlers.RotatingFileHandler(
+                str(log_path),
+                maxBytes=2 * 1024 * 1024,  # 2MB per file
+                backupCount=4,             # Keep 5 total (console.log + .1 .2 .3 .4)
+                encoding="utf-8"
+            )
+            handler.setFormatter(logging.Formatter("%(message)s"))
+            file_logger.addHandler(handler)
+
+            logger.info(f"📁 Console file logging: {log_path}")
+            return file_logger
+        except Exception as e:
+            logger.warning(f"Could not set up console file logging: {e}")
+            return None
+
+    def _format_log_line(self, entry: ConsoleLogEntry) -> str:
+        """Format a log entry as a single readable line for the .log file."""
+        ts = entry.timestamp[:23].replace("T", " ")
+        lvl = entry.level.value.upper().ljust(7)
+        cat = entry.category.value
+
+        line = f"[{ts}] [{lvl}] [{cat}] {entry.title} - {entry.message}"
+
+        if entry.duration_ms:
+            line += f" ({entry.duration_ms}ms)"
+        if entry.tokens_used:
+            line += f" [{entry.tokens_used} tokens]"
+        if entry.cost_usd:
+            line += f" [${entry.cost_usd:.4f}]"
+        if entry.model_name:
+            line += f" model={entry.model_name}"
+        if entry.trace_id:
+            line += f" trace={entry.trace_id[:8]}"
+        if entry.project_id:
+            line += f" project={entry.project_id[:8]}"
+
+        return line
+
+    async def log(
+        self,
+        level: LogLevel,
+        category: LogCategory,
+        title: str,
+        message: str,
+        details: Optional[Dict[str, Any]] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+        duration_ms: Optional[int] = None,
+        tokens_used: Optional[int] = None,
+        # PROMPT #296 - Observability fields
+        trace_id: Optional[str] = None,
+        operation_name: Optional[str] = None,
+        phase_name: Optional[str] = None,
+        cost_usd: Optional[float] = None,
+        model_name: Optional[str] = None,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None
+    ) -> ConsoleLogEntry:
+        """
+        Add a log entry and notify all subscribers
+        """
+        entry = ConsoleLogEntry(
+            id=str(uuid.uuid4()),
+            timestamp=datetime.utcnow().isoformat() + "Z",
+            level=level,
+            category=category,
+            title=title,
+            message=message,
+            details=details,
+            project_id=project_id,
+            job_id=job_id,
+            duration_ms=duration_ms,
+            tokens_used=tokens_used,
+            trace_id=trace_id,
+            operation_name=operation_name,
+            phase_name=phase_name,
+            cost_usd=cost_usd,
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+
+        # PROMPT #217 - Streaming chunks are ephemeral: only sent to SSE subscribers,
+        # not stored in the buffer (prevents flooding the 1000-entry log buffer)
+        is_streaming_chunk = (
+            category == LogCategory.AI_STREAMING
+            and details
+            and not details.get("is_complete", False)
+        )
+
+        if not is_streaming_chunk:
+            async with self._buffer_lock:
+                self.buffer.append(entry)
+
+            # PROMPT #296 - Write to .log file (skip streaming chunks)
+            if self._file_logger:
+                try:
+                    self._file_logger.info(self._format_log_line(entry))
+                except Exception:
+                    pass
+
+        # Notify all subscribers (including streaming chunks)
+        await self._notify_subscribers(entry)
+
+        # Also log to standard logger for container logs (skip streaming chunks to avoid noise)
+        if not is_streaming_chunk:
+            log_msg = f"[{category.value}] {title}: {message}"
+            if level == LogLevel.ERROR:
+                logger.error(log_msg)
+            elif level == LogLevel.WARNING:
+                logger.warning(log_msg)
+            elif level == LogLevel.DEBUG:
+                logger.debug(log_msg)
+            else:
+                logger.info(log_msg)
+
+        return entry
+
+    async def _notify_subscribers(self, entry: ConsoleLogEntry):
+        """Notify all SSE subscribers of new log entry.
+
+        PROMPT #221 - Non-blocking: uses put_nowait() to prevent streaming
+        stalls when subscriber queues are full. If a queue is full, drops
+        the oldest entry to make room (streaming chunks are ephemeral).
+        """
+        dead_subscribers = []
+
+        for queue in self.subscribers:
+            try:
+                queue.put_nowait(entry)
+            except asyncio.QueueFull:
+                # Drop oldest entry and push new one
+                try:
+                    queue.get_nowait()
+                    queue.put_nowait(entry)
+                except (asyncio.QueueEmpty, asyncio.QueueFull):
+                    dead_subscribers.append(queue)
+            except Exception:
+                dead_subscribers.append(queue)
+
+        # Remove dead subscribers
+        for queue in dead_subscribers:
+            try:
+                self.subscribers.remove(queue)
+            except ValueError:
+                pass
+
+    async def subscribe(self) -> asyncio.Queue:
+        """Subscribe to log updates (for SSE)"""
+        queue = asyncio.Queue(maxsize=100)
+        self.subscribers.append(queue)
+        logger.info(f"📡 New console subscriber (total: {len(self.subscribers)})")
+        return queue
+
+    async def unsubscribe(self, queue: asyncio.Queue):
+        """Unsubscribe from log updates"""
+        try:
+            self.subscribers.remove(queue)
+            logger.info(f"📡 Console subscriber removed (total: {len(self.subscribers)})")
+        except ValueError:
+            pass
+
+    async def get_recent_logs(
+        self,
+        limit: int = 100,
+        category: Optional[LogCategory] = None,
+        level: Optional[LogLevel] = None,
+        project_id: Optional[str] = None
+    ) -> List[ConsoleLogEntry]:
+        """Get recent logs with optional filtering"""
+        async with self._buffer_lock:
+            logs = list(self.buffer)
+
+        # Apply filters
+        if category:
+            logs = [l for l in logs if l.category == category]
+        if level:
+            logs = [l for l in logs if l.level == level]
+        if project_id:
+            logs = [l for l in logs if l.project_id == project_id]
+
+        # Return most recent first, limited
+        return list(reversed(logs[-limit:]))
+
+    async def clear_logs(self):
+        """Clear all logs from buffer"""
+        async with self._buffer_lock:
+            self.buffer.clear()
+        logger.info("📋 Console logs cleared")
+
+    # Convenience methods for common log types
+
+    async def log_ai_prompt(
+        self,
+        model: str,
+        usage_type: str,
+        prompt_preview: str,
+        full_prompt: Optional[str] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+        trace_id: Optional[str] = None
+    ):
+        """Log an AI prompt being sent"""
+        await self.log(
+            level=LogLevel.INFO,
+            category=LogCategory.AI_PROMPT,
+            title=f"AI Prompt → {model}",
+            message=prompt_preview[:200] + ("..." if len(prompt_preview) > 200 else ""),
+            details={
+                "model": model,
+                "usage_type": usage_type,
+                "prompt_length": len(full_prompt or prompt_preview),
+                "full_prompt": (full_prompt or prompt_preview)[:5000]  # Limit to 5K chars
+            },
+            project_id=project_id,
+            job_id=job_id,
+            trace_id=trace_id,
+            model_name=model
+        )
+
+    async def log_ai_response(
+        self,
+        model: str,
+        response_preview: str,
+        full_response: Optional[str] = None,
+        tokens_used: Optional[int] = None,
+        duration_ms: Optional[int] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None,
+        cache_hit: bool = False,
+        trace_id: Optional[str] = None,
+        cost_usd: Optional[float] = None,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None
+    ):
+        """Log an AI response received"""
+        title = f"AI Response ← {model}"
+        if cache_hit:
+            title = f"🎯 Cache Hit ← {model}"
+
+        await self.log(
+            level=LogLevel.SUCCESS,
+            category=LogCategory.AI_RESPONSE,
+            title=title,
+            message=response_preview[:300] + ("..." if len(response_preview) > 300 else ""),
+            details={
+                "model": model,
+                "response_length": len(full_response or response_preview),
+                "cache_hit": cache_hit,
+                "full_response": (full_response or response_preview)[:10000]  # Limit to 10K chars
+            },
+            project_id=project_id,
+            job_id=job_id,
+            duration_ms=duration_ms,
+            tokens_used=tokens_used,
+            trace_id=trace_id,
+            model_name=model,
+            cost_usd=cost_usd,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
+        )
+
+    async def log_ai_streaming_chunk(
+        self,
+        stream_id: str,
+        model: str,
+        chunk_text: str,
+        chunk_index: int,
+        is_complete: bool = False,
+        accumulated_text: Optional[str] = None,
+        project_id: Optional[str] = None,
+        job_id: Optional[str] = None
+    ):
+        """
+        Log a streaming AI response chunk - PROMPT #217
+        Ephemeral entries (is_complete=False) are only sent to SSE subscribers,
+        not stored in the buffer.
+        """
+        if is_complete:
+            title = f"AI Stream Complete <- {model}"
+        else:
+            title = f"AI Streaming <- {model}"
+
+        await self.log(
+            level=LogLevel.INFO,
+            category=LogCategory.AI_STREAMING,
+            title=title,
+            message=chunk_text,
+            details={
+                "stream_id": stream_id,
+                "model": model,
+                "chunk_text": chunk_text,
+                "chunk_index": chunk_index,
+                "is_complete": is_complete,
+                "accumulated_length": len(accumulated_text) if accumulated_text else 0,
+            },
+            project_id=project_id,
+            job_id=job_id
+        )
+
+    async def log_spec_loaded(
+        self,
+        spec_name: str,
+        spec_type: str,
+        tokens_saved: Optional[int] = None,
+        project_id: Optional[str] = None
+    ):
+        """Log a spec being loaded"""
+        await self.log(
+            level=LogLevel.INFO,
+            category=LogCategory.SPEC_LOADED,
+            title=f"Spec Loaded: {spec_name}",
+            message=f"Type: {spec_type}" + (f", Tokens saved: ~{tokens_saved}" if tokens_saved else ""),
+            details={
+                "spec_name": spec_name,
+                "spec_type": spec_type,
+                "tokens_saved": tokens_saved
+            },
+            project_id=project_id
+        )
+
+    async def log_rag_operation(
+        self,
+        operation: str,
+        query: Optional[s
+```
+
+Extraia as regras de negócio FUNCIONAIS deste arquivo.
+Escreva cada regra como se explicasse para um GERENTE DE PRODUTO.
+Responda em JSON com este formato exato:
+
+{
+  "business_rules": [
+    {
+      "rule_text": "Descrição funcional da regra em linguagem de negócio",
+      "rule_type": "domain|validation|constraint|workflow|permission|calculation",
+      "confidence": "high|medium|low",
+      "source_context": "trecho relevante do código (max 100 chars)"
+    }
+  ],
+  "entities_found": ["Entidade1", "Entidade2"],
+  "file_purpose": "Breve descrição do propósito do arquivo (1 frase)",
+  "file_layer": "schema|routes|logic|presentation|config"
+}
+
+Se não houver regras de negócio FUNCIONAIS, retorne: {"business_rules": [], "entities_found": [], "file_purpose": "..."}
+Arquivos de configuração, estilização e infraestrutura geralmente NÃO contêm regras de negócio.
+
+## Response
+
+

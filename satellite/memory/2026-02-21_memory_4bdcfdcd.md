@@ -1,0 +1,212 @@
+# memory — 2026-02-21
+
+**Model:** ollama/qwen3:8b
+**Status:** success
+**Tokens:** 2839 in / 1161 out | Cost: $0.0086
+
+## System Prompt
+
+Voce e um analista de negocios. Extraia APENAS regras de NEGOCIO FUNCIONAIS do codigo. FOQUE em: o que o USUARIO pode fazer, permissoes, fluxos, limites, calculos de negocio. IGNORE completamente: tipos de campo, configs de framework, drivers, sessoes, CSS, logs, booleanos, chaves estrangeiras, detalhes tecnicos de infraestrutura. Escreva cada regra como se explicasse para um GERENTE DE PRODUTO, nao para um programador. Responda APENAS com JSON valido, em portugues brasileiro: {"business_rules":[{"rule_text":"...","rule_type":"validation|workflow|constraint|domain","confidence":"high|medium"}]}
+
+## User Prompt
+
+frontend/src/app/projects/[id]/RagTab.tsx (typescript):
+'use client';
+
+/**
+ * RagTab - RAG Analytics Tab Component
+ * Extracted from project detail page (PROMPT #232)
+ * Shows RAG stats, document storage, continuous RAG, and code indexing panels
+ */
+
+import { useRouter } from 'next/navigation';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
+import { RagStatsCard, RagUsageTypeTable, RagHitRatePieChart, CodeIndexingPanel, ContinuousRAGPanel } from '@/components/rag';
+import { RagStats, CodeIndexingStats } from '@/lib/types';
+
+interface KnowledgeStats {
+  total_documents: number;
+  business_rules_count: number;
+  interview_answers_count: number;
+  code_files_count: number;
+  documents_count: number;
+  by_category: Record<string, number>;
+  by_source: Record<string, number>;
+}
+
+interface RagTabProps {
+  projectId: string;
+  loadingRag: boolean;
+  ragStats: RagStats | null;
+  knowledgeStats: KnowledgeStats | null;
+  codeStats: CodeIndexingStats | null;
+  loadRagStats: () => void;
+}
+
+export default function RagTab({
+  projectId,
+  loadingRag,
+  ragStats,
+  knowledgeStats,
+  codeStats,
+  loadRagStats,
+}: RagTabProps) {
+  const router = useRouter();
+
+  return (
+    <div className="space-y-6">
+      {loadingRag ? (
+        <div className="flex items-center justify-center py-12">
+          <svg className="animate-spin h-8 w-8 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        </div>
+      ) : (
+        <>
+          {/* RAG Stats - only show if we have data */}
+          {ragStats && ragStats.total_rag_enabled > 0 ? (
+            <>
+              {/* Stats Cards */}
+              <RagStatsCard stats={ragStats} />
+
+              {/* Charts and Table */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <RagHitRatePieChart usageTypes={ragStats.by_usage_type} />
+                <RagUsageTypeTable usageTypes={ragStats.by_usage_type} />
+              </div>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="py-12 text-center text-gray-500">
+                <p>Nenhum dado RAG disponível ainda</p>
+                <p className="text-sm mt-2">Indexe seu código abaixo para habilitar operações de IA aprimoradas por RAG</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* PROMPT #172 - Document Storage Stats */}
+          {knowledgeStats && knowledgeStats.total_documents > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  </svg>
+                  Armazenamento de Documentos
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-purple-50 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-purple-700">{knowledgeStats.total_documents}</div>
+                    <div className="text-xs text-purple-600">Total de Documentos</div>
+                  </div>
+                  <div
+                    className="bg-blue-50 rounded-lg p-4 text-center cursor-pointer hover:ring-2 hover:ring-blue-300 transition-all"
+                    onClick={() => router.push(`/projects/${projectId}/knowledge/code-files`)}
+                    title="Ver todos os arquivos de codigo"
+                  >
+                    <div className="text-2xl font-bold text-blue-700">{knowledgeStats.code_files_count}</div>
+                    <div className="text-xs text-blue-600">Arquivos de Codigo</div>
+                  </div>
+                  <div className="bg-yellow-50 rounded-lg p-4 text-center">
+                    <div className="text-2xl font-bold text-yellow-700">{knowledgeStats.interview_answers_count}</div>
+                    <div className="text-xs text-yellow-600">Respostas de Entrevista</div>
+                  </div>
+                  <div
+                    className="bg-orange-50 rounded-lg p-4 text-center cursor-pointer hover:ring-2 hover:ring-orange-300 transition-all"
+                    onClick={() => router.push(`/projects/${projectId}/knowledge/rules`)}
+                    title="Ver todas as regras de negocio"
+                  >
+                    <div className="text-2xl font-bold text-orange-700">{knowledgeStats.business_rules_count}</div>
+                    <div className="text-xs text-orange-600">Regras de Negocio</div>
+                  </div>
+                </div>
+
+                {/* By Source breakdown */}
+                {Object.keys(knowledgeStats.by_source).length > 0 && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Por Fonte</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(knowledgeStats.by_source).map(([source, count]) => (
+                        <span key={source} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
+                          {source.replace(/_/g, ' ')}: <strong>{count}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* By Category breakdown (for business rules) */}
+                {Object.keys(knowledgeStats.by_category).length > 0 && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Regras de Negocio por Categoria</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {Object.entries(knowledgeStats.by_category).map(([category, count]) => (
+                        <span key={category} className="inline-flex items-center gap-1 bg-gray-100 text-gray-700 text-sm px-3 py-1 rounded-full">
+                          {category}: <strong>{count}</strong>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* PROMPT #218 - Continuous RAG Evolution Panel */}
+          <ContinuousRAGPanel
+            projectId={projectId}
+            onScanComplete={loadRagStats}
+          />
+
+          {/* Code Indexing Panel - ALWAYS visible (PROMPT #136) */}
+          <CodeIndexingPanel
+            projectId={projectId}
+            stats={codeStats}
+            onIndexComplete={loadRagStats}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+
+## Response
+
+{
+  "business_rules": [
+    {
+      "rule_text": "O usuário pode visualizar métricas de RAG apenas quando houver dados disponíveis, caso contrário é exibida uma mensagem solicitando indexação de código.",
+      "rule_type": "validation",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "O usuário pode navegar para seções específicas de documentos, arquivos de código e regras de negócio através de links interativos na interface.",
+      "rule_type": "permission",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "A atualização das métricas de RAG é automaticamente disparada após a conclusão do processo de indexação de código.",
+      "rule_type": "workflow",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "As estatísticas de conhecimento são exibidas apenas quando houver dados disponíveis para exibição, incluindo contagens por fonte e categoria.",
+      "rule_type": "validation",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "O painel de indexação de código é sempre visível para permitir que o usuário inicie o processo de indexação manualmente.",
+      "rule_type": "constraint",
+      "confidence": "high"
+    },
+    {
+      "rule_text": "O painel de evolução contínua do RAG é sempre visível para monitorar a progressão das operações de análise de dados.",
+      "rule_type": "constraint",
+      "confidence": "high"
+    }
+  ]
+}
