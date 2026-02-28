@@ -102,7 +102,6 @@ class ClaudioPipelineService:
         thinking: dict | None = None,
         max_tokens: int | None = None,
         max_retries: int | None = None,
-        business_mode: bool = False,
     ) -> dict[str, Any]:
         """
         Make a single non-streaming call to Claudio.
@@ -136,8 +135,6 @@ class ClaudioPipelineService:
             payload["thinking"] = thinking
         if max_tokens:
             payload["max_tokens"] = max_tokens
-        if business_mode:
-            payload["business_mode"] = True
 
         last_error = None
         for attempt in range(retries + 1):

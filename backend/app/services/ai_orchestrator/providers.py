@@ -170,7 +170,7 @@ class ProvidersMixin:
                 elif provider == "cohere":
                     result = await self._execute_cohere_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "claudio":
-                    result = await self._execute_claudio_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools, business_mode=_business_mode)
+                    result = await self._execute_claudio_streaming(model_name, messages, system_prompt, tokens_limit, temperature, stream_callback=_stream_cb, flush_callback=_flush_cb, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
@@ -194,18 +194,54 @@ class ProvidersMixin:
                 elif provider == "cohere":
                     result = await self._execute_cohere(model_name, messages, system_prompt, tokens_limit, temperature, api_key_override=api_key_override, timeout_seconds=resolved_timeout)
                 elif provider == "claudio":
-                    result = await self._execute_claudio(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools, business_mode=_business_mode)
+                    result = await self._execute_claudio(model_name, messages, system_prompt, tokens_limit, temperature, timeout_seconds=resolved_timeout, cwd=_claudio_cwd, thinking=thinking, disable_tools=disable_tools)
                 else:
                     raise ValueError(f"Provedor desconhecido: {provider}")
 
             result["db_model_id"] = model_config["db_model_id"]
             result["db_model_name"] = model_config["db_model_name"]
+
+            # Business mode: translate technical output to business language (ORBIT-side)
+            if _business_mode and result.get("content"):
+                result["content"] = await self._translate_to_business(result["content"])
+
             return result
         finally:
             # PROMPT #228 - Release concurrency slot
             if _chain_sem is not None:
                 _chain_sem.release()
                 logger.info(f"🔓 Chain concurrency slot released for {model_config.get('db_model_name', 'unknown')}")
+
+    # ── Business Mode: translate technical output to business language ──────
+
+    BUSINESS_TRANSLATE_PROMPT = (
+        "Voce e um tradutor de linguagem tecnica para linguagem de negocio. "
+        "Recebera uma saida tecnica de um sistema de software. "
+        "Sua tarefa e reescrever essa saida de forma funcional, "
+        "descrevendo O QUE o sistema faz e QUAL o impacto, "
+        "sem mencionar detalhes de implementacao como nomes de funcoes, "
+        "variaveis, tipos de dados, frameworks, ou trechos de codigo. "
+        "Mantenha o mesmo idioma do texto original. "
+        "Seja conciso e direto. Nao adicione introducoes como 'Aqui esta a traducao'. "
+        "Apenas reescreva o conteudo."
+    )
+
+    async def _translate_to_business(self, technical_text: str) -> str:
+        """Translate technical AI output to business language using Haiku via Claudio."""
+        try:
+            result = await self._execute_claudio(
+                model="haiku",
+                messages=[{"role": "user", "content": technical_text}],
+                system_prompt=self.BUSINESS_TRANSLATE_PROMPT,
+                max_tokens=4000,
+                temperature=0.3,
+                timeout_seconds=120,
+            )
+            translated = result.get("content", "")
+            return translated if translated else technical_text
+        except Exception as e:
+            logger.warning(f"Business mode translation failed, using original: {e}")
+            return technical_text
 
     async def _execute_anthropic(
         self,
@@ -269,7 +305,6 @@ class ProvidersMixin:
         cwd: Optional[str] = None,
         thinking: Optional[Dict] = None,
         disable_tools: bool = False,
-        business_mode: bool = False,
     ) -> Dict:
         """
         PROMPT #253 - Execute via Claudio proxy using httpx (not SDK).
@@ -301,9 +336,6 @@ class ProvidersMixin:
             body["thinking"] = thinking
         else:
             body["temperature"] = temperature
-
-        if business_mode:
-            body["business_mode"] = True
 
         _timeout = timeout_seconds or 600.0
 

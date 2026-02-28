@@ -149,7 +149,6 @@ class ProvidersStreamMixin:
         cwd: Optional[str] = None,
         thinking: Optional[Dict] = None,
         disable_tools: bool = False,
-        business_mode: bool = False,
     ) -> Dict:
         """
         PROMPT #253 - Claudio streaming via httpx SSE.
@@ -181,9 +180,6 @@ class ProvidersStreamMixin:
             body["thinking"] = thinking
         else:
             body["temperature"] = temperature
-
-        if business_mode:
-            body["business_mode"] = True
 
         _timeout = timeout_seconds or 600.0
         accumulated = ""
