@@ -495,8 +495,8 @@ async def trigger_deep_pipeline(
     Architectural Map (Sonnet+Thinking) → Cards (Opus/Sonnet/Haiku) →
     Wiki (Opus) → QA (Sonnet+Thinking) → Gap Fill (conditional).
 
-    Optional query param `profile`: 'economy', 'balanced', or 'quality'.
-    If not provided, uses the default profile.
+    Optional query param `profile`: name of the pipeline profile to use.
+    Default: 'economy' (único perfil ativo).
     """
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:

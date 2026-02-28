@@ -133,35 +133,13 @@ ECONOMY_CONFIGS = _derive(QUALITY_CONFIGS, {
     "phase_6":  {"model": "claude-sonnet-4-6", "max_tokens": 8000, "thinking_budget": 5000},
 })
 
-BALANCED_CONFIGS = _derive(QUALITY_CONFIGS, {
-    "phase_2":  {"concurrency": 5},
-    "phase_4b": {"model": "claude-sonnet-4-6", "max_tokens": 16000, "concurrency": 5},
-    "phase_4c": {"model": "claude-haiku-4-5", "max_tokens": 4000, "concurrency": 10},
-    "phase_5b": {"model": "claude-sonnet-4-6", "max_tokens": 32000},
-    "phase_5c": {"model": "claude-sonnet-4-6", "max_tokens": 16000, "concurrency": 5},
-})
-
 PROFILES = [
     {
         "name": "economy",
-        "description": "Custo minimo: Haiku e Sonnet em todas as fases. ~30% do custo do quality. Bom para projetos pequenos ou testes rapidos.",
+        "description": "Custo minimo: Haiku e Sonnet em todas as fases. Perfil unico ativo.",
         "phase_configs": ECONOMY_CONFIGS,
         "quality_threshold": 50,
-        "is_default": False,
-    },
-    {
-        "name": "balanced",
-        "description": "Equilibrio custo/qualidade: Opus para epics, Sonnet para stories e wiki. ~60% do custo do quality.",
-        "phase_configs": BALANCED_CONFIGS,
-        "quality_threshold": 60,
         "is_default": True,
-    },
-    {
-        "name": "quality",
-        "description": "Qualidade maxima: Opus para epics, stories e wiki. Configuracao identica ao Deep Pipeline v2 original. 100% do custo baseline.",
-        "phase_configs": QUALITY_CONFIGS,
-        "quality_threshold": 60,
-        "is_default": False,
     },
 ]
 
@@ -190,8 +168,14 @@ def seed():
                 )
                 db.add(profile)
                 created += 1
+        # Remove deprecated profiles (balanced, quality)
+        removed = db.query(PipelineProfile).filter(
+            PipelineProfile.name.in_(["balanced", "quality"])
+        ).delete(synchronize_session="fetch")
         db.commit()
         print(f"Pipeline profiles seeded: {created} created, {updated} updated")
+        if removed:
+            print(f"  Removed {removed} deprecated profile(s) (balanced/quality)")
     finally:
         db.close()
 

@@ -129,8 +129,8 @@ class DeepPipelineService:
         profile = self.db.query(PipelineProfile).filter(PipelineProfile.is_default == True).first()
         if profile:
             return profile
-        # Try quality as last resort
-        return self.db.query(PipelineProfile).filter(PipelineProfile.name == "quality").first()
+        # Try economy as last resort
+        return self.db.query(PipelineProfile).filter(PipelineProfile.name == "economy").first()
 
     def _get_phase_config(self, phase_key: str, field: str, default=None):
         """Get a config value for a phase from the loaded profile."""
