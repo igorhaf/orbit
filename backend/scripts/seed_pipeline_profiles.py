@@ -1,5 +1,5 @@
 """
-Seed 3 pipeline profiles: economy, balanced, quality.
+Seed pipeline profiles: economy (v2) and economy-v3 (optimized).
 
 Usage:
     cd backend && poetry run python scripts/seed_pipeline_profiles.py
@@ -133,11 +133,32 @@ ECONOMY_CONFIGS = _derive(QUALITY_CONFIGS, {
     "phase_6":  {"model": "claude-sonnet-4-6", "max_tokens": 8000, "thinking_budget": 5000},
 })
 
+# ── v3 Economy: optimized pipeline (-37% tokens) ────────────────────────────
+# Disables: Phase 3 (arch map → local), Phase 4d (subtasks), Phase 5d (flows),
+#           Phase 6 (QA → local heuristics)
+# Keeps full richness: Phase 2 (rules), Phase 4a/4b (epics+stories),
+#                       Phase 5a/5b/5c (wiki)
+
+ECONOMY_V3_CONFIGS = _derive(ECONOMY_CONFIGS, {
+    "phase_3":  {"enabled": False},                    # Arch map built locally
+    "phase_4d": {"enabled": False},                    # No subtasks (mechanical, no rules)
+    "phase_5d": {"enabled": False},                    # No flow pages (redundant with 5c)
+    "phase_6":  {"enabled": False, "thinking_budget": None},  # QA local (heuristic)
+})
+
 PROFILES = [
     {
         "name": "economy",
-        "description": "Custo minimo: Haiku e Sonnet em todas as fases. Perfil unico ativo.",
+        "description": "Custo minimo: Haiku e Sonnet em todas as fases. Pipeline v2 completo.",
         "phase_configs": ECONOMY_CONFIGS,
+        "quality_threshold": 50,
+        "is_default": False,
+    },
+    {
+        "name": "economy-v3",
+        "description": "Pipeline v3 otimizado: -37% tokens sem perda de regras. "
+                       "Desabilita subtasks, flow pages, arch map (local) e QA (local).",
+        "phase_configs": ECONOMY_V3_CONFIGS,
         "quality_threshold": 50,
         "is_default": True,
     },

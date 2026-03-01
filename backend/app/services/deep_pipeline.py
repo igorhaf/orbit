@@ -153,6 +153,10 @@ class DeepPipelineService:
         """Get contract name for a phase from profile config."""
         return self._get_phase_config(phase_key, "contract", default)
 
+    def _is_phase_enabled(self, phase_key: str) -> bool:
+        """Check if a phase is enabled in the current profile."""
+        return self._get_phase_config(phase_key, "enabled", True)
+
     def _load_contract(self, name: str, variables: dict = None) -> tuple[str, str]:
         """Load a contract and render with variables."""
         try:
@@ -365,23 +369,33 @@ class DeepPipelineService:
 
             # Phase 3: Architectural Map (40-45%)
             t0 = _phase_timer()
-            await _progress(3, 0, "Construindo mapa arquitetural com Extended Thinking...")
-            arch_map = await self._phase3_architectural_map(
-                project, domain_rules, file_inventory, run_id
-            )
-            p3_data = {
-                "domains": len(arch_map.get("domains", [])),
-                "cross_domain_flows": len(arch_map.get("cross_domain_flows", [])),
-                "arch_map": arch_map,
-            }
-            results["phase3"] = {"domains": p3_data["domains"], "cross_domain_flows": p3_data["cross_domain_flows"]}
-            phase_scores["phase_3"] = self._compute_phase_score("phase_3", p3_data)
+            if self._is_phase_enabled("phase_3"):
+                await _progress(3, 0, "Construindo mapa arquitetural com Extended Thinking...")
+                arch_map = await self._phase3_architectural_map(
+                    project, domain_rules, file_inventory, run_id
+                )
+                p3_data = {
+                    "domains": len(arch_map.get("domains", [])),
+                    "cross_domain_flows": len(arch_map.get("cross_domain_flows", [])),
+                    "arch_map": arch_map,
+                }
+                results["phase3"] = {"domains": p3_data["domains"], "cross_domain_flows": p3_data["cross_domain_flows"]}
+                phase_scores["phase_3"] = self._compute_phase_score("phase_3", p3_data)
+                # Save to project
+                project.project_architecture = arch_map
+                project.pipeline_version = "v2"
+                self.db.commit()
+                await _progress(3, 100, f"Mapa arquitetural construido (score: {phase_scores['phase_3']})")
+            else:
+                # Build minimal arch_map from domain_rules (no AI call)
+                arch_map = self._build_local_arch_map(domain_rules, file_inventory, project)
+                results["phase3"] = {"domains": len(arch_map.get("domains", [])), "cross_domain_flows": 0, "skipped": True}
+                phase_scores["phase_3"] = 50
+                project.project_architecture = arch_map
+                project.pipeline_version = "v2"
+                self.db.commit()
+                await _progress(3, 100, "Mapa arquitetural construido localmente (fase desabilitada)")
             phase_durations["phase_3"] = int((_phase_timer() - t0) * 1000)
-            # Save to project
-            project.project_architecture = arch_map
-            project.pipeline_version = "v2"
-            self.db.commit()
-            await _progress(3, 100, f"Mapa arquitetural construido (score: {phase_scores['phase_3']})")
 
             # Phase 4: Card Generation (45-70%)
             t0 = _phase_timer()
@@ -407,10 +421,16 @@ class DeepPipelineService:
 
             # Phase 6: Quality Assurance (85-95%)
             t0 = _phase_timer()
-            await _progress(6, 0, "Executando Quality Assurance com Thinking...")
-            qa_result = await self._phase6_quality_assurance(
-                project, arch_map, domain_rules, card_stats, wiki_stats, run_id
-            )
+            if self._is_phase_enabled("phase_6"):
+                await _progress(6, 0, "Executando Quality Assurance com Thinking...")
+                qa_result = await self._phase6_quality_assurance(
+                    project, arch_map, domain_rules, card_stats, wiki_stats, run_id
+                )
+            else:
+                await _progress(6, 0, "Executando Quality Assurance local...")
+                qa_result = self._phase6_local_qa(
+                    domain_rules, card_stats, wiki_stats, run_id, project
+                )
             results["phase6"] = qa_result
             phase_scores["phase_6"] = self._compute_phase_score("phase_6", qa_result)
             phase_durations["phase_6"] = int((_phase_timer() - t0) * 1000)
@@ -1142,44 +1162,47 @@ class DeepPipelineService:
         await progress_cb(4, 70, f"Criadas {stats['tasks']} Tasks. Gerando Subtasks...")
 
         # Phase 4d: Generate Subtasks per Task (Haiku, parallel 10x)
-        subtask_requests = []
-        task_titles_for_subtasks = []
-        for story_title, t in all_tasks:
-            system_prompt, _ = self._load_contract("deep_subtask_decomposition", {
-                "task_json": json.dumps(t, ensure_ascii=False),
-                "story_context": story_title,
-            })
+        if self._is_phase_enabled("phase_4d"):
+            subtask_requests = []
+            task_titles_for_subtasks = []
+            for story_title, t in all_tasks:
+                system_prompt, _ = self._load_contract("deep_subtask_decomposition", {
+                    "task_json": json.dumps(t, ensure_ascii=False),
+                    "story_context": story_title,
+                })
 
-            subtask_requests.append({
-                "model": self._get_model("phase_4d", MODEL_HAIKU),
-                "system_prompt": system_prompt or "Decompose this task into subtasks. Respond with JSON.",
-                "user_prompt": f"Task:\n{json.dumps(t, ensure_ascii=False, indent=2)}\n\nContexto da Story: {story_title}",
-                "max_tokens": self._get_max_tokens("phase_4d", 2000),
-            })
-            task_titles_for_subtasks.append(t.get("title", ""))
+                subtask_requests.append({
+                    "model": self._get_model("phase_4d", MODEL_HAIKU),
+                    "system_prompt": system_prompt or "Decompose this task into subtasks. Respond with JSON.",
+                    "user_prompt": f"Task:\n{json.dumps(t, ensure_ascii=False, indent=2)}\n\nContexto da Story: {story_title}",
+                    "max_tokens": self._get_max_tokens("phase_4d", 2000),
+                })
+                task_titles_for_subtasks.append(t.get("title", ""))
 
-        subtask_results = await self.claudio.call_batch(subtask_requests, max_concurrency=self._get_concurrency("phase_4d", 10))
+            subtask_results = await self.claudio.call_batch(subtask_requests, max_concurrency=self._get_concurrency("phase_4d", 10))
 
-        for i, result in enumerate(subtask_results):
-            if isinstance(result, ClaudioPipelineError):
-                continue
-            parsed = self.claudio.extract_json(result.get("text", ""))
-            if parsed and isinstance(parsed, dict):
-                task_title = task_titles_for_subtasks[i]
-                parent = task_db_map.get(task_title)
-                for st in parsed.get("subtasks", []):
-                    subtask = Task(
-                        project_id=project.id,
-                        title=st.get("title", "Subtask sem titulo"),
-                        description=st.get("description", ""),
-                        item_type=ItemType.SUBTASK,
-                        status=TaskStatus.BACKLOG,
-                        story_points=st.get("story_points", 1),
-                        parent_id=parent.id if parent else None,
-                        labels=st.get("labels", []),
-                    )
-                    self.db.add(subtask)
-                    stats["subtasks"] += 1
+            for i, result in enumerate(subtask_results):
+                if isinstance(result, ClaudioPipelineError):
+                    continue
+                parsed = self.claudio.extract_json(result.get("text", ""))
+                if parsed and isinstance(parsed, dict):
+                    task_title = task_titles_for_subtasks[i]
+                    parent = task_db_map.get(task_title)
+                    for st in parsed.get("subtasks", []):
+                        subtask = Task(
+                            project_id=project.id,
+                            title=st.get("title", "Subtask sem titulo"),
+                            description=st.get("description", ""),
+                            item_type=ItemType.SUBTASK,
+                            status=TaskStatus.BACKLOG,
+                            story_points=st.get("story_points", 1),
+                            parent_id=parent.id if parent else None,
+                            labels=st.get("labels", []),
+                        )
+                        self.db.add(subtask)
+                        stats["subtasks"] += 1
+        else:
+            logger.info("Phase 4d: Subtask generation disabled in profile")
 
         self.db.commit()
         stats["total_cards"] = stats["epics"] + stats["stories"] + stats["tasks"] + stats["subtasks"]
@@ -1309,23 +1332,26 @@ class DeepPipelineService:
                         stats["total_words"] += page.get("word_count", 0)
 
         # Phase 5d: Cross-domain flow pages (Sonnet)
-        await progress_cb(5, 85, "Gerando paginas de fluxos cross-domain...")
-        flow_pages = wiki_plan.get("flow_pages", [])
-        for flow in flow_pages:
-            try:
-                result = await self.claudio.call(
-                    model=self._get_model("phase_5d", MODEL_SONNET),
-                    system_prompt="Gere uma pagina de wiki detalhada para este fluxo cross-domain. Responda com JSON: {\"pages\": [{\"slug\": \"...\", \"title\": \"...\", \"content\": \"markdown...\", \"word_count\": N}]}",
-                    user_prompt=f"Fluxo: {json.dumps(flow, ensure_ascii=False, indent=2)}\n\nMapa: {json.dumps(arch_map, ensure_ascii=False)}",
-                    max_tokens=self._get_max_tokens("phase_5d", 16000),
-                )
-                pages_data = self.claudio.extract_json(result.get("text", ""))
-                if pages_data and isinstance(pages_data, dict):
-                    for page in pages_data.get("pages", []):
-                        self._write_wiki_page(wiki_dir, page)
-                        stats["total_pages"] += 1
-            except ClaudioPipelineError as e:
-                logger.warning(f"Phase 5d: Failed to generate flow page: {e}")
+        if self._is_phase_enabled("phase_5d"):
+            await progress_cb(5, 85, "Gerando paginas de fluxos cross-domain...")
+            flow_pages = wiki_plan.get("flow_pages", [])
+            for flow in flow_pages:
+                try:
+                    result = await self.claudio.call(
+                        model=self._get_model("phase_5d", MODEL_SONNET),
+                        system_prompt="Gere uma pagina de wiki detalhada para este fluxo cross-domain. Responda com JSON: {\"pages\": [{\"slug\": \"...\", \"title\": \"...\", \"content\": \"markdown...\", \"word_count\": N}]}",
+                        user_prompt=f"Fluxo: {json.dumps(flow, ensure_ascii=False, indent=2)}\n\nMapa: {json.dumps(arch_map, ensure_ascii=False)}",
+                        max_tokens=self._get_max_tokens("phase_5d", 16000),
+                    )
+                    pages_data = self.claudio.extract_json(result.get("text", ""))
+                    if pages_data and isinstance(pages_data, dict):
+                        for page in pages_data.get("pages", []):
+                            self._write_wiki_page(wiki_dir, page)
+                            stats["total_pages"] += 1
+                except ClaudioPipelineError as e:
+                    logger.warning(f"Phase 5d: Failed to generate flow page: {e}")
+        else:
+            logger.info("Phase 5d: Flow page generation disabled in profile")
 
         self.db.commit()
         logger.info(f"Phase 5: Generated {stats['total_pages']} wiki pages")
@@ -1469,6 +1495,134 @@ class DeepPipelineService:
         logger.info(f"Phase 7: Gap filling identified {len(fixed['domains_reprocessed'])} domains, "
                      f"{len(fixed['cards_regenerated'])} cards, {len(fixed['wiki_regenerated'])} wiki pages for review")
         return fixed
+
+    # =========================================================================
+    # LOCAL ALTERNATIVES (no AI calls)
+    # =========================================================================
+
+    def _build_local_arch_map(
+        self,
+        domain_rules: Dict[str, Dict],
+        file_inventory: List[Dict],
+        project: Project,
+    ) -> Dict:
+        """Build a minimal architectural map locally without AI calls.
+
+        Used when phase_3 is disabled — derives structure from domain_rules
+        and file_inventory metadata.
+        """
+        # Count languages from inventory
+        lang_counts: Dict[str, int] = defaultdict(int)
+        file_type_counts: Dict[str, int] = defaultdict(int)
+        for f in file_inventory:
+            lang = f.get("language", "unknown")
+            lang_counts[lang] += 1
+            ft = f.get("file_type", "other")
+            file_type_counts[ft] += 1
+
+        # Build domain list from domain_rules keys
+        domains = []
+        for domain_name, data in domain_rules.items():
+            rules = data.get("consolidated_rules", [])
+            entities = data.get("domain_entities", [])
+            domains.append({
+                "name": domain_name,
+                "description": data.get("domain_summary", f"Dominio {domain_name}"),
+                "entities": entities,
+                "rule_count": len(rules),
+                "complexity": "high" if len(rules) > 15 else ("medium" if len(rules) > 5 else "low"),
+            })
+
+        return {
+            "domains": domains,
+            "cross_domain_flows": [],
+            "tech_stack": {
+                "languages": dict(lang_counts),
+                "file_types": dict(file_type_counts),
+            },
+            "patterns": [],
+            "project_summary": f"Projeto {project.name} com {len(domains)} dominios e {len(file_inventory)} arquivos",
+        }
+
+    def _phase6_local_qa(
+        self,
+        domain_rules: Dict[str, Dict],
+        card_stats: Dict,
+        wiki_stats: Dict,
+        run_id: UUID,
+        project: "Project",
+    ) -> Dict:
+        """Run quality assurance locally using heuristics (no AI call).
+
+        Scores based on the same criteria the AI contract uses:
+        - rule_quality: density and evidence presence
+        - card_coverage: epics/stories/tasks generated
+        - wiki_completeness: pages generated
+        """
+        total_rules = sum(len(d.get("consolidated_rules", [])) for d in domain_rules.values())
+        total_domains = len(domain_rules)
+        domains_with_gaps = sum(1 for d in domain_rules.values() if d.get("detected_gaps"))
+
+        # Rule quality: 0-100
+        if total_domains == 0:
+            rule_quality = 0
+        else:
+            rules_per_domain = total_rules / total_domains
+            rule_quality = min(100, int(rules_per_domain * 8))  # 12+ rules/domain = 100
+
+        # Card coverage: 0-100
+        epics = card_stats.get("epics", 0)
+        stories = card_stats.get("stories", 0)
+        tasks = card_stats.get("tasks", 0)
+        if epics == 0:
+            card_coverage = 0
+        else:
+            epic_ratio = min(1.0, epics / max(total_domains, 1))  # 1 epic per domain
+            story_ratio = min(1.0, stories / max(epics * 2, 1))  # 2+ stories per epic
+            task_ratio = min(1.0, tasks / max(stories * 2, 1))  # 2+ tasks per story
+            card_coverage = int((epic_ratio * 40 + story_ratio * 35 + task_ratio * 25))
+
+        # Wiki completeness: 0-100
+        wiki_pages = wiki_stats.get("total_pages", 0)
+        wiki_completeness = min(100, int(wiki_pages / max(total_domains, 1) * 50))
+
+        # Overall score
+        overall = int(rule_quality * 0.4 + card_coverage * 0.35 + wiki_completeness * 0.25)
+
+        issues = []
+        if rule_quality < 50:
+            issues.append({"severity": "high", "description": f"Baixa densidade de regras: {total_rules} regras em {total_domains} dominios"})
+        if domains_with_gaps > 0:
+            issues.append({"severity": "medium", "description": f"{domains_with_gaps} dominio(s) com gaps detectados"})
+        if epics < total_domains:
+            issues.append({"severity": "medium", "description": f"Cobertura parcial: {epics} epics para {total_domains} dominios"})
+        if wiki_pages < total_domains:
+            issues.append({"severity": "medium", "description": f"Wiki incompleta: {wiki_pages} paginas para {total_domains} dominios"})
+
+        qa_result = {
+            "overall_score": overall,
+            "rule_quality": rule_quality,
+            "card_coverage": card_coverage,
+            "wiki_completeness": wiki_completeness,
+            "issues": issues,
+            "summary": f"QA local: {overall}/100 (regras={rule_quality}, cards={card_coverage}, wiki={wiki_completeness})",
+            "local_qa": True,
+        }
+
+        # Store artifact
+        artifact = PipelineArtifact(
+            project_id=project.id,
+            artifact_type=ArtifactType.quality_report,
+            phase=6,
+            content=qa_result,
+            quality_score=overall,
+            run_id=run_id,
+        )
+        self.db.add(artifact)
+        self.db.commit()
+
+        logger.info(f"Phase 6 (local): QA complete. Score: {overall}/100")
+        return qa_result
 
     # =========================================================================
     # HELPERS
