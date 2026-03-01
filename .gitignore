@@ -158,5 +158,14 @@ junit.xml
 frontend/.next
 frontend/node_modules
 
+# Satellite - AI-generated data (pipeline logs, results)
+# Keep .gitkeep files, ignore actual generated content
+satellite/memory/*
+satellite/knowledge/results/*
+satellite/knowledge/wiki/*
+!satellite/memory/.gitkeep
+!satellite/knowledge/results/.gitkeep
+!satellite/knowledge/wiki/.gitkeep
+
 # Provisioned projects (test projects only)
 /projects/

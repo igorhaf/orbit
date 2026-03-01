@@ -768,7 +768,7 @@ async def delete_project(
     project_name = project.name or str(project_id)[:8]
     logger.info(f"Deleting project '{project_name}' ({project_id}) - full cascade cleanup")
 
-    # Step 1: Cancel and delete ALL async_jobs for this project
+    # Step 1: Cancel and delete ALL async_jobs + job_log_entries for this project
     try:
         # Mark running/pending jobs as cancelled so they won't re-queue
         active_jobs = db.query(AsyncJob).filter(
@@ -799,6 +799,18 @@ async def delete_project(
                         }))
                     except Exception:
                         pass
+
+        # Delete job_log_entries explicitly before jobs (async_jobs has no FK to projects)
+        from app.models.job_log_entry import JobLogEntry
+        job_ids = [j.id for j in db.query(AsyncJob.id).filter(
+            AsyncJob.project_id == project_id
+        ).all()]
+        if job_ids:
+            deleted_logs = db.query(JobLogEntry).filter(
+                JobLogEntry.job_id.in_(job_ids)
+            ).delete(synchronize_session='fetch')
+            if deleted_logs:
+                logger.info(f"Deleted {deleted_logs} job_log_entries for project {project_id}")
 
         # Delete ALL jobs for this project (completed, failed, etc.)
         deleted_jobs = db.query(AsyncJob).filter(
@@ -864,6 +876,20 @@ async def delete_project(
                     f"Wiki cleanup: {cleaned_files} ai_generated files removed, "
                     f"{preserved_files} human-edited files preserved (REGRA #0)"
                 )
+
+    # Step 5b: Clean up satellite/memory/ files (pipeline execution logs)
+    if project.code_path:
+        import shutil
+        for subdir in ["memory", os.path.join("knowledge", "results")]:
+            sat_dir = os.path.join(project.code_path, "satellite", subdir)
+            if os.path.isdir(sat_dir):
+                try:
+                    file_count = sum(1 for f in os.listdir(sat_dir) if os.path.isfile(os.path.join(sat_dir, f)))
+                    shutil.rmtree(sat_dir)
+                    os.makedirs(sat_dir, exist_ok=True)  # Recreate empty dir
+                    logger.info(f"Cleaned satellite/{subdir}/: {file_count} files removed")
+                except Exception as e:
+                    logger.warning(f"Failed to clean satellite/{subdir}/: {e}")
 
     logger.info(
         f"Project '{project_name}' disk cleanup complete "
