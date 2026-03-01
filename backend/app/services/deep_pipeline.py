@@ -33,6 +33,7 @@ from app.models.pipeline_profile import PipelineProfile
 from app.models.pipeline_run import PipelineRun
 from app.models.project import Project
 from app.models.task import Task, ItemType, TaskStatus, PriorityLevel
+from app.models.wiki_page import WikiPage
 from app.services.claudio_pipeline import (
     ClaudioPipelineService,
     ClaudioPipelineError,
@@ -124,6 +125,16 @@ class DeepPipelineService:
             self.claudio = OllamaPipelineService()
         else:
             self.claudio = ClaudioPipelineService()
+
+    @staticmethod
+    def _model_label(model_name: str) -> str:
+        """Extract a human-readable label from model name (works for both Claude and Ollama).
+        'claude-sonnet-4-6' → 'Sonnet', 'qwen3:14b' → 'Qwen3', 'gemma2:9b' → 'Gemma2'
+        """
+        if "-" in model_name and model_name.startswith("claude"):
+            return model_name.split("-")[1].title()
+        # Ollama format: "qwen3:14b" → "qwen3" → "Qwen3"
+        return model_name.split(":")[0].title()
 
     def _detect_provider(self) -> str:
         """Detect provider from phase_configs. If any phase has provider='ollama', use Ollama."""
@@ -240,6 +251,58 @@ class DeepPipelineService:
 
         return 50  # unknown phase
 
+    def _cleanup_previous_runs(self, project_id: UUID, current_run_id: UUID):
+        """Remove AI-generated data from previous pipeline runs before starting a new one.
+        REGRA #0: human-edited data (description_edited_by='human', source='manual'/'enrichment') is NEVER deleted.
+        """
+        # Delete pipeline-generated tasks (not human-edited)
+        old_tasks = self.db.query(Task).filter(
+            Task.project_id == project_id,
+            Task.pipeline_run_id.isnot(None),
+            Task.pipeline_run_id != current_run_id,
+        ).all()
+        human_preserved = 0
+        deleted_tasks = 0
+        for t in old_tasks:
+            if t.description_edited_by == "human":
+                human_preserved += 1
+                continue
+            self.db.delete(t)
+            deleted_tasks += 1
+
+        # Delete pipeline-generated wiki pages (not human-edited)
+        old_wiki = self.db.query(WikiPage).filter(
+            WikiPage.project_id == project_id,
+            WikiPage.pipeline_run_id.isnot(None),
+            WikiPage.pipeline_run_id != current_run_id,
+            WikiPage.source == "ai_generated",
+        ).all()
+        deleted_wiki = 0
+        for w in old_wiki:
+            self.db.delete(w)
+            deleted_wiki += 1
+
+        # Delete old pipeline artifacts
+        deleted_artifacts = self.db.query(PipelineArtifact).filter(
+            PipelineArtifact.project_id == project_id,
+            PipelineArtifact.run_id != current_run_id,
+        ).delete(synchronize_session="fetch")
+
+        # Delete old pipeline runs (keep current)
+        deleted_runs = self.db.query(PipelineRun).filter(
+            PipelineRun.project_id == project_id,
+            PipelineRun.id != current_run_id,
+        ).delete(synchronize_session="fetch")
+
+        self.db.commit()
+
+        if deleted_tasks or deleted_wiki or deleted_artifacts or deleted_runs:
+            logger.info(
+                f"Pre-run cleanup: {deleted_tasks} tasks, {deleted_wiki} wiki pages, "
+                f"{deleted_artifacts} artifacts, {deleted_runs} old runs deleted. "
+                f"{human_preserved} human-edited tasks preserved (REGRA #0)."
+            )
+
     def _apply_reinforcement(self, project_id: UUID) -> dict:
         """Check previous run scores and apply reinforcement adjustments."""
         prev_run = (
@@ -316,6 +379,11 @@ class DeepPipelineService:
         self.db.add(pipeline_run)
         self.db.commit()
 
+        # ── Cleanup data from previous pipeline runs ────────────────────
+        # Removes AI-generated cards and wiki pages from old runs.
+        # REGRA #0: human-edited data is NEVER deleted.
+        self._cleanup_previous_runs(project.id, run_id)
+
         # ── Apply reinforcement from previous run ────────────────────────
         reinforcement = self._apply_reinforcement(project.id)
         if reinforcement:
@@ -364,7 +432,7 @@ class DeepPipelineService:
             # Phase 1: Per-file Analysis (5-25%)
             t0 = _phase_timer()
             model_1 = self._get_model("phase_1", MODEL_HAIKU)
-            await _progress(1, 0, f"Analisando {len(file_inventory)} arquivos com {model_1.split('-')[1].title()}...")
+            await _progress(1, 0, f"Analisando {len(file_inventory)} arquivos com {self._model_label(model_1)}...")
             file_analyses = await self._phase1_file_analysis(
                 project, file_inventory, run_id, _progress
             )
@@ -381,7 +449,7 @@ class DeepPipelineService:
             # Phase 2: Cross-file Rule Synthesis (25-40%)
             t0 = _phase_timer()
             model_2 = self._get_model("phase_2", MODEL_SONNET)
-            await _progress(2, 0, f"Sintetizando regras cross-file com {model_2.split('-')[1].title()}...")
+            await _progress(2, 0, f"Sintetizando regras cross-file com {self._model_label(model_2)}...")
             domain_rules = await self._phase2_rule_synthesis(
                 project, file_analyses, run_id, _progress
             )
@@ -1028,9 +1096,11 @@ class DeepPipelineService:
 
         stats = {"epics": 0, "stories": 0, "tasks": 0, "subtasks": 0, "total_cards": 0}
 
-        # Phase 4a: Generate ALL epics
-        p4a_label = self._get_model("phase_4a", MODEL_OPUS).split("-")[1].title()
-        await progress_cb(4, 5, f"Gerando Epics com {p4a_label}...")
+        # Phase 4a: Generate epics (batched by domain groups for scalability)
+        DOMAIN_BATCH_SIZE = 20
+        p4a_label = self._model_label(self._get_model("phase_4a", MODEL_OPUS))
+        p4a_model = self._get_model("phase_4a", MODEL_OPUS)
+        p4a_max_tokens = self._get_max_tokens("phase_4a", 64000)
 
         all_rules_summary = {}
         for domain, data in domain_rules.items():
@@ -1039,31 +1109,68 @@ class DeepPipelineService:
                 "entities": data.get("domain_entities", []),
             }
 
-        system_prompt, _ = self._load_contract("deep_epic_generation", {
-            "architectural_map_json": json.dumps(arch_map, ensure_ascii=False),
-            "all_rules_summary": json.dumps(all_rules_summary, ensure_ascii=False),
-            "project_name": project.name,
-        })
+        domain_list = list(domain_rules.keys())
+        batches = [domain_list[i:i + DOMAIN_BATCH_SIZE] for i in range(0, len(domain_list), DOMAIN_BATCH_SIZE)]
+        total_batches = len(batches)
+        await progress_cb(4, 5, f"Gerando Epics com {p4a_label} ({total_batches} batch{'es' if total_batches > 1 else ''}, {len(domain_list)} domínios)...")
 
-        p4a_model = self._get_model("phase_4a", MODEL_OPUS)
-        p4a_max_tokens = self._get_max_tokens("phase_4a", 64000)
+        epics = []
+        for batch_idx, batch_domains in enumerate(batches):
+            batch_arch = {d: arch_map.get(d, {}) for d in batch_domains if d in arch_map}
+            batch_rules = {d: all_rules_summary[d] for d in batch_domains if d in all_rules_summary}
+            # Include project_summary for context in every batch
+            if "project_summary" in arch_map:
+                batch_arch["project_summary"] = arch_map["project_summary"]
 
-        epic_result = await self.claudio.call(
-            model=p4a_model,
-            system_prompt=system_prompt or "Generate project epics. Respond with JSON.",
-            user_prompt=f"Projeto: {project.name}\n\nMapa Arquitetural:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}\n\nRegras:\n{json.dumps(all_rules_summary, ensure_ascii=False, indent=2)}",
-            max_tokens=p4a_max_tokens,
-            **self._ollama_kwargs("phase_4a"),
-        )
+            system_prompt, _ = self._load_contract("deep_epic_generation", {
+                "architectural_map_json": json.dumps(batch_arch, ensure_ascii=False),
+                "all_rules_summary": json.dumps(batch_rules, ensure_ascii=False),
+                "project_name": project.name,
+            })
 
-        epics_data = self.claudio.extract_json(epic_result.get("text", ""))
-        epics = epics_data.get("epics", []) if epics_data else []
+            batch_label = f"batch {batch_idx + 1}/{total_batches}"
+            epic_result = await self.claudio.call(
+                model=p4a_model,
+                system_prompt=system_prompt or "Generate project epics. Respond with JSON.",
+                user_prompt=f"Projeto: {project.name}\n\nDomínios ({batch_label}):\n{json.dumps(batch_arch, ensure_ascii=False)}\n\nRegras:\n{json.dumps(batch_rules, ensure_ascii=False)}",
+                max_tokens=p4a_max_tokens,
+                **self._ollama_kwargs("phase_4a"),
+            )
+
+            batch_epics_data = self.claudio.extract_json(epic_result.get("text", ""))
+            batch_epics = batch_epics_data.get("epics", []) if batch_epics_data else []
+            epics.extend(batch_epics)
+            logger.info(f"[Phase 4a] {batch_label}: {len(batch_epics)} epics gerados")
+
+            pct = 5 + int(15 * (batch_idx + 1) / total_batches)
+            await progress_cb(4, pct, f"Epics: {batch_label} — {len(epics)} total até agora")
+
+        # Deduplicate epics with very similar titles
+        seen_titles = {}
+        unique_epics = []
+        for epic in epics:
+            title = epic.get("title", "").strip().lower()
+            is_dup = False
+            for seen in seen_titles:
+                # Simple substring/prefix dedup (>80% overlap)
+                shorter, longer = sorted([title, seen], key=len)
+                if shorter and longer.startswith(shorter[:len(shorter)*4//5]):
+                    is_dup = True
+                    break
+            if not is_dup:
+                seen_titles[title] = True
+                unique_epics.append(epic)
+
+        if len(unique_epics) < len(epics):
+            logger.info(f"[Phase 4a] Deduplicação: {len(epics)} → {len(unique_epics)} epics únicos")
+        epics = unique_epics
 
         # Create Epic cards in database
         epic_db_map = {}  # title -> Task object
         for epic in epics:
             task = Task(
                 project_id=project.id,
+                pipeline_run_id=run_id,
                 title=epic.get("title", "Epic sem titulo"),
                 description=epic.get("description", ""),
                 item_type=ItemType.EPIC,
@@ -1122,6 +1229,7 @@ class DeepPipelineService:
             parent = epic_db_map.get(epic_title)
             task = Task(
                 project_id=project.id,
+                pipeline_run_id=run_id,
                 title=story.get("title", "Story sem titulo"),
                 description=story.get("description", ""),
                 item_type=ItemType.STORY,
@@ -1179,6 +1287,7 @@ class DeepPipelineService:
             parent = story_db_map.get(story_title)
             task = Task(
                 project_id=project.id,
+                pipeline_run_id=run_id,
                 title=t.get("title", "Task sem titulo"),
                 description=t.get("description", ""),
                 item_type=ItemType.TASK,
@@ -1229,6 +1338,7 @@ class DeepPipelineService:
                     for st in parsed.get("subtasks", []):
                         subtask = Task(
                             project_id=project.id,
+                            pipeline_run_id=run_id,
                             title=st.get("title", "Subtask sem titulo"),
                             description=st.get("description", ""),
                             item_type=ItemType.SUBTASK,
@@ -1331,7 +1441,7 @@ class DeepPipelineService:
             pages_data = self.claudio.extract_json(overview_result.get("text", ""))
             if pages_data and isinstance(pages_data, dict):
                 for page in pages_data.get("pages", []):
-                    self._write_wiki_page(wiki_dir, page)
+                    self._write_wiki_page(wiki_dir, page, project_id=project.id, run_id=run_id)
                     stats["total_pages"] += 1
                     stats["total_words"] += page.get("word_count", 0)
 
@@ -1368,7 +1478,7 @@ class DeepPipelineService:
                 pages_data = self.claudio.extract_json(result.get("text", ""))
                 if pages_data and isinstance(pages_data, dict):
                     for page in pages_data.get("pages", []):
-                        self._write_wiki_page(wiki_dir, page)
+                        self._write_wiki_page(wiki_dir, page, project_id=project.id, run_id=run_id)
                         stats["total_pages"] += 1
                         stats["total_words"] += page.get("word_count", 0)
 
@@ -1388,7 +1498,7 @@ class DeepPipelineService:
                     pages_data = self.claudio.extract_json(result.get("text", ""))
                     if pages_data and isinstance(pages_data, dict):
                         for page in pages_data.get("pages", []):
-                            self._write_wiki_page(wiki_dir, page)
+                            self._write_wiki_page(wiki_dir, page, project_id=project.id, run_id=run_id)
                             stats["total_pages"] += 1
                 except ClaudioPipelineError as e:
                     logger.warning(f"Phase 5d: Failed to generate flow page: {e}")
@@ -1399,8 +1509,8 @@ class DeepPipelineService:
         logger.info(f"Phase 5: Generated {stats['total_pages']} wiki pages")
         return stats
 
-    def _write_wiki_page(self, wiki_dir: str, page_data: Dict):
-        """Write a wiki page to the filesystem with YAML front matter."""
+    def _write_wiki_page(self, wiki_dir: str, page_data: Dict, project_id: UUID = None, run_id: UUID = None):
+        """Write a wiki page to filesystem + database with YAML front matter."""
         slug = page_data.get("slug", "unknown")
         title = page_data.get("title", "Sem titulo")
         content = page_data.get("content", "")
@@ -1428,8 +1538,41 @@ class DeepPipelineService:
             except Exception:
                 pass
 
+        # Also check DB for human-edited page (REGRA #0)
+        if project_id:
+            existing_db = self.db.query(WikiPage).filter(
+                WikiPage.project_id == project_id,
+                WikiPage.slug == slug,
+                WikiPage.source.in_(["manual", "enrichment"]),
+            ).first()
+            if existing_db:
+                logger.info(f"Skipping wiki page '{slug}' - human-edited in DB (source: {existing_db.source})")
+                return
+
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(front_matter + content)
+
+        # Create/update WikiPage record in database
+        if project_id:
+            db_page = self.db.query(WikiPage).filter(
+                WikiPage.project_id == project_id,
+                WikiPage.slug == slug,
+            ).first()
+            if db_page:
+                db_page.title = title
+                db_page.content = content
+                db_page.source = "ai_generated"
+                db_page.pipeline_run_id = run_id
+            else:
+                db_page = WikiPage(
+                    project_id=project_id,
+                    pipeline_run_id=run_id,
+                    slug=slug,
+                    title=title,
+                    content=content,
+                    source="ai_generated",
+                )
+                self.db.add(db_page)
 
     # =========================================================================
     # PHASE 6: QUALITY ASSURANCE (Sonnet + Extended Thinking)

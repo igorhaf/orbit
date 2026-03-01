@@ -230,6 +230,15 @@ class Task(Base):
     blocked_reason = Column(String(500), nullable=True)  # Why task is blocked
     pending_modification = Column(JSON, nullable=True, default=None)  # Proposed changes
 
+    # Pipeline run traceability — links task to the pipeline run that created it
+    # NULL for manually-created tasks or tasks from interviews
+    pipeline_run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("pipeline_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
     # PROMPT #230 Phase 5 - Batch source tracking
     # Tracks which pipeline batch created/modified this card
     # Example: {"batch_number": 3, "files_processed": 15, "layer": "logic"}

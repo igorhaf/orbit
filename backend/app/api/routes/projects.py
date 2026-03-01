@@ -9,6 +9,7 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 from pathlib import Path
+import os
 import re
 import logging
 
@@ -837,13 +838,36 @@ async def delete_project(
     except Exception as e:
         logger.warning(f"Failed to delete prompt_templates: {e}")
 
-    # Step 5: NEVER delete code_path or satellite/ from disk.
-    # code_path belongs to the user — ORBIT does not own it.
-    # satellite/ is a sacred knowledge base that must survive project deletion.
-    # Only database records are removed; all files on disk are preserved.
+    # Step 5: Clean up AI-generated wiki .md files from filesystem.
+    # REGRA #0: Preserve human-edited pages (source: manual/enrichment).
+    if project.code_path:
+        wiki_dir = os.path.join(project.code_path, "satellite", "knowledge", "wiki")
+        if os.path.isdir(wiki_dir):
+            cleaned_files = 0
+            preserved_files = 0
+            for fname in os.listdir(wiki_dir):
+                if not fname.endswith(".md"):
+                    continue
+                fpath = os.path.join(wiki_dir, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        header = f.read(500)
+                    if "source: manual" in header or "source: enrichment" in header:
+                        preserved_files += 1
+                        continue
+                    os.remove(fpath)
+                    cleaned_files += 1
+                except Exception:
+                    pass
+            if cleaned_files or preserved_files:
+                logger.info(
+                    f"Wiki cleanup: {cleaned_files} ai_generated files removed, "
+                    f"{preserved_files} human-edited files preserved (REGRA #0)"
+                )
+
     logger.info(
-        f"Project '{project_name}' disk files preserved "
-        f"(code_path={project.code_path}, satellite/ protected)"
+        f"Project '{project_name}' disk cleanup complete "
+        f"(code_path={project.code_path})"
     )
 
     # Step 6: Delete the project (CASCADE handles interviews, tasks, wiki, specs, etc.)

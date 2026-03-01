@@ -56,6 +56,15 @@ class WikiPage(Base):
     order_index = Column(Integer, nullable=False, default=0)
     source = Column(String(50), nullable=False, default="manual")
 
+    # Pipeline run traceability — links wiki page to the pipeline run that created it
+    # NULL for manually-created pages
+    pipeline_run_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("pipeline_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
     # PROMPT #230 Phase 5 - Batch source tracking
     # Tracks which pipeline batch created/modified this page
     # Example: {"batch_number": 2, "rules_added": 5, "domain": "Pagamentos"}

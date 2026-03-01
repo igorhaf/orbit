@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 # Re-use ClaudioPipelineError for compatibility with deep_pipeline.py error handlers
 OllamaPipelineError = ClaudioPipelineError
 
-# Ollama defaults
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_DEFAULT_TIMEOUT = 600  # 10 min — local models are slower
+# Ollama defaults — OLLAMA_HOST (set in .env) takes priority, fallback to OLLAMA_BASE_URL
+OLLAMA_BASE_URL = os.getenv("OLLAMA_HOST") or os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_DEFAULT_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "600"))  # 10 min — local models are slower
 OLLAMA_MAX_RETRIES = 3
 
 
