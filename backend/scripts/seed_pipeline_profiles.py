@@ -1,5 +1,5 @@
 """
-Seed pipeline profiles: economy (v2) and economy-v3 (optimized).
+Seed pipeline profiles: economy, economy-v3, and local-ollama.
 
 Usage:
     cd backend && poetry run python scripts/seed_pipeline_profiles.py
@@ -146,6 +146,151 @@ ECONOMY_V3_CONFIGS = _derive(ECONOMY_CONFIGS, {
     "phase_6":  {"enabled": False, "thinking_budget": None},  # QA local (heuristic)
 })
 
+# ── Local Ollama: 100% local inference, zero API cost ────────────────────────
+# All phases enabled. 14B models (max for 12GB VRAM).
+# qwen2.5-coder:14b (Phase 1: code specialist)
+# qwen3:14b (Phases 2-5d: reasoning/writing)
+# gemma2:9b (Phase 6: QA cross-validation — different model family)
+
+LOCAL_OLLAMA_CONFIGS = {
+    "phase_0": {"enabled": True, "provider": "ollama"},
+    "phase_1": {
+        "provider": "ollama",
+        "model": "qwen2.5-coder:14b",
+        "max_tokens": 2000,
+        "concurrency": 1,
+        "contract": "deep_file_analysis",
+        "temperature": 0.1,
+        "num_ctx": 16384,
+        "keep_alive": "0",
+        "enabled": True,
+    },
+    "phase_2": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 8000,
+        "concurrency": 1,
+        "contract": "deep_rule_synthesis",
+        "temperature": 0.2,
+        "num_ctx": 32768,
+        "keep_alive": "5m",
+        "multi_turn_threshold": 30,
+        "enabled": True,
+    },
+    "phase_3": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 16000,
+        "concurrency": 1,
+        "contract": "deep_architectural_map",
+        "temperature": 0.2,
+        "num_ctx": 32768,
+        "thinking_budget": None,
+        "keep_alive": "5m",
+        "enabled": True,
+    },
+    "phase_4a": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 16000,
+        "concurrency": 1,
+        "contract": "deep_epic_generation",
+        "temperature": 0.3,
+        "num_ctx": 32768,
+        "keep_alive": "5m",
+        "enabled": True,
+    },
+    "phase_4b": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 8000,
+        "concurrency": 1,
+        "contract": "deep_story_decomposition",
+        "temperature": 0.2,
+        "num_ctx": 32768,
+        "keep_alive": "5m",
+        "enabled": True,
+    },
+    "phase_4c": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 4000,
+        "concurrency": 1,
+        "contract": "deep_task_decomposition",
+        "temperature": 0.1,
+        "num_ctx": 16384,
+        "keep_alive": "5m",
+        "enabled": True,
+    },
+    "phase_4d": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 1000,
+        "concurrency": 1,
+        "contract": "deep_subtask_decomposition",
+        "temperature": 0.1,
+        "num_ctx": 8192,
+        "keep_alive": "5m",
+        "enabled": True,
+    },
+    "phase_5a": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 4000,
+        "concurrency": 1,
+        "contract": "deep_wiki_structure",
+        "temperature": 0.1,
+        "num_ctx": 16384,
+        "keep_alive": "5m",
+        "enabled": True,
+    },
+    "phase_5b": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 16000,
+        "concurrency": 1,
+        "contract": "deep_wiki_overview",
+        "temperature": 0.4,
+        "num_ctx": 32768,
+        "keep_alive": "5m",
+        "enabled": True,
+    },
+    "phase_5c": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 8000,
+        "concurrency": 1,
+        "contract": "deep_wiki_domain",
+        "temperature": 0.3,
+        "num_ctx": 32768,
+        "keep_alive": "5m",
+        "enabled": True,
+    },
+    "phase_5d": {
+        "provider": "ollama",
+        "model": "qwen3:14b",
+        "max_tokens": 8000,
+        "concurrency": 1,
+        "contract": None,
+        "temperature": 0.3,
+        "num_ctx": 16384,
+        "keep_alive": "0",
+        "enabled": True,
+    },
+    "phase_6": {
+        "provider": "ollama",
+        "model": "gemma2:9b",
+        "max_tokens": 8000,
+        "concurrency": 1,
+        "contract": "deep_quality_review",
+        "temperature": 0.1,
+        "num_ctx": 8192,
+        "thinking_budget": None,
+        "keep_alive": "0",
+        "enabled": True,
+    },
+}
+
 PROFILES = [
     {
         "name": "economy",
@@ -161,6 +306,15 @@ PROFILES = [
         "phase_configs": ECONOMY_V3_CONFIGS,
         "quality_threshold": 50,
         "is_default": True,
+    },
+    {
+        "name": "local-ollama",
+        "description": "Pipeline 100% local via Ollama. Custo zero de API. "
+                       "qwen2.5-coder:14b (code) + qwen3:14b (reasoning) + gemma2:9b (QA). "
+                       "Requer: 12GB VRAM, 32GB RAM, Ollama rodando.",
+        "phase_configs": LOCAL_OLLAMA_CONFIGS,
+        "quality_threshold": 40,
+        "is_default": False,
     },
 ]
 

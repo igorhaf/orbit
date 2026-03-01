@@ -109,14 +109,28 @@ IMPORT_PATTERNS = [
 
 
 class DeepPipelineService:
-    """Orchestrates the 7-phase deep pipeline using Claudio."""
+    """Orchestrates the 7-phase deep pipeline using Claudio or Ollama."""
 
     def __init__(self, db: Session, profile_name: str = None):
         self.db = db
-        self.claudio = ClaudioPipelineService()
         self._contract_loader = ContractLoader(db)
         self._profile = self._load_profile(profile_name)
         self._phase_configs = self._profile.phase_configs if self._profile else {}
+
+        # ── Provider dispatch: profile determines Claudio vs Ollama ────
+        self._provider = self._detect_provider()
+        if self._provider == "ollama":
+            from app.services.ollama_pipeline import OllamaPipelineService
+            self.claudio = OllamaPipelineService()
+        else:
+            self.claudio = ClaudioPipelineService()
+
+    def _detect_provider(self) -> str:
+        """Detect provider from phase_configs. If any phase has provider='ollama', use Ollama."""
+        for phase_key, cfg in self._phase_configs.items():
+            if isinstance(cfg, dict) and cfg.get("provider") == "ollama":
+                return "ollama"
+        return "claudio"
 
     def _load_profile(self, profile_name: str = None) -> Optional[PipelineProfile]:
         """Load a named profile or the default one."""
@@ -156,6 +170,16 @@ class DeepPipelineService:
     def _is_phase_enabled(self, phase_key: str) -> bool:
         """Check if a phase is enabled in the current profile."""
         return self._get_phase_config(phase_key, "enabled", True)
+
+    def _ollama_kwargs(self, phase_key: str) -> dict:
+        """Build Ollama-specific kwargs for a phase call. Empty dict for Claudio."""
+        if self._provider != "ollama":
+            return {}
+        return {
+            "temperature": self._get_phase_config(phase_key, "temperature", 0.1),
+            "num_ctx": self._get_phase_config(phase_key, "num_ctx", 16384),
+            "keep_alive": self._get_phase_config(phase_key, "keep_alive", "5m"),
+        }
 
     def _load_contract(self, name: str, variables: dict = None) -> tuple[str, str]:
         """Load a contract and render with variables."""
@@ -308,15 +332,16 @@ class DeepPipelineService:
                 except Exception:
                     pass
 
-        # Check Claudio health
+        # Check AI service health (Claudio or Ollama)
         healthy = await self.claudio.health_check()
         if not healthy:
+            svc_name = "Ollama" if self._provider == "ollama" else "Claudio"
             pipeline_run.status = "failed"
-            pipeline_run.error = f"Claudio not reachable at {self.claudio.base_url}"
+            pipeline_run.error = f"{svc_name} not reachable at {self.claudio.base_url}"
             pipeline_run.completed_at = datetime.utcnow()
             self.db.commit()
             raise ClaudioPipelineError(
-                f"Claudio is not reachable at {self.claudio.base_url}. Start it first."
+                f"{svc_name} is not reachable at {self.claudio.base_url}. Start it first."
             )
 
         results = {}
@@ -696,6 +721,7 @@ class DeepPipelineService:
         p1_max_tokens = self._get_max_tokens("phase_1", 4000)
         p1_concurrency = self._get_concurrency("phase_1", 10)
 
+        p1_ollama = self._ollama_kwargs("phase_1")
         requests = []
         for item in inventory:
             user_prompt = f"Arquivo: {item['path']}\n\nCodigo:\n{item['content']}"
@@ -704,6 +730,7 @@ class DeepPipelineService:
                 "system_prompt": system_prompt,
                 "user_prompt": user_prompt,
                 "max_tokens": p1_max_tokens,
+                **p1_ollama,
             })
 
         # Execute in parallel batches
@@ -776,6 +803,7 @@ class DeepPipelineService:
 
             user_prompt = f"Dominio: {domain}\n\nAnalises individuais dos arquivos:\n{json.dumps(analyses_summary, ensure_ascii=False, indent=2)}"
 
+            p2_ollama = self._ollama_kwargs("phase_2")
             try:
                 result = await self.claudio.call(
                     model=p2_model,
@@ -783,6 +811,7 @@ class DeepPipelineService:
                     user_prompt=user_prompt,
                     session_key=session_key,
                     max_tokens=p2_max_tokens,
+                    **p2_ollama,
                 )
 
                 parsed = self.claudio.extract_json(result.get("text", ""))
@@ -794,6 +823,7 @@ class DeepPipelineService:
                             session_key=session_key,
                             user_prompt="Revise as regras sintetizadas. Ha regras cross-file que voce perdeu? Gaps importantes? Adicione ao resultado anterior.",
                             max_tokens=p2_max_tokens // 2,
+                            **p2_ollama,
                         )
                         followup_parsed = self.claudio.extract_json(followup.get("text", ""))
                         if followup_parsed and isinstance(followup_parsed, dict):
@@ -963,6 +993,7 @@ class DeepPipelineService:
             user_prompt=user_prompt,
             thinking={"type": "enabled", "budget_tokens": p3_thinking} if p3_thinking else None,
             max_tokens=p3_max_tokens,
+            **self._ollama_kwargs("phase_3"),
         )
 
         arch_map = self.claudio.extract_json(result.get("text", "")) or {}
@@ -1022,6 +1053,7 @@ class DeepPipelineService:
             system_prompt=system_prompt or "Generate project epics. Respond with JSON.",
             user_prompt=f"Projeto: {project.name}\n\nMapa Arquitetural:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}\n\nRegras:\n{json.dumps(all_rules_summary, ensure_ascii=False, indent=2)}",
             max_tokens=p4a_max_tokens,
+            **self._ollama_kwargs("phase_4a"),
         )
 
         epics_data = self.claudio.extract_json(epic_result.get("text", ""))
@@ -1050,6 +1082,7 @@ class DeepPipelineService:
         await progress_cb(4, 20, f"Criados {stats['epics']} Epics. Gerando Stories...")
 
         # Phase 4b: Generate Stories per Epic (Opus, parallel 3x)
+        p4b_ollama = self._ollama_kwargs("phase_4b")
         story_requests = []
         for epic in epics:
             domain = epic.get("domain", "Geral")
@@ -1067,6 +1100,7 @@ class DeepPipelineService:
                 "system_prompt": system_prompt or "Decompose this epic into stories. Respond with JSON.",
                 "user_prompt": f"Epic:\n{json.dumps(epic, ensure_ascii=False, indent=2)}\n\nRegras do dominio:\n{rules_json}",
                 "max_tokens": self._get_max_tokens("phase_4b", 32000),
+                **p4b_ollama,
             })
 
         story_results = await self.claudio.call_batch(story_requests, max_concurrency=self._get_concurrency("phase_4b", 3))
@@ -1107,6 +1141,7 @@ class DeepPipelineService:
         await progress_cb(4, 45, f"Criadas {stats['stories']} Stories. Gerando Tasks...")
 
         # Phase 4c: Generate Tasks per Story (Sonnet, parallel 5x)
+        p4c_ollama = self._ollama_kwargs("phase_4c")
         task_requests = []
         story_titles_for_tasks = []
         for epic_title, story in all_stories:
@@ -1122,6 +1157,7 @@ class DeepPipelineService:
                 "system_prompt": system_prompt or "Decompose this story into tasks. Respond with JSON.",
                 "user_prompt": f"Story:\n{json.dumps(story, ensure_ascii=False, indent=2)}\n\nContexto do Epic:\n{json.dumps(epic_data, ensure_ascii=False)}",
                 "max_tokens": self._get_max_tokens("phase_4c", 8000),
+                **p4c_ollama,
             })
             story_titles_for_tasks.append(story.get("title", ""))
 
@@ -1163,6 +1199,7 @@ class DeepPipelineService:
 
         # Phase 4d: Generate Subtasks per Task (Haiku, parallel 10x)
         if self._is_phase_enabled("phase_4d"):
+            p4d_ollama = self._ollama_kwargs("phase_4d")
             subtask_requests = []
             task_titles_for_subtasks = []
             for story_title, t in all_tasks:
@@ -1176,6 +1213,7 @@ class DeepPipelineService:
                     "system_prompt": system_prompt or "Decompose this task into subtasks. Respond with JSON.",
                     "user_prompt": f"Task:\n{json.dumps(t, ensure_ascii=False, indent=2)}\n\nContexto da Story: {story_title}",
                     "max_tokens": self._get_max_tokens("phase_4d", 2000),
+                    **p4d_ollama,
                 })
                 task_titles_for_subtasks.append(t.get("title", ""))
 
@@ -1255,6 +1293,7 @@ class DeepPipelineService:
             system_prompt=system_prompt or "Plan wiki structure. Respond with JSON.",
             user_prompt=f"Projeto: {project.name}\n\nMapa:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}\n\nCards:\n{json.dumps(card_stats, ensure_ascii=False)}",
             max_tokens=self._get_max_tokens("phase_5a", 8000),
+            **self._ollama_kwargs("phase_5a"),
         )
 
         wiki_plan = self.claudio.extract_json(structure_result.get("text", "")) or {}
@@ -1286,6 +1325,7 @@ class DeepPipelineService:
                 system_prompt=system_prompt or "Generate wiki overview pages. Respond with JSON.",
                 user_prompt=f"Plano:\n{json.dumps(general_pages, ensure_ascii=False, indent=2)}\n\nMapa:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}",
                 max_tokens=self._get_max_tokens("phase_5b", 64000),
+                **self._ollama_kwargs("phase_5b"),
             )
 
             pages_data = self.claudio.extract_json(overview_result.get("text", ""))
@@ -1317,6 +1357,7 @@ class DeepPipelineService:
                 "system_prompt": system_prompt or "Generate domain wiki pages. Respond with JSON.",
                 "user_prompt": f"Dominio: {domain}\n\nPlano:\n{json.dumps(group.get('pages', []), ensure_ascii=False, indent=2)}\n\nRegras:\n{json.dumps(domain_data.get('consolidated_rules', [])[:30], ensure_ascii=False, indent=2)}",
                 "max_tokens": self._get_max_tokens("phase_5c", 32000),
+                **self._ollama_kwargs("phase_5c"),
             })
 
         if domain_requests:
@@ -1342,6 +1383,7 @@ class DeepPipelineService:
                         system_prompt="Gere uma pagina de wiki detalhada para este fluxo cross-domain. Responda com JSON: {\"pages\": [{\"slug\": \"...\", \"title\": \"...\", \"content\": \"markdown...\", \"word_count\": N}]}",
                         user_prompt=f"Fluxo: {json.dumps(flow, ensure_ascii=False, indent=2)}\n\nMapa: {json.dumps(arch_map, ensure_ascii=False)}",
                         max_tokens=self._get_max_tokens("phase_5d", 16000),
+                        **self._ollama_kwargs("phase_5d"),
                     )
                     pages_data = self.claudio.extract_json(result.get("text", ""))
                     if pages_data and isinstance(pages_data, dict):
@@ -1438,6 +1480,7 @@ class DeepPipelineService:
             ),
             thinking={"type": "enabled", "budget_tokens": p6_thinking} if p6_thinking else None,
             max_tokens=p6_max_tokens,
+            **self._ollama_kwargs("phase_6"),
         )
 
         qa_result = self.claudio.extract_json(result.get("text", "")) or {

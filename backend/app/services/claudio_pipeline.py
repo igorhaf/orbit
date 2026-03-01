@@ -102,6 +102,7 @@ class ClaudioPipelineService:
         thinking: dict | None = None,
         max_tokens: int | None = None,
         max_retries: int | None = None,
+        **kwargs,  # Accept and ignore Ollama params for cross-provider compat
     ) -> dict[str, Any]:
         """
         Make a single non-streaming call to Claudio.
@@ -194,6 +195,7 @@ class ClaudioPipelineService:
         user_prompt: str,
         thinking: dict | None = None,
         max_tokens: int | None = None,
+        **kwargs,  # Accept and ignore Ollama params for cross-provider compat
     ) -> dict[str, Any]:
         """
         Send a follow-up message in an existing session.
