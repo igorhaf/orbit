@@ -36,6 +36,13 @@
 - `ollama_pipeline.py` now reads `OLLAMA_HOST` from `.env` (priority over `OLLAMA_BASE_URL`)
 - `OLLAMA_TIMEOUT` also read from `.env`
 
+### 7. Complete Project Delete Cleanup (commit f78b7b9)
+- **job_log_entries**: Explicit deletion before async_jobs (async_jobs has no FK to projects)
+- **satellite/memory/**: Pipeline execution log files cleaned on project delete
+- **satellite/knowledge/results/**: Execution result files cleaned on project delete
+- **`.gitignore`**: Added `satellite/memory/*`, `satellite/knowledge/results/*`, `satellite/knowledge/wiki/*` to prevent AI-generated data from being tracked
+- **2152 memory files removed** from git tracking (500K+ lines of AI log data)
+
 ## Files Modified/Created
 
 | File | Action | Description |
@@ -44,8 +51,9 @@
 | `backend/app/models/task.py` | MODIFIED | Added pipeline_run_id FK |
 | `backend/app/models/wiki_page.py` | MODIFIED | Added pipeline_run_id FK |
 | `backend/alembic/versions/p264_add_pipeline_run_id.py` | CREATED | Migration for pipeline_run_id columns |
-| `backend/app/api/routes/projects.py` | MODIFIED | Wiki .md cleanup on project delete |
+| `backend/app/api/routes/projects.py` | MODIFIED | Wiki .md cleanup, job_log_entries cleanup, satellite/memory cleanup |
 | `backend/app/services/ollama_pipeline.py` | MODIFIED | OLLAMA_HOST env var fix |
+| `.gitignore` | MODIFIED | Exclude satellite AI-generated data from git tracking |
 
 ## Testing Results
 
@@ -57,6 +65,9 @@
 - Batching: 355 domains → 18 batches, 5 domains → 1 batch (retrocompatible)
 - Dedup: 4 similar epics → 2 unique
 - API responding after changes (--reload)
+- **Full delete test**: Orbit project deleted via API (HTTP 204)
+  - DB: 0 records in all 10 tables (projects, async_jobs, job_log_entries, pipeline_artifacts, pipeline_runs, prompts, rag_documents, tasks, wiki_pages, interviews)
+  - Filesystem: 0 files in satellite/memory/ (was 2165), satellite/knowledge/wiki/ (was 6), satellite/knowledge/results/
 
 ## Status
-**COMPLETED** — All changes applied and tested.
+**COMPLETED** — All changes applied, tested, committed, and pushed.
