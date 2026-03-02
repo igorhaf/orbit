@@ -117,20 +117,10 @@ interface PipelineMonitorProps {
 export default function PipelineMonitor({ projectId }: PipelineMonitorProps) {
   const telemetry = usePipelineTelemetry(projectId);
 
-  // Don't render if idle
-  if (telemetry.status === 'idle') return null;
-
   const healthScore = useMemo(
     () => computeHealthScore(telemetry.phaseScores),
     [telemetry.phaseScores]
   );
-
-  const phaseLabel = PHASE_LABELS[telemetry.currentPhase] || telemetry.currentPhase;
-  const overallPct = telemetry.itemsTotal > 0
-    ? Math.round((telemetry.itemsDone / telemetry.itemsTotal) * 100)
-    : 0;
-
-  const recentActivities = telemetry.activities.slice(0, 5);
 
   // Sparkline data from activities (tokens per event, last 60)
   const sparkData = useMemo(() => {
@@ -139,6 +129,16 @@ export default function PipelineMonitor({ projectId }: PipelineMonitorProps) {
       .reverse()
       .map(a => a.inputTokens + a.outputTokens);
   }, [telemetry.activities]);
+
+  // Don't render if idle (after all hooks)
+  if (telemetry.status === 'idle') return null;
+
+  const phaseLabel = PHASE_LABELS[telemetry.currentPhase] || telemetry.currentPhase;
+  const overallPct = telemetry.itemsTotal > 0
+    ? Math.round((telemetry.itemsDone / telemetry.itemsTotal) * 100)
+    : 0;
+
+  const recentActivities = telemetry.activities.slice(0, 5);
 
   const statusBadge = telemetry.status === 'running' ? (
     <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
