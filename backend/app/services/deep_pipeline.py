@@ -292,6 +292,7 @@ class DeepPipelineService:
                     "cost_usd": f"{self._run_cost:.6f}",
                     "model_active": model_name,
                     "phase_scores": json.dumps(self._phase_scores),
+                    "started_at": str(self._run_started_at),
                 })
                 r.expire(f"pipeline:live:{self._telemetry_project_id}", 3600)
         except Exception:
@@ -475,6 +476,8 @@ class DeepPipelineService:
         self._run_tokens_out = 0
         self._run_cost = 0.0
         self._phase_scores = {}
+        import time as _t_init
+        self._run_started_at = int(_t_init.time() * 1000)  # epoch ms for frontend elapsed calc
 
         # ── Create PipelineRun record ────────────────────────────────────
         pipeline_run = PipelineRun(

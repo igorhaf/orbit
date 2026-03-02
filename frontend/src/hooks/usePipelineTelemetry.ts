@@ -1,14 +1,15 @@
 /**
- * usePipelineTelemetry — PROMPT #237
+ * usePipelineTelemetry — PROMPT #237 / #238
  * Real-time pipeline monitoring via /ws/console WebSocket channel.
  * Filters pipeline_activity events by project_id and maintains aggregated state.
  * Falls back to REST polling when WebSocket disconnects.
+ * Recovers full state from Redis on mount and reconnect (PROMPT #238).
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 
-const WS_URL = 'ws://localhost:8000';
-const API_URL = 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+const WS_URL = API_URL.replace('http', 'ws');
 
 export interface PipelineActivity {
   timestamp: string;
@@ -79,6 +80,43 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
     return windowMs > 0 ? Math.round(totalTokens / (windowMs / 1000) * 10) / 10 : 0;
   }, []);
 
+  // REST polling fallback + initial state recovery from Redis
+  const pollLiveState = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      const resp = await fetch(`${API_URL}/api/v1/projects/${projectId}/rag/pipeline-live`);
+      if (!resp.ok) return;
+      const data = await resp.json();
+
+      if (data.status === 'idle') return;
+
+      // Initialize startTime from Redis (real elapsed time) or fallback
+      if (data.started_at && !startTimeRef.current) {
+        startTimeRef.current = parseInt(data.started_at, 10);
+      } else if (!startTimeRef.current && data.status === 'running') {
+        startTimeRef.current = Date.now();
+      }
+
+      setState(prev => ({
+        ...prev,
+        status: data.status || prev.status,
+        currentPhase: data.current_phase || prev.currentPhase,
+        currentAction: data.current_action || prev.currentAction,
+        currentItem: data.current_item || prev.currentItem,
+        itemsDone: parseInt(data.items_done || '0', 10),
+        itemsTotal: parseInt(data.items_total || '0', 10),
+        tokensIn: parseInt(data.tokens_in || '0', 10),
+        tokensOut: parseInt(data.tokens_out || '0', 10),
+        costUsd: parseFloat(data.cost_usd || '0'),
+        modelActive: data.model_active || prev.modelActive,
+        phaseScores: data.phase_scores || prev.phaseScores,
+        elapsedMs: startTimeRef.current ? Date.now() - startTimeRef.current : 0,
+      }));
+    } catch {
+      // ignore
+    }
+  }, [projectId]);
+
   // WebSocket connection
   const connect = useCallback(() => {
     if (!projectId) return;
@@ -95,6 +133,8 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
           clearInterval(pollTimerRef.current);
           pollTimerRef.current = null;
         }
+        // Catch-up: recover current state from Redis on reconnect
+        pollLiveState();
       };
 
       ws.onmessage = (event) => {
@@ -172,36 +212,7 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
         pollTimerRef.current = setInterval(() => pollLiveState(), 3000);
       }
     }
-  }, [projectId, calcTokensPerSecond]);
-
-  // REST polling fallback
-  const pollLiveState = useCallback(async () => {
-    if (!projectId) return;
-    try {
-      const resp = await fetch(`${API_URL}/api/v1/projects/${projectId}/rag/pipeline-live`);
-      if (!resp.ok) return;
-      const data = await resp.json();
-
-      if (data.status === 'idle') return;
-
-      setState(prev => ({
-        ...prev,
-        status: data.status || prev.status,
-        currentPhase: data.current_phase || prev.currentPhase,
-        currentAction: data.current_action || prev.currentAction,
-        currentItem: data.current_item || prev.currentItem,
-        itemsDone: parseInt(data.items_done || '0', 10),
-        itemsTotal: parseInt(data.items_total || '0', 10),
-        tokensIn: parseInt(data.tokens_in || '0', 10),
-        tokensOut: parseInt(data.tokens_out || '0', 10),
-        costUsd: parseFloat(data.cost_usd || '0'),
-        modelActive: data.model_active || prev.modelActive,
-        phaseScores: data.phase_scores || prev.phaseScores,
-      }));
-    } catch {
-      // ignore
-    }
-  }, [projectId]);
+  }, [projectId, calcTokensPerSecond, pollLiveState]);
 
   useEffect(() => {
     if (!projectId) {
@@ -211,7 +222,8 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
 
     startTimeRef.current = 0;
     tokenWindowRef.current = [];
-    connect();
+    pollLiveState();   // Hydrate immediately from Redis live state
+    connect();         // Then connect WebSocket for streaming updates
 
     return () => {
       if (wsRef.current) {
@@ -227,7 +239,7 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
         pollTimerRef.current = null;
       }
     };
-  }, [projectId, connect]);
+  }, [projectId, connect, pollLiveState]);
 
   return state;
 }
