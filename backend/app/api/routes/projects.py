@@ -481,6 +481,60 @@ async def quick_create_project(
     }
 
 
+@router.post("/generate-title")
+async def generate_project_title(
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #239 — Generate/reformulate a project title from the description using AI.
+
+    **POST** `/api/v1/projects/generate-title`
+    Body: `{"description": "...", "current_title": "..." (optional)}`
+    Response: `{"title": "Generated title..."}`
+    """
+    desc = (body.get("description") or "").strip()
+    if not desc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campo 'description' é obrigatório",
+        )
+
+    try:
+        from app.prompts.loader import PromptLoader
+        from app.services.ai_orchestrator import AIOrchestrator
+
+        loader = PromptLoader()
+        variables = {"description": desc}
+        current_title = (body.get("current_title") or "").strip()
+        if current_title:
+            variables["current_title"] = current_title
+
+        system_prompt, user_prompt = loader.render(
+            "projects/generate_title", variables
+        )
+
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="general",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=100,
+            metadata={"skip_context_build": True},
+            disable_tools=True,
+        )
+
+        title = (response.get("content") or "").strip().strip('"').strip("'")
+        return {"title": title}
+
+    except Exception as e:
+        logger.error(f"Failed to generate title: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao gerar título: {str(e)}",
+        )
+
+
 @router.post("/generate-description")
 async def generate_project_description(
     body: dict,

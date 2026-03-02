@@ -53,6 +53,7 @@ export default function NewProjectPage() {
   const [projectName, setProjectName] = useState('');
   const [description, setDescription] = useState('');
   const [generatingDesc, setGeneratingDesc] = useState(false);
+  const [generatingTitle, setGeneratingTitle] = useState(false);
   // Track if title was manually edited by the user (REGRA #0)
   const titleManuallyEdited = useRef(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,6 +95,35 @@ export default function NewProjectPage() {
       }
     }, 500);
   };
+
+  // Generate/reformulate title from description via AI
+  const handleGenerateTitle = useCallback(async () => {
+    if (!description.trim()) return;
+    setGeneratingTitle(true);
+    try {
+      const resp = await fetch(`${API_BASE}/api/v1/projects/generate-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: description.trim(),
+          current_title: projectName.trim() || undefined,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.title) {
+          setProjectName(data.title);
+          titleManuallyEdited.current = true;
+        }
+      } else {
+        showError('Falha ao gerar título');
+      }
+    } catch {
+      showError('Erro ao conectar com o servidor');
+    } finally {
+      setGeneratingTitle(false);
+    }
+  }, [description, projectName, showError]);
 
   // Generate description from title via AI
   const handleGenerateDescription = useCallback(async () => {
@@ -215,18 +245,38 @@ export default function NewProjectPage() {
               />
             </div>
 
-            {/* PROMPT #239 - Project Title */}
+            {/* PROMPT #239 - Project Title with auto-generate button */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Título do Projeto</label>
-              <input
-                value={projectName}
-                onChange={(e) => handleTitleChange(e.target.value)}
-                placeholder="Nome do projeto (preenchido automaticamente)"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                disabled={submitting}
-              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleGenerateTitle}
+                  disabled={!description.trim() || generatingTitle || submitting}
+                  title={description.trim() ? 'Gerar título a partir da descrição usando IA' : 'Digite uma descrição primeiro'}
+                  className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  {generatingTitle ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  )}
+                </button>
+                <input
+                  value={projectName}
+                  onChange={(e) => handleTitleChange(e.target.value)}
+                  placeholder="Nome do projeto (preenchido automaticamente)"
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                  disabled={submitting}
+                />
+              </div>
               <p className="text-xs text-gray-500 mt-1">
-                Preenchido automaticamente pelo nome da pasta ou pela descrição. Editável.
+                Preenchido automaticamente pelo nome da pasta ou pela descrição. Use o botão para reformular via IA.
               </p>
             </div>
 
