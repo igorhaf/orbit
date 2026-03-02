@@ -230,10 +230,14 @@ class OllamaPipelineService:
         self,
         requests: list[dict[str, Any]],
         max_concurrency: int = 1,
+        on_item_complete: Any = None,
     ) -> list[dict[str, Any] | ClaudioPipelineError]:
         """
         Execute multiple calls with concurrency limit.
         Default concurrency 1 for Ollama (VRAM constraint with 14B models).
+
+        on_item_complete: optional async callback(index, result, total) called
+        as each item finishes, enabling real-time progress telemetry.
         """
         semaphore = asyncio.Semaphore(max_concurrency)
         results: list[dict[str, Any] | ClaudioPipelineError] = [None] * len(requests)
@@ -246,6 +250,12 @@ class OllamaPipelineService:
                 except ClaudioPipelineError as e:
                     logger.warning(f"Batch item {index} failed: {e}")
                     results[index] = e
+                # Notify caller immediately when each item completes
+                if on_item_complete:
+                    try:
+                        await on_item_complete(index, results[index], len(requests))
+                    except Exception:
+                        pass
 
         tasks = [_process(i, req) for i, req in enumerate(requests)]
         await asyncio.gather(*tasks)

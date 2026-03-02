@@ -943,20 +943,33 @@ class DeepPipelineService:
                 **p1_ollama,
             })
 
-        # Execute in parallel batches
-        results = await self.claudio.call_batch(requests, max_concurrency=p1_concurrency)
+        # PROMPT #238: Real-time telemetry via on_item_complete callback
+        _completed_count = [0]  # mutable counter for closure
+
+        async def _on_file_done(index: int, result: Any, total: int):
+            _completed_count[0] += 1
+            done = _completed_count[0]
+            item_path = inventory[index]["path"] if index < len(inventory) else f"item-{index}"
+            await self._emit_telemetry(
+                "phase_1", "file_analysis", item_path,
+                done, total, model_name=p1_model, result=result,
+            )
+            # Progress update every 10 files (more granular than before)
+            if done % 10 == 0 or done == total:
+                pct = (done / total) * 100
+                await progress_cb(1, pct, f"Analisados {done}/{total} arquivos")
+
+        # Execute in parallel batches with real-time callback
+        results = await self.claudio.call_batch(
+            requests, max_concurrency=p1_concurrency,
+            on_item_complete=_on_file_done,
+        )
 
         file_analyses = []
         for i, result in enumerate(results):
             if isinstance(result, ClaudioPipelineError):
                 logger.warning(f"Phase 1: Failed to analyze {inventory[i]['path']}: {result}")
                 continue
-
-            # PROMPT #237: Emit per-file telemetry
-            await self._emit_telemetry(
-                "phase_1", "file_analysis", inventory[i]["path"],
-                i + 1, len(results), model_name=p1_model, result=result,
-            )
 
             parsed = self.claudio.extract_json(result.get("text", ""))
             if parsed and isinstance(parsed, dict):
@@ -977,11 +990,6 @@ class DeepPipelineService:
                     run_id=run_id,
                 )
                 self.db.add(artifact)
-
-            # Progress update every 50 files
-            if (i + 1) % 50 == 0:
-                pct = ((i + 1) / len(results)) * 100
-                await progress_cb(1, pct, f"Analisados {i + 1}/{len(results)} arquivos")
 
         self.db.commit()
         logger.info(f"Phase 1: Analyzed {len(file_analyses)}/{len(inventory)} files successfully")
@@ -1379,20 +1387,26 @@ class DeepPipelineService:
                 **p4b_ollama,
             })
 
-        story_results = await self.claudio.call_batch(story_requests, max_concurrency=self._get_concurrency("phase_4b", 3))
+        p4b_model = self._get_model("phase_4b", MODEL_OPUS)
+
+        async def _on_story_done(index: int, result: Any, total: int):
+            epic_title = epics[index].get("title", "?")[:80] if index < len(epics) else f"item-{index}"
+            await self._emit_telemetry(
+                "phase_4b", "story_decomposition",
+                f"Epic: {epic_title} → Stories",
+                index + 1, total, model_name=p4b_model, result=result,
+            )
+
+        story_results = await self.claudio.call_batch(
+            story_requests, max_concurrency=self._get_concurrency("phase_4b", 3),
+            on_item_complete=_on_story_done,
+        )
 
         # Process stories and create Tasks + Subtasks
         all_stories = []  # (epic_title, story_data)
-        p4b_model = self._get_model("phase_4b", MODEL_OPUS)
         for i, result in enumerate(story_results):
             if isinstance(result, ClaudioPipelineError):
                 continue
-            # PROMPT #237: Emit per-epic story telemetry
-            await self._emit_telemetry(
-                "phase_4b", "story_decomposition",
-                f"Epic: {epics[i].get('title', '?')[:80]} → Stories",
-                i + 1, len(story_results), model_name=p4b_model, result=result,
-            )
             parsed = self.claudio.extract_json(result.get("text", ""))
             if parsed and isinstance(parsed, dict):
                 epic_title = epics[i].get("title", "")
@@ -1445,19 +1459,27 @@ class DeepPipelineService:
             })
             story_titles_for_tasks.append(story.get("title", ""))
 
-        task_results = await self.claudio.call_batch(task_requests, max_concurrency=self._get_concurrency("phase_4c", 5))
+        p4c_model = self._get_model("phase_4c", MODEL_SONNET)
+        _p4c_done = [0]
+
+        async def _on_task_done(index: int, result: Any, total: int):
+            _p4c_done[0] += 1
+            title = story_titles_for_tasks[index][:80] if index < len(story_titles_for_tasks) else f"item-{index}"
+            await self._emit_telemetry(
+                "phase_4c", "task_decomposition",
+                f"Story: {title} → Tasks",
+                _p4c_done[0], total, model_name=p4c_model, result=result,
+            )
+
+        task_results = await self.claudio.call_batch(
+            task_requests, max_concurrency=self._get_concurrency("phase_4c", 5),
+            on_item_complete=_on_task_done,
+        )
 
         all_tasks = []  # (story_title, task_data)
-        p4c_model = self._get_model("phase_4c", MODEL_SONNET)
         for i, result in enumerate(task_results):
             if isinstance(result, ClaudioPipelineError):
                 continue
-            # PROMPT #237: Emit per-story task telemetry
-            await self._emit_telemetry(
-                "phase_4c", "task_decomposition",
-                f"Story: {story_titles_for_tasks[i][:80]} → Tasks",
-                i + 1, len(task_results), model_name=p4c_model, result=result,
-            )
             parsed = self.claudio.extract_json(result.get("text", ""))
             if parsed and isinstance(parsed, dict):
                 story_title = story_titles_for_tasks[i]
@@ -1509,18 +1531,26 @@ class DeepPipelineService:
                 })
                 task_titles_for_subtasks.append(t.get("title", ""))
 
-            subtask_results = await self.claudio.call_batch(subtask_requests, max_concurrency=self._get_concurrency("phase_4d", 10))
-
             p4d_model = self._get_model("phase_4d", MODEL_HAIKU)
+            _p4d_done = [0]
+
+            async def _on_subtask_done(index: int, result: Any, total: int):
+                _p4d_done[0] += 1
+                title = task_titles_for_subtasks[index][:80] if index < len(task_titles_for_subtasks) else f"item-{index}"
+                await self._emit_telemetry(
+                    "phase_4d", "subtask_decomposition",
+                    f"Task: {title} → Subtasks",
+                    _p4d_done[0], total, model_name=p4d_model, result=result,
+                )
+
+            subtask_results = await self.claudio.call_batch(
+                subtask_requests, max_concurrency=self._get_concurrency("phase_4d", 10),
+                on_item_complete=_on_subtask_done,
+            )
+
             for i, result in enumerate(subtask_results):
                 if isinstance(result, ClaudioPipelineError):
                     continue
-                # PROMPT #237: Emit per-task subtask telemetry
-                await self._emit_telemetry(
-                    "phase_4d", "subtask_decomposition",
-                    f"Task: {task_titles_for_subtasks[i][:80]} → Subtasks",
-                    i + 1, len(subtask_results), model_name=p4d_model, result=result,
-                )
                 parsed = self.claudio.extract_json(result.get("text", ""))
                 if parsed and isinstance(parsed, dict):
                     task_title = task_titles_for_subtasks[i]
@@ -1676,17 +1706,24 @@ class DeepPipelineService:
 
         if domain_requests:
             p5c_model = self._get_model("phase_5c", MODEL_OPUS)
-            domain_results = await self.claudio.call_batch(domain_requests, max_concurrency=self._get_concurrency("phase_5c", 3))
-            for dr_i, result in enumerate(domain_results):
-                if isinstance(result, ClaudioPipelineError):
-                    continue
-                # PROMPT #237: Emit per-domain wiki telemetry
-                domain_name = domain_page_groups[dr_i].get("domain", "?") if dr_i < len(domain_page_groups) else "?"
+            _p5c_done = [0]
+
+            async def _on_domain_done(index: int, result: Any, total: int):
+                _p5c_done[0] += 1
+                domain_name = domain_page_groups[index].get("domain", "?") if index < len(domain_page_groups) else "?"
                 await self._emit_telemetry(
                     "phase_5c", "wiki_domain",
                     f"Gerando: domínio {domain_name}",
-                    dr_i + 1, len(domain_results), model_name=p5c_model, result=result,
+                    _p5c_done[0], total, model_name=p5c_model, result=result,
                 )
+
+            domain_results = await self.claudio.call_batch(
+                domain_requests, max_concurrency=self._get_concurrency("phase_5c", 3),
+                on_item_complete=_on_domain_done,
+            )
+            for dr_i, result in enumerate(domain_results):
+                if isinstance(result, ClaudioPipelineError):
+                    continue
                 pages_data = self.claudio.extract_json(result.get("text", ""))
                 if pages_data and isinstance(pages_data, dict):
                     for page in pages_data.get("pages", []):

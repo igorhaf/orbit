@@ -216,12 +216,16 @@ class ClaudioPipelineService:
         self,
         requests: list[dict[str, Any]],
         max_concurrency: int = 10,
+        on_item_complete: Any = None,
     ) -> list[dict[str, Any] | ClaudioPipelineError]:
         """
         Execute multiple calls in parallel with concurrency limit.
 
         Each request dict should have keys matching call() parameters:
         - model, system_prompt, user_prompt, session_key?, thinking?, max_tokens?
+
+        on_item_complete: optional async callback(index, result, total) called
+        as each item finishes, enabling real-time progress telemetry.
 
         Returns list of results (dict) or ClaudioPipelineError for failed calls.
         """
@@ -236,6 +240,12 @@ class ClaudioPipelineService:
                 except ClaudioPipelineError as e:
                     logger.warning(f"Batch item {index} failed: {e}")
                     results[index] = e
+                # Notify caller immediately when each item completes
+                if on_item_complete:
+                    try:
+                        await on_item_complete(index, results[index], len(requests))
+                    except Exception:
+                        pass
 
         tasks = [_process(i, req) for i, req in enumerate(requests)]
         await asyncio.gather(*tasks)
