@@ -22,6 +22,7 @@ import { ProjectChatPanel } from '@/components/chat/ProjectChatPanel';  // PROMP
 import RagTab from './RagTab';  // PROMPT #232 - Extracted tab sub-component
 import AnalyticsTab from './AnalyticsTab';  // PROMPT #232 - Extracted tab sub-component
 import OverviewTab from './OverviewTab';  // PROMPT #232 - Extracted tab sub-component
+import PipelineMonitor from '@/components/pipeline/PipelineMonitor';  // PROMPT #237 - Pipeline telemetry
 import { projectsApi, tasksApi, ragApi, knowledgeApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
 import { useNotification } from '@/hooks';
@@ -605,6 +606,9 @@ export default function ProjectDetailsPage() {
       <div className="mb-6">
         <Breadcrumbs />
       </div>
+
+      {/* PROMPT #237 - Pipeline Monitor (auto-hides when idle) */}
+      <PipelineMonitor projectId={projectId} />
 
       <div className="space-y-6">
         {/* Header with action buttons on title line */}

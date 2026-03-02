@@ -13,8 +13,8 @@ import { usePathname } from 'next/navigation';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 
 const navigation = [
-  { name: 'Painel', href: '/' },
-  { name: 'Projetos', href: '/projects' },
+  { name: 'Projetos', href: '/' },
+  { name: 'Painel', href: '/dashboard' },
   { name: 'Prompts', href: '/prompts' },
   { name: 'AI Studio', href: '/ai-flow' },
   { name: 'RAG', href: '/rag' },

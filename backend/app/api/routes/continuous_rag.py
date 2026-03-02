@@ -10,6 +10,8 @@ Phase endpoints: scan, extract-rules, generate-cards, generate-wiki.
 Deep pipeline endpoints: deep-pipeline (run), deep-pipeline/status.
 """
 
+import json
+import os
 from typing import Optional
 from uuid import UUID
 
@@ -646,6 +648,33 @@ async def get_deep_pipeline_status(
         }
 
     return response
+
+
+@router.get("/{project_id}/rag/pipeline-live")
+async def get_pipeline_live_state(project_id: UUID):
+    """
+    PROMPT #237 - Real-time pipeline telemetry snapshot from Redis.
+    Returns the live state of a running deep pipeline (tokens, cost, phase, current item).
+    Falls back to empty state if Redis unavailable or no pipeline is running.
+    """
+    try:
+        import redis as _redis
+        host = os.getenv("REDIS_HOST", "redis")
+        port = int(os.getenv("REDIS_PORT", "6379"))
+        r = _redis.Redis(host=host, port=port, db=0, decode_responses=True, socket_connect_timeout=2)
+        data = r.hgetall(f"pipeline:live:{project_id}")
+        if data:
+            # Parse phase_scores from JSON string
+            if "phase_scores" in data:
+                try:
+                    data["phase_scores"] = json.loads(data["phase_scores"])
+                except Exception:
+                    data["phase_scores"] = {}
+            return data
+    except Exception:
+        pass
+
+    return {"status": "idle"}
 
 
 # =========================================================================

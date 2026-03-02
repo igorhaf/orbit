@@ -15,6 +15,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { Layout, Breadcrumbs } from '@/components/layout';
+import PipelineMonitor from '@/components/pipeline/PipelineMonitor';  // PROMPT #237
 import {
   Card,
   CardHeader,
@@ -1508,6 +1509,13 @@ export default function JobsPage() {
                                         {duration !== null && <span><strong>Duração:</strong> {formatDuration(duration)}</span>}
                                       </div>
                                     </div>
+
+                                    {/* PROMPT #237 - Pipeline Monitor for pipeline jobs */}
+                                    {['deep_pipeline', 'rag_pipeline', 'memory_scan'].includes(job.job_type) && job.project_id && (
+                                      <div className="mb-3">
+                                        <PipelineMonitor projectId={job.project_id} />
+                                      </div>
+                                    )}
 
                                     {/* Log Área - Terminal Style */}
                                     <div className="bg-gray-900 rounded-lg overflow-hidden">

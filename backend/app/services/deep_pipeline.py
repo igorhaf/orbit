@@ -41,8 +41,28 @@ from app.services.claudio_pipeline import (
     MODEL_SONNET,
     MODEL_OPUS,
 )
+from app.services.console_logger import get_console_logger
+from app.utils.pricing import calculate_cost
 
 logger = logging.getLogger(__name__)
+
+# Redis connection for live pipeline state (optional, best-effort)
+_redis_client = None
+
+def _get_redis():
+    global _redis_client
+    if _redis_client is not None:
+        return _redis_client
+    try:
+        import redis as _redis
+        host = os.getenv("REDIS_HOST", "redis")
+        port = int(os.getenv("REDIS_PORT", "6379"))
+        _redis_client = _redis.Redis(host=host, port=port, db=0, decode_responses=True, socket_connect_timeout=2)
+        _redis_client.ping()
+        return _redis_client
+    except Exception:
+        _redis_client = False  # Mark as unavailable
+        return None
 
 # ── Reinforcement rules: when a phase score is below threshold, adjust next run
 REINFORCEMENT_RULES = {
@@ -126,6 +146,16 @@ class DeepPipelineService:
         else:
             self.claudio = ClaudioPipelineService()
 
+        # ── PROMPT #237: Pipeline telemetry ────
+        self._console = get_console_logger()
+        self._telemetry_trace_id: str = ""
+        self._telemetry_project_id: str = ""
+        self._telemetry_job_id: str | None = None
+        self._run_tokens_in: int = 0
+        self._run_tokens_out: int = 0
+        self._run_cost: float = 0.0
+        self._phase_scores: Dict[str, int] = {}
+
     @staticmethod
     def _model_label(model_name: str) -> str:
         """Extract a human-readable label from model name (works for both Claude and Ollama).
@@ -191,6 +221,81 @@ class DeepPipelineService:
             "num_ctx": self._get_phase_config(phase_key, "num_ctx", 16384),
             "keep_alive": self._get_phase_config(phase_key, "keep_alive", "5m"),
         }
+
+    async def _emit_telemetry(
+        self,
+        phase: str,
+        action: str,
+        item_name: str,
+        item_index: int,
+        item_total: int,
+        model_name: str = "",
+        result: dict = None,
+        duration_ms: int = 0,
+    ):
+        """Emit a microscopic telemetry event via ConsoleLogger and update Redis live state."""
+        input_tokens = 0
+        output_tokens = 0
+        cost_usd = 0.0
+
+        if result and isinstance(result, dict):
+            usage = result.get("usage", {})
+            input_tokens = usage.get("input_tokens", 0) or 0
+            output_tokens = usage.get("output_tokens", 0) or 0
+            if input_tokens or output_tokens:
+                cost_data = calculate_cost(input_tokens, output_tokens, model_name or result.get("model", ""))
+                cost_usd = cost_data.get("total_cost", 0.0)
+
+        self._run_tokens_in += input_tokens
+        self._run_tokens_out += output_tokens
+        self._run_cost += cost_usd
+
+        try:
+            await self._console.log_pipeline_activity(
+                project_id=self._telemetry_project_id,
+                trace_id=self._telemetry_trace_id,
+                phase=phase,
+                action=action,
+                item_name=item_name,
+                item_index=item_index,
+                item_total=item_total,
+                model_name=model_name,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost_usd=cost_usd,
+                duration_ms=duration_ms,
+                cumulative_tokens_in=self._run_tokens_in,
+                cumulative_tokens_out=self._run_tokens_out,
+                cumulative_cost=self._run_cost,
+                phase_scores=self._phase_scores,
+                job_id=self._telemetry_job_id,
+            )
+        except Exception as e:
+            logger.debug(f"Telemetry emit failed: {e}")
+
+        # Update Redis live state (best-effort)
+        try:
+            r = _get_redis()
+            if r:
+                import time as _t
+                pct = round((item_index / item_total) * 100, 1) if item_total > 0 else 0
+                r.hset(f"pipeline:live:{self._telemetry_project_id}", mapping={
+                    "status": "running",
+                    "current_phase": phase,
+                    "current_action": action,
+                    "current_item": item_name[:200],
+                    "items_done": str(item_index),
+                    "items_total": str(item_total),
+                    "phase_progress_pct": str(pct),
+                    "tokens_in": str(self._run_tokens_in),
+                    "tokens_out": str(self._run_tokens_out),
+                    "cost_usd": f"{self._run_cost:.6f}",
+                    "model_active": model_name,
+                    "phase_scores": json.dumps(self._phase_scores),
+                })
+                r.expire(f"pipeline:live:{self._telemetry_project_id}", 3600)
+        except Exception:
+            pass
 
     def _load_contract(self, name: str, variables: dict = None) -> tuple[str, str]:
         """Load a contract and render with variables."""
@@ -363,6 +468,14 @@ class DeepPipelineService:
         logger.info(f"Starting deep pipeline for project '{project.name}' "
                      f"(run_id={run_id}, profile={profile_name})")
 
+        # ── PROMPT #237: Initialize telemetry context ────
+        self._telemetry_trace_id = str(run_id)
+        self._telemetry_project_id = str(project_id)
+        self._run_tokens_in = 0
+        self._run_tokens_out = 0
+        self._run_cost = 0.0
+        self._phase_scores = {}
+
         # ── Create PipelineRun record ────────────────────────────────────
         pipeline_run = PipelineRun(
             id=run_id,
@@ -426,7 +539,9 @@ class DeepPipelineService:
             file_inventory = await self._phase0_structural_scan(project)
             results["phase0"] = {"files_found": len(file_inventory)}
             phase_scores["phase_0"] = self._compute_phase_score("phase_0", results["phase0"])
+            self._phase_scores = dict(phase_scores)
             phase_durations["phase_0"] = int((_phase_timer() - t0) * 1000)
+            await self._emit_telemetry("phase_0", "structural_scan", f"Scan completo: {len(file_inventory)} arquivos", len(file_inventory), len(file_inventory), duration_ms=phase_durations["phase_0"])
             await _progress(0, 100, f"Scan completo: {len(file_inventory)} arquivos (score: {phase_scores['phase_0']})")
 
             # Phase 1: Per-file Analysis (5-25%)
@@ -443,6 +558,7 @@ class DeepPipelineService:
             }
             results["phase1"] = p1_data
             phase_scores["phase_1"] = self._compute_phase_score("phase_1", p1_data)
+            self._phase_scores = dict(phase_scores)
             phase_durations["phase_1"] = int((_phase_timer() - t0) * 1000)
             await _progress(1, 100, f"Analise completa: {len(file_analyses)} arquivos (score: {phase_scores['phase_1']})")
 
@@ -457,6 +573,7 @@ class DeepPipelineService:
             p2_data = {"domains": len(domain_rules), "total_rules": total_rules}
             results["phase2"] = p2_data
             phase_scores["phase_2"] = self._compute_phase_score("phase_2", p2_data)
+            self._phase_scores = dict(phase_scores)
             phase_durations["phase_2"] = int((_phase_timer() - t0) * 1000)
             await _progress(2, 100, f"Sintese completa: {total_rules} regras em {len(domain_rules)} dominios (score: {phase_scores['phase_2']})")
 
@@ -474,6 +591,7 @@ class DeepPipelineService:
                 }
                 results["phase3"] = {"domains": p3_data["domains"], "cross_domain_flows": p3_data["cross_domain_flows"]}
                 phase_scores["phase_3"] = self._compute_phase_score("phase_3", p3_data)
+                self._phase_scores = dict(phase_scores)
                 # Save to project
                 project.project_architecture = arch_map
                 project.pipeline_version = "v2"
@@ -498,6 +616,7 @@ class DeepPipelineService:
             )
             results["phase4"] = card_stats
             phase_scores["phase_4"] = self._compute_phase_score("phase_4", card_stats)
+            self._phase_scores = dict(phase_scores)
             phase_durations["phase_4"] = int((_phase_timer() - t0) * 1000)
             await _progress(4, 100, f"Cards gerados: {card_stats.get('total_cards', 0)} (score: {phase_scores['phase_4']})")
 
@@ -509,6 +628,7 @@ class DeepPipelineService:
             )
             results["phase5"] = wiki_stats
             phase_scores["phase_5"] = self._compute_phase_score("phase_5", wiki_stats)
+            self._phase_scores = dict(phase_scores)
             phase_durations["phase_5"] = int((_phase_timer() - t0) * 1000)
             await _progress(5, 100, f"Wiki gerada: {wiki_stats.get('total_pages', 0)} paginas (score: {phase_scores['phase_5']})")
 
@@ -526,6 +646,7 @@ class DeepPipelineService:
                 )
             results["phase6"] = qa_result
             phase_scores["phase_6"] = self._compute_phase_score("phase_6", qa_result)
+            self._phase_scores = dict(phase_scores)
             phase_durations["phase_6"] = int((_phase_timer() - t0) * 1000)
             project.pipeline_quality_score = str(qa_result.get("overall_score", 0))
             self.db.commit()
@@ -555,8 +676,26 @@ class DeepPipelineService:
             pipeline_run.total_domains = len(domain_rules)
             pipeline_run.total_cards_created = card_stats.get("total_cards", 0)
             pipeline_run.total_wiki_pages = wiki_stats.get("total_pages", 0)
+            pipeline_run.total_input_tokens = self._run_tokens_in
+            pipeline_run.total_output_tokens = self._run_tokens_out
+            pipeline_run.estimated_cost_usd = self._run_cost
             pipeline_run.completed_at = datetime.utcnow()
             self.db.commit()
+
+            # PROMPT #237: Mark pipeline as completed in Redis
+            try:
+                r = _get_redis()
+                if r:
+                    r.hset(f"pipeline:live:{self._telemetry_project_id}", mapping={
+                        "status": "completed",
+                        "tokens_in": str(self._run_tokens_in),
+                        "tokens_out": str(self._run_tokens_out),
+                        "cost_usd": f"{self._run_cost:.6f}",
+                        "phase_scores": json.dumps(phase_scores),
+                    })
+                    r.expire(f"pipeline:live:{self._telemetry_project_id}", 3600)
+            except Exception:
+                pass
 
         except Exception as e:
             logger.error(f"Deep pipeline failed at run {run_id}: {e}", exc_info=True)
@@ -810,6 +949,12 @@ class DeepPipelineService:
                 logger.warning(f"Phase 1: Failed to analyze {inventory[i]['path']}: {result}")
                 continue
 
+            # PROMPT #237: Emit per-file telemetry
+            await self._emit_telemetry(
+                "phase_1", "file_analysis", inventory[i]["path"],
+                i + 1, len(results), model_name=p1_model, result=result,
+            )
+
             parsed = self.claudio.extract_json(result.get("text", ""))
             if parsed and isinstance(parsed, dict):
                 parsed["file_path"] = inventory[i]["path"]
@@ -880,6 +1025,14 @@ class DeepPipelineService:
                     session_key=session_key,
                     max_tokens=p2_max_tokens,
                     **p2_ollama,
+                )
+
+                # PROMPT #237: Emit per-domain telemetry
+                await self._emit_telemetry(
+                    "phase_2", "domain_synthesis",
+                    f"Domínio: {domain} ({len(analyses)} files)",
+                    progress_state["done"] + 1, progress_state["total"],
+                    model_name=p2_model, result=result,
                 )
 
                 parsed = self.claudio.extract_json(result.get("text", ""))
@@ -1064,6 +1217,12 @@ class DeepPipelineService:
             **self._ollama_kwargs("phase_3"),
         )
 
+        # PROMPT #237: Emit arch map telemetry
+        await self._emit_telemetry(
+            "phase_3", "architectural_map", "Mapa arquitetural gerado",
+            1, 1, model_name=p3_model, result=result,
+        )
+
         arch_map = self.claudio.extract_json(result.get("text", "")) or {}
 
         # Store artifact
@@ -1135,6 +1294,13 @@ class DeepPipelineService:
                 user_prompt=f"Projeto: {project.name}\n\nDomínios ({batch_label}):\n{json.dumps(batch_arch, ensure_ascii=False)}\n\nRegras:\n{json.dumps(batch_rules, ensure_ascii=False)}",
                 max_tokens=p4a_max_tokens,
                 **self._ollama_kwargs("phase_4a"),
+            )
+
+            # PROMPT #237: Emit epic batch telemetry
+            await self._emit_telemetry(
+                "phase_4a", "epic_generation",
+                f"Batch {batch_idx + 1}/{total_batches}: Gerando Epics",
+                batch_idx + 1, total_batches, model_name=p4a_model, result=epic_result,
             )
 
             batch_epics_data = self.claudio.extract_json(epic_result.get("text", ""))
@@ -1214,9 +1380,16 @@ class DeepPipelineService:
 
         # Process stories and create Tasks + Subtasks
         all_stories = []  # (epic_title, story_data)
+        p4b_model = self._get_model("phase_4b", MODEL_OPUS)
         for i, result in enumerate(story_results):
             if isinstance(result, ClaudioPipelineError):
                 continue
+            # PROMPT #237: Emit per-epic story telemetry
+            await self._emit_telemetry(
+                "phase_4b", "story_decomposition",
+                f"Epic: {epics[i].get('title', '?')[:80]} → Stories",
+                i + 1, len(story_results), model_name=p4b_model, result=result,
+            )
             parsed = self.claudio.extract_json(result.get("text", ""))
             if parsed and isinstance(parsed, dict):
                 epic_title = epics[i].get("title", "")
@@ -1272,9 +1445,16 @@ class DeepPipelineService:
         task_results = await self.claudio.call_batch(task_requests, max_concurrency=self._get_concurrency("phase_4c", 5))
 
         all_tasks = []  # (story_title, task_data)
+        p4c_model = self._get_model("phase_4c", MODEL_SONNET)
         for i, result in enumerate(task_results):
             if isinstance(result, ClaudioPipelineError):
                 continue
+            # PROMPT #237: Emit per-story task telemetry
+            await self._emit_telemetry(
+                "phase_4c", "task_decomposition",
+                f"Story: {story_titles_for_tasks[i][:80]} → Tasks",
+                i + 1, len(task_results), model_name=p4c_model, result=result,
+            )
             parsed = self.claudio.extract_json(result.get("text", ""))
             if parsed and isinstance(parsed, dict):
                 story_title = story_titles_for_tasks[i]
@@ -1328,9 +1508,16 @@ class DeepPipelineService:
 
             subtask_results = await self.claudio.call_batch(subtask_requests, max_concurrency=self._get_concurrency("phase_4d", 10))
 
+            p4d_model = self._get_model("phase_4d", MODEL_HAIKU)
             for i, result in enumerate(subtask_results):
                 if isinstance(result, ClaudioPipelineError):
                     continue
+                # PROMPT #237: Emit per-task subtask telemetry
+                await self._emit_telemetry(
+                    "phase_4d", "subtask_decomposition",
+                    f"Task: {task_titles_for_subtasks[i][:80]} → Subtasks",
+                    i + 1, len(subtask_results), model_name=p4d_model, result=result,
+                )
                 parsed = self.claudio.extract_json(result.get("text", ""))
                 if parsed and isinstance(parsed, dict):
                     task_title = task_titles_for_subtasks[i]
@@ -1398,12 +1585,19 @@ class DeepPipelineService:
             "project_name": project.name,
         })
 
+        p5a_model = self._get_model("phase_5a", MODEL_SONNET)
         structure_result = await self.claudio.call(
-            model=self._get_model("phase_5a", MODEL_SONNET),
+            model=p5a_model,
             system_prompt=system_prompt or "Plan wiki structure. Respond with JSON.",
             user_prompt=f"Projeto: {project.name}\n\nMapa:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}\n\nCards:\n{json.dumps(card_stats, ensure_ascii=False)}",
             max_tokens=self._get_max_tokens("phase_5a", 8000),
             **self._ollama_kwargs("phase_5a"),
+        )
+
+        # PROMPT #237: Emit wiki planning telemetry
+        await self._emit_telemetry(
+            "phase_5a", "wiki_planning", "Planejando estrutura wiki",
+            1, 1, model_name=p5a_model, result=structure_result,
         )
 
         wiki_plan = self.claudio.extract_json(structure_result.get("text", "")) or {}
@@ -1430,12 +1624,19 @@ class DeepPipelineService:
                 "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
             })
 
+            p5b_model = self._get_model("phase_5b", MODEL_OPUS)
             overview_result = await self.claudio.call(
-                model=self._get_model("phase_5b", MODEL_OPUS),
+                model=p5b_model,
                 system_prompt=system_prompt or "Generate wiki overview pages. Respond with JSON.",
                 user_prompt=f"Plano:\n{json.dumps(general_pages, ensure_ascii=False, indent=2)}\n\nMapa:\n{json.dumps(arch_map, ensure_ascii=False, indent=2)}",
                 max_tokens=self._get_max_tokens("phase_5b", 64000),
                 **self._ollama_kwargs("phase_5b"),
+            )
+
+            # PROMPT #237: Emit wiki overview telemetry
+            await self._emit_telemetry(
+                "phase_5b", "wiki_overview", "Gerando páginas de visão geral",
+                1, 1, model_name=p5b_model, result=overview_result,
             )
 
             pages_data = self.claudio.extract_json(overview_result.get("text", ""))
@@ -1471,10 +1672,18 @@ class DeepPipelineService:
             })
 
         if domain_requests:
+            p5c_model = self._get_model("phase_5c", MODEL_OPUS)
             domain_results = await self.claudio.call_batch(domain_requests, max_concurrency=self._get_concurrency("phase_5c", 3))
-            for result in domain_results:
+            for dr_i, result in enumerate(domain_results):
                 if isinstance(result, ClaudioPipelineError):
                     continue
+                # PROMPT #237: Emit per-domain wiki telemetry
+                domain_name = domain_page_groups[dr_i].get("domain", "?") if dr_i < len(domain_page_groups) else "?"
+                await self._emit_telemetry(
+                    "phase_5c", "wiki_domain",
+                    f"Gerando: domínio {domain_name}",
+                    dr_i + 1, len(domain_results), model_name=p5c_model, result=result,
+                )
                 pages_data = self.claudio.extract_json(result.get("text", ""))
                 if pages_data and isinstance(pages_data, dict):
                     for page in pages_data.get("pages", []):
@@ -1624,6 +1833,12 @@ class DeepPipelineService:
             thinking={"type": "enabled", "budget_tokens": p6_thinking} if p6_thinking else None,
             max_tokens=p6_max_tokens,
             **self._ollama_kwargs("phase_6"),
+        )
+
+        # PROMPT #237: Emit QA telemetry
+        await self._emit_telemetry(
+            "phase_6", "quality_review", "Avaliando qualidade geral",
+            1, 1, model_name=p6_model, result=result,
         )
 
         qa_result = self.claudio.extract_json(result.get("text", "")) or {

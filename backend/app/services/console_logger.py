@@ -44,6 +44,7 @@ class LogCategory(str, Enum):
     MEMORY_SCAN = "memory_scan"
     CACHE_EVENT = "cache_event"
     PERFORMANCE = "performance"  # PROMPT #296 - Operation timing and diagnostics
+    PIPELINE_ACTIVITY = "pipeline_activity"  # PROMPT #237 - Microscopic pipeline telemetry
     SYSTEM = "system"
     ERROR = "error"
 
@@ -655,6 +656,66 @@ class ConsoleLogger:
             model_name=model_name,
             input_tokens=input_tokens,
             output_tokens=output_tokens
+        )
+
+    # PROMPT #237 - Pipeline telemetry: microscopic activity events
+    async def log_pipeline_activity(
+        self,
+        project_id: str,
+        trace_id: str,
+        phase: str,
+        action: str,
+        item_name: str,
+        item_index: int,
+        item_total: int,
+        model_name: str = "",
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        cost_usd: float = 0.0,
+        duration_ms: int = 0,
+        cumulative_tokens_in: int = 0,
+        cumulative_tokens_out: int = 0,
+        cumulative_cost: float = 0.0,
+        phase_scores: Optional[Dict[str, int]] = None,
+        job_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+    ):
+        """Log a microscopic pipeline activity event with full token/cost context."""
+        pct = round((item_index / item_total) * 100, 1) if item_total > 0 else 0
+
+        extra = {
+            "phase": phase,
+            "action": action,
+            "item_name": item_name,
+            "item_index": item_index,
+            "item_total": item_total,
+            "item_pct": pct,
+            "cumulative_tokens_in": cumulative_tokens_in,
+            "cumulative_tokens_out": cumulative_tokens_out,
+            "cumulative_cost": cumulative_cost,
+        }
+        if phase_scores:
+            extra["phase_scores"] = phase_scores
+        if details:
+            extra.update(details)
+
+        await self.log(
+            level=LogLevel.INFO,
+            category=LogCategory.PIPELINE_ACTIVITY,
+            title=f"[{phase}] {action}",
+            message=f"{item_name} ({item_index}/{item_total})",
+            details=extra,
+            project_id=project_id,
+            job_id=job_id,
+            trace_id=trace_id,
+            operation_name="Deep Pipeline",
+            phase_name=phase,
+            model_name=model_name,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost_usd=cost_usd,
+            duration_ms=duration_ms,
+            tokens_used=(input_tokens + output_tokens) if (input_tokens or output_tokens) else None,
         )
 
     async def log_operation_summary(

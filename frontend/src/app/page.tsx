@@ -1,498 +1,348 @@
-'use client';
-
 /**
- * Dashboard / Home Page
- * Main dashboard with cost analytics, cache performance, and AI usage metrics
+ * Home Page — Projects List
+ * View and manage all projects (moved from /projects to /)
  */
 
-import { useState, useEffect } from 'react';
-import { Layout } from '@/components/layout/Layout';
-import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+'use client';
 
-interface CostSummary {
-  total_cost: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_tokens: number;
-  total_executions: number;
-  avg_cost_per_execution: number;
-  date_range_start: string | null;
-  date_range_end: string | null;
+import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { Layout, Breadcrumbs } from '@/components/layout';
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Button,
+  Dialog,
+  AIModelBadge,
+} from '@/components/ui';
+import { projectsApi, settingsApi } from '@/lib/api';
+import { Project } from '@/lib/types';
+
+/**
+ * PROMPT #192 - Strip markdown syntax for plain-text preview in project cards.
+ * Removes #, *, -, >, ```, links, images, etc. leaving clean readable text.
+ */
+function stripMarkdown(text: string): string {
+  return text
+    .replace(/^#{1,6}\s+/gm, '')       // headers
+    .replace(/\*\*([^*]+)\*\*/g, '$1')  // bold
+    .replace(/\*([^*]+)\*/g, '$1')      // italic
+    .replace(/`([^`]+)`/g, '$1')        // inline code
+    .replace(/```[\s\S]*?```/g, '')     // code blocks
+    .replace(/!\[.*?\]\(.*?\)/g, '')    // images
+    .replace(/\[([^\]]+)\]\(.*?\)/g, '$1') // links
+    .replace(/^[-*]\s+/gm, '')         // list items
+    .replace(/^>\s+/gm, '')            // blockquotes
+    .replace(/---+/g, '')              // horizontal rules
+    .replace(/\n{3,}/g, '\n\n')        // excessive newlines
+    .trim();
 }
 
-interface CostByProvider {
-  provider: string;
-  total_cost: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  execution_count: number;
-}
+// PROMPT #301 - Processing state removed; projects are now always active from creation
 
-interface CostByUsageType {
-  usage_type: string;
-  total_cost: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  execution_count: number;
-  avg_cost_per_execution: number;
-}
-
-interface DailyCost {
-  date: string;
-  total_cost: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  execution_count: number;
-}
-
-interface CostAnalytics {
-  summary: CostSummary;
-  by_provider: CostByProvider[];
-  by_usage_type: CostByUsageType[];
-  daily_costs: DailyCost[];
-}
-
-interface CacheStats {
-  enabled: boolean;
-  backend: string;
-  message?: string;
-  statistics?: {
-    l1_exact_match: { hits: number; misses: number; hit_rate: number };
-    l2_semantic: { hits: number; misses: number; hit_rate: number; enabled: boolean };
-    l3_template: { hits: number; misses: number; hit_rate: number };
-    total: {
-      hits: number;
-      misses: number;
-      requests: number;
-      hit_rate: number;
-      tokens_saved: number;
-      estimated_cost_saved: number;
-    };
-  };
-}
-
-export default function Home() {
-  const [analytics, setAnalytics] = useState<CostAnalytics | null>(null);
-  const [cacheStats, setCacheStats] = useState<CacheStats | null>(null);
+export default function ProjectsPage() {
+  const router = useRouter();
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedProvider, setSelectedProvider] = useState<string | null>(null);
-  const [selectedUsageType, setSelectedUsageType] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState(7); // Last 7 days
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showProtectedDialog, setShowProtectedDialog] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [allowProtectedDeletion, setAllowProtectedDeletion] = useState(false);
 
-  useEffect(() => {
-    fetchAnalytics();
-    fetchCacheStats();
-  }, [selectedProvider, selectedUsageType, dateRange]);
+  // PROMPT #301 - Removed processing job tracking (projects are always active now)
 
-  // PROMPT #183 - Auto-refresh cache stats every 30 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetchCacheStats();
-    }, 30000);
-    return () => clearInterval(interval);
+  const fetchProjects = useCallback(async () => {
+    try {
+      const response = await projectsApi.list();
+      const data = response.data || response;
+      const projectsList = Array.isArray(data) ? data : [];
+      setProjects(projectsList);
+      return projectsList;
+    } catch (error) {
+      console.error('Error fetching projects:', error);
+      setProjects([]);
+      return [];
+    }
   }, []);
 
-  const fetchAnalytics = async () => {
-    try {
+  useEffect(() => {
+    const init = async () => {
       setLoading(true);
-
-      const params = new URLSearchParams();
-      if (selectedProvider) params.append('provider', selectedProvider);
-      if (selectedUsageType) params.append('usage_type', selectedUsageType);
-
-      // Calculate start date based on dateRange
-      const endDate = new Date();
-      const startDate = new Date();
-      startDate.setDate(startDate.getDate() - dateRange);
-      params.append('start_date', startDate.toISOString());
-      params.append('end_date', endDate.toISOString());
-
-      const response = await fetch(`http://localhost:8000/api/v1/cost/analytics?${params}`);
-      if (!response.ok) throw new Error('Falha ao buscar analiticos');
-
-      const data = await response.json();
-      setAnalytics(data);
-    } catch (error) {
-      console.error('Error fetching analytics:', error);
-    } finally {
+      await fetchProjects();
+      // PROMPT #236 - Check if protected deletion is allowed
+      try {
+        const setting = await settingsApi.get('allow_protected_project_deletion');
+        setAllowProtectedDeletion(setting?.value === 'true');
+      } catch { /* setting may not exist yet */ }
       setLoading(false);
-    }
-  };
-
-  const fetchCacheStats = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/v1/cache/stats');
-      if (!response.ok) throw new Error('Falha ao buscar estatisticas de cache');
-
-      const data = await response.json();
-      setCacheStats(data);
-    } catch (error) {
-      console.error('Error fetching cache stats:', error);
-    }
-  };
-
-  const formatCost = (cost: number) => {
-    if (cost < 0.0001) return `$${cost.toFixed(6)}`;
-    if (cost < 0.01) return `$${cost.toFixed(4)}`;
-    return `$${cost.toFixed(2)}`;
-  };
-
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat('pt-BR').format(num);
-  };
-
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('pt-BR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
-
-  const getProviderColor = (provider: string) => {
-    const colors: Record<string, string> = {
-      'anthropic': 'bg-purple-100 text-purple-800',
-      'openai': 'bg-green-100 text-green-800',
-      'google': 'bg-blue-100 text-blue-800',
     };
-    return colors[provider] || 'bg-gray-100 text-gray-800';
+    init();
+  }, [fetchProjects]);
+
+  // PROMPT #301 - Removed processing job polling (projects are always active now)
+
+  const handleDeleteProject = async (project: Project) => {
+    setProjectToDelete(project);
+    // PROMPT #236 - Protected projects show info dialog instead of confirm
+    if (project.protected && !allowProtectedDeletion) {
+      setShowProtectedDialog(true);
+    } else {
+      setShowDeleteDialog(true);
+    }
   };
 
-  if (loading && !analytics) {
-    return (
-      <Layout>
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        </div>
-      </Layout>
-    );
-  }
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await projectsApi.delete(projectToDelete.id);
+      setShowDeleteDialog(false);
+      setProjectToDelete(null);
+      fetchProjects();
+    } catch (error) {
+      console.error('Error deleting project:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <Layout>
+      <Breadcrumbs />
       <div className="space-y-6">
         {/* Header */}
-        <div className="flex justify-between items-center">
+        <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Painel</h1>
+            <h1 className="text-3xl font-bold text-gray-900">Projetos</h1>
             <p className="mt-1 text-sm text-gray-500">
-              Custos de execução IA, desempenho de cache e analiticos de uso de tokens
+              Gerencie seus projetos de orquestração de IA
             </p>
           </div>
-
-          <div className="flex gap-2">
-            <select
-              value={dateRange}
-              onChange={(e) => setDateRange(Number(e.target.value))}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            >
-              <option value={1}>Ultimas 24 horas</option>
-              <option value={7}>Ultimos 7 dias</option>
-              <option value={30}>Ultimos 30 dias</option>
-              <option value={90}>Ultimos 90 dias</option>
-            </select>
-
-            <Button onClick={() => { fetchAnalytics(); fetchCacheStats(); }}>
-              Atualizar
-            </Button>
-          </div>
+          <Button
+            variant="primary"
+            onClick={() => router.push('/projects/new')}
+            leftIcon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
+              </svg>
+            }
+          >
+            Novo Projeto
+          </Button>
         </div>
 
-        {/* Summary Cards */}
-        {analytics && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Card>
-                <div className="p-6">
-                  <div className="text-sm font-medium text-gray-500">Custo Total</div>
-                  <div className="mt-2 text-3xl font-bold text-gray-900">
-                    {formatCost(analytics.summary.total_cost)}
+        {/* Projects List */}
+        {loading ? (
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          </div>
+        ) : projects.length === 0 ? (
+          <Card>
+            <CardContent className="p-12 text-center">
+              <svg
+                className="mx-auto h-12 w-12 text-gray-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhum projeto</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Comece criando um novo projeto.
+              </p>
+              <div className="mt-6">
+                <Button variant="primary" onClick={() => router.push('/projects/new')}>
+                  Novo Projeto
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {projects.map((project) => {
+              return (
+              <Card
+                key={project.id}
+                variant="bordered"
+              >
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle>
+                      {project.name}
+                    </CardTitle>
+                    {/* PROMPT #301 - Simplified status badge (no more processing state) */}
+                    {project.status === 'active' ? (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        Ativo
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                        Rascunho
+                      </span>
+                    )}
                   </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {formatNumber(analytics.summary.total_executions)} execucoes
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <p className="text-sm text-gray-600 line-clamp-3">
+                      {project.description ? stripMarkdown(project.description) : 'Sem descrição'}
+                    </p>
+                    {/* PROMPT #128 - Show AI model icon if project has AI-generated context */}
+                    {project.context_human && (
+                      <AIModelBadge model="context" usage_type="context" decorative />
+                    )}
                   </div>
-                </div>
-              </Card>
-
-              <Card>
-                <div className="p-6">
-                  <div className="text-sm font-medium text-gray-500">Custo Medio/Execução</div>
-                  <div className="mt-2 text-3xl font-bold text-gray-900">
-                    {formatCost(analytics.summary.avg_cost_per_execution)}
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    Por chamada de IA
-                  </div>
-                </div>
-              </Card>
-
-              <Card>
-                <div className="p-6">
-                  <div className="text-sm font-medium text-gray-500">Tokens Totais</div>
-                  <div className="mt-2 text-3xl font-bold text-gray-900">
-                    {formatNumber(analytics.summary.total_tokens)}
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    {formatNumber(analytics.summary.total_input_tokens)} in + {formatNumber(analytics.summary.total_output_tokens)} out
-                  </div>
-                </div>
-              </Card>
-
-              <Card>
-                <div className="p-6">
-                  <div className="text-sm font-medium text-gray-500">Total de Execucoes</div>
-                  <div className="mt-2 text-3xl font-bold text-gray-900">
-                    {formatNumber(analytics.summary.total_executions)}
-                  </div>
-                  <div className="mt-1 text-xs text-gray-500">
-                    Chamadas de IA realizadas
-                  </div>
-                </div>
-              </Card>
-            </div>
-
-            {/* Cache Performance */}
-            {cacheStats && (
-              <Card>
-                <div className="p-6">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold text-gray-900">Desempenho do Cache</h2>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                      cacheStats.enabled
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-gray-100 text-gray-800'
-                    }`}>
-                      {cacheStats.enabled ? `✓ ${cacheStats.backend.toUpperCase()}` : '✗ Desabilitado'}
-                    </span>
-                  </div>
-
-                  {!cacheStats.enabled ? (
-                    <div className="text-sm text-gray-500">
-                      {cacheStats.message || 'Cache não esta habilitado'}
+                  {/* PROMPT #111 - Show code_path */}
+                  {project.code_path && (
+                    <div className="text-xs text-gray-500 mb-2 font-mono truncate" title={project.code_path}>
+                      {project.code_path}
                     </div>
-                  ) : cacheStats.statistics && (
-                    <>
-                      {/* Overall Cache Stats */}
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                        <div>
-                          <div className="text-sm text-gray-500">Taxa de Acerto Geral</div>
-                          <div className="text-2xl font-bold text-green-600">
-                            {(cacheStats.statistics.total.hit_rate * 100).toFixed(1)}%
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            {formatNumber(cacheStats.statistics.total.hits)} hits / {formatNumber(cacheStats.statistics.total.requests)} requests
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-gray-500">Custo Economizado</div>
-                          <div className="text-2xl font-bold text-blue-600">
-                            {formatCost(cacheStats.statistics.total.estimated_cost_saved)}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            De respostas em cache
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-gray-500">Tokens Economizados</div>
-                          <div className="text-xl font-semibold text-purple-600">
-                            {formatNumber(cacheStats.statistics.total.tokens_saved)}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Não enviados para IA
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-sm text-gray-500">Acertos do Cache</div>
-                          <div className="text-xl font-semibold text-gray-900">
-                            {formatNumber(cacheStats.statistics.total.hits)}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-1">
-                            Recuperacoes bem-sucedidas
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Multi-Level Cache Breakdown */}
-                      <div className="border-t pt-4">
-                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Níveis de Cache</h3>
-                        <div className="space-y-3">
-                          {/* L1 - Exact Match */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-900">L1 - Correspondencia Exata</span>
-                                <span className="text-xs text-gray-500">(SHA256 hash, 7 dias TTL)</span>
-                              </div>
-                              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
-                                <div
-                                  className="bg-green-500 h-2 rounded-full"
-                                  style={{ width: `${cacheStats.statistics.l1_exact_match.hit_rate * 100}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                            <div className="ml-4 text-right">
-                              <div className="text-sm font-semibold text-gray-900">
-                                {(cacheStats.statistics.l1_exact_match.hit_rate * 100).toFixed(1)}%
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {formatNumber(cacheStats.statistics.l1_exact_match.hits)} hits
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* L2 - Semantic Similarity */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-900">L2 - Semântico</span>
-                                <span className="text-xs text-gray-500">(95% similaridade, 1 dia TTL)</span>
-                                {!cacheStats.statistics.l2_semantic.enabled && (
-                                  <span className="text-xs text-orange-600">(requer Redis)</span>
-                                )}
-                              </div>
-                              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
-                                <div
-                                  className="bg-blue-500 h-2 rounded-full"
-                                  style={{ width: `${cacheStats.statistics.l2_semantic.hit_rate * 100}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                            <div className="ml-4 text-right">
-                              <div className="text-sm font-semibold text-gray-900">
-                                {(cacheStats.statistics.l2_semantic.hit_rate * 100).toFixed(1)}%
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {formatNumber(cacheStats.statistics.l2_semantic.hits)} hits
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* L3 - Template Cache */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-gray-900">L3 - Template</span>
-                                <span className="text-xs text-gray-500">(Deterministico, 30 dias TTL)</span>
-                              </div>
-                              <div className="mt-1 w-full bg-gray-200 rounded-full h-2">
-                                <div
-                                  className="bg-purple-500 h-2 rounded-full"
-                                  style={{ width: `${cacheStats.statistics.l3_template.hit_rate * 100}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                            <div className="ml-4 text-right">
-                              <div className="text-sm font-semibold text-gray-900">
-                                {(cacheStats.statistics.l3_template.hit_rate * 100).toFixed(1)}%
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {formatNumber(cacheStats.statistics.l3_template.hits)} hits
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </>
                   )}
-                </div>
-              </Card>
-            )}
-
-            {/* Cost Breakdowns - Side by Side */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Cost by Provider */}
-              <Card>
-                <div className="p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Custo por Provedor</h2>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead>
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Provedor</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Custo</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Execucoes</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tokens</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">% do Total</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {analytics.by_provider.map((provider) => (
-                          <tr key={provider.provider} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 whitespace-nowrap">
-                              <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${getProviderColor(provider.provider)}`}>
-                                {provider.provider}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
-                              {formatCost(provider.total_cost)}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                              {formatNumber(provider.execution_count)}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                              {formatNumber(provider.total_tokens)}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                              {((provider.total_cost / analytics.summary.total_cost) * 100).toFixed(1)}%
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  {/* Show stack info if provisioned */}
+                  {project.stack_backend && (
+                    <div className="text-xs text-gray-500 mb-2 flex flex-wrap gap-1">
+                      <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">{project.stack_backend}</span>
+                      <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">{project.stack_database}</span>
+                      {project.stack_frontend && project.stack_frontend !== 'none' && (
+                        <span className="bg-pink-50 text-pink-700 px-2 py-0.5 rounded">{project.stack_frontend}</span>
+                      )}
+                      <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">{project.stack_css}</span>
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-400 mb-4">
+                    Criado: {new Date(project.created_at).toLocaleDateString()}
                   </div>
-                </div>
-              </Card>
-
-              {/* Cost by Usage Type */}
-              <Card>
-                <div className="p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Custo por Tipo de Uso</h2>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead>
-                        <tr>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo de Uso</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Custo</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Media/Chamada</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Execucoes</th>
-                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Tokens</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-200">
-                        {analytics.by_usage_type.map((usage) => (
-                          <tr key={usage.usage_type} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                              {usage.usage_type}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-right font-medium">
-                              {formatCost(usage.total_cost)}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                              {formatCost(usage.avg_cost_per_execution)}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                              {formatNumber(usage.execution_count)}
-                            </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm text-gray-500">
-                              {formatNumber(usage.total_tokens)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="flex gap-2">
+                    <Link href={`/projects/${project.id}`} className="flex-1">
+                      <Button variant="primary" size="sm" className="w-full">
+                        Ver
+                      </Button>
+                    </Link>
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleDeleteProject(project)}
+                      className={project.protected && !allowProtectedDeletion ? 'opacity-40 cursor-not-allowed' : ''}
+                      title={project.protected && !allowProtectedDeletion ? 'Projeto protegido contra exclusao' : 'Excluir projeto'}
+                    >
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                        />
+                      </svg>
+                    </Button>
                   </div>
-                </div>
+                </CardContent>
               </Card>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={showDeleteDialog}
+          onClose={() => setShowDeleteDialog(false)}
+          title="Excluir Projeto?"
+          description="Tem certeza que deseja excluir este projeto?"
+        >
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-red-600"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg></div>
+                <div>
+                  <h4 className="font-semibold text-red-900 mb-1">Atenção: Esta ação não pode ser desfeita!</h4>
+                  <p className="text-sm text-red-800">
+                    O projeto &quot;{projectToDelete?.name}&quot; e todos os dados associados (tarefas, entrevistas, wiki, jobs, documentos RAG) serao permanentemente excluidos.
+                  </p>
+                </div>
+              </div>
             </div>
 
-          </>
-        )}
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setShowDeleteDialog(false)}
+                disabled={isDeleting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={confirmDeleteProject}
+                disabled={isDeleting}
+                isLoading={isDeleting}
+              >
+                Sim, Excluir Projeto
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+
+        {/* PROMPT #236 - Protected Project Info Dialog */}
+        <Dialog
+          open={showProtectedDialog}
+          onClose={() => setShowProtectedDialog(false)}
+          title="Projeto Protegido"
+          description="Este projeto esta protegido contra exclusao."
+        >
+          <div className="space-y-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <div className="flex items-start gap-3">
+                <div className="text-blue-600">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <div>
+                  <h4 className="font-semibold text-blue-900 mb-1">Projeto protegido contra exclusao</h4>
+                  <p className="text-sm text-blue-800">
+                    O projeto &quot;{projectToDelete?.name}&quot; esta marcado como protegido. Para excluí-lo, va em <strong>Configurações &rarr; Avançado</strong> e ative a opção &quot;Permitir exclusão de projetos protegidos&quot;.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-4">
+              <Button
+                type="button"
+                variant="primary"
+                onClick={() => setShowProtectedDialog(false)}
+              >
+                Entendido
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+
       </div>
     </Layout>
   );

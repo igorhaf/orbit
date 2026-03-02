@@ -244,6 +244,10 @@ class JobManager:
             job.progress_message = progress_message
 
         # PROMPT #288 - Only do expensive operations at milestones
+        # PROMPT #237 - Pipeline jobs always broadcast (granular monitoring)
+        _PIPELINE_JOB_TYPES = {"deep_pipeline", "rag_pipeline", "memory_scan"}
+        is_pipeline = job.job_type.value in _PIPELINE_JOB_TYPES
+
         # Check if we crossed a milestone boundary
         is_milestone = False
         for m in self._PROGRESS_MILESTONES:
@@ -251,7 +255,7 @@ class JobManager:
                 is_milestone = True
                 break
 
-        if is_milestone or progress_message != job.progress_message:
+        if is_milestone or is_pipeline or progress_message != job.progress_message:
             # PROMPT #286 - Insert log entry only at milestones
             self.db.add(JobLogEntry(
                 job_id=job_id, level="info",
