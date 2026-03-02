@@ -280,35 +280,40 @@ export default function NewProjectPage() {
               </p>
             </div>
 
-            {/* PROMPT #239 - Project Description */}
+            {/* PROMPT #239 - Project Description with auto-generate button */}
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-gray-700">Descrição</label>
-                {!description.trim() && projectName.trim() && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleGenerateDescription}
-                    disabled={generatingDesc || submitting}
-                    isLoading={generatingDesc}
-                    title="Gerar descrição a partir do título usando IA"
-                  >
-                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
+              <div className="flex gap-2 items-start">
+                <button
+                  type="button"
+                  onClick={handleGenerateDescription}
+                  disabled={!projectName.trim() || generatingDesc || submitting}
+                  title={projectName.trim() ? 'Gerar descrição a partir do título usando IA' : 'Preencha o título primeiro'}
+                  className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors mt-0.5"
+                >
+                  {generatingDesc ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
-                    Gerar Descrição
-                  </Button>
-                )}
+                  )}
+                </button>
+                <textarea
+                  value={description}
+                  onChange={(e) => handleDescriptionChange(e.target.value)}
+                  placeholder="Descreva o projeto (opcional). Ao digitar, o título será sugerido automaticamente."
+                  rows={3}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-y"
+                  disabled={submitting}
+                />
               </div>
-              <textarea
-                value={description}
-                onChange={(e) => handleDescriptionChange(e.target.value)}
-                placeholder="Descreva o projeto (opcional). Ao digitar, o título será sugerido automaticamente."
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-y"
-                disabled={submitting}
-              />
+              <p className="text-xs text-gray-500 mt-1">
+                Use o botão para gerar a descrição via IA a partir do título.
+              </p>
             </div>
 
             {/* Scan Info */}
