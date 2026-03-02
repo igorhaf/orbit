@@ -51,6 +51,10 @@ export default function ProjectDetailsPage() {
   const [editedTitle, setEditedTitle] = useState('');
   const [isSavingTitle, setIsSavingTitle] = useState(false);
 
+  // PROMPT #240 - AI auto-generate title/description
+  const [generatingTitle, setGeneratingTitle] = useState(false);
+  const [generatingDescription, setGeneratingDescription] = useState(false);
+
   // Refs for inline editing
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -532,6 +536,64 @@ export default function ProjectDetailsPage() {
     setIsEditingTitle(false);
   };
 
+  // PROMPT #240 - AI auto-generate title from description
+  const handleGenerateTitle = useCallback(async () => {
+    if (!project?.description?.trim()) return;
+    setGeneratingTitle(true);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const resp = await fetch(`${API_BASE}/api/v1/projects/generate-title`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          description: project.description.trim(),
+          current_title: project.name?.trim() || undefined,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.title) {
+          await projectsApi.update(projectId, { name: data.title });
+          await loadProjectData();
+        }
+      } else {
+        showError('Falha ao gerar título');
+      }
+    } catch {
+      showError('Erro ao conectar com o servidor');
+    } finally {
+      setGeneratingTitle(false);
+    }
+  }, [project, projectId, showError, loadProjectData]);
+
+  // PROMPT #240 - AI auto-generate description from title
+  const handleGenerateDescription = useCallback(async () => {
+    if (!project?.name?.trim()) return;
+    setGeneratingDescription(true);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const resp = await fetch(`${API_BASE}/api/v1/projects/generate-description`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: project.name.trim() }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.description) {
+          await projectsApi.update(projectId, { description: data.description });
+          setEditedDescription(data.description);
+          await loadProjectData();
+        }
+      } else {
+        showError('Falha ao gerar descrição');
+      }
+    } catch {
+      showError('Erro ao conectar com o servidor');
+    } finally {
+      setGeneratingDescription(false);
+    }
+  }, [project, projectId, showError, loadProjectData]);
+
   // Markdown formatting helpers
   const insertMarkdown = (before: string, after: string = '') => {
     const textarea = textareaRef.current;
@@ -640,13 +702,34 @@ export default function ProjectDetailsPage() {
                 )}
               </div>
             ) : (
-              <h1
-                className="text-3xl font-bold text-gray-900 cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1 transition-colors"
-                onDoubleClick={handleTitleDoubleClick}
-                title="Clique duplo para editar"
-              >
-                {project.name}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1
+                  className="text-3xl font-bold text-gray-900 cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1 transition-colors"
+                  onDoubleClick={handleTitleDoubleClick}
+                  title="Clique duplo para editar"
+                >
+                  {project.name}
+                </h1>
+                {/* PROMPT #240 - Auto-generate title button */}
+                <button
+                  type="button"
+                  onClick={handleGenerateTitle}
+                  disabled={!project.description?.trim() || generatingTitle}
+                  title={project.description?.trim() ? 'Reformular título via IA' : 'Adicione uma descrição primeiro'}
+                  className="flex items-center justify-center w-8 h-8 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  {generatingTitle ? (
+                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             )}
 
             {/* Stack Configuration Badges (PROMPT #46 - Phase 1) */}
@@ -1025,6 +1108,8 @@ export default function ProjectDetailsPage() {
             formatLink={formatLink}
             formatQuote={formatQuote}
             formatTable={formatTable}
+            generatingDescription={generatingDescription}
+            onGenerateDescription={handleGenerateDescription}
           />
         )}
       </div>

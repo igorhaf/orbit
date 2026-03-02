@@ -54,6 +54,9 @@ interface OverviewTabProps {
   formatLink: () => void;
   formatQuote: () => void;
   formatTable: () => void;
+  // PROMPT #240 - AI auto-generate description
+  generatingDescription?: boolean;
+  onGenerateDescription?: () => void;
 }
 
 export default function OverviewTab({
@@ -85,6 +88,8 @@ export default function OverviewTab({
   formatLink,
   formatQuote,
   formatTable,
+  generatingDescription,
+  onGenerateDescription,
 }: OverviewTabProps) {
   // PROMPT #241 - Settings state for ignore_paths
   const [ignorePaths, setIgnorePaths] = useState<string[]>(project.ignore_paths || []);
@@ -160,7 +165,30 @@ export default function OverviewTab({
         {/* PROMPT #272 - Wiki stats moved to Wiki tab */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Descrição do Projeto</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle>Descrição do Projeto</CardTitle>
+              {/* PROMPT #240 - Auto-generate description button */}
+              {onGenerateDescription && !isEditingDescription && (
+                <button
+                  type="button"
+                  onClick={onGenerateDescription}
+                  disabled={generatingDescription}
+                  title="Gerar descrição via IA a partir do título"
+                  className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  {generatingDescription ? (
+                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                  )}
+                </button>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               {isFormattingDescription && (
                 <span className="text-xs text-gray-500 italic">Formatando para Markdown...</span>
