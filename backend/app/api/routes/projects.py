@@ -481,10 +481,62 @@ async def quick_create_project(
     }
 
 
+@router.post("/generate-description")
+async def generate_project_description(
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #239 — Generate a short project description from the title using AI.
+    Simple, synchronous call — no background job needed.
+
+    **POST** `/api/v1/projects/generate-description`
+    Body: `{"title": "My Project"}`
+    Response: `{"description": "Generated description..."}`
+    """
+    title = (body.get("title") or "").strip()
+    if not title:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campo 'title' é obrigatório",
+        )
+
+    try:
+        from app.prompts.loader import PromptLoader
+        from app.services.ai_orchestrator import AIOrchestrator
+
+        loader = PromptLoader()
+        system_prompt, user_prompt = loader.render(
+            "projects/generate_description", {"title": title}
+        )
+
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="general",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=300,
+            metadata={"skip_context_build": True},
+            disable_tools=True,
+        )
+
+        description = (response.get("content") or "").strip()
+        return {"description": description}
+
+    except Exception as e:
+        logger.error(f"Failed to generate description for '{title}': {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao gerar descrição: {str(e)}",
+        )
+
+
 @router.post("/create-and-process")
 async def create_and_process_project(
     code_path: str = Query(..., description="Absolute path to existing code folder"),
     scan_depth: str = Query("normal", description="Scan depth: quick, normal, or deep"),
+    name: Optional[str] = Query(None, description="Project name (default: folder name)"),
+    description: Optional[str] = Query(None, description="Project description"),
     db: Session = Depends(get_db)
 ):
     """
@@ -516,9 +568,9 @@ async def create_and_process_project(
             detail=f"Caminho do código não é um diretório: {code_path}"
         )
 
-    # Use folder name as temporary title
+    # PROMPT #239 - Use provided name or fall back to folder name
     folder_name = path.name
-    temp_name = folder_name.replace("-", " ").replace("_", " ").title()
+    temp_name = name.strip() if name and name.strip() else folder_name.replace("-", " ").replace("_", " ").title()
 
     # PROMPT #235 - Initialize satellite/ KB structure (creates code_path if needed)
     from app.services.project_service import initialize_project_knowledge_base
@@ -529,6 +581,7 @@ async def create_and_process_project(
 
     db_project = Project(
         name=temp_name,
+        description=description.strip() if description and description.strip() else None,
         code_path=code_path,
         context_locked=False,
         status=ProjectStatus.draft,
