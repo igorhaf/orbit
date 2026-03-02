@@ -628,6 +628,14 @@ class ProvidersMixin:
 
         content = data.get("message", {}).get("content", "")
 
+        # PROMPT #240 - Strip <think>...</think> tags from qwen3 thinking mode (non-streaming)
+        if content:
+            import re
+            cleaned = re.sub(r'<think>[\s\S]*?</think>\s*', '', content).strip()
+            if cleaned != content:
+                logger.info(f"🧠 Stripped thinking tags from Ollama response ({len(content)} → {len(cleaned)} chars)")
+                content = cleaned
+
         # Log execution time info from response
         total_duration = data.get("total_duration", 0) / 1e9  # nanoseconds to seconds
         if total_duration > 0:

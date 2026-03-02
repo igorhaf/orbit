@@ -519,7 +519,7 @@ async def generate_project_title(
             usage_type="general",
             messages=[{"role": "user", "content": user_prompt}],
             system_prompt=system_prompt,
-            max_tokens=100,
+            max_tokens=500,
             metadata={"skip_context_build": True},
             disable_tools=True,
         )
@@ -569,7 +569,7 @@ async def generate_project_description(
             usage_type="general",
             messages=[{"role": "user", "content": user_prompt}],
             system_prompt=system_prompt,
-            max_tokens=300,
+            max_tokens=800,
             metadata={"skip_context_build": True},
             disable_tools=True,
         )

@@ -45,7 +45,30 @@ Adicionar botões de auto-geração via IA para título e descrição diretament
 
 ---
 
+## Bug Fix: Endpoints retornando vazio
+
+### Root Cause
+
+O Qwen3 (Ollama) usa "thinking mode" que consome tokens do `max_tokens` budget. Com `max_tokens=100`, o thinking gastava todos os tokens e `content` ficava vazio.
+
+### Fix
+
+1. **`max_tokens` aumentado**: `generate-title` de 100→500, `generate-description` de 300→800
+2. **Strip `<think>` tags**: Adicionado no provider Ollama non-streaming (já existia no streaming)
+3. **Chain fallback**: Adicionado Qwen3 14B como fallback no chain `general` (antes só tinha Claudio que não está ativo)
+
+### Files Modified (fix)
+
+| File | Changes |
+|------|---------|
+| `backend/app/api/routes/projects.py` | max_tokens 100→500 (title), 300→800 (description) |
+| `backend/app/services/ai_orchestrator/providers.py` | Strip `<think>` tags no Ollama non-streaming |
+
+---
+
 ## Testing Results
 
 - TypeScript: zero erros nos arquivos alterados
+- `generate-title`: retorna título real (`"Meada: Gestão de Projetos com IA para Automação de Backlog"`)
+- `generate-description`: retorna descrição de 2-3 frases
 - Endpoints reutilizados: `generate-title` e `generate-description` (já existiam do PROMPT #239)
