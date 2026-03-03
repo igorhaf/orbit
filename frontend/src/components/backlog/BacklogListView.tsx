@@ -440,14 +440,37 @@ export default function BacklogListView({
     setExpandedIds(newExpanded);
   };
 
+  // Collect all descendant IDs of an item recursively
+  const collectDescendantIds = (item: BacklogItem): string[] => {
+    const ids: string[] = [];
+    if (item.children) {
+      for (const child of item.children) {
+        ids.push(child.id);
+        ids.push(...collectDescendantIds(child as BacklogItem));
+      }
+    }
+    return ids;
+  };
+
   const toggleSelected = (id: string) => {
     if (!onSelectionChange) return;
 
     const newSelected = new Set(selectedIds);
+    const item = findItemById(backlog, id);
+    const descendantIds = item ? collectDescendantIds(item) : [];
+
     if (newSelected.has(id)) {
+      // Deselect: remove this item and all descendants
       newSelected.delete(id);
+      for (const did of descendantIds) {
+        newSelected.delete(did);
+      }
     } else {
+      // Select: add this item and all descendants
       newSelected.add(id);
+      for (const did of descendantIds) {
+        newSelected.add(did);
+      }
     }
     onSelectionChange(newSelected);
   };
