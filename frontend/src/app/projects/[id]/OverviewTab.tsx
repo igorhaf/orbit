@@ -208,10 +208,36 @@ export default function OverviewTab({
   const [selectedText, setSelectedText] = useState('');
   const descriptionDisplayRef = useRef<HTMLDivElement>(null);
 
+  // PROMPT #243 fix - Displayed pinned fragments are updated with a delay
+  // to prevent DOM re-render from breaking the browser's text selection.
+  // The prop pinnedFragments updates immediately (for the ref/backend), but
+  // displayedPinned only updates after selection is cleared and interaction is done.
+  const [displayedPinned, setDisplayedPinned] = useState<string[]>(pinnedFragments);
+  const pendingPinnedRef = useRef<string[]>(pinnedFragments);
+
+  // Sync displayed pinned fragments when props change, but only if no active selection
+  useEffect(() => {
+    pendingPinnedRef.current = pinnedFragments;
+    // Check if there's an active selection in the description area
+    const selection = window.getSelection();
+    const hasActiveSelection = selection && !selection.isCollapsed &&
+      descriptionDisplayRef.current?.contains(selection.anchorNode as Node);
+    if (!hasActiveSelection) {
+      setDisplayedPinned(pinnedFragments);
+    }
+  }, [pinnedFragments]);
+
+  // When selection is cleared (mouseup with no selection), flush pending pinned updates
+  const flushPendingPinned = useCallback(() => {
+    setDisplayedPinned(pendingPinnedRef.current);
+  }, []);
+
   const handleSelectionChange = useCallback(() => {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || !descriptionDisplayRef.current) {
       setSelectedText('');
+      // No active selection — safe to update displayed highlights
+      flushPendingPinned();
       return;
     }
     // Only track selection within the description display area
@@ -226,7 +252,7 @@ export default function OverviewTab({
     } else {
       setSelectedText('');
     }
-  }, [editedDescription, project.description]);
+  }, [editedDescription, project.description, flushPendingPinned]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
@@ -357,7 +383,14 @@ export default function OverviewTab({
                   {project.description && selectedText && onPersistSelection && (
                     <button
                       type="button"
-                      onClick={() => onPersistSelection(selectedText)}
+                      onClick={() => {
+                        const textToPersist = selectedText;
+                        // Clear selection state immediately so the button hides
+                        setSelectedText('');
+                        // Clear browser selection to prevent DOM conflict on re-render
+                        window.getSelection()?.removeAllRanges();
+                        onPersistSelection(textToPersist);
+                      }}
                       disabled={expandingDescription || summarizingDescription || generatingDescription}
                       title={`Persistir trecho selecionado (${selectedText.length} chars)`}
                       className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
@@ -482,19 +515,19 @@ export default function OverviewTab({
                 onDoubleClick={handleDescriptionDoubleClick}
               >
                 <ReactMarkdown
-                  components={pinnedFragments.length > 0 ? {
+                  components={displayedPinned.length > 0 ? {
                     // PROMPT #243 - Custom text renderer to highlight pinned fragments
                     p: ({ children, ...props }) => (
-                      <p {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</p>
+                      <p {...props}>{renderChildrenWithHighlights(children, displayedPinned, onUnpinFragment)}</p>
                     ),
                     li: ({ children, ...props }) => (
-                      <li {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</li>
+                      <li {...props}>{renderChildrenWithHighlights(children, displayedPinned, onUnpinFragment)}</li>
                     ),
                     strong: ({ children, ...props }) => (
-                      <strong {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</strong>
+                      <strong {...props}>{renderChildrenWithHighlights(children, displayedPinned, onUnpinFragment)}</strong>
                     ),
                     em: ({ children, ...props }) => (
-                      <em {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</em>
+                      <em {...props}>{renderChildrenWithHighlights(children, displayedPinned, onUnpinFragment)}</em>
                     ),
                   } : undefined}
                 >

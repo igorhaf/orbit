@@ -1194,7 +1194,8 @@ export default function ProjectDetailsPage() {
               if (current.some((f: string) => f === text)) return;
               const updated = [...current, text];
               pinnedFragmentsRef.current = updated;
-              // Optimistic UI update
+              // Update project state — OverviewTab defers visual highlight updates
+              // via displayedPinned so the ReactMarkdown won't re-render immediately
               if (project) {
                 setProject({ ...project, pinned_fragments: updated });
               }
