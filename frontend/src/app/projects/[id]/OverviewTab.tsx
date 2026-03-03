@@ -211,6 +211,12 @@ export default function OverviewTab({
   const descriptionDisplayRef = useRef<HTMLDivElement>(null);
   const selectedTextRef = useRef('');
   const floatingBtnRef = useRef<HTMLButtonElement | null>(null);
+  // Stable ref for onPersistSelection to avoid useEffect re-running on every render
+  const onPersistSelectionRef = useRef(onPersistSelection);
+  onPersistSelectionRef.current = onPersistSelection;
+  // Stable ref for source text used in word boundary expansion
+  const descriptionSourceRef = useRef(editedDescription || project.description || '');
+  descriptionSourceRef.current = editedDescription || project.description || '';
 
   useEffect(() => {
     const el = descriptionDisplayRef.current;
@@ -250,7 +256,7 @@ export default function OverviewTab({
         }
         const raw = selection.toString().trim();
         if (!raw) { hideBtn(); return; }
-        const source = editedDescription || project.description || '';
+        const source = descriptionSourceRef.current;
         const expanded = expandToWordBoundaries(raw, source);
         selectedTextRef.current = expanded;
 
@@ -281,7 +287,7 @@ export default function OverviewTab({
       if (!text) return;
       hideBtn();
       window.getSelection()?.removeAllRanges();
-      onPersistSelection?.(text);
+      onPersistSelectionRef.current?.(text);
     };
 
     btn.addEventListener('mousedown', onBtnMouseDown);
@@ -305,7 +311,8 @@ export default function OverviewTab({
       btn.remove();
       floatingBtnRef.current = null;
     };
-  }, [editedDescription, project.description, onPersistSelection]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // PROMPT #241 - Settings state for ignore_paths
   const [ignorePaths, setIgnorePaths] = useState<string[]>(project.ignore_paths || []);

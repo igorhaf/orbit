@@ -335,6 +335,77 @@ def test_native_selection_after_pin(driver):
     return True
 
 
+def test_pin_after_unpin_all(driver):
+    """TEST 4: Remove all pins via API, then try to pin again (the reported bug)."""
+    print("\n=== TEST 4: Pin works after removing all fragments ===")
+
+    # Clear all pinned fragments via API (simulates user clicking to unpin all)
+    print("  Clearing all pinned fragments via API...")
+    reset_pinned_fragments()
+
+    # Reload page to get fresh state with zero pins
+    url = f"{BASE_URL}/projects/{PROJECT_ID}"
+    driver.get(url)
+    time.sleep(5)
+
+    desc_area = wait_for_description_area(driver)
+    full_text = desc_area.text
+
+    # Verify no highlights exist
+    highlights = get_highlighted_spans(driver)
+    print(f"  Highlights after clear: {len(highlights)} (expected 0)")
+    if len(highlights) != 0:
+        print("  WARN: Highlights still present after clearing")
+
+    # Now try to select and pin text
+    first_word_end = full_text.find(' ', 10)
+    if first_word_end == -1:
+        first_word_end = 20
+
+    target = full_text[:first_word_end].strip()
+    print(f"  Selecting text: \"{target}\" (chars 0-{first_word_end})")
+
+    result = select_text_in_element(driver, desc_area, 0, first_word_end)
+    print(f"  Selection result: {result}")
+
+    selected = driver.execute_script("return window.getSelection().toString()")
+    print(f"  window.getSelection(): \"{selected}\"")
+
+    if not selected or len(selected.strip()) < 3:
+        print("  FAIL: Could not select text after clearing all pins")
+        return False
+
+    time.sleep(1)
+
+    persist_btn = find_persist_button(driver)
+    if not persist_btn:
+        print("  FAIL: Persist button did not appear after clearing all pins")
+        return False
+
+    print("  Persist button found. Clicking...")
+    persist_btn.click()
+    time.sleep(3)
+
+    # Verify it was saved
+    fragments = get_pinned_fragments()
+    print(f"  API pinned_fragments: {fragments}")
+
+    if len(fragments) == 0:
+        print("  FAIL: Fragment not saved after clearing all pins")
+        return False
+
+    # Check highlight in DOM
+    highlights = get_highlighted_spans(driver)
+    print(f"  Highlighted spans: {len(highlights)}")
+
+    if len(highlights) == 0:
+        print("  FAIL: No highlights after re-pinning")
+        return False
+
+    print("  PASS: Pin works correctly after removing all fragments")
+    return True
+
+
 def main():
     print("=" * 70)
     print("PROMPT #243 — Pinned Fragments Selenium Test")
@@ -384,6 +455,8 @@ def main():
         results["test_multiple_pins"] = test_multiple_pins(driver)
 
         results["test_native_selection"] = test_native_selection_after_pin(driver)
+
+        results["test_pin_after_unpin_all"] = test_pin_after_unpin_all(driver)
 
     except Exception as e:
         print(f"\n[ERROR] Unexpected error: {e}")
