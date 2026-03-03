@@ -48,6 +48,9 @@ export type { ErrorDialogProps } from './ErrorDialog';
 
 export { AIModelBadge } from './AIModelBadge'; // PROMPT #127 - AI Model badge with tooltip
 
+export { MarkdownEditor } from './MarkdownEditor'; // PROMPT #248 - Reusable markdown editor with toolbar
+export type { MarkdownEditorProps } from './MarkdownEditor';
+
 export { NotificationBell } from './NotificationBell'; // PROMPT #128 - Background job notifications
 
 export { JobIndicator, JobIndicatorBadge } from './JobIndicator'; // PROMPT #162 - Job indicator badges

@@ -2,6 +2,7 @@
  * Wiki Panel Component
  * PROMPT #272 - Wiki as project tab instead of separate page
  * PROMPT #247 - Redesign: UI consistency + per-page AI operations
+ * PROMPT #248 - Rich editor with markdown toolbar + AI create flow
  *
  * Embeddable wiki viewer with sidebar navigation, page detail, and AI generation.
  */
@@ -9,7 +10,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Card, Button, Dialog, DialogFooter } from '@/components/ui';
+import { Card, Button, Dialog, DialogFooter, MarkdownEditor } from '@/components/ui';
 import { wikiApi, knowledgeApi, ragApi } from '@/lib/api';
 import { useNotification, useJobPolling } from '@/hooks';
 import ReactMarkdown from 'react-markdown';
@@ -190,6 +191,14 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     }
   };
 
+  const makeSlug = (title: string) =>
+    title
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim();
+
   const handleCreate = async () => {
     if (!newPage.title.trim()) {
       showError('Titulo obrigatorio');
@@ -197,12 +206,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     }
     setCreating(true);
     try {
-      const slug = newPage.title
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .trim();
+      const slug = makeSlug(newPage.title);
       await wikiApi.create(projectId, {
         title: newPage.title,
         slug,
@@ -212,7 +216,42 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       showSuccess('Pagina criada');
       setShowCreateDialog(false);
       setNewPage({ title: '', content: '' });
-      loadTree();
+      await loadTree();
+      setSelectedSlug(slug);
+    } catch (error: any) {
+      showError(error.message || 'Falha ao criar pagina');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleCreateAndGenerate = async () => {
+    if (!newPage.title.trim()) {
+      showError('Titulo obrigatorio');
+      return;
+    }
+    setCreating(true);
+    try {
+      const slug = makeSlug(newPage.title);
+      await wikiApi.create(projectId, {
+        title: newPage.title,
+        slug,
+        content: newPage.content || `## ${newPage.title}\n\nConteudo sendo gerado pela IA...`,
+        source: 'manual',
+      });
+      setShowCreateDialog(false);
+      setNewPage({ title: '', content: '' });
+      await loadTree();
+      setSelectedSlug(slug);
+      // Trigger AI generation
+      setAiAction('generate');
+      try {
+        const result = await wikiApi.generateContent(projectId, slug);
+        setAiJobId(result.job_id);
+      } catch (error: any) {
+        showError(error.message || 'Falha ao iniciar geracao de IA');
+        setAiAction(null);
+      }
     } catch (error: any) {
       showError(error.message || 'Falha ao criar pagina');
     } finally {
@@ -328,66 +367,36 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     );
   }
 
-  // Empty state
+  // Empty state (no duplicated dialog — uses the shared one at the bottom)
   if (tree.length === 0) {
     return (
-      <div className="space-y-6">
-        {NotificationComponent}
-        <Card className="p-8 text-center">
-          <div className="text-gray-400 mb-3">
-            <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-          </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Wiki Vazia</h3>
-          <p className="text-gray-500 mb-6 max-w-md mx-auto text-sm">
-            Crie paginas manualmente ou gere automaticamente a partir do contexto do projeto.
-          </p>
-          <div className="flex items-center justify-center gap-3">
-            <Button variant="outline" onClick={handleGenerate} disabled={generating}>
-              {generating ? 'Gerando...' : 'Gerar do Contexto'}
-            </Button>
-            <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
-              Nova Pagina
-            </Button>
-          </div>
-        </Card>
+      <>
+        <div className="space-y-6">
+          {NotificationComponent}
+          <Card className="p-8 text-center">
+            <div className="text-gray-400 mb-3">
+              <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Wiki Vazia</h3>
+            <p className="text-gray-500 mb-6 max-w-md mx-auto text-sm">
+              Crie paginas manualmente ou gere automaticamente a partir do contexto do projeto.
+            </p>
+            <div className="flex items-center justify-center gap-3">
+              <Button variant="outline" onClick={handleGenerate} disabled={generating}>
+                {generating ? 'Gerando...' : 'Gerar do Contexto'}
+              </Button>
+              <Button variant="primary" onClick={() => setShowCreateDialog(true)}>
+                Nova Pagina
+              </Button>
+            </div>
+          </Card>
+        </div>
 
-        {/* Create dialog */}
-        <Dialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} title="Nova Pagina Wiki">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Titulo</label>
-              <input
-                type="text"
-                value={newPage.title}
-                onChange={(e) => setNewPage({ ...newPage, title: e.target.value })}
-                placeholder="Ex.: Arquitetura do Sistema"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Conteudo inicial (Markdown)</label>
-              <textarea
-                value={newPage.content}
-                onChange={(e) => setNewPage({ ...newPage, content: e.target.value })}
-                placeholder={"## Titulo\n\nConteudo da pagina em Markdown..."}
-                rows={5}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={creating}>
-              Cancelar
-            </Button>
-            <Button variant="primary" onClick={handleCreate} disabled={creating || !newPage.title.trim()}>
-              {creating ? 'Criando...' : 'Criar Pagina'}
-            </Button>
-          </DialogFooter>
-        </Dialog>
-      </div>
+        {/* Shared dialogs */}
+        {renderCreateDialog()}
+      </>
     );
   }
 
@@ -403,6 +412,54 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         <span className="text-gray-300">|</span>
         <span>{wikiStats.code_files_count} arquivos escaneados</span>
       </div>
+    );
+  }
+
+  // Shared create dialog (used by both empty state and main view)
+  function renderCreateDialog() {
+    return (
+      <Dialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} title="Nova Pagina Wiki" size="2xl">
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Titulo</label>
+            <input
+              type="text"
+              value={newPage.title}
+              onChange={(e) => setNewPage({ ...newPage, title: e.target.value })}
+              placeholder="Ex.: Arquitetura do Sistema"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Conteudo (Markdown)</label>
+            <MarkdownEditor
+              value={newPage.content}
+              onChange={(content) => setNewPage({ ...newPage, content })}
+              placeholder="## Titulo&#10;&#10;Conteudo da pagina em Markdown..."
+              minHeight="200px"
+              onSave={handleCreate}
+              onCancel={() => setShowCreateDialog(false)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={creating}>
+            Cancelar
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleCreateAndGenerate}
+            disabled={creating || !newPage.title.trim()}
+            className="text-purple-600 border-purple-300 hover:bg-purple-50"
+          >
+            {creating ? 'Criando...' : 'Criar e Gerar com IA'}
+          </Button>
+          <Button variant="primary" onClick={handleCreate} disabled={creating || !newPage.title.trim()}>
+            {creating ? 'Criando...' : 'Criar Pagina'}
+          </Button>
+        </DialogFooter>
+      </Dialog>
     );
   }
 
@@ -608,6 +665,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
               <div className="text-xs text-gray-400 mb-3 flex items-center gap-4">
                 <span>Atualizado {new Date(selectedPage.updated_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                 <span>/{selectedPage.slug}</span>
+                {!editing && <span className="text-gray-300">Clique duplo para editar</span>}
               </div>
 
               {/* AI processing indicator */}
@@ -626,22 +684,23 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
               {/* Content */}
               <Card className="p-5">
                 {editing ? (
-                  <div className="space-y-4">
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      className="w-full min-h-[400px] p-4 border border-gray-200 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"
-                      placeholder="Conteudo Markdown..."
-                    />
-                    <div className="border-t pt-4">
-                      <span className="text-xs font-medium text-gray-500 uppercase mb-2 block">Pre-visualizacao</span>
-                      <div className="prose prose-sm max-w-none p-4 bg-gray-50 rounded-lg">
-                        <ReactMarkdown>{editContent}</ReactMarkdown>
-                      </div>
-                    </div>
-                  </div>
+                  <MarkdownEditor
+                    value={editContent}
+                    onChange={setEditContent}
+                    placeholder="Conteudo Markdown..."
+                    minHeight="400px"
+                    onSave={handleSave}
+                    onCancel={() => {
+                      setEditing(false);
+                      setEditContent(selectedPage.content);
+                      setEditTitle(selectedPage.title);
+                    }}
+                  />
                 ) : (
-                  <div className="prose prose-sm max-w-none">
+                  <div
+                    className="prose prose-sm max-w-none cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
+                    onDoubleClick={() => setEditing(true)}
+                  >
                     <ReactMarkdown
                       urlTransform={(url) => url}
                       components={{
@@ -690,45 +749,13 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         </div>
       </div>
 
-      {/* Create dialog */}
-      <Dialog open={showCreateDialog} onClose={() => setShowCreateDialog(false)} title="Nova Pagina Wiki">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Titulo</label>
-            <input
-              type="text"
-              value={newPage.title}
-              onChange={(e) => setNewPage({ ...newPage, title: e.target.value })}
-              placeholder="Ex.: Arquitetura do Sistema"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              autoFocus
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Conteudo inicial (Markdown)</label>
-            <textarea
-              value={newPage.content}
-              onChange={(e) => setNewPage({ ...newPage, content: e.target.value })}
-              placeholder={"## Titulo\n\nConteudo da pagina em Markdown..."}
-              rows={5}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-            />
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setShowCreateDialog(false)} disabled={creating}>
-            Cancelar
-          </Button>
-          <Button variant="primary" onClick={handleCreate} disabled={creating || !newPage.title.trim()}>
-            {creating ? 'Criando...' : 'Criar Pagina'}
-          </Button>
-        </DialogFooter>
-      </Dialog>
+      {/* Shared create dialog */}
+      {renderCreateDialog()}
 
       {/* Delete confirmation dialog */}
       <Dialog open={showDeleteDialog} onClose={() => setShowDeleteDialog(false)} title="Excluir Pagina">
         <p className="text-sm text-gray-600">
-          Tem certeza que deseja excluir a pagina <strong>"{selectedPage?.title}"</strong>? Esta acao nao pode ser desfeita.
+          Tem certeza que deseja excluir a pagina <strong>&quot;{selectedPage?.title}&quot;</strong>? Esta acao nao pode ser desfeita.
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
