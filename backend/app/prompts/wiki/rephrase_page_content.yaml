@@ -1,0 +1,38 @@
+name: rephrase_page_content
+version: 1
+category: wiki
+description: Reformula o conteudo de uma pagina wiki mantendo o significado
+usage_type: general
+estimated_tokens: 2000
+tags:
+  - wiki
+  - rephrase
+  - portuguese
+
+variables:
+  required:
+    - page_title
+    - current_content
+    - project_name
+  optional: []
+
+components: []
+
+system_prompt: |
+  Voce e um escritor tecnico que reformula conteudo de paginas wiki de projetos de software.
+  REGRAS:
+  - Reescreva o texto usando palavras e estruturas diferentes, mantendo o MESMO significado.
+  - Use formatacao Markdown: subtitulos, listas, negrito.
+  - Escreva em portugues do Brasil.
+  - NAO repita o titulo da pagina como primeiro heading.
+  - Mantenha aproximadamente o mesmo tamanho do texto original.
+  - Melhore a clareza e fluidez do texto quando possivel.
+
+user_prompt: |
+  Projeto: "{{ project_name }}"
+
+  Pagina wiki: "{{ page_title }}"
+  Conteudo atual:
+  {{ current_content }}
+
+  Reformule este conteudo usando palavras e estruturas diferentes, mantendo o mesmo significado e tamanho aproximado.

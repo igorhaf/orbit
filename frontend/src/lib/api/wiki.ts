@@ -44,4 +44,25 @@ export const wikiApi = {
     request<any>(`/api/v1/projects/${projectId}/wiki/relink`, {
       method: 'POST',
     }),
+
+  // PROMPT #247 — Per-page AI operations
+  generateContent: (projectId: string, slug: string) =>
+    request<{ job_id: string; status: string }>(`/api/v1/projects/${projectId}/wiki/${slug}/generate-content`, {
+      method: 'POST',
+    }),
+
+  expandContent: (projectId: string, slug: string) =>
+    request<{ job_id: string; status: string }>(`/api/v1/projects/${projectId}/wiki/${slug}/expand-content`, {
+      method: 'POST',
+    }),
+
+  summarizeContent: (projectId: string, slug: string) =>
+    request<{ job_id: string; status: string }>(`/api/v1/projects/${projectId}/wiki/${slug}/summarize-content`, {
+      method: 'POST',
+    }),
+
+  rephraseContent: (projectId: string, slug: string) =>
+    request<{ job_id: string; status: string }>(`/api/v1/projects/${projectId}/wiki/${slug}/rephrase-content`, {
+      method: 'POST',
+    }),
 };

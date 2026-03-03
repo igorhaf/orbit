@@ -41,6 +41,7 @@ from app.services.wiki_service import (
     _apply_semantic_links_to_project_fs,
     _parse_wiki_sections,
     _parse_wiki_subsections,
+    _process_wiki_page_ai_async,
 )
 
 logger = logging.getLogger(__name__)
@@ -457,3 +458,141 @@ async def enrich_business_rule_pages(
         "job_id": str(job_id),
         "rule_count": rule_count,
     }
+
+
+# ---------------------------------------------------------------------------
+# PROMPT #247 — Per-page wiki AI operations
+# ---------------------------------------------------------------------------
+
+from app.models.async_job import JobType
+from app.services.job_manager import JobManager
+
+
+@router.post("/{project_id}/wiki/{slug}/generate-content")
+async def generate_wiki_page_content(
+    project_id: UUID,
+    slug: str,
+    db: Session = Depends(get_db),
+):
+    """Generate content for a wiki page using AI."""
+    project = _get_project_or_404(db, project_id)
+    page = wiki_fs.read_page(project.code_path, slug)
+    if not page:
+        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.WIKI_PAGE_AI,
+        input_data={"action": "generate", "slug": slug, "page_title": page.title},
+        project_id=project_id,
+        notification_title=f"Gerando conteudo — '{page.title[:40]}'"
+    )
+
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_wiki_page_ai_async,
+        job.id, "generate", str(project_id), slug, page.title, page.content, 2000,
+    )
+
+    return {"job_id": str(job.id), "status": "pending", "message": "Geracao de conteudo enfileirada."}
+
+
+@router.post("/{project_id}/wiki/{slug}/expand-content")
+async def expand_wiki_page_content(
+    project_id: UUID,
+    slug: str,
+    db: Session = Depends(get_db),
+):
+    """Expand/detail a wiki page's content using AI."""
+    project = _get_project_or_404(db, project_id)
+    page = wiki_fs.read_page(project.code_path, slug)
+    if not page:
+        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
+    if not page.content or not page.content.strip():
+        raise HTTPException(status_code=400, detail="Pagina sem conteudo para expandir")
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.WIKI_PAGE_AI,
+        input_data={"action": "expand", "slug": slug, "page_title": page.title},
+        project_id=project_id,
+        notification_title=f"Expandindo — '{page.title[:40]}'"
+    )
+
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_wiki_page_ai_async,
+        job.id, "expand", str(project_id), slug, page.title, page.content, 2000,
+    )
+
+    return {"job_id": str(job.id), "status": "pending", "message": "Expansao de conteudo enfileirada."}
+
+
+@router.post("/{project_id}/wiki/{slug}/summarize-content")
+async def summarize_wiki_page_content(
+    project_id: UUID,
+    slug: str,
+    db: Session = Depends(get_db),
+):
+    """Summarize/condense a wiki page's content using AI."""
+    project = _get_project_or_404(db, project_id)
+    page = wiki_fs.read_page(project.code_path, slug)
+    if not page:
+        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
+    if not page.content or not page.content.strip():
+        raise HTTPException(status_code=400, detail="Pagina sem conteudo para resumir")
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.WIKI_PAGE_AI,
+        input_data={"action": "summarize", "slug": slug, "page_title": page.title},
+        project_id=project_id,
+        notification_title=f"Resumindo — '{page.title[:40]}'"
+    )
+
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_wiki_page_ai_async,
+        job.id, "summarize", str(project_id), slug, page.title, page.content, 1000,
+    )
+
+    return {"job_id": str(job.id), "status": "pending", "message": "Resumo de conteudo enfileirado."}
+
+
+@router.post("/{project_id}/wiki/{slug}/rephrase-content")
+async def rephrase_wiki_page_content(
+    project_id: UUID,
+    slug: str,
+    db: Session = Depends(get_db),
+):
+    """Rephrase a wiki page's content using AI."""
+    project = _get_project_or_404(db, project_id)
+    page = wiki_fs.read_page(project.code_path, slug)
+    if not page:
+        raise HTTPException(status_code=404, detail="Pagina wiki nao encontrada")
+    if not page.content or not page.content.strip():
+        raise HTTPException(status_code=400, detail="Pagina sem conteudo para reformular")
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.WIKI_PAGE_AI,
+        input_data={"action": "rephrase", "slug": slug, "page_title": page.title},
+        project_id=project_id,
+        notification_title=f"Reformulando — '{page.title[:40]}'"
+    )
+
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_wiki_page_ai_async,
+        job.id, "rephrase", str(project_id), slug, page.title, page.content, 2000,
+    )
+
+    return {"job_id": str(job.id), "status": "pending", "message": "Reformulacao de conteudo enfileirada."}

@@ -1,0 +1,38 @@
+name: summarize_page_content
+version: 1
+category: wiki
+description: Resume e condensa o conteudo de uma pagina wiki
+usage_type: general
+estimated_tokens: 1000
+tags:
+  - wiki
+  - summarize
+  - portuguese
+
+variables:
+  required:
+    - page_title
+    - current_content
+    - project_name
+  optional: []
+
+components: []
+
+system_prompt: |
+  Voce e um escritor tecnico que resume conteudo de paginas wiki de projetos de software.
+  REGRAS:
+  - Condense o texto mantendo as informacoes mais importantes.
+  - Use formatacao Markdown: subtitulos, listas, negrito.
+  - Escreva em portugues do Brasil.
+  - NAO repita o titulo da pagina como primeiro heading.
+  - O resultado deve ser mais curto que o original, mas sem perder informacoes essenciais.
+  - Priorize clareza e objetividade.
+
+user_prompt: |
+  Projeto: "{{ project_name }}"
+
+  Pagina wiki: "{{ page_title }}"
+  Conteudo atual:
+  {{ current_content }}
+
+  Resuma este conteudo mantendo as informacoes essenciais. O texto deve ficar mais curto e objetivo.

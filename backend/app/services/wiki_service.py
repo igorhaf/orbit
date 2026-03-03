@@ -1142,3 +1142,127 @@ def _parse_wiki_subsections(markdown: str) -> Dict[str, Tuple[str, str]]:
                 break
 
     return sections
+
+
+# ---------------------------------------------------------------------------
+# PROMPT #247 — Per-page wiki AI operations (generate/expand/summarize/rephrase)
+# ---------------------------------------------------------------------------
+
+async def _process_wiki_page_ai_async(
+    job_id: UUID,
+    action: str,
+    project_id: str,
+    slug: str,
+    page_title: str,
+    current_content: Optional[str],
+    max_tokens: int = 2000,
+):
+    """
+    Background task for per-page wiki AI operations.
+    Follows the same pattern as _process_description_async in project_service.py.
+
+    :param action: "generate", "expand", "summarize", "rephrase"
+    :param project_id: project UUID string
+    :param slug: wiki page slug
+    :param page_title: title of the wiki page
+    :param current_content: existing page content (required for expand/summarize/rephrase)
+    :param max_tokens: max tokens for AI response
+    """
+    from app.services.job_manager import JobManager
+
+    db = SessionLocal()
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"Wiki page AI {action} started (job {job_id}, slug={slug})")
+
+        job_manager.update_progress(job_id, 10.0, f"Preparando prompt ({action})...")
+
+        from app.prompts.loader import PromptLoader
+        from app.services.ai_orchestrator import AIOrchestrator
+
+        loader = PromptLoader()
+
+        # Load project context
+        pid = UUID(project_id) if isinstance(project_id, str) else project_id
+        project = db.query(Project).filter(Project.id == pid).first()
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        # Build variables
+        variables = {
+            "page_title": page_title,
+            "project_name": project.name or "Projeto",
+        }
+        if project.description:
+            variables["project_description"] = project.description[:500]
+        if current_content:
+            variables["current_content"] = current_content
+
+        # List existing pages for context (generate action)
+        if action == "generate" and project.code_path:
+            try:
+                pages = wiki_fs.list_pages(project.code_path)
+                other_titles = [p.title for p in pages if p.slug != slug]
+                if other_titles:
+                    variables["existing_pages"] = "\n".join(f"- {t}" for t in other_titles[:20])
+            except Exception:
+                pass
+
+        # Select prompt template
+        prompt_map = {
+            "generate": "wiki/generate_page_content",
+            "expand": "wiki/expand_page_content",
+            "summarize": "wiki/summarize_page_content",
+            "rephrase": "wiki/rephrase_page_content",
+        }
+        prompt_name = prompt_map.get(action, "wiki/generate_page_content")
+
+        system_prompt, user_prompt = loader.render(prompt_name, variables)
+
+        job_manager.update_progress(job_id, 30.0, "Aguardando resposta da IA...")
+
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="general",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            metadata={"skip_context_build": True},
+            disable_tools=True,
+        )
+
+        content = (response.get("content") or "").strip()
+
+        job_manager.update_progress(job_id, 80.0, "Salvando conteudo...")
+
+        # Save to wiki page via filesystem
+        if content and project.code_path:
+            try:
+                wiki_fs.write_page(
+                    code_path=project.code_path,
+                    project_id=pid,
+                    slug=slug,
+                    title=page_title,
+                    content=content,
+                    source="ai_generated",
+                )
+                logger.info(f"Wiki page '{slug}' updated with AI {action}")
+            except Exception as save_err:
+                logger.warning(f"Could not save wiki page: {save_err}")
+        elif not content:
+            logger.warning(f"AI returned empty content for wiki page '{slug}' — NOT saving")
+
+        result_data = {"content": content, "action": action, "slug": slug}
+        job_manager.complete_job(job_id, result_data)
+        logger.info(f"Wiki page AI {action} completed (job {job_id})")
+
+    except Exception as e:
+        logger.error(f"Wiki page AI {action} failed (job {job_id}): {e}", exc_info=True)
+        try:
+            from app.services.job_manager import JobManager as JM
+            JM(db).fail_job(job_id, str(e))
+        except Exception:
+            pass
+    finally:
+        db.close()

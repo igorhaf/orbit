@@ -82,6 +82,9 @@ class JobType(str, enum.Enum):
     # PROMPT #282: RAG Chat message (user asks, AI answers from RAG)
     CHAT_MESSAGE = "chat_message"
 
+    # PROMPT #247: Per-page wiki AI operations (generate/expand/summarize/rephrase)
+    WIKI_PAGE_AI = "wiki_page_ai"
+
 
 def _load_job_priorities() -> dict:
     """PROMPT #256 - Load job priorities from contract YAML."""
@@ -124,6 +127,7 @@ def _load_job_priorities() -> dict:
             JobType.WIKI_RULE_ENRICHMENT: JobPriority.LOW,
             JobType.WIKI_GENERATION: JobPriority.NORMAL,
             JobType.DESCRIPTION_GENERATION: JobPriority.NORMAL,
+            JobType.WIKI_PAGE_AI: JobPriority.NORMAL,
         }
 
 
