@@ -6,7 +6,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';  // PROMPT #151 - Restored useRouter for redirect
+import { useParams, useRouter, useSearchParams } from 'next/navigation';  // PROMPT #151 - Restored useRouter for redirect
 import Link from 'next/link';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Button, Badge, Dialog, DialogFooter } from '@/components/ui';
@@ -34,13 +34,29 @@ type OverviewSubTab = 'description' | 'statistics' | 'settings';
 export default function ProjectDetailsPage() {
   const params = useParams();
   const router = useRouter();  // PROMPT #151 - Restored for redirect to wizard
+  const searchParams = useSearchParams();
   const projectId = params.id as string;
   const { showError, showSuccess, NotificationComponent } = useNotification();
   const { addJob } = useNotifications();
 
+  const validTabs: Tab[] = ['overview', 'backlog', 'kanban', 'queue', 'wiki', 'chat', 'specs', 'commits', 'rag', 'analytics'];
+  const tabParam = searchParams.get('tab') as Tab | null;
+  const initialTab = tabParam && validTabs.includes(tabParam) ? tabParam : 'overview';
+
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [activeTab, setActiveTabState] = useState<Tab>(initialTab);
+
+  const setActiveTab = (tab: Tab) => {
+    setActiveTabState(tab);
+    const url = new URL(window.location.href);
+    if (tab === 'overview') {
+      url.searchParams.delete('tab');
+    } else {
+      url.searchParams.set('tab', tab);
+    }
+    window.history.replaceState({}, '', url.toString());
+  };
   const [overviewSubTab, setOverviewSubTab] = useState<OverviewSubTab>('description');
   const [loading, setLoading] = useState(true);
   const [isEditingDescription, setIsEditingDescription] = useState(false);
