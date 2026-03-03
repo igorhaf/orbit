@@ -1042,9 +1042,14 @@ async def _process_description_async(
         # Parse FRAGMENT_MAP if present (AI may rephrase pinned fragments)
         changed_fragments = []
         description = raw_content
-        if "---FRAGMENT_MAP---" in raw_content and "---END_FRAGMENT_MAP---" in raw_content:
+        if "---FRAGMENT_MAP---" in raw_content:
             map_start = raw_content.index("---FRAGMENT_MAP---")
-            map_end = raw_content.index("---END_FRAGMENT_MAP---") + len("---END_FRAGMENT_MAP---")
+            if "---END_FRAGMENT_MAP---" in raw_content:
+                map_end = raw_content.index("---END_FRAGMENT_MAP---") + len("---END_FRAGMENT_MAP---")
+            else:
+                # Truncated response — FRAGMENT_MAP started but END tag missing
+                map_end = len(raw_content)
+                logger.warning("FRAGMENT_MAP found without END tag — response may have been truncated")
             map_block = raw_content[map_start:map_end]
             description = (raw_content[:map_start].rstrip("\n -") + raw_content[map_end:]).strip()
 

@@ -128,9 +128,15 @@ async def create_task(
         prompt_id=task_data.prompt_id,
         title=task_data.title,
         description=task_data.description,
+        item_type=task_data.item_type,
+        parent_id=task_data.parent_id,
+        priority=task_data.priority,
         status=task_data.status,
         column=task_data.status.value,  # Column matches status
         order=max_order,
+        complexity=task_data.complexity,
+        labels=task_data.labels,
+        acceptance_criteria=task_data.acceptance_criteria,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
     )

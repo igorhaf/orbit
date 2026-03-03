@@ -307,14 +307,17 @@ async def handle_unified_open_interview(
             if fixed_question:
                 # Store motivation type from Q1 answer
                 if question_number == 2:
-                    # Q1 answer is the motivation type
+                    # Q1 answer is the SECOND user message (index 1)
+                    # Index 0 is the initial user message that started the interview
                     user_answers = [
                         msg.get('content', '')
                         for msg in interview.conversation_data
                         if msg.get('role') == 'user'
                     ]
-                    if user_answers:
-                        interview.motivation_type = user_answers[0].lower()
+                    if len(user_answers) >= 2:
+                        interview.motivation_type = user_answers[1].lower()[:50]
+                    elif user_answers:
+                        interview.motivation_type = user_answers[0].lower()[:50]
 
                 interview.conversation_data.append(fixed_question)
                 flag_modified(interview, "conversation_data")
