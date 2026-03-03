@@ -406,6 +406,76 @@ def test_pin_after_unpin_all(driver):
     return True
 
 
+def test_pin_different_paragraphs(driver):
+    """TEST 5: Pin text from second and third paragraphs (reported bug)."""
+    print("\n=== TEST 5: Pin from different paragraphs ===")
+
+    # Reset
+    reset_pinned_fragments()
+    url = f"{BASE_URL}/projects/{PROJECT_ID}"
+    driver.get(url)
+    time.sleep(5)
+    wait_for_description_area(driver)
+
+    # Select and pin from second paragraph using JS range API
+    for p_idx in [0, 1, 2]:
+        result = driver.execute_script("""
+            var container = document.querySelector('.prose.prose-sm');
+            var ps = container.querySelectorAll('p');
+            var pIdx = arguments[0];
+            if (pIdx >= ps.length) return {ok: false, err: 'P[' + pIdx + '] not found'};
+            var p = ps[pIdx];
+            function getTextNodes(node) {
+                var nodes = [];
+                if (node.nodeType === 3) nodes.push(node);
+                else for (var i = 0; i < node.childNodes.length; i++) nodes = nodes.concat(getTextNodes(node.childNodes[i]));
+                return nodes;
+            }
+            var tns = getTextNodes(p);
+            if (tns.length === 0) return {ok: false, err: 'P[' + pIdx + '] no text nodes'};
+            var tn = tns[0];
+            var end = Math.min(15, tn.textContent.length);
+            var range = document.createRange();
+            range.setStart(tn, 0);
+            range.setEnd(tn, end);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            container.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+            return {ok: true, text: window.getSelection().toString()};
+        """, p_idx)
+
+        if not result.get('ok'):
+            print(f"  P[{p_idx}]: SKIP ({result.get('err')})")
+            continue
+
+        print(f"  P[{p_idx}] selected: \"{result['text']}\"")
+        time.sleep(1)
+
+        persist_btn = find_persist_button(driver)
+        if not persist_btn:
+            print(f"  P[{p_idx}]: FAIL — no persist button")
+            return False
+
+        persist_btn.click()
+        time.sleep(3)
+
+        fragments = get_pinned_fragments()
+        print(f"  P[{p_idx}] fragments: {len(fragments)}")
+
+    # Final check
+    fragments = get_pinned_fragments()
+    highlights = get_highlighted_spans(driver)
+    print(f"\n  Final fragments: {fragments}")
+    print(f"  Final highlights: {len(highlights)}")
+
+    if len(fragments) < 3:
+        print(f"  FAIL: Expected 3 fragments from 3 paragraphs, got {len(fragments)}")
+        return False
+
+    print("  PASS: Pinned fragments from multiple paragraphs successfully")
+    return True
+
+
 def main():
     print("=" * 70)
     print("PROMPT #243 — Pinned Fragments Selenium Test")
@@ -457,6 +527,8 @@ def main():
         results["test_native_selection"] = test_native_selection_after_pin(driver)
 
         results["test_pin_after_unpin_all"] = test_pin_after_unpin_all(driver)
+
+        results["test_pin_different_paragraphs"] = test_pin_different_paragraphs(driver)
 
     except Exception as e:
         print(f"\n[ERROR] Unexpected error: {e}")

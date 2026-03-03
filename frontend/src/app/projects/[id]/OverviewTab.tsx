@@ -7,7 +7,7 @@
  * Shows project description (with inline markdown editor), statistics, and settings sub-tabs
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, AIModelBadge } from '@/components/ui';
 import { Project, Task } from '@/lib/types';
@@ -206,20 +206,28 @@ export default function OverviewTab({
   onUnpinFragment,
 }: OverviewTabProps) {
   // PROMPT #242/243 - Floating "Persistência" button that appears near the selection.
-  // Uses refs and direct DOM manipulation to avoid React re-renders that would
+  // Uses a callback ref and direct DOM manipulation to avoid React re-renders that would
   // destroy the browser's native text selection (the root cause of the multi-pin bug).
-  const descriptionDisplayRef = useRef<HTMLDivElement>(null);
+  const descriptionDisplayRef = useRef<HTMLDivElement | null>(null);
   const selectedTextRef = useRef('');
   const floatingBtnRef = useRef<HTMLButtonElement | null>(null);
-  // Stable ref for onPersistSelection to avoid useEffect re-running on every render
+  const cleanupRef = useRef<(() => void) | null>(null);
+  // Stable refs for values used inside DOM event handlers
   const onPersistSelectionRef = useRef(onPersistSelection);
   onPersistSelectionRef.current = onPersistSelection;
-  // Stable ref for source text used in word boundary expansion
   const descriptionSourceRef = useRef(editedDescription || project.description || '');
   descriptionSourceRef.current = editedDescription || project.description || '';
 
-  useEffect(() => {
-    const el = descriptionDisplayRef.current;
+  // Callback ref: sets up floating button + listeners whenever the div mounts/remounts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const descriptionRefCallback = useCallback((el: HTMLDivElement | null) => {
+    // Cleanup previous setup
+    if (cleanupRef.current) {
+      cleanupRef.current();
+      cleanupRef.current = null;
+    }
+
+    descriptionDisplayRef.current = el;
     if (!el) return;
 
     // Create floating button (DOM-managed, outside React render cycle)
@@ -267,15 +275,12 @@ export default function OverviewTab({
     };
 
     const onMouseDown = (e: MouseEvent) => {
-      // If clicking the floating button itself, let it handle
       if (e.target === btn || btn.contains(e.target as Node)) return;
-      // If clicking a pinned span, let onClick handle it
       if ((e.target as HTMLElement)?.closest?.('[data-pinned]')) return;
       hideBtn();
     };
 
     const onBtnMouseDown = (e: MouseEvent) => {
-      // Prevent button click from stealing focus / clearing selection
       e.preventDefault();
       e.stopPropagation();
     };
@@ -294,7 +299,7 @@ export default function OverviewTab({
     btn.addEventListener('click', onBtnClick);
     el.addEventListener('mouseup', onMouseUp);
     el.addEventListener('mousedown', onMouseDown);
-    // Also hide when clicking anywhere outside the description area
+
     const onDocMouseDown = (e: MouseEvent) => {
       if (!el.contains(e.target as Node) && e.target !== btn && !btn.contains(e.target as Node)) {
         hideBtn();
@@ -302,7 +307,8 @@ export default function OverviewTab({
     };
     document.addEventListener('mousedown', onDocMouseDown);
 
-    return () => {
+    // Store cleanup function
+    cleanupRef.current = () => {
       btn.removeEventListener('mousedown', onBtnMouseDown);
       btn.removeEventListener('click', onBtnClick);
       el.removeEventListener('mouseup', onMouseUp);
@@ -311,7 +317,6 @@ export default function OverviewTab({
       btn.remove();
       floatingBtnRef.current = null;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // PROMPT #241 - Settings state for ignore_paths
@@ -545,7 +550,7 @@ export default function OverviewTab({
               </div>
             ) : project.description ? (
               <div
-                ref={descriptionDisplayRef}
+                ref={descriptionRefCallback}
                 className="prose prose-sm max-w-none cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
                 onDoubleClick={handleDescriptionDoubleClick}
               >
