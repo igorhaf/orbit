@@ -109,61 +109,169 @@ function expandInText(selected: string, text: string, idx: number): string {
 }
 
 /**
- * PROMPT #243 - Highlights pinned fragments within text nodes.
- * Returns React elements where pinned fragments have black bg + white text.
+ * PROMPT #243 - Creates a highlight span for a pinned fragment.
  */
-function highlightPinnedFragments(
+function pinnedSpan(
   text: string,
-  pinnedFragments: string[],
+  fragment: string,
+  key: string | number,
   onUnpinFragment?: (fragment: string) => void,
 ): React.ReactNode {
-  if (!pinnedFragments.length) return text;
-
-  // Sort fragments by length (longest first) for greedy matching
-  const sorted = [...pinnedFragments].sort((a, b) => b.length - a.length);
-
-  // Build a single regex that matches any pinned fragment
-  const escaped = sorted.map(f => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const regex = new RegExp(`(${escaped.join('|')})`, 'g');
-
-  const parts = text.split(regex);
-  if (parts.length === 1) return text;
-
-  return parts.map((part, i) => {
-    if (sorted.includes(part)) {
-      return (
-        <span
-          key={i}
-          data-pinned="true"
-          className="bg-gray-900 text-white px-1 rounded cursor-pointer hover:bg-red-700 transition-colors"
-          title="Trecho fixado — clique para remover"
-          onClick={(e) => {
-            e.stopPropagation();
-            onUnpinFragment?.(part);
-          }}
-        >
-          {part}
-        </span>
-      );
-    }
-    return part;
-  });
+  return (
+    <span
+      key={key}
+      data-pinned="true"
+      className="bg-gray-900 text-white px-1 rounded cursor-pointer hover:bg-red-700 transition-colors"
+      title="Trecho fixado — clique para remover"
+      onClick={(e) => {
+        e.stopPropagation();
+        onUnpinFragment?.(fragment);
+      }}
+    >
+      {text}
+    </span>
+  );
 }
 
 /**
- * PROMPT #243 - Processes React children, highlighting text nodes that contain pinned fragments.
+ * PROMPT #243 - Extracts plain text from React children (flattening elements).
+ */
+function extractText(children: React.ReactNode): string {
+  let result = '';
+  React.Children.forEach(children, (child) => {
+    if (typeof child === 'string') {
+      result += child;
+    } else if (typeof child === 'number') {
+      result += String(child);
+    } else if (React.isValidElement(child) && child.props.children) {
+      result += extractText(child.props.children);
+    }
+  });
+  return result;
+}
+
+/**
+ * PROMPT #243 - Finds all pinned fragment match ranges in a flat text string.
+ * Returns sorted, non-overlapping ranges [{start, end, fragment}].
+ */
+function findPinnedRanges(
+  text: string,
+  pinnedFragments: string[],
+): Array<{ start: number; end: number; fragment: string }> {
+  if (!pinnedFragments.length || !text) return [];
+
+  const sorted = [...pinnedFragments].sort((a, b) => b.length - a.length);
+  const ranges: Array<{ start: number; end: number; fragment: string }> = [];
+
+  for (const frag of sorted) {
+    let searchFrom = 0;
+    while (true) {
+      const idx = text.indexOf(frag, searchFrom);
+      if (idx === -1) break;
+      // Check no overlap with existing ranges
+      const newEnd = idx + frag.length;
+      const overlaps = ranges.some(r => idx < r.end && newEnd > r.start);
+      if (!overlaps) {
+        ranges.push({ start: idx, end: newEnd, fragment: frag });
+      }
+      searchFrom = idx + 1;
+    }
+  }
+
+  ranges.sort((a, b) => a.start - b.start);
+  return ranges;
+}
+
+/**
+ * PROMPT #243 - Rebuilds React children with highlights injected across element boundaries.
+ *
+ * Strategy:
+ * 1. Flatten children to plain text
+ * 2. Find pinned fragment positions in the flat text
+ * 3. Walk children tree, tracking current offset in flat text
+ * 4. When a fragment range overlaps a child segment, split and wrap with highlight
  */
 function renderChildrenWithHighlights(
   children: React.ReactNode,
   pinnedFragments: string[],
   onUnpinFragment?: (fragment: string) => void,
 ): React.ReactNode {
-  return React.Children.map(children, (child) => {
-    if (typeof child === 'string') {
-      return highlightPinnedFragments(child, pinnedFragments, onUnpinFragment);
-    }
-    return child;
-  });
+  if (!pinnedFragments.length) return children;
+
+  const fullText = extractText(children);
+  const ranges = findPinnedRanges(fullText, pinnedFragments);
+  if (!ranges.length) return children;
+
+  let keyCounter = 0;
+
+  // Recursively process children, injecting highlights based on flat-text offset
+  function processChildren(
+    childNodes: React.ReactNode,
+    offset: number, // current position in flat text
+  ): { nodes: React.ReactNode[]; offset: number } {
+    const result: React.ReactNode[] = [];
+
+    React.Children.forEach(childNodes, (child) => {
+      if (typeof child === 'string' || typeof child === 'number') {
+        const text = String(child);
+        const segStart = offset;
+        const segEnd = offset + text.length;
+
+        // Collect ranges that overlap this text segment
+        const overlapping = ranges.filter(r => r.start < segEnd && r.end > segStart);
+
+        if (!overlapping.length) {
+          result.push(child);
+          offset = segEnd;
+          return;
+        }
+
+        // Split text according to highlight ranges
+        let pos = 0; // position within this text segment
+        for (const range of overlapping) {
+          const hlStart = Math.max(range.start - segStart, 0);
+          const hlEnd = Math.min(range.end - segStart, text.length);
+
+          // Text before highlight
+          if (hlStart > pos) {
+            result.push(text.slice(pos, hlStart));
+          }
+
+          // Highlighted portion
+          if (hlEnd > hlStart) {
+            result.push(
+              pinnedSpan(text.slice(hlStart, hlEnd), range.fragment, `pin-${keyCounter++}`, onUnpinFragment)
+            );
+          }
+
+          pos = hlEnd;
+        }
+
+        // Remaining text after last highlight
+        if (pos < text.length) {
+          result.push(text.slice(pos));
+        }
+
+        offset = segEnd;
+      } else if (React.isValidElement(child) && child.props.children != null) {
+        // Recurse into element children (e.g. <strong>, <em>, <a>)
+        const { nodes: innerNodes, offset: newOffset } = processChildren(
+          child.props.children,
+          offset,
+        );
+        result.push(React.cloneElement(child, { key: child.key ?? `el-${keyCounter++}` }, ...innerNodes));
+        offset = newOffset;
+      } else {
+        // Pass through other elements (no children or non-element)
+        result.push(child);
+      }
+    });
+
+    return { nodes: result, offset };
+  }
+
+  const { nodes } = processChildren(children, 0);
+  return nodes;
 }
 
 export default function OverviewTab({
