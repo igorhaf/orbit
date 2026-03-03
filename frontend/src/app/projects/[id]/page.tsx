@@ -61,6 +61,8 @@ export default function ProjectDetailsPage() {
   const [summarizingDescription, setSummarizingDescription] = useState(false);
   const [rephrasingDescription, setRephrasingDescription] = useState(false);
   const [descriptionJobId, setDescriptionJobId] = useState<string | null>(null);
+  // PROMPT #245 - Highlight recently-changed pinned fragments
+  const [changedFragments, setChangedFragments] = useState<string[]>([]);
 
   // Refs for inline editing
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
@@ -182,6 +184,13 @@ export default function ProjectDetailsPage() {
         skipAutoFormatRef.current = true;
         setEditedDescription(desc);
         loadProjectData();
+      }
+      // PROMPT #245 - Highlight changed fragments temporarily
+      const changed = result?.changed_fragments;
+      if (changed && Array.isArray(changed) && changed.length > 0) {
+        const newTexts = changed.map((c: any) => c.to);
+        setChangedFragments(newTexts);
+        setTimeout(() => setChangedFragments([]), 8000);
       }
       setGeneratingDescription(false);
       setExpandingDescription(false);
@@ -1223,6 +1232,7 @@ export default function ProjectDetailsPage() {
               }
             }}
             pinnedFragments={project?.pinned_fragments || []}
+            changedFragments={changedFragments}
             onUnpinFragment={async (fragment) => {
               // PROMPT #243 - Remove a pinned fragment
               const current = pinnedFragmentsRef.current;

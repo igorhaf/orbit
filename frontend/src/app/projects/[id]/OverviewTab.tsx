@@ -68,6 +68,7 @@ interface OverviewTabProps {
   // PROMPT #242/243 - Persist selection + visual highlight
   onPersistSelection?: (selectedText: string) => void;
   pinnedFragments?: string[];
+  changedFragments?: string[];
   onUnpinFragment?: (fragment: string) => void;
 }
 
@@ -119,13 +120,18 @@ function pinnedSpan(
   fragment: string,
   key: string | number,
   onUnpinFragment?: (fragment: string) => void,
+  isChanged?: boolean,
 ): React.ReactNode {
   return (
     <span
       key={key}
       data-pinned="true"
-      className="bg-gray-900 text-white px-1 rounded cursor-pointer hover:bg-red-700 transition-colors"
-      title="Trecho fixado — clique para remover"
+      className={
+        isChanged
+          ? "bg-gray-900 text-white px-1 rounded cursor-pointer hover:bg-red-700 transition-colors ring-2 ring-amber-400 animate-pulse"
+          : "bg-gray-900 text-white px-1 rounded cursor-pointer hover:bg-red-700 transition-colors"
+      }
+      title={isChanged ? "Trecho reformulado pela IA — clique para remover" : "Trecho fixado — clique para remover"}
       onClick={(e) => {
         e.stopPropagation();
         onUnpinFragment?.(fragment);
@@ -198,6 +204,7 @@ function renderChildrenWithHighlights(
   children: React.ReactNode,
   pinnedFragments: string[],
   onUnpinFragment?: (fragment: string) => void,
+  changedFragments?: string[],
 ): React.ReactNode {
   if (!pinnedFragments.length) return children;
 
@@ -205,6 +212,7 @@ function renderChildrenWithHighlights(
   const ranges = findPinnedRanges(fullText, pinnedFragments);
   if (!ranges.length) return children;
 
+  const changedSet = new Set(changedFragments || []);
   let keyCounter = 0;
 
   // Recursively process children, injecting highlights based on flat-text offset
@@ -242,8 +250,9 @@ function renderChildrenWithHighlights(
 
           // Highlighted portion
           if (hlEnd > hlStart) {
+            const isChanged = changedSet.has(range.fragment);
             result.push(
-              pinnedSpan(text.slice(hlStart, hlEnd), range.fragment, `pin-${keyCounter++}`, onUnpinFragment)
+              pinnedSpan(text.slice(hlStart, hlEnd), range.fragment, `pin-${keyCounter++}`, onUnpinFragment, isChanged)
             );
           }
 
@@ -316,6 +325,7 @@ export default function OverviewTab({
   onRephraseDescription,
   onPersistSelection,
   pinnedFragments = [],
+  changedFragments = [],
   onUnpinFragment,
 }: OverviewTabProps) {
   // PROMPT #242/243 - Floating "Persistência" button that appears near the selection.
@@ -692,16 +702,16 @@ export default function OverviewTab({
                   components={pinnedFragments.length > 0 ? {
                     // PROMPT #243 - Custom text renderer to highlight pinned fragments
                     p: ({ children, ...props }) => (
-                      <p {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</p>
+                      <p {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment, changedFragments)}</p>
                     ),
                     li: ({ children, ...props }) => (
-                      <li {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</li>
+                      <li {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment, changedFragments)}</li>
                     ),
                     strong: ({ children, ...props }) => (
-                      <strong {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</strong>
+                      <strong {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment, changedFragments)}</strong>
                     ),
                     em: ({ children, ...props }) => (
-                      <em {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</em>
+                      <em {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment, changedFragments)}</em>
                     ),
                   } : undefined}
                 >

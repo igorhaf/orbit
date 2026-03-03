@@ -1037,7 +1037,34 @@ async def _process_description_async(
             disable_tools=True,
         )
 
-        description = (response.get("content") or "").strip()
+        raw_content = (response.get("content") or "").strip()
+
+        # Parse FRAGMENT_MAP if present (AI may rephrase pinned fragments)
+        changed_fragments = []
+        description = raw_content
+        if "---FRAGMENT_MAP---" in raw_content and "---END_FRAGMENT_MAP---" in raw_content:
+            map_start = raw_content.index("---FRAGMENT_MAP---")
+            map_end = raw_content.index("---END_FRAGMENT_MAP---") + len("---END_FRAGMENT_MAP---")
+            map_block = raw_content[map_start:map_end]
+            description = (raw_content[:map_start].rstrip("\n -") + raw_content[map_end:]).strip()
+
+            # Parse ORIGINAL/NOVO pairs
+            import re
+            pairs = re.findall(
+                r"ORIGINAL:\s*(.+?)\s*\nNOVO:\s*(.+?)(?:\n|$)",
+                map_block,
+            )
+            if pairs and pinned_fragments:
+                updated_fragments = list(pinned_fragments)
+                for original, novo in pairs:
+                    original = original.strip()
+                    novo = novo.strip()
+                    if original in updated_fragments:
+                        idx = updated_fragments.index(original)
+                        updated_fragments[idx] = novo
+                        changed_fragments.append({"from": original, "to": novo})
+                        logger.info(f"📝 Pinned fragment updated: '{original[:40]}...' → '{novo[:40]}...'")
+                pinned_fragments = updated_fragments
 
         job_manager.update_progress(job_id, 80.0, "Salvando descrição...")
 
@@ -1048,12 +1075,17 @@ async def _process_description_async(
                 project = db.query(Project).filter(Project.id == pid).first()
                 if project:
                     project.description = description
+                    if changed_fragments:
+                        project.pinned_fragments = pinned_fragments
                     db.commit()
                     logger.info(f"✅ Description auto-saved to project {project_id}")
             except Exception as save_err:
                 logger.warning(f"Could not auto-save description: {save_err}")
 
-        job_manager.complete_job(job_id, {"description": description, "action": action})
+        result_data = {"description": description, "action": action}
+        if changed_fragments:
+            result_data["changed_fragments"] = changed_fragments
+        job_manager.complete_job(job_id, result_data)
         logger.info(f"✅ Description {action} completed (job {job_id})")
 
     except Exception as e:

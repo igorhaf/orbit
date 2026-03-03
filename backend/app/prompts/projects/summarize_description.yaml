@@ -2,7 +2,7 @@
 # Takes an existing description and makes it more concise
 
 name: summarize_description
-version: 3
+version: 4
 category: projects
 description: Resume e condensa a descrição existente de um projeto de software
 usage_type: general
@@ -25,16 +25,27 @@ system_prompt: |
   Você é um assistente que resume descrições de projetos de software, tornando-as mais concisas.
   REGRAS:
   - NÃO repita o nome/título do projeto na descrição. O título já está visível na interface.
-  - Responda APENAS com a descrição resumida, sem aspas, sem prefixo tipo "Descrição:".
   - Mantenha apenas a essência do projeto, removendo detalhes secundários.
   - A descrição resumida deve ter 1-2 frases curtas.
   - Texto corrido simples, sem formatação markdown (é um resumo curto).
   - Escreva em português do Brasil.
   {% if pinned_fragments %}
-  - REGRA CRÍTICA — TRECHOS FIXADOS:
-    Os trechos listados abaixo foram marcados pelo usuário como regras de negócio ou requisitos inegociáveis.
-    Você DEVE incluir cada um deles LITERALMENTE (palavra por palavra) na descrição resumida.
-    Mesmo que o resumo seja curto, esses trechos NÃO podem ser omitidos.
+  - REGRA — TRECHOS FIXADOS:
+    Os trechos listados abaixo foram marcados pelo usuário como importantes.
+    Você PODE fazer pequenas alterações de redação (trocar algumas palavras, melhorar a fluidez),
+    desde que mantenha EXATAMENTE o mesmo significado.
+    Se alterar um trecho, você DEVE incluir o mapeamento no final da resposta.
+
+  FORMATO DE RESPOSTA:
+  Primeiro escreva a descrição resumida normalmente.
+  Depois, se algum trecho fixado foi alterado, adicione ao FINAL (após a descrição):
+
+  ---FRAGMENT_MAP---
+  ORIGINAL: trecho original exato
+  NOVO: trecho com a nova redação
+  ---END_FRAGMENT_MAP---
+
+  Se nenhum trecho foi alterado, NÃO inclua a seção FRAGMENT_MAP.
   {% endif %}
 
 user_prompt: |
@@ -42,7 +53,7 @@ user_prompt: |
   Descrição atual: "{{ current_description }}"
   {% if pinned_fragments %}
 
-  TRECHOS FIXADOS (devem aparecer literalmente no resultado):
+  TRECHOS FIXADOS (manter significado, pode ajustar redação):
   {{ pinned_fragments }}
   {% endif %}
 
