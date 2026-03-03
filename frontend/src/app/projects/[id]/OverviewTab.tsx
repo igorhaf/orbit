@@ -57,6 +57,11 @@ interface OverviewTabProps {
   // PROMPT #240 - AI auto-generate description
   generatingDescription?: boolean;
   onGenerateDescription?: () => void;
+  // PROMPT #241 - Expand/Summarize description
+  expandingDescription?: boolean;
+  onExpandDescription?: () => void;
+  summarizingDescription?: boolean;
+  onSummarizeDescription?: () => void;
 }
 
 export default function OverviewTab({
@@ -90,6 +95,10 @@ export default function OverviewTab({
   formatTable,
   generatingDescription,
   onGenerateDescription,
+  expandingDescription,
+  onExpandDescription,
+  summarizingDescription,
+  onSummarizeDescription,
 }: OverviewTabProps) {
   // PROMPT #241 - Settings state for ignore_paths
   const [ignorePaths, setIgnorePaths] = useState<string[]>(project.ignore_paths || []);
@@ -167,26 +176,72 @@ export default function OverviewTab({
           <CardHeader className="flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
               <CardTitle>Descrição do Projeto</CardTitle>
-              {/* PROMPT #240 - Auto-generate description button */}
-              {onGenerateDescription && !isEditingDescription && (
-                <button
-                  type="button"
-                  onClick={onGenerateDescription}
-                  disabled={generatingDescription}
-                  title="Gerar descrição via IA a partir do título"
-                  className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                >
-                  {generatingDescription ? (
-                    <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
+              {/* PROMPT #240/241 - Description AI buttons */}
+              {!isEditingDescription && (
+                <>
+                  {/* When description exists: expand (detalhar) + summarize (resumir) */}
+                  {project.description && onExpandDescription && (
+                    <button
+                      type="button"
+                      onClick={onExpandDescription}
+                      disabled={expandingDescription || summarizingDescription || generatingDescription}
+                      title="Detalhar descrição (expandir com mais informações)"
+                      className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {expandingDescription ? (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                        </svg>
+                      )}
+                    </button>
                   )}
-                </button>
+                  {project.description && onSummarizeDescription && (
+                    <button
+                      type="button"
+                      onClick={onSummarizeDescription}
+                      disabled={expandingDescription || summarizingDescription || generatingDescription}
+                      title="Resumir descrição (condensar texto)"
+                      className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {summarizingDescription ? (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 16L14.5 20.5L9 16m11-8L14.5 3.5L9 8M4 12h16" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                  {/* When no description: generate from title */}
+                  {!project.description && onGenerateDescription && (
+                    <button
+                      type="button"
+                      onClick={onGenerateDescription}
+                      disabled={generatingDescription}
+                      title="Gerar descrição via IA a partir do título"
+                      className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {generatingDescription ? (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                </>
               )}
             </div>
             <div className="flex items-center gap-2">

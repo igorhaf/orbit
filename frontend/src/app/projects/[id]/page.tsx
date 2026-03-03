@@ -54,6 +54,9 @@ export default function ProjectDetailsPage() {
   // PROMPT #240 - AI auto-generate title/description
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [generatingDescription, setGeneratingDescription] = useState(false);
+  // PROMPT #241 - Expand/Summarize description
+  const [expandingDescription, setExpandingDescription] = useState(false);
+  const [summarizingDescription, setSummarizingDescription] = useState(false);
 
   // Refs for inline editing
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
@@ -594,6 +597,68 @@ export default function ProjectDetailsPage() {
     }
   }, [project, projectId, showError, loadProjectData]);
 
+  // PROMPT #241 - Expand (detalhar) description
+  const handleExpandDescription = useCallback(async () => {
+    if (!project?.description?.trim() || !project?.name?.trim()) return;
+    setExpandingDescription(true);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const resp = await fetch(`${API_BASE}/api/v1/projects/expand-description`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: project.name.trim(),
+          current_description: project.description.trim(),
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.description) {
+          await projectsApi.update(projectId, { description: data.description });
+          setEditedDescription(data.description);
+          await loadProjectData();
+        }
+      } else {
+        showError('Falha ao expandir descrição');
+      }
+    } catch {
+      showError('Erro ao conectar com o servidor');
+    } finally {
+      setExpandingDescription(false);
+    }
+  }, [project, projectId, showError, loadProjectData]);
+
+  // PROMPT #241 - Summarize (resumir) description
+  const handleSummarizeDescription = useCallback(async () => {
+    if (!project?.description?.trim() || !project?.name?.trim()) return;
+    setSummarizingDescription(true);
+    try {
+      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const resp = await fetch(`${API_BASE}/api/v1/projects/summarize-description`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: project.name.trim(),
+          current_description: project.description.trim(),
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.description) {
+          await projectsApi.update(projectId, { description: data.description });
+          setEditedDescription(data.description);
+          await loadProjectData();
+        }
+      } else {
+        showError('Falha ao resumir descrição');
+      }
+    } catch {
+      showError('Erro ao conectar com o servidor');
+    } finally {
+      setSummarizingDescription(false);
+    }
+  }, [project, projectId, showError, loadProjectData]);
+
   // Markdown formatting helpers
   const insertMarkdown = (before: string, after: string = '') => {
     const textarea = textareaRef.current;
@@ -1110,6 +1175,10 @@ export default function ProjectDetailsPage() {
             formatTable={formatTable}
             generatingDescription={generatingDescription}
             onGenerateDescription={handleGenerateDescription}
+            expandingDescription={expandingDescription}
+            onExpandDescription={handleExpandDescription}
+            summarizingDescription={summarizingDescription}
+            onSummarizeDescription={handleSummarizeDescription}
           />
         )}
       </div>

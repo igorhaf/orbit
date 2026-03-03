@@ -585,6 +585,108 @@ async def generate_project_description(
         )
 
 
+@router.post("/expand-description")
+async def expand_project_description(
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #241 — Expand/detail an existing project description using AI.
+
+    **POST** `/api/v1/projects/expand-description`
+    Body: `{"title": "My Project", "current_description": "Short desc..."}`
+    Response: `{"description": "Expanded description..."}`
+    """
+    title = (body.get("title") or "").strip()
+    current_description = (body.get("current_description") or "").strip()
+    if not current_description:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campo 'current_description' é obrigatório",
+        )
+
+    try:
+        from app.prompts.loader import PromptLoader
+        from app.services.ai_orchestrator import AIOrchestrator
+
+        loader = PromptLoader()
+        system_prompt, user_prompt = loader.render(
+            "projects/expand_description",
+            {"title": title, "current_description": current_description},
+        )
+
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="general",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=800,
+            metadata={"skip_context_build": True},
+            disable_tools=True,
+        )
+
+        description = (response.get("content") or "").strip()
+        return {"description": description}
+
+    except Exception as e:
+        logger.error(f"Failed to expand description: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao expandir descrição: {str(e)}",
+        )
+
+
+@router.post("/summarize-description")
+async def summarize_project_description(
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #241 — Summarize/condense an existing project description using AI.
+
+    **POST** `/api/v1/projects/summarize-description`
+    Body: `{"title": "My Project", "current_description": "Long desc..."}`
+    Response: `{"description": "Summarized description..."}`
+    """
+    title = (body.get("title") or "").strip()
+    current_description = (body.get("current_description") or "").strip()
+    if not current_description:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campo 'current_description' é obrigatório",
+        )
+
+    try:
+        from app.prompts.loader import PromptLoader
+        from app.services.ai_orchestrator import AIOrchestrator
+
+        loader = PromptLoader()
+        system_prompt, user_prompt = loader.render(
+            "projects/summarize_description",
+            {"title": title, "current_description": current_description},
+        )
+
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="general",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=500,
+            metadata={"skip_context_build": True},
+            disable_tools=True,
+        )
+
+        description = (response.get("content") or "").strip()
+        return {"description": description}
+
+    except Exception as e:
+        logger.error(f"Failed to summarize description: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Falha ao resumir descrição: {str(e)}",
+        )
+
+
 @router.post("/create-and-process")
 async def create_and_process_project(
     code_path: str = Query(..., description="Absolute path to existing code folder"),

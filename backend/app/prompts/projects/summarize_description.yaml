@@ -1,0 +1,35 @@
+# Prompt: Summarize/Condense Project Description
+# Takes an existing description and makes it more concise
+
+name: summarize_description
+version: 1
+category: projects
+description: Resume e condensa a descrição existente de um projeto de software
+usage_type: general
+estimated_tokens: 300
+tags:
+  - project
+  - description
+  - summarize
+
+variables:
+  required:
+    - title
+    - current_description
+  optional: []
+
+components: []
+
+system_prompt: |
+  Você é um assistente que resume descrições de projetos de software, tornando-as mais concisas.
+  Receba a descrição atual e gere uma versão mais curta e objetiva.
+  Mantenha apenas a essência do projeto, removendo detalhes secundários.
+  Responda APENAS com a descrição resumida, sem formatação markdown, sem aspas, sem prefixo.
+  A descrição resumida deve ter 1-2 frases curtas.
+  Escreva em português do Brasil.
+
+user_prompt: |
+  Projeto: "{{ title }}"
+  Descrição atual: "{{ current_description }}"
+
+  Resuma esta descrição em 1-2 frases curtas e objetivas, mantendo apenas a essência do projeto.
