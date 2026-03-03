@@ -2,7 +2,7 @@
 # Takes an existing description and adds more detail with progressive markdown
 
 name: expand_description
-version: 2
+version: 3
 category: projects
 description: Expande e detalha a descrição existente de um projeto de software
 usage_type: general
@@ -16,7 +16,8 @@ variables:
   required:
     - title
     - current_description
-  optional: []
+  optional:
+    - pinned_fragments
 
 components: []
 
@@ -32,9 +33,20 @@ system_prompt: |
     - Use subtítulos (## ou ###) se a descrição ficar longa o suficiente
   - Quanto mais detalhada a descrição, mais formatação markdown deve ter.
   - Escreva em português do Brasil.
+  {% if pinned_fragments %}
+  - REGRA CRÍTICA — TRECHOS FIXADOS:
+    Os trechos listados abaixo foram marcados pelo usuário como regras de negócio ou requisitos inegociáveis.
+    Você DEVE incluir cada um deles LITERALMENTE (palavra por palavra) na descrição expandida.
+    Não parafrasear, não omitir, não alterar a redação desses trechos.
+  {% endif %}
 
 user_prompt: |
   O projeto se chama "{{ title }}".
   Descrição atual: "{{ current_description }}"
+  {% if pinned_fragments %}
+
+  TRECHOS FIXADOS (devem aparecer literalmente no resultado):
+  {{ pinned_fragments }}
+  {% endif %}
 
   Expanda esta descrição adicionando mais detalhes sobre propósito, funcionalidades e benefícios. Use formatação Markdown para deixar o texto bem estruturado e agradável de ler. Não repita o nome do projeto.

@@ -978,6 +978,7 @@ async def _process_description_async(
     current_description: Optional[str],
     project_id: Optional[str],
     max_tokens: int = 800,
+    pinned_fragments: Optional[list] = None,
 ):
     """
     Background task to generate/expand/summarize a project description.
@@ -988,6 +989,7 @@ async def _process_description_async(
     :param current_description: existing description (required for expand/summarize)
     :param project_id: optional project UUID string (to auto-save result)
     :param max_tokens: max tokens for AI response
+    :param pinned_fragments: PROMPT #243 — list of text fragments that MUST be preserved
     """
     from app.database import SessionLocal
 
@@ -1015,6 +1017,10 @@ async def _process_description_async(
         variables = {"title": title}
         if current_description:
             variables["current_description"] = current_description
+
+        # PROMPT #243 - Include pinned fragments in prompt variables
+        if pinned_fragments:
+            variables["pinned_fragments"] = "\n".join(f"- \"{f}\"" for f in pinned_fragments)
 
         system_prompt, user_prompt = loader.render(prompt_name, variables)
 

@@ -138,6 +138,9 @@ export interface Project {
   // PROMPT #241 - User-editable ignore paths
   ignore_paths?: string[] | null;
 
+  // PROMPT #243 - Pinned fragments (persisted text selections)
+  pinned_fragments?: string[] | null;
+
   created_at: string;
   updated_at: string;
 }
@@ -174,6 +177,9 @@ export interface ProjectUpdate {
 
   // PROMPT #241 - User-editable ignore paths
   ignore_paths?: string[] | null;
+
+  // PROMPT #243 - Pinned fragments
+  pinned_fragments?: string[] | null;
 }
 
 export interface ProjectWithRelations extends Project {

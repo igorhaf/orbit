@@ -600,6 +600,7 @@ async def expand_project_description(
     title = (body.get("title") or "").strip()
     current_description = (body.get("current_description") or "").strip()
     project_id = body.get("project_id")
+    pinned_fragments = body.get("pinned_fragments") or []
     if not current_description:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -614,6 +615,7 @@ async def expand_project_description(
             "title": title,
             "current_description": current_description,
             "project_id": project_id,
+            "pinned_fragments": pinned_fragments,
         },
         project_id=UUID(project_id) if project_id else None,
         notification_title=f"Detalhando descrição — '{title[:40]}'"
@@ -625,6 +627,7 @@ async def expand_project_description(
         job.priority,
         _process_description_async,
         job.id, "expand", title, current_description, project_id, 800,
+        pinned_fragments,
     )
 
     return {
@@ -650,6 +653,7 @@ async def summarize_project_description(
     title = (body.get("title") or "").strip()
     current_description = (body.get("current_description") or "").strip()
     project_id = body.get("project_id")
+    pinned_fragments = body.get("pinned_fragments") or []
     if not current_description:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -664,6 +668,7 @@ async def summarize_project_description(
             "title": title,
             "current_description": current_description,
             "project_id": project_id,
+            "pinned_fragments": pinned_fragments,
         },
         project_id=UUID(project_id) if project_id else None,
         notification_title=f"Resumindo descrição — '{title[:40]}'"
@@ -675,6 +680,7 @@ async def summarize_project_description(
         job.priority,
         _process_description_async,
         job.id, "summarize", title, current_description, project_id, 500,
+        pinned_fragments,
     )
 
     return {

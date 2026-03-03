@@ -65,6 +65,9 @@ class ProjectUpdate(BaseModel):
     # PROMPT #241 - User-editable ignore paths per project
     ignore_paths: Optional[list] = Field(None, description="Paths to exclude from scanning")
 
+    # PROMPT #243 - Pinned fragments (persisted text selections)
+    pinned_fragments: Optional[list] = Field(None, description="Text fragments pinned by user for AI preservation")
+
 
 class ProjectResponse(ProjectBase):
     """Schema for Project response"""
@@ -83,6 +86,9 @@ class ProjectResponse(ProjectBase):
 
     # PROMPT #241 - User-editable ignore paths per project
     ignore_paths: Optional[list] = Field(None, description="Paths to exclude from scanning")
+
+    # PROMPT #243 - Pinned fragments (persisted text selections)
+    pinned_fragments: Optional[list] = Field(None, description="Text fragments pinned by user for AI preservation")
 
     # PROMPT #236 - Deletion protection
     protected: bool = Field(False, description="Whether this project is protected against deletion")

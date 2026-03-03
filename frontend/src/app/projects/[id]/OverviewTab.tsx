@@ -62,8 +62,67 @@ interface OverviewTabProps {
   onExpandDescription?: () => void;
   summarizingDescription?: boolean;
   onSummarizeDescription?: () => void;
-  // PROMPT #242 - Persist selection (experimental)
+  // PROMPT #242/243 - Persist selection + visual highlight
   onPersistSelection?: (selectedText: string) => void;
+  pinnedFragments?: string[];
+  onUnpinFragment?: (fragment: string) => void;
+}
+
+/**
+ * PROMPT #243 - Highlights pinned fragments within text nodes.
+ * Returns React elements where pinned fragments have black bg + white text.
+ */
+function highlightPinnedFragments(
+  text: string,
+  pinnedFragments: string[],
+  onUnpinFragment?: (fragment: string) => void,
+): React.ReactNode {
+  if (!pinnedFragments.length) return text;
+
+  // Sort fragments by length (longest first) for greedy matching
+  const sorted = [...pinnedFragments].sort((a, b) => b.length - a.length);
+
+  // Build a single regex that matches any pinned fragment
+  const escaped = sorted.map(f => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const regex = new RegExp(`(${escaped.join('|')})`, 'g');
+
+  const parts = text.split(regex);
+  if (parts.length === 1) return text;
+
+  return parts.map((part, i) => {
+    if (sorted.includes(part)) {
+      return (
+        <span
+          key={i}
+          className="bg-gray-900 text-white px-1 rounded cursor-pointer hover:bg-red-700 transition-colors"
+          title="Trecho fixado — clique para remover"
+          onClick={(e) => {
+            e.stopPropagation();
+            onUnpinFragment?.(part);
+          }}
+        >
+          {part}
+        </span>
+      );
+    }
+    return part;
+  });
+}
+
+/**
+ * PROMPT #243 - Processes React children, highlighting text nodes that contain pinned fragments.
+ */
+function renderChildrenWithHighlights(
+  children: React.ReactNode,
+  pinnedFragments: string[],
+  onUnpinFragment?: (fragment: string) => void,
+): React.ReactNode {
+  return React.Children.map(children, (child) => {
+    if (typeof child === 'string') {
+      return highlightPinnedFragments(child, pinnedFragments, onUnpinFragment);
+    }
+    return child;
+  });
 }
 
 export default function OverviewTab({
@@ -102,6 +161,8 @@ export default function OverviewTab({
   summarizingDescription,
   onSummarizeDescription,
   onPersistSelection,
+  pinnedFragments = [],
+  onUnpinFragment,
 }: OverviewTabProps) {
   // PROMPT #242 - Text selection detection for "Persistência" button
   const [selectedText, setSelectedText] = useState('');
@@ -375,7 +436,23 @@ export default function OverviewTab({
                 className="prose prose-sm max-w-none cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
                 onDoubleClick={handleDescriptionDoubleClick}
               >
-                <ReactMarkdown>
+                <ReactMarkdown
+                  components={pinnedFragments.length > 0 ? {
+                    // PROMPT #243 - Custom text renderer to highlight pinned fragments
+                    p: ({ children, ...props }) => (
+                      <p {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</p>
+                    ),
+                    li: ({ children, ...props }) => (
+                      <li {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</li>
+                    ),
+                    strong: ({ children, ...props }) => (
+                      <strong {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</strong>
+                    ),
+                    em: ({ children, ...props }) => (
+                      <em {...props}>{renderChildrenWithHighlights(children, pinnedFragments, onUnpinFragment)}</em>
+                    ),
+                  } : undefined}
+                >
                   {editedDescription || project.description}
                 </ReactMarkdown>
                 <div className="mt-2 flex justify-end not-prose">

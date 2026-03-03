@@ -117,6 +117,11 @@ class Project(Base):
     # "allow_protected_project_deletion" is set to "true"
     protected = Column(Boolean, default=False, nullable=False, server_default="false")
 
+    # PROMPT #243 - Pinned fragments (persisted text selections)
+    # JSON array of strings that must be preserved during AI expand/summarize
+    # Example: ["regra de negócio X", "requisito Y"]
+    pinned_fragments = Column(JSON, nullable=True)
+
     # Deep Pipeline fields (7-phase Claudio pipeline)
     # Phase 3 output: architectural map with domains, cross-domain flows, patterns
     project_architecture = Column(JSON, nullable=True)

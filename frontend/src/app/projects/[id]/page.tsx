@@ -609,7 +609,7 @@ export default function ProjectDetailsPage() {
   // PROMPT #241 - Description generation via job queue (generate/expand/summarize)
   const startDescriptionJob = useCallback(async (
     endpoint: string,
-    body: Record<string, string | undefined>,
+    body: Record<string, any>,
     notificationTitle: string,
   ) => {
     try {
@@ -649,6 +649,7 @@ export default function ProjectDetailsPage() {
     await startDescriptionJob('expand-description', {
       title: project.name.trim(),
       current_description: project.description.trim(),
+      pinned_fragments: project.pinned_fragments || [],
     }, `Detalhando descrição — '${project.name}'`);
   }, [project, startDescriptionJob]);
 
@@ -659,6 +660,7 @@ export default function ProjectDetailsPage() {
     await startDescriptionJob('summarize-description', {
       title: project.name.trim(),
       current_description: project.description.trim(),
+      pinned_fragments: project.pinned_fragments || [],
     }, `Resumindo descrição — '${project.name}'`);
   }, [project, startDescriptionJob]);
 
@@ -1182,9 +1184,30 @@ export default function ProjectDetailsPage() {
             onExpandDescription={handleExpandDescription}
             summarizingDescription={summarizingDescription}
             onSummarizeDescription={handleSummarizeDescription}
-            onPersistSelection={(text) => {
-              console.log('🔖 Persistência — trecho selecionado:', text);
-              // PROMPT #242 - Experimental: placeholder for future implementation
+            onPersistSelection={async (text) => {
+              // PROMPT #243 - Persist selected text fragment
+              const current = project?.pinned_fragments || [];
+              // Avoid duplicates
+              if (current.some((f: string) => f === text)) return;
+              const updated = [...current, text];
+              try {
+                await projectsApi.update(projectId, { pinned_fragments: updated } as any);
+                loadProjectData();
+              } catch (err) {
+                console.error('Failed to persist fragment:', err);
+              }
+            }}
+            pinnedFragments={project?.pinned_fragments || []}
+            onUnpinFragment={async (fragment) => {
+              // PROMPT #243 - Remove a pinned fragment
+              const current = project?.pinned_fragments || [];
+              const updated = current.filter((f: string) => f !== fragment);
+              try {
+                await projectsApi.update(projectId, { pinned_fragments: updated } as any);
+                loadProjectData();
+              } catch (err) {
+                console.error('Failed to unpin fragment:', err);
+              }
             }}
           />
         )}
