@@ -62,6 +62,7 @@ export default function ProjectDetailsPage() {
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
+  const skipAutoFormatRef = useRef(false);  // PROMPT #241 fix - skip auto-format after AI operations
 
   // Backlog states
   const [backlogFilters, setBacklogFilters] = useState<IBacklogFilters>({});
@@ -428,7 +429,15 @@ export default function ProjectDetailsPage() {
       isFormatting: isFormattingDescription,
       hasEdited: !!editedDescription,
       isEditing: isEditingDescription,
+      skipAutoFormat: skipAutoFormatRef.current,
     });
+
+    // PROMPT #241 fix - Skip auto-format when description was just set by AI operation
+    if (skipAutoFormatRef.current) {
+      console.log('⏭️ Skipping auto-format (AI operation just completed)');
+      skipAutoFormatRef.current = false;
+      return;
+    }
 
     // Don't auto-format while user is manually editing
     if (project?.description && !isFormattingDescription && !editedDescription && !isEditingDescription) {
@@ -584,6 +593,7 @@ export default function ProjectDetailsPage() {
         const data = await resp.json();
         if (data.description) {
           await projectsApi.update(projectId, { description: data.description });
+          skipAutoFormatRef.current = true;  // PROMPT #241 fix - prevent auto-reformat
           setEditedDescription(data.description);
           await loadProjectData();
         }
@@ -615,6 +625,7 @@ export default function ProjectDetailsPage() {
         const data = await resp.json();
         if (data.description) {
           await projectsApi.update(projectId, { description: data.description });
+          skipAutoFormatRef.current = true;  // PROMPT #241 fix - prevent auto-reformat
           setEditedDescription(data.description);
           await loadProjectData();
         }
@@ -646,6 +657,7 @@ export default function ProjectDetailsPage() {
         const data = await resp.json();
         if (data.description) {
           await projectsApi.update(projectId, { description: data.description });
+          skipAutoFormatRef.current = true;  // PROMPT #241 fix - prevent auto-reformat
           setEditedDescription(data.description);
           await loadProjectData();
         }

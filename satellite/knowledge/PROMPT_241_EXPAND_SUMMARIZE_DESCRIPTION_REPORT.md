@@ -88,11 +88,39 @@ Quando não há descrição, mantém o botão original de gerar descrição do z
 
 ---
 
+## Bug Fixes
+
+### Fix: Double-formatting bug (descrição reformatada após AI operation)
+
+**Problema:** Ao clicar "Detalhar", a versão bonita com markdown aparecia brevemente, depois era substituída por uma versão com formatação inferior.
+
+**Causa raiz:** O `useEffect` de auto-format em `page.tsx` (que converte descrições plain-text para markdown via `/api/format-markdown`) disparava após `loadProjectData()`, sobrescrevendo a descrição já bem formatada retornada pela IA.
+
+**Solução:** Adicionado `skipAutoFormatRef` — um `useRef(boolean)` que:
+1. É setado para `true` nos handlers `handleGenerateDescription`, `handleExpandDescription`, `handleSummarizeDescription` antes de `loadProjectData()`
+2. O `useEffect` de auto-format verifica o ref e, se `true`, pula a reformatação e reseta o flag
+3. Isso garante que a descrição retornada pela IA é preservada sem ser sobrescrita
+
+### Fix: Título repetido na descrição gerada
+
+**Problema:** IA repetia o nome do projeto na descrição.
+
+**Solução:** Todos os 3 prompts YAML atualizados para v2 com regra explícita: "NÃO repita o nome/título do projeto na descrição."
+
+### Fix: Formatação markdown progressiva
+
+**Problema:** Descrições expandidas não usavam markdown rico.
+
+**Solução:** `expand_description.yaml` v2 instrui uso progressivo de **negrito**, listas, e subtítulos conforme a descrição cresce.
+
+---
+
 ## Testing Results
 
 - TypeScript: zero erros nos arquivos modificados
 - Endpoints reutilizam AIOrchestrator com cache Redis
 - Prompts externalizados em YAML conforme padrão
+- Bug de double-formatting corrigido via skipAutoFormatRef
 
 ---
 
