@@ -1182,6 +1182,10 @@ export default function ProjectDetailsPage() {
             onExpandDescription={handleExpandDescription}
             summarizingDescription={summarizingDescription}
             onSummarizeDescription={handleSummarizeDescription}
+            onPersistSelection={(text) => {
+              console.log('🔖 Persistência — trecho selecionado:', text);
+              // PROMPT #242 - Experimental: placeholder for future implementation
+            }}
           />
         )}
       </div>

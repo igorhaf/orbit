@@ -7,7 +7,7 @@
  * Shows project description (with inline markdown editor), statistics, and settings sub-tabs
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, AIModelBadge } from '@/components/ui';
 import { Project, Task } from '@/lib/types';
@@ -62,6 +62,8 @@ interface OverviewTabProps {
   onExpandDescription?: () => void;
   summarizingDescription?: boolean;
   onSummarizeDescription?: () => void;
+  // PROMPT #242 - Persist selection (experimental)
+  onPersistSelection?: (selectedText: string) => void;
 }
 
 export default function OverviewTab({
@@ -99,7 +101,32 @@ export default function OverviewTab({
   onExpandDescription,
   summarizingDescription,
   onSummarizeDescription,
+  onPersistSelection,
 }: OverviewTabProps) {
+  // PROMPT #242 - Text selection detection for "Persistência" button
+  const [selectedText, setSelectedText] = useState('');
+  const descriptionDisplayRef = useRef<HTMLDivElement>(null);
+
+  const handleSelectionChange = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !descriptionDisplayRef.current) {
+      setSelectedText('');
+      return;
+    }
+    // Only track selection within the description display area
+    const range = selection.getRangeAt(0);
+    if (descriptionDisplayRef.current.contains(range.commonAncestorContainer)) {
+      setSelectedText(selection.toString().trim());
+    } else {
+      setSelectedText('');
+    }
+  }, []);
+
+  useEffect(() => {
+    document.addEventListener('selectionchange', handleSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleSelectionChange);
+  }, [handleSelectionChange]);
+
   // PROMPT #241 - Settings state for ignore_paths
   const [ignorePaths, setIgnorePaths] = useState<string[]>(project.ignore_paths || []);
   const [newIgnorePath, setNewIgnorePath] = useState('');
@@ -220,6 +247,20 @@ export default function OverviewTab({
                       )}
                     </button>
                   )}
+                  {/* PROMPT #242 - Persist selection (experimental) — only visible when text is selected */}
+                  {project.description && selectedText && onPersistSelection && (
+                    <button
+                      type="button"
+                      onClick={() => onPersistSelection(selectedText)}
+                      disabled={expandingDescription || summarizingDescription || generatingDescription}
+                      title={`Persistir trecho selecionado (${selectedText.length} chars)`}
+                      className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+                      </svg>
+                    </button>
+                  )}
                   {/* When no description: generate from title */}
                   {!project.description && onGenerateDescription && (
                     <button
@@ -330,6 +371,7 @@ export default function OverviewTab({
               </div>
             ) : project.description ? (
               <div
+                ref={descriptionDisplayRef}
                 className="prose prose-sm max-w-none cursor-pointer hover:bg-gray-50 rounded p-2 -m-2 transition-colors"
                 onDoubleClick={handleDescriptionDoubleClick}
               >
