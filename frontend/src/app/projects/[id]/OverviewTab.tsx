@@ -7,7 +7,7 @@
  * Shows project description (with inline markdown editor), statistics, and settings sub-tabs
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Card, CardHeader, CardTitle, CardContent, Button, AIModelBadge } from '@/components/ui';
 import { Project, Task } from '@/lib/types';
@@ -205,51 +205,107 @@ export default function OverviewTab({
   pinnedFragments = [],
   onUnpinFragment,
 }: OverviewTabProps) {
-  // PROMPT #242 - Text selection detection for "Persistência" button
-  const [selectedText, setSelectedText] = useState('');
+  // PROMPT #242/243 - Floating "Persistência" button that appears near the selection.
+  // Uses refs and direct DOM manipulation to avoid React re-renders that would
+  // destroy the browser's native text selection (the root cause of the multi-pin bug).
   const descriptionDisplayRef = useRef<HTMLDivElement>(null);
+  const selectedTextRef = useRef('');
+  const floatingBtnRef = useRef<HTMLButtonElement | null>(null);
 
-  // PROMPT #243 fix - Only process selection on mouseup (not on every selectionchange).
-  // This avoids conflicts with highlight spans that alter DOM structure during selection.
   useEffect(() => {
     const el = descriptionDisplayRef.current;
     if (!el) return;
 
+    // Create floating button (DOM-managed, outside React render cycle)
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.innerHTML = '<svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"/></svg>';
+    btn.className = 'fixed z-50 flex items-center justify-center w-8 h-8 rounded-full shadow-lg border border-purple-300 bg-white text-purple-600 hover:bg-purple-100 hover:scale-110 transition-all cursor-pointer';
+    btn.title = 'Persistir trecho selecionado';
+    btn.style.display = 'none';
+    document.body.appendChild(btn);
+    floatingBtnRef.current = btn;
+
+    const showBtn = (x: number, y: number) => {
+      btn.style.display = 'flex';
+      btn.style.left = `${x}px`;
+      btn.style.top = `${y}px`;
+    };
+    const hideBtn = () => {
+      btn.style.display = 'none';
+      selectedTextRef.current = '';
+    };
+
     const onMouseUp = () => {
-      // Small delay to let the browser finalize selection
       requestAnimationFrame(() => {
         const selection = window.getSelection();
         if (!selection || selection.isCollapsed || !descriptionDisplayRef.current) {
-          setSelectedText('');
+          hideBtn();
           return;
         }
         const range = selection.getRangeAt(0);
-        if (descriptionDisplayRef.current.contains(range.commonAncestorContainer)) {
-          const raw = selection.toString().trim();
-          if (!raw) { setSelectedText(''); return; }
-          const source = editedDescription || project.description || '';
-          const expanded = expandToWordBoundaries(raw, source);
-          setSelectedText(expanded);
-        } else {
-          setSelectedText('');
+        if (!descriptionDisplayRef.current.contains(range.commonAncestorContainer)) {
+          hideBtn();
+          return;
         }
+        const raw = selection.toString().trim();
+        if (!raw) { hideBtn(); return; }
+        const source = editedDescription || project.description || '';
+        const expanded = expandToWordBoundaries(raw, source);
+        selectedTextRef.current = expanded;
+
+        // Position button at the end of the selection
+        const rect = range.getBoundingClientRect();
+        showBtn(rect.right + 6, rect.top - 4);
       });
     };
 
-    // Clear selected text when clicking without dragging (simple click)
     const onMouseDown = (e: MouseEvent) => {
-      // If clicking on a pinned highlight span, don't interfere (let onClick handle it)
+      // If clicking the floating button itself, let it handle
+      if (e.target === btn || btn.contains(e.target as Node)) return;
+      // If clicking a pinned span, let onClick handle it
       if ((e.target as HTMLElement)?.closest?.('[data-pinned]')) return;
-      setSelectedText('');
+      hideBtn();
     };
 
+    const onBtnMouseDown = (e: MouseEvent) => {
+      // Prevent button click from stealing focus / clearing selection
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onBtnClick = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const text = selectedTextRef.current;
+      if (!text) return;
+      hideBtn();
+      window.getSelection()?.removeAllRanges();
+      onPersistSelection?.(text);
+    };
+
+    btn.addEventListener('mousedown', onBtnMouseDown);
+    btn.addEventListener('click', onBtnClick);
     el.addEventListener('mouseup', onMouseUp);
     el.addEventListener('mousedown', onMouseDown);
+    // Also hide when clicking anywhere outside the description area
+    const onDocMouseDown = (e: MouseEvent) => {
+      if (!el.contains(e.target as Node) && e.target !== btn && !btn.contains(e.target as Node)) {
+        hideBtn();
+      }
+    };
+    document.addEventListener('mousedown', onDocMouseDown);
+
     return () => {
+      btn.removeEventListener('mousedown', onBtnMouseDown);
+      btn.removeEventListener('click', onBtnClick);
       el.removeEventListener('mouseup', onMouseUp);
       el.removeEventListener('mousedown', onMouseDown);
+      document.removeEventListener('mousedown', onDocMouseDown);
+      btn.remove();
+      floatingBtnRef.current = null;
     };
-  }, [editedDescription, project.description]);
+  }, [editedDescription, project.description, onPersistSelection]);
 
   // PROMPT #241 - Settings state for ignore_paths
   const [ignorePaths, setIgnorePaths] = useState<string[]>(project.ignore_paths || []);
@@ -371,29 +427,7 @@ export default function OverviewTab({
                       )}
                     </button>
                   )}
-                  {/* PROMPT #242 - Persist selection (experimental) — only visible when text is selected */}
-                  {project.description && selectedText && onPersistSelection && (
-                    <button
-                      type="button"
-                      onMouseDown={(e) => {
-                        // Prevent this button click from clearing browser selection
-                        e.preventDefault();
-                      }}
-                      onClick={() => {
-                        const textToPersist = selectedText;
-                        setSelectedText('');
-                        window.getSelection()?.removeAllRanges();
-                        onPersistSelection(textToPersist);
-                      }}
-                      disabled={expandingDescription || summarizingDescription || generatingDescription}
-                      title={`Persistir trecho selecionado (${selectedText.length} chars)`}
-                      className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-                      </svg>
-                    </button>
-                  )}
+                  {/* PROMPT #242/243 - Persist button is now a floating element managed via DOM */}
                   {/* When no description: generate from title */}
                   {!project.description && onGenerateDescription && (
                     <button
