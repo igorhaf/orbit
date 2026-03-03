@@ -1079,11 +1079,15 @@ async def _process_description_async(
                 pid = UUID(project_id) if isinstance(project_id, str) else project_id
                 project = db.query(Project).filter(Project.id == pid).first()
                 if project:
-                    project.description = description
-                    if changed_fragments:
-                        project.pinned_fragments = pinned_fragments
-                    db.commit()
-                    logger.info(f"✅ Description auto-saved to project {project_id}")
+                    # NEVER save empty description — preserves human data (REGRA #0)
+                    if not description:
+                        logger.warning(f"⚠️ AI returned empty description for project {project_id} — NOT saving (preserving existing)")
+                    else:
+                        project.description = description
+                        if changed_fragments:
+                            project.pinned_fragments = pinned_fragments
+                        db.commit()
+                        logger.info(f"✅ Description auto-saved to project {project_id}")
             except Exception as save_err:
                 logger.warning(f"Could not auto-save description: {save_err}")
 

@@ -574,7 +574,7 @@ async def generate_project_description(
     await executor.submit(
         job.priority,
         _process_description_async,
-        job.id, "generate", title, None, project_id, 800,
+        job.id, "generate", title, None, project_id, 2000,
     )
 
     return {
@@ -626,7 +626,7 @@ async def expand_project_description(
     await executor.submit(
         job.priority,
         _process_description_async,
-        job.id, "expand", title, current_description, project_id, 800,
+        job.id, "expand", title, current_description, project_id, 2000,
         pinned_fragments,
     )
 
@@ -679,7 +679,7 @@ async def summarize_project_description(
     await executor.submit(
         job.priority,
         _process_description_async,
-        job.id, "summarize", title, current_description, project_id, 500,
+        job.id, "summarize", title, current_description, project_id, 1000,
         pinned_fragments,
     )
 
@@ -732,7 +732,7 @@ async def rephrase_project_description(
     await executor.submit(
         job.priority,
         _process_description_async,
-        job.id, "rephrase", title, current_description, project_id, 800,
+        job.id, "rephrase", title, current_description, project_id, 2000,
         pinned_fragments,
     )
 
