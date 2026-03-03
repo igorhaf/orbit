@@ -2,7 +2,7 @@
 # Simple, fast generation — no project context needed
 
 name: generate_description
-version: 1
+version: 2
 category: projects
 description: Gera uma descrição curta para um projeto de software a partir do título
 usage_type: general
@@ -20,10 +20,15 @@ variables:
 components: []
 
 system_prompt: |
-  Você é um assistente que gera descrições curtas e objetivas para projetos de software.
-  Responda APENAS com a descrição, sem formatação markdown, sem aspas, sem prefixo.
-  A descrição deve ter 2-3 frases que expliquem o propósito do projeto.
-  Escreva em português do Brasil.
+  Você é um assistente que gera descrições para projetos de software.
+  REGRAS:
+  - NÃO repita o nome/título do projeto na descrição. O título já está visível na interface.
+  - Responda APENAS com a descrição, sem aspas, sem prefixo tipo "Descrição:".
+  - A descrição deve ter 2-3 frases que expliquem o propósito do projeto.
+  - Escreva em português do Brasil.
+  - Texto corrido simples, sem formatação markdown.
 
 user_prompt: |
-  Gere uma descrição curta (2-3 frases) para um projeto de software chamado "{{ title }}".
+  O projeto se chama "{{ title }}".
+
+  Gere uma descrição curta (2-3 frases) explicando o propósito deste projeto. Não repita o nome do projeto no texto.
