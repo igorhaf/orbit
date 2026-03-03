@@ -1189,24 +1189,20 @@ export default function ProjectDetailsPage() {
             onSummarizeDescription={handleSummarizeDescription}
             onPersistSelection={async (text) => {
               // PROMPT #243 - Persist selected text fragment
-              // Use ref for optimistic state to handle rapid successive selections
+              // Use ref for cumulative state to handle rapid successive selections
               const current = pinnedFragmentsRef.current;
               if (current.some((f: string) => f === text)) return;
               const updated = [...current, text];
               pinnedFragmentsRef.current = updated;
-              // Update project state — OverviewTab defers visual highlight updates
-              // via displayedPinned so the ReactMarkdown won't re-render immediately
-              if (project) {
-                setProject({ ...project, pinned_fragments: updated });
-              }
+              // Save to backend, then reload to show highlights.
+              // We intentionally do NOT call setProject() here to avoid
+              // re-rendering ReactMarkdown while the user may still be interacting.
               try {
                 await projectsApi.update(projectId, { pinned_fragments: updated } as any);
                 loadProjectData();
               } catch (err) {
                 console.error('Failed to persist fragment:', err);
-                // Rollback on error
                 pinnedFragmentsRef.current = current;
-                if (project) setProject({ ...project, pinned_fragments: current });
               }
             }}
             pinnedFragments={project?.pinned_fragments || []}
