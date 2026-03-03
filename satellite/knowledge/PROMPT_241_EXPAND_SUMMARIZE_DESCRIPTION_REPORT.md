@@ -14,45 +14,70 @@ Quando o projeto já possui uma descrição mínima, exibir dois botões de IA a
 
 Quando não há descrição, mantém o botão original de gerar descrição do zero (PROMPT #240).
 
+Todas as operações de descrição devem entrar na fila do PriorityJobExecutor com prioridade NORMAL (5), não executar diretamente.
+
 ---
 
 ## What Was Implemented
 
-### Backend — Novos Endpoints
+### Backend — Endpoints (via Job Queue)
 
-1. **`POST /api/v1/projects/expand-description`**
-   - Body: `{"title": "...", "current_description": "..."}`
-   - Usa prompt YAML `projects/expand_description`
-   - Gera descrição expandida de 4-6 frases mantendo o sentido original
+1. **`POST /api/v1/projects/generate-description`**
+   - Body: `{"title": "...", "project_id": "optional-uuid"}`
+   - Retorna `{"job_id": "...", "status": "pending"}`
+   - Cria `AsyncJob(DESCRIPTION_GENERATION)` com prioridade NORMAL (5)
+   - Job executa via `PriorityJobExecutor` e auto-salva descrição no projeto
+
+2. **`POST /api/v1/projects/expand-description`**
+   - Body: `{"title": "...", "current_description": "...", "project_id": "optional-uuid"}`
+   - Mesmo padrão de job queue acima
    - `max_tokens=800`
 
-2. **`POST /api/v1/projects/summarize-description`**
-   - Body: `{"title": "...", "current_description": "..."}`
-   - Usa prompt YAML `projects/summarize_description`
-   - Gera descrição resumida de 1-2 frases curtas
+3. **`POST /api/v1/projects/summarize-description`**
+   - Body: `{"title": "...", "current_description": "...", "project_id": "optional-uuid"}`
+   - Mesmo padrão de job queue acima
    - `max_tokens=500`
+
+### Backend — Job Type e Prioridade
+
+4. **`JobType.DESCRIPTION_GENERATION`** adicionado em `async_job.py`
+5. **Prioridade NORMAL (5)** em `job_priorities.yaml` e fallback inline
+6. **`_process_description_async()`** em `project_service.py` — função background unificada para generate/expand/summarize
 
 ### Backend — Prompts YAML
 
-3. **`expand_description.yaml`** — Prompt para expandir descrição com mais detalhes, funcionalidades, público-alvo e benefícios
-4. **`summarize_description.yaml`** — Prompt para condensar descrição mantendo apenas a essência
+7. **`expand_description.yaml`** v2 — Prompt com markdown progressivo, sem repetir título
+8. **`summarize_description.yaml`** v2 — Prompt conciso, sem repetir título
+9. **`generate_description.yaml`** v2 — Prompt simples, sem repetir título
 
 ### Frontend — page.tsx
 
-5. **Estados** `expandingDescription` e `summarizingDescription`
-6. **`handleExpandDescription`** — Chama endpoint expand, salva via `projectsApi.update()`, recarrega
-7. **`handleSummarizeDescription`** — Chama endpoint summarize, salva via `projectsApi.update()`, recarrega
-8. **Props** passadas ao OverviewTab
+10. **`useJobPolling(descriptionJobId)`** — Polling via WebSocket para acompanhar job
+11. **`startDescriptionJob()`** — Função unificada que chama endpoint e inicia tracking
+12. **`handleGenerateDescription/Expand/Summarize`** — Apenas setam loading e chamam `startDescriptionJob`
+13. **`skipAutoFormatRef`** — Previne auto-reformat após operação de IA
+14. **`addJob()`** do `useNotifications` — Job aparece no sininho de notificações
 
 ### Frontend — OverviewTab.tsx
 
-9. **Props novas**: `expandingDescription`, `onExpandDescription`, `summarizingDescription`, `onSummarizeDescription`
-10. **Lógica condicional de botões**:
+15. **Props novas**: `expandingDescription`, `onExpandDescription`, `summarizingDescription`, `onSummarizeDescription`
+16. **Lógica condicional de botões**:
     - Se `project.description` existe → mostra botão Detalhar (verde, ícone expand) + botão Resumir (laranja, ícone compress)
     - Se `project.description` não existe → mostra botão Gerar (azul, ícone raio) — comportamento do PROMPT #240
-11. **Desabilitação mútua** — Quando qualquer operação está em andamento, todos os botões ficam desabilitados
+17. **Desabilitação mútua** — Quando qualquer operação está em andamento, todos os botões ficam desabilitados
 
 ---
+
+## Files Modified
+
+| File | Changes |
+|------|---------|
+| `backend/app/models/async_job.py` | Novo `JobType.DESCRIPTION_GENERATION` + fallback priority |
+| `backend/app/contracts/business/job_priorities.yaml` | `description_generation: 5` (NORMAL) |
+| `backend/app/services/project_service.py` | Nova `_process_description_async()` background function |
+| `backend/app/api/routes/projects.py` | 3 endpoints refatorados para usar PriorityJobExecutor |
+| `frontend/src/app/projects/[id]/page.tsx` | useJobPolling, startDescriptionJob, skipAutoFormatRef |
+| `frontend/src/app/projects/[id]/OverviewTab.tsx` | Props novas, lógica condicional de botões |
 
 ## Files Created
 
@@ -61,30 +86,31 @@ Quando não há descrição, mantém o botão original de gerar descrição do z
 | `backend/app/prompts/projects/expand_description.yaml` | Prompt YAML para expandir descrição |
 | `backend/app/prompts/projects/summarize_description.yaml` | Prompt YAML para resumir descrição |
 
-## Files Modified
-
-| File | Changes |
-|------|---------|
-| `backend/app/api/routes/projects.py` | Novos endpoints `expand-description` e `summarize-description` |
-| `frontend/src/app/projects/[id]/page.tsx` | Estados, handlers, passagem de props para expand/summarize |
-| `frontend/src/app/projects/[id]/OverviewTab.tsx` | Props novas, lógica condicional de botões |
-
 ---
 
-## UX Design
+## Architecture: Job Queue Flow
 
-### Botões por estado da descrição:
-
-| Estado | Botões exibidos | Cores |
-|--------|-----------------|-------|
-| Sem descrição | Gerar (raio) | Azul |
-| Com descrição | Detalhar (expand) + Resumir (compress) | Verde + Laranja |
-| Editando | Nenhum (ocultos) | — |
-
-### Comportamento:
-- Todos os botões salvam automaticamente no projeto e recarregam
-- Botões desabilitados mutuamente durante operações
-- REGRA #0 respeitada: ação sempre explícita via clique
+```
+1. User clicks "Detalhar" / "Resumir" / "Gerar"
+   ↓
+2. Frontend: POST /api/v1/projects/{action}-description
+   ↓
+3. Backend: Creates AsyncJob(DESCRIPTION_GENERATION, priority=5)
+   ↓
+4. Backend: executor.submit() → enqueues in PriorityJobExecutor
+   ↓
+5. Backend returns: { job_id, status: "pending" }
+   ↓
+6. Frontend: useJobPolling(job_id) tracks via WebSocket
+   ↓
+7. PriorityJobExecutor worker picks up job when available
+   ↓
+8. _process_description_async: AI call → auto-saves to project
+   ↓
+9. Job completes → WebSocket notifies frontend
+   ↓
+10. Frontend: onComplete → setEditedDescription + skipAutoFormat + loadProjectData
+```
 
 ---
 
@@ -94,33 +120,27 @@ Quando não há descrição, mantém o botão original de gerar descrição do z
 
 **Problema:** Ao clicar "Detalhar", a versão bonita com markdown aparecia brevemente, depois era substituída por uma versão com formatação inferior.
 
-**Causa raiz:** O `useEffect` de auto-format em `page.tsx` (que converte descrições plain-text para markdown via `/api/format-markdown`) disparava após `loadProjectData()`, sobrescrevendo a descrição já bem formatada retornada pela IA.
+**Causa raiz:** O `useEffect` de auto-format em `page.tsx` disparava após `loadProjectData()`, chamando `/api/format-markdown` que sobrescrevia a descrição.
 
-**Solução:** Adicionado `skipAutoFormatRef` — um `useRef(boolean)` que:
-1. É setado para `true` nos handlers `handleGenerateDescription`, `handleExpandDescription`, `handleSummarizeDescription` antes de `loadProjectData()`
-2. O `useEffect` de auto-format verifica o ref e, se `true`, pula a reformatação e reseta o flag
-3. Isso garante que a descrição retornada pela IA é preservada sem ser sobrescrita
+**Solução:** `skipAutoFormatRef` — setado `true` no `onComplete` do job polling, antes de `setEditedDescription` e `loadProjectData`. O useEffect verifica e pula.
 
 ### Fix: Título repetido na descrição gerada
 
-**Problema:** IA repetia o nome do projeto na descrição.
-
-**Solução:** Todos os 3 prompts YAML atualizados para v2 com regra explícita: "NÃO repita o nome/título do projeto na descrição."
+**Solução:** Todos os 3 prompts YAML v2: "NÃO repita o nome/título do projeto."
 
 ### Fix: Formatação markdown progressiva
 
-**Problema:** Descrições expandidas não usavam markdown rico.
-
-**Solução:** `expand_description.yaml` v2 instrui uso progressivo de **negrito**, listas, e subtítulos conforme a descrição cresce.
+**Solução:** `expand_description.yaml` v2 instrui uso progressivo de negrito, listas e subtítulos.
 
 ---
 
 ## Testing Results
 
 - TypeScript: zero erros nos arquivos modificados
-- Endpoints reutilizam AIOrchestrator com cache Redis
+- Backend: import de todos os módulos OK
+- Jobs entram na fila com prioridade NORMAL (5)
+- Frontend tracked via WebSocket (useJobPolling)
 - Prompts externalizados em YAML conforme padrão
-- Bug de double-formatting corrigido via skipAutoFormatRef
 
 ---
 
@@ -129,3 +149,4 @@ Quando não há descrição, mantém o botão original de gerar descrição do z
 - Todos os botões requerem clique manual do usuário
 - Não há atualização automática da descrição
 - A descrição editada manualmente é preservada até o usuário clicar em um dos botões
+- Backend auto-salva no projeto somente quando o job foi disparado por clique explícito

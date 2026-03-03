@@ -73,6 +73,9 @@ class JobType(str, enum.Enum):
     # PROMPT #228: Wiki page generation as sub-jobs (like file reading)
     WIKI_GENERATION = "wiki_generation"
 
+    # PROMPT #241: AI description generation (generate/expand/summarize)
+    DESCRIPTION_GENERATION = "description_generation"
+
     # PROMPT #260: Deep Pipeline (7-phase Claudio pipeline)
     DEEP_PIPELINE = "deep_pipeline"
 
@@ -120,6 +123,7 @@ def _load_job_priorities() -> dict:
             JobType.RAG_CONTINUOUS_SCAN: JobPriority.LOW,
             JobType.WIKI_RULE_ENRICHMENT: JobPriority.LOW,
             JobType.WIKI_GENERATION: JobPriority.NORMAL,
+            JobType.DESCRIPTION_GENERATION: JobPriority.NORMAL,
         }
 
 

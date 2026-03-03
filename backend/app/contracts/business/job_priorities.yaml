@@ -51,6 +51,8 @@ data:
     task_execution: 5
     suggested_epics: 5
     cards_from_memory: 5
+    # MEDIO - usuario disparou, pode esperar brevemente
+    description_generation: 5
     # BAIXO - geração em segundo plano
     children_generation: 3
     epic_activation: 3

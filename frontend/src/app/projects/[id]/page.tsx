@@ -25,7 +25,8 @@ import OverviewTab from './OverviewTab';  // PROMPT #232 - Extracted tab sub-com
 import PipelineMonitor from '@/components/pipeline/PipelineMonitor';  // PROMPT #237 - Pipeline telemetry
 import { projectsApi, tasksApi, ragApi, knowledgeApi } from '@/lib/api';
 import { Project, Task, BacklogFilters as IBacklogFilters, BacklogItem, RagStats, CodeIndexingStats, BlockingAnalytics } from '@/lib/types';
-import { useNotification } from '@/hooks';
+import { useNotification, useJobPolling } from '@/hooks';
+import { useNotifications } from '@/contexts/NotificationContext';
 
 type Tab = 'overview' | 'backlog' | 'kanban' | 'queue' | 'wiki' | 'chat' | 'specs' | 'commits' | 'rag' | 'analytics';
 type OverviewSubTab = 'description' | 'statistics' | 'settings';
@@ -35,6 +36,7 @@ export default function ProjectDetailsPage() {
   const router = useRouter();  // PROMPT #151 - Restored for redirect to wizard
   const projectId = params.id as string;
   const { showError, showSuccess, NotificationComponent } = useNotification();
+  const { addJob } = useNotifications();
 
   const [project, setProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -54,9 +56,10 @@ export default function ProjectDetailsPage() {
   // PROMPT #240 - AI auto-generate title/description
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [generatingDescription, setGeneratingDescription] = useState(false);
-  // PROMPT #241 - Expand/Summarize description
+  // PROMPT #241 - Expand/Summarize description (via job queue)
   const [expandingDescription, setExpandingDescription] = useState(false);
   const [summarizingDescription, setSummarizingDescription] = useState(false);
+  const [descriptionJobId, setDescriptionJobId] = useState<string | null>(null);
 
   // Refs for inline editing
   const descriptionEditorRef = useRef<HTMLDivElement>(null);
@@ -165,6 +168,30 @@ export default function ProjectDetailsPage() {
       setLoading(false);
     }
   }, [projectId, router]);
+
+  // PROMPT #241 - Poll description generation/expand/summarize job
+  useJobPolling(descriptionJobId, {
+    enabled: !!descriptionJobId,
+    onComplete: (result: any) => {
+      const desc = result?.description;
+      if (desc) {
+        skipAutoFormatRef.current = true;
+        setEditedDescription(desc);
+        loadProjectData();
+      }
+      setGeneratingDescription(false);
+      setExpandingDescription(false);
+      setSummarizingDescription(false);
+      setDescriptionJobId(null);
+    },
+    onError: (error: string) => {
+      showError(error || 'Falha na operação de descrição');
+      setGeneratingDescription(false);
+      setExpandingDescription(false);
+      setSummarizingDescription(false);
+      setDescriptionJobId(null);
+    },
+  });
 
   useEffect(() => {
     loadProjectData();
@@ -579,97 +606,61 @@ export default function ProjectDetailsPage() {
   }, [project, projectId, showError, loadProjectData]);
 
   // PROMPT #240 - AI auto-generate description from title
-  const handleGenerateDescription = useCallback(async () => {
-    if (!project?.name?.trim()) return;
-    setGeneratingDescription(true);
+  // PROMPT #241 - Description generation via job queue (generate/expand/summarize)
+  const startDescriptionJob = useCallback(async (
+    endpoint: string,
+    body: Record<string, string | undefined>,
+    notificationTitle: string,
+  ) => {
     try {
       const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const resp = await fetch(`${API_BASE}/api/v1/projects/generate-description`, {
+      const resp = await fetch(`${API_BASE}/api/v1/projects/${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: project.name.trim() }),
+        body: JSON.stringify({ ...body, project_id: projectId }),
       });
       if (resp.ok) {
         const data = await resp.json();
-        if (data.description) {
-          await projectsApi.update(projectId, { description: data.description });
-          skipAutoFormatRef.current = true;  // PROMPT #241 fix - prevent auto-reformat
-          setEditedDescription(data.description);
-          await loadProjectData();
+        if (data.job_id) {
+          setDescriptionJobId(data.job_id);
+          addJob(data.job_id, 'description_generation', notificationTitle, undefined, true);
         }
       } else {
-        showError('Falha ao gerar descrição');
+        throw new Error('Endpoint retornou erro');
       }
     } catch {
       showError('Erro ao conectar com o servidor');
-    } finally {
       setGeneratingDescription(false);
+      setExpandingDescription(false);
+      setSummarizingDescription(false);
     }
-  }, [project, projectId, showError, loadProjectData]);
+  }, [projectId, showError, addJob]);
+
+  const handleGenerateDescription = useCallback(async () => {
+    if (!project?.name?.trim()) return;
+    setGeneratingDescription(true);
+    await startDescriptionJob('generate-description', { title: project.name.trim() }, `Gerando descrição — '${project.name}'`);
+  }, [project, startDescriptionJob]);
 
   // PROMPT #241 - Expand (detalhar) description
   const handleExpandDescription = useCallback(async () => {
     if (!project?.description?.trim() || !project?.name?.trim()) return;
     setExpandingDescription(true);
-    try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const resp = await fetch(`${API_BASE}/api/v1/projects/expand-description`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: project.name.trim(),
-          current_description: project.description.trim(),
-        }),
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.description) {
-          await projectsApi.update(projectId, { description: data.description });
-          skipAutoFormatRef.current = true;  // PROMPT #241 fix - prevent auto-reformat
-          setEditedDescription(data.description);
-          await loadProjectData();
-        }
-      } else {
-        showError('Falha ao expandir descrição');
-      }
-    } catch {
-      showError('Erro ao conectar com o servidor');
-    } finally {
-      setExpandingDescription(false);
-    }
-  }, [project, projectId, showError, loadProjectData]);
+    await startDescriptionJob('expand-description', {
+      title: project.name.trim(),
+      current_description: project.description.trim(),
+    }, `Detalhando descrição — '${project.name}'`);
+  }, [project, startDescriptionJob]);
 
   // PROMPT #241 - Summarize (resumir) description
   const handleSummarizeDescription = useCallback(async () => {
     if (!project?.description?.trim() || !project?.name?.trim()) return;
     setSummarizingDescription(true);
-    try {
-      const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const resp = await fetch(`${API_BASE}/api/v1/projects/summarize-description`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: project.name.trim(),
-          current_description: project.description.trim(),
-        }),
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.description) {
-          await projectsApi.update(projectId, { description: data.description });
-          skipAutoFormatRef.current = true;  // PROMPT #241 fix - prevent auto-reformat
-          setEditedDescription(data.description);
-          await loadProjectData();
-        }
-      } else {
-        showError('Falha ao resumir descrição');
-      }
-    } catch {
-      showError('Erro ao conectar com o servidor');
-    } finally {
-      setSummarizingDescription(false);
-    }
-  }, [project, projectId, showError, loadProjectData]);
+    await startDescriptionJob('summarize-description', {
+      title: project.name.trim(),
+      current_description: project.description.trim(),
+    }, `Resumindo descrição — '${project.name}'`);
+  }, [project, startDescriptionJob]);
 
   // Markdown formatting helpers
   const insertMarkdown = (before: string, after: string = '') => {

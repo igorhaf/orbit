@@ -965,3 +965,95 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
             pass
     finally:
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# PROMPT #241 — Description generation/expand/summarize via job queue
+# ---------------------------------------------------------------------------
+
+async def _process_description_async(
+    job_id: UUID,
+    action: str,
+    title: str,
+    current_description: Optional[str],
+    project_id: Optional[str],
+    max_tokens: int = 800,
+):
+    """
+    Background task to generate/expand/summarize a project description.
+    Runs inside PriorityJobExecutor with NORMAL priority.
+
+    :param action: "generate", "expand", or "summarize"
+    :param title: project title
+    :param current_description: existing description (required for expand/summarize)
+    :param project_id: optional project UUID string (to auto-save result)
+    :param max_tokens: max tokens for AI response
+    """
+    from app.database import SessionLocal
+
+    db = SessionLocal()
+    try:
+        job_manager = JobManager(db)
+        job_manager.start_job(job_id)
+        logger.info(f"🚀 Description {action} job started (job {job_id})")
+
+        job_manager.update_progress(job_id, 10.0, f"Preparando prompt ({action})...")
+
+        from app.prompts.loader import PromptLoader
+        from app.services.ai_orchestrator import AIOrchestrator
+
+        loader = PromptLoader()
+
+        # Select prompt template based on action
+        prompt_map = {
+            "generate": "projects/generate_description",
+            "expand": "projects/expand_description",
+            "summarize": "projects/summarize_description",
+        }
+        prompt_name = prompt_map.get(action, "projects/generate_description")
+
+        variables = {"title": title}
+        if current_description:
+            variables["current_description"] = current_description
+
+        system_prompt, user_prompt = loader.render(prompt_name, variables)
+
+        job_manager.update_progress(job_id, 30.0, "Aguardando resposta da IA...")
+
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="general",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=max_tokens,
+            metadata={"skip_context_build": True},
+            disable_tools=True,
+        )
+
+        description = (response.get("content") or "").strip()
+
+        job_manager.update_progress(job_id, 80.0, "Salvando descrição...")
+
+        # Auto-save to project if project_id provided
+        if project_id:
+            try:
+                pid = UUID(project_id) if isinstance(project_id, str) else project_id
+                project = db.query(Project).filter(Project.id == pid).first()
+                if project:
+                    project.description = description
+                    db.commit()
+                    logger.info(f"✅ Description auto-saved to project {project_id}")
+            except Exception as save_err:
+                logger.warning(f"Could not auto-save description: {save_err}")
+
+        job_manager.complete_job(job_id, {"description": description, "action": action})
+        logger.info(f"✅ Description {action} completed (job {job_id})")
+
+    except Exception as e:
+        logger.error(f"Description {action} failed (job {job_id}): {e}", exc_info=True)
+        try:
+            job_manager.fail_job(job_id, str(e))
+        except Exception:
+            pass
+    finally:
+        db.close()

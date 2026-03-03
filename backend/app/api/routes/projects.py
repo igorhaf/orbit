@@ -49,6 +49,7 @@ from app.services.project_service import (
     _enrich_context_from_rag,
     _process_cards_from_memory_async,
     _process_full_hierarchy_async,
+    _process_description_async,  # PROMPT #241
 )
 
 # PROMPT #111 - Base path for projects folder (configurable via PROJECTS_BASE_PATH env var)
@@ -541,48 +542,46 @@ async def generate_project_description(
     db: Session = Depends(get_db),
 ):
     """
-    PROMPT #239 — Generate a short project description from the title using AI.
-    Simple, synchronous call — no background job needed.
+    PROMPT #239 / #241 — Generate a short project description from the title using AI.
+    Now uses PriorityJobExecutor (async job queue) with NORMAL priority.
 
     **POST** `/api/v1/projects/generate-description`
-    Body: `{"title": "My Project"}`
-    Response: `{"description": "Generated description..."}`
+    Body: `{"title": "My Project", "project_id": "optional-uuid"}`
+    Response: `{"job_id": "...", "status": "pending", ...}`
     """
     title = (body.get("title") or "").strip()
+    project_id = body.get("project_id")
     if not title:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Campo 'title' é obrigatório",
         )
 
-    try:
-        from app.prompts.loader import PromptLoader
-        from app.services.ai_orchestrator import AIOrchestrator
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.DESCRIPTION_GENERATION,
+        input_data={
+            "action": "generate",
+            "title": title,
+            "project_id": project_id,
+        },
+        project_id=UUID(project_id) if project_id else None,
+        notification_title=f"Gerando descrição — '{title[:40]}'"
+    )
 
-        loader = PromptLoader()
-        system_prompt, user_prompt = loader.render(
-            "projects/generate_description", {"title": title}
-        )
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_description_async,
+        job.id, "generate", title, None, project_id, 800,
+    )
 
-        orchestrator = AIOrchestrator(db)
-        response = await orchestrator.execute(
-            usage_type="general",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=system_prompt,
-            max_tokens=800,
-            metadata={"skip_context_build": True},
-            disable_tools=True,
-        )
-
-        description = (response.get("content") or "").strip()
-        return {"description": description}
-
-    except Exception as e:
-        logger.error(f"Failed to generate description for '{title}': {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Falha ao gerar descrição: {str(e)}",
-        )
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Geração de descrição enfileirada.",
+    }
 
 
 @router.post("/expand-description")
@@ -592,48 +591,47 @@ async def expand_project_description(
 ):
     """
     PROMPT #241 — Expand/detail an existing project description using AI.
+    Now uses PriorityJobExecutor (async job queue) with NORMAL priority.
 
     **POST** `/api/v1/projects/expand-description`
-    Body: `{"title": "My Project", "current_description": "Short desc..."}`
-    Response: `{"description": "Expanded description..."}`
+    Body: `{"title": "...", "current_description": "...", "project_id": "optional-uuid"}`
+    Response: `{"job_id": "...", "status": "pending", ...}`
     """
     title = (body.get("title") or "").strip()
     current_description = (body.get("current_description") or "").strip()
+    project_id = body.get("project_id")
     if not current_description:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Campo 'current_description' é obrigatório",
         )
 
-    try:
-        from app.prompts.loader import PromptLoader
-        from app.services.ai_orchestrator import AIOrchestrator
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.DESCRIPTION_GENERATION,
+        input_data={
+            "action": "expand",
+            "title": title,
+            "current_description": current_description,
+            "project_id": project_id,
+        },
+        project_id=UUID(project_id) if project_id else None,
+        notification_title=f"Detalhando descrição — '{title[:40]}'"
+    )
 
-        loader = PromptLoader()
-        system_prompt, user_prompt = loader.render(
-            "projects/expand_description",
-            {"title": title, "current_description": current_description},
-        )
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_description_async,
+        job.id, "expand", title, current_description, project_id, 800,
+    )
 
-        orchestrator = AIOrchestrator(db)
-        response = await orchestrator.execute(
-            usage_type="general",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=system_prompt,
-            max_tokens=800,
-            metadata={"skip_context_build": True},
-            disable_tools=True,
-        )
-
-        description = (response.get("content") or "").strip()
-        return {"description": description}
-
-    except Exception as e:
-        logger.error(f"Failed to expand description: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Falha ao expandir descrição: {str(e)}",
-        )
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Expansão de descrição enfileirada.",
+    }
 
 
 @router.post("/summarize-description")
@@ -643,48 +641,47 @@ async def summarize_project_description(
 ):
     """
     PROMPT #241 — Summarize/condense an existing project description using AI.
+    Now uses PriorityJobExecutor (async job queue) with NORMAL priority.
 
     **POST** `/api/v1/projects/summarize-description`
-    Body: `{"title": "My Project", "current_description": "Long desc..."}`
-    Response: `{"description": "Summarized description..."}`
+    Body: `{"title": "...", "current_description": "...", "project_id": "optional-uuid"}`
+    Response: `{"job_id": "...", "status": "pending", ...}`
     """
     title = (body.get("title") or "").strip()
     current_description = (body.get("current_description") or "").strip()
+    project_id = body.get("project_id")
     if not current_description:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Campo 'current_description' é obrigatório",
         )
 
-    try:
-        from app.prompts.loader import PromptLoader
-        from app.services.ai_orchestrator import AIOrchestrator
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.DESCRIPTION_GENERATION,
+        input_data={
+            "action": "summarize",
+            "title": title,
+            "current_description": current_description,
+            "project_id": project_id,
+        },
+        project_id=UUID(project_id) if project_id else None,
+        notification_title=f"Resumindo descrição — '{title[:40]}'"
+    )
 
-        loader = PromptLoader()
-        system_prompt, user_prompt = loader.render(
-            "projects/summarize_description",
-            {"title": title, "current_description": current_description},
-        )
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_description_async,
+        job.id, "summarize", title, current_description, project_id, 500,
+    )
 
-        orchestrator = AIOrchestrator(db)
-        response = await orchestrator.execute(
-            usage_type="general",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=system_prompt,
-            max_tokens=500,
-            metadata={"skip_context_build": True},
-            disable_tools=True,
-        )
-
-        description = (response.get("content") or "").strip()
-        return {"description": description}
-
-    except Exception as e:
-        logger.error(f"Failed to summarize description: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Falha ao resumir descrição: {str(e)}",
-        )
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Resumo de descrição enfileirado.",
+    }
 
 
 @router.post("/create-and-process")
