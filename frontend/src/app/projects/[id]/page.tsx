@@ -59,6 +59,7 @@ export default function ProjectDetailsPage() {
   // PROMPT #241 - Expand/Summarize description (via job queue)
   const [expandingDescription, setExpandingDescription] = useState(false);
   const [summarizingDescription, setSummarizingDescription] = useState(false);
+  const [rephrasingDescription, setRephrasingDescription] = useState(false);
   const [descriptionJobId, setDescriptionJobId] = useState<string | null>(null);
 
   // Refs for inline editing
@@ -185,6 +186,7 @@ export default function ProjectDetailsPage() {
       setGeneratingDescription(false);
       setExpandingDescription(false);
       setSummarizingDescription(false);
+      setRephrasingDescription(false);
       setDescriptionJobId(null);
     },
     onError: (error: string) => {
@@ -192,6 +194,7 @@ export default function ProjectDetailsPage() {
       setGeneratingDescription(false);
       setExpandingDescription(false);
       setSummarizingDescription(false);
+      setRephrasingDescription(false);
       setDescriptionJobId(null);
     },
   });
@@ -636,6 +639,7 @@ export default function ProjectDetailsPage() {
       setGeneratingDescription(false);
       setExpandingDescription(false);
       setSummarizingDescription(false);
+      setRephrasingDescription(false);
     }
   }, [projectId, showError, addJob]);
 
@@ -665,6 +669,17 @@ export default function ProjectDetailsPage() {
       current_description: project.description.trim(),
       pinned_fragments: project.pinned_fragments || [],
     }, `Resumindo descrição — '${project.name}'`);
+  }, [project, startDescriptionJob]);
+
+  // PROMPT #244 - Rephrase (reformular) description
+  const handleRephraseDescription = useCallback(async () => {
+    if (!project?.description?.trim() || !project?.name?.trim()) return;
+    setRephrasingDescription(true);
+    await startDescriptionJob('rephrase-description', {
+      title: project.name.trim(),
+      current_description: project.description.trim(),
+      pinned_fragments: project.pinned_fragments || [],
+    }, `Reformulando descrição — '${project.name}'`);
   }, [project, startDescriptionJob]);
 
   // Markdown formatting helpers
@@ -1187,6 +1202,8 @@ export default function ProjectDetailsPage() {
             onExpandDescription={handleExpandDescription}
             summarizingDescription={summarizingDescription}
             onSummarizeDescription={handleSummarizeDescription}
+            rephrasingDescription={rephrasingDescription}
+            onRephraseDescription={handleRephraseDescription}
             onPersistSelection={async (text) => {
               // PROMPT #243 - Persist selected text fragment
               // Use ref for cumulative state to handle rapid successive selections

@@ -62,6 +62,9 @@ interface OverviewTabProps {
   onExpandDescription?: () => void;
   summarizingDescription?: boolean;
   onSummarizeDescription?: () => void;
+  // PROMPT #244 - Rephrase description
+  rephrasingDescription?: boolean;
+  onRephraseDescription?: () => void;
   // PROMPT #242/243 - Persist selection + visual highlight
   onPersistSelection?: (selectedText: string) => void;
   pinnedFragments?: string[];
@@ -309,6 +312,8 @@ export default function OverviewTab({
   onExpandDescription,
   summarizingDescription,
   onSummarizeDescription,
+  rephrasingDescription,
+  onRephraseDescription,
   onPersistSelection,
   pinnedFragments = [],
   onUnpinFragment,
@@ -511,7 +516,7 @@ export default function OverviewTab({
                     <button
                       type="button"
                       onClick={onExpandDescription}
-                      disabled={expandingDescription || summarizingDescription || generatingDescription}
+                      disabled={expandingDescription || summarizingDescription || rephrasingDescription || generatingDescription}
                       title="Detalhar descrição (expandir com mais informações)"
                       className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
@@ -531,7 +536,7 @@ export default function OverviewTab({
                     <button
                       type="button"
                       onClick={onSummarizeDescription}
-                      disabled={expandingDescription || summarizingDescription || generatingDescription}
+                      disabled={expandingDescription || summarizingDescription || rephrasingDescription || generatingDescription}
                       title="Resumir descrição (condensar texto)"
                       className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                     >
@@ -543,6 +548,27 @@ export default function OverviewTab({
                       ) : (
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 16L14.5 20.5L9 16m11-8L14.5 3.5L9 8M4 12h16" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                  {/* PROMPT #244 - Rephrase (reformular) description */}
+                  {project.description && onRephraseDescription && (
+                    <button
+                      type="button"
+                      onClick={onRephraseDescription}
+                      disabled={expandingDescription || summarizingDescription || rephrasingDescription || generatingDescription}
+                      title="Reformular descrição (reescrever com outras palavras)"
+                      className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {rephrasingDescription ? (
+                        <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                       )}
                     </button>

@@ -690,6 +690,59 @@ async def summarize_project_description(
     }
 
 
+@router.post("/rephrase-description")
+async def rephrase_project_description(
+    body: dict,
+    db: Session = Depends(get_db),
+):
+    """
+    PROMPT #244 — Rephrase/reformulate an existing project description using AI.
+    Keeps the same length and meaning but uses different wording.
+
+    **POST** `/api/v1/projects/rephrase-description`
+    Body: `{"title": "...", "current_description": "...", "project_id": "optional-uuid"}`
+    Response: `{"job_id": "...", "status": "pending", ...}`
+    """
+    title = (body.get("title") or "").strip()
+    current_description = (body.get("current_description") or "").strip()
+    project_id = body.get("project_id")
+    pinned_fragments = body.get("pinned_fragments") or []
+    if not current_description:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Campo 'current_description' é obrigatório",
+        )
+
+    job_manager = JobManager(db)
+    job = job_manager.create_job(
+        job_type=JobType.DESCRIPTION_GENERATION,
+        input_data={
+            "action": "rephrase",
+            "title": title,
+            "current_description": current_description,
+            "project_id": project_id,
+            "pinned_fragments": pinned_fragments,
+        },
+        project_id=UUID(project_id) if project_id else None,
+        notification_title=f"Reformulando descrição — '{title[:40]}'"
+    )
+
+    from app.services.job_executor import PriorityJobExecutor
+    executor = PriorityJobExecutor.get_instance()
+    await executor.submit(
+        job.priority,
+        _process_description_async,
+        job.id, "rephrase", title, current_description, project_id, 800,
+        pinned_fragments,
+    )
+
+    return {
+        "job_id": str(job.id),
+        "status": "pending",
+        "message": "Reformulação de descrição enfileirada.",
+    }
+
+
 @router.post("/create-and-process")
 async def create_and_process_project(
     code_path: str = Query(..., description="Absolute path to existing code folder"),

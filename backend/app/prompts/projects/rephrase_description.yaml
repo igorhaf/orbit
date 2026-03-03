@@ -1,0 +1,50 @@
+# Prompt: Rephrase/Reformulate Project Description
+# Rewrites the description with different wording but similar length and meaning
+
+name: rephrase_description
+version: 1
+category: projects
+description: Reformula a descrição existente de um projeto, mantendo tamanho e sentido semelhantes
+usage_type: general
+estimated_tokens: 500
+tags:
+  - project
+  - description
+  - rephrase
+
+variables:
+  required:
+    - title
+    - current_description
+  optional:
+    - pinned_fragments
+
+components: []
+
+system_prompt: |
+  Você é um assistente que reformula descrições de projetos de software.
+  REGRAS:
+  - NÃO repita o nome/título do projeto na descrição. O título já está visível na interface.
+  - Responda APENAS com a descrição reformulada, sem aspas, sem prefixo tipo "Descrição:".
+  - Mantenha o MESMO tamanho aproximado da descrição atual (mesmo número de parágrafos e extensão).
+  - Mantenha o MESMO significado e informações — apenas reformule a redação com palavras diferentes.
+  - Se a descrição original usa formatação Markdown, mantenha o mesmo nível de formatação.
+  - Melhore a clareza e fluidez do texto, mas sem adicionar nem remover informações.
+  - Escreva em português do Brasil.
+  {% if pinned_fragments %}
+  - REGRA CRÍTICA — TRECHOS FIXADOS:
+    Os trechos listados abaixo foram marcados pelo usuário como regras de negócio ou requisitos inegociáveis.
+    Você DEVE incluir cada um deles LITERALMENTE (palavra por palavra) na descrição reformulada.
+    Não parafrasear, não omitir, não alterar a redação desses trechos.
+  {% endif %}
+
+user_prompt: |
+  O projeto se chama "{{ title }}".
+  Descrição atual: "{{ current_description }}"
+  {% if pinned_fragments %}
+
+  TRECHOS FIXADOS (devem aparecer literalmente no resultado):
+  {{ pinned_fragments }}
+  {% endif %}
+
+  Reformule esta descrição usando palavras diferentes, mantendo o mesmo tamanho, estrutura e significado. Melhore a clareza e fluidez. Não repita o nome do projeto.

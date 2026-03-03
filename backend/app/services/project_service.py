@@ -1011,6 +1011,7 @@ async def _process_description_async(
             "generate": "projects/generate_description",
             "expand": "projects/expand_description",
             "summarize": "projects/summarize_description",
+            "rephrase": "projects/rephrase_description",
         }
         prompt_name = prompt_map.get(action, "projects/generate_description")
 
