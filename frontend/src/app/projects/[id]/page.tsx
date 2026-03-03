@@ -66,6 +66,7 @@ export default function ProjectDetailsPage() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
   const skipAutoFormatRef = useRef(false);  // PROMPT #241 fix - skip auto-format after AI operations
+  const pinnedFragmentsRef = useRef<string[]>([]);  // PROMPT #243 fix - track pinned fragments for rapid successive saves
 
   // Backlog states
   const [backlogFilters, setBacklogFilters] = useState<IBacklogFilters>({});
@@ -151,6 +152,8 @@ export default function ProjectDetailsPage() {
       if (projectResult.status === 'fulfilled') {
         const projectData = projectResult.value.data || projectResult.value;
         setProject(projectData);
+        // PROMPT #243 fix - sync ref with server data
+        pinnedFragmentsRef.current = projectData.pinned_fragments || [];
       } else {
         console.error('❌ Failed to load project:', projectResult.reason);
       }
@@ -1186,27 +1189,42 @@ export default function ProjectDetailsPage() {
             onSummarizeDescription={handleSummarizeDescription}
             onPersistSelection={async (text) => {
               // PROMPT #243 - Persist selected text fragment
-              const current = project?.pinned_fragments || [];
-              // Avoid duplicates
+              // Use ref for optimistic state to handle rapid successive selections
+              const current = pinnedFragmentsRef.current;
               if (current.some((f: string) => f === text)) return;
               const updated = [...current, text];
+              pinnedFragmentsRef.current = updated;
+              // Optimistic UI update
+              if (project) {
+                setProject({ ...project, pinned_fragments: updated });
+              }
               try {
                 await projectsApi.update(projectId, { pinned_fragments: updated } as any);
                 loadProjectData();
               } catch (err) {
                 console.error('Failed to persist fragment:', err);
+                // Rollback on error
+                pinnedFragmentsRef.current = current;
+                if (project) setProject({ ...project, pinned_fragments: current });
               }
             }}
             pinnedFragments={project?.pinned_fragments || []}
             onUnpinFragment={async (fragment) => {
               // PROMPT #243 - Remove a pinned fragment
-              const current = project?.pinned_fragments || [];
+              const current = pinnedFragmentsRef.current;
               const updated = current.filter((f: string) => f !== fragment);
+              pinnedFragmentsRef.current = updated;
+              // Optimistic UI update
+              if (project) {
+                setProject({ ...project, pinned_fragments: updated });
+              }
               try {
                 await projectsApi.update(projectId, { pinned_fragments: updated } as any);
                 loadProjectData();
               } catch (err) {
                 console.error('Failed to unpin fragment:', err);
+                pinnedFragmentsRef.current = current;
+                if (project) setProject({ ...project, pinned_fragments: current });
               }
             }}
           />

@@ -69,6 +69,46 @@ interface OverviewTabProps {
 }
 
 /**
+ * PROMPT #243 fix - Expands a partial selection to full word boundaries.
+ * If the user selects "aconh" but the word is "maconha", returns "maconha".
+ * Expands both the first and last word to their full forms in the source text.
+ */
+function expandToWordBoundaries(selectedText: string, sourceText: string): string {
+  const trimmed = selectedText.trim();
+  if (!trimmed || !sourceText) return trimmed;
+
+  // Find the selected text in the source (case-sensitive first, then case-insensitive)
+  let idx = sourceText.indexOf(trimmed);
+  if (idx === -1) {
+    // Try stripping markdown formatting from source for matching
+    const plain = sourceText.replace(/[*_#`>\[\]()~|]/g, '');
+    idx = plain.indexOf(trimmed);
+    if (idx === -1) return trimmed; // Can't find it, return as-is
+    // Use the plain text for boundary expansion
+    return expandInText(trimmed, plain, idx);
+  }
+  return expandInText(trimmed, sourceText, idx);
+}
+
+function expandInText(selected: string, text: string, idx: number): string {
+  const wordChar = /[^\s.,;:!?()[\]{}"'`\n\r\t—–-]/;
+
+  // Expand start backwards to word boundary
+  let start = idx;
+  while (start > 0 && wordChar.test(text[start - 1])) {
+    start--;
+  }
+
+  // Expand end forwards to word boundary
+  let end = idx + selected.length;
+  while (end < text.length && wordChar.test(text[end])) {
+    end++;
+  }
+
+  return text.slice(start, end);
+}
+
+/**
  * PROMPT #243 - Highlights pinned fragments within text nodes.
  * Returns React elements where pinned fragments have black bg + white text.
  */
@@ -177,11 +217,16 @@ export default function OverviewTab({
     // Only track selection within the description display area
     const range = selection.getRangeAt(0);
     if (descriptionDisplayRef.current.contains(range.commonAncestorContainer)) {
-      setSelectedText(selection.toString().trim());
+      const raw = selection.toString().trim();
+      if (!raw) { setSelectedText(''); return; }
+      // Expand partial words to full boundaries using the source description
+      const source = editedDescription || project.description || '';
+      const expanded = expandToWordBoundaries(raw, source);
+      setSelectedText(expanded);
     } else {
       setSelectedText('');
     }
-  }, []);
+  }, [editedDescription, project.description]);
 
   useEffect(() => {
     document.addEventListener('selectionchange', handleSelectionChange);
