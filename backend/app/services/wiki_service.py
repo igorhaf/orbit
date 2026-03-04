@@ -1246,6 +1246,7 @@ async def _process_wiki_page_ai_async(
                     title=page_title,
                     content=content,
                     source="ai_generated",
+                    respect_protected=False,  # User explicitly requested AI operation
                 )
                 logger.info(f"Wiki page '{slug}' updated with AI {action}")
             except Exception as save_err:
