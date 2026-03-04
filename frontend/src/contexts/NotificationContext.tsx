@@ -45,6 +45,8 @@ export interface JobNotification {
   watching?: boolean;
   // PROMPT #120 - Job priority system
   priority?: number | null;
+  // AI model name used by this job
+  ai_model_name?: string | null;
 }
 
 interface NotificationContextType {
@@ -319,6 +321,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           created_at: new Date().toISOString(),
           read: false,
           title: data.notification_title || JOB_TYPE_TITLES[data.job_type] || 'Processando...',
+          project_id: data.project_id || null,
+          ai_model_name: data.ai_model_name || null,
+          priority: data.priority ?? null,
         };
         return [...prevJobs, newJob];
       }

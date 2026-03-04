@@ -37,7 +37,7 @@ export default function ProjectDetailsPage() {
   const searchParams = useSearchParams();
   const projectId = params.id as string;
   const { showError, showSuccess, NotificationComponent } = useNotification();
-  const { addJob } = useNotifications();
+  const { addJob, activeJobs: notifActiveJobs, notifications: notifCompleted } = useNotifications();
 
   const validTabs: Tab[] = ['overview', 'backlog', 'kanban', 'queue', 'wiki', 'chat', 'specs', 'commits', 'rag', 'analytics'];
   const tabParam = searchParams.get('tab') as Tab | null;
@@ -319,13 +319,50 @@ export default function ProjectDetailsPage() {
     };
 
     checkEnrichment();
-    interval = setInterval(checkEnrichment, 5000); // Poll every 5s for faster updates
+    interval = setInterval(checkEnrichment, 15000); // Fallback poll 15s (WebSocket handles fast updates)
 
     return () => {
       cancelled = true;
       if (interval) clearInterval(interval);
     };
   }, [projectId, loadProjectData]);
+
+  // WebSocket-driven enrichment: react immediately when jobs for this project update
+  const notifCompletedLenRef = useRef(notifCompleted.length);
+  useEffect(() => {
+    if (notifCompleted.length > notifCompletedLenRef.current) {
+      // Check if a new notification is for this project
+      const latest = notifCompleted[notifCompleted.length - 1];
+      if (latest?.project_id === projectId) {
+        loadProjectData();
+      }
+    }
+    notifCompletedLenRef.current = notifCompleted.length;
+  }, [notifCompleted, projectId, loadProjectData]);
+
+  // Also react to active job progress for this project (WebSocket-driven)
+  const prevActiveCountRef = useRef(0);
+  useEffect(() => {
+    const myJobs = notifActiveJobs.filter(j => j.project_id === projectId);
+    const count = myJobs.length;
+    // When count changes (job starts or finishes), trigger enrichment check
+    if (count !== prevActiveCountRef.current) {
+      prevActiveCountRef.current = count;
+      // Small delay to let backend settle
+      const t = setTimeout(() => {
+        ragApi.enrichmentStatus(projectId).then((status: any) => {
+          setIsEnriching(status.is_enriching);
+          setDeepPipelineRunning(status.deep_pipeline_running || false);
+          setDeepPipelineCompleted(status.deep_pipeline_completed || false);
+          setDeepPipelineScore(status.deep_pipeline_quality_score || null);
+          if (status.deep_pipeline_progress) {
+            setDeepPipelineProgress(status.deep_pipeline_progress.message || null);
+          }
+        }).catch(() => {});
+      }, 500);
+      return () => clearTimeout(t);
+    }
+  }, [notifActiveJobs, projectId]);
 
   // PROMPT #155 - Listen for incremental epic batch creation events
   useEffect(() => {

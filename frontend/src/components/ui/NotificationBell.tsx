@@ -278,9 +278,16 @@ export function NotificationBell() {
 
                       {/* Content */}
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {job.title}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {job.title}
+                          </p>
+                          {job.ai_model_name && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-600 border border-indigo-200 flex-shrink-0">
+                              {job.ai_model_name}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-xs text-gray-500 truncate">
                           {job.progress_message || job.description || 'Processando...'}
                         </p>

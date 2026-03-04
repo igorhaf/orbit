@@ -20,6 +20,7 @@ import {
 } from '@/components/ui';
 import { projectsApi, settingsApi } from '@/lib/api';
 import { Project } from '@/lib/types';
+import { useNotifications } from '@/contexts/NotificationContext';
 
 /**
  * PROMPT #192 - Strip markdown syntax for plain-text preview in project cards.
@@ -53,7 +54,8 @@ export default function ProjectsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [allowProtectedDeletion, setAllowProtectedDeletion] = useState(false);
 
-  // PROMPT #301 - Removed processing job tracking (projects are always active now)
+  // Real-time project list updates via WebSocket notifications
+  const { notifications } = useNotifications();
 
   const fetchProjects = useCallback(async () => {
     try {
@@ -83,7 +85,18 @@ export default function ProjectsPage() {
     init();
   }, [fetchProjects]);
 
-  // PROMPT #301 - Removed processing job polling (projects are always active now)
+  // Re-fetch projects when a relevant job completes (description, pipeline, etc.)
+  const notifCountRef = React.useRef(notifications.length);
+  useEffect(() => {
+    if (notifications.length > notifCountRef.current) {
+      const latest = notifications[notifications.length - 1];
+      const relevantTypes = ['deep_pipeline', 'description_generation', 'project_pipeline', 'context_generation'];
+      if (latest && relevantTypes.includes(latest.job_type)) {
+        fetchProjects();
+      }
+    }
+    notifCountRef.current = notifications.length;
+  }, [notifications, fetchProjects]);
 
   const handleDeleteProject = async (project: Project) => {
     setProjectToDelete(project);

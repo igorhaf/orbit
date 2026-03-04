@@ -209,6 +209,8 @@ class JobManager:
             "job_type": job.job_type.value,
             "status": "running",
             "notification_title": job.notification_title,
+            "ai_model_name": job.ai_model_name,
+            "priority": job.priority,
             "task_id": str(job.task_id) if job.task_id else None,
             "project_id": str(job.project_id) if job.project_id else None,
             "parent_job_id": str(job.parent_job_id) if job.parent_job_id else None,

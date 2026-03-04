@@ -197,6 +197,13 @@ export default function JobsPage() {
   const [selectedJobs, setSelectedJobs] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
 
+  // Duration ticker — forces re-render every second so running job timers update
+  const [, setDurationTick] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setDurationTick(t => t + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
   // PROMPT #286 - Expandable job detail with log viewer
   const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   const [jobLogs, setJobLogs] = useState<Record<string, Array<{ id: string; timestamp: string; level: string; message: string; progress_percent: number | null }>>>({});
@@ -403,6 +410,8 @@ export default function JobsPage() {
               started_at: new Date().toISOString(),
               completed_at: null,
               notification_title: data.notification_title,
+              ai_model_name: data.ai_model_name || null,
+              priority: data.priority ?? 5,
             };
             return [newJob, ...prevJobs];
           }
