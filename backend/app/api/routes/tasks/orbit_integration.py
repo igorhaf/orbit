@@ -436,3 +436,180 @@ async def check_orbit_result(
         found=False,
         message="Nenhum resultado encontrado em orbit/results/"
     )
+
+
+# PROMPT #248 - Generate semantic prompt for a card
+class SemanticPromptRequest(BaseModel):
+    force: bool = False  # Override REGRA #0 protection
+
+
+class SemanticPromptResponse(BaseModel):
+    success: bool
+    prompt: Optional[str] = None
+    ai_model: Optional[str] = None
+    message: Optional[str] = None
+    sources: Optional[Dict[str, Any]] = None
+
+
+@router.post("/{task_id}/generate-semantic-prompt", response_model=SemanticPromptResponse)
+async def generate_semantic_prompt(
+    task_id: UUID,
+    request: SemanticPromptRequest = SemanticPromptRequest(),
+    db: Session = Depends(get_db)
+):
+    """
+    PROMPT #248 - Generate semantic prompt for a card using all available context.
+
+    Gathers context from: card hierarchy, project context_semantic, wiki pages,
+    business rules (RAG), and tech stack. Calls AI to compose an actionable
+    implementation prompt.
+
+    POST /api/v1/tasks/{task_id}/generate-semantic-prompt
+    Body: { "force": false }
+    """
+    import json
+    from app.models.project import Project
+    from app.models.wiki_page import WikiPage
+    from app.services.ai_orchestrator import AIOrchestrator
+    from app.contracts.loader import ContractLoader
+
+    # 1. Fetch card
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Card {task_id} nao encontrado")
+
+    # REGRA #0: Don't overwrite human-edited prompt unless forced
+    if task.prompt_edited_by == "human" and not request.force:
+        return SemanticPromptResponse(
+            success=False,
+            message="Este prompt foi editado manualmente. Use force=true para sobrescrever.",
+        )
+
+    # 2. Fetch project
+    project = db.query(Project).filter(Project.id == task.project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto nao encontrado")
+
+    # 3. Fetch parent hierarchy
+    parent = None
+    if task.parent_id:
+        parent = db.query(Task).filter(Task.id == task.parent_id).first()
+
+    # 4. Fetch wiki pages for context
+    sources = {
+        "wiki_pages": [],
+        "rules_count": 0,
+        "parent_context": parent is not None,
+        "project_context": bool(project.context_semantic),
+    }
+
+    wiki_context = ""
+    try:
+        wiki_pages = (
+            db.query(WikiPage)
+            .filter(WikiPage.project_id == project.id)
+            .order_by(WikiPage.order_index)
+            .limit(5)
+            .all()
+        )
+        if wiki_pages:
+            wiki_parts = []
+            for wp in wiki_pages:
+                wiki_parts.append(f"### {wp.title}\n{(wp.content or '')[:1500]}")
+                sources["wiki_pages"].append(wp.title)
+            wiki_context = "\n\n".join(wiki_parts)
+    except Exception as e:
+        logger.warning(f"Failed to fetch wiki pages: {e}")
+
+    # 5. Fetch business rules from RAG
+    rules_text = ""
+    try:
+        from app.services.rag_service import RAGService
+        rag = RAGService(db)
+        rules = rag.get_business_rules(
+            project_id=project.id,
+            query=task.title,
+            top_k=10,
+        )
+        if rules:
+            rules_text = rag.format_business_rules_for_prompt(rules, max_chars=3000)
+            sources["rules_count"] = len(rules)
+    except Exception as e:
+        logger.warning(f"Failed to fetch business rules: {e}")
+
+    # 6. Build context and render contract
+    contract_loader = ContractLoader(db)
+    variables = {
+        "card_title": task.title or "",
+        "card_type": task.item_type.value if task.item_type else "task",
+        "card_description": task.description or "Sem descricao",
+        "labels": ", ".join(task.labels) if task.labels else "",
+        "acceptance_criteria": "\n".join(
+            f"- {ac}" for ac in (task.acceptance_criteria or [])
+        ) if task.acceptance_criteria else "",
+        "parent_title": parent.title if parent else "",
+        "parent_prompt": (parent.generated_prompt or "")[:2000] if parent else "",
+        "project_context": (project.context_semantic or "")[:3000],
+        "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
+        "business_rules": rules_text,
+        "wiki_context": wiki_context[:4000],
+    }
+
+    try:
+        system_prompt, user_prompt = contract_loader.render(
+            "pipeline/card_semantic_prompt", variables
+        )
+    except Exception as e:
+        logger.warning(f"Failed to load contract: {e}")
+        # Fallback: build inline
+        system_prompt = (
+            "Voce e um engenheiro de software senior. Gere um prompt semantico tecnico "
+            "e completo para implementar o item descrito. Minimo 500 chars, maximo 5000. "
+            "Portugues. Sem emojis. Responda APENAS com o texto do prompt."
+        )
+        user_prompt = "\n".join(f"{k}: {v}" for k, v in variables.items() if v)
+
+    # 7. Call AI
+    try:
+        orchestrator = AIOrchestrator(db)
+        response = await orchestrator.execute(
+            usage_type="prompt_generation",
+            messages=[{"role": "user", "content": user_prompt}],
+            system_prompt=system_prompt,
+            max_tokens=4000,
+        )
+
+        prompt_text = response.get("content", "").strip()
+        if not prompt_text or len(prompt_text) < 100:
+            return SemanticPromptResponse(
+                success=False,
+                message="IA gerou resposta muito curta ou vazia",
+            )
+
+        # Determine which model was used
+        ai_model = response.get("model", "unknown")
+
+        # 8. Save to card (REGRA #0 compliant — we checked above)
+        task.generated_prompt = prompt_text
+        task.prompt_edited_by = "ai"
+        task.created_by_ai_model = ai_model
+        db.commit()
+
+        logger.info(
+            f"Generated semantic prompt for card {task_id} "
+            f"({len(prompt_text)} chars, model={ai_model})"
+        )
+
+        return SemanticPromptResponse(
+            success=True,
+            prompt=prompt_text,
+            ai_model=ai_model,
+            sources=sources,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to generate semantic prompt: {e}", exc_info=True)
+        return SemanticPromptResponse(
+            success=False,
+            message=f"Erro na geracao: {str(e)[:200]}",
+        )

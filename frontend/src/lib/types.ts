@@ -242,6 +242,10 @@ export interface Task {
   // PROMPT #127 - Track which AI model generated the content
   created_by_ai_model?: string | null;
 
+  // REGRA #0 - Track if description/prompt were edited by human
+  description_edited_by?: string | null;
+  prompt_edited_by?: string | null;
+
   // PROMPT #95 - Blocking System for Modification Detection
   blocked_reason?: string | null;
   pending_modification?: {

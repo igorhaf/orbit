@@ -1142,6 +1142,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
               {activeTab === 'prompt' && (
                 <PromptTab
                   item={item}
+                  projectId={item.project_id}
                   handleExportPrompt={handleExportPrompt}
                   isExportingPrompt={isExportingPrompt}
                   exportResult={exportResult}

@@ -229,6 +229,24 @@ export const tasksApi = {
       method: 'POST',
     }),
 
+  // PROMPT #248 - Generate semantic prompt from card + RAG/wiki/git context
+  generateSemanticPrompt: (taskId: string, force?: boolean) =>
+    request<{
+      success: boolean;
+      prompt: string | null;
+      ai_model: string | null;
+      message: string | null;
+      sources: {
+        wiki_pages: string[];
+        rules_count: number;
+        parent_context: boolean;
+        project_context: boolean;
+      } | null;
+    }>(`/api/v1/tasks/${taskId}/generate-semantic-prompt`, {
+      method: 'POST',
+      body: JSON.stringify({ force: force || false }),
+    }),
+
   // PROMPT #253 - AI title suggestion
   suggestTitle: (data: {
     user_input: string;
