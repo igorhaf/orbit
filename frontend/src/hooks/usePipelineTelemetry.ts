@@ -68,18 +68,25 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
   const startTimeRef = useRef<number>(0);
   const tokenWindowRef = useRef<{ ts: number; tokens: number }[]>([]);
 
+  const lastValidTpsRef = useRef<number>(0);
+
   const calcTokensPerSecond = useCallback((newTokens: number) => {
     const now = Date.now();
     tokenWindowRef.current.push({ ts: now, tokens: newTokens });
     // Keep last 10 seconds
     tokenWindowRef.current = tokenWindowRef.current.filter(e => now - e.ts < 10000);
-    if (tokenWindowRef.current.length < 2) return 0;
+    if (tokenWindowRef.current.length < 2) {
+      // No enough data points — return last valid value instead of 0
+      return lastValidTpsRef.current;
+    }
     const windowMs = now - tokenWindowRef.current[0].ts;
-    if (windowMs < 500) return 0; // Avoid division by tiny time window
+    if (windowMs < 500) return lastValidTpsRef.current;
     const totalTokens = tokenWindowRef.current.reduce((s, e) => s + e.tokens, 0);
     const tps = Math.round(totalTokens / (windowMs / 1000) * 10) / 10;
     // Cap at reasonable max (Ollama local: ~200 tok/s, Cloud APIs: ~1000 tok/s)
-    return Math.min(tps, 5000);
+    const result = Math.min(tps, 5000);
+    if (result > 0) lastValidTpsRef.current = result;
+    return result;
   }, []);
 
   // REST polling fallback + initial state recovery from Redis
@@ -102,8 +109,14 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
       // Calculate tok/s from cumulative totals / elapsed time
       const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
       const totalToks = parseInt(data.tokens_in || '0', 10) + parseInt(data.tokens_out || '0', 10);
-      const avgTps = elapsed > 5 ? Math.round(totalToks / elapsed * 10) / 10 : 0;
+      const avgTps = elapsed > 1 ? Math.round(totalToks / elapsed * 10) / 10 : 0;
       const isCompleted = data.status === 'completed' || data.status === 'failed';
+
+      // Parse phase_scores from JSON string if needed
+      let parsedPhaseScores = data.phase_scores;
+      if (typeof parsedPhaseScores === 'string') {
+        try { parsedPhaseScores = JSON.parse(parsedPhaseScores); } catch { parsedPhaseScores = undefined; }
+      }
 
       setState(prev => ({
         ...prev,
@@ -116,9 +129,12 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
         tokensIn: parseInt(data.tokens_in || '0', 10),
         tokensOut: parseInt(data.tokens_out || '0', 10),
         costUsd: parseFloat(data.cost_usd || '0'),
-        tokensPerSecond: isCompleted ? avgTps : (avgTps || prev.tokensPerSecond),
+        // Prefer rolling window value (lastValidTpsRef), only use avg from REST as fallback
+        tokensPerSecond: isCompleted
+          ? avgTps
+          : (lastValidTpsRef.current || avgTps || prev.tokensPerSecond),
         modelActive: data.model_active || prev.modelActive,
-        phaseScores: data.phase_scores || prev.phaseScores,
+        phaseScores: parsedPhaseScores || prev.phaseScores,
         elapsedMs: startTimeRef.current ? Date.now() - startTimeRef.current : 0,
       }));
     } catch {
@@ -162,6 +178,29 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
             startTimeRef.current = Date.now();
           }
 
+          // Detect pipeline completion event
+          const pipelineStatus = details.pipeline_status;
+          if (pipelineStatus === 'completed' || pipelineStatus === 'failed') {
+            // Calculate final avg tps from cumulative data
+            const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
+            const totalIn = details.cumulative_tokens_in ?? 0;
+            const totalOut = details.cumulative_tokens_out ?? 0;
+            const finalTps = elapsed > 1 ? Math.round((totalIn + totalOut) / elapsed * 10) / 10 : lastValidTpsRef.current;
+
+            setState(prev => ({
+              ...prev,
+              status: pipelineStatus as 'completed' | 'failed',
+              tokensIn: totalIn || prev.tokensIn,
+              tokensOut: totalOut || prev.tokensOut,
+              costUsd: details.cumulative_cost ?? prev.costUsd,
+              tokensPerSecond: finalTps,
+              phaseScores: details.phase_scores || prev.phaseScores,
+              elapsedMs: Date.now() - startTimeRef.current,
+              isConnected: true,
+            }));
+            return;
+          }
+
           const inputTokens = data.input_tokens || 0;
           const outputTokens = data.output_tokens || 0;
           const tps = calcTokensPerSecond(inputTokens + outputTokens);
@@ -190,7 +229,7 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
             tokensIn: details.cumulative_tokens_in ?? prev.tokensIn,
             tokensOut: details.cumulative_tokens_out ?? prev.tokensOut,
             costUsd: details.cumulative_cost ?? prev.costUsd,
-            tokensPerSecond: tps,
+            tokensPerSecond: tps || lastValidTpsRef.current,
             phaseScores: details.phase_scores || prev.phaseScores,
             modelActive: data.model_name || prev.modelActive,
             elapsedMs: Date.now() - startTimeRef.current,

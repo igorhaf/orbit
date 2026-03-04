@@ -164,7 +164,7 @@ export default function BacklogListView({
   const [rejectingId, setRejectingId] = useState<string | null>(null);
 
   // Derive activating state from activeJobs (persists across navigation)
-  const activationTypes = ['epic_activation', 'story_activation', 'task_activation'];
+  const activationTypes = ['epic_activation', 'story_activation', 'task_activation', 'deep_pipeline'];
   const activatingIds = new Set(
     activeJobs
       .filter(j => activationTypes.includes(j.job_type) && (j.status === 'pending' || j.status === 'running'))

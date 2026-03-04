@@ -726,6 +726,26 @@ class DeepPipelineService:
             except Exception:
                 pass
 
+            # PROMPT #247: Broadcast pipeline completion via WebSocket
+            try:
+                await self._console.log_pipeline_activity(
+                    project_id=self._telemetry_project_id,
+                    trace_id=self._telemetry_trace_id,
+                    phase="completed",
+                    action="pipeline_completed",
+                    item_name=f"Pipeline concluido. Score: {qa_result.get('overall_score', 0)}/100",
+                    item_index=1,
+                    item_total=1,
+                    cumulative_tokens_in=self._run_tokens_in,
+                    cumulative_tokens_out=self._run_tokens_out,
+                    cumulative_cost=self._run_cost,
+                    phase_scores=phase_scores,
+                    job_id=self._telemetry_job_id,
+                    details={"pipeline_status": "completed", "overall_score": qa_result.get("overall_score", 0)},
+                )
+            except Exception:
+                pass
+
         except Exception as e:
             logger.error(f"Deep pipeline failed at run {run_id}: {e}", exc_info=True)
             results["error"] = str(e)

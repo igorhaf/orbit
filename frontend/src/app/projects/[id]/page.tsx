@@ -335,6 +335,10 @@ export default function ProjectDetailsPage() {
       const latest = notifCompleted[notifCompleted.length - 1];
       if (latest?.project_id === projectId) {
         loadProjectData();
+        // Also refresh backlog if a pipeline completed (new cards generated)
+        if (latest.job_type === 'deep_pipeline') {
+          setBacklogRefreshKey(prev => prev + 1);
+        }
       }
     }
     notifCompletedLenRef.current = notifCompleted.length;
