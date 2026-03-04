@@ -127,7 +127,7 @@ export default function KnowledgePage() {
       setRules(res);
     } catch (error) {
       console.error('Failed to load rules:', error);
-      showError('Falha ao carregar regras de negocio');
+      showError('Falha ao carregar regras de negócio');
     }
   }, [projectId, categoryFilter, sourceFilter, showError]);
 
@@ -205,7 +205,7 @@ export default function KnowledgePage() {
 
     try {
       await knowledgeApi.deleteRule(projectId, ruleId);
-      showSuccess('Regra excluida');
+      showSuccess('Regra excluída');
       loadRules();
       loadStats();
     } catch (error: any) {
@@ -305,7 +305,7 @@ export default function KnowledgePage() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Base de Conhecimento</h1>
             <p className="text-gray-500 mt-1">
-              Gerencie regras de negocio e documentos para contexto de IA
+              Gerencie regras de negócio e documentos para contexto de IA
             </p>
           </div>
 
@@ -449,9 +449,9 @@ export default function KnowledgePage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma regra de negocio ainda</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhuma regra de negócio ainda</h3>
                 <p className="text-gray-500 mb-4">
-                  Adicione regras de negocio manualmente ou execute um scan do codebase para extrair automaticamente.
+                  Adicione regras de negócio manualmente ou execute um scan do codebase para extrair automaticamente.
                 </p>
                 <Button variant="primary" onClick={() => setShowAddDialog(true)}>
                   Adicionar Primeira Regra
@@ -644,7 +644,7 @@ export default function KnowledgePage() {
               </CardHeader>
               <CardContent>
                 {Object.keys(stats.by_category).length === 0 ? (
-                  <p className="text-gray-500 text-sm">Nenhuma regra de negocio ainda</p>
+                  <p className="text-gray-500 text-sm">Nenhuma regra de negócio ainda</p>
                 ) : (
                   <div className="space-y-3">
                     {Object.entries(stats.by_category).map(([category, count]) => (
@@ -718,7 +718,7 @@ export default function KnowledgePage() {
                   <textarea
                     value={newRule.description}
                     onChange={(e) => setNewRule({ ...newRule, description: e.target.value })}
-                    placeholder="Descreva a regra de negocio em detalhe..."
+                    placeholder="Descreva a regra de negócio em detalhe..."
                     rows={3}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   />

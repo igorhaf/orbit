@@ -130,7 +130,7 @@ export default function ModelsPage() {
                   Comece com Modelos IA
                 </h3>
                 <p className="text-gray-600 mb-4 max-w-md mx-auto">
-                  Adicione seu primeiro modelo IA para comecar a usar os recursos inteligentes do ORBIT.
+                  Adicione seu primeiro modelo IA para começar a usar os recursos inteligentes do ORBIT.
                   Você pode configurar modelos do Anthropic, OpenAI, Google ou Ollama local.
                 </p>
                 <Link href="/models/new">

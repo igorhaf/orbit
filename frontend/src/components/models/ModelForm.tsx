@@ -187,7 +187,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
                 className="mt-1"
               />
               <p className="text-xs text-gray-500 mt-1">
-                Para que este modelo sera usado
+                Para que este modelo será usado
               </p>
             </div>
 
@@ -231,7 +231,7 @@ export const ModelForm: React.FC<ModelFormProps> = ({
             <p className="text-xs text-gray-500 mt-1">
               {model
                 ? 'A chave da API atual e mostrada acima. Edite para alterar.'
-                : 'Sua chave da API sera criptografada e armazenada com seguranca'}
+                : 'Sua chave da API será criptografada e armazenada com segurança'}
             </p>
           </CardContent>
         </Card>

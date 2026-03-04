@@ -351,7 +351,7 @@ export function InterviewTree({ projectId, project, onSelectCard }: InterviewTre
       await interviewsApi.delete(interviewToDelete.id);
       setShowDeleteModal(false);
       setInterviewToDelete(null);
-      showSuccess('Entrevista excluida com sucesso');
+      showSuccess('Entrevista excluída com sucesso');
       await loadData();
     } catch (error) {
       console.error('Failed to delete interview:', error);

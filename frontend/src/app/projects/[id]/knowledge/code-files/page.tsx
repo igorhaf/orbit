@@ -155,7 +155,7 @@ export default function CodeFilesPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
               </button>
-              <h1 className="text-2xl font-bold text-gray-900">Arquivos de Codigo</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Arquivos de Código</h1>
               <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-700">{total} arquivos</span>
             </div>
           </div>

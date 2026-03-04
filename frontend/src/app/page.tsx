@@ -293,7 +293,7 @@ export default function ProjectsPage() {
                 <div>
                   <h4 className="font-semibold text-red-900 mb-1">Atenção: Esta ação não pode ser desfeita!</h4>
                   <p className="text-sm text-red-800">
-                    O projeto &quot;{projectToDelete?.name}&quot; e todos os dados associados (tarefas, entrevistas, wiki, jobs, documentos RAG) serao permanentemente excluidos.
+                    O projeto &quot;{projectToDelete?.name}&quot; e todos os dados associados (tarefas, entrevistas, wiki, jobs, documentos RAG) serão permanentemente excluídos.
                   </p>
                 </div>
               </div>

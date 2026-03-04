@@ -78,11 +78,11 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
   };
 
   const handleReset = async () => {
-    if (!confirm('Isto ira limpar todo o estado de rastreamento de arquivos e documentos de RAG continuos. Continuar?')) return;
+    if (!confirm('Isto irá limpar todo o estado de rastreamento de arquivos e documentos de RAG contínuos. Continuar?')) return;
     setIsResetting(true);
     try {
       const result = await ragApi.continuousReset(projectId);
-      showSuccess(`Reset concluido: ${result.files_cleared} arquivos, ${result.rag_docs_removed} docs removidos`);
+      showSuccess(`Reset concluído: ${result.files_cleared} arquivos, ${result.rag_docs_removed} docs removidos`);
       loadStats();
       onScanComplete?.();
     } catch (error: any) {
@@ -97,7 +97,7 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
       <Card>
         <CardContent className="py-8 text-center">
           <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gray-400" />
-          <p className="text-sm text-gray-500 mt-2">Carregando estatisticas de RAG continuo...</p>
+          <p className="text-sm text-gray-500 mt-2">Carregando estatísticas de RAG contínuo...</p>
         </CardContent>
       </Card>
     );
@@ -237,8 +237,8 @@ export function ContinuousRAGPanel({ projectId, onScanComplete }: Props) {
         ) : (
           <div className="text-center py-8 text-gray-500">
             <Database className="w-12 h-12 mx-auto mb-2 text-gray-300" />
-            <p>Nenhum dado de RAG continuo ainda</p>
-            <p className="text-sm mt-1">Clique em "Verificar Agora" para comecar a extrair regras de negocio do código</p>
+            <p>Nenhum dado de RAG contínuo ainda</p>
+            <p className="text-sm mt-1">Clique em "Verificar Agora" para começar a extrair regras de negócio do código</p>
           </div>
         )}
       </CardContent>

@@ -618,7 +618,7 @@ export function ProjectSpecsList({ projectId }: Props) {
                 <div>
                   <h4 className="font-semibold text-red-900 mb-1">Atenção: Esta ação não pode ser desfeita!</h4>
                   <p className="text-sm text-red-800">
-                    Spec &quot;{specToDelete?.title}&quot; sera excluida permanentemente.
+                    Spec &quot;{specToDelete?.title}&quot; será excluída permanentemente.
                   </p>
                 </div>
               </div>

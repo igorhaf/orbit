@@ -85,7 +85,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     enabled: !!aiJobId,
     onComplete: (result: any) => {
       const actionLabel = aiAction === 'generate' ? 'gerado' : aiAction === 'expand' ? 'expandido' : aiAction === 'summarize' ? 'resumido' : 'reformulado';
-      showSuccess(`Conteudo ${actionLabel} com sucesso`);
+      showSuccess(`Conteúdo ${actionLabel} com sucesso`);
       setAiAction(null);
       setAiJobId(null);
       // Reload page
@@ -94,7 +94,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       }
     },
     onError: (error: string) => {
-      showError(error || 'Falha na operacao de IA');
+      showError(error || 'Falha na operação de IA');
       setAiAction(null);
       setAiJobId(null);
     },
@@ -167,7 +167,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         setEditTitle(pageData.title);
       } catch (error) {
         console.error('Failed to load wiki page:', error);
-        showError('Pagina nao encontrada');
+        showError('Página não encontrada');
         setSelectedSlug(null);
       } finally {
         setLoadingPage(false);
@@ -221,7 +221,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
 
   // Create a new page inline (no dialog)
   const handleCreateInline = async () => {
-    const title = getUniqueTitle('Nova Pagina');
+    const title = getUniqueTitle('Nova Página');
     const slug = makeSlug(title);
     try {
       await wikiApi.create(projectId, {
@@ -237,7 +237,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       setEditTitle(title);
       setEditContent('');
     } catch (error: any) {
-      showError(error.message || 'Falha ao criar pagina');
+      showError(error.message || 'Falha ao criar página');
     }
   };
 
@@ -250,7 +250,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       if (editContent !== selectedPage.content) updates.content = editContent;
 
       await wikiApi.update(projectId, selectedSlug!, updates);
-      showSuccess('Pagina salva');
+      showSuccess('Página salva');
       setEditing(false);
       setIsCreating(false);
       const pageData = await wikiApi.get(projectId, selectedSlug!);
@@ -269,7 +269,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     if (!selectedPage) return;
     try {
       await wikiApi.delete(projectId, selectedSlug!);
-      showSuccess('Pagina excluida');
+      showSuccess('Página excluída');
       setSelectedSlug(null);
       setSelectedPage(null);
       setShowDeleteDialog(false);
@@ -314,7 +314,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       const result = await apiMethod(projectId, selectedSlug);
       setAiJobId(result.job_id);
     } catch (error: any) {
-      showError(error.message || 'Falha ao iniciar operacao de IA');
+      showError(error.message || 'Falha ao iniciar operação de IA');
       setAiAction(null);
     }
   };
@@ -340,7 +340,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
   const renderSidebarItem = (item: WikiTreeItem, depth = 0) => {
     const isActive = item.slug === selectedSlug;
     // During creation, show the editing title for the active item, grey out others
-    const displayTitle = isActive && isCreating ? (editTitle || 'Nova Pagina') : item.title;
+    const displayTitle = isActive && isCreating ? (editTitle || 'Nova Página') : item.title;
     const isDisabled = isCreating && !isActive;
 
     return (
@@ -393,14 +393,14 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">Wiki Vazia</h3>
           <p className="text-gray-500 mb-6 max-w-md mx-auto text-sm">
-            Crie paginas manualmente ou gere automaticamente a partir do contexto do projeto.
+            Crie páginas manualmente ou gere automaticamente a partir do contexto do projeto.
           </p>
           <div className="flex items-center justify-center gap-3">
             <Button variant="outline" onClick={handleGenerate} disabled={generating}>
               {generating ? 'Gerando...' : 'Gerar do Contexto'}
             </Button>
             <Button variant="primary" onClick={handleCreateInline}>
-              Nova Pagina
+              Nova Página
             </Button>
           </div>
         </Card>
@@ -414,7 +414,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
     return (
       <div className="flex items-center gap-4 px-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-600">
         <span className="font-medium text-gray-700">Conhecimento Wiki:</span>
-        <span>{wikiStats.business_rules_count} regras extraidas</span>
+        <span>{wikiStats.business_rules_count} regras extraídas</span>
         <span className="text-gray-300">|</span>
         <span>{wikiStats.interview_answers_count} respostas de entrevista</span>
         <span className="text-gray-300">|</span>
@@ -440,14 +440,14 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       {/* Header with actions */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-500">
-          {totalPages} pagina{totalPages !== 1 ? 's' : ''}
+          {totalPages} página{totalPages !== 1 ? 's' : ''}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={handleGenerate} disabled={generating || isCreating}>
             {generating ? 'Gerando...' : 'Gerar do Contexto'}
           </Button>
           <Button variant="primary" size="sm" onClick={handleCreateInline} disabled={isCreating}>
-            Nova Pagina
+            Nova Página
           </Button>
         </div>
       </div>
@@ -457,7 +457,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
         <div className="lg:col-span-1">
           <div className="sticky top-4">
             <Card className="p-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">Paginas</h3>
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">Páginas</h3>
               <div className="space-y-1">
                 {tree.map((item) => renderSidebarItem(item))}
               </div>
@@ -481,7 +481,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                     {sourceBadge(page.source)}
                   </div>
                   {page.children && page.children.length > 0 && (
-                    <p className="text-xs text-gray-400">{page.children.length} sub-paginas</p>
+                    <p className="text-xs text-gray-400">{page.children.length} sub-páginas</p>
                   )}
                 </Card>
               ))}
@@ -513,7 +513,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                       type="text"
                       value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
-                      placeholder="Titulo da pagina..."
+                      placeholder="Título da página..."
                       className="text-xl font-bold text-gray-900 border-b-2 border-blue-500 focus:outline-none bg-transparent flex-1 min-w-0"
                       autoFocus={isCreating}
                     />
@@ -531,7 +531,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                         type="button"
                         onClick={() => handleAiAction('generate')}
                         disabled={isAiProcessing}
-                        title="Gerar conteudo via IA"
+                        title="Gerar conteúdo via IA"
                         className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         {aiAction === 'generate' ? spinnerSvg() : (
@@ -546,7 +546,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                           type="button"
                           onClick={() => handleAiAction('expand')}
                           disabled={isAiProcessing}
-                          title="Expandir conteudo (adicionar mais detalhes)"
+                          title="Expandir conteúdo (adicionar mais detalhes)"
                           className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-green-50 hover:text-green-600 hover:border-green-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
                           {aiAction === 'expand' ? spinnerSvg() : (
@@ -562,7 +562,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                           type="button"
                           onClick={() => handleAiAction('summarize')}
                           disabled={isAiProcessing}
-                          title="Resumir conteudo (condensar texto)"
+                          title="Resumir conteúdo (condensar texto)"
                           className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
                           {aiAction === 'summarize' ? spinnerSvg() : (
@@ -578,7 +578,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                           type="button"
                           onClick={() => handleAiAction('rephrase')}
                           disabled={isAiProcessing}
-                          title="Reformular conteudo (reescrever com outras palavras)"
+                          title="Reformular conteúdo (reescrever com outras palavras)"
                           className="flex items-center justify-center w-7 h-7 shrink-0 rounded-md border border-gray-300 bg-white text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
                           {aiAction === 'rephrase' ? spinnerSvg() : (
@@ -617,7 +617,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                         size="sm"
                         onClick={() => setShowDeleteDialog(true)}
                         className="text-gray-400 hover:text-red-600 hover:bg-red-50"
-                        title="Excluir pagina"
+                        title="Excluir página"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -642,10 +642,10 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                 <div className="flex items-center gap-2 px-4 py-2 mb-3 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-700">
                   {spinnerSvg('w-4 h-4')}
                   <span>
-                    {aiAction === 'generate' ? 'Gerando conteudo...' :
-                     aiAction === 'expand' ? 'Expandindo conteudo...' :
-                     aiAction === 'summarize' ? 'Resumindo conteudo...' :
-                     'Reformulando conteudo...'}
+                    {aiAction === 'generate' ? 'Gerando conteúdo...' :
+                     aiAction === 'expand' ? 'Expandindo conteúdo...' :
+                     aiAction === 'summarize' ? 'Resumindo conteúdo...' :
+                     'Reformulando conteúdo...'}
                   </span>
                 </div>
               )}
@@ -656,7 +656,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                   <MarkdownEditor
                     value={editContent}
                     onChange={setEditContent}
-                    placeholder={isCreating ? 'Escreva o conteudo da pagina ou use o botao de IA para gerar automaticamente...' : 'Conteudo Markdown...'}
+                    placeholder={isCreating ? 'Escreva o conteúdo da página ou use o botão de IA para gerar automaticamente...' : 'Conteúdo Markdown...'}
                     minHeight={isCreating ? '300px' : '400px'}
                     onSave={handleSave}
                     onCancel={isCreating ? handleCancelCreate : () => {
@@ -716,7 +716,7 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
                     className="text-sm text-gray-400 italic py-8 text-center border-2 border-dashed border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50 transition-colors"
                     onDoubleClick={() => setEditing(true)}
                   >
-                    Nenhum conteudo ainda. Clique duplo para adicionar ou use o botao de IA para gerar.
+                    Nenhum conteúdo ainda. Clique duplo para adicionar ou use o botão de IA para gerar.
                   </div>
                 )}
               </Card>
@@ -726,9 +726,9 @@ export default function WikiPanel({ projectId }: WikiPanelProps) {
       </div>
 
       {/* Delete confirmation dialog */}
-      <Dialog open={showDeleteDialog} onClose={() => setShowDeleteDialog(false)} title="Excluir Pagina">
+      <Dialog open={showDeleteDialog} onClose={() => setShowDeleteDialog(false)} title="Excluir Página">
         <p className="text-sm text-gray-600">
-          Tem certeza que deseja excluir a pagina <strong>&quot;{selectedPage?.title}&quot;</strong>? Esta acao nao pode ser desfeita.
+          Tem certeza que deseja excluir a página <strong>&quot;{selectedPage?.title}&quot;</strong>? Esta ação não pode ser desfeita.
         </p>
         <DialogFooter>
           <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>

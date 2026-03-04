@@ -32,7 +32,7 @@ interface PhaseConfigPanelProps {
 const PHASE_DESCRIPTIONS: Record<string, string> = {
   phase_0: 'Scan estrutural do sistema de arquivos. Sem chamadas de IA.',
   phase_1: 'Análise individual de cada arquivo do codebase.',
-  phase_2: 'Síntese cross-file de regras de negocio por dominio.',
+  phase_2: 'Síntese cross-file de regras de negócio por domínio.',
   phase_3: 'Construção do mapa arquitetural com Extended Thinking.',
   phase_4a: 'Geração de Epics a partir do mapa e regras.',
   phase_4b: 'Decomposição de Epics em Stories.',
@@ -40,7 +40,7 @@ const PHASE_DESCRIPTIONS: Record<string, string> = {
   phase_4d: 'Decomposição de Tasks em Subtasks.',
   phase_5a: 'Planejamento da estrutura da wiki.',
   phase_5b: 'Geração de páginas de visão geral.',
-  phase_5c: 'Geração de páginas por dominio.',
+  phase_5c: 'Geração de páginas por domínio.',
   phase_5d: 'Geração de páginas de fluxos cross-domain.',
   phase_6: 'Quality Assurance com Extended Thinking.',
 };

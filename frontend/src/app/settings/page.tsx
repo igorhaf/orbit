@@ -648,7 +648,7 @@ export default function SettingsPage() {
           {activeSection === 'blocklist' && (
             <div className="space-y-6">
               <p className="text-sm text-gray-500">
-                Pastas e padrões de arquivos que serao ignorados em todos os projetos durante análise de código.
+                Pastas e padrões de arquivos que serão ignorados em todos os projetos durante análise de código.
               </p>
 
               {/* Suggestions */}
@@ -711,7 +711,7 @@ export default function SettingsPage() {
                     <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{blocklist.directories.length}</span>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 mb-3">Pastas com esses nomes serao ignoradas em todos os projetos</p>
+                <p className="text-xs text-gray-500 mb-3">Pastas com esses nomes serão ignoradas em todos os projetos</p>
 
                 <div className="flex gap-2 mb-3">
                   <input
@@ -769,7 +769,7 @@ export default function SettingsPage() {
                     <span className="text-xs px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{blocklist.file_patterns.length}</span>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 mb-3">Arquivos correspondentes a esses padrões serao ignorados</p>
+                <p className="text-xs text-gray-500 mb-3">Arquivos correspondentes a esses padrões serão ignorados</p>
 
                 <div className="mb-3">
                   <p className="text-xs text-gray-500 mb-2">Padrões comuns:</p>
@@ -869,7 +869,7 @@ export default function SettingsPage() {
                       )}
                     </div>
                     <p className="text-xs text-gray-500 mt-1">
-                      Quando ativo, projetos marcados como protegidos podem ser excluidos normalmente.
+                      Quando ativo, projetos marcados como protegidos podem ser excluídos normalmente.
                     </p>
                   </div>
                   <button

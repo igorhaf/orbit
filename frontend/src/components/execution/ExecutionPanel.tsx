@@ -186,7 +186,7 @@ export function ExecutionPanel({
           {tasks.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <p>Nenhuma tarefa disponível para execução</p>
-              <p className="text-sm mt-2">Crie tarefas para comecar</p>
+              <p className="text-sm mt-2">Crie tarefas para começar</p>
             </div>
           ) : (
             <div className="space-y-3">

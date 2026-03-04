@@ -104,7 +104,7 @@ export default function RagPage() {
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-            <p className="text-gray-600">Carregando estatisticas RAG...</p>
+            <p className="text-gray-600">Carregando estatísticas RAG...</p>
           </div>
         </div>
       </Layout>
@@ -147,7 +147,7 @@ export default function RagPage() {
               <AlertCircle className="w-16 h-16 mx-auto text-gray-300 mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum Projeto Encontrado</h3>
               <p className="text-gray-600 mb-4">
-                Crie um projeto para comecar a construir sua base de conhecimento.
+                Crie um projeto para começar a construir sua base de conhecimento.
               </p>
             </CardContent>
           </Card>
@@ -309,7 +309,7 @@ export default function RagPage() {
                   </div>
                   <div className="flex items-center gap-1">
                     <BookOpen className="w-3 h-3 text-orange-600" />
-                    <span>Regras = Regras de negocio</span>
+                    <span>Regras = Regras de negócio</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <MessageSquare className="w-3 h-3 text-yellow-600" />

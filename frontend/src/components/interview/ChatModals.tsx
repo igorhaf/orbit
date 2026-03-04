@@ -99,7 +99,7 @@ export default function ChatModals({
                 Gerar um Epic a partir desta entrevista usando IA?
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                O Epic sera criado automaticamente com base na sua conversa.
+                O Epic será criado automaticamente com base na sua conversa.
               </p>
             </div>
           </div>
@@ -137,7 +137,7 @@ export default function ChatModals({
                 {epicResult?.title}
               </p>
               <p className="text-xs text-gray-500 mt-1">
-                Agora voce pode decompor em Stories na pagina de Backlog.
+                Agora você pode decompor em Stories na página de Backlog.
               </p>
             </div>
           </div>

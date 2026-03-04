@@ -88,7 +88,7 @@ export default function WikiIndexPage() {
       await wikiApi.create(projectId, {
         title: newPage.title,
         slug,
-        content: newPage.content || `## ${newPage.title}\n\nConteudo da página.`,
+        content: newPage.content || `## ${newPage.title}\n\nConteúdo da página.`,
         source: 'manual',
       });
       showSuccess('Página criada');
@@ -167,7 +167,7 @@ export default function WikiIndexPage() {
             </div>
             <h3 className="text-lg font-medium text-gray-900 mb-2">Wiki vazia</h3>
             <p className="text-gray-500 mb-6 max-w-md mx-auto">
-              Crie páginas manualmente ou gere automaticamente a partir do contexto do projeto (scan, entrevista, regras de negocio).
+              Crie páginas manualmente ou gere automaticamente a partir do contexto do projeto (scan, entrevista, regras de negócio).
             </p>
             <div className="flex items-center justify-center gap-3">
               <Button variant="outline" onClick={handleGenerate} disabled={generating}>

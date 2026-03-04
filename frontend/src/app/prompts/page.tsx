@@ -40,7 +40,7 @@ export default function PromptsPage() {
   const handleClearAll = async () => {
     // PROMPT #234 SEC-2: deleteAll now requires project_id for safety
     // This global page doesn't have a project context, so disable for now
-    setError('Limpeza global desabilitada por seguranca. Use a pagina do projeto para limpar prompts.');
+    setError('Limpeza global desabilitada por segurança. Use a página do projeto para limpar prompts.');
     setShowClearConfirm(false);
   };
 
@@ -97,9 +97,9 @@ export default function PromptsPage() {
                   Sobre Prompts
                 </h3>
                 <p className="text-sm text-blue-800">
-                  Prompts são gerados automaticamente apos entrevistas e contém
+                  Prompts são gerados automaticamente após entrevistas e contém
                   instruções estruturadas para a IA. Podem ser versionados,
-                  marcados como reutilizaveis e organizados por tipo e componentes.
+                  marcados como reutilizáveis e organizados por tipo e componentes.
                 </p>
               </div>
             </div>
@@ -146,8 +146,8 @@ export default function PromptsPage() {
                 <div>
                   <h4 className="font-semibold text-red-900 mb-1">Atenção: Esta ação não pode ser desfeita!</h4>
                   <p className="text-sm text-red-800">
-                    Todos os {prompts.length} prompt{prompts.length !== 1 ? 's' : ''} serao excluidos permanentemente, incluindo suas versoes e metadados.
-                    Esta operação e irreversivel.
+                    Todos os {prompts.length} prompt{prompts.length !== 1 ? 's' : ''} serão excluídos permanentemente, incluindo suas versões e metadados.
+                    Esta operação é irreversível.
                   </p>
                 </div>
               </div>

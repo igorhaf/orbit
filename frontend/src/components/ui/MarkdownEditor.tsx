@@ -84,14 +84,14 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         {/* Text Formatting */}
         <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
           <button type="button" onClick={formatBold} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-bold text-sm" title="Negrito (Ctrl+B)">B</button>
-          <button type="button" onClick={formatItalic} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm" title="Italico (Ctrl+I)">I</button>
-          <button type="button" onClick={formatCode} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm" title="Codigo Inline">{'</>'}</button>
+          <button type="button" onClick={formatItalic} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 italic text-sm" title="Itálico (Ctrl+I)">I</button>
+          <button type="button" onClick={formatCode} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 font-mono text-sm" title="Código Inline">{'</>'}</button>
         </div>
         {/* Headings */}
         <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-          <button type="button" onClick={formatHeading1} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Titulo 1">H1</button>
-          <button type="button" onClick={formatHeading2} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Titulo 2">H2</button>
-          <button type="button" onClick={formatHeading3} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Titulo 3">H3</button>
+          <button type="button" onClick={formatHeading1} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 1">H1</button>
+          <button type="button" onClick={formatHeading2} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 2">H2</button>
+          <button type="button" onClick={formatHeading3} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-bold" title="Título 3">H3</button>
         </div>
         {/* Lists */}
         <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
@@ -104,10 +104,10 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         </div>
         {/* Blocks */}
         <div className="flex items-center gap-1 pr-2 border-r border-gray-300">
-          <button type="button" onClick={formatQuote} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Citacao">
+          <button type="button" onClick={formatQuote} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Citação">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
           </button>
-          <button type="button" onClick={formatCodeBlock} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono" title="Bloco de Codigo">{'```'}</button>
+          <button type="button" onClick={formatCodeBlock} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm font-mono" title="Bloco de Código">{'```'}</button>
           <button type="button" onClick={formatTable} className="p-1.5 rounded hover:bg-gray-200 text-gray-700 text-sm" title="Tabela">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M9 10v8m6-8v8M3 6h18v12H3V6z" /></svg>
           </button>
@@ -136,7 +136,7 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
       {showStatusBar && (
         <div className="px-3 py-2 bg-gray-50 border-t border-gray-200">
           <span className="text-xs text-gray-500">
-            Markdown suportado | Ctrl+B negrito | Ctrl+I italico{onSave ? ' | Ctrl+Enter salvar' : ''}{onCancel ? ' | Esc cancelar' : ''}
+            Markdown suportado | Ctrl+B negrito | Ctrl+I itálico{onSave ? ' | Ctrl+Enter salvar' : ''}{onCancel ? ' | Esc cancelar' : ''}
           </span>
         </div>
       )}

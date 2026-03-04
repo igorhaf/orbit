@@ -169,7 +169,7 @@ export default function AnalyzePage() {
                 ) : analyses.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <p>Nenhuma análise ainda</p>
-                    <p className="text-sm mt-1">Envie um projeto para comecar</p>
+                    <p className="text-sm mt-1">Envie um projeto para começar</p>
                   </div>
                 ) : (
                   <div className="space-y-2">

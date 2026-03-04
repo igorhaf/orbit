@@ -176,7 +176,7 @@ export function CodeIndexingPanel({ projectId, stats, onIndexComplete }: Props) 
           <div className="text-center py-8 text-gray-500">
             <FileCode className="w-12 h-12 mx-auto mb-2 text-gray-300" />
             <p>Nenhum código indexado ainda</p>
-            <p className="text-sm">Clique em "Indexar Código" para comecar</p>
+            <p className="text-sm">Clique em "Indexar Código" para começar</p>
           </div>
         )}
       </CardContent>

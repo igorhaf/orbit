@@ -823,8 +823,8 @@ export default function OverviewTab({
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-gray-500">
-                Pastas listadas aqui serao excluidas do scan de codebase, RAG e geracao de cards.
-                Os caminhos sao relativos a raiz do projeto.
+                Pastas listadas aqui serão excluídas do scan de codebase, RAG e geração de cards.
+                Os caminhos são relativos à raiz do projeto.
               </p>
 
               {/* Current ignore_paths (editable) */}
