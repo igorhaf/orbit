@@ -73,11 +73,13 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
     tokenWindowRef.current.push({ ts: now, tokens: newTokens });
     // Keep last 10 seconds
     tokenWindowRef.current = tokenWindowRef.current.filter(e => now - e.ts < 10000);
-    const windowMs = tokenWindowRef.current.length > 1
-      ? now - tokenWindowRef.current[0].ts
-      : 1000;
+    if (tokenWindowRef.current.length < 2) return 0;
+    const windowMs = now - tokenWindowRef.current[0].ts;
+    if (windowMs < 500) return 0; // Avoid division by tiny time window
     const totalTokens = tokenWindowRef.current.reduce((s, e) => s + e.tokens, 0);
-    return windowMs > 0 ? Math.round(totalTokens / (windowMs / 1000) * 10) / 10 : 0;
+    const tps = Math.round(totalTokens / (windowMs / 1000) * 10) / 10;
+    // Cap at reasonable max (Ollama local: ~200 tok/s, Cloud APIs: ~1000 tok/s)
+    return Math.min(tps, 5000);
   }, []);
 
   // REST polling fallback + initial state recovery from Redis
@@ -97,6 +99,12 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
         startTimeRef.current = Date.now();
       }
 
+      // Calculate tok/s from cumulative totals / elapsed time
+      const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
+      const totalToks = parseInt(data.tokens_in || '0', 10) + parseInt(data.tokens_out || '0', 10);
+      const avgTps = elapsed > 5 ? Math.round(totalToks / elapsed * 10) / 10 : 0;
+      const isCompleted = data.status === 'completed' || data.status === 'failed';
+
       setState(prev => ({
         ...prev,
         status: data.status || prev.status,
@@ -108,6 +116,7 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
         tokensIn: parseInt(data.tokens_in || '0', 10),
         tokensOut: parseInt(data.tokens_out || '0', 10),
         costUsd: parseFloat(data.cost_usd || '0'),
+        tokensPerSecond: isCompleted ? avgTps : (avgTps || prev.tokensPerSecond),
         modelActive: data.model_active || prev.modelActive,
         phaseScores: data.phase_scores || prev.phaseScores,
         elapsedMs: startTimeRef.current ? Date.now() - startTimeRef.current : 0,

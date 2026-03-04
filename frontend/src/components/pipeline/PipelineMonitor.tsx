@@ -185,7 +185,7 @@ export default function PipelineMonitor({ projectId }: PipelineMonitorProps) {
             />
           </div>
         </MetricCell>
-        <MetricCell label="Tokens In" value={formatTokens(telemetry.tokensIn)} sub={`${telemetry.tokensPerSecond} tok/s`} />
+        <MetricCell label="Tokens In" value={formatTokens(telemetry.tokensIn)} sub={`${formatTokens(telemetry.tokensPerSecond)} tok/s`} />
         <MetricCell label="Tokens Out" value={formatTokens(telemetry.tokensOut)} />
         <MetricCell label="Custo" value={formatCost(telemetry.costUsd)} />
       </div>
@@ -211,7 +211,7 @@ export default function PipelineMonitor({ projectId }: PipelineMonitorProps) {
         <div className="px-4 py-2 border-b border-gray-200 flex items-center gap-2">
           <span className="text-xs text-gray-500">Token I/O</span>
           <Sparkline data={sparkData} />
-          <span className="text-xs font-medium text-gray-700">{telemetry.tokensPerSecond} tok/s</span>
+          <span className="text-xs font-medium text-gray-700">{formatTokens(telemetry.tokensPerSecond)} tok/s</span>
         </div>
       )}
 
