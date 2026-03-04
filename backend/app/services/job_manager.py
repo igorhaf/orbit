@@ -140,7 +140,7 @@ class JobManager:
         JobType.STORY_ACTIVATION: AIModelUsageType.PROMPT_GENERATION,
         JobType.TASK_ACTIVATION: AIModelUsageType.PROMPT_GENERATION,
         JobType.SUGGESTED_EPICS: AIModelUsageType.PROMPT_GENERATION,
-        JobType.CARDS_FROM_MEMORY: AIModelUsageType.CONTENT_GENERATION,
+        JobType.CARDS_FROM_MEMORY: AIModelUsageType.PROMPT_GENERATION,
         JobType.CHILDREN_GENERATION: AIModelUsageType.CONTENT_GENERATION,
         JobType.TASK_EXECUTION: AIModelUsageType.TASK_EXECUTION,
         JobType.BATCH_EXECUTION: AIModelUsageType.TASK_EXECUTION,
@@ -152,6 +152,9 @@ class JobManager:
         JobType.PROJECT_PIPELINE: AIModelUsageType.GENERAL,
         JobType.WIKI_GENERATION: AIModelUsageType.CONTENT_GENERATION,
         JobType.WIKI_RULE_ENRICHMENT: AIModelUsageType.CONTENT_GENERATION,
+        JobType.WIKI_PAGE_AI: AIModelUsageType.GENERAL,
+        JobType.DESCRIPTION_GENERATION: AIModelUsageType.GENERAL,
+        JobType.DEEP_PIPELINE: AIModelUsageType.CONTENT_GENERATION,
     }
 
     def _resolve_ai_model_name(self, job_type: JobType) -> Optional[str]:

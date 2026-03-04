@@ -818,9 +818,19 @@ async def _process_cards_from_memory_async(
 
         job_manager.update_progress(job_id, 95.0, "Finalizando...")
 
-        # Update notification title with results
+        # Update notification title and actual AI model name
         job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
         if job:
+            # Resolve actual model name used by orchestrator
+            try:
+                from app.services.ai_orchestrator import AIOrchestrator
+                orch = AIOrchestrator(db)
+                model_info = orch.choose_model("prompt_generation")
+                if model_info and model_info.get("db_model_name"):
+                    job.ai_model_name = model_info["db_model_name"]
+            except Exception:
+                pass
+
             business_count = len(result.get("business_rule_cards", []))
             epic_count = len(result.get("suggested_epics", []))
 
@@ -1036,6 +1046,14 @@ async def _process_description_async(
         )
 
         raw_content = (response.get("content") or "").strip()
+
+        # Save actual AI model name from orchestrator response
+        actual_model = response.get("db_model_name")
+        if actual_model:
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                job.ai_model_name = actual_model
+                db.commit()
 
         # Parse FRAGMENT_MAP if present (AI may rephrase pinned fragments)
         changed_fragments = []

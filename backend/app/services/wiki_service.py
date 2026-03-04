@@ -1234,6 +1234,15 @@ async def _process_wiki_page_ai_async(
 
         content = (response.get("content") or "").strip()
 
+        # Save actual AI model name from orchestrator response
+        actual_model = response.get("db_model_name")
+        if actual_model:
+            from app.models.async_job import AsyncJob
+            job = db.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+            if job:
+                job.ai_model_name = actual_model
+                db.commit()
+
         job_manager.update_progress(job_id, 80.0, "Salvando conteudo...")
 
         # Save to wiki page via filesystem
