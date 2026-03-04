@@ -140,6 +140,9 @@ export interface Project {
   // PROMPT #243 - Pinned fragments (persisted text selections)
   pinned_fragments?: string[] | null;
 
+  // PROMPT #282 - Track which AI model generated the description
+  description_ai_model?: string | null;
+
   created_at: string;
   updated_at: string;
 }

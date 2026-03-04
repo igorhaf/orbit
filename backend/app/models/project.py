@@ -122,6 +122,10 @@ class Project(Base):
     # Example: ["regra de negócio X", "requisito Y"]
     pinned_fragments = Column(JSON, nullable=True)
 
+    # PROMPT #282 - Track which AI model generated the description
+    # Stores the model name (e.g. "Qwen3 14B") for tooltip display
+    description_ai_model = Column(String(100), nullable=True)
+
     # Deep Pipeline fields (7-phase Claudio pipeline)
     # Phase 3 output: architectural map with domains, cross-domain flows, patterns
     project_architecture = Column(JSON, nullable=True)

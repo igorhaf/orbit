@@ -1102,6 +1102,8 @@ async def _process_description_async(
                         project.description = description
                         if changed_fragments:
                             project.pinned_fragments = pinned_fragments
+                        if actual_model:
+                            project.description_ai_model = actual_model
                         db.commit()
                         logger.info(f"✅ Description auto-saved to project {project_id}")
             except Exception as save_err:

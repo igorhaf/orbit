@@ -90,6 +90,9 @@ class ProjectResponse(ProjectBase):
     # PROMPT #243 - Pinned fragments (persisted text selections)
     pinned_fragments: Optional[list] = Field(None, description="Text fragments pinned by user for AI preservation")
 
+    # PROMPT #282 - Track which AI model generated the description
+    description_ai_model: Optional[str] = Field(None, description="AI model that generated the description")
+
     # PROMPT #236 - Deletion protection
     protected: bool = Field(False, description="Whether this project is protected against deletion")
 

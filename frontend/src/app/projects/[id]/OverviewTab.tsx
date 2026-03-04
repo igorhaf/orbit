@@ -718,7 +718,7 @@ export default function OverviewTab({
                   {editedDescription || project.description}
                 </ReactMarkdown>
                 <div className="mt-2 flex justify-end not-prose">
-                  <AIModelBadge model="description-format" usage_type="general" decorative />
+                  <AIModelBadge model={project.description_ai_model || 'general'} usage_type="general" />
                 </div>
               </div>
             ) : (
