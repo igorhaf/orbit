@@ -324,7 +324,10 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
       setMessage(lastMessage.prefilled_value);
       setPrefilledValue(lastMessage.prefilled_value);
-      setIsProjectInfoQuestion(lastMessage.question_number === 1 || lastMessage.question_number === 2);
+      // Only context interviews have project info in Q1 (title) and Q2 (description).
+      // Card-focused Q1=motivation, Q2=card title, Q3=card description — NOT project info.
+      const isContextMode = interview?.interview_mode === 'context' || interviewMode === 'context';
+      setIsProjectInfoQuestion(isContextMode && (lastMessage.question_number === 1 || lastMessage.question_number === 2));
       setCurrentQuestionNumber(lastMessage.question_number || null);
 
       // Focus textarea for immediate editing
