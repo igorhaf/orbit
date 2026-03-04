@@ -2,19 +2,17 @@
  * New Project Page
  * PROMPT #121 - Project Creation Redesign
  * PROMPT #301 - Non-blocking progressive creation: instant redirect to project page
- * PROMPT #239 - Dynamic title from description + AI description generation
  *
  * Simplified flow:
  * 1. Select code folder (FolderPicker)
- * 2. Title auto-fills from folder name; updates as description is typed
- * 3. Optional: generate description from title via AI
- * 4. Click "Gerar" → project created instantly, redirect to project page
- * 5. Background jobs enrich the project progressively
+ * 2. Title auto-fills from folder name (editable)
+ * 3. Click "Gerar" → project created instantly, redirect to project page
+ * 4. Background jobs enrich the project progressively (description, context, etc.)
  */
 
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Layout, Breadcrumbs } from '@/components/layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
@@ -31,13 +29,6 @@ function folderToTitle(codePath: string): string {
   return folder.replace(/[-_]/g, ' ').replace(/\b\w/g, c => c.toUpperCase()).trim();
 }
 
-/** Extract a short title suggestion from description text */
-function suggestTitleFromDescription(desc: string): string {
-  const firstLine = desc.split(/[.\n!?]/)[0]?.trim() || '';
-  if (firstLine.length < 5) return '';
-  return firstLine.slice(0, 60);
-}
-
 export default function NewProjectPage() {
   const router = useRouter();
   const { showError, showWarning, NotificationComponent } = useNotification();
@@ -49,14 +40,10 @@ export default function NewProjectPage() {
   const scanDepth = 'normal';
   const [submitting, setSubmitting] = useState(false);
 
-  // PROMPT #239 - Title + Description fields
+  // Title field
   const [projectName, setProjectName] = useState('');
-  const [description, setDescription] = useState('');
-  const [generatingDesc, setGeneratingDesc] = useState(false);
-  const [generatingTitle, setGeneratingTitle] = useState(false);
   // Track if title was manually edited by the user (REGRA #0)
   const titleManuallyEdited = useRef(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Auto-fill title when code path changes
   useEffect(() => {
@@ -77,79 +64,6 @@ export default function NewProjectPage() {
     titleManuallyEdited.current = true;
   };
 
-  // Handle description change — auto-suggest title with debounce
-  const handleDescriptionChange = (value: string) => {
-    setDescription(value);
-
-    // Only auto-suggest title if user hasn't manually edited it
-    if (titleManuallyEdited.current) return;
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      const suggested = suggestTitleFromDescription(value);
-      if (suggested) {
-        setProjectName(suggested);
-      } else if (codePath.trim()) {
-        // Revert to folder name if description is cleared
-        setProjectName(folderToTitle(codePath));
-      }
-    }, 500);
-  };
-
-  // Generate/reformulate title from description via AI
-  const handleGenerateTitle = useCallback(async () => {
-    if (!description.trim()) return;
-    setGeneratingTitle(true);
-    try {
-      const resp = await fetch(`${API_BASE}/api/v1/projects/generate-title`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          description: description.trim(),
-          current_title: projectName.trim() || undefined,
-        }),
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.title) {
-          setProjectName(data.title);
-          titleManuallyEdited.current = true;
-        }
-      } else {
-        showError('Falha ao gerar título');
-      }
-    } catch {
-      showError('Erro ao conectar com o servidor');
-    } finally {
-      setGeneratingTitle(false);
-    }
-  }, [description, projectName, showError]);
-
-  // Generate description from title via AI
-  const handleGenerateDescription = useCallback(async () => {
-    if (!projectName.trim()) return;
-    setGeneratingDesc(true);
-    try {
-      const resp = await fetch(`${API_BASE}/api/v1/projects/generate-description`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: projectName.trim() }),
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data.description) {
-          setDescription(data.description);
-        }
-      } else {
-        showError('Falha ao gerar descrição');
-      }
-    } catch {
-      showError('Erro ao conectar com o servidor');
-    } finally {
-      setGeneratingDesc(false);
-    }
-  }, [projectName, showError]);
-
   // PROMPT #301 - Create project and redirect immediately
   const handleGenerate = async () => {
     if (!codePath) {
@@ -160,13 +74,11 @@ export default function NewProjectPage() {
     setSubmitting(true);
 
     try {
-      // PROMPT #239 - Include name and description in query params
       const params = new URLSearchParams({
         code_path: codePath,
         scan_depth: scanDepth,
       });
       if (projectName.trim()) params.set('name', projectName.trim());
-      if (description.trim()) params.set('description', description.trim());
 
       const response = await fetch(
         `${API_BASE}/api/v1/projects/create-and-process?${params.toString()}`,
@@ -204,7 +116,7 @@ export default function NewProjectPage() {
           <CardHeader>
             <CardTitle>Selecionar Pasta de Código</CardTitle>
             <p className="text-sm text-gray-600 mt-1">
-              Escolha sua pasta de código existente. O ORBIT escaneará o codebase e expandirá o projeto automaticamente em segundo plano.
+              Escolha sua pasta de código existente. O ORBIT escaneará o codebase e gerará a descrição automaticamente em segundo plano.
             </p>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -245,74 +157,18 @@ export default function NewProjectPage() {
               />
             </div>
 
-            {/* PROMPT #239 - Project Title with auto-generate button */}
+            {/* Project Title */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Título do Projeto</label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleGenerateTitle}
-                  disabled={!description.trim() || generatingTitle || submitting}
-                  title={description.trim() ? 'Gerar título a partir da descrição usando IA' : 'Digite uma descrição primeiro'}
-                  className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  {generatingTitle ? (
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                  )}
-                </button>
-                <input
-                  value={projectName}
-                  onChange={(e) => handleTitleChange(e.target.value)}
-                  placeholder="Nome do projeto (preenchido automaticamente)"
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
-                  disabled={submitting}
-                />
-              </div>
+              <input
+                value={projectName}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                placeholder="Nome do projeto (preenchido automaticamente pela pasta)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                disabled={submitting}
+              />
               <p className="text-xs text-gray-500 mt-1">
-                Preenchido automaticamente pelo nome da pasta ou pela descrição. Use o botão para reformular via IA.
-              </p>
-            </div>
-
-            {/* PROMPT #239 - Project Description with auto-generate button */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Descrição</label>
-              <div className="flex gap-2 items-start">
-                <button
-                  type="button"
-                  onClick={handleGenerateDescription}
-                  disabled={!projectName.trim() || generatingDesc || submitting}
-                  title={projectName.trim() ? 'Gerar descrição a partir do título usando IA' : 'Preencha o título primeiro'}
-                  className="flex items-center justify-center w-10 h-10 shrink-0 rounded-md border border-gray-300 bg-white text-gray-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors mt-0.5"
-                >
-                  {generatingDesc ? (
-                    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                    </svg>
-                  )}
-                </button>
-                <textarea
-                  value={description}
-                  onChange={(e) => handleDescriptionChange(e.target.value)}
-                  placeholder="Descreva o projeto (opcional). Ao digitar, o título será sugerido automaticamente."
-                  rows={3}
-                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm resize-y"
-                  disabled={submitting}
-                />
-              </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Use o botão para gerar a descrição via IA a partir do título.
+                Preenchido automaticamente pelo nome da pasta. Você pode editar se desejar.
               </p>
             </div>
 
@@ -322,7 +178,7 @@ export default function NewProjectPage() {
                 <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                <span className="text-sm text-blue-800">O ORBIT analisará todos os arquivos do projeto em lotes de 10, processando continuamente em segundo plano.</span>
+                <span className="text-sm text-blue-800">O ORBIT analisará o codebase e gerará título, descrição e contexto automaticamente em segundo plano.</span>
               </div>
             </div>
 
