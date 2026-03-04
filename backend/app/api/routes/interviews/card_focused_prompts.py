@@ -271,6 +271,37 @@ PROMPT GERADO ANTERIORMENTE:
 {current_card.generated_prompt[:500]}{'...' if len(current_card.generated_prompt) > 500 else ''}
 """
 
+    # Common options format block appended to ALL card-focused prompts
+    options_format = f"""
+
+## FORMATO OBRIGATÓRIO DE RESPOSTA
+
+Gere UMA pergunta FECHADA com opcoes usando este formato EXATO:
+
+**Pergunta {question_num}:** [Sua pergunta aqui]
+Selecione uma ou mais opcoes:
+
+- [Primeira opcao]
+- [Segunda opcao]
+- [Terceira opcao]
+- [Quarta opcao]
+- [Quinta opcao]
+- [Sexta opcao]
+
+Ou descreva com suas proprias palavras.
+
+## REGRAS CRITICAS DE FORMATO
+- GERE APENAS UMA PERGUNTA POR RESPOSTA
+- Use SEMPRE "-" (hifen) para as opcoes
+- NUNCA use emojis ou simbolos especiais nas opcoes
+- ⚠️ OBRIGATORIO: Forneca SEMPRE entre 5-8 opcoes de resposta
+- CADA OPCAO DEVE ESTAR EM UMA UNICA LINHA
+- Opcoes devem ser CURTAS e DIRETAS (maximo 80 caracteres)
+- Opcoes sao RESPOSTAS concretas, nao perguntas
+- SEMPRE inclua "Ou descreva com suas proprias palavras." no final
+- NUNCA MENOS DE 5 OPCOES
+"""
+
     motivation_type = motivation_type.lower()
 
     if motivation_type == "bug":
@@ -288,15 +319,12 @@ Você está coletando informações para corrigir um bug/erro.
 5. **Impacto**: Quem é afetado? Frequência? Urgência?
 6. **Contexto Adicional**: Quando começou? Mudanças recentes?
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em BUG FIX]
-
 **Regras:**
 - Uma pergunta por vez, FOCADA em bug fix
 - Construa contexto com respostas anteriores
 - Após 5-8 perguntas, conclua com resumo do bug
 - Se resposta for genérica/vaga, peça especificidade
-
+{options_format}
 Continue com a próxima pergunta relevante para entender o BUG!
 """
 
@@ -322,20 +350,12 @@ Se o card já possui conteúdo (descrição, critérios de aceitação, etc.), v
 5. **UI/UX**: Detalhes de interface faltando?
 6. **Estimativa**: O story points está adequado?
 
-**Formato de Pergunta/Sugestão:**
-❓ Pergunta {question_num}: [Sua pergunta ou sugestão baseada no conteúdo existente]
-
-💡 Você pode fazer perguntas OU propor sugestões como:
-- "Notei que os critérios de aceitação não mencionam X. Sugiro adicionar..."
-- "Essa feature parece grande. Sugiro dividir em: 1) ..., 2) ..., 3) ..."
-- "Falta especificar o comportamento quando Y acontece. Como deve funcionar?"
-
 **Regras:**
 - ANÁLISE o conteúdo existente antes de perguntar
 - Faça SUGESTÕES específicas quando apropriado
 - Após 4-6 interações, PROPONHA um resumo das melhorias sugeridas
 - Se o card estiver bem definido, CONFIRME e sugira próximos passos
-
+{options_format}
 Continue com a próxima pergunta ou sugestão relevante!
 """
 
@@ -355,15 +375,12 @@ Você está coletando informações para corrigir E refatorar código problemát
 6. **Comportamento**: Funcionalidade deve permanecer EXATA (sem mudanças)?
 7. **Testes**: Testes existentes? Precisam ser ajustados?
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em BUG FIX + REFACTORING]
-
 **Regras:**
 - Uma pergunta por vez, equilibrando bug fix e refactor
 - Construa contexto com respostas anteriores
 - Após 6-9 perguntas, conclua com resumo
 - Se resposta for genérica/vaga, peça especificidade
-
+{options_format}
 Continue com a próxima pergunta relevante!
 """
 
@@ -383,15 +400,12 @@ Você está coletando informações para melhorar design ou arquitetura.
 6. **Compatibilidade**: Retrocompatibilidade necessária?
 7. **Documentação**: Que documentação será necessária?
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em DESIGN/ARCHITECTURE]
-
 **Regras:**
 - Uma pergunta por vez, FOCADA em arquitetura/design
 - Construa contexto com respostas anteriores
 - Após 5-8 perguntas, conclua com resumo
 - Se resposta for genérica/vaga, peça especificidade
-
+{options_format}
 Continue com a próxima pergunta relevante para definir o DESIGN!
 """
 
@@ -411,15 +425,12 @@ Você está coletando informações para criar ou melhorar documentação.
 6. **Atualizações**: Com que frequência será atualizada?
 7. **Exemplos**: Que exemplos práticos incluir?
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em DOCUMENTATION]
-
 **Regras:**
 - Uma pergunta por vez, FOCADA em documentação
 - Construa contexto com respostas anteriores
 - Após 5-8 perguntas, conclua com resumo
 - Se resposta for genérica/vaga, peça especificidade
-
+{options_format}
 Continue com a próxima pergunta relevante para definir a DOCUMENTATION!
 """
 
@@ -444,20 +455,12 @@ Se o card já possui conteúdo (descrição, critérios de aceitação, etc.), v
 4. **Testes**: Cenários de teste especificados?
 5. **Estimativa**: O story points está adequado para o escopo?
 
-**Formato de Pergunta/Sugestão:**
-❓ Pergunta {question_num}: [Sua pergunta ou sugestão baseada no conteúdo existente]
-
-💡 Faça sugestões específicas quando apropriado:
-- "Sugiro adicionar um critério de aceitação para retrocompatibilidade..."
-- "Essa melhoria pode ser dividida em: 1) ..., 2) ..."
-- "Falta especificar o que acontece com dados existentes..."
-
 **Regras:**
 - ANÁLISE o conteúdo existente antes de perguntar
 - Faça SUGESTÕES específicas quando apropriado
 - Após 4-6 interações, PROPONHA um resumo das melhorias
 - Se estiver bem definido, CONFIRME e sugira próximos passos
-
+{options_format}
 Continue com a próxima pergunta ou sugestão relevante!
 """
 
@@ -477,15 +480,12 @@ Você está coletando informações para refatorar código existente.
 6. **Testes**: Testes existentes? Precisam ser ajustados?
 7. **Impacto**: Outras partes dependem deste código?
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em REFACTORING]
-
 **Regras:**
 - Uma pergunta por vez, FOCADA em refatoração
 - Construa contexto com respostas anteriores
 - Após 5-7 perguntas, conclua com resumo
 - Se resposta for genérica/vaga, peça especificidade
-
+{options_format}
 Continue com a próxima pergunta relevante para planejar o REFACTOR!
 """
 
@@ -505,15 +505,12 @@ Você está coletando informações para adicionar testes ou melhorar cobertura.
 6. **Dados de Teste**: Que dados/fixtures são necessários?
 7. **Automação**: Como serão executados? (CI/CD, manual)
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em TESTING]
-
 **Regras:**
 - Uma pergunta por vez, FOCADA em testes
 - Construa contexto com respostas anteriores
 - Após 5-8 perguntas, conclua com resumo
 - Se resposta for genérica/vaga, peça especificidade
-
+{options_format}
 Continue com a próxima pergunta relevante para definir a ESTRATÉGIA DE TESTES!
 """
 
@@ -533,15 +530,12 @@ Você está coletando informações para otimizar performance ou recursos.
 6. **Tradeoffs**: Que tradeoffs são aceitáveis? (memória vs CPU, etc.)
 7. **Monitoramento**: Como será monitorada a melhoria?
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em OPTIMIZATION]
-
 **Regras:**
 - Uma pergunta por vez, FOCADA em performance
 - Construa contexto com respostas anteriores
 - Após 5-8 perguntas, conclua com resumo
 - Se resposta for genérica/vaga, peça especificidade
-
+{options_format}
 Continue com a próxima pergunta relevante para definir a OTIMIZAÇÃO!
 """
 
@@ -561,15 +555,12 @@ Você está coletando informações para melhorias de segurança.
 6. **Impacto**: Como isso afeta usuários/performance?
 7. **Auditoria**: Como será auditada/testada a segurança?
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta focada em SECURITY]
-
 **Regras:**
 - Uma pergunta por vez, FOCADA em segurança
 - Construa contexto com respostas anteriores
 - Após 5-8 perguntas, conclua com resumo
 - Se resposta for genérica/vaga, peça especificidade
-
+{options_format}
 Continue com a próxima pergunta relevante para definir a SEGURANÇA!
 """
 
@@ -581,13 +572,10 @@ Continue com a próxima pergunta relevante para definir a SEGURANÇA!
 
 Você está coletando informações para uma tarefa.
 
-**Formato de Pergunta:**
-❓ Pergunta {question_num}: [Sua pergunta]
-
 **Regras:**
 - Uma pergunta por vez
 - Construa contexto com respostas anteriores
 - Após 5-8 perguntas, conclua
-
+{options_format}
 Continue com a próxima pergunta relevante!
 """
