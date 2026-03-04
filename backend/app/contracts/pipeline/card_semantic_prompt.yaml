@@ -1,9 +1,9 @@
 name: card_semantic_prompt
-version: 1
+version: 2
 category: pipeline
-description: Gera prompt semantico completo para um card usando contexto do projeto, wiki, regras de negocio e hierarquia
+description: Gera prompt semantico estruturado para um card usando contexto do projeto, wiki, regras de negocio e hierarquia
 usage_type: prompt_generation
-estimated_tokens: 3000
+estimated_tokens: 4000
 tags:
   - pipeline
   - card
@@ -27,50 +27,72 @@ variables:
     - labels
 
 system_prompt: |
-  Voce e um engenheiro de software senior. Gere um PROMPT SEMANTICO tecnico e completo
-  para o item descrito abaixo. Este prompt sera usado por uma IA para implementar o item.
+  Voce e um engenheiro de software senior. Gere um PROMPT SEMANTICO ESTRUTURADO
+  para o item descrito abaixo. Este prompt sera usado por uma IA (Claude, GPT, etc.)
+  para implementar o item de forma autonoma.
 
-  O prompt deve incluir:
-  1. Contexto do que precisa ser feito (objetivo claro)
-  2. Requisitos tecnicos derivados das regras de negocio e wiki
-  3. Criterios de aceitacao (se disponiveis)
-  4. Stack tecnologica e padroes a seguir
-  5. Referencia a componentes/arquivos existentes quando relevante
+  O prompt DEVE seguir EXATAMENTE esta estrutura com secoes numeradas:
 
-  Seja especifico, tecnico e acionavel. O prompt deve ser autocontido —
-  quem ler deve conseguir implementar sem precisar de contexto adicional.
+  OBJETIVO
+  [1-3 frases descrevendo o que deve ser feito e por que]
 
-  Minimo 500 caracteres. Maximo 5000 caracteres.
-  Escreva em portugues. Sem emojis.
+  CONTEXTO
+  [Onde este item se encaixa no sistema. Mencionar item pai se houver.
+  Referenciar arquivos/componentes existentes quando relevante.]
 
-  Responda APENAS com o texto do prompt (sem JSON, sem markdown, sem code blocks).
+  REQUISITOS TECNICOS
+  1. [Requisito derivado das regras de negocio, wiki ou contexto]
+  2. [Requisito derivado das regras de negocio, wiki ou contexto]
+  3. [...]
+
+  ARQUIVOS E COMPONENTES
+  - [arquivo/componente a criar ou modificar]: [o que fazer nele]
+  - [arquivo/componente a criar ou modificar]: [o que fazer nele]
+
+  STACK E PADROES
+  - Stack: [tecnologias relevantes para esta implementacao]
+  - Padroes: [padroes de codigo/arquitetura a seguir]
+
+  CRITERIOS DE ACEITACAO
+  1. [Criterio verificavel]
+  2. [Criterio verificavel]
+  3. [...]
+
+  REGRAS:
+  - Cada secao deve conter informacao CONCRETA extraida dos dados fornecidos
+  - Se nao houver dados para uma secao, inclua a secao com "[Nao disponivel]"
+  - ARQUIVOS E COMPONENTES: infira caminhos provaveis a partir da stack e contexto
+  - REQUISITOS TECNICOS: extraia de regras de negocio e wiki, nao invente
+  - Minimo 800 caracteres. Maximo 5000 caracteres
+  - Escreva em portugues. Sem emojis
+  - Responda APENAS com o texto do prompt estruturado (sem JSON, sem code blocks)
 
 user_prompt: |
-  **Card:** {{ card_title }}
-  **Tipo:** {{ card_type }}
-  **Descricao:** {{ card_description }}
-  {% if labels %}**Labels:** {{ labels }}{% endif %}
+  Card: {{ card_title }}
+  Tipo: {{ card_type }}
+  Descricao: {{ card_description }}
+  {% if labels %}Labels: {{ labels }}{% endif %}
   {% if acceptance_criteria %}
-  **Criterios de Aceitacao:**
+  Criterios de Aceitacao existentes:
   {{ acceptance_criteria }}
   {% endif %}
   {% if parent_title %}
-  **Contexto do Item Pai:** {{ parent_title }}
+  Item Pai: {{ parent_title }}
   {% if parent_prompt %}
   Prompt do pai:
   {{ parent_prompt }}
   {% endif %}
   {% endif %}
-  {% if tech_stack %}**Stack Tecnologica:** {{ tech_stack }}{% endif %}
+  {% if tech_stack %}Stack Tecnologica: {{ tech_stack }}{% endif %}
   {% if project_context %}
-  **Contexto Semantico do Projeto:**
+  Contexto Semantico do Projeto:
   {{ project_context }}
   {% endif %}
   {% if business_rules %}
-  **Regras de Negocio Extraidas do Codigo:**
+  Regras de Negocio Extraidas do Codigo:
   {{ business_rules }}
   {% endif %}
   {% if wiki_context %}
-  **Documentacao Wiki do Projeto:**
+  Documentacao Wiki do Projeto:
   {{ wiki_context }}
   {% endif %}

@@ -558,8 +558,9 @@ async def generate_semantic_prompt(
         system_prompt, user_prompt = contract_loader.render(
             "pipeline/card_semantic_prompt", variables
         )
+        logger.info(f"Contract loaded OK. system_prompt length={len(system_prompt)}, has OBJETIVO={'OBJETIVO' in system_prompt}")
     except Exception as e:
-        logger.warning(f"Failed to load contract: {e}")
+        logger.warning(f"Failed to load contract: {e}", exc_info=True)
         # Fallback: build inline
         system_prompt = (
             "Voce e um engenheiro de software senior. Gere um prompt semantico tecnico "
