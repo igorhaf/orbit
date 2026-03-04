@@ -24,7 +24,7 @@ interface PhaseConfigDialogProps {
   label: string;
   config: PhaseConfig;
   stats: PhaseStats;
-  models: Array<{ id: string; name: string; provider: string }>;
+  models: Array<{ id: string; name: string; model_id: string; provider: string }>;
   onSave: (phaseKey: string, field: string, value: any) => void;
   onClose: () => void;
 }
@@ -37,7 +37,6 @@ const PHASE_DESCRIPTIONS: Record<string, string> = {
   phase_4a: 'Geração de Epics a partir do mapa e regras.',
   phase_4b: 'Decomposição de Epics em Stories.',
   phase_4c: 'Decomposição de Stories em Tasks.',
-  phase_4d: 'Decomposição de Tasks em Subtasks.',
   phase_5a: 'Planejamento da estrutura da wiki.',
   phase_5b: 'Geração de páginas de visão geral.',
   phase_5c: 'Geração de páginas por domínio.',
@@ -122,7 +121,7 @@ export function PhaseConfigDialog({
               className="w-full text-sm border border-gray-300 rounded-md px-2 py-1.5 focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
             >
               {models.map((m) => (
-                <option key={m.id} value={m.name}>
+                <option key={m.id} value={m.model_id}>
                   {m.name}
                 </option>
               ))}

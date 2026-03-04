@@ -42,7 +42,6 @@ const PIPELINE_PHASES = [
   { key: 'phase_4a', label: 'Epics', description: 'Geração de Epics', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
   { key: 'phase_4b', label: 'Stories', description: 'Decomp. Stories', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
   { key: 'phase_4c', label: 'Tasks', description: 'Decomp. Tasks', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
-  { key: 'phase_4d', label: 'Subtasks', description: 'Decomp. Subtasks', defaultModel: 'claude-haiku-4-5', provider: 'anthropic', hasAI: true },
   { key: 'phase_5a', label: 'Wiki Plan', description: 'Estrutura Wiki', defaultModel: 'claude-sonnet-4-6', provider: 'anthropic', hasAI: true },
   { key: 'phase_5b', label: 'Wiki Geral', description: 'Paginas Gerais', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
   { key: 'phase_5c', label: 'Wiki Dom.', description: 'Paginas Dominio', defaultModel: 'claude-opus-4-6', provider: 'anthropic', hasAI: true },
@@ -710,7 +709,21 @@ export function PipelineTab({ projectId }: PipelineTabProps) {
           label={selectedPhaseConfig.label}
           config={selectedPhaseConfig.config}
           stats={selectedPhaseConfig.stats}
-          models={models.map((m) => ({ id: m.id, name: m.name || m.model_name, provider: m.provider }))}
+          models={(() => {
+            const seen = new Set<string>();
+            return models
+              .map((m) => ({
+                id: m.id,
+                name: m.name || m.model_name,
+                model_id: m.config?.model_id || m.name || m.model_name,
+                provider: m.provider,
+              }))
+              .filter((m) => {
+                if (seen.has(m.model_id)) return false;
+                seen.add(m.model_id);
+                return true;
+              });
+          })()}
           onSave={handlePhaseChange}
           onClose={() => setSelectedPhase(null)}
         />

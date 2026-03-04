@@ -108,6 +108,7 @@ function AIFlowPageContent() {
   // Profiles state
   const [profiles, setProfiles] = useState<AIFlowProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<AIFlowProfile | null>(null);
+  const selectedProfileRef = useRef<AIFlowProfile | null>(null);
   const [creatingProfile, setCreatingProfile] = useState(false);
   const [newProfileName, setNewProfileName] = useState('');
   const [newProfileUsageType, setNewProfileUsageType] = useState('interview');
@@ -143,6 +144,11 @@ function AIFlowPageContent() {
   const [editingModel, setEditingModel] = useState<AIFlowChainModel | null>(null);
   const [modelOverrides, setModelOverrides] = useState<Record<string, ModelOverrides>>({});
 
+
+  // Keep ref in sync so loadData callback always sees latest selectedProfile
+  useEffect(() => {
+    selectedProfileRef.current = selectedProfile;
+  }, [selectedProfile]);
 
   // PROMPT #124 - WebSocket animations
   const nodeAnimations = useAIFlowWebSocket(selectedUsageType);
@@ -213,8 +219,8 @@ function AIFlowPageContent() {
       setChains(Array.isArray(chainsRes) ? chainsRes : chainsRes.data || []);
       const loadedProfiles = Array.isArray(profilesRes) ? profilesRes : profilesRes?.data || [];
       setProfiles(loadedProfiles);
-      // Auto-select the first active profile, or first profile
-      if (!selectedProfile && loadedProfiles.length > 0) {
+      // Auto-select the first active profile, or first profile (use ref to avoid stale closure)
+      if (!selectedProfileRef.current && loadedProfiles.length > 0) {
         const active = loadedProfiles.find((p: AIFlowProfile) => p.is_active);
         const first = active || loadedProfiles[0];
         setSelectedProfile(first);
@@ -236,14 +242,16 @@ function AIFlowPageContent() {
   }, [loadData]);
 
   // When selected usage_type or chains change, sync working chain from saved data
+  // Skip when a profile is selected — profile state is managed by handleSelectProfile/handleSave
   useEffect(() => {
+    if (selectedProfile) return;
     setWorkingChain(currentChain?.chain || []);
     setWorkingUtilityNodes(currentChain?.utility_nodes || []);
     setPositionsChanged(false);
     // PROMPT #226 - Load model overrides from node_positions
     const savedOverrides = (currentChain?.node_positions as any)?.__model_overrides;
     setModelOverrides(savedOverrides && typeof savedOverrides === 'object' ? savedOverrides : {});
-  }, [currentChain, selectedUsageType]);
+  }, [currentChain, selectedUsageType, selectedProfile]);
 
   // PROMPT #204 - Fetch utility node types catalog
   useEffect(() => {
