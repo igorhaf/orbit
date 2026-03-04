@@ -219,8 +219,18 @@ function AIFlowPageContent() {
       setChains(Array.isArray(chainsRes) ? chainsRes : chainsRes.data || []);
       const loadedProfiles = Array.isArray(profilesRes) ? profilesRes : profilesRes?.data || [];
       setProfiles(loadedProfiles);
-      // Auto-select the first active profile, or first profile (use ref to avoid stale closure)
-      if (!selectedProfileRef.current && loadedProfiles.length > 0) {
+      if (selectedProfileRef.current) {
+        // Sync selected profile with fresh server data (covers page reload)
+        const fresh = loadedProfiles.find((p: AIFlowProfile) => p.id === selectedProfileRef.current!.id);
+        if (fresh) {
+          setSelectedProfile(fresh);
+          setWorkingChain(fresh.chain || []);
+          setWorkingUtilityNodes(fresh.utility_nodes || []);
+          const savedOverrides = (fresh.node_positions as any)?.__model_overrides;
+          setModelOverrides(savedOverrides && typeof savedOverrides === 'object' ? savedOverrides : {});
+        }
+      } else if (loadedProfiles.length > 0) {
+        // Auto-select the first active profile, or first profile
         const active = loadedProfiles.find((p: AIFlowProfile) => p.is_active);
         const first = active || loadedProfiles[0];
         setSelectedProfile(first);
@@ -501,6 +511,8 @@ function AIFlowPageContent() {
           node_positions: positionsWithOverrides,
         });
         setSelectedProfile(updated);
+        // Update profiles list in-place (no need for full loadData reload)
+        setProfiles(prev => prev.map(p => p.id === updated.id ? updated : p));
         showSuccess(`Profile "${updated.name}" salvo (v${updated.version})`);
       } else {
         // Fallback: save to chain (backward compat)
@@ -516,9 +528,9 @@ function AIFlowPageContent() {
           } as any);
           showSuccess('Fluxo salvo');
         }
+        await loadData();
       }
       setPositionsChanged(false);
-      await loadData();
     } catch (error) {
       console.error('Failed to save:', error);
       showError('Falha ao salvar');
