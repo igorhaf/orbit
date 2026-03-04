@@ -557,9 +557,22 @@ async def trigger_deep_pipeline(
             except Exception:
                 pass
 
+            # Phase-aware progress weights reflecting actual time distribution
+            # Phase 1 (file analysis) takes ~90% of total time, so it gets 60% of the bar
+            _PHASE_OFFSETS = {
+                0: (0, 5),     # Phase 0: 0-5%   (quick filesystem scan)
+                1: (5, 60),    # Phase 1: 5-65%  (heavy per-file analysis)
+                2: (65, 5),    # Phase 2: 65-70% (synthesis)
+                3: (70, 7),    # Phase 3: 70-77% (architecture)
+                4: (77, 7),    # Phase 4: 77-84% (cards)
+                5: (84, 7),    # Phase 5: 84-91% (wiki)
+                6: (91, 8),    # Phase 6: 91-99% (QA)
+            }
+
             async def _update_progress(phase, pct, msg):
                 try:
-                    overall_pct = min(99, int(pct * 0.14 + phase * 14))
+                    start, weight = _PHASE_OFFSETS.get(phase, (0, 14))
+                    overall_pct = min(99, int(start + pct / 100 * weight))
                     jm.update_progress(job_id, overall_pct, f"[Fase {phase}] {msg}")
                 except Exception:
                     pass
