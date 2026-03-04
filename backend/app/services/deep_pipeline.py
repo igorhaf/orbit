@@ -973,9 +973,8 @@ class DeepPipelineService:
         Analyze each file individually with Haiku in parallel micro-batches.
 
         Uses proportional batch sizing (total/25) with checkpoint/resume
-        and 30s cooldown between batches to prevent GPU thermal throttling.
+        and brief pause between batches.
         """
-        COOLDOWN_SECONDS = 30
         BATCH_DIVISOR = 25
 
         system_prompt, _ = self._load_contract("deep_file_analysis", {
@@ -1118,10 +1117,9 @@ class DeepPipelineService:
             await progress_cb(1, pct,
                 f"Analisados {done_total}/{total_files} arquivos (batch {batch_num}/{total_batches})")
 
-            # Cooldown between batches to prevent GPU thermal throttling
+            # Brief pause between batches to let GPU cool slightly
             if batch_start + batch_size < len(pending):
-                logger.info(f"Phase 1: Cooldown {COOLDOWN_SECONDS}s between batches (thermal management)")
-                await asyncio.sleep(COOLDOWN_SECONDS)
+                await asyncio.sleep(3)  # 3s pause — enough to prevent thermal spikes without killing throughput
 
         # Clear checkpoint on successful completion
         if pipeline_run and pipeline_run.checkpoint_state:
