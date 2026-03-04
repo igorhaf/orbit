@@ -154,7 +154,7 @@ class JobManager:
         JobType.WIKI_RULE_ENRICHMENT: AIModelUsageType.CONTENT_GENERATION,
         JobType.WIKI_PAGE_AI: AIModelUsageType.GENERAL,
         JobType.DESCRIPTION_GENERATION: AIModelUsageType.GENERAL,
-        JobType.DEEP_PIPELINE: AIModelUsageType.CONTENT_GENERATION,
+        # DEEP_PIPELINE removed: model is set by the pipeline itself based on profile
     }
 
     def _resolve_ai_model_name(self, job_type: JobType) -> Optional[str]:

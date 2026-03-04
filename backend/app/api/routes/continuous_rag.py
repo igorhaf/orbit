@@ -544,6 +544,19 @@ async def trigger_deep_pipeline(
 
             pipeline = DeepPipelineService(db_session, profile_name=profile_name)
 
+            # Set actual model name from pipeline profile (not from ai_models table)
+            try:
+                from app.models.async_job import AsyncJob
+                job_record = db_session.query(AsyncJob).filter(AsyncJob.id == job_id).first()
+                if job_record:
+                    p1_model = pipeline._get_model("phase_1", "unknown")
+                    provider = pipeline._provider or "claudio"
+                    label = pipeline._model_label(p1_model)
+                    job_record.ai_model_name = f"{label} ({provider})"
+                    db_session.commit()
+            except Exception:
+                pass
+
             async def _update_progress(phase, pct, msg):
                 try:
                     overall_pct = min(99, int(pct * 0.14 + phase * 14))
