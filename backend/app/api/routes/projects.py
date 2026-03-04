@@ -796,7 +796,7 @@ async def create_and_process_project(
         description=description.strip() if description and description.strip() else None,
         code_path=code_path,
         context_locked=False,
-        status=ProjectStatus.draft,
+        status=ProjectStatus.active,
         scan_depth=scan_depth,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow()
@@ -806,27 +806,10 @@ async def create_and_process_project(
     db.commit()
     db.refresh(db_project)
 
-    logger.info(f"Created project '{temp_name}' (ID: {db_project.id}) status=active (PROMPT #301)")
+    logger.info(f"Created project '{temp_name}' (ID: {db_project.id}) status=active")
 
-    # Submit MEMORY_SCAN as individual job (not monolithic pipeline)
-    job_manager = JobManager(db)
-
-    job = job_manager.create_job(
-        job_type=JobType.MEMORY_SCAN,
-        input_data={
-            "code_path": code_path,
-            "project_id": str(db_project.id),
-            "scan_depth": scan_depth
-        },
-        project_id=db_project.id,
-        deep_link=f"/projects/{db_project.id}",
-        notification_title=f"Escaneando '{folder_name}'..."
-    )
-
-    # Launch scan in background - completion triggers dependent jobs
-    from app.services.job_executor import PriorityJobExecutor
-    executor = PriorityJobExecutor.get_instance()
-    await executor.submit(job.priority, _process_initial_scan, job.id, db_project.id, code_path, scan_depth)
+    # No automatic MEMORY_SCAN — Deep Pipeline handles all enrichment.
+    # User triggers Deep Pipeline manually from the project page.
 
     return {
         "project": {
@@ -836,9 +819,9 @@ async def create_and_process_project(
             "status": "active",
             "created_at": db_project.created_at.isoformat() if db_project.created_at else None,
         },
-        "job_id": str(job.id),
+        "job_id": None,
         "status": "active",
-        "message": "Projeto criado. Expansao rodando em segundo plano."
+        "message": "Projeto criado. Execute o Deep Pipeline para analisar o codebase."
     }
 
 

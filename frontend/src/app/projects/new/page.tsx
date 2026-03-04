@@ -19,7 +19,6 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { FolderPicker } from '@/components/ui/FolderPicker';
 import { useNotification } from '@/hooks';
-import { useNotifications } from '@/contexts/NotificationContext';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -32,8 +31,6 @@ function folderToTitle(codePath: string): string {
 export default function NewProjectPage() {
   const router = useRouter();
   const { showError, showWarning, NotificationComponent } = useNotification();
-  const { addJob } = useNotifications();
-
   // Form state
   const [codePath, setCodePath] = useState('');
   const [showFolderPicker, setShowFolderPicker] = useState(false);
@@ -88,11 +85,7 @@ export default function NewProjectPage() {
       if (response.ok) {
         const data = await response.json();
 
-        // Track scan job in notification bell
-        const folderName = codePath.split('/').pop() || 'projeto';
-        addJob(data.job_id, 'memory_scan', `Escaneando ${folderName}...`, `/projects/${data.project.id}`, true);
-
-        // Redirect immediately to the project page (project is already active)
+        // Redirect immediately to the project page (no scan job — user triggers Deep Pipeline)
         router.push(`/projects/${data.project.id}`);
       } else {
         const error = await response.json();
