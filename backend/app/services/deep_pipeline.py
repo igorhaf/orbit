@@ -2285,7 +2285,6 @@ class DeepPipelineService:
                 .filter(
                     Task.project_id == project.id,
                     Task.pipeline_run_id == run_id,
-                    Task.status == TaskStatus.BACKLOG,
                 )
                 .all()
             )
@@ -2293,10 +2292,11 @@ class DeepPipelineService:
             count = 0
             for card in cards:
                 card.status = TaskStatus.DONE
+                card.workflow_state = "done"
                 count += 1
 
             self.db.commit()
-            logger.info(f"Post-pipeline: Marked {count} cards as DONE (code already exists)")
+            logger.info(f"Post-pipeline: Marked {count} cards as DONE + workflow_state='done' (code already exists)")
             await progress_cb(7, 98, f"{count} cards marcados como implementados")
 
         except Exception as e:

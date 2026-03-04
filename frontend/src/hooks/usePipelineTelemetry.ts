@@ -72,19 +72,21 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
 
   const calcTokensPerSecond = useCallback((newTokens: number) => {
     const now = Date.now();
-    tokenWindowRef.current.push({ ts: now, tokens: newTokens });
-    // Keep last 10 seconds
-    tokenWindowRef.current = tokenWindowRef.current.filter(e => now - e.ts < 10000);
+    if (newTokens > 0) {
+      tokenWindowRef.current.push({ ts: now, tokens: newTokens });
+    }
+    // Keep last 30 seconds (wider window to avoid gaps between AI calls)
+    tokenWindowRef.current = tokenWindowRef.current.filter(e => now - e.ts < 30000);
     if (tokenWindowRef.current.length < 2) {
-      // No enough data points — return last valid value instead of 0
       return lastValidTpsRef.current;
     }
     const windowMs = now - tokenWindowRef.current[0].ts;
     if (windowMs < 500) return lastValidTpsRef.current;
     const totalTokens = tokenWindowRef.current.reduce((s, e) => s + e.tokens, 0);
-    const tps = Math.round(totalTokens / (windowMs / 1000) * 10) / 10;
-    // Cap at reasonable max (Ollama local: ~200 tok/s, Cloud APIs: ~1000 tok/s)
-    const result = Math.min(tps, 5000);
+    const tps = totalTokens / (windowMs / 1000);
+    // Cap at reasonable max, keep 1 decimal, minimum 0.1 if there are tokens
+    const rounded = Math.round(tps * 10) / 10;
+    const result = Math.min(rounded || lastValidTpsRef.current, 5000);
     if (result > 0) lastValidTpsRef.current = result;
     return result;
   }, []);
@@ -109,8 +111,9 @@ export function usePipelineTelemetry(projectId: string | null): PipelineTelemetr
       // Calculate tok/s from cumulative totals / elapsed time
       const elapsed = startTimeRef.current ? (Date.now() - startTimeRef.current) / 1000 : 0;
       const totalToks = parseInt(data.tokens_in || '0', 10) + parseInt(data.tokens_out || '0', 10);
-      const avgTps = elapsed > 1 ? Math.round(totalToks / elapsed * 10) / 10 : 0;
+      const avgTps = elapsed > 1 ? Math.round(totalToks / elapsed * 10) / 10 : lastValidTpsRef.current;
       const isCompleted = data.status === 'completed' || data.status === 'failed';
+      if (avgTps > 0) lastValidTpsRef.current = avgTps;
 
       // Parse phase_scores from JSON string if needed
       let parsedPhaseScores = data.phase_scores;
