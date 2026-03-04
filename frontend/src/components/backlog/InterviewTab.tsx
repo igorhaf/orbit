@@ -160,10 +160,10 @@ export default function InterviewTab({
             /* PROMPT #131 - Empty state with AI Suggestions call-to-action */
             <div className="text-center py-8 border border-dashed border-gray-300 rounded-lg bg-gray-50">
               <span className="mb-3 block"><IconCpu className="w-10 h-10 mx-auto text-gray-400" /></span>
-              <p className="text-sm text-gray-700 font-medium mb-2">Sugest\u00f5es da IA</p>
+              <p className="text-sm text-gray-700 font-medium mb-2">Sugestões da IA</p>
               <p className="text-xs text-gray-500 mb-4 max-w-sm mx-auto">
-                Inicie uma entrevista do card para obter sugest\u00f5es da IA para melhorar este card,
-                decompor em tarefas menores ou refinar crit\u00e9rios de aceita\u00e7\u00e3o.
+                Inicie uma entrevista do card para obter sugestões da IA para melhorar este card,
+                decompor em tarefas menores ou refinar critérios de aceitação.
               </p>
               <Button
                 size="sm"
