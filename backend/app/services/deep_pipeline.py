@@ -457,7 +457,6 @@ class DeepPipelineService:
         """
         import time as _time
 
-        run_id = uuid4()
         project = self.db.query(Project).filter(Project.id == project_id).first()
         if not project:
             raise ValueError(f"Project {project_id} not found")
@@ -466,8 +465,25 @@ class DeepPipelineService:
             raise ValueError(f"Invalid code_path: {project.code_path}")
 
         profile_name = self._profile.name if self._profile else "quality"
-        logger.info(f"Starting deep pipeline for project '{project.name}' "
-                     f"(run_id={run_id}, profile={profile_name})")
+
+        # ── Check for interrupted run with checkpoint (resume support) ──
+        existing_run = self.db.query(PipelineRun).filter(
+            PipelineRun.project_id == project.id,
+            PipelineRun.status == "interrupted",
+            PipelineRun.checkpoint_state.isnot(None),
+        ).order_by(PipelineRun.created_at.desc()).first()
+
+        if existing_run:
+            run_id = existing_run.id
+            pipeline_run = existing_run
+            pipeline_run.status = "running"
+            self.db.commit()
+            logger.info(f"Resuming interrupted pipeline run {run_id} for project '{project.name}' "
+                         f"(checkpoint: {len(existing_run.checkpoint_state.get('completed_files', []))} files done)")
+        else:
+            run_id = uuid4()
+            logger.info(f"Starting deep pipeline for project '{project.name}' "
+                         f"(run_id={run_id}, profile={profile_name})")
 
         # ── PROMPT #237: Initialize telemetry context ────
         self._telemetry_trace_id = str(run_id)
@@ -479,26 +495,27 @@ class DeepPipelineService:
         import time as _t_init
         self._run_started_at = int(_t_init.time() * 1000)  # epoch ms for frontend elapsed calc
 
-        # ── Create PipelineRun record ────────────────────────────────────
-        pipeline_run = PipelineRun(
-            id=run_id,
-            project_id=project.id,
-            profile_id=self._profile.id if self._profile else None,
-            profile_name=profile_name,
-            profile_snapshot=self._phase_configs,
-            version="v2",
-            status="running",
-            phase_scores={},
-            phase_durations={},
-            started_at=datetime.utcnow(),
-        )
-        self.db.add(pipeline_run)
-        self.db.commit()
+        if not existing_run:
+            # ── Create NEW PipelineRun record ────────────────────────────
+            pipeline_run = PipelineRun(
+                id=run_id,
+                project_id=project.id,
+                profile_id=self._profile.id if self._profile else None,
+                profile_name=profile_name,
+                profile_snapshot=self._phase_configs,
+                version="v2",
+                status="running",
+                phase_scores={},
+                phase_durations={},
+                started_at=datetime.utcnow(),
+            )
+            self.db.add(pipeline_run)
+            self.db.commit()
 
-        # ── Cleanup data from previous pipeline runs ────────────────────
-        # Removes AI-generated cards and wiki pages from old runs.
-        # REGRA #0: human-edited data is NEVER deleted.
-        self._cleanup_previous_runs(project.id, run_id)
+            # ── Cleanup data from previous pipeline runs ──────────────────
+            # Removes AI-generated cards and wiki pages from old runs.
+            # REGRA #0: human-edited data is NEVER deleted.
+            self._cleanup_previous_runs(project.id, run_id)
 
         # ── Apply reinforcement from previous run ────────────────────────
         reinforcement = self._apply_reinforcement(project.id)
@@ -552,7 +569,7 @@ class DeepPipelineService:
             model_1 = self._get_model("phase_1", MODEL_HAIKU)
             await _progress(1, 0, f"Analisando {len(file_inventory)} arquivos com {self._model_label(model_1)}...")
             file_analyses = await self._phase1_file_analysis(
-                project, file_inventory, run_id, _progress
+                project, file_inventory, run_id, _progress, pipeline_run
             )
             p1_data = {
                 "files_analyzed": len(file_analyses),
@@ -703,9 +720,13 @@ class DeepPipelineService:
         except Exception as e:
             logger.error(f"Deep pipeline failed at run {run_id}: {e}", exc_info=True)
             results["error"] = str(e)
-            # Update run as failed
+            # Update run status — "interrupted" if checkpoint exists (can resume), "failed" otherwise
             try:
-                pipeline_run.status = "failed"
+                if pipeline_run.checkpoint_state:
+                    pipeline_run.status = "interrupted"
+                    logger.info(f"Pipeline interrupted with checkpoint — can be resumed")
+                else:
+                    pipeline_run.status = "failed"
                 pipeline_run.error = str(e)[:1000]
                 pipeline_run.phase_scores = phase_scores
                 pipeline_run.phase_durations = phase_durations
@@ -905,7 +926,39 @@ class DeepPipelineService:
         return "domain_logic"
 
     # =========================================================================
-    # PHASE 1: PER-FILE ANALYSIS (Haiku, parallel)
+    # CHECKPOINT & HEALTH CHECK HELPERS
+    # =========================================================================
+
+    def _save_checkpoint(self, pipeline_run: PipelineRun, phase: int, completed_files: set):
+        """Save micro-batch checkpoint state to PipelineRun for resume after crash."""
+        pipeline_run.checkpoint_state = {
+            "phase": phase,
+            "completed_files": list(completed_files),
+            "saved_at": datetime.utcnow().isoformat(),
+        }
+        self.db.commit()
+        logger.info(f"Checkpoint saved: phase={phase}, files={len(completed_files)}")
+
+    async def _provider_health_check(self, model: str, ollama_kwargs: dict) -> bool:
+        """Test if the AI provider responds before sending a batch."""
+        try:
+            result = await asyncio.wait_for(
+                self.claudio.call(
+                    model=model,
+                    system_prompt="Respond with OK",
+                    user_prompt="Health check",
+                    max_tokens=5,
+                    **ollama_kwargs,
+                ),
+                timeout=30,
+            )
+            return bool(result and result.get("text"))
+        except Exception as e:
+            logger.warning(f"Health check failed for {model}: {e}")
+            return False
+
+    # =========================================================================
+    # PHASE 1: PER-FILE ANALYSIS (Haiku, parallel micro-batches)
     # =========================================================================
 
     async def _phase1_file_analysis(
@@ -914,85 +967,168 @@ class DeepPipelineService:
         inventory: List[Dict],
         run_id: UUID,
         progress_cb: Any,
+        pipeline_run: PipelineRun = None,
     ) -> List[Dict]:
-        """Analyze each file individually with Haiku in parallel."""
+        """
+        Analyze each file individually with Haiku in parallel micro-batches.
+
+        Uses proportional batch sizing (total/25) with checkpoint/resume
+        and 30s cooldown between batches to prevent GPU thermal throttling.
+        """
+        COOLDOWN_SECONDS = 30
+        BATCH_DIVISOR = 25
 
         system_prompt, _ = self._load_contract("deep_file_analysis", {
             "file_path": "placeholder",
             "file_content": "placeholder",
             "project_name": project.name,
         })
-        # We only need the system prompt template; user_prompt varies per file
         if not system_prompt:
             system_prompt = "Analyze the code file and extract business rules. Respond with JSON only."
 
-        # Build batch requests (model/tokens/concurrency from profile)
+        # Model/tokens/concurrency from profile
         p1_model = self._get_model("phase_1", MODEL_HAIKU)
         p1_max_tokens = self._get_max_tokens("phase_1", 4000)
         p1_concurrency = self._get_concurrency("phase_1", 10)
-
         p1_ollama = self._ollama_kwargs("phase_1")
-        requests = []
-        for item in inventory:
-            user_prompt = f"Arquivo: {item['path']}\n\nCodigo:\n{item['content']}"
-            requests.append({
-                "model": p1_model,
-                "system_prompt": system_prompt,
-                "user_prompt": user_prompt,
-                "max_tokens": p1_max_tokens,
-                **p1_ollama,
-            })
 
-        # PROMPT #238: Real-time telemetry via on_item_complete callback
-        _completed_count = [0]  # mutable counter for closure
+        # Proportional batch size: always ~25 batches
+        batch_size = max(5, len(inventory) // BATCH_DIVISOR)
+        total_files = len(inventory)
+        logger.info(f"Phase 1: {total_files} files → batch_size={batch_size}")
 
-        async def _on_file_done(index: int, result: Any, total: int):
-            _completed_count[0] += 1
-            done = _completed_count[0]
-            item_path = inventory[index]["path"] if index < len(inventory) else f"item-{index}"
-            await self._emit_telemetry(
-                "phase_1", "file_analysis", item_path,
-                done, total, model_name=p1_model, result=result,
-            )
-            # Progress update every 10 files (more granular than before)
-            if done % 10 == 0 or done == total:
-                pct = (done / total) * 100
-                await progress_cb(1, pct, f"Analisados {done}/{total} arquivos")
+        # ── Checkpoint resume: skip already-analyzed files ──
+        checkpoint = (pipeline_run.checkpoint_state or {}) if pipeline_run else {}
+        completed_files = set(checkpoint.get("completed_files", []))
 
-        # Execute in parallel batches with real-time callback
-        results = await self.claudio.call_batch(
-            requests, max_concurrency=p1_concurrency,
-            on_item_complete=_on_file_done,
-        )
+        if completed_files:
+            # Load existing artifacts from DB
+            existing = self.db.query(PipelineArtifact).filter(
+                PipelineArtifact.run_id == run_id,
+                PipelineArtifact.phase == 1,
+            ).all()
+            file_analyses = [a.content for a in existing]
+            logger.info(f"Phase 1: Resuming — {len(completed_files)} already done, "
+                        f"{total_files - len(completed_files)} remaining")
+        else:
+            file_analyses = []
 
-        file_analyses = []
-        for i, result in enumerate(results):
-            if isinstance(result, ClaudioPipelineError):
-                logger.warning(f"Phase 1: Failed to analyze {inventory[i]['path']}: {result}")
-                continue
+        pending = [item for item in inventory if item["path"] not in completed_files]
 
-            parsed = self.claudio.extract_json(result.get("text", ""))
-            if parsed and isinstance(parsed, dict):
-                parsed["file_path"] = inventory[i]["path"]
-                parsed["file_type"] = inventory[i]["file_type"]
-                parsed["lines"] = inventory[i]["lines"]
-                parsed["complexity_score"] = inventory[i]["complexity_score"]
-                file_analyses.append(parsed)
+        if not pending:
+            logger.info(f"Phase 1: All {total_files} files already analyzed (checkpoint)")
+            return file_analyses
 
-                # Store artifact
-                artifact = PipelineArtifact(
-                    project_id=project.id,
-                    artifact_type=ArtifactType.file_analysis,
-                    phase=1,
-                    domain=parsed.get("domain_classification", "Unknown"),
-                    source_path=inventory[i]["path"],
-                    content=parsed,
-                    run_id=run_id,
+        # ── Telemetry counter (tracks across all batches) ──
+        _global_done = [len(completed_files)]
+
+        # ── Process in micro-batches ──
+        for batch_start in range(0, len(pending), batch_size):
+            batch = pending[batch_start:batch_start + batch_size]
+            batch_num = (batch_start // batch_size) + 1
+            total_batches = -(-len(pending) // batch_size)  # ceil division
+
+            # Health check before each batch
+            if not await self._provider_health_check(p1_model, p1_ollama):
+                logger.error("Phase 1: Provider not responding — saving checkpoint")
+                if pipeline_run:
+                    self._save_checkpoint(pipeline_run, 1, completed_files)
+                raise ClaudioPipelineError(
+                    f"Provider offline after {len(completed_files)}/{total_files} files — checkpoint saved, resume later"
                 )
-                self.db.add(artifact)
 
-        self.db.commit()
-        logger.info(f"Phase 1: Analyzed {len(file_analyses)}/{len(inventory)} files successfully")
+            # Build batch requests
+            batch_requests = []
+            for item in batch:
+                user_prompt = f"Arquivo: {item['path']}\n\nCodigo:\n{item['content']}"
+                batch_requests.append({
+                    "model": p1_model,
+                    "system_prompt": system_prompt,
+                    "user_prompt": user_prompt,
+                    "max_tokens": p1_max_tokens,
+                    **p1_ollama,
+                })
+
+            # Telemetry callback for this batch
+            async def _on_file_done(index: int, result: Any, total: int):
+                _global_done[0] += 1
+                done = _global_done[0]
+                item_path = batch[index]["path"] if index < len(batch) else f"item-{index}"
+                await self._emit_telemetry(
+                    "phase_1", "file_analysis", item_path,
+                    done, total_files, model_name=p1_model, result=result,
+                )
+
+            # Execute micro-batch with global timeout
+            batch_timeout = batch_size * 180  # 3 min max per file
+            try:
+                results = await asyncio.wait_for(
+                    self.claudio.call_batch(
+                        batch_requests,
+                        max_concurrency=p1_concurrency,
+                        on_item_complete=_on_file_done,
+                    ),
+                    timeout=batch_timeout,
+                )
+            except asyncio.TimeoutError:
+                logger.error(f"Phase 1: Batch {batch_num}/{total_batches} timed out — saving checkpoint")
+                if pipeline_run:
+                    self._save_checkpoint(pipeline_run, 1, completed_files)
+                raise ClaudioPipelineError(
+                    f"Batch {batch_num} timeout after {batch_timeout}s — checkpoint saved"
+                )
+
+            # Process results and store artifacts
+            for i, result in enumerate(results):
+                file_path = batch[i]["path"]
+                if isinstance(result, ClaudioPipelineError):
+                    logger.warning(f"Phase 1: Failed {file_path}: {result}")
+                    completed_files.add(file_path)
+                    continue
+
+                parsed = self.claudio.extract_json(result.get("text", ""))
+                if parsed and isinstance(parsed, dict):
+                    parsed["file_path"] = file_path
+                    parsed["file_type"] = batch[i]["file_type"]
+                    parsed["lines"] = batch[i]["lines"]
+                    parsed["complexity_score"] = batch[i]["complexity_score"]
+                    file_analyses.append(parsed)
+
+                    artifact = PipelineArtifact(
+                        project_id=project.id,
+                        artifact_type=ArtifactType.file_analysis,
+                        phase=1,
+                        domain=parsed.get("domain_classification", "Unknown"),
+                        source_path=file_path,
+                        content=parsed,
+                        run_id=run_id,
+                    )
+                    self.db.add(artifact)
+
+                completed_files.add(file_path)
+
+            # Commit + checkpoint after each batch
+            if pipeline_run:
+                self._save_checkpoint(pipeline_run, 1, completed_files)
+            self.db.commit()
+
+            # Progress update
+            done_total = len(completed_files)
+            pct = (done_total / total_files) * 100
+            await progress_cb(1, pct,
+                f"Analisados {done_total}/{total_files} arquivos (batch {batch_num}/{total_batches})")
+
+            # Cooldown between batches to prevent GPU thermal throttling
+            if batch_start + batch_size < len(pending):
+                logger.info(f"Phase 1: Cooldown {COOLDOWN_SECONDS}s between batches (thermal management)")
+                await asyncio.sleep(COOLDOWN_SECONDS)
+
+        # Clear checkpoint on successful completion
+        if pipeline_run and pipeline_run.checkpoint_state:
+            pipeline_run.checkpoint_state = None
+            self.db.commit()
+
+        logger.info(f"Phase 1: Analyzed {len(file_analyses)}/{total_files} files successfully")
         return file_analyses
 
     # =========================================================================

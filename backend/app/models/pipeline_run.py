@@ -56,6 +56,10 @@ class PipelineRun(Base):
     # Reinforcement applied (adjustments from previous run)
     reinforcement_applied = Column(JSONB, nullable=True)
 
+    # Checkpoint state for resume after crash (micro-batch progress)
+    # Format: {"phase": 1, "completed_files": ["path/a.py", ...], "saved_at": "..."}
+    checkpoint_state = Column(JSONB, nullable=True)
+
     # Error info (if failed)
     error = Column(String(1000), nullable=True)
 
