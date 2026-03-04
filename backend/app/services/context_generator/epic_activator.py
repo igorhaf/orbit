@@ -91,11 +91,12 @@ class EpicActivatorMixin:
         if not project:
             raise ValueError(f"Projeto {epic.project_id} não encontrado")
 
-        # PROMPT #247 - context_semantic is manual, no fallback auto-generation
+        # Allow activation even without context_semantic — AI will use
+        # title, description, interview data, and RAG as available context.
         if not project.context_semantic:
-            raise ValueError(
-                f"Projeto {project.id} não tem contexto. "
-                "Execute um scan de memória ou aguarde o pipeline RAG processar os arquivos."
+            logger.warning(
+                f"Projeto {project.id} sem context_semantic — "
+                "ativacao prossegue com contexto disponivel (titulo, descricao, RAG)."
             )
 
         # 3. Generate full epic content using AI
