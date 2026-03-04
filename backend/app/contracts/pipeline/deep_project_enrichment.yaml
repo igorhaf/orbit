@@ -1,7 +1,7 @@
 name: deep_project_enrichment
-version: 2
+version: 3
 category: pipeline
-description: Post-pipeline enrichment - generates project description and semantic context from all available sources (arch map, domains, wiki, RAG rules, git commits, done cards)
+description: Post-pipeline enrichment - generates project description and semantic context from all available sources
 usage_type: content_generation
 estimated_tokens: 5000
 tags:
@@ -29,43 +29,38 @@ variables:
     - done_cards
 
 system_prompt: |
-  Voce e um analista de software senior. Com base na analise completa do codebase de um projeto,
-  voce deve gerar:
+  Voce recebera dados concretos extraidos do codebase de um projeto de software chamado "{{ project_name }}".
+  Sua tarefa e gerar dois textos BASEADOS EXCLUSIVAMENTE nos dados fornecidos.
 
-  1. **Descricao do projeto** (description): Um resumo claro e completo do que o projeto faz,
-     suas funcionalidades principais, e para que serve. Minimo 200 caracteres, maximo 2000.
-     Deve ser util para um desenvolvedor que nunca viu o projeto entender rapidamente do que se trata.
-     A descricao deve ser coerente com o nome do projeto e refletir fielmente as funcionalidades
-     reais encontradas no codigo, nos commits, nos cards e na documentacao wiki.
-
-  2. **Contexto semantico** (context_semantic): Um prompt otimizado para IA que descreve o projeto
-     de forma tecnica e completa. Deve incluir: stack tecnologica, dominios de negocio, padroes
-     arquiteturais, entidades principais, e fluxos criticos. Minimo 300 caracteres, maximo 5000.
-     Este texto sera usado como contexto para futuras interacoes de IA com o projeto.
-
-  FONTES DE DADOS DISPONVEIS (use TODAS para gerar textos precisos e factuais):
-  - Mapa arquitetural: estrutura de pastas, componentes, dependencias
-  - Dominios de negocio: regras extraidas por dominio, entidades
-  - Wiki do projeto: documentacao existente com detalhes das funcionalidades
-  - Regras de negocio (RAG): regras extraidas automaticamente do codigo
-  - Commits recentes: historico do que foi implementado recentemente
-  - Cards concluidos: funcionalidades ja implementadas e validadas
-
-  RESPONDA APENAS COM JSON PURO (sem markdown, sem code blocks):
-  {
-    "description": "Descricao do projeto...",
-    "context_semantic": "Contexto semantico tecnico do projeto..."
-  }
-
-  REGRAS:
-  - PORTUGUES em todo o conteudo
-  - Seja especifico e factual - base APENAS nos dados fornecidos
-  - NAO invente funcionalidades que nao estao nos dados
+  PROIBICOES ABSOLUTAS:
+  - NAO invente funcionalidades, propositos ou objetivos que NAO aparecem nos dados
+  - NAO use frases genericas como "otimizar produtividade", "gestao de tarefas", "ambientes corporativos"
+  - NAO escreva texto que poderia se aplicar a qualquer projeto - seja ESPECIFICO para ESTE projeto
+  - NAO use markdown (sem ##, sem **, sem listas com -)
   - NAO use emojis
-  - description deve ser legivel por humanos (linguagem natural)
-  - context_semantic deve ser otimizado para consumo por IA (tecnico, denso, estruturado)
-  - Use os commits e cards concluidos para entender o que o projeto REALMENTE faz
-  - A descricao deve refletir o proposito real do projeto, nao apenas listar tecnologias
+
+  COMO EXTRAIR INFORMACOES DOS DADOS:
+  - WIKI: Se houver documentacao wiki, ela descreve o que o projeto REALMENTE faz. Use como fonte primaria.
+  - CARDS CONCLUIDOS: Os titulos dos cards mostram funcionalidades JA IMPLEMENTADAS. Cite-as.
+  - COMMITS: Os commits mostram o que foi desenvolvido recentemente. Use para entender o escopo.
+  - DOMINIOS: Mostram as areas de negocio do sistema (ex: autenticacao, chatbot, pagamentos).
+  - MAPA ARQUITETURAL: Mostra a estrutura tecnica (pastas, componentes, dependencias).
+
+  GERE:
+
+  1. "description": Texto corrido em linguagem natural explicando o que o projeto faz.
+     Comece com "{{ project_name }} e um/uma..." seguido do proposito real extraido dos dados.
+     Mencione funcionalidades concretas encontradas nos cards, wiki ou commits.
+     Minimo 200 caracteres, maximo 2000. Texto corrido, sem listas, sem markdown.
+
+  2. "context_semantic": Contexto tecnico denso para consumo por IA.
+     Inclua: stack real, dominios de negocio encontrados, entidades principais, padroes arquiteturais,
+     e funcionalidades implementadas. Minimo 300 caracteres, maximo 5000.
+
+  RESPONDA APENAS COM JSON PURO (sem markdown, sem code blocks, sem explicacoes):
+  {"description": "...", "context_semantic": "..."}
+
+  PORTUGUES em todo o conteudo.
 
 user_prompt: |
   Projeto: {{ project_name }}
@@ -74,29 +69,29 @@ user_prompt: |
   Regras de negocio extraidas: {{ rules_count }}
   Cards gerados: {{ cards_count }}
   {% if wiki_pages_count %}Wiki pages: {{ wiki_pages_count }}{% endif %}
-
-  Mapa Arquitetural:
-  {{ architectural_map_json }}
-
-  Resumo dos Dominios:
-  {{ domains_summary }}
   {% if wiki_content %}
 
-  Documentacao Wiki do Projeto:
+  === DOCUMENTACAO WIKI (FONTE PRIMARIA - descreve o que o projeto faz) ===
   {{ wiki_content }}
-  {% endif %}
-  {% if business_rules %}
-
-  Regras de Negocio Extraidas do Codigo:
-  {{ business_rules }}
-  {% endif %}
-  {% if git_commits %}
-
-  Commits Recentes (funcionalidades implementadas):
-  {{ git_commits }}
   {% endif %}
   {% if done_cards %}
 
-  Cards Concluidos (trabalho ja realizado):
+  === CARDS CONCLUIDOS (funcionalidades ja implementadas) ===
   {{ done_cards }}
   {% endif %}
+  {% if git_commits %}
+
+  === COMMITS RECENTES (historico de desenvolvimento) ===
+  {{ git_commits }}
+  {% endif %}
+  {% if business_rules %}
+
+  === REGRAS DE NEGOCIO (extraidas do codigo) ===
+  {{ business_rules }}
+  {% endif %}
+
+  === MAPA ARQUITETURAL ===
+  {{ architectural_map_json }}
+
+  === DOMINIOS DE NEGOCIO ===
+  {{ domains_summary }}

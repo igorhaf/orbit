@@ -2146,11 +2146,17 @@ class DeepPipelineService:
         Respects REGRA #0: only fills empty fields, never overwrites human data.
         """
         # Check which fields need generation
-        needs_description = not (project.description and project.description.strip())
-        needs_semantic = not (project.context_semantic and project.context_semantic.strip())
+        # REGRA #0: Only skip if HUMAN wrote the content.
+        # AI-generated content (description_ai_model set) CAN be regenerated with better context.
+        has_description = bool(project.description and project.description.strip())
+        has_semantic = bool(project.context_semantic and project.context_semantic.strip())
+        desc_is_ai = bool(getattr(project, "description_ai_model", None))
+
+        needs_description = not has_description or desc_is_ai
+        needs_semantic = not has_semantic or desc_is_ai  # if desc was AI, semantic likely was too
 
         if not needs_description and not needs_semantic:
-            logger.info("Post-pipeline: Project already has description and context_semantic — skipping enrichment")
+            logger.info("Post-pipeline: Project has human-written description and context — skipping enrichment")
             return
 
         await progress_cb(7, 80, "Coletando contexto (wiki, RAG, commits, cards)...")
