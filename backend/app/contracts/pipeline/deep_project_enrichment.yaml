@@ -1,9 +1,9 @@
 name: deep_project_enrichment
-version: 1
+version: 2
 category: pipeline
-description: Post-pipeline enrichment - generates project description and semantic context from analysis artifacts
+description: Post-pipeline enrichment - generates project description and semantic context from all available sources (arch map, domains, wiki, RAG rules, git commits, done cards)
 usage_type: content_generation
-estimated_tokens: 4000
+estimated_tokens: 5000
 tags:
   - pipeline
   - deep
@@ -23,6 +23,10 @@ variables:
     - cards_count
   optional:
     - wiki_pages_count
+    - wiki_content
+    - business_rules
+    - git_commits
+    - done_cards
 
 system_prompt: |
   Voce e um analista de software senior. Com base na analise completa do codebase de um projeto,
@@ -31,11 +35,21 @@ system_prompt: |
   1. **Descricao do projeto** (description): Um resumo claro e completo do que o projeto faz,
      suas funcionalidades principais, e para que serve. Minimo 200 caracteres, maximo 2000.
      Deve ser util para um desenvolvedor que nunca viu o projeto entender rapidamente do que se trata.
+     A descricao deve ser coerente com o nome do projeto e refletir fielmente as funcionalidades
+     reais encontradas no codigo, nos commits, nos cards e na documentacao wiki.
 
   2. **Contexto semantico** (context_semantic): Um prompt otimizado para IA que descreve o projeto
      de forma tecnica e completa. Deve incluir: stack tecnologica, dominios de negocio, padroes
      arquiteturais, entidades principais, e fluxos criticos. Minimo 300 caracteres, maximo 5000.
      Este texto sera usado como contexto para futuras interacoes de IA com o projeto.
+
+  FONTES DE DADOS DISPONVEIS (use TODAS para gerar textos precisos e factuais):
+  - Mapa arquitetural: estrutura de pastas, componentes, dependencias
+  - Dominios de negocio: regras extraidas por dominio, entidades
+  - Wiki do projeto: documentacao existente com detalhes das funcionalidades
+  - Regras de negocio (RAG): regras extraidas automaticamente do codigo
+  - Commits recentes: historico do que foi implementado recentemente
+  - Cards concluidos: funcionalidades ja implementadas e validadas
 
   RESPONDA APENAS COM JSON PURO (sem markdown, sem code blocks):
   {
@@ -50,6 +64,8 @@ system_prompt: |
   - NAO use emojis
   - description deve ser legivel por humanos (linguagem natural)
   - context_semantic deve ser otimizado para consumo por IA (tecnico, denso, estruturado)
+  - Use os commits e cards concluidos para entender o que o projeto REALMENTE faz
+  - A descricao deve refletir o proposito real do projeto, nao apenas listar tecnologias
 
 user_prompt: |
   Projeto: {{ project_name }}
@@ -64,3 +80,23 @@ user_prompt: |
 
   Resumo dos Dominios:
   {{ domains_summary }}
+  {% if wiki_content %}
+
+  Documentacao Wiki do Projeto:
+  {{ wiki_content }}
+  {% endif %}
+  {% if business_rules %}
+
+  Regras de Negocio Extraidas do Codigo:
+  {{ business_rules }}
+  {% endif %}
+  {% if git_commits %}
+
+  Commits Recentes (funcionalidades implementadas):
+  {{ git_commits }}
+  {% endif %}
+  {% if done_cards %}
+
+  Cards Concluidos (trabalho ja realizado):
+  {{ done_cards }}
+  {% endif %}

@@ -2042,6 +2042,91 @@ class DeepPipelineService:
     # POST-PIPELINE: PROJECT ENRICHMENT
     # =========================================================================
 
+    def _gather_enrichment_context(self, project: Project) -> Dict[str, str]:
+        """Gather wiki pages, RAG business rules, git commits and done cards for enrichment."""
+        extra: Dict[str, str] = {}
+
+        # 1. Wiki pages — titles + first 200 chars of content
+        try:
+            wiki_pages = (
+                self.db.query(WikiPage)
+                .filter(WikiPage.project_id == project.id)
+                .order_by(WikiPage.order_index)
+                .limit(10)
+                .all()
+            )
+            if wiki_pages:
+                wiki_text = "\n".join(
+                    f"- {wp.title}: {(wp.content or '')[:200]}"
+                    for wp in wiki_pages
+                )
+                extra["wiki_content"] = wiki_text[:3000]
+                logger.info(f"Post-pipeline enrichment: {len(wiki_pages)} wiki pages gathered")
+        except Exception as e:
+            logger.warning(f"Post-pipeline enrichment: wiki fetch failed: {e}")
+
+        # 2. RAG business rules
+        try:
+            from app.services.rag_service import RAGService
+            rag = RAGService(self.db)
+            rules = rag.get_business_rules(
+                project_id=project.id,
+                query=project.name,
+                top_k=15,
+                similarity_threshold=0.4,
+            )
+            if rules:
+                formatted = rag.format_business_rules_for_prompt(rules, max_chars=3000)
+                if formatted:
+                    extra["business_rules"] = formatted
+                    logger.info(f"Post-pipeline enrichment: {len(rules)} business rules gathered")
+        except Exception as e:
+            logger.warning(f"Post-pipeline enrichment: RAG fetch failed: {e}")
+
+        # 3. Git commits — last 30 meaningful commits
+        try:
+            code_path = project.code_path
+            if code_path and Path(code_path).exists():
+                import subprocess as _sp
+                res = _sp.run(
+                    ["git", "log", "--pretty=format:%s", "--date=short", "-50"],
+                    cwd=code_path, capture_output=True, text=True, timeout=10,
+                )
+                if res.returncode == 0 and res.stdout.strip():
+                    noise = {"merge", "bump", "chore", "wip", "initial commit", "auto"}
+                    commits = [
+                        line.strip() for line in res.stdout.strip().split("\n")
+                        if line.strip() and not any(n in line.lower() for n in noise)
+                    ][:30]
+                    if commits:
+                        extra["git_commits"] = "\n".join(f"- {c}" for c in commits)
+                        logger.info(f"Post-pipeline enrichment: {len(commits)} git commits gathered")
+        except Exception as e:
+            logger.warning(f"Post-pipeline enrichment: git fetch failed: {e}")
+
+        # 4. Done/closed cards — titles of completed work
+        try:
+            done_cards = (
+                self.db.query(Task.title, Task.item_type)
+                .filter(
+                    Task.project_id == project.id,
+                    Task.status == TaskStatus.DONE,
+                )
+                .limit(30)
+                .all()
+            )
+            if done_cards:
+                cards_text = "\n".join(
+                    f"- [{c.item_type.value if hasattr(c.item_type, 'value') else c.item_type}] {c.title}"
+                    for c in done_cards
+                )
+                extra["done_cards"] = cards_text[:2000]
+                logger.info(f"Post-pipeline enrichment: {len(done_cards)} done cards gathered")
+        except Exception as e:
+            logger.warning(f"Post-pipeline enrichment: done cards fetch failed: {e}")
+
+        return extra
+
     async def _enrich_project_fields(
         self,
         project: Project,
@@ -2055,6 +2140,9 @@ class DeepPipelineService:
     ):
         """Generate project description and context_semantic from pipeline artifacts.
 
+        Uses all available context: arch map, domains, wiki, RAG rules, git commits,
+        done cards, and current project title.
+
         Respects REGRA #0: only fills empty fields, never overwrites human data.
         """
         # Check which fields need generation
@@ -2065,7 +2153,7 @@ class DeepPipelineService:
             logger.info("Post-pipeline: Project already has description and context_semantic — skipping enrichment")
             return
 
-        await progress_cb(7, 80, "Gerando descricao e contexto semantico do projeto...")
+        await progress_cb(7, 80, "Coletando contexto (wiki, RAG, commits, cards)...")
 
         # Build domains summary for prompt
         domains_summary = {}
@@ -2076,7 +2164,12 @@ class DeepPipelineService:
                 "summary": data.get("domain_summary", ""),
             }
 
-        system_prompt, _ = self._load_contract("deep_project_enrichment", {
+        # Gather rich context from all available sources
+        extra = self._gather_enrichment_context(project)
+
+        await progress_cb(7, 85, "Gerando descricao e contexto semantico do projeto...")
+
+        contract_vars = {
             "project_name": project.name,
             "architectural_map_json": json.dumps(arch_map, ensure_ascii=False)[:8000],
             "domains_summary": json.dumps(domains_summary, ensure_ascii=False)[:4000],
@@ -2085,17 +2178,33 @@ class DeepPipelineService:
             "rules_count": str(total_rules),
             "cards_count": str(card_stats.get("total_cards", 0)),
             "wiki_pages_count": str(wiki_stats.get("total_pages", 0)),
-        })
+            "wiki_content": extra.get("wiki_content", ""),
+            "business_rules": extra.get("business_rules", ""),
+            "git_commits": extra.get("git_commits", ""),
+            "done_cards": extra.get("done_cards", ""),
+        }
+
+        system_prompt, _ = self._load_contract("deep_project_enrichment", contract_vars)
 
         user_prompt = (
             f"Projeto: {project.name}\n"
             f"Stack: {json.dumps(project.stack or {})}\n"
             f"Arquivos analisados: {len(file_inventory)}\n"
-            f"Regras: {total_rules}\n"
-            f"Cards: {card_stats.get('total_cards', 0)}\n\n"
-            f"Mapa Arquitetural:\n{json.dumps(arch_map, ensure_ascii=False)[:8000]}\n\n"
-            f"Dominios:\n{json.dumps(domains_summary, ensure_ascii=False)[:4000]}"
+            f"Regras de negocio: {total_rules}\n"
+            f"Cards gerados: {card_stats.get('total_cards', 0)}\n\n"
+            f"Mapa Arquitetural:\n{json.dumps(arch_map, ensure_ascii=False)[:6000]}\n\n"
+            f"Dominios:\n{json.dumps(domains_summary, ensure_ascii=False)[:3000]}"
         )
+
+        # Append rich context to user prompt
+        if extra.get("wiki_content"):
+            user_prompt += f"\n\nDocumentacao Wiki do Projeto:\n{extra['wiki_content']}"
+        if extra.get("business_rules"):
+            user_prompt += f"\n\nRegras de Negocio Extraidas do Codigo:\n{extra['business_rules']}"
+        if extra.get("git_commits"):
+            user_prompt += f"\n\nCommits Recentes (funcionalidades implementadas):\n{extra['git_commits']}"
+        if extra.get("done_cards"):
+            user_prompt += f"\n\nCards Concluidos (trabalho ja realizado):\n{extra['done_cards']}"
 
         # Use the same model as Phase 3 (Sonnet) for enrichment
         enrich_model = self._get_model("phase_3", MODEL_SONNET)
