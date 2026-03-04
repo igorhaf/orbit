@@ -573,13 +573,14 @@ async def generate_semantic_prompt(
     prompt_text = None
     ai_model = "unknown"
 
-    try:
-        import httpx
-        import os
-        ollama_host = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
-        ollama_model = "qwen3:14b"
+    import httpx
+    import os
+    import asyncio
+    ollama_host = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
+    ollama_model = "qwen3:14b"
 
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+    async def _call_ollama() -> str:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=15.0)) as client:
             resp = await client.post(
                 f"{ollama_host}/api/chat",
                 json={
@@ -594,13 +595,27 @@ async def generate_semantic_prompt(
             )
             resp.raise_for_status()
             data = resp.json()
-            prompt_text = data.get("message", {}).get("content", "").strip()
+            return data.get("message", {}).get("content", "").strip()
+
+    # Retry once on failure (handles cold-start / model loading delays)
+    last_error = None
+    for attempt in range(2):
+        try:
+            prompt_text = await _call_ollama()
             ai_model = ollama_model
-    except Exception as e:
-        logger.error(f"Ollama call failed for semantic prompt: {e}", exc_info=True)
+            break
+        except Exception as e:
+            last_error = e
+            err_msg = str(e) or type(e).__name__
+            logger.error(f"Ollama call failed (attempt {attempt + 1}/2): {err_msg}", exc_info=True)
+            if attempt == 0:
+                await asyncio.sleep(3)
+
+    if prompt_text is None:
+        err_detail = str(last_error) or type(last_error).__name__ if last_error else "Erro desconhecido"
         return SemanticPromptResponse(
             success=False,
-            message=f"Erro na geracao: {str(e)[:200]}",
+            message=f"Erro na geração: {err_detail[:200]}",
         )
 
     if not prompt_text or len(prompt_text) < 100:
