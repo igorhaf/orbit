@@ -337,8 +337,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     try {
       await tasksApi.delete(item.id);
       setShowDeleteModal(false);
-      onClose();
       if (onUpdate) onUpdate();
+      onClose();
     } catch (error) {
       console.error('Error deleting item:', error);
       showError('Falha ao excluir item. Tente novamente.');
