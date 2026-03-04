@@ -467,6 +467,7 @@ export interface MessageOption {
   id: string;
   label: string;
   value: string;
+  icon?: string;
 }
 
 export interface MessageOptions {

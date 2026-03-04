@@ -7,9 +7,27 @@
 
 import { useState, useMemo } from 'react';
 import { Badge, Button, AIModelBadge } from '@/components/ui';
-import { IconCheck, IconPin, IconCheckCircle } from '@/components/icons';
+import {
+  IconCheck, IconPin, IconCheckCircle,
+  IconBug, IconSparkles, IconWrench, IconBlocks, IconDocument,
+  IconBolt, IconPuzzle, IconCog, IconLock
+} from '@/components/icons';
 import { ConversationMessage } from '@/lib/types';
 import { parseMessage } from './MessageParser';
+
+// Icon map for motivation type options (PROMPT #119 - no emojis)
+const OPTION_ICON_MAP: Record<string, React.FC<{ className?: string }>> = {
+  bug: IconBug,
+  sparkles: IconSparkles,
+  wrench: IconWrench,
+  blocks: IconBlocks,
+  document: IconDocument,
+  bolt: IconBolt,
+  puzzle: IconPuzzle,
+  checkCircle: IconCheckCircle,
+  cog: IconCog,
+  lock: IconLock,
+};
 
 interface Message extends ConversationMessage {
   role: 'user' | 'assistant' | 'system';
@@ -171,9 +189,12 @@ export function MessageBubble({
                       disabled={submitted || readOnly}
                       className="w-5 h-5 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     />
-                    <span className={`ml-3 text-sm font-medium flex-1 ${
+                    <span className={`ml-3 text-sm font-medium flex-1 flex items-center gap-2 ${
                       submitted ? 'text-gray-500' : 'text-gray-900'
                     }`}>
+                      {'icon' in option && typeof (option as any).icon === 'string' && OPTION_ICON_MAP[(option as any).icon] ? (
+                        (() => { const Icon = OPTION_ICON_MAP[(option as any).icon]; return <Icon className="w-4 h-4 shrink-0" />; })()
+                      ) : null}
                       {option.label}
                     </span>
                     {isSelected && !submitted && !readOnly && (

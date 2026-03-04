@@ -24,71 +24,81 @@ from app.models.task import Task
 CARD_MOTIVATION_TYPES = [
     {
         "id": "bug",
-        "label": "🐛 Bug Fix",
+        "label": "Bug Fix",
         "value": "bug",
+        "icon": "bug",
         "description": "Corrigir um problema ou erro existente",
         "ai_focus": "Reprodução, ambiente, comportamento esperado vs atual"
     },
     {
         "id": "feature",
-        "label": "✨ New Feature",
+        "label": "New Feature",
         "value": "feature",
+        "icon": "sparkles",
         "description": "Adicionar uma nova funcionalidade",
         "ai_focus": "User story, critérios de aceitação, integrações"
     },
     {
         "id": "bugfix",
-        "label": "🔧 Bug Fix Refactoring",
+        "label": "Bug Fix Refactoring",
         "value": "bugfix",
+        "icon": "wrench",
         "description": "Corrigir e refatorar código problemático",
         "ai_focus": "Reprodução, refactoring scope, comportamento preservado"
     },
     {
         "id": "design",
-        "label": "🎨 Design/Architecture",
+        "label": "Design/Architecture",
         "value": "design",
+        "icon": "blocks",
         "description": "Melhorar design ou arquitetura",
         "ai_focus": "Problemas atuais, padrões desejados, documentação"
     },
     {
         "id": "documentation",
-        "label": "📚 Documentation",
+        "label": "Documentation",
         "value": "documentation",
+        "icon": "document",
         "description": "Criar ou melhorar documentação",
         "ai_focus": "Escopo, estrutura, público-alvo"
     },
     {
         "id": "enhancement",
-        "label": "⚡ Enhancement",
+        "label": "Enhancement",
         "value": "enhancement",
+        "icon": "bolt",
         "description": "Melhorar uma funcionalidade existente",
         "ai_focus": "Funcionalidade atual, limitações, melhoria desejada"
     },
     {
         "id": "refactor",
-        "label": "♻️ Refactoring",
+        "label": "Refactoring",
         "value": "refactor",
+        "icon": "puzzle",
         "description": "Melhorar estrutura de código sem alterar funcionalidade",
         "ai_focus": "Código atual, problemas, objetivo final"
     },
     {
         "id": "testing",
-        "label": "✅ Testing/QA",
+        "label": "Testing/QA",
         "value": "testing",
+        "icon": "checkCircle",
         "description": "Adicionar testes ou melhorar cobertura",
         "ai_focus": "Cobertura atual, gaps, estratégia de teste"
     },
     {
         "id": "optimization",
-        "label": "⚙️ Optimization",
+        "label": "Optimization",
         "value": "optimization",
+        "icon": "cog",
         "description": "Otimizar performance ou recursos",
         "ai_focus": "Gargalos atuais, métricas alvo, impacto"
     },
     {
         "id": "security",
-        "label": "🔒 Security",
+        "label": "Security",
         "value": "security",
+        "icon": "lock",
         "description": "Melhorias de segurança",
         "ai_focus": "Vulnerabilidades, ameaças, mitigações"
     }
@@ -143,7 +153,7 @@ def get_card_focused_fixed_question(
 
         return {
             "role": "assistant",
-            "content": f"❓ Pergunta 1: Qual é a motivação/tipo deste card?{parent_context}\n\nSelecione o tipo de trabalho:",
+            "content": f"Pergunta 1: Qual é a motivação/tipo deste card?{parent_context}\n\nSelecione o tipo de trabalho:",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-card-focused",
             "question_type": "single_choice",
@@ -158,7 +168,7 @@ def get_card_focused_fixed_question(
     elif question_number == 2:
         return {
             "role": "assistant",
-            "content": "📝 Pergunta 2: Qual é o título desta demanda?\n\nDigite um título claro e descritivo.",
+            "content": "Pergunta 2: Qual é o título desta demanda?\n\nDigite um título claro e descritivo.",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-card-focused",
             "question_type": "text",
@@ -170,7 +180,7 @@ def get_card_focused_fixed_question(
     elif question_number == 3:
         return {
             "role": "assistant",
-            "content": "📋 Pergunta 3: Descreva brevemente a demanda.\n\nForneça detalhes sobre o que precisa ser feito e qual problema resolve.",
+            "content": "Pergunta 3: Descreva brevemente a demanda.\n\nForneça detalhes sobre o que precisa ser feito e qual problema resolve.",
             "timestamp": datetime.utcnow().isoformat(),
             "model": "system/fixed-question-card-focused",
             "question_type": "text",
