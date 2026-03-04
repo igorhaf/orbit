@@ -20,7 +20,7 @@ async def activate_item_async(
     item_type: ItemType
 ):
     """
-    Background task to activate a suggested item (Epic, Story, Task, Subtask).
+    Background task to activate a suggested item (Epic, Story, Task).
 
     PROMPT #108 - Background queue for prompt executions
     PROMPT #211 - Cascade ancestor activation: when activating a child item,
@@ -66,8 +66,6 @@ async def activate_item_async(
                 await context_service.activate_suggested_story(story_id=ancestor.id)
             elif ancestor.item_type == ItemType.TASK:
                 await context_service.activate_suggested_task(task_id=ancestor.id)
-            elif ancestor.item_type == ItemType.SUBTASK:
-                await context_service.activate_suggested_subtask(subtask_id=ancestor.id)
 
         # Now activate the target item
         target_progress = 10.0 + (len(unactivated_ancestors) * progress_per_step)
@@ -75,7 +73,6 @@ async def activate_item_async(
             ItemType.EPIC: "Gerando conteúdo do epic...",
             ItemType.STORY: "Gerando conteúdo da story...",
             ItemType.TASK: "Gerando conteúdo da tarefa...",
-            ItemType.SUBTASK: "Gerando conteúdo da subtarefa...",
         }
         start_msg = item_type_messages.get(item_type, "Processando...")
 
@@ -87,8 +84,6 @@ async def activate_item_async(
             result = await context_service.activate_suggested_story(story_id=task_id)
         elif item_type == ItemType.TASK:
             result = await context_service.activate_suggested_task(task_id=task_id)
-        elif item_type == ItemType.SUBTASK:
-            result = await context_service.activate_suggested_subtask(subtask_id=task_id)
         else:
             result = await context_service.activate_suggested_epic(epic_id=task_id)
 

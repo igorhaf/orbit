@@ -44,7 +44,6 @@ data:
 
   # Tipo de Item → Orçamento de tokens
   type_budgets:
-    subtask: 1500
     task: 2500
     bug: 2000
     story: 4000

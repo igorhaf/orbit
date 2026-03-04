@@ -170,7 +170,6 @@ export const knowledgeApi = {
           epic?: number;
           story?: number;
           task?: number;
-          subtask?: number;
         };
         project_id: string | null;
       };

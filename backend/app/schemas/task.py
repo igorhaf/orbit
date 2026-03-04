@@ -30,7 +30,7 @@ class TaskBase(BaseModel):
     description: Optional[str] = Field(None, description="Task description")
 
     # Classification & Hierarchy
-    item_type: ItemType = Field(default=ItemType.TASK, description="Item type (Epic, Story, Task, Subtask, Bug)")
+    item_type: ItemType = Field(default=ItemType.TASK, description="Item type (Epic, Story, Task, Bug)")
     parent_id: Optional[UUID] = Field(None, description="Parent task ID (for hierarchy)")
 
     # Planning

@@ -7,9 +7,7 @@
  * Displays task with:
  * - Title, description, status, priority
  * - Acceptance criteria
- * - AI-suggested subtasks (expandable)
  * - "Create Sub-Interview" button
- * - "Accept Subtasks" button
  * - "Approve" / "Reject" buttons for suggested epics (PROMPT #94)
  */
 
@@ -22,9 +20,9 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { useNotification } from '@/hooks';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { tasksApi } from '@/lib/api';
-import { Task, SubtaskSuggestion, ItemType, PriorityLevel } from '@/lib/types';
+import { Task, ItemType, PriorityLevel } from '@/lib/types';
 import { SimilarityBadge } from '@/components/kanban/SimilarityBadge'; // PROMPT #95
-import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconAlert, IconCheckCircle, IconCpu } from '@/components/icons';
+import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconAlert, IconCheckCircle } from '@/components/icons';
 
 interface TaskCardProps {
   task: Task;
@@ -88,8 +86,6 @@ const getItemTypeIcon = (type: ItemType): React.ReactNode => {
       return <IconBook className="w-5 h-5" />;
     case ItemType.TASK:
       return <IconCheck className="w-5 h-5" />;
-    case ItemType.SUBTASK:
-      return <IconCircle className="w-5 h-5" />;
     case ItemType.BUG:
       return <IconBug className="w-5 h-5" />;
     default:
@@ -101,20 +97,16 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
   const router = useRouter();
   const { showError, showSuccess, NotificationComponent } = useNotification();
   const { addJob, activeJobs } = useNotifications(); // PROMPT #128 - Background notifications
-  const [showSubtasks, setShowSubtasks] = useState(false);
-  const [acceptingSubtasks, setAcceptingSubtasks] = useState(false);
   const [creatingInterview, setCreatingInterview] = useState(false);
 
   // PROMPT #94 - Activate/Reject suggested epic states
   // PROMPT #173 - activatingEpic now derived from activeJobs for persistence across navigation
-  const activationTypes = ['epic_activation', 'story_activation', 'task_activation', 'subtask_activation'];
+  const activationTypes = ['epic_activation', 'story_activation', 'task_activation'];
   const activatingEpic = activeJobs.some(
     j => activationTypes.includes(j.job_type) && j.task_id === task.id && (j.status === 'pending' || j.status === 'running')
   );
   const [rejectingEpic, setRejectingEpic] = useState(false);
   const [showRejectConfirm, setShowRejectConfirm] = useState(false);
-
-  const hasSuggestions = task.subtask_suggestions && task.subtask_suggestions.length > 0;
 
   // Handle both kanban (item_type) and backlog (item_type) - they use the same field
   // Handle both kanban (status) and backlog (workflow_state) - different fields
@@ -142,41 +134,6 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
     }
   };
 
-  const handleAcceptSubtasks = async () => {
-    if (!task.subtask_suggestions) return;
-
-    setAcceptingSubtasks(true);
-    try {
-      // Create subtasks
-      for (const suggestion of task.subtask_suggestions) {
-        await tasksApi.create({
-          project_id: task.project_id,
-          parent_id: task.id,
-          item_type: ItemType.SUBTASK,
-          title: suggestion.title,
-          description: suggestion.description,
-          story_points: suggestion.story_points,
-          priority: task.priority || PriorityLevel.MEDIUM, // Inherit from parent or default
-          status: 'backlog', // Use status (kanban) instead of workflow_state
-          labels: task.labels || [],
-        });
-      }
-
-      // Clear suggestions from task
-      await tasksApi.update(task.id, { subtask_suggestions: [] });
-
-      console.log('✅ Accepted all subtasks');
-      if (onUpdate) {
-        onUpdate();
-      }
-    } catch (error: any) {
-      console.error('❌ Failed to accept subtasks:', error);
-      showError(`Falha ao aceitar subtarefas: ${error.message}`);
-    } finally {
-      setAcceptingSubtasks(false);
-    }
-  };
-
   // PROMPT #94 - Activate suggested epic
   // PROMPT #102 - Extended to show children generated feedback
   // PROMPT #128 - Registers job in notification system for background tracking
@@ -189,8 +146,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
       // PROMPT #128 - Register job in notification system
       if (result.job_id) {
         const jobType = task.item_type === 'epic' ? 'epic_activation' :
-                        task.item_type === 'story' ? 'story_activation' :
-                        task.item_type === 'task' ? 'task_activation' : 'subtask_activation';
+                        task.item_type === 'story' ? 'story_activation' : 'task_activation';
         addJob(
           result.job_id,
           jobType,
@@ -206,8 +162,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         const childrenCount = result.children_generated || 0;
         if (childrenCount > 0) {
           const childType = task.item_type === 'epic' ? 'stories' :
-                            task.item_type === 'story' ? 'tasks' :
-                            task.item_type === 'task' ? 'subtasks' : 'items';
+                            task.item_type === 'story' ? 'tasks' : 'items';
           console.log(`📝 Generated ${childrenCount} draft ${childType}`);
           showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
         }
@@ -328,112 +283,8 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
           </div>
         )}
 
-        {/* AI-Suggested Subtasks - Hide for suggested items and from_code items */}
-        {hasSuggestions && showInterviewButtons && !isSuggested && !isFromCode && (
-          <div className="border-t pt-4 mt-4">
-            <div className="flex items-center justify-between mb-3">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation(); // PROMPT #84 - Prevent card click
-                  setShowSubtasks(!showSubtasks);
-                }}
-                className="flex items-center gap-2 text-sm font-semibold text-gray-700 hover:text-blue-600 transition-colors"
-              >
-                {showSubtasks ? (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                )}
-                <span className="inline-flex items-center gap-1"><IconCpu className="w-4 h-4" /> Subtarefas Sugeridas pela IA ({task.subtask_suggestions!.length})</span>
-              </button>
-            </div>
-
-            {showSubtasks && (
-              <div className="space-y-3 mb-4">
-                {task.subtask_suggestions!.map((suggestion, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-gray-50 rounded-lg p-3 border border-gray-200"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {idx + 1}. {suggestion.title}
-                        </p>
-                        {suggestion.description && (
-                          <p className="text-xs text-gray-600 mt-1">
-                            {suggestion.description}
-                          </p>
-                        )}
-                      </div>
-                      {suggestion.story_points && (
-                        <Badge className="bg-purple-50 text-purple-700 border-purple-200 text-xs">
-                          {suggestion.story_points} pts
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex gap-3">
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation(); // PROMPT #84 - Prevent card click
-                  handleAcceptSubtasks();
-                }}
-                disabled={acceptingSubtasks}
-                className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
-              >
-                {acceptingSubtasks ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Aceitando...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    <span>Aceitar Todas as Subtarefas</span>
-                  </>
-                )}
-              </Button>
-
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation(); // PROMPT #84 - Prevent card click
-                  handleCreateSubInterview();
-                }}
-                disabled={creatingInterview}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white"
-              >
-                {creatingInterview ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    <span>Criando...</span>
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    <span>Criar Sub-Entrevista</span>
-                  </>
-                )}
-              </Button>
-            </div>
-          </div>
-        )}
-
         {/* Create Sub-Interview button (always available) - Hide for suggested and from_code items */}
-        {!hasSuggestions && showInterviewButtons && !isSuggested && !isFromCode && (
+        {showInterviewButtons && !isSuggested && !isFromCode && (
           <div className="border-t pt-4 mt-4">
             <Button
               onClick={(e) => {

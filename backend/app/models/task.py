@@ -1,6 +1,6 @@
 """
 Task Model
-Represents a task/item in the backlog (Epic, Story, Task, Subtask, Bug)
+Represents a task/item in the backlog (Epic, Story, Task, Bug)
 Extended for JIRA-like functionality with hierarchy, relationships, and AI orchestration
 """
 
@@ -29,7 +29,6 @@ class ItemType(str, enum.Enum):
     EPIC = "epic"
     STORY = "story"
     TASK = "task"
-    SUBTASK = "subtask"
     BUG = "bug"
 
 
@@ -201,14 +200,7 @@ class Task(Base):
     interview_question_ids = Column(JSON, nullable=True, default=list)  # ["q1", "q5", "q7"]
     interview_insights = Column(JSON, nullable=True, default=dict)
 
-    # PROMPT #68 - Dual-Mode Interview System: AI-suggested subtasks
-    subtask_suggestions = Column(
-        JSON,
-        nullable=True,
-        default=list  # [{"title": "...", "description": "...", "story_points": 2}]
-    )
-
-    # Generated Prompt - Atomic prompts for task/subtask execution
+    # Generated Prompt - Atomic prompts for task execution
     # Stores the final assembled prompt generated from all task fields, context, and specs
     generated_prompt = Column(Text, nullable=True)
 
@@ -319,7 +311,7 @@ class Task(Base):
         cascade="all, delete-orphan"
     )
 
-    # PROMPT #68 - Dual-Mode Interview System: Sub-interviews for task exploration
+    # PROMPT #68 - Dual-Mode Interview System: Sub-interviews for exploration
     exploration_interviews = relationship(
         "Interview",
         foreign_keys="Interview.parent_task_id",

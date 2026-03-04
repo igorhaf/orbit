@@ -50,7 +50,7 @@ system_prompt: |
   CONTRATO JSON — Responda APENAS com JSON puro. Sem markdown, sem ```json.
 
   CAMPOS OBRIGATORIOS POR CARD:
-  - title (5-255 chars), item_type (epic|story|task|subtask)
+  - title (5-255 chars), item_type (epic|story|task)
   - parent_title (null p/ epic, titulo EXATO do pai p/ demais)
   - description (min 500 chars, Markdown rico com secoes)
   - generated_prompt (min 500 chars, semantico com Mapa)
@@ -61,7 +61,7 @@ system_prompt: |
 
   REGRAS CRITICAS:
   - cards e ARRAY FLAT. parent_title liga ao pai.
-  - Ordem: epics primeiro, stories, tasks, subtasks
+  - Ordem: epics primeiro, stories, tasks
   - Todos os textos em PORTUGUES. NUNCA gere textos em ingles.
   - Retorne APENAS: {"cards": [...]}
 

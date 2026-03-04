@@ -1,7 +1,7 @@
 """
 Draft generation and batch processing mixin.
 
-Handles generation of suggested epics, draft stories/tasks/subtasks,
+Handles generation of suggested epics, draft stories/tasks,
 incremental epic generation, and cards from memory.
 Extracted from context_generator.py during modularization (PROMPT #249).
 """
@@ -227,13 +227,12 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         """
         PROMPT #127 - Generate draft children for an approved item on-demand.
 
-        Called via "Generate Stories/Tasks/Subtasks" button in the UI.
+        Called via "Generate Stories/Tasks" button in the UI.
         The parent must be an approved (non-draft) item.
 
         Epic -> generates Stories
         Story -> generates Tasks
-        Task -> generates Subtasks
-        Subtask -> no children (leaf node)
+        Task -> leaf node (no children)
 
         Args:
             parent_id: The parent item ID
@@ -254,15 +253,12 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             children = await self._generate_draft_stories(parent, project, count=count)
         elif parent.item_type == ItemType.STORY:
             children = await self._generate_draft_tasks(parent, project, count=count)
-        elif parent.item_type == ItemType.TASK:
-            children = await self._generate_draft_subtasks(parent, project, count=count)
         else:
             raise ValueError(f"Não é possível gerar filhos para item_type={parent.item_type.value}")
 
         child_type = {
             ItemType.EPIC: "stories",
             ItemType.STORY: "tasks",
-            ItemType.TASK: "subtasks",
         }.get(parent.item_type, "items")
 
         logger.info(f"📝 Generated {len(children)} {child_type} for {parent.item_type.value}: {parent.title}")
@@ -743,218 +739,6 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             "Documentar implementação"
         ]
 
-    async def _generate_draft_subtasks(
-        self,
-        task: Task,
-        project: Project,
-        count: int = 5
-    ) -> List[Task]:
-        """
-        PROMPT #257 - Generate subtasks with FULL CONTENT using subtasks_from_task.yaml.
-
-        Args:
-            task: The activated task
-            project: The project with context
-            count: Number of subtasks to generate (default 5)
-
-        Returns:
-            List of created Subtask items with full content
-        """
-        logger.info(f"Generating {count} subtasks with full content for task: {task.title}")
-
-        # Get task semantic map for context
-        task_semantic_map = {}
-        if task.interview_insights:
-            task_semantic_map = task.interview_insights.get("semantic_map", {})
-
-        # Get parent story and grandparent epic for hierarchy context
-        parent_story = None
-        grandparent_epic = None
-        if task.parent_id:
-            parent_story = self.db.query(Task).filter(Task.id == task.parent_id).first()
-            if parent_story and parent_story.parent_id:
-                grandparent_epic = self.db.query(Task).filter(Task.id == parent_story.parent_id).first()
-
-        semantic_map_text = ""
-        if task_semantic_map:
-            semantic_map_text = "\nMAPA SEMÂNTICO DA TASK:\n"
-            semantic_map_text += json.dumps(task_semantic_map, indent=2, ensure_ascii=False)
-
-        # PROMPT #257 - Fetch business rules from RAG
-        business_rules_text = ""
-        try:
-            rag_service = RAGService(self.db)
-            rules = rag_service.get_business_rules(project_id=project.id, top_k=15)
-            if rules:
-                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=4000)
-        except Exception as e:
-            logger.warning(f"Could not fetch business rules for subtasks: {e}")
-
-        try:
-            # PROMPT #257 - Use PromptLoader with subtasks_from_task.yaml
-            from app.prompts.loader import get_prompt_loader
-            loader = get_prompt_loader()
-
-            system_prompt, user_prompt = loader.render(
-                "backlog/subtasks_from_task",
-                {
-                    "task_title": task.title,
-                    "task_description": (task.description or "Não especificada")[:3000],
-                    "task_story_points": task.story_points or 3,
-                    "task_priority": task.priority.value if task.priority else "medium",
-                    "task_acceptance_criteria": "\n".join(task.acceptance_criteria or []),
-                    "semantic_map_text": semantic_map_text,
-                    "business_rules_text": business_rules_text,
-                    "parent_story_title": parent_story.title if parent_story else "",
-                    "parent_epic_title": grandparent_epic.title if grandparent_epic else "",
-                }
-            )
-
-            user_prompt += f"\n\nGere exatamente {count} Subtasks como array JSON."
-
-            orchestrator = AIOrchestrator(self.db)
-            response = await orchestrator.execute(
-                usage_type=self._get_usage_type(),
-                messages=[{"role": "user", "content": user_prompt}],
-                system_prompt=system_prompt,
-                max_tokens=8192,
-                enable_rag=True,
-                project_id=str(project.id)
-            )
-
-            response_content = response.get("content", "")
-            subtasks_data = self._parse_json_response(response_content)
-
-            if not subtasks_data or not isinstance(subtasks_data, list):
-                logger.warning("AI did not return valid subtasks array, falling back to title-only")
-                return self._generate_draft_subtasks_fallback(task)
-
-            subtasks_data = subtasks_data[:count]
-            logger.info(f"Generated {len(subtasks_data)} complete subtask objects for task: {task.title}")
-
-            # Create Subtask objects with full content
-            created_subtasks = []
-            skipped_count = 0
-            rag_svc = RAGService(self.db)
-
-            for i, st_data in enumerate(subtasks_data):
-                try:
-                    if isinstance(st_data, str):
-                        st_data = {"title": st_data}
-
-                    subtask_title = st_data.get("title", f"Subtask {i+1}")
-
-                    # PROMPT #162 - Check for similar cards
-                    similar_cards = rag_svc.find_similar_cards(
-                        title=subtask_title,
-                        description=None,
-                        project_id=task.project_id,
-                        item_type="subtask",
-                        similarity_threshold=0.85,
-                        top_k=1
-                    )
-                    if similar_cards:
-                        logger.info(f"Skipping similar subtask: '{subtask_title[:50]}...'")
-                        skipped_count += 1
-                        continue
-
-                    # PROMPT #233 - PD-3 fix: generated_prompt = semantic, description = human-readable
-                    generated_prompt = st_data.get("description_markdown", st_data.get("description", ""))
-                    st_semantic_map = st_data.get("semantic_map", {})
-                    description = _convert_semantic_to_human(generated_prompt, st_semantic_map) if generated_prompt else ""
-                    acceptance_criteria = st_data.get("acceptance_criteria", [])
-                    story_points = st_data.get("story_points", 1)
-                    priority_str = st_data.get("priority", "medium").lower()
-
-                    priority_map = {
-                        "critical": PriorityLevel.CRITICAL,
-                        "high": PriorityLevel.HIGH,
-                        "medium": PriorityLevel.MEDIUM,
-                        "low": PriorityLevel.LOW,
-                        "trivial": PriorityLevel.TRIVIAL,
-                    }
-                    priority = priority_map.get(priority_str, task.priority or PriorityLevel.MEDIUM)
-
-                    subtask = Task(
-                        project_id=task.project_id,
-                        parent_id=task.id,
-                        item_type=ItemType.SUBTASK,
-                        title=subtask_title,
-                        description=description or f"Subtask derivada da Task: {task.title}",
-                        generated_prompt=generated_prompt,
-                        acceptance_criteria=acceptance_criteria,
-                        story_points=story_points if isinstance(story_points, int) else 1,
-                        priority=priority,
-                        labels=["suggested"],
-                        workflow_state="draft",
-                        status=TaskStatus.BACKLOG,
-                        order=i,
-                        reporter="system",
-                        # PROMPT #233 - PD-2 fix: mark as AI-generated for REGRA #0
-                        description_edited_by='ai',
-                        prompt_edited_by='ai',
-                        interview_insights={
-                            "derived_from_task": str(task.id),
-                            "semantic_map": st_semantic_map,
-                        },
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow()
-                    )
-                    self.db.add(subtask)
-                    created_subtasks.append(subtask)
-                    logger.info(f"Created subtask {i+1}/{len(subtasks_data)}: {subtask_title[:50]}...")
-
-                except Exception as subtask_error:
-                    logger.error(f"Error creating subtask '{st_data}': {str(subtask_error)}")
-
-            if skipped_count > 0:
-                logger.info(f"Skipped {skipped_count} duplicate subtasks")
-
-            self.db.commit()
-            logger.info(f"Created {len(created_subtasks)} subtasks with full content")
-            return created_subtasks
-
-        except Exception as e:
-            logger.error(f"Error generating subtasks: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            return self._generate_draft_subtasks_fallback(task)
-
-    def _generate_draft_subtasks_fallback(self, task: Task) -> List[Task]:
-        """Fallback: create subtasks with basic titles when AI fails."""
-        fallback_titles = self._generate_fallback_subtask_titles(task)
-        created_subtasks = []
-        for i, title in enumerate(fallback_titles[:3]):
-            subtask = Task(
-                project_id=task.project_id,
-                parent_id=task.id,
-                item_type=ItemType.SUBTASK,
-                title=title,
-                description=f"Subtask derivada da Task: {task.title}",
-                generated_prompt="",
-                acceptance_criteria=[],
-                story_points=1,
-                priority=task.priority or PriorityLevel.MEDIUM,
-                labels=["suggested"],
-                workflow_state="draft",
-                status=TaskStatus.BACKLOG,
-                order=i,
-                interview_insights={"derived_from_task": str(task.id)}
-            )
-            self.db.add(subtask)
-            created_subtasks.append(subtask)
-        self.db.commit()
-        return created_subtasks
-
-    def _generate_fallback_subtask_titles(self, task: Task) -> List[str]:
-        """Generate fallback subtask titles when AI fails."""
-        base_title = task.title[:30] if task.title else "item"
-        return [
-            f"Implementar lógica principal de {base_title}",
-            f"Adicionar validações para {base_title}",
-            f"Escrever testes para {base_title}",
-            f"Documentar {base_title}"
-        ]
     async def generate_cards_from_memory(
         self,
         project_id: UUID,

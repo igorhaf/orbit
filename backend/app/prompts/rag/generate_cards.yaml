@@ -3,7 +3,7 @@ version: 1
 category: rag
 description: >
   Prompt estruturado para Claude Code gerar hierarquia completa de cards
-  (Epic -> Story -> Task -> Subtask) a partir das regras de negocio armazenadas no RAG.
+  (Epic -> Story -> Task) a partir das regras de negocio armazenadas no RAG.
 usage_type: prompt_generation
 estimated_tokens: 4000
 tags:
@@ -30,12 +30,10 @@ system_prompt: |
   1. Epic - Modulo macro do sistema (ex: "Autenticacao e Controle de Acesso")
   2. Story - Funcionalidade dentro do epic (ex: "Login com email e senha")
   3. Task - Tarefa tecnica para implementar a story (ex: "Criar endpoint POST /auth/login")
-  4. Subtask - Sub-tarefa atomica (ex: "Validar formato do email")
 
   REGRAS DE GERACAO:
   - Cada Epic deve ter 3-8 Stories
   - Cada Story deve ter 2-5 Tasks
-  - Cada Task deve ter 2-4 Subtasks
   - Titulos devem ser claros e concisos (max 80 caracteres)
   - Descricoes devem referenciar as regras de negocio originais
   - Use a Metodologia de Referencias Semanticas do ORBIT (N1, P1, E1, etc.)
@@ -61,7 +59,7 @@ user_prompt: |
   3. Para cada grupo, crie:
      - 1 Epic representando o modulo
      - Stories para cada funcionalidade principal
-     - Tasks e Subtasks para detalhamento tecnico
+     - Tasks para detalhamento tecnico
   4. Armazene cada card no banco de dados do projeto
   5. Aplique normalize_single_card() em cada card criado
 
@@ -70,4 +68,4 @@ user_prompt: |
   {% endif %}
 
   FORMATO DE RESPOSTA (JSON minimo):
-  {"cards_created": N, "epics": N, "stories": N, "tasks": N, "subtasks": N, "domains": [...]}
+  {"cards_created": N, "epics": N, "stories": N, "tasks": N, "domains": [...]}

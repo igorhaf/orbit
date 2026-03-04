@@ -1065,7 +1065,6 @@ Specification:
         The task includes:
         - Title, description, acceptance criteria
         - Story points, priority, labels
-        - suggested_subtasks (AI suggestions, not created yet)
         - interview_insights (context from interview)
 
         Args:
@@ -1121,7 +1120,6 @@ Generate a SINGLE task with:
 3. Story points (Fibonacci: 1, 2, 3, 5, 8, 13)
 4. Priority (critical/high/medium/low)
 5. Labels (array of tags: backend, frontend, database, bugfix, feature, etc.)
-6. Suggested subtasks (array of optional sub-tasks if task is complex)
 
 Return ONLY valid JSON in this format:
 {{
@@ -1131,10 +1129,6 @@ Return ONLY valid JSON in this format:
   "story_points": 5,
   "priority": "high",
   "labels": ["backend", "{task_type}"],
-  "suggested_subtasks": [
-    {{"title": "Subtask 1", "description": "Details", "story_points": 2}},
-    {{"title": "Subtask 2", "description": "Details", "story_points": 3}}
-  ],
   "interview_insights": {{
     "key_requirements": ["Req 1", "Req 2"],
     "technical_notes": ["Note 1", "Note 2"],
@@ -1199,7 +1193,6 @@ Return ONLY valid JSON in this format:
                     "story_points": task_data.get("story_points"),
                     "priority": task_data.get("priority", "medium"),
                     "labels": task_data.get("labels", []),
-                    "suggested_subtasks": task_data.get("suggested_subtasks", []),
                     "interview_insights": task_data.get("interview_insights", {}),
                     "similarity_score": similarity_score,
                     "interview_id": str(interview.id)
@@ -1222,7 +1215,6 @@ Return ONLY valid JSON in this format:
             story_points=task_data.get("story_points"),
             priority=self._parse_priority(task_data.get("priority", "medium")),
             labels=task_data.get("labels", [task_type]),
-            subtask_suggestions=task_data.get("suggested_subtasks", []),  # PROMPT #68
             interview_insights=task_data.get("interview_insights", {}),
             status="backlog",
             workflow_state="open",
@@ -1233,7 +1225,7 @@ Return ONLY valid JSON in this format:
         self.db.commit()
         self.db.refresh(task)
 
-        logger.info(f"✅ Task created: {task.id} - {task.title} (suggested subtasks: {len(task.subtask_suggestions or [])})")
+        logger.info(f"✅ Task created: {task.id} - {task.title}")
 
         return task
 
@@ -1250,7 +1242,6 @@ Your task:
 3. Include acceptance criteria (measurable conditions)
 4. Suggest story points (Fibonacci scale)
 5. Assign appropriate priority and labels
-6. Optionally suggest subtasks if task is complex (>5 points)
 
 Output ONLY valid JSON. Be concise but complete.
 """

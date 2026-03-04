@@ -406,7 +406,7 @@ class ModelSelectorMixin:
         1. If task has explicit target_ai_model_id, use that (override)
         2. Otherwise, calculate complexity score from:
            - Priority: critical=5, high=4, medium=3, low=2, trivial=1
-           - Item Type: Epic=5, Story=4, Task=3, Subtask=2, Bug=2
+           - Item Type: Epic=5, Story=4, Task=3, Bug=2
            - Story Points: 1-21 → 0-5 scale (Fibonacci normalized)
         3. Total score: 0-15
            - 0-5: Haiku (fast, cheap)
@@ -473,7 +473,6 @@ class ModelSelectorMixin:
             ItemType.EPIC: 5,
             ItemType.STORY: 4,
             ItemType.TASK: 3,
-            ItemType.SUBTASK: 2,
             ItemType.BUG: 2
         }
         score += item_type_scores.get(task.item_type, 3)  # Default to task

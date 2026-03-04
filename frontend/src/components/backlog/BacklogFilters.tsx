@@ -10,7 +10,7 @@
 import React, { useState } from 'react';
 import { Card, CardContent, Button } from '@/components/ui';
 import { ItemType, PriorityLevel, TaskStatus, BacklogFilters as IBacklogFilters } from '@/lib/types';
-import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconEye, IconBan, IconPlay, IconDot, IconClock } from '@/components/icons'; // PROMPT #188
+import { IconTarget, IconBook, IconCheck, IconBug, IconEye, IconBan, IconPlay, IconDot, IconClock } from '@/components/icons'; // PROMPT #188
 
 interface BacklogFiltersProps {
   filters: IBacklogFilters;
@@ -24,7 +24,6 @@ const itemTypeLabels: Record<ItemType, string> = {
   [ItemType.EPIC]: 'Epico',
   [ItemType.STORY]: 'Historia',
   [ItemType.TASK]: 'Tarefa',
-  [ItemType.SUBTASK]: 'Subtarefa',
   [ItemType.BUG]: 'Bug',
 };
 
@@ -143,8 +142,6 @@ export default function BacklogFilters({
         return <IconBook className="w-4 h-4" />;
       case ItemType.TASK:
         return <IconCheck className="w-4 h-4" />;
-      case ItemType.SUBTASK:
-        return <IconCircle className="w-4 h-4" />;
       case ItemType.BUG:
         return <IconBug className="w-4 h-4" />;
     }

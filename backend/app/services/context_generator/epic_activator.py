@@ -39,7 +39,7 @@ class EpicActivatorMixin:
         Takes a suggested item (with labels=["suggested"] and workflow_state="draft")
         and generates full semantic content using the project context.
 
-        Works with any item type (Epic, Story, Task, Subtask).
+        Works with any item type (Epic, Story, Task).
 
         Flow:
         1. Validate item is a suggested item
@@ -204,9 +204,6 @@ class EpicActivatorMixin:
             elif epic.item_type == ItemType.STORY:
                 children = await self._generate_draft_tasks(epic, project, count=8)
                 children_count = len(children)
-            elif epic.item_type == ItemType.TASK:
-                children = await self._generate_draft_subtasks(epic, project, count=5)
-                children_count = len(children)
             logger.info(f"✅ Auto-generated {children_count} draft children for {epic.title}")
         except Exception as e:
             logger.warning(f"⚠️ Auto-generation of children failed (non-blocking): {e}")
@@ -247,7 +244,7 @@ class EpicActivatorMixin:
         """
         PROMPT #94 - Reject (delete) a suggested item.
 
-        Works with any item type (Epic, Story, Task, Subtask).
+        Works with any item type (Epic, Story, Task).
 
         Args:
             epic_id: Item ID to reject (named epic_id for backwards compatibility)

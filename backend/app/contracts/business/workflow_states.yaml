@@ -9,7 +9,7 @@ name: workflow_states
 version: 1
 domain: business
 category: business
-description: Maquinas de estado de workflow para todos os tipos de item (Epic, Story, Task, Bug, Subtask)
+description: Maquinas de estado de workflow para todos os tipos de item (Epic, Story, Task, Bug)
 usage_type: _config
 
 governance:
@@ -57,11 +57,6 @@ data:
       - fixed
       - verified
       - closed
-    subtask:
-      - todo
-      - in_progress
-      - done
-
   transitions:
     epic:
       backlog: [planning]
@@ -90,11 +85,6 @@ data:
       fixed: [in_progress, verified, closed]
       verified: [fixed, closed]
       closed: []
-    subtask:
-      todo: [in_progress]
-      in_progress: [todo, done]
-      done: []
-
 rules:
   constraints:
     - id: C1
@@ -103,7 +93,7 @@ rules:
       condition: "transitions[state] == []"
     - id: C2
       description: "Todos os tipos de item devem ter pelo menos um estado terminal"
-      applies_to: [epic, story, task, bug, subtask]
+      applies_to: [epic, story, task, bug]
       condition: "exists state where transitions[state] == []"
 
 variables:

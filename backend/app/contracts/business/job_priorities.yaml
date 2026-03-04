@@ -58,7 +58,6 @@ data:
     epic_activation: 3
     story_activation: 3
     task_activation: 3
-    subtask_activation: 3
     backlog_generation: 3
     task_generation: 3
     batch_execution: 3

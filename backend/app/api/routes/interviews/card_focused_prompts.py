@@ -5,7 +5,7 @@ Tailored AI prompts for different card motivation types.
 Each prompt focuses on relevant áreas for bug/feature/design/documentation/etc card types.
 Prompts are contextualized with motivation type, parent card (Epic/Story/Task), and previous answers.
 
-PROMPT #132 - Enhanced to include full hierarchy context (Epic → Story → Task → Subtask)
+PROMPT #132 - Enhanced to include full hierarchy context (Epic → Story → Task)
 """
 
 from typing import Optional, List
@@ -19,7 +19,7 @@ def get_card_hierarchy(task: Task, db: Session) -> List[Task]:
     PROMPT #132 - Get full hierarchy chain from current card up to root (Epic).
 
     Returns list ordered from root (Epic) to immediate parent.
-    Example: [Epic, Story, Task] for a Subtask
+    Example: [Epic, Story] for a Task
 
     Args:
         task: Current task to get hierarchy for
@@ -67,7 +67,6 @@ def build_hierarchy_context(hierarchy: List[Task]) -> str:
         "epic": "🎯",
         "story": "📖",
         "task": "✓",
-        "subtask": "◦",
         "bug": "🐛"
     }
 
@@ -194,7 +193,7 @@ def build_card_focused_prompt(
     hierarchy_depth = len(hierarchy) if hierarchy else 0
 
     if hierarchy_depth >= 3:
-        # Subtask with Epic>Story>Task - project gets ~10% (name only)
+        # Deep hierarchy (3+ levels) - project gets ~10% (name only)
         project_context = f"\nPROJETO: {project.name}\n"
     elif hierarchy_depth == 2:
         # Task with Epic>Story - project gets ~30%
@@ -216,7 +215,7 @@ INFORMAÇÕES DO PROJETO:
 {stack_context}
 """
 
-    # PROMPT #132/198 - Proportional hierarchy context (Epic → Story → Task → current)
+    # PROMPT #132/198 - Proportional hierarchy context (Epic → Story → current)
     hierarchy_context = ""
     if hierarchy and len(hierarchy) > 0:
         hierarchy_context = build_hierarchy_context(hierarchy)
@@ -313,11 +312,11 @@ Se o card já possui conteúdo (descrição, critérios de aceitação, etc.), v
 1. ANALISAR o conteúdo existente
 2. IDENTIFICAR gaps ou informações faltantes
 3. SUGERIR melhorias ou complementos específicos
-4. PROPOR subtasks ou divisões do trabalho
+4. PROPOR divisões do trabalho
 
 **Áreas para explorar (baseado no que JÁ EXISTE no card):**
 1. **Validação**: Os critérios de aceitação estão completos? Falta algo?
-2. **Decomposição**: Essa feature pode ser dividida em subtasks menores?
+2. **Decomposição**: Essa feature pode ser dividida em partes menores?
 3. **Edge Cases**: Há casos especiais não cobertos?
 4. **Integrações**: Dependências não mencionadas?
 5. **UI/UX**: Detalhes de interface faltando?
@@ -435,7 +434,7 @@ Você está refinando uma melhoria existente ou coletando informações para uma
 Se o card já possui conteúdo (descrição, critérios de aceitação, etc.), você deve:
 1. ANALISAR o conteúdo existente e identificar gaps
 2. SUGERIR melhorias específicas baseadas no que já está documentado
-3. PROPOR decomposição em subtasks menores se aplicável
+3. PROPOR decomposição em partes menores se aplicável
 4. VALIDAR se os critérios de aceitação cobrem todos os cenários
 
 **Áreas para explorar (baseado no conteúdo existente):**

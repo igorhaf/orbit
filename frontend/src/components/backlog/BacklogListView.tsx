@@ -1,6 +1,6 @@
 /**
  * Backlog List View Component
- * Hierarchical tree view for Epics, Stories, Tasks, Subtasks, and Bugs
+ * Hierarchical tree view for Epics, Stories, Tasks, and Bugs
  * JIRA Transformation - PROMPT #62 - Phase 3
  * PROMPT #128 - Background Job Notifications
  */
@@ -61,8 +61,6 @@ const getItemTypeIcon = (type: ItemType) => {
       return <IconBook className="w-4 h-4" />;
     case ItemType.TASK:
       return <IconCheck className="w-4 h-4" />;
-    case ItemType.SUBTASK:
-      return <IconCircle className="w-4 h-4" />;
     case ItemType.BUG:
       return <IconBug className="w-4 h-4" />;
     default:
@@ -79,8 +77,6 @@ const getItemTypeLabel = (type: ItemType) => {
       return 'Story';
     case ItemType.TASK:
       return 'Task';
-    case ItemType.SUBTASK:
-      return 'Subtask';
     case ItemType.BUG:
       return 'Bug';
     default:
@@ -168,7 +164,7 @@ export default function BacklogListView({
   const [rejectingId, setRejectingId] = useState<string | null>(null);
 
   // Derive activating state from activeJobs (persists across navigation)
-  const activationTypes = ['epic_activation', 'story_activation', 'task_activation', 'subtask_activation'];
+  const activationTypes = ['epic_activation', 'story_activation', 'task_activation'];
   const activatingIds = new Set(
     activeJobs
       .filter(j => activationTypes.includes(j.job_type) && (j.status === 'pending' || j.status === 'running'))
@@ -492,8 +488,7 @@ export default function BacklogListView({
       // PROMPT #128 - Register job in notification system
       if (result.job_id) {
         const jobType = item.item_type === 'epic' ? 'epic_activation' :
-                        item.item_type === 'story' ? 'story_activation' :
-                        item.item_type === 'task' ? 'task_activation' : 'subtask_activation';
+                        item.item_type === 'story' ? 'story_activation' : 'task_activation';
         addJob(
           result.job_id,
           jobType,

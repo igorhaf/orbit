@@ -42,8 +42,7 @@ class JobType(str, enum.Enum):
     # PROMPT #108: Background queue for all prompt executions (except interviews)
     EPIC_ACTIVATION = "epic_activation"            # Activate suggested epic → generate stories
     STORY_ACTIVATION = "story_activation"          # Activate suggested story → generate tasks
-    TASK_ACTIVATION = "task_activation"            # Activate suggested task → generate subtasks
-    SUBTASK_ACTIVATION = "subtask_activation"      # Activate suggested subtask → generate content
+    TASK_ACTIVATION = "task_activation"            # Activate suggested task → generate content
     TASK_EXECUTION = "task_execution"              # Execute single task (code generation)
     BATCH_EXECUTION = "batch_execution"            # Execute multiple tasks in batch
     COMMIT_GENERATION = "commit_generation"        # Generate commit message
@@ -59,7 +58,7 @@ class JobType(str, enum.Enum):
     CARDS_FROM_MEMORY = "cards_from_memory"        # Geração de cards (épicos + regras) a partir do memory scan
 
     # PROMPT #127: On-demand children generation
-    CHILDREN_GENERATION = "children_generation"      # Generate draft children (stories/tasks/subtasks)
+    CHILDREN_GENERATION = "children_generation"      # Generate draft children (stories/tasks)
 
     # PROMPT #121: Full project creation pipeline (scan + context + title)
     PROJECT_PIPELINE = "project_pipeline"
@@ -119,7 +118,6 @@ def _load_job_priorities() -> dict:
             JobType.EPIC_ACTIVATION: JobPriority.LOW,
             JobType.STORY_ACTIVATION: JobPriority.LOW,
             JobType.TASK_ACTIVATION: JobPriority.LOW,
-            JobType.SUBTASK_ACTIVATION: JobPriority.LOW,
             JobType.BACKLOG_GENERATION: JobPriority.LOW,
             JobType.TASK_GENERATION: JobPriority.LOW,
             JobType.BATCH_EXECUTION: JobPriority.LOW,

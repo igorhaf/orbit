@@ -33,7 +33,7 @@ def _load_budget_data():
         return {
             "default_budget": 2500,
             "story_point_budgets": {1: 2000, 2: 2000, 3: 2500, 5: 3000, 8: 4000, 13: 5000, 21: 6000},
-            "type_budgets": {"subtask": 1500, "task": 2500, "bug": 2000, "story": 4000, "epic": 6000},
+            "type_budgets": {"task": 2500, "bug": 2000, "story": 4000, "epic": 6000},
         }
 
 
@@ -62,7 +62,7 @@ class BudgetManager:
 
         Budget calculation:
         - Story Points: 1-3=2000, 5=3000, 8=4000, 13=5000, 21=6000
-        - Item Type: Subtask=1500, Task=2500, Story=4000, Epic=6000, Bug=2000
+        - Item Type: Task=2500, Story=4000, Epic=6000, Bug=2000
         - Uses whichever is higher
 
         Args:
@@ -82,7 +82,7 @@ class BudgetManager:
 
         # Budget from item type
         if task.item_type:
-            type_map = {"subtask": ItemType.SUBTASK, "task": ItemType.TASK, "bug": ItemType.BUG, "story": ItemType.STORY, "epic": ItemType.EPIC}
+            type_map = {"task": ItemType.TASK, "bug": ItemType.BUG, "story": ItemType.STORY, "epic": ItemType.EPIC}
             type_budgets = {type_map[k]: v for k, v in _BUDGET_DATA.get("type_budgets", {}).items() if k in type_map}
             budget = max(budget, type_budgets.get(task.item_type, _BUDGET_DATA.get("default_budget", 2500)))
 
@@ -174,7 +174,7 @@ class BudgetManager:
                 f"Overage: {overage:,} tokens ({overage_pct:.1f}%)\n\n"
                 f"Consider:\n"
                 f"- Simplifying task description\n"
-                f"- Breaking into smaller subtasks\n"
+                f"- Breaking into smaller tasks\n"
                 f"- Increasing token budget if complexity is justified"
             ),
             comment_type=CommentType.SYSTEM,

@@ -1262,9 +1262,9 @@ class DeepPipelineService:
         run_id: UUID,
         progress_cb: Any,
     ) -> Dict:
-        """Generate hierarchical cards: Epics (Opus) → Stories (Opus) → Tasks (Sonnet) → Subtasks (Haiku)."""
+        """Generate hierarchical cards: Epics (Opus) → Stories (Opus) → Tasks (Sonnet)."""
 
-        stats = {"epics": 0, "stories": 0, "tasks": 0, "subtasks": 0, "total_cards": 0}
+        stats = {"epics": 0, "stories": 0, "tasks": 0, "total_cards": 0}
 
         # Phase 4a: Generate epics (batched by domain groups for scalability)
         DOMAIN_BATCH_SIZE = 20
@@ -1402,7 +1402,7 @@ class DeepPipelineService:
             on_item_complete=_on_story_done,
         )
 
-        # Process stories and create Tasks + Subtasks
+        # Process stories and create Tasks
         all_stories = []  # (epic_title, story_data)
         for i, result in enumerate(story_results):
             if isinstance(result, ClaudioPipelineError):
@@ -1509,71 +1509,9 @@ class DeepPipelineService:
             stats["tasks"] += 1
 
         self.db.commit()
-        await progress_cb(4, 70, f"Criadas {stats['tasks']} Tasks. Gerando Subtasks...")
+        await progress_cb(4, 70, f"Criadas {stats['tasks']} Tasks.")
 
-        # Phase 4d: Generate Subtasks per Task (Haiku, parallel 10x)
-        if self._is_phase_enabled("phase_4d"):
-            p4d_ollama = self._ollama_kwargs("phase_4d")
-            subtask_requests = []
-            task_titles_for_subtasks = []
-            for story_title, t in all_tasks:
-                system_prompt, _ = self._load_contract("deep_subtask_decomposition", {
-                    "task_json": json.dumps(t, ensure_ascii=False),
-                    "story_context": story_title,
-                })
-
-                subtask_requests.append({
-                    "model": self._get_model("phase_4d", MODEL_HAIKU),
-                    "system_prompt": system_prompt or "Decompose this task into subtasks. Respond with JSON.",
-                    "user_prompt": f"Task:\n{json.dumps(t, ensure_ascii=False, indent=2)}\n\nContexto da Story: {story_title}",
-                    "max_tokens": self._get_max_tokens("phase_4d", 2000),
-                    **p4d_ollama,
-                })
-                task_titles_for_subtasks.append(t.get("title", ""))
-
-            p4d_model = self._get_model("phase_4d", MODEL_HAIKU)
-            _p4d_done = [0]
-
-            async def _on_subtask_done(index: int, result: Any, total: int):
-                _p4d_done[0] += 1
-                title = task_titles_for_subtasks[index][:80] if index < len(task_titles_for_subtasks) else f"item-{index}"
-                await self._emit_telemetry(
-                    "phase_4d", "subtask_decomposition",
-                    f"Task: {title} → Subtasks",
-                    _p4d_done[0], total, model_name=p4d_model, result=result,
-                )
-
-            subtask_results = await self.claudio.call_batch(
-                subtask_requests, max_concurrency=self._get_concurrency("phase_4d", 10),
-                on_item_complete=_on_subtask_done,
-            )
-
-            for i, result in enumerate(subtask_results):
-                if isinstance(result, ClaudioPipelineError):
-                    continue
-                parsed = self.claudio.extract_json(result.get("text", ""))
-                if parsed and isinstance(parsed, dict):
-                    task_title = task_titles_for_subtasks[i]
-                    parent = task_db_map.get(task_title)
-                    for st in parsed.get("subtasks", []):
-                        subtask = Task(
-                            project_id=project.id,
-                            pipeline_run_id=run_id,
-                            title=st.get("title", "Subtask sem titulo"),
-                            description=st.get("description", ""),
-                            item_type=ItemType.SUBTASK,
-                            status=TaskStatus.BACKLOG,
-                            story_points=st.get("story_points", 1),
-                            parent_id=parent.id if parent else None,
-                            labels=st.get("labels", []),
-                        )
-                        self.db.add(subtask)
-                        stats["subtasks"] += 1
-        else:
-            logger.info("Phase 4d: Subtask generation disabled in profile")
-
-        self.db.commit()
-        stats["total_cards"] = stats["epics"] + stats["stories"] + stats["tasks"] + stats["subtasks"]
+        stats["total_cards"] = stats["epics"] + stats["stories"] + stats["tasks"]
 
         # Store epic generation artifact
         artifact = PipelineArtifact(
@@ -1586,7 +1524,7 @@ class DeepPipelineService:
         self.db.add(artifact)
         self.db.commit()
 
-        logger.info(f"Phase 4: Generated {stats['total_cards']} cards ({stats['epics']}E/{stats['stories']}S/{stats['tasks']}T/{stats['subtasks']}ST)")
+        logger.info(f"Phase 4: Generated {stats['total_cards']} cards ({stats['epics']}E/{stats['stories']}S/{stats['tasks']}T)")
         return stats
 
     # =========================================================================

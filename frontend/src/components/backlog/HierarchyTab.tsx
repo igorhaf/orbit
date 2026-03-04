@@ -81,7 +81,7 @@ export default function HierarchyTab({
             Filhos ({children.length})
           </h3>
           {/* PROMPT #187 - Add child + Generate children buttons */}
-          {!isSuggestedItem && item.item_type !== 'subtask' && (
+          {!isSuggestedItem && (
             <div className="flex items-center gap-2">
               {/* PROMPT #187 - Manual add child button */}
               {childType && (
@@ -120,8 +120,7 @@ export default function HierarchyTab({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                     {item.item_type === 'epic' ? 'Gerar Stories' :
-                     item.item_type === 'story' ? 'Gerar Tasks' :
-                     item.item_type === 'task' ? 'Gerar Subtasks' : 'Gerar'}
+                     item.item_type === 'story' ? 'Gerar Tasks' : 'Gerar'}
                   </>
                 )}
               </Button>

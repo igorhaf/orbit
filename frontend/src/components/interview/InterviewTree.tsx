@@ -35,9 +35,6 @@ const getItemTypeIcon = (type?: ItemType | string): React.ReactNode => {
     case ItemType.TASK:
     case 'task':
       return <IconCheck className="w-5 h-5" />;
-    case ItemType.SUBTASK:
-    case 'subtask':
-      return <IconCircle className="w-5 h-5" />;
     case ItemType.BUG:
     case 'bug':
       return <IconBug className="w-5 h-5" />;

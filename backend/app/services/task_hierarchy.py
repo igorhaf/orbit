@@ -130,8 +130,7 @@ class TaskHierarchyService:
         Rules:
         - Epic can contain: Story, Spike
         - Story can contain: Task, Bug
-        - Task can contain: Subtask
-        - Subtask cannot contain anything
+        - Task is a leaf node (no children)
         - Bug cannot contain anything (standalone)
 
         Args:
@@ -144,8 +143,7 @@ class TaskHierarchyService:
         valid_hierarchies = {
             ItemType.EPIC: [ItemType.STORY],
             ItemType.STORY: [ItemType.TASK, ItemType.BUG],
-            ItemType.TASK: [ItemType.SUBTASK],
-            ItemType.SUBTASK: [],  # Cannot have children
+            ItemType.TASK: [],  # Task is now a leaf node
             ItemType.BUG: [],  # Cannot have children
         }
 
@@ -171,7 +169,7 @@ class TaskHierarchyService:
         """
         Get the full hierarchy path from root to this task
 
-        Example: [Epic] → [Story] → [Task] → [Subtask]
+        Example: [Epic] → [Story] → [Task]
 
         Args:
             task_id: Task ID

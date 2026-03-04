@@ -55,9 +55,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [isAddingComment, setIsAddingComment] = useState(false);
 
   // AI Suggestions state (PROMPT #97)
-  const [acceptingSubtasks, setAcceptingSubtasks] = useState(false);
   const [creatingInterview, setCreatingInterview] = useState(false);
-  const [showSubtaskDetails, setShowSubtaskDetails] = useState<{ [key: number]: boolean }>({});
 
   // PROMPT #87 - Delete confirmation modal state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -65,7 +63,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
 
   // PROMPT #96 - Approve/Reject suggested item state
   // PROMPT #173 - isApproving derived from activeJobs for persistence across navigation
-  const activationTypes = ['epic_activation', 'story_activation', 'task_activation', 'subtask_activation'];
+  const activationTypes = ['epic_activation', 'story_activation', 'task_activation'];
   const isApproving = activeJobs.some(
     j => activationTypes.includes(j.job_type) && j.task_id === item.id && (j.status === 'pending' || j.status === 'running')
   );
@@ -115,13 +113,11 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const childTypeMap: Record<string, ItemType> = {
     epic: ItemType.STORY,
     story: ItemType.TASK,
-    task: ItemType.SUBTASK,
   };
   const childType = childTypeMap[item.item_type];
   const childTypeLabelMap: Record<string, string> = {
     epic: 'Story',
     story: 'Task',
-    task: 'Subtask',
   };
   const childTypeLabel = childTypeLabelMap[item.item_type];
 
@@ -363,8 +359,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       // PROMPT #128 - Register job in notification system
       if (result.job_id) {
         const jobType = item.item_type === 'epic' ? 'epic_activation' :
-                        item.item_type === 'story' ? 'story_activation' :
-                        item.item_type === 'task' ? 'task_activation' : 'subtask_activation';
+                        item.item_type === 'story' ? 'story_activation' : 'task_activation';
         addJob(
           result.job_id,
           jobType,
@@ -380,8 +375,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         const childrenCount = result.children_generated || 0;
         if (childrenCount > 0) {
           const childType = item.item_type === 'epic' ? 'stories' :
-                            item.item_type === 'story' ? 'tasks' :
-                            item.item_type === 'task' ? 'subtasks' : 'items';
+                            item.item_type === 'story' ? 'tasks' : 'items';
           console.log(`Generated ${childrenCount} draft ${childType}`);
           showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
         }
@@ -452,7 +446,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       const result = await tasksApi.generateChildren(item.id, count);
       if (result.job_id) {
         const childType = item.item_type === 'epic' ? 'stories' :
-                          item.item_type === 'story' ? 'tasks' : 'subtasks';
+                          item.item_type === 'story' ? 'tasks' : 'items';
         addJob(
           result.job_id,
           'children_generation',
@@ -581,8 +575,7 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
 
       if (result.job_id) {
         const jobType = item.item_type === 'epic' ? 'epic_activation' :
-                        item.item_type === 'story' ? 'story_activation' :
-                        item.item_type === 'task' ? 'task_activation' : 'subtask_activation';
+                        item.item_type === 'story' ? 'story_activation' : 'task_activation';
         addJob(
           result.job_id,
           jobType,
@@ -695,42 +688,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     };
   }, [isEditingDescription, editedDescription]);
 
-  // PROMPT #97 - AI Suggestions handlers
-  const handleAcceptSubtasks = async () => {
-    if (!item.subtask_suggestions || item.subtask_suggestions.length === 0) return;
-
-    setAcceptingSubtasks(true);
-    try {
-      // Create subtasks
-      for (const suggestion of item.subtask_suggestions) {
-        await tasksApi.create({
-          project_id: item.project_id,
-          parent_id: item.id,
-          item_type: ItemType.SUBTASK,
-          title: suggestion.title,
-          description: suggestion.description,
-          story_points: suggestion.story_points,
-          priority: item.priority || PriorityLevel.MEDIUM,
-          status: 'backlog',
-          workflow_state: 'open',
-          labels: item.labels || [],
-        });
-      }
-
-      // Clear suggestions from task
-      await tasksApi.update(item.id, { subtask_suggestions: [] });
-
-      console.log('Accepted all subtasks');
-      await fetchItemDetails(); // Refresh to show new children
-      if (onUpdate) onUpdate();
-    } catch (error: any) {
-      console.error('Failed to accept subtasks:', error);
-      showError(`Falha ao aceitar subtasks: ${error.message}`);
-    } finally {
-      setAcceptingSubtasks(false);
-    }
-  };
-
   const handleCreateSubInterview = async () => {
     setCreatingInterview(true);
     try {
@@ -752,7 +709,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       case ItemType.EPIC: return <IconTarget className="w-5 h-5" />;
       case ItemType.STORY: return <IconBook className="w-5 h-5" />;
       case ItemType.TASK: return <IconCheck className="w-5 h-5" />;
-      case ItemType.SUBTASK: return <IconCircle className="w-5 h-5" />;
       case ItemType.BUG: return <IconBug className="w-5 h-5" />;
       default: return <IconCircle className="w-5 h-5" />;
     }

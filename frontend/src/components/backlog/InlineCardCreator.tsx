@@ -22,8 +22,6 @@ const getItemTypeIcon = (type: ItemType) => {
       return <span className="text-blue-600 font-bold text-sm">S</span>;
     case ItemType.TASK:
       return <span className="text-green-600 font-bold text-sm">T</span>;
-    case ItemType.SUBTASK:
-      return <span className="text-gray-600 font-bold text-sm">ST</span>;
     default:
       return <span className="text-gray-400 text-sm">?</span>;
   }
@@ -34,7 +32,6 @@ const getItemTypeLabel = (type: ItemType): string => {
     case ItemType.EPIC: return 'Epic';
     case ItemType.STORY: return 'Story';
     case ItemType.TASK: return 'Task';
-    case ItemType.SUBTASK: return 'Subtask';
     case ItemType.BUG: return 'Bug';
     default: return type;
   }
@@ -45,7 +42,6 @@ const getItemTypeBadgeColor = (type: ItemType): string => {
     case ItemType.EPIC: return 'bg-purple-100 text-purple-700 border-purple-200';
     case ItemType.STORY: return 'bg-blue-100 text-blue-700 border-blue-200';
     case ItemType.TASK: return 'bg-green-100 text-green-700 border-green-200';
-    case ItemType.SUBTASK: return 'bg-gray-100 text-gray-700 border-gray-200';
     default: return 'bg-gray-100 text-gray-700 border-gray-200';
   }
 };

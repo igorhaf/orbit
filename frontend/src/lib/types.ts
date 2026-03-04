@@ -21,7 +21,6 @@ export enum ItemType {
   EPIC = 'epic',
   STORY = 'story',
   TASK = 'task',
-  SUBTASK = 'subtask',
   BUG = 'bug',
 }
 
@@ -192,13 +191,6 @@ export interface ProjectWithRelations extends Project {
 // TASK (JIRA Transformation - Extended)
 // ============================================================================
 
-// PROMPT #68 - Dual-Mode Interview System: Subtask Suggestion
-export interface SubtaskSuggestion {
-  title: string;
-  description: string;
-  story_points?: number;
-}
-
 export interface Task {
   id: string;
   project_id: string;
@@ -241,9 +233,6 @@ export interface Task {
   interview_question_ids: number[];
   interview_insights: Record<string, any>;
 
-  // PROMPT #68 - Dual-Mode Interview System: AI-suggested subtasks
-  subtask_suggestions?: SubtaskSuggestion[];
-
   // Meta Prompt Feature - Generated atomic prompt for task execution
   generated_prompt?: string | null;
 
@@ -263,7 +252,6 @@ export interface Task {
     story_points?: number;
     priority?: string;
     acceptance_criteria?: string[];
-    suggested_subtasks?: SubtaskSuggestion[];
     interview_insights?: Record<string, any>;
   } | null;
 
@@ -1080,7 +1068,6 @@ export interface GlobalRagStats {
     epic?: number;
     story?: number;
     task?: number;
-    subtask?: number;
   };
   project_id: string | null;
 }

@@ -2,7 +2,7 @@
 Prompt Context Compressor - PROMPT #232
 
 Pre-processing service that deduplicates and compresses context before
-prompt assembly for card hierarchy generation (Epic → Story → Task → Subtask).
+prompt assembly for card hierarchy generation (Epic → Story → Task).
 
 Eliminates token explosion caused by:
 - Full parent generated_prompt re-injection (NO TRUNCATION pattern)
@@ -148,11 +148,6 @@ class PromptContextCompressor:
             if grandparent_card:
                 parts.append(self._card_summary(grandparent_card, max_prompt_chars=0, label="Epic Avo"))
 
-        elif item_type == "subtask":
-            # Parent is Task: title + AC only
-            parts.append(self._card_summary(parent_card, max_prompt_chars=500, label="Task Pai"))
-            # No grandparent context for subtasks (too deep)
-
         result = "\n\n".join(parts)
         return result[:max_chars]
 
@@ -192,7 +187,6 @@ class PromptContextCompressor:
         """
         Story level: full parent (Epic) semantic map.
         Task level: only Story's NEW identifiers (delta from Epic).
-        Subtask level: only Task's NEW identifiers.
         """
         if item_type == "epic" or parent_card is None:
             return ""
@@ -208,7 +202,7 @@ class PromptContextCompressor:
                 )
             return ""
 
-        # Task or Subtask: compute delta
+        # Task: compute delta
         grandparent_map = self._extract_semantic_map(grandparent_card) if grandparent_card else {}
 
         if parent_map and grandparent_map:
@@ -256,9 +250,9 @@ class PromptContextCompressor:
         max_rules: int = 15,
     ) -> str:
         """
-        Epic: full rules. Story: filtered top-5. Task/Subtask: reference only.
+        Epic: full rules. Story: filtered top-5. Task: reference only.
         """
-        if item_type in ("task", "subtask"):
+        if item_type == "task":
             return "[Regras de negocio foram fornecidas no nível do Epic. Consulte o contexto pai.]"
 
         try:

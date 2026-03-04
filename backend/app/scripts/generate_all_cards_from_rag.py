@@ -3,8 +3,8 @@
 PROMPT #240 - Massive Card Generator from ALL RAG Business Rules
 
 Reads ALL business rules from RAG (6000+), groups them by source directory
-into natural domains, and generates rigid 4-level hierarchy:
-  Epic (domain) > Story (functional area) > Task (group of 3 rules) > Subtask (1 per rule)
+into natural domains, and generates rigid 3-level hierarchy:
+  Epic (domain) > Story (functional area) > Task (group of 3 rules)
 
 Same rigid structure as generate_cards_from_rag.py but covers ALL rules
 by using source_file metadata for automatic domain classification.
@@ -281,8 +281,8 @@ def main():
     logger.info(f"Deleted {deleted.rowcount} existing cards")
     session.commit()
 
-    # ── Step 4: Generate 4-level hierarchy ──
-    counters = {"epic": 0, "story": 0, "task": 0, "subtask": 0}
+    # ── Step 4: Generate 3-level hierarchy ──
+    counters = {"epic": 0, "story": 0, "task": 0}
     total_cards = 0
     batch_size = 500  # Commit every N cards
 
@@ -396,38 +396,6 @@ def main():
                 counters["task"] += 1
                 total_cards += 1
 
-                # ── SUBTASKS (1 per rule) ──
-                for st_idx, rule in enumerate(task_rules):
-                    rule_text = rule if isinstance(rule, str) else str(rule)
-                    st_title = (rule_text[:100] + "...") if len(rule_text) > 100 else rule_text
-                    st_sm = {**task_sm, f"ST{st_idx+1}": st_title[:60]}
-                    st_id = uuid4()
-
-                    insert_card(session, {
-                        "id": st_id,
-                        "project_id": PROJECT_ID,
-                        "parent_id": task_id,
-                        "item_type": "subtask",
-                        "title": st_title,
-                        "description": render_description(st_title, f"Subtarefa de: {task_title[:60]}", [rule_text], "Subtask"),
-                        "generated_prompt": render_prompt(st_title, st_sm, [rule_text], "SUBTASK"),
-                        "acceptance_criteria": [rule_text[:200]],
-                        "story_points": 1,
-                        "priority": "medium",
-                        "status": "backlog",
-                        "order": st_idx,
-                        "labels": ["from_rag"],
-                        "workflow_state": "open",
-                        "reporter": "system",
-                        "description_edited_by": "ai",
-                        "prompt_edited_by": "ai",
-                        "interview_insights": {"semantic_map": st_sm, "derived_from": str(task_id), "source": "rag_business_rules"},
-                        "created_at": now,
-                        "updated_at": now,
-                    })
-                    counters["subtask"] += 1
-                    total_cards += 1
-
             # Commit in batches
             if total_cards % batch_size < RULES_PER_TASK + 2:
                 session.commit()
@@ -445,7 +413,6 @@ def main():
     logger.info(f"Epics:    {counters['epic']}")
     logger.info(f"Stories:  {counters['story']}")
     logger.info(f"Tasks:    {counters['task']}")
-    logger.info(f"Subtasks: {counters['subtask']}")
     logger.info(f"TOTAL:    {total_cards}")
     logger.info(f"Rules covered: {len(all_rules)}")
 

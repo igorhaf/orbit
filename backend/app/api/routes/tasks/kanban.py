@@ -252,7 +252,6 @@ async def get_kanban_board(
             "workflow_state": task.workflow_state,
             "parent_id": task.parent_id,
             "interview_insights": task.interview_insights,
-            "subtask_suggestions": task.subtask_suggestions,
             "pending_modification": task.pending_modification,  # PROMPT #95
             "created_at": task.created_at,
             "updated_at": task.updated_at

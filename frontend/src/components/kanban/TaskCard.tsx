@@ -30,8 +30,6 @@ const getItemTypeDisplay = (type: ItemType | undefined) => {
       return { icon: <IconBook className="w-5 h-5" />, label: 'Historia', color: 'bg-blue-100 text-blue-800 border-blue-200' };
     case ItemType.TASK:
       return { icon: <IconCheck className="w-5 h-5" />, label: 'Tarefa', color: 'bg-gray-100 text-gray-800 border-gray-200' };
-    case ItemType.SUBTASK:
-      return { icon: <IconCircle className="w-5 h-5" />, label: 'Subtarefa', color: 'bg-gray-50 text-gray-700 border-gray-200' };
     case ItemType.BUG:
       return { icon: <IconBug className="w-5 h-5" />, label: 'Bug', color: 'bg-red-100 text-red-800 border-red-200' };
     default:

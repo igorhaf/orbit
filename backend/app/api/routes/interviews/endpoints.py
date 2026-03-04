@@ -55,22 +55,13 @@ from .orchestrator_questions import (
     count_fixed_questions_orchestrator,
     is_fixed_question_complete_orchestrator
 )
-# PROMPT #94 FASE 2 - Subtask-Focused Interview Mode
-from .subtask_focused_questions import (
-    build_subtask_focused_prompt
-)
-# PROMPT #97 - Task/Subtask Orchestrated Interview Modes
+# PROMPT #97 - Task Orchestrated Interview Mode
 from .task_orchestrated_questions import (
     get_task_orchestrated_fixed_question,
     count_fixed_questions_task_orchestrated,
     is_fixed_question_complete_task_orchestrated
 )
-from .subtask_orchestrated_questions import (
-    get_subtask_orchestrated_fixed_question,
-    count_fixed_questions_subtask_orchestrated,
-    is_fixed_question_complete_subtask_orchestrated
-)
-# PROMPT #98 - Card-Focused Interview Mode (Story/Task/Subtask with Motivation Type)
+# PROMPT #98 - Card-Focused Interview Mode (Story/Task with Motivation Type)
 from .card_focused_questions import (
     get_card_focused_fixed_question,
     count_fixed_questions_card_focused,
@@ -166,7 +157,7 @@ async def create_interview(
         )
 
     # PROMPT #97 - Hierarchical Interview Flow
-    # PROMPT #98 - Card-focused mode for Stories/Tasks/Subtasks (not for Epic - Epic has no motivation type)
+    # PROMPT #98 - Card-focused mode for Stories/Tasks (not for Epic - Epic has no motivation type)
     # Determine interview mode based on parent_task_id and use_card_focused flag
     parent_task_id = interview_data.parent_task_id
 
@@ -197,7 +188,7 @@ async def create_interview(
         if interview_data.use_card_focused:
             logger.warning(f"  - Note: use_card_focused=true ignored for first interview")
     else:
-        # HIERARCHICAL INTERVIEW - Story/Task/Subtask creation
+        # HIERARCHICAL INTERVIEW - Story/Task creation
         # Card-focused mode applies here (with motivation types)
         parent_task = db.query(Task).filter(Task.id == parent_task_id).first()
 
@@ -224,10 +215,6 @@ async def create_interview(
                 # Story → Task
                 interview_mode = "task_orchestrated"
                 logger.info(f"  - interview_mode: task_orchestrated (PROMPT #97 - Creates Task)")
-            elif parent_task.item_type == ItemType.TASK:
-                # Task → Subtask
-                interview_mode = "subtask_orchestrated"
-                logger.info(f"  - interview_mode: subtask_orchestrated (PROMPT #97 - Creates Subtask)")
             else:
                 # Fallback for other types
                 interview_mode = "task_orchestrated"
@@ -719,7 +706,6 @@ async def generate_task_direct(
     The task includes:
     - Title, description, acceptance criteria
     - Story points, priority, labels
-    - suggested_subtasks (AI suggestions, not created yet)
     - interview_insights (context from interview)
 
     Returns:
@@ -794,7 +780,7 @@ async def _generate_task_direct_async(
     1. Load interview and project
     2. Call BacklogGeneratorService.generate_task_from_interview_direct()
     3. AI analyzes interview and extracts task
-    4. Create Task record with suggested_subtasks
+    4. Create Task record
     5. Update job status
     """
     from app.services.job_manager import JobManager
@@ -854,7 +840,6 @@ async def _generate_task_direct_async(
             "story_points": task.story_points,
             "priority": task.priority.value if task.priority else None,
             "labels": task.labels or [],
-            "suggested_subtasks_count": len(task.subtask_suggestions or []),
             "created_at": task.created_at.isoformat()
         }
 
@@ -1059,7 +1044,6 @@ async def generate_hierarchy_from_meta_prompt(
     - 1 Epic (entire project)
     - ~10 Stories (features) - AI decides quantity based on complexity
     - ~10 Tasks per Story (with generated_prompt for execution)
-    - 0-10 Subtasks per Task (with generated_prompt)
 
     All items are fully populated with:
     - title, description, acceptance_criteria
@@ -1070,7 +1054,6 @@ async def generate_hierarchy_from_meta_prompt(
     AI analyzes each level hierarchically:
     - Interview → generates Epic + Stories
     - Each Story → generates Tasks
-    - Each Task → generates Subtasks (if needed)
 
     Returns:
         {
@@ -1149,9 +1132,9 @@ async def _generate_hierarchy_from_meta_async(
 
     Steps:
     1. Extract Q1-Q9 + contextual Q&A from interview
-    2. Call AI to generate complete Epic → Stories → Tasks → Subtasks hierarchy
+    2. Call AI to generate complete Epic → Stories → Tasks hierarchy
     3. Create all database records
-    4. Generate atomic prompts (generated_prompt) for each Task/Subtask
+    4. Generate atomic prompts (generated_prompt) for each Task
     5. Update job progress and status
     """
     from app.services.job_manager import JobManager
@@ -1210,9 +1193,8 @@ async def _generate_hierarchy_from_meta_async(
             "epic_title": result["epic"]["title"],
             "stories_created": len(result["stories"]),
             "tasks_created": len(result["tasks"]),
-            "subtasks_created": len(result["subtasks"]),
             "total_items": result["metadata"]["total_items"],
-            "message": f"Hierarquia completa gerada: 1 Epic → {len(result['stories'])} Stories → {len(result['tasks'])} Tasks → {len(result['subtasks'])} Subtasks!"
+            "message": f"Hierarquia completa gerada: 1 Epic → {len(result['stories'])} Stories → {len(result['tasks'])} Tasks!"
         })
 
         logger.info(f"🎉 Meta prompt hierarchy generation completed for job {job_id}")
@@ -1405,14 +1387,11 @@ async def send_message_to_interview(
     Envia mensagem do usuário e obtém resposta da IA.
 
     PROMPT #68 - Dual-Mode Interview System
-    PROMPT #94 FASE 2 - Subtask-Focused Mode Added:
-
     Routes to correct handler based on interview_mode:
     - orchestrator: Q1-Q8 conditional stack → AI contextual questions (first interview)
     - meta_prompt: Q1-Q17 fixed questions → AI contextual questions (first interview alternative)
     - requirements: Q1-Q7 stack → AI business questions (legacy)
     - task_focused: Q1 task type → AI focused questions (existing projects)
-    - subtask_focused: No fixed questions → AI atomic decomposition (new in PROMPT #94)
 
     - **interview_id**: UUID of the interview
     - **message**: User message content

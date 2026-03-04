@@ -8,7 +8,7 @@ name: card_hierarchy
 version: 1
 domain: business
 category: business
-description: Business rules for Epic -> Story -> Task -> Subtask hierarchy
+description: Business rules for Epic -> Story -> Task hierarchy
 usage_type: _config
 
 governance:
@@ -26,7 +26,6 @@ semantic_map:
   N1: "Epic - Top-level feature or initiative"
   N2: "Story - User-focused deliverable within an Epic"
   N3: "Task - Technical work item within a Story"
-  N4: "Subtask - Atomic unit of work within a Task"
 
   # Processes
   P1: "Activation - Transform suggested/draft card to active"
@@ -35,14 +34,13 @@ semantic_map:
 
   # Data
   D1: "CardData - title, description, generated_prompt, semantic_map"
-  D2: "HierarchyLevel - epic (0), story (1), task (2), subtask (3)"
+  D2: "HierarchyLevel - epic (0), story (1), task (2)"
   D3: "WorkflowState - suggested, draft, open, in_progress, done"
 
   # Constraints
   C1: "Epic generates 15-20 Story drafts on activation"
   C2: "Story generates 5-8 Task drafts on activation"
-  C3: "Task generates 3-5 Subtask drafts on activation"
-  C4: "Subtask is leaf node - generates content only"
+  C3: "Task is leaf node - generates content only"
 
   # Acceptance Criteria
   AC1: "Each card level inherits semantic identifiers from parent"
@@ -67,30 +65,25 @@ rules:
       expression: "N3.parent_id != null AND parent.item_type == 'story'"
       severity: error
 
-    - id: V4
-      description: "Subtask must have parent Task"
-      expression: "N4.parent_id != null AND parent.item_type == 'task'"
-      severity: error
-
   constraints:
     - id: C1
-      description: "Hierarchy is strictly 4 levels deep"
-      applies_to: [N1, N2, N3, N4]
-      condition: "max_depth == 4 (epic -> story -> task -> subtask)"
+      description: "Hierarchy is strictly 3 levels deep"
+      applies_to: [N1, N2, N3]
+      condition: "max_depth == 3 (epic -> story -> task)"
 
     - id: C2
       description: "Suggested cards cannot have children"
-      applies_to: [N1, N2, N3, N4]
+      applies_to: [N1, N2, N3]
       condition: "IF workflow_state == 'suggested' THEN cannot generate children"
 
     - id: C3
       description: "Children counts on activation"
-      applies_to: [N1, N2, N3]
-      condition: "Epic -> 15-20 Stories, Story -> 5-8 Tasks, Task -> 3-5 Subtasks"
+      applies_to: [N1, N2]
+      condition: "Epic -> 15-20 Stories, Story -> 5-8 Tasks"
 
     - id: C4
       description: "Semantic identifiers must be inherited"
-      applies_to: [N1, N2, N3, N4]
+      applies_to: [N1, N2, N3]
       condition: "Child.semantic_map includes Parent.semantic_map identifiers"
 
   access_control:
@@ -121,5 +114,4 @@ tags:
   - epic
   - story
   - task
-  - subtask
   - activation

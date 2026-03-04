@@ -41,7 +41,7 @@ def _load_queue_scoring():
         data = get_contract_loader().load_data("business/queue_scoring")
 
         # Map string keys to enums for hierarchy scores
-        _type_map = {"epic": ItemType.EPIC, "story": ItemType.STORY, "task": ItemType.TASK, "subtask": ItemType.SUBTASK, "bug": ItemType.BUG}
+        _type_map = {"epic": ItemType.EPIC, "story": ItemType.STORY, "task": ItemType.TASK, "bug": ItemType.BUG}
         h_scores = {_type_map[k]: v for k, v in data.get("hierarchy_scores", {}).items() if k in _type_map}
 
         # Map string keys to enums for priority scores
@@ -51,7 +51,7 @@ def _load_queue_scoring():
         return h_scores, p_scores, data.get("strategy_weights", {}), data.get("max_age_days", 100), data.get("dependency_penalty_per_dep", 20)
     except Exception as e:
         logger.warning(f"Failed to load queue_scoring contract: {e}")
-        h = {ItemType.EPIC: 100, ItemType.STORY: 75, ItemType.TASK: 50, ItemType.SUBTASK: 25, ItemType.BUG: 60}
+        h = {ItemType.EPIC: 100, ItemType.STORY: 75, ItemType.TASK: 50, ItemType.BUG: 60}
         p = {PriorityLevel.CRITICAL: 100, PriorityLevel.HIGH: 80, PriorityLevel.MEDIUM: 50, PriorityLevel.LOW: 25, PriorityLevel.TRIVIAL: 10}
         w = {
             "balanced": {"hierarchy": 0.35, "priority": 0.30, "age": 0.10, "dependency": 0.25},
@@ -424,7 +424,7 @@ async def auto_sort_queue(
 @router.post("/{project_id}/queue/populate", response_model=PromptQueueResponse)
 async def populate_queue(
     project_id: UUID,
-    include_types: Optional[str] = Query(None, description="Comma-separated item types: epic,story,task,subtask"),
+    include_types: Optional[str] = Query(None, description="Comma-separated item types: epic,story,task"),
     exclude_closed: bool = Query(True, description="Exclude closed/done cards"),
     db: Session = Depends(get_db)
 ):

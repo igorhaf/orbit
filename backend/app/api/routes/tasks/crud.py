@@ -100,12 +100,11 @@ async def create_task(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Task pai {task_data.parent_id} não encontrada"
             )
-        # Validate hierarchy: Epic→Story, Story→Task/Bug, Task→Subtask
+        # Validate hierarchy: Epic→Story, Story→Task/Bug, Task is leaf
         valid_children = {
             ItemType.EPIC: [ItemType.STORY],
             ItemType.STORY: [ItemType.TASK, ItemType.BUG],
-            ItemType.TASK: [ItemType.SUBTASK],
-            ItemType.SUBTASK: [],
+            ItemType.TASK: [],
             ItemType.BUG: [],
         }
         allowed = valid_children.get(parent.item_type, [])

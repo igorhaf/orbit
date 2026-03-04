@@ -163,7 +163,7 @@ export default function InterviewTab({
               <p className="text-sm text-gray-700 font-medium mb-2">Sugest\u00f5es da IA</p>
               <p className="text-xs text-gray-500 mb-4 max-w-sm mx-auto">
                 Inicie uma entrevista do card para obter sugest\u00f5es da IA para melhorar este card,
-                decompor em subtasks ou refinar crit\u00e9rios de aceita\u00e7\u00e3o.
+                decompor em tarefas menores ou refinar crit\u00e9rios de aceita\u00e7\u00e3o.
               </p>
               <Button
                 size="sm"

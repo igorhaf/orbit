@@ -194,7 +194,7 @@ async def get_global_rag_stats(
     Returns detailed breakdown of document types stored in RAG:
     - Total document count
     - Counts by type (card, interview_answer, project_context, business_rule, etc.)
-    - Cards breakdown by item_type (epic, story, task, subtask)
+    - Cards breakdown by item_type (epic, story, task)
 
     This helps verify that all document types are being indexed correctly.
     """

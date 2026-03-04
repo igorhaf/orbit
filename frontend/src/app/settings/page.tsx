@@ -586,7 +586,7 @@ export default function SettingsPage() {
                       onChange={(e) => setQueueSettings({ ...queueSettings, queue_auto_sort_strategy: e.target.value })}
                       options={[
                         { value: 'balanced', label: 'Balanceado (35% hierarquia, 30% prioridade, 25% dependência, 10% idade)' },
-                        { value: 'hierarchy_first', label: 'Hierarquia Primeiro (epics > stories > tasks > subtasks)' },
+                        { value: 'hierarchy_first', label: 'Hierarquia Primeiro (epics > stories > tasks)' },
                         { value: 'priority_first', label: 'Prioridade Primeiro (critico > alto > medio > baixo)' },
                         { value: 'dependency_first', label: 'Dependência Primeiro (resolver dependências primeiro)' },
                         { value: 'age_first', label: 'Idade Primeiro (cards mais antigos primeiro)' },

@@ -22,7 +22,6 @@ const TYPE_ICONS: Record<string, string> = {
   epic: '🎯',
   story: '📖',
   task: '✓',
-  subtask: '◦',
   bug: '🐛',
 };
 

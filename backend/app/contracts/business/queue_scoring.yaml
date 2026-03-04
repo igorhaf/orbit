@@ -34,7 +34,6 @@ data:
     epic: 100
     story: 75
     task: 50
-    subtask: 25
     bug: 60
 
   # Pontuação por nível de prioridade (maior = mais urgente)

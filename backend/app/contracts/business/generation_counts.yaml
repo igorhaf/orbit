@@ -33,7 +33,6 @@ data:
   default_children_count:
     epic: 15       # Epic gera 15-20 Stories
     story: 8       # Story gera 5-8 Tasks
-    task: 5        # Task gera 3-5 Subtasks
 
   # Faixas de geração (para documentação e instruções de prompt)
   children_range:
@@ -43,9 +42,6 @@ data:
     story:
       min: 5
       max: 8
-    task:
-      min: 3
-      max: 5
 
   # Limites de auto-descoberta do Watchdog
   # PROMPT #228 - Increased from 5→10 for faster card coverage
@@ -57,8 +53,8 @@ data:
 rules:
   constraints:
     - id: C1
-      description: "Subtask e no folha - nenhum filho e gerado"
-      applies_to: [subtask]
+      description: "Task e no folha - nenhum filho e gerado"
+      applies_to: [task]
       condition: "children_count == 0"
 
 variables:

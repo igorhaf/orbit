@@ -6,8 +6,7 @@ This service analyzes meta prompt interview responses and automatically generate
 - 1 Epic representing the entire project
 - 3-7 Stories breaking down the Epic
 - 15-50 Tasks distributed across Stories
-- Subtasks for complex Tasks
-- Atomic prompts for each Task/Subtask
+- Atomic prompts for each Task
 """
 
 from typing import Dict, List, Optional
@@ -74,8 +73,7 @@ class MetaPromptProcessor:
         - 1 Epic (project-level goal)
         - 3-7 Stories (feature-level breakdown)
         - 15-50 Tasks (implementation steps)
-        - Subtasks as needed (granular work items)
-        - Atomic prompts for each Task/Subtask
+        - Atomic prompts for each Task
 
         Args:
             interview_id: ID of the completed meta prompt interview
@@ -87,7 +85,6 @@ class MetaPromptProcessor:
                 "epic": {...},
                 "stories": [...],
                 "tasks": [...],
-                "subtasks": [...],
                 "metadata": {
                     "total_items": int,
                     "ai_model": str,
@@ -163,40 +160,25 @@ class MetaPromptProcessor:
                 )
                 tasks_for_story.append(task)
 
-                # 7. Create Subtasks under each Task (if any)
-                for subtask_data in task_data.get("subtasks", []):
-                    subtask = await self._create_subtask(
-                        subtask_data,
-                        task_id=task.id,
-                        project_id=project_id
-                    )
-                    tasks_for_story.append(subtask)  # Track subtasks too
-
             tasks_by_story[story.id] = tasks_for_story
 
-        # 8. Flatten all tasks/subtasks for response
+        # 7. Flatten all tasks for response
         all_tasks = []
         for tasks_list in tasks_by_story.values():
             all_tasks.extend(tasks_list)
 
-        # 9. Count subtasks separately
-        subtasks = [t for t in all_tasks if t.item_type == ItemType.SUBTASK]
-        tasks = [t for t in all_tasks if t.item_type == ItemType.TASK]
-
         logger.info(f"✅ Meta prompt processing complete!")
-        logger.info(f"   Created: 1 Epic, {len(stories)} Stories, {len(tasks)} Tasks, {len(subtasks)} Subtasks")
+        logger.info(f"   Created: 1 Epic, {len(stories)} Stories, {len(all_tasks)} Tasks")
 
         return {
             "epic": self._task_to_dict(epic),
             "stories": [self._task_to_dict(s) for s in stories],
-            "tasks": [self._task_to_dict(t) for t in tasks],
-            "subtasks": [self._task_to_dict(s) for s in subtasks],
+            "tasks": [self._task_to_dict(t) for t in all_tasks],
             "metadata": {
-                "total_items": 1 + len(stories) + len(tasks) + len(subtasks),
+                "total_items": 1 + len(stories) + len(all_tasks),
                 "epic_count": 1,
                 "story_count": len(stories),
-                "task_count": len(tasks),
-                "subtask_count": len(subtasks),
+                "task_count": len(all_tasks),
                 "ai_model": hierarchy_data["metadata"]["ai_model"],
                 "focus_topics": focus_topics,
                 "interview_id": str(interview_id),
@@ -280,8 +262,7 @@ class MetaPromptProcessor:
         - 1 Epic
         - 3-7 Stories
         - Tasks for each Story (3-10 per Story)
-        - Subtasks for complex Tasks
-        - Atomic prompts for each Task/Subtask
+        - Atomic prompts for each Task
         """
         # Build topic focus text
         topic_labels = {
@@ -488,33 +469,6 @@ class MetaPromptProcessor:
 
         logger.info(f"       ✅ Created Task: {task.title}")
         return task
-
-    async def _create_subtask(
-        self,
-        subtask_data: Dict,
-        task_id: UUID,
-        project_id: UUID
-    ) -> Task:
-        """Create Subtask in database with atomic prompt."""
-        subtask = Task(
-            id=uuid4(),
-            project_id=project_id,
-            parent_id=task_id,
-            title=subtask_data["title"],
-            description=subtask_data["description"],
-            item_type=ItemType.SUBTASK,
-            story_points=subtask_data.get("story_points", 2),
-            priority=self._parse_priority(subtask_data.get("priority", "medium")),
-            generated_prompt=subtask_data.get("generated_prompt"),  # Atomic prompt!
-            status=TaskStatus.TODO
-        )
-
-        self.db.add(subtask)
-        self.db.commit()
-        self.db.refresh(subtask)
-
-        logger.info(f"         ✅ Created Subtask: {subtask.title}")
-        return subtask
 
     def _parse_priority(self, priority_str: str) -> PriorityLevel:
         """Parse priority string to enum."""

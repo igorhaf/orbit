@@ -37,20 +37,19 @@ class ContentFormatterMixin:
 
         Ensures all required fields are present and non-empty.
         If critical fields are empty/missing, rebuilds them from available data.
-        Type-aware defaults based on item_type (epic/story/task/subtask).
+        Type-aware defaults based on item_type (epic/story/task).
 
         Required contract:
         - description: non-empty string (human-readable)
         - generated_prompt: non-empty string (semantic markdown for AI)
         - acceptance_criteria: list with at least 1 item
-        - story_points: integer > 0 (skipped for subtask)
+        - story_points: integer > 0
         """
         # PROMPT #175 - Type-aware defaults
         ITEM_DEFAULTS = {
             "epic":    {"min_description": 50, "min_prompt": 50, "default_story_points": 13},
             "story":   {"min_description": 50, "min_prompt": 50, "default_story_points": 8},
             "task":    {"min_description": 30, "min_prompt": 30, "default_story_points": 3},
-            "subtask": {"min_description": 20, "min_prompt": 20, "default_story_points": None},
         }
         defaults = ITEM_DEFAULTS.get(item_type, ITEM_DEFAULTS["epic"])
         MIN_DESCRIPTION_LEN = defaults["min_description"]
@@ -143,14 +142,11 @@ class ContentFormatterMixin:
                         f"Task '{title}' implementada",
                         "Testes unitários adicionados",
                     ],
-                    "subtask": [
-                        f"Subtask '{title}' concluída",
-                    ],
                 }
                 acceptance_criteria = fallback_criteria.get(item_type, fallback_criteria["epic"])
                 logger.info(f"  Restructured: fallback acceptance_criteria generated for {item_type}")
 
-        # --- Validate story_points (skip for subtask) ---
+        # --- Validate story_points ---
         if default_story_points is not None:
             if not story_points or not isinstance(story_points, (int, float)) or story_points <= 0:
                 issues.append(f"story_points invalid ({story_points})")

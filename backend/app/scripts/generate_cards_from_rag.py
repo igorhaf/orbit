@@ -2,7 +2,7 @@
 """
 Card Hierarchy Generator from RAG Business Rules
 
-Generates a complete card hierarchy (Epics → Stories → Tasks → Subtasks)
+Generates a complete card hierarchy (Epics → Stories → Tasks)
 from business rules stored in the RAG system. Uses ONLY data already in RAG,
 no AI model calls.
 
@@ -106,7 +106,6 @@ def make_card(
         "comments": json.dumps([]),
         "depends_on": json.dumps([]),
         "status_history": json.dumps([]),
-        "subtask_suggestions": json.dumps([]),
         "interview_question_ids": json.dumps([]),
         "generation_context": json.dumps({}),
         "created_at": NOW,
@@ -240,7 +239,7 @@ HIERARCHY = [
     },
     {
         "title": "Entrevista de Contexto e Geracao de Backlog",
-        "context": "Sistema de entrevista com IA para captura de contexto do projeto e geracao hierarquica de itens de trabalho (Epicos, Stories, Tasks, Subtasks).",
+        "context": "Sistema de entrevista com IA para captura de contexto do projeto e geracao hierarquica de itens de trabalho (Epicos, Stories, Tasks).",
         "priority": "critical",
         "story_points": 21,
         "semantic_map": {
@@ -273,19 +272,17 @@ HIERARCHY = [
             },
             {
                 "title": "Geracao Hierarquica de Cards",
-                "context": "Geracao em cascata: Epic aprovado gera Stories, Story aprovada gera Tasks, Task aprovada gera Subtasks.",
+                "context": "Geracao em cascata: Epic aprovado gera Stories, Story aprovada gera Tasks.",
                 "rules": [
                     "Epic aprovado gera 15-20 Stories draft",
                     "Story aprovada gera 5-8 Tasks draft",
-                    "Task aprovada gera 3-5 Subtasks draft",
-                    "Subtask e nivel folha (sem filhos)",
+                    "Task e nivel folha (sem filhos)",
                     "Cada card tem: titulo, descricao, prompt, criterios, story points",
                     "REGRA #0: dados humanos nunca sobrescritos por IA",
                 ],
                 "tasks": [
                     {"title": "Geracao de Stories a partir de Epic", "rules": ["15-20 stories por epic", "Herdar semantic map do pai", "Labels: suggested, workflow: draft"]},
                     {"title": "Geracao de Tasks a partir de Story", "rules": ["5-8 tasks por story", "Herdar contexto hierarquico", "Story points: 1-8"]},
-                    {"title": "Geracao de Subtasks a partir de Task", "rules": ["3-5 subtasks por task", "Nivel folha, sem filhos", "Prompt atomico de implementacao"]},
                     {"title": "Ativacao de cards sugeridos", "rules": ["Remover label 'suggested'", "Alterar workflow_state para 'open'", "Gerar conteudo completo via IA"]},
                 ]
             },
@@ -617,7 +614,7 @@ def insert_card(db, card: dict):
             status, "column", "order", labels, workflow_state, reporter,
             description_edited_by, prompt_edited_by, interview_insights,
             components, comments, depends_on, status_history,
-            subtask_suggestions, interview_question_ids, generation_context,
+            interview_question_ids, generation_context,
             created_at, updated_at
         ) VALUES (
             :id, :project_id, :parent_id, :item_type, :title, :description,
@@ -625,7 +622,7 @@ def insert_card(db, card: dict):
             :status, :column, :order, :labels, :workflow_state, :reporter,
             :description_edited_by, :prompt_edited_by, :interview_insights,
             :components, :comments, :depends_on, :status_history,
-            :subtask_suggestions, :interview_question_ids, :generation_context,
+            :interview_question_ids, :generation_context,
             :created_at, :updated_at
         )
     """)
@@ -643,7 +640,6 @@ def main():
         total_epics = 0
         total_stories = 0
         total_tasks = 0
-        total_subtasks = 0
 
         for epic_idx, epic_def in enumerate(HIERARCHY):
             # Create EPIC
@@ -713,28 +709,7 @@ def main():
                     insert_card(db, task)
                     total_tasks += 1
 
-                    # Create SUBTASKS (1 per rule)
-                    for st_idx, rule in enumerate(task_def["rules"]):
-                        st_sm = {**task_sm, f"ST{st_idx+1}": rule}
-                        subtask = make_card(
-                            project_id=PROJECT_ID,
-                            parent_id=task["id"],
-                            item_type="subtask",
-                            title=rule,
-                            description=render_description(rule, f"Subtarefa de: {task_def['title']}", [rule], "Subtask"),
-                            generated_prompt=render_prompt(rule, st_sm, [rule], "SUBTASK"),
-                            acceptance_criteria=[{"text": rule, "completed": False}],
-                            story_points=1,
-                            priority="medium",
-                            order=st_idx,
-                            labels=epic_def["labels"],
-                            semantic_map=st_sm,
-                            derived_from=task["id"],
-                        )
-                        insert_card(db, subtask)
-                        total_subtasks += 1
-
-                logger.info(f"    {len(story_def.get('tasks', []))} tasks + subtasks")
+                logger.info(f"    {len(story_def.get('tasks', []))} tasks")
 
         db.commit()
 
@@ -744,8 +719,7 @@ def main():
         logger.info(f"Epics:    {total_epics}")
         logger.info(f"Stories:  {total_stories}")
         logger.info(f"Tasks:    {total_tasks}")
-        logger.info(f"Subtasks: {total_subtasks}")
-        logger.info(f"TOTAL:    {total_epics + total_stories + total_tasks + total_subtasks}")
+        logger.info(f"TOTAL:    {total_epics + total_stories + total_tasks}")
 
     except Exception as e:
         db.rollback()

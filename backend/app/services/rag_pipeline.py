@@ -856,7 +856,7 @@ class RagPipelineService:
     #
     # Two-pass approach:
     #   Pass 1 (Epics): Compact summary of ALL rules → generate Epics only
-    #   Pass 2 (Details): One batch per entity group → Stories/Tasks/Subtasks
+    #   Pass 2 (Details): One batch per entity group → Stories/Tasks
     # =========================================================================
 
     PHASE3_BATCH_MAX_RULES = 80
@@ -877,7 +877,7 @@ class RagPipelineService:
         "- NUNCA copie um para o outro. Devem ser COMPLETAMENTE DIFERENTES.\n\n"
         "CONTRATO JSON — Responda APENAS com JSON puro. Sem markdown, sem ```json.\n\n"
         "CAMPOS OBRIGATORIOS POR CARD:\n"
-        "- title (5-255 chars), item_type (epic|story|task|subtask)\n"
+        "- title (5-255 chars), item_type (epic|story|task)\n"
         "- parent_title (null p/ epic, titulo EXATO do pai p/ demais)\n"
         "- description (min 200 chars, humano legivel)\n"
         "- generated_prompt (min 300 chars, semantico com Mapa)\n"
@@ -887,7 +887,7 @@ class RagPipelineService:
         "- components (array), type, entity, depends_on_titles (array)\n\n"
         "REGRAS CRITICAS:\n"
         "- cards e ARRAY FLAT. parent_title liga ao pai.\n"
-        "- Ordem: epics primeiro, stories, tasks, subtasks\n"
+        "- Ordem: epics primeiro, stories, tasks\n"
         "- Todos os textos em PORTUGUES. NUNCA gere textos em ingles.\n"
         "- Retorne APENAS: {\"cards\": [...]}"
     )
@@ -927,14 +927,13 @@ class RagPipelineService:
         "NAO gere Epics vazios ou com campos minimos. Cada Epic deve ser RICO e COMPLETO."
     )
 
-    # Pass 2: Detail generation (stories/tasks/subtasks) for specific entity
+    # Pass 2: Detail generation (stories/tasks) for specific entity
     PHASE3_DETAIL_PROMPT = (
         PHASE3_COMMON_PROMPT + "\n\n"
-        "TAREFA ESPECIFICA: Gere Stories, Tasks e Subtasks para o(s) Epic(s) indicado(s).\n"
+        "TAREFA ESPECIFICA: Gere Stories e Tasks para o(s) Epic(s) indicado(s).\n"
         "HIERARQUIA OBRIGATORIA:\n"
         "  Cada Epic -> 2-5 Stories\n"
-        "  Cada Story -> 2-5 Tasks\n"
-        "  Cada Task -> 2-4 Subtasks\n\n"
+        "  Cada Story -> 2-5 Tasks\n\n"
         "STORIES = camada CONCEITUAL que expande o Epic:\n"
         "- Cada Story foca num ASPECTO FUNCIONAL do modulo\n"
         "- Description em Markdown (min 300 chars) com secoes:\n"
@@ -943,8 +942,7 @@ class RagPipelineService:
         "TASKS = camada TECNICA que implementa a Story:\n"
         "- Description tecnica (min 200 chars) com: arquivos, logica, validacoes\n"
         "- Referencia arquivos e servicos REAIS do projeto\n\n"
-        "SUBTASKS = acoes atomicas (criar arquivo, escrever teste, configurar rota).\n\n"
-        "Use parent_title EXATO do Epic/Story/Task pai."
+        "Use parent_title EXATO do Epic/Story pai."
     )
 
     async def phase_3_generate_cards(self, project_id: UUID, job_id: UUID,
@@ -953,7 +951,7 @@ class RagPipelineService:
         Phase 3: Generate CARDS via MULTI-BATCH processing.
 
         Pass 1 (0-20% local): Compact summary → Epics only
-        Pass 2 (20-95% local): One batch per entity group → Stories/Tasks/Subtasks
+        Pass 2 (20-95% local): One batch per entity group → Stories/Tasks
         """
         self._set_phase_status(project_id, 3, "running")
         jm = JobManager(self.db)
@@ -1104,7 +1102,7 @@ class RagPipelineService:
         )
 
         # ==========================================
-        # PASS 2: Generate Stories/Tasks/Subtasks per entity batch
+        # PASS 2: Generate Stories/Tasks per entity batch
         # ==========================================
 
         # Build domain batches (same logic as Phase 4)
@@ -1188,7 +1186,7 @@ class RagPipelineService:
                 f'EPICS JA CRIADOS (use parent_title EXATO):\n{epic_context_text}\n\n'
                 f'REGRAS DE NEGOCIO DESTE DOMINIO:\n{batch["text"]}\n\n'
                 f'---\n'
-                f'Gere Stories, Tasks e Subtasks para os Epics acima '
+                f'Gere Stories e Tasks para os Epics acima '
                 f'que se relacionam com este dominio.\n\n'
                 f'STORIES devem ser conceituais — expandem aspectos funcionais do Epic.\n'
                 f'A description de cada Story DEVE ser em Markdown (min 300 chars) com:\n'
@@ -1249,10 +1247,10 @@ class RagPipelineService:
     # PHASE 3 VALIDATORS — strict contract enforcement for cards
     # =====================================================================
 
-    VALID_ITEM_TYPES = frozenset({"epic", "story", "task", "subtask"})
+    VALID_ITEM_TYPES = frozenset({"epic", "story", "task"})
     VALID_FIBONACCI = frozenset({1, 2, 3, 5, 8, 13})
-    TYPE_ORDER = {"epic": 0, "story": 1, "task": 2, "subtask": 3}
-    EXPECTED_PARENT_TYPE = {"story": "epic", "task": "story", "subtask": "task"}
+    TYPE_ORDER = {"epic": 0, "story": 1, "task": 2}
+    EXPECTED_PARENT_TYPE = {"story": "epic", "task": "story"}
 
     @staticmethod
     def _flatten_nested_to_cards(parsed: dict) -> list:
@@ -1270,7 +1268,7 @@ class RagPipelineService:
                 if not isinstance(item, dict):
                     continue
                 card = {k: v for k, v in item.items()
-                        if k not in ("stories", "tasks", "subtasks", "children")}
+                        if k not in ("stories", "tasks", "children")}
                 card["item_type"] = card.get("item_type", item_type)
                 card["parent_title"] = parent_title
                 flat.append(card)
@@ -1278,7 +1276,7 @@ class RagPipelineService:
                 # Recurse into nested children
                 for child_key, child_type in [
                     ("stories", "story"), ("tasks", "task"),
-                    ("subtasks", "subtask"), ("children", None),
+                    ("children", None),
                 ]:
                     if child_key in item:
                         _extract_children(
@@ -1348,7 +1346,7 @@ class RagPipelineService:
                 priority = "medium"  # safe default
             # complexity: validate enum, smart default by item_type
             if complexity not in ("low", "medium", "high"):
-                complexity = {"epic": "high", "story": "medium", "task": "medium", "subtask": "low"}.get(item_type, "medium")
+                complexity = {"epic": "high", "story": "medium", "task": "medium"}.get(item_type, "medium")
             # story_points: coerce to int, validate Fibonacci
             try:
                 story_points = int(story_points) if story_points is not None else 3
@@ -1414,7 +1412,7 @@ class RagPipelineService:
         if not valid_cards:
             return 0
 
-        # ---- Sort by hierarchy level: epics first, then stories, tasks, subtasks ----
+        # ---- Sort by hierarchy level: epics first, then stories, tasks ----
         valid_cards.sort(key=lambda c: self.TYPE_ORDER.get(c["item_type"], 99))
 
         # ---- PASS 2: Create DB records ----

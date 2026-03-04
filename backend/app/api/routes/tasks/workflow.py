@@ -28,7 +28,7 @@ router = APIRouter()
 
 
 class ActivateEpicResponse(BaseModel):
-    """Response model for activating a suggested item (Epic, Story, Task, Subtask)."""
+    """Response model for activating a suggested item (Epic, Story, Task)."""
     id: str
     title: str
     description: Optional[str] = None
@@ -73,7 +73,7 @@ async def get_project_backlog(
     - labels: List of label strings (match ANY)
     - status: List of TaskStatus values
 
-    Returns hierarchical tree structure: Epic → Story → Task → Subtask
+    Returns hierarchical tree structure: Epic → Story → Task
     """
     backlog_service = BacklogViewService(db)
 
@@ -109,8 +109,7 @@ async def create_interview_from_task(
     POST /api/v1/tasks/{task_id}/create-interview
 
     Use cases:
-    - Task has suggested subtasks → explore with AI
-    - Task is complex → break down further
+    - Task is complex → needs clarification
     - Task needs clarification
 
     Returns:
@@ -145,14 +144,6 @@ async def create_interview_from_task(
         criteria_lines = "\n".join([f"  - {criterion}" for criterion in task.acceptance_criteria])
         acceptance_criteria_text = f"\n- Critérios de Aceitação:\n{criteria_lines}"
 
-    subtasks_text = ""
-    if task.subtask_suggestions and len(task.subtask_suggestions) > 0:
-        subtask_lines = "\n".join([
-            f"  {i+1}. {st.get('title', 'Sem título')} ({st.get('story_points', '?')} pts)"
-            for i, st in enumerate(task.subtask_suggestions)
-        ])
-        subtasks_text = f"\n- Subtasks Sugeridas:\n{subtask_lines}"
-
     initial_message = {
         "role": "assistant",
         "content": f"""👋 Vou ajudá-lo a explorar a task "{task.title}".
@@ -162,11 +153,10 @@ CONTEXTO DA TASK:
 - Descrição: {task.description or 'Sem descrição'}
 - Tipo: {task.item_type.value if task.item_type else 'task'}
 - Story Points: {task.story_points or 'Não estimado'}
-- Prioridade: {task.priority.value if task.priority else 'medium'}{acceptance_criteria_text}{subtasks_text}
+- Prioridade: {task.priority.value if task.priority else 'medium'}{acceptance_criteria_text}
 
 O que deseja fazer com esta task?
 - Explorar mais detalhes sobre a implementação?
-- Quebrar em subtasks menores?
 - Esclarecer requisitos?
 - Adicionar mais critérios de aceitação?
 
@@ -184,9 +174,6 @@ Me diga como posso ajudar!""",
     elif task.item_type == ItemType.STORY:
         interview_mode = "task_orchestrated"  # Story → Task
         logger.info(f"Creating Task interview from Story '{task.title}'")
-    elif task.item_type == ItemType.TASK:
-        interview_mode = "subtask_orchestrated"  # Task → Subtask
-        logger.info(f"Creating Subtask interview from Task '{task.title}'")
     else:
         # Fallback for other types (bug, etc)
         interview_mode = "task_orchestrated"
@@ -221,8 +208,7 @@ Me diga como posso ajudar!""",
         "task_context": {
             "task_id": str(task.id),
             "task_title": task.title,
-            "task_type": task.item_type.value if task.item_type else "task",
-            "has_subtask_suggestions": len(task.subtask_suggestions) > 0 if task.subtask_suggestions else False
+            "task_type": task.item_type.value if task.item_type else "task"
         }
     }
 
@@ -238,7 +224,7 @@ async def activate_suggested_item(
     db: Session = Depends(get_db)
 ):
     """
-    Activate a suggested item (Epic, Story, Task, or Subtask) - ASYNC.
+    Activate a suggested item (Epic, Story, or Task) - ASYNC.
 
     PROMPT #94 - Original Activate Suggested Epic
     PROMPT #102 - Extended to support all item types with hierarchical draft generation
@@ -285,7 +271,6 @@ async def activate_suggested_item(
         ItemType.EPIC: JobType.EPIC_ACTIVATION,
         ItemType.STORY: JobType.STORY_ACTIVATION,
         ItemType.TASK: JobType.TASK_ACTIVATION,
-        ItemType.SUBTASK: JobType.SUBTASK_ACTIVATION,
     }
     job_type = job_type_map.get(task.item_type, JobType.EPIC_ACTIVATION)
 
@@ -330,8 +315,6 @@ async def generate_children(
 
     Epic -> generates Stories
     Story -> generates Tasks
-    Task -> generates Subtasks
-
     POST /api/v1/tasks/{task_id}/generate-children
     Body (optional): { "count": 10 }
     """
@@ -345,16 +328,15 @@ async def generate_children(
             detail=f"Item {task_id} não encontrado"
         )
 
-    if task.item_type == ItemType.SUBTASK:
+    if task.item_type == ItemType.TASK:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Subtarefas são nos folha e não podem ter filhos"
+            detail="Tarefas são nós folha e não podem ter filhos"
         )
 
     default_counts = {
         ItemType.EPIC: 10,
         ItemType.STORY: 8,
-        ItemType.TASK: 5,
     }
     count = default_counts.get(task.item_type, 10)
     if body and isinstance(body, dict) and "count" in body:
@@ -363,7 +345,6 @@ async def generate_children(
     child_type = {
         ItemType.EPIC: "stories",
         ItemType.STORY: "tasks",
-        ItemType.TASK: "subtasks",
     }.get(task.item_type, "items")
 
     job_manager = JobManager(db)

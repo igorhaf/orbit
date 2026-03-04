@@ -29,7 +29,6 @@ def _load_workflow_data():
             "story": ItemType.STORY,
             "task": ItemType.TASK,
             "bug": ItemType.BUG,
-            "subtask": ItemType.SUBTASK,
         }
 
         workflows = {}
@@ -55,7 +54,6 @@ def _fallback_workflows():
         ItemType.STORY: ["backlog", "ready", "in_progress", "review", "validation", "done"],
         ItemType.TASK: ["backlog", "todo", "in_progress", "code_review", "testing", "done"],
         ItemType.BUG: ["new", "confirmed", "in_progress", "fixed", "verified", "closed"],
-        ItemType.SUBTASK: ["todo", "in_progress", "done"],
     }
 
 
@@ -65,7 +63,6 @@ def _fallback_transitions():
         ItemType.STORY: {"backlog": ["ready"], "ready": ["backlog", "in_progress"], "in_progress": ["ready", "review"], "review": ["in_progress", "validation", "done"], "validation": ["review", "done"], "done": []},
         ItemType.TASK: {"backlog": ["todo"], "todo": ["backlog", "in_progress"], "in_progress": ["todo", "code_review"], "code_review": ["in_progress", "testing", "done"], "testing": ["code_review", "in_progress", "done"], "done": []},
         ItemType.BUG: {"new": ["confirmed", "closed"], "confirmed": ["new", "in_progress", "closed"], "in_progress": ["confirmed", "fixed"], "fixed": ["in_progress", "verified", "closed"], "verified": ["fixed", "closed"], "closed": []},
-        ItemType.SUBTASK: {"todo": ["in_progress"], "in_progress": ["todo", "done"], "done": []},
     }
 
 
@@ -93,7 +90,7 @@ class WorkflowValidator:
         Validate if a status transition is allowed for an item type
 
         Args:
-            item_type: Type of item (Epic, Story, Task, Bug, Subtask)
+            item_type: Type of item (Epic, Story, Task, Bug)
             from_status: Current status
             to_status: Desired status
 

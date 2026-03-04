@@ -857,13 +857,13 @@ async def _process_cards_from_memory_async(
 async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
     """
     PROMPT #237 - Background task: generate full hierarchy.
-    PROMPT #240 - Rigid 4-level hierarchy: Epic > Story > Task > Subtask.
+    PROMPT #240 - Rigid 3-level hierarchy: Epic > Story > Task.
     PROMPT #245 - Removed suggested epics generation. This flow creates ONLY
                   business rule cards. No AI suggestions.
 
     The hierarchy is built by _classify_rules_hierarchy which uses AI to organize
     existing business rules into Epic > Story (with rules[]) structure.
-    Code then decomposes Stories into Tasks (groups of 3 rules) and Subtasks (1 per rule).
+    Code then decomposes Stories into Tasks (groups of 3 rules).
     All cards are created with workflow_state="open" and status=BACKLOG.
     """
     from app.database import SessionLocal
@@ -927,7 +927,6 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
         total_epics = sum(1 for c in business_rule_cards if c.get("item_type") == "epic")
         total_stories = sum(1 for c in business_rule_cards if c.get("item_type") == "story")
         total_tasks = sum(1 for c in business_rule_cards if c.get("item_type") == "task")
-        total_subtasks = sum(1 for c in business_rule_cards if c.get("item_type") == "subtask")
 
         # PROMPT #245 - Phase 3 (suggested epics) REMOVED from "Gerar Cards".
         # This flow generates ONLY business rule cards from existing code.
@@ -938,7 +937,7 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
         if job:
             job.notification_title = (
                 f"Hierarquia completa - '{project_name}': "
-                f"{total_epics}E {total_stories}S {total_tasks}T {total_subtasks}ST"
+                f"{total_epics}E {total_stories}S {total_tasks}T"
             )
             db.commit()
 
@@ -948,12 +947,11 @@ async def _process_full_hierarchy_async(job_id: UUID, project_id: UUID):
             "total_epics": total_epics,
             "total_stories": total_stories,
             "total_tasks": total_tasks,
-            "total_subtasks": total_subtasks,
         })
         logger.info(
             f"Hierarchy generated for '{project_name}': "
             f"{total_epics} epics, {total_stories} stories, "
-            f"{total_tasks} tasks, {total_subtasks} subtasks = "
+            f"{total_tasks} tasks = "
             f"{len(business_rule_cards)} total cards"
         )
 

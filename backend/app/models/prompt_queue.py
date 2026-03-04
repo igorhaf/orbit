@@ -4,7 +4,7 @@ Orchestration priority queue for prompt/card execution ordering.
 
 Cards/prompts are ordered in a per-project queue that determines
 execution priority. The queue considers:
-- Hierarchy (epics before stories before tasks before subtasks)
+- Hierarchy (epics before stories before tasks)
 - Dependencies (depends_on resolved first)
 - Card priority (critical > high > medium > low > trivial)
 - Age (older cards as tiebreaker)

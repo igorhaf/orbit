@@ -996,7 +996,7 @@ async def _auto_discover_cards(db: Session, project_id: UUID, max_cards: int = 0
     PROMPT #271 - Check for new business rules in RAG and create hierarchical cards.
 
     Creates Epics per domain, with Stories as children. Respects hierarchy:
-    Epic (domain) > Story (rule) > Task (activated later) > Subtask (activated later)
+    Epic (domain) > Story (rule) > Task (activated later)
 
     Uses SimilarityDetector (384-dim embeddings, threshold 0.90) to avoid duplicates.
 
@@ -1183,8 +1183,6 @@ async def _auto_enrich_stub_cards(db: Session, project_id: UUID, max_cards: int 
                 await context_service.activate_suggested_story(card.id)
             elif card.item_type == ItemType.TASK:
                 await context_service.activate_suggested_task(card.id)
-            elif card.item_type == ItemType.SUBTASK:
-                await context_service.activate_suggested_subtask(card.id)
             else:
                 await context_service.activate_suggested_story(card.id)
             enriched += 1
