@@ -27,6 +27,7 @@ export async function request<T>(
   try {
     const response = await fetch(url, {
       ...options,
+      cache: 'no-store',
       headers: {
         'Content-Type': 'application/json',
         ...options.headers,

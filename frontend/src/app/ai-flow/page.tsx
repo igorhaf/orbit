@@ -146,8 +146,12 @@ function AIFlowPageContent() {
 
 
   // Keep ref in sync so loadData callback always sees latest selectedProfile
+  // Also persist to sessionStorage for reload continuity
   useEffect(() => {
     selectedProfileRef.current = selectedProfile;
+    if (selectedProfile && typeof window !== 'undefined') {
+      sessionStorage.setItem('ai-flow-selected-profile', selectedProfile.id);
+    }
   }, [selectedProfile]);
 
   // PROMPT #124 - WebSocket animations
@@ -230,9 +234,11 @@ function AIFlowPageContent() {
           setModelOverrides(savedOverrides && typeof savedOverrides === 'object' ? savedOverrides : {});
         }
       } else if (loadedProfiles.length > 0) {
-        // Auto-select the first active profile, or first profile
-        const active = loadedProfiles.find((p: AIFlowProfile) => p.is_active);
-        const first = active || loadedProfiles[0];
+        // Try to restore previously selected profile from sessionStorage (survives reload)
+        const savedId = typeof window !== 'undefined' ? sessionStorage.getItem('ai-flow-selected-profile') : null;
+        const restored = savedId ? loadedProfiles.find((p: AIFlowProfile) => p.id === savedId) : null;
+        // Fallback: first active profile, or first profile
+        const first = restored || loadedProfiles.find((p: AIFlowProfile) => p.is_active) || loadedProfiles[0];
         setSelectedProfile(first);
         setSelectedUsageType(first.usage_type);
         setWorkingChain(first.chain || []);
@@ -353,7 +359,7 @@ function AIFlowPageContent() {
   );
 
   useEffect(() => {
-    const savedPositions = currentChain?.node_positions;
+    const savedPositions = selectedProfile?.node_positions || currentChain?.node_positions;
     const { nodes: n, edges: e } = buildFlowFromChain(
       workingChainModels,
       savedPositions,
@@ -366,7 +372,7 @@ function AIFlowPageContent() {
     );
     setNodes(n);
     setEdges(e);
-  }, [workingChainModels, handleRemoveFromChain, handleRemoveUtilityNode, setNodes, setEdges, currentChain?.node_positions, metricsMap, nodeAnimations, workingUtilityNodes, modelOverrides]);
+  }, [workingChainModels, handleRemoveFromChain, handleRemoveUtilityNode, setNodes, setEdges, selectedProfile?.node_positions, currentChain?.node_positions, metricsMap, nodeAnimations, workingUtilityNodes, modelOverrides]);
 
   // Edge reconnection handlers
   const onReconnectStart = useCallback(() => {
@@ -507,7 +513,7 @@ function AIFlowPageContent() {
         // Save to profile
         const updated = await aiFlowApi.updateProfile(selectedProfile.id, {
           chain: workingChain,
-          utility_nodes: workingUtilityNodes.length > 0 ? workingUtilityNodes : undefined,
+          utility_nodes: workingUtilityNodes,
           node_positions: positionsWithOverrides,
         });
         setSelectedProfile(updated);
