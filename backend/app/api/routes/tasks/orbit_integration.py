@@ -470,7 +470,6 @@ async def generate_semantic_prompt(
     import json
     from app.models.project import Project
     from app.models.wiki_page import WikiPage
-    from app.services.ai_orchestrator import AIOrchestrator
     from app.contracts.loader import ContractLoader
 
     # 1. Fetch card
@@ -569,27 +568,48 @@ async def generate_semantic_prompt(
         )
         user_prompt = "\n".join(f"{k}: {v}" for k, v in variables.items() if v)
 
-    # 7. Call AI
+    # 7. Call AI via Ollama (always available, no external dependencies)
+    prompt_text = None
+    ai_model = "unknown"
+
     try:
-        orchestrator = AIOrchestrator(db)
-        response = await orchestrator.execute(
-            usage_type="prompt_generation",
-            messages=[{"role": "user", "content": user_prompt}],
-            system_prompt=system_prompt,
-            max_tokens=4000,
+        import httpx
+        import os
+        ollama_host = os.getenv("OLLAMA_HOST", "http://172.27.144.1:11434")
+        ollama_model = "qwen3:14b"
+
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+            resp = await client.post(
+                f"{ollama_host}/api/chat",
+                json={
+                    "model": ollama_model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "stream": False,
+                    "options": {"num_predict": 4000},
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            prompt_text = data.get("message", {}).get("content", "").strip()
+            ai_model = ollama_model
+    except Exception as e:
+        logger.error(f"Ollama call failed for semantic prompt: {e}", exc_info=True)
+        return SemanticPromptResponse(
+            success=False,
+            message=f"Erro na geracao: {str(e)[:200]}",
         )
 
-        prompt_text = response.get("content", "").strip()
-        if not prompt_text or len(prompt_text) < 100:
-            return SemanticPromptResponse(
-                success=False,
-                message="IA gerou resposta muito curta ou vazia",
-            )
+    if not prompt_text or len(prompt_text) < 100:
+        return SemanticPromptResponse(
+            success=False,
+            message="IA gerou resposta muito curta ou vazia",
+        )
 
-        # Determine which model was used
-        ai_model = response.get("model", "unknown")
-
-        # 8. Save to card (REGRA #0 compliant — we checked above)
+    # 8. Save to card (REGRA #0 compliant — we checked above)
+    try:
         task.generated_prompt = prompt_text
         task.prompt_edited_by = "ai"
         task.created_by_ai_model = ai_model
@@ -608,8 +628,8 @@ async def generate_semantic_prompt(
         )
 
     except Exception as e:
-        logger.error(f"Failed to generate semantic prompt: {e}", exc_info=True)
+        logger.error(f"Failed to save semantic prompt: {e}", exc_info=True)
         return SemanticPromptResponse(
             success=False,
-            message=f"Erro na geracao: {str(e)[:200]}",
+            message=f"Erro ao salvar: {str(e)[:200]}",
         )
