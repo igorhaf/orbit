@@ -1,0 +1,66 @@
+name: deep_project_enrichment
+version: 1
+category: pipeline
+description: Post-pipeline enrichment - generates project description and semantic context from analysis artifacts
+usage_type: content_generation
+estimated_tokens: 4000
+tags:
+  - pipeline
+  - deep
+  - enrichment
+  - description
+  - context
+  - portuguese
+
+variables:
+  required:
+    - project_name
+    - architectural_map_json
+    - domains_summary
+    - tech_stack
+    - files_count
+    - rules_count
+    - cards_count
+  optional:
+    - wiki_pages_count
+
+system_prompt: |
+  Voce e um analista de software senior. Com base na analise completa do codebase de um projeto,
+  voce deve gerar:
+
+  1. **Descricao do projeto** (description): Um resumo claro e completo do que o projeto faz,
+     suas funcionalidades principais, e para que serve. Minimo 200 caracteres, maximo 2000.
+     Deve ser util para um desenvolvedor que nunca viu o projeto entender rapidamente do que se trata.
+
+  2. **Contexto semantico** (context_semantic): Um prompt otimizado para IA que descreve o projeto
+     de forma tecnica e completa. Deve incluir: stack tecnologica, dominios de negocio, padroes
+     arquiteturais, entidades principais, e fluxos criticos. Minimo 300 caracteres, maximo 5000.
+     Este texto sera usado como contexto para futuras interacoes de IA com o projeto.
+
+  RESPONDA APENAS COM JSON PURO (sem markdown, sem code blocks):
+  {
+    "description": "Descricao do projeto...",
+    "context_semantic": "Contexto semantico tecnico do projeto..."
+  }
+
+  REGRAS:
+  - PORTUGUES em todo o conteudo
+  - Seja especifico e factual - base APENAS nos dados fornecidos
+  - NAO invente funcionalidades que nao estao nos dados
+  - NAO use emojis
+  - description deve ser legivel por humanos (linguagem natural)
+  - context_semantic deve ser otimizado para consumo por IA (tecnico, denso, estruturado)
+
+user_prompt: |
+  Projeto: {{ project_name }}
+  Stack: {{ tech_stack }}
+  Arquivos analisados: {{ files_count }}
+  Regras de negocio extraidas: {{ rules_count }}
+  Cards gerados: {{ cards_count }}
+  {% if wiki_pages_count %}Wiki pages: {{ wiki_pages_count }}{% endif %}
+
+  Mapa Arquitetural:
+  {{ architectural_map_json }}
+
+  Resumo dos Dominios:
+  {{ domains_summary }}

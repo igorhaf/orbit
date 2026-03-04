@@ -686,6 +686,15 @@ class DeepPipelineService:
                 await _progress(7, 100, f"Score >= {quality_threshold} - gap filling nao necessario")
             phase_durations["phase_7"] = int((_phase_timer() - t0) * 1000)
 
+            # ── Post-pipeline: Project Enrichment (description + context_semantic) ──
+            await self._enrich_project_fields(
+                project, arch_map, domain_rules, file_inventory,
+                total_rules, card_stats, wiki_stats, _progress,
+            )
+
+            # ── Post-pipeline: Mark cards as DONE (code already exists) ──────
+            await self._mark_cards_as_done(project, run_id, _progress)
+
             # ── Update PipelineRun with final results ────────────────────
             pipeline_run.status = "completed"
             pipeline_run.overall_score = qa_result.get("overall_score", 0)
@@ -2008,6 +2017,156 @@ class DeepPipelineService:
         logger.info(f"Phase 7: Gap filling identified {len(fixed['domains_reprocessed'])} domains, "
                      f"{len(fixed['cards_regenerated'])} cards, {len(fixed['wiki_regenerated'])} wiki pages for review")
         return fixed
+
+    # =========================================================================
+    # POST-PIPELINE: PROJECT ENRICHMENT
+    # =========================================================================
+
+    async def _enrich_project_fields(
+        self,
+        project: Project,
+        arch_map: Dict,
+        domain_rules: Dict[str, Dict],
+        file_inventory: List[Dict],
+        total_rules: int,
+        card_stats: Dict,
+        wiki_stats: Dict,
+        progress_cb: Any,
+    ):
+        """Generate project description and context_semantic from pipeline artifacts.
+
+        Respects REGRA #0: only fills empty fields, never overwrites human data.
+        """
+        # Check which fields need generation
+        needs_description = not (project.description and project.description.strip())
+        needs_semantic = not (project.context_semantic and project.context_semantic.strip())
+
+        if not needs_description and not needs_semantic:
+            logger.info("Post-pipeline: Project already has description and context_semantic — skipping enrichment")
+            return
+
+        await progress_cb(7, 80, "Gerando descricao e contexto semantico do projeto...")
+
+        # Build domains summary for prompt
+        domains_summary = {}
+        for domain, data in domain_rules.items():
+            domains_summary[domain] = {
+                "rule_count": len(data.get("consolidated_rules", [])),
+                "entities": data.get("domain_entities", []),
+                "summary": data.get("domain_summary", ""),
+            }
+
+        system_prompt, _ = self._load_contract("deep_project_enrichment", {
+            "project_name": project.name,
+            "architectural_map_json": json.dumps(arch_map, ensure_ascii=False)[:8000],
+            "domains_summary": json.dumps(domains_summary, ensure_ascii=False)[:4000],
+            "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
+            "files_count": str(len(file_inventory)),
+            "rules_count": str(total_rules),
+            "cards_count": str(card_stats.get("total_cards", 0)),
+            "wiki_pages_count": str(wiki_stats.get("total_pages", 0)),
+        })
+
+        user_prompt = (
+            f"Projeto: {project.name}\n"
+            f"Stack: {json.dumps(project.stack or {})}\n"
+            f"Arquivos analisados: {len(file_inventory)}\n"
+            f"Regras: {total_rules}\n"
+            f"Cards: {card_stats.get('total_cards', 0)}\n\n"
+            f"Mapa Arquitetural:\n{json.dumps(arch_map, ensure_ascii=False)[:8000]}\n\n"
+            f"Dominios:\n{json.dumps(domains_summary, ensure_ascii=False)[:4000]}"
+        )
+
+        # Use the same model as Phase 3 (Sonnet) for enrichment
+        enrich_model = self._get_model("phase_3", MODEL_SONNET)
+
+        try:
+            result = await self.claudio.call(
+                model=enrich_model,
+                system_prompt=system_prompt or (
+                    "Generate a JSON with 'description' and 'context_semantic' for this project. "
+                    "Description: human-readable summary (200-2000 chars). "
+                    "Context_semantic: AI-optimized technical context (300-5000 chars). "
+                    "Portuguese only. JSON only."
+                ),
+                user_prompt=user_prompt,
+                max_tokens=self._get_max_tokens("phase_3", 4000),
+                **self._ollama_kwargs("phase_3"),
+            )
+
+            await self._emit_telemetry(
+                "enrichment", "project_enrichment", "Enriquecimento do projeto",
+                1, 1, model_name=enrich_model, result=result,
+            )
+
+            parsed = self.claudio.extract_json(result.get("text", ""))
+            if not parsed or not isinstance(parsed, dict):
+                logger.warning("Post-pipeline enrichment: failed to parse JSON response")
+                return
+
+            # REGRA #0: Only set empty fields
+            description = str(parsed.get("description", "")).strip()
+            context_semantic = str(parsed.get("context_semantic", "")).strip()
+
+            if needs_description and description and len(description) >= 50:
+                project.description = description[:2000]
+                # Track which AI model generated the description
+                provider = self._provider or "claudio"
+                label = self._model_label(enrich_model)
+                project.description_ai_model = f"{label} ({provider})"
+                logger.info(f"Post-pipeline: Generated description ({len(description)} chars)")
+
+            if needs_semantic and context_semantic and len(context_semantic) >= 100:
+                project.context_semantic = context_semantic[:5000]
+                logger.info(f"Post-pipeline: Generated context_semantic ({len(context_semantic)} chars)")
+
+            self.db.commit()
+            await progress_cb(7, 90, "Descricao e contexto semantico gerados")
+
+        except Exception as e:
+            logger.error(f"Post-pipeline enrichment failed: {e}", exc_info=True)
+            # Non-fatal — pipeline already completed successfully
+
+    # =========================================================================
+    # POST-PIPELINE: MARK CARDS AS DONE
+    # =========================================================================
+
+    async def _mark_cards_as_done(
+        self,
+        project: Project,
+        run_id: UUID,
+        progress_cb: Any,
+    ):
+        """Mark all cards generated by this pipeline run as DONE.
+
+        The deep pipeline analyzes EXISTING code — the features described
+        in the generated cards are already implemented.
+        """
+        await progress_cb(7, 95, "Marcando cards como implementados...")
+
+        try:
+            cards = (
+                self.db.query(Task)
+                .filter(
+                    Task.project_id == project.id,
+                    Task.pipeline_run_id == run_id,
+                    Task.status == TaskStatus.BACKLOG,
+                )
+                .all()
+            )
+
+            count = 0
+            for card in cards:
+                card.status = TaskStatus.DONE
+                count += 1
+
+            self.db.commit()
+            logger.info(f"Post-pipeline: Marked {count} cards as DONE (code already exists)")
+            await progress_cb(7, 98, f"{count} cards marcados como implementados")
+
+        except Exception as e:
+            logger.error(f"Post-pipeline mark cards failed: {e}", exc_info=True)
+            self.db.rollback()
 
     # =========================================================================
     # LOCAL ALTERNATIVES (no AI calls)
