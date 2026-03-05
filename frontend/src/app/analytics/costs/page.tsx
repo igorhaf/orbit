@@ -83,7 +83,7 @@ export default function CostsPage() {
       // Fixed 30-day window for daily trend chart
       const trendEnd = new Date();
       const trendStart = new Date();
-      trendStart.setDate(trendStart.getDate() - 20);
+      trendStart.setDate(trendStart.getDate() - 30);
       const trendParams = { start_date: trendStart.toISOString(), end_date: trendEnd.toISOString() };
 
       const [analyticsData, trend30d, cacheData, execData] = await Promise.all([
@@ -129,7 +129,7 @@ export default function CostsPage() {
     const raw = trendData?.daily_costs || [];
     const byDate = new Map(raw.map((d) => [d.date, d]));
     const days = [];
-    for (let i = 19; i >= 0; i--) {
+    for (let i = 29; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
@@ -346,26 +346,38 @@ export default function CostsPage() {
             {dailyCosts.length > 0 && (
               <Card>
                 <div className="p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Tendencia de Custos Diarios <span className="text-sm font-normal text-gray-400">(ultimos 20 dias)</span></h2>
-                  <div className="flex items-end gap-1" style={{ height: '180px' }}>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Tendencia de Custos Diarios <span className="text-sm font-normal text-gray-400">(ultimos 30 dias)</span></h2>
+                  <div className="flex items-end gap-[3px]" style={{ height: '160px' }}>
                     {dailyCosts.map((day) => {
                       const heightPct = (day.total_cost / maxDailyCost) * 100;
                       return (
-                        <div key={day.date} className="flex-1 flex flex-col items-center justify-end h-full min-w-0">
-                          <div className="w-full flex flex-col items-center justify-end flex-1">
-                            <div
-                              className="w-full max-w-[40px] bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-sm"
-                              style={{ height: `${Math.max(heightPct, 2)}%` }}
-                              title={`${formatShortDate(day.date)}: ${formatCost(day.total_cost)} (${formatNumber(day.execution_count)} exec)`}
-                            />
-                          </div>
-                          <div className="mt-2 text-center">
-                            <div className="text-xs text-gray-500 whitespace-nowrap">{formatShortDate(day.date)}</div>
-                            <div className="text-xs font-medium text-gray-700">{formatCost(day.total_cost)}</div>
+                        <div key={day.date} className="group relative flex-1 flex flex-col items-center justify-end h-full min-w-0">
+                          <div
+                            className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-sm cursor-pointer hover:from-blue-700 hover:to-blue-500 transition-colors"
+                            style={{ height: `${Math.max(heightPct, 2)}%` }}
+                          />
+                          {/* Tooltip */}
+                          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 pointer-events-none">
+                            <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
+                              <div className="font-semibold">{formatShortDate(day.date)}</div>
+                              <div>{formatCost(day.total_cost)}</div>
+                              <div className="text-gray-300">{formatNumber(day.execution_count)} exec</div>
+                            </div>
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
                           </div>
                         </div>
                       );
                     })}
+                  </div>
+                  {/* X-axis labels — show every 5th day */}
+                  <div className="flex gap-[3px] mt-1">
+                    {dailyCosts.map((day, i) => (
+                      <div key={day.date} className="flex-1 text-center">
+                        {i % 5 === 0 && (
+                          <span className="text-[10px] text-gray-400">{formatShortDate(day.date)}</span>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               </Card>
