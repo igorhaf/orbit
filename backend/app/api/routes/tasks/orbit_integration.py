@@ -756,17 +756,32 @@ async def _process_semantic_prompt_async(
         job_manager.update_progress(job_id, 20.0, "Buscando wiki e regras de negócio...")
         wiki_context = ""
         try:
-            wiki_pages = (
+            # Get domain from card's generation_context to prioritize relevant wiki pages
+            card_domain = ""
+            if task.generation_context and isinstance(task.generation_context, dict):
+                card_domain = task.generation_context.get("domain", "")
+
+            all_wiki = (
                 db.query(WikiPage)
                 .filter(WikiPage.project_id == project.id)
                 .order_by(WikiPage.order_index)
-                .limit(5)
                 .all()
             )
-            if wiki_pages:
+            if all_wiki:
+                # Prioritize pages whose slug/title contains card domain or card title keywords
+                keywords = set((card_domain + " " + task.title).lower().split())
+                def _relevance(wp):
+                    text = (wp.slug or "") + " " + (wp.title or "").lower()
+                    return sum(1 for kw in keywords if len(kw) > 3 and kw in text)
+
+                sorted_wiki = sorted(all_wiki, key=_relevance, reverse=True)
                 wiki_parts = []
-                for wp in wiki_pages:
-                    wiki_parts.append(f"### {wp.title}\n{(wp.content or '')[:1500]}")
+                char_budget = 6000
+                for wp in sorted_wiki:
+                    snippet = (wp.content or '')[:1200]
+                    if len("\n\n".join(wiki_parts)) + len(snippet) > char_budget:
+                        break
+                    wiki_parts.append(f"### {wp.title}\n{snippet}")
                     sources["wiki_pages"].append(wp.title)
                 wiki_context = "\n\n".join(wiki_parts)
         except Exception as e:
@@ -801,7 +816,10 @@ async def _process_semantic_prompt_async(
             ) if task.acceptance_criteria else "",
             "parent_title": parent.title if parent else "",
             "parent_prompt": (parent.generated_prompt or "")[:2000] if parent else "",
-            "project_context": (project.context_semantic or "")[:3000],
+            "project_context": "\n\n".join(filter(None, [
+                project.context_human or "",
+                (project.context_semantic or "")[:2000],
+            ]))[:3000],
             "tech_stack": json.dumps(project.stack or {}, ensure_ascii=False),
             "business_rules": rules_text,
             "wiki_context": wiki_context[:4000],

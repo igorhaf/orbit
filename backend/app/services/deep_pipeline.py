@@ -47,24 +47,6 @@ from app.utils.pricing import calculate_cost
 logger = logging.getLogger(__name__)
 
 
-def _build_generated_prompt(title: str, item_type: str, description: str, acceptance_criteria: list) -> str:
-    """Build a structured generated_prompt from card data — no AI call needed."""
-    ac_text = ""
-    if acceptance_criteria:
-        ac_lines = "\n".join(
-            f"- {ac}" if isinstance(ac, str) else f"- {ac.get('criterion', str(ac))}"
-            for ac in acceptance_criteria[:4]
-        )
-        ac_text = f"\n\nACCEPTANCE CRITERIA:\n{ac_lines}"
-    return (
-        f"CONTEXT:\n{item_type.upper()} — {title}\n\n"
-        f"DESCRIPTION:\n{description or 'Sem descrição.'}"
-        f"{ac_text}\n\n"
-        f"OBJECTIVE:\nImplement this {item_type} following the project architecture. "
-        f"Ensure all acceptance criteria are met and changes are tested."
-    )
-
-
 # Redis connection for live pipeline state (optional, best-effort)
 _redis_client = None
 
@@ -1527,22 +1509,17 @@ class DeepPipelineService:
         # Create Epic cards in database
         epic_db_map = {}  # title -> Task object
         for epic in epics:
-            _epic_title = epic.get("title", "Epic sem titulo")
-            _epic_desc = epic.get("description", "")
-            _epic_ac = epic.get("acceptance_criteria", [])
             task = Task(
                 project_id=project.id,
                 pipeline_run_id=run_id,
-                title=_epic_title,
-                description=_epic_desc,
+                title=epic.get("title", "Epic sem titulo"),
+                description=epic.get("description", ""),
                 item_type=ItemType.EPIC,
                 status=TaskStatus.BACKLOG,
                 priority=self._map_priority(epic.get("priority", "medium")),
                 story_points=epic.get("story_points", 13),
                 labels=epic.get("labels", []),
-                acceptance_criteria=_epic_ac,
-                generated_prompt=_build_generated_prompt(_epic_title, "epic", _epic_desc, _epic_ac),
-                prompt_edited_by="ai",
+                acceptance_criteria=epic.get("acceptance_criteria", []),
             )
             self.db.add(task)
             self.db.flush()
@@ -1604,23 +1581,18 @@ class DeepPipelineService:
         story_db_map = {}
         for epic_title, story in all_stories:
             parent = epic_db_map.get(epic_title)
-            _story_title = story.get("title", "Story sem titulo")
-            _story_desc = story.get("description", "")
-            _story_ac = story.get("acceptance_criteria", [])
             task = Task(
                 project_id=project.id,
                 pipeline_run_id=run_id,
-                title=_story_title,
-                description=_story_desc,
+                title=story.get("title", "Story sem titulo"),
+                description=story.get("description", ""),
                 item_type=ItemType.STORY,
                 status=TaskStatus.BACKLOG,
                 priority=self._map_priority(story.get("priority", "medium")),
                 story_points=story.get("story_points", 5),
                 parent_id=parent.id if parent else None,
                 labels=story.get("labels", []),
-                acceptance_criteria=_story_ac,
-                generated_prompt=_build_generated_prompt(_story_title, "story", _story_desc, _story_ac),
-                prompt_edited_by="ai",
+                acceptance_criteria=story.get("acceptance_criteria", []),
             )
             self.db.add(task)
             self.db.flush()
@@ -1682,23 +1654,18 @@ class DeepPipelineService:
         task_db_map = {}
         for story_title, t in all_tasks:
             parent = story_db_map.get(story_title)
-            _task_title = t.get("title", "Task sem titulo")
-            _task_desc = t.get("description", "")
-            _task_ac = t.get("acceptance_criteria", [])
             task = Task(
                 project_id=project.id,
                 pipeline_run_id=run_id,
-                title=_task_title,
-                description=_task_desc,
+                title=t.get("title", "Task sem titulo"),
+                description=t.get("description", ""),
                 item_type=ItemType.TASK,
                 status=TaskStatus.BACKLOG,
                 priority=self._map_priority(t.get("priority", "medium")),
                 story_points=t.get("story_points", 3),
                 parent_id=parent.id if parent else None,
                 labels=t.get("labels", []),
-                acceptance_criteria=_task_ac,
-                generated_prompt=_build_generated_prompt(_task_title, "task", _task_desc, _task_ac),
-                prompt_edited_by="ai",
+                acceptance_criteria=t.get("acceptance_criteria", []),
             )
             self.db.add(task)
             self.db.flush()
