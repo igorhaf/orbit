@@ -106,8 +106,11 @@ const getPriorityColor = (priority: PriorityLevel) => {
 const getStatusBadge = (status: string) => {
   const statusLower = status.toLowerCase();
 
-  if (statusLower === 'done' || statusLower === 'completed') {
-    return <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800 border border-green-200">Concluído</span>;
+  if (statusLower === 'done' || statusLower === 'completed' || statusLower === 'closed') {
+    return <span className="px-2 py-0.5 text-xs rounded-full bg-gray-100 text-gray-600 border border-gray-200">closed</span>;
+  }
+  if (statusLower === 'open') {
+    return <span className="px-2 py-0.5 text-xs rounded-full bg-green-100 text-green-800 border border-green-200">open</span>;
   }
   if (statusLower === 'in_progress' || statusLower === 'in progress') {
     return <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-800 border border-blue-200">Em Progresso</span>;

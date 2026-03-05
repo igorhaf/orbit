@@ -61,8 +61,11 @@ const getStatusBadge = (status: string | undefined) => {
   if (statusLower === 'blocked') {
     return <Badge className="bg-red-100 text-red-800 border-red-300 font-semibold"><span className="inline-flex items-center gap-1"><IconAlert className="w-3 h-3" /> BLOQUEADO</span></Badge>;
   }
-  if (statusLower === 'done' || statusLower === 'completed') {
-    return <Badge className="bg-green-100 text-green-800 border-green-200">Concluído</Badge>;
+  if (statusLower === 'done' || statusLower === 'completed' || statusLower === 'closed') {
+    return <Badge className="bg-gray-100 text-gray-600 border-gray-200">closed</Badge>;
+  }
+  if (statusLower === 'open') {
+    return <Badge className="bg-green-100 text-green-800 border-green-200">open</Badge>;
   }
   if (statusLower === 'in_progress' || statusLower === 'in progress') {
     return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Em Progresso</Badge>;
