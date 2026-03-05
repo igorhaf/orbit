@@ -10,11 +10,11 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AIModelBadge } from '@/components/ui/AIModelBadge';
 import { IconClipboard, IconPencil, IconExport } from '@/components/icons';
 import { BacklogItem } from '@/lib/types';
-import { tasksApi } from '@/lib/api';
+import { tasksApi, jobsApi } from '@/lib/api';
 
 export interface PromptTabProps {
   item: BacklogItem;
@@ -54,8 +54,74 @@ export default function PromptTab({
   const [progressMsg, setProgressMsg] = useState<string | null>(null);
   const [progressPercent, setProgressPercent] = useState<number>(0);
 
+  const pollingRef = useRef(false);
+
   // Use generated prompt from state (fresh generation) or item (persisted)
   const displayPrompt = generatedPrompt || item.generated_prompt;
+
+  // On mount: check if there's an active semantic_prompt job for this task
+  useEffect(() => {
+    let cancelled = false;
+
+    const checkActiveJob = async () => {
+      try {
+        const { jobs } = await jobsApi.list({
+          job_type: 'semantic_prompt',
+          status: 'running',
+          limit: 10,
+        });
+        // Also check pending jobs
+        const { jobs: pendingJobs } = await jobsApi.list({
+          job_type: 'semantic_prompt',
+          status: 'pending',
+          limit: 10,
+        });
+        const allActive = [...jobs, ...pendingJobs];
+        const activeJob = allActive.find(
+          (j) => j.task_id === item.id
+        );
+
+        if (activeJob && !cancelled && !pollingRef.current) {
+          // Resume polling this job
+          pollingRef.current = true;
+          setIsGenerating(true);
+          setProgressMsg(activeJob.progress_message || 'Gerando...');
+          setProgressPercent(activeJob.progress_percent || 0);
+
+          try {
+            const result = await jobsApi.poll(activeJob.id, (percent, message) => {
+              if (!cancelled) {
+                setProgressPercent(percent);
+                setProgressMsg(message);
+              }
+            });
+
+            if (!cancelled && result?.prompt) {
+              setGeneratedPrompt(result.prompt);
+              setSources(result.sources || null);
+              onPromptGenerated?.(result.prompt);
+            }
+          } catch (err: any) {
+            if (!cancelled) {
+              setGenerationError(err.message || 'Job falhou');
+            }
+          } finally {
+            if (!cancelled) {
+              setIsGenerating(false);
+              setProgressMsg(null);
+              setProgressPercent(0);
+            }
+            pollingRef.current = false;
+          }
+        }
+      } catch {
+        // Silently ignore — non-critical check
+      }
+    };
+
+    checkActiveJob();
+    return () => { cancelled = true; };
+  }, [item.id]);
 
   const handleGenerate = async (force = false) => {
     setIsGenerating(true);
