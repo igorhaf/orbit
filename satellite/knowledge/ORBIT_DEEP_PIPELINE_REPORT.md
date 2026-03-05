@@ -509,17 +509,102 @@ Query: "Nomic Embed Text 768-Dimensional Embeddings" rule
 
 ---
 
+## Enriquecimento Semântico — Phase 2
+
+### Novas Wiki Pages (10 páginas para subsistemas não documentados)
+
+| Slug | Título | Subsistema |
+|------|--------|------------|
+| utility-nodes | Utility Nodes no AI Flow | PRE/POST pipeline hooks |
+| error-classification | Classificação de Erros e Fallback | error_classifier.py |
+| rate-limiting | Rate Limiting e Throttling | rate_limiter.py (sliding window) |
+| pipeline-profiles | Pipeline Profiles e Fases | PipelineProfile + PipelineRun |
+| modification-manager | Modification Manager e Task Blocking | modification_manager.py |
+| continuous-rag | RAG Contínuo (Tempo Real) | continuous_rag_service.py |
+| knowledge-graph | Knowledge Graph Builder | knowledge_graph_builder.py |
+| contracts-system | Sistema de Contratos | ContractLoader + /contracts |
+| budget-manager | Budget Manager e Token Budgets | budget_manager.py |
+| console-logger | Console Logger e Telemetria | console_logger.py |
+
+**Wiki total: 24 → 34 páginas** (cobertura de subsistemas aumentada para ~85% das features reais)
+
+### Acceptance Criteria (128/128 cards)
+
+Todos os 128 cards receberam 3-4 critérios de aceitação no formato Given/When/Then:
+
+| Tipo | Cards | ACs por card | Categoria |
+|------|-------|-------------|-----------|
+| Epic | 14 | 4 | completeness, business_rules, rules_enforcement, integration |
+| Story | 27 | 3 | functional, error_handling, domain-specific |
+| Task | 87 | 3 | implementation, regression, domain-specific (api/db/ui/test) |
+
+**Cobertura: 0/128 → 128/128 (100%)**
+
+### Prompts Semânticos (128/128 cards)
+
+Todos os 128 cards receberam um prompt semântico estruturado com:
+- `CONTEXT`: domínio e motivação arquitetural
+- `OBJECTIVE`: o que precisa ser feito
+- `INPUTS`: dados/dependências esperadas
+- `OUTPUTS`: artefatos/resultados esperados
+- `RULES`: regras de negócio aplicáveis
+- `CONSTRAINTS`: restrições técnicas (REGRA #0, AIOrchestrator, etc.)
+
+**Cobertura: 10/128 → 128/128 (100%)**
+
+### Expansão de Descrições
+
+| Tipo | Média Antes | Média Depois | Mínimo Depois |
+|------|-------------|--------------|---------------|
+| Epic | 207 chars | 545 chars | 275 chars |
+| Story | 159 chars | 524 chars | 472 chars |
+| Task | 129 chars | 494 chars | 435 chars |
+
+**Melhoria: 129 → 494 chars médio em Tasks (+283%)**
+
+### RAG Metadata Atualizado
+
+128 RAG docs tipo=card atualizados com:
+- `acceptance_criteria_count`: número de ACs (3-4 por card)
+- `has_semantic_prompt`: true para todos
+- Conteúdo re-indexado com AC summary para melhor busca semântica
+- 128/128 re-embedded (Nomic 768D)
+
+### Validation Phase 2 (14/14 PASS ✅)
+
+| Check | Result |
+|-------|--------|
+| Wiki pages DB | 34/34 |
+| Wiki files FS | 34/34 |
+| Wiki RAG docs | 34/34 |
+| All 10 new slugs | ✅ present |
+| Cards with AC | 128/128 |
+| Cards with semantic prompt | 128/128 |
+| Epic avg desc >= 300 | 545 chars |
+| Story avg desc >= 300 | 524 chars |
+| Task avg desc >= 300 | 494 chars |
+| Total RAG docs | 15,627 |
+| RAG cards with AC metadata | 128/128 |
+| RAG cards with prompt metadata | 128/128 |
+| Business rules total | 54 |
+| Epics with rule links | 14/14 |
+
+---
+
 ## Status: COMPLETED ✅
 
-O ORBIT foi auto-bootstrapped via Deep Pipeline Simulation com sucesso:
-- **15,617 documentos** indexados no RAG (sem duplicatas) — docs + código + regras + cards + wiki
-- **54 regras de negócio** reais extraídas de análise de código em 18 domínios
-- **128 cards** hierárquicos (14 Epics → 27 Stories → 87 Tasks) com domain labels e rule links
-- **14/14 Epics** com regras vinculadas (100%)
-- **5,422 prompt_history docs** com classificação de domínio (90.7%)
-- **24 wiki pages** ricas cobrindo todos os 17 domínios + 7 páginas transversais
-- **Mapa arquitetural** completo com domínios, dependências, e design patterns
-- **Cross-references** entre cards ↔ rules ↔ wiki ↔ código ↔ prompt_history
+O ORBIT foi auto-bootstrapped via Deep Pipeline Simulation com sucesso total:
+- **15,627 documentos** indexados no RAG — docs + código + regras + cards + wiki
+- **54 regras de negócio** reais extraídas de código em 18 domínios
+- **128 cards** hierárquicos (14 Epics → 27 Stories → 87 Tasks)
+- **128/128 cards** com acceptance criteria (3-4 ACs, formato Given/When/Then)
+- **128/128 cards** com prompts semânticos estruturados
+- **14/14 Epics** com regras de negócio vinculadas (100%)
+- **34 wiki pages** — 24 originais + 10 novas para subsistemas avançados
+- **Descrições expandidas** — Tasks: 129 → 494 chars médio (+283%)
+- **5,422 prompt_history docs** classificados por domínio (90.7%)
+- **Mapa arquitetural** completo com 17 domínios, dependências e design patterns
+- **Cross-references** completas: cards ↔ rules ↔ wiki ↔ código ↔ prompt_history ↔ AC
 - **Zero duplicatas** — 213 redundantes removidas na consolidação
 - **Busca semântica cross-type** operacional (rule→code 0.802, rule→card 0.799)
 - **Quality Score** médio de 88.8/100 (todas as fases ≥ 85)
