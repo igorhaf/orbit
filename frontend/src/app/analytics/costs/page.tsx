@@ -55,6 +55,7 @@ const getStatusColor = (status: string) => {
 
 export default function CostsPage() {
   const [analytics, setAnalytics] = useState<CostAnalyticsResponse | null>(null);
+  const [trendData, setTrendData] = useState<CostAnalyticsResponse | null>(null);
   const [cacheStats, setCacheStats] = useState<CacheStatsResponse | null>(null);
   const [executions, setExecutions] = useState<ExecutionWithCost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,8 +80,15 @@ export default function CostsPage() {
         ...(filterProvider ? { provider: filterProvider } : {}),
         ...(filterUsageType ? { usage_type: filterUsageType } : {}),
       };
-      const [analyticsData, cacheData, execData] = await Promise.all([
+      // Fixed 30-day window for daily trend chart
+      const trendEnd = new Date();
+      const trendStart = new Date();
+      trendStart.setDate(trendStart.getDate() - 30);
+      const trendParams = { start_date: trendStart.toISOString(), end_date: trendEnd.toISOString() };
+
+      const [analyticsData, trend30d, cacheData, execData] = await Promise.all([
         analyticsApi.getCostAnalytics(costParams),
+        analyticsApi.getCostAnalytics(trendParams),
         analyticsApi.getCacheStats(),
         analyticsApi.getExecutionsWithCost({
           limit: execLimit,
@@ -89,6 +97,7 @@ export default function CostsPage() {
         }),
       ]);
       setAnalytics(analyticsData);
+      setTrendData(trend30d);
       setCacheStats(cacheData);
       setExecutions(execData);
     } catch (error) {
@@ -115,8 +124,8 @@ export default function CostsPage() {
   const totalWithoutCache = (analytics?.summary.total_cost || 0) + cacheSaved;
   const savingsPercent = totalWithoutCache > 0 ? (cacheSaved / totalWithoutCache) * 100 : 0;
 
-  // Daily costs chart
-  const dailyCosts = analytics?.daily_costs || [];
+  // Daily costs chart — always 30 days
+  const dailyCosts = trendData?.daily_costs || [];
   const maxDailyCost = Math.max(...dailyCosts.map((d) => d.total_cost), 0.0001);
 
   if (loading && !analytics) {
@@ -326,7 +335,7 @@ export default function CostsPage() {
             {dailyCosts.length > 0 && (
               <Card>
                 <div className="p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Tendencia de Custos Diarios</h2>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Tendencia de Custos Diarios <span className="text-sm font-normal text-gray-400">(ultimos 30 dias)</span></h2>
                   <div className="flex items-end gap-1" style={{ height: '180px' }}>
                     {dailyCosts.map((day) => {
                       const heightPct = (day.total_cost / maxDailyCost) * 100;
