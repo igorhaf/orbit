@@ -59,6 +59,22 @@ class TaskBase(BaseModel):
     acceptance_criteria: List[str] = Field(default_factory=list, description="Acceptance criteria")
     generation_context: Dict[str, Any] = Field(default_factory=dict, description="AI generation context")
 
+    @field_validator('labels', 'components', 'interview_question_ids', mode='before')
+    @classmethod
+    def normalize_list_fields(cls, v):
+        """Convert None to empty list for list fields (handles NULL from DB)."""
+        if v is None:
+            return []
+        return v
+
+    @field_validator('interview_insights', 'generation_context', mode='before')
+    @classmethod
+    def normalize_dict_fields(cls, v):
+        """Convert None to empty dict for dict fields (handles NULL from DB)."""
+        if v is None:
+            return {}
+        return v
+
     @field_validator('acceptance_criteria', mode='before')
     @classmethod
     def normalize_acceptance_criteria(cls, v):
