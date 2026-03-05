@@ -333,14 +333,20 @@ class EpicActivatorMixin:
         except Exception as e:
             logger.warning(f"Could not fetch interview answers: {e}")
 
-        # PROMPT #182 - Explicitly fetch business rules from RAG
+        # PROMPT #252 - Fetch RELEVANT business rules using semantic search
         business_rules_context = ""
         try:
             rag_service = RAGService(self.db)
-            rules = rag_service.get_business_rules(project_id=project.id, top_k=20)
+            search_query = f"{epic_title} {(epic_description or '')[:500]}"
+            rules = rag_service.get_business_rules(
+                project_id=project.id,
+                query=search_query,
+                top_k=50,
+                similarity_threshold=0.3
+            )
             if rules:
-                business_rules_context = rag_service.format_business_rules_for_prompt(rules, max_chars=6000)
-                logger.info(f"📋 Injected {len(rules)} business rules into epic content generation")
+                business_rules_context = rag_service.format_business_rules_for_prompt(rules, max_chars=10000)
+                logger.info(f"Injected {len(rules)} relevant business rules for epic: {epic_title[:40]}")
         except Exception as e:
             logger.warning(f"Could not fetch business rules for epic: {e}")
 

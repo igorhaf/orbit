@@ -301,13 +301,21 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             semantic_map_text = "\nMAPA SEMÂNTICO DO EPIC:\n"
             semantic_map_text += json.dumps(epic_semantic_map, indent=2, ensure_ascii=False)
 
-        # PROMPT #257 - Fetch business rules from RAG for context injection
+        # PROMPT #252 - Fetch RELEVANT business rules from RAG using semantic search
         business_rules_text = ""
         try:
             rag_service = RAGService(self.db)
-            rules = rag_service.get_business_rules(project_id=project.id, top_k=20)
+            # Use epic title + description as semantic query to get RELEVANT rules
+            search_query = f"{epic.title} {(epic.description or '')[:500]}"
+            rules = rag_service.get_business_rules(
+                project_id=project.id,
+                query=search_query,
+                top_k=50,
+                similarity_threshold=0.3
+            )
             if rules:
-                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=6000)
+                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=10000)
+                logger.info(f"Injected {len(rules)} relevant business rules for epic: {epic.title[:40]}")
         except Exception as e:
             logger.warning(f"Could not fetch business rules for stories: {e}")
 
@@ -455,7 +463,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         project: Project,
         count: int = 15
     ) -> List[Task]:
-        """Fallback: create stories with basic titles when AI fails."""
+        """Fallback: create stories with contextual titles when AI fails."""
         fallback_titles = self._generate_fallback_story_titles(epic)
         created_stories = []
         for i, title in enumerate(fallback_titles[:min(5, count)]):
@@ -464,7 +472,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                 parent_id=epic.id,
                 item_type=ItemType.STORY,
                 title=title,
-                description=f"Story derivada do Epic: {epic.title}",
+                description=f"Story derivada do Epic **{epic.title}**. {(epic.description or '')[:300]}",
                 generated_prompt="",
                 acceptance_criteria=[],
                 story_points=5,
@@ -482,25 +490,45 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         return created_stories
 
     def _generate_fallback_story_titles(self, epic: Task) -> List[str]:
-        """Generate fallback story titles when AI fails."""
+        """Generate fallback story titles based on epic context.
+
+        PROMPT #252 - Uses epic description to extract meaningful story titles
+        instead of generic CRUD templates."""
         base_title = epic.title.replace("Epic: ", "").replace("Módulo: ", "")
-        return [
-            f"Como usuário, eu quero configurar {base_title}, para personalizar o sistema",
-            f"Como usuário, eu quero visualizar lista de {base_title}, para acompanhar dados",
-            f"Como usuário, eu quero criar registros em {base_title}, para adicionar informações",
-            f"Como usuário, eu quero editar registros de {base_title}, para atualizar dados",
-            f"Como usuário, eu quero excluir registros de {base_title}, para remover dados obsoletos",
-            f"Como usuário, eu quero buscar em {base_title}, para encontrar dados específicos",
-            f"Como usuário, eu quero filtrar {base_title} por status, para organizar visualização",
-            f"Como usuário, eu quero exportar dados de {base_title}, para análise externa",
-            f"Como usuário, eu quero importar dados para {base_title}, para carga em massa",
-            f"Como usuário, eu quero validar dados de {base_title}, para garantir integridade",
-            f"Como administrador, eu quero gerenciar permissões de {base_title}, para controle de acesso",
-            f"Como usuário, eu quero receber notificações de {base_title}, para acompanhamento",
-            f"Como usuário, eu quero ver histórico de {base_title}, para auditoria",
-            f"Como usuário, eu quero gerar relatórios de {base_title}, para análise",
-            f"Como usuário, eu quero integrar {base_title} com outros módulos, para automação"
-        ]
+        desc = (epic.description or "")[:2000]
+
+        # Try to extract meaningful concepts from the description
+        titles = []
+
+        # If we have a rich description, extract key concepts from bold items
+        import re
+        bold_items = re.findall(r'\*\*([^*]+)\*\*', desc)
+        if bold_items:
+            for item in bold_items[:10]:
+                # Skip items that are section headers
+                item_clean = item.strip().rstrip(':')
+                if len(item_clean) > 5 and len(item_clean) < 80:
+                    titles.append(f"{item_clean} para {base_title}")
+
+        # If no bold items found, try bullet points
+        if not titles:
+            bullets = re.findall(r'[-•]\s+(.+?)(?:\n|$)', desc)
+            for bullet in bullets[:10]:
+                clean = bullet.strip()
+                if len(clean) > 10 and len(clean) < 100:
+                    titles.append(clean)
+
+        # Final fallback with contextual titles
+        if not titles:
+            titles = [
+                f"Configuração e setup de {base_title}",
+                f"Implementação core de {base_title}",
+                f"Integração de {base_title} com o sistema",
+                f"Validações e regras de {base_title}",
+                f"Testes e qualidade de {base_title}",
+            ]
+
+        return titles
 
     def _parse_json_response(self, content: str) -> Any:
         """Parse JSON from AI response, handling various formats."""
@@ -561,13 +589,22 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
             semantic_map_text = "\nMAPA SEMÂNTICO DO EPIC/STORY:\n"
             semantic_map_text += json.dumps(combined_semantic_map, indent=2, ensure_ascii=False)
 
-        # PROMPT #257 - Fetch business rules from RAG
+        # PROMPT #252 - Fetch RELEVANT business rules from RAG using semantic search
         business_rules_text = ""
         try:
             rag_service = RAGService(self.db)
-            rules = rag_service.get_business_rules(project_id=project.id, top_k=20)
+            # Use story title + description + parent epic title as semantic query
+            epic_title = parent_epic.title if parent_epic else ""
+            search_query = f"{epic_title} {story.title} {(story.description or '')[:500]}"
+            rules = rag_service.get_business_rules(
+                project_id=project.id,
+                query=search_query,
+                top_k=50,
+                similarity_threshold=0.3
+            )
             if rules:
-                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=6000)
+                business_rules_text = rag_service.format_business_rules_for_prompt(rules, max_chars=10000)
+                logger.info(f"Injected {len(rules)} relevant business rules for story: {story.title[:40]}")
         except Exception as e:
             logger.warning(f"Could not fetch business rules for tasks: {e}")
 
@@ -710,7 +747,7 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                 parent_id=story.id,
                 item_type=ItemType.TASK,
                 title=title,
-                description=f"Task derivada da Story: {story.title}",
+                description=f"Task derivada da Story **{story.title}**. {(story.description or '')[:300]}",
                 generated_prompt="",
                 acceptance_criteria=[],
                 story_points=3,
@@ -727,16 +764,43 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         return created_tasks
 
     def _generate_fallback_task_titles(self, story: Task) -> List[str]:
-        """Generate fallback task titles when AI fails.
-        Uses story title as context to create meaningful tasks instead of generic ones."""
+        """Generate fallback task titles based on story context.
+
+        PROMPT #252 - Uses story description to extract meaningful task titles
+        instead of generic templates."""
         base_title = story.title[:50] if story.title else "funcionalidade"
-        return [
-            f"Modelagem de dados para {base_title}",
-            f"API endpoints para {base_title}",
-            f"Interface frontend para {base_title}",
-            f"Validações e regras de {base_title}",
-            f"Testes para {base_title}",
-        ]
+        desc = (story.description or "")[:2000]
+
+        import re
+        titles = []
+
+        # Extract from bold items in description
+        bold_items = re.findall(r'\*\*([^*]+)\*\*', desc)
+        if bold_items:
+            for item in bold_items[:8]:
+                item_clean = item.strip().rstrip(':')
+                if len(item_clean) > 5 and len(item_clean) < 80:
+                    titles.append(f"Implementar {item_clean}")
+
+        # Extract from bullet points
+        if not titles:
+            bullets = re.findall(r'[-•]\s+(.+?)(?:\n|$)', desc)
+            for bullet in bullets[:8]:
+                clean = bullet.strip()
+                if len(clean) > 10 and len(clean) < 100:
+                    titles.append(clean)
+
+        # Contextual fallback
+        if not titles:
+            titles = [
+                f"Modelagem de dados para {base_title}",
+                f"Lógica de negócio para {base_title}",
+                f"API e integração de {base_title}",
+                f"Interface de {base_title}",
+                f"Testes de {base_title}",
+            ]
+
+        return titles
 
     async def generate_cards_from_memory(
         self,
