@@ -253,7 +253,7 @@ async def get_executions_with_cost(
             output_tokens=execution.output_tokens or 0,
             total_tokens=execution.total_tokens or 0,
             execution_time_ms=execution.execution_time_ms,
-            status=execution.status or "unknown",
+            status="error" if execution.error_message else "success",
             created_at=execution.created_at,
             cost=cost_data["total_cost"],
             input_cost=cost_data["input_cost"],
