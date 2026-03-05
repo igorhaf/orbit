@@ -177,15 +177,15 @@ user_prompt: |
   - Se existe "Fallback & Recovery", NUNCA gere "Tratamento de erros e fallback"
   - Títulos genéricos como "Implementar funcionalidades principais" são PROIBIDOS
 
-  **O QUE VOCÊ DEVE GERAR INSTEAD:**
-  Pense como um PO sênior revisando o que JÁ FOI FEITO e identificando:
-  - Qualidade e testes (cobertura, testes de regressão, stress tests)
-  - Melhorias de UX e acessibilidade
-  - Edge cases e cenários de erro não cobertos
-  - Observabilidade (dashboards, alertas, health checks)
-  - Performance e escalabilidade
-  - Segurança e compliance
-  - Documentação e onboarding para novos devs
+  **O QUE VOCÊ DEVE GERAR:**
+  Pense como um PO sênior que conhece o produto e propoe EVOLUCOES REAIS:
+  - Funcionalidades NOVAS que complementem as existentes (ex: se existe gestao basica, sugerir dashboards, relatorios, exportacao)
+  - Fluxos de usuario ainda nao cobertos (cenarios reais que o usuario final vai precisar)
+  - Integracoes entre módulos existentes que ainda nao estao conectados
+  - Capacidades avancadas ausentes (ex: se existe CRUD, sugerir busca inteligente, automacao, notificacoes)
+  - Melhorias concretas de experiencia do usuario (workflows mais eficientes, atalhos, personalizacao)
+  - Cenarios de negocio complexos nao atendidos (multi-tenant, permissoes granulares, audit trail)
+  NÃO se limite a testes e documentacao — gere FUNCIONALIDADES e STORIES que representem valor REAL para o usuario.
   {% endif %}
 
   {% if wiki_context_text %}

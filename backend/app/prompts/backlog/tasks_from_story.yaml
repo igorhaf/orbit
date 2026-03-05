@@ -173,16 +173,15 @@ user_prompt: |
   - Se existe "Classe X base", NUNCA gere "Implementar funcionalidades de X"
   - Títulos genéricos como "Implementar funcionalidades", "Implementar métodos" são PROIBIDOS
 
-  **O QUE VOCÊ DEVE GERAR INSTEAD:**
-  Pense como um tech lead sênior revisando o que JÁ FOI FEITO e identificando:
-  - Testes automatizados (unitários, integração, e2e) para as funcionalidades existentes
-  - Tratamento de erros e edge cases não cobertos
-  - Monitoramento, logging, métricas e observabilidade
-  - Otimizações de performance (cache, lazy loading, connection pooling)
-  - Segurança (validação de input, rate limiting, auditoria)
-  - Documentação técnica (API docs, diagramas de arquitetura)
-  - Configurabilidade (feature flags, configs externalizadas)
-  - Resiliência (retry, circuit breaker, graceful degradation)
+  **O QUE VOCÊ DEVE GERAR:**
+  Pense como um tech lead sênior que conhece o sistema e propoe EVOLUCOES REAIS:
+  - Funcionalidades NOVAS que complementem as existentes (ex: se existe CRUD, sugerir busca avancada, filtros, paginacao)
+  - Integracoes com outros módulos do sistema ainda nao conectados
+  - Melhorias concretas de implementacao (ex: se existe adapter basico, sugerir streaming, batch processing, connection pooling)
+  - Capacidades ausentes (ex: se existe orquestrador, sugerir load balancing entre providers, auto-scaling, fallback inteligente)
+  - Edge cases de negocio nao cobertos (cenarios reais que o usuario vai encontrar)
+  - Automacoes e workflows que agreguem valor (ex: auto-retry, queue management, health monitoring)
+  NÃO se limite a testes e documentacao — gere FUNCIONALIDADES e IMPLEMENTACOES reais que o time deve construir.
   {% endif %}
 
   {% if wiki_context_text %}
