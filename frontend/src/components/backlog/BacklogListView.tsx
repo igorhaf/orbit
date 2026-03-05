@@ -21,7 +21,7 @@ import { IconTarget, IconBook, IconCheck, IconCircle, IconBug, IconDot, IconTree
 
 // PROMPT #94 - Helper to check if item is suggested
 const isSuggestedItem = (item: BacklogItem): boolean => {
-  return item.labels?.includes('suggested') || item.workflow_state === 'draft';
+  return (Array.isArray(item.labels) && item.labels.includes('suggested')) || item.workflow_state === 'draft';
 };
 
 // PROMPT #123 - Interface for available filter options
@@ -209,7 +209,7 @@ export default function BacklogListView({
     const labelsSet = new Set<string>();
 
     const traverse = (item: BacklogItem) => {
-      if (item.labels) {
+      if (Array.isArray(item.labels)) {
         item.labels.forEach(label => labelsSet.add(label));
       }
       if (item.children && item.children.length > 0) {
@@ -236,7 +236,7 @@ export default function BacklogListView({
       return (
         item.title.toLowerCase().includes(lowerSearch) ||
         (item.description && item.description.toLowerCase().includes(lowerSearch)) ||
-        (item.labels && item.labels.some(label => label.toLowerCase().includes(lowerSearch)))
+        (Array.isArray(item.labels) && item.labels.some(label => label.toLowerCase().includes(lowerSearch)))
       );
     };
 
@@ -724,7 +724,7 @@ export default function BacklogListView({
           )}
 
           {/* Labels */}
-          {item.labels && item.labels.length > 0 && (
+          {Array.isArray(item.labels) && item.labels.length > 0 && (
             <div className="flex gap-1">
               {item.labels.slice(0, 2).map((label, idx) => (
                 <span key={idx} className="px-2 py-0.5 text-xs rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -793,7 +793,7 @@ export default function BacklogListView({
 
         {/* PROMPT #131 - Render Interviews for this item (aligned with card title) */}
         {/* PROMPT #213 - Hide interviews for cards created from codebase memory scan */}
-        {!item.labels?.includes('from_code') && interviewsMap.get(item.id)?.map((interview) => (
+        {!(Array.isArray(item.labels) && item.labels.includes('from_code')) && interviewsMap.get(item.id)?.map((interview) => (
           <div
             key={interview.id}
             onClick={() => onInterviewClick?.(item, interview.id)}

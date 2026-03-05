@@ -400,7 +400,7 @@ export default function OverviewTab({
       </div>
 
       {/* Labels */}
-      {item.labels && item.labels.length > 0 && (
+      {Array.isArray(item.labels) && item.labels.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-gray-900 mb-2">Etiquetas</h3>
           <div className="flex flex-wrap gap-2">

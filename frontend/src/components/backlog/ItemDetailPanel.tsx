@@ -99,10 +99,10 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const [checkResultMsg, setCheckResultMsg] = useState<{ found: boolean; message: string } | null>(null);
 
   // Check if item is a suggested/draft item
-  const isSuggestedItem = (item.labels?.includes('suggested')) || item.workflow_state === 'draft';
+  const isSuggestedItem = (Array.isArray(item.labels) && item.labels.includes('suggested')) || item.workflow_state === 'draft';
 
   // PROMPT #213 - Check if item was created from codebase memory scan (business rules)
-  const isFromCode = item.labels?.includes('from_code') === true;
+  const isFromCode = Array.isArray(item.labels) && item.labels.includes('from_code');
 
   // PROMPT #127 - Generate children dialog state
   const [showGenerateChildrenDialog, setShowGenerateChildrenDialog] = useState(false);

@@ -113,10 +113,10 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
   const itemType = task.item_type || ItemType.TASK;
 
   // PROMPT #92 - Check if this is a suggested (inactive) epic
-  const isSuggested = task.labels?.includes('suggested') || task.workflow_state === 'draft';
+  const isSuggested = (Array.isArray(task.labels) && task.labels.includes('suggested')) || task.workflow_state === 'draft';
 
   // PROMPT #213 - Check if item was created from codebase memory scan (business rules)
-  const isFromCode = task.labels?.includes('from_code') === true;
+  const isFromCode = Array.isArray(task.labels) && task.labels.includes('from_code');
 
   const handleCreateSubInterview = async () => {
     setCreatingInterview(true);
@@ -269,7 +269,7 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         )}
 
         {/* Labels */}
-        {task.labels && task.labels.length > 0 && (
+        {Array.isArray(task.labels) && task.labels.length > 0 && (
           <div className="flex gap-2 mb-4 flex-wrap">
             {task.labels.map((label, idx) => (
               <Badge key={idx} className="bg-indigo-50 text-indigo-700 border-indigo-200">
