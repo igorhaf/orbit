@@ -1049,29 +1049,27 @@ async def _process_description_async(
                     if context_parts:
                         variables["project_context"] = "\n\n".join(context_parts)
 
-                    # Fetch business rules from RAG — primary source for description content
+                    # Fetch wiki pages as compact reference (title + 1st sentence only)
                     from sqlalchemy import text as sql_text
-                    rules_result = db.execute(sql_text("""
-                        SELECT content, metadata
+                    wiki_result = db.execute(sql_text("""
+                        SELECT metadata->>'title', content
                         FROM rag_documents
-                        WHERE project_id = :pid AND metadata->>'type' = 'business_rule'
-                        ORDER BY metadata->>'category'
-                        LIMIT 30
+                        WHERE project_id = :pid AND metadata->>'type' = 'wiki_page'
+                        ORDER BY metadata->>'title'
+                        LIMIT 20
                     """), {"pid": str(pid)}).fetchall()
-                    if rules_result:
-                        rules_lines = []
-                        for row in rules_result:
-                            import json as _json
-                            content = row[0] or ""
-                            meta = row[1] if isinstance(row[1], dict) else (_json.loads(row[1]) if row[1] else {})
-                            title_r = meta.get("title", "")
-                            domain = meta.get("source_domain", "")
+                    if wiki_result:
+                        wiki_lines = []
+                        for row in wiki_result:
+                            title_w = row[0] or ""
+                            content = row[1] or ""
+                            # Skip YAML front matter / header lines, grab first real sentence
                             lines = [l.strip() for l in content.split("\n") if l.strip()]
-                            skip = {"BUSINESS RULE:", "Category:", "Domain:", "Source Files:"}
-                            summary_lines = [l for l in lines if not any(l.startswith(s) for s in skip)]
-                            summary = summary_lines[0][:120] if summary_lines else ""
-                            rules_lines.append(f"- [{domain}] {title_r}: {summary}")
-                        variables["business_rules"] = "\n".join(rules_lines)
+                            skip_prefixes = ("---", "#", "WIKI PAGE:", "Slug:", "title:", "slug:", "version:", "order:")
+                            body_lines = [l for l in lines if not any(l.startswith(p) for p in skip_prefixes)]
+                            first_sentence = body_lines[0][:100] if body_lines else ""
+                            wiki_lines.append(f"- {title_w}: {first_sentence}")
+                        variables["business_rules"] = "\n".join(wiki_lines)
             except Exception as e:
                 logger.warning(f"Could not load project context/rules for description: {e}")
 

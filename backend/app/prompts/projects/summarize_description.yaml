@@ -28,7 +28,7 @@ system_prompt: |
   REGRAS:
   - NÃO repita o nome/título do projeto na descrição. O título já está visível na interface.
   - Mantenha apenas a essência do projeto, removendo detalhes secundários.
-  - Se houver regras de negócio, priorize os aspectos mais centrais delas no resumo.
+  - Se houver wiki disponível, priorize os aspectos mais centrais dela no resumo.
   - A descrição resumida deve ter 1-2 frases curtas.
   - Texto corrido simples, sem formatação markdown (é um resumo curto).
   - Escreva em português do Brasil.
@@ -56,7 +56,7 @@ user_prompt: |
   Descrição atual: "{{ current_description }}"
   {% if business_rules %}
 
-  Regras de negócio do projeto (use para identificar o que é mais essencial):
+  Wiki do projeto (use para identificar o que é mais essencial):
   {{ business_rules }}
   {% elif project_context %}
 
@@ -69,4 +69,4 @@ user_prompt: |
   {{ pinned_fragments }}
   {% endif %}
 
-  Resuma esta descrição em 1-2 frases curtas e objetivas, mantendo apenas a essência{% if business_rules %} mais importante conforme as regras de negócio{% endif %}. Não repita o nome do projeto.
+  Resuma esta descrição em 1-2 frases curtas e objetivas, mantendo apenas a essência{% if business_rules %} mais importante conforme a wiki do projeto{% endif %}. Não repita o nome do projeto.

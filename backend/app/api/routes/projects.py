@@ -626,7 +626,7 @@ async def expand_project_description(
     await executor.submit(
         job.priority,
         _process_description_async,
-        job.id, "expand", title, current_description, project_id, 2000,
+        job.id, "expand", title, current_description, project_id, 3000,
         pinned_fragments,
     )
 

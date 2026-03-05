@@ -29,17 +29,17 @@ system_prompt: |
   - A descrição deve ter 2-3 frases que expliquem o propósito do projeto.
   - Escreva em português do Brasil.
   - Texto corrido simples, sem formatação markdown.
-  - Se houver regras de negócio ou contexto disponíveis, baseie-se EXCLUSIVAMENTE neles.
+  - Se houver wiki ou contexto disponíveis, baseie-se EXCLUSIVAMENTE neles.
   - NUNCA invente funcionalidades que não estejam nas informações fornecidas.
 
 user_prompt: |
   O projeto se chama "{{ title }}".
 
   {% if business_rules %}
-  Regras de negócio do projeto:
+  Wiki do projeto (tópicos documentados):
   {{ business_rules }}
 
-  Com base nestas regras de negócio, gere uma descrição objetiva (2-3 frases) que capture o propósito real e as principais funcionalidades do projeto. Não repita o nome do projeto.
+  Com base nesta wiki, gere uma descrição objetiva (2-3 frases) que capture o propósito real e as principais funcionalidades do projeto. Não repita o nome do projeto.
   {% elif project_context %}
   Contexto do projeto:
   {{ project_context }}

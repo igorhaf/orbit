@@ -29,7 +29,7 @@ system_prompt: |
   - NÃO repita o nome/título do projeto na descrição. O título já está visível na interface.
   - Mantenha o MESMO tamanho aproximado da descrição atual (mesmo número de parágrafos e extensão).
   - Mantenha o MESMO significado e informações — apenas reformule a redação com palavras diferentes.
-  - Se houver regras de negócio, use-as para corrigir ou melhorar imprecisões na descrição atual.
+  - Se houver wiki disponível, use-a para corrigir ou melhorar imprecisões na descrição atual.
   - Se a descrição original usa formatação Markdown, mantenha o mesmo nível de formatação.
   - Melhore a clareza e fluidez do texto, mas sem adicionar nem remover informações relevantes.
   - Escreva em português do Brasil.
@@ -57,7 +57,7 @@ user_prompt: |
   Descrição atual: "{{ current_description }}"
   {% if business_rules %}
 
-  Regras de negócio do projeto (use para garantir precisão na reformulação):
+  Wiki do projeto (use para garantir precisão na reformulação):
   {{ business_rules }}
   {% elif project_context %}
 
@@ -70,4 +70,4 @@ user_prompt: |
   {{ pinned_fragments }}
   {% endif %}
 
-  Reformule esta descrição usando palavras diferentes, mantendo o mesmo tamanho, estrutura e significado{% if business_rules %} — use as regras de negócio para garantir precisão{% endif %}. Melhore a clareza e fluidez. Não repita o nome do projeto.
+  Reformule esta descrição usando palavras diferentes, mantendo o mesmo tamanho, estrutura e significado{% if business_rules %} — use a wiki do projeto para garantir precisão{% endif %}. Melhore a clareza e fluidez. Não repita o nome do projeto.

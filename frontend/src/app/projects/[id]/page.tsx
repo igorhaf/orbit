@@ -699,36 +699,39 @@ export default function ProjectDetailsPage() {
 
   // PROMPT #241 - Expand (detalhar) description
   const handleExpandDescription = useCallback(async () => {
-    if (!project?.description?.trim() || !project?.name?.trim()) return;
+    const desc = editedDescription || project?.description;
+    if (!desc?.trim() || !project?.name?.trim()) return;
     setExpandingDescription(true);
     await startDescriptionJob('expand-description', {
       title: project.name.trim(),
-      current_description: project.description.trim(),
+      current_description: desc.trim(),
       pinned_fragments: project.pinned_fragments || [],
     }, `Detalhando descrição — '${project.name}'`);
-  }, [project, startDescriptionJob]);
+  }, [project, editedDescription, startDescriptionJob]);
 
   // PROMPT #241 - Summarize (resumir) description
   const handleSummarizeDescription = useCallback(async () => {
-    if (!project?.description?.trim() || !project?.name?.trim()) return;
+    const desc = editedDescription || project?.description;
+    if (!desc?.trim() || !project?.name?.trim()) return;
     setSummarizingDescription(true);
     await startDescriptionJob('summarize-description', {
       title: project.name.trim(),
-      current_description: project.description.trim(),
+      current_description: desc.trim(),
       pinned_fragments: project.pinned_fragments || [],
     }, `Resumindo descrição — '${project.name}'`);
-  }, [project, startDescriptionJob]);
+  }, [project, editedDescription, startDescriptionJob]);
 
   // PROMPT #244 - Rephrase (reformular) description
   const handleRephraseDescription = useCallback(async () => {
-    if (!project?.description?.trim() || !project?.name?.trim()) return;
+    const desc = editedDescription || project?.description;
+    if (!desc?.trim() || !project?.name?.trim()) return;
     setRephrasingDescription(true);
     await startDescriptionJob('rephrase-description', {
       title: project.name.trim(),
-      current_description: project.description.trim(),
+      current_description: desc.trim(),
       pinned_fragments: project.pinned_fragments || [],
     }, `Reformulando descrição — '${project.name}'`);
-  }, [project, startDescriptionJob]);
+  }, [project, editedDescription, startDescriptionJob]);
 
   // Markdown formatting helpers
   const insertMarkdown = (before: string, after: string = '') => {
