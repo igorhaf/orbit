@@ -26,6 +26,9 @@ variables:
     - epic_interview_insights
     - rag_context
     - business_rules_text
+    - existing_children_text
+    - wiki_context_text
+    - full_hierarchy_text
 
 components:
   - semantic_methodology
@@ -141,6 +144,26 @@ user_prompt: |
   {% if business_rules_text %}
   6. IMPORTANTE: Cada Story DEVE incorporar regras de negócio relevantes nos critérios de aceitação
   7. Se uma regra de interface menciona o nome do sistema, use-o nas Stories
+  {% endif %}
+
+  {% if full_hierarchy_text %}
+  HIERARQUIA COMPLETA DO PROJETO:
+  {{ full_hierarchy_text }}
+  {% endif %}
+
+  {% if existing_children_text %}
+  STORIES JÁ EXISTENTES NESTE EPIC (NÃO DUPLICAR):
+  {{ existing_children_text }}
+
+  ATENÇÃO: As Stories acima JÁ EXISTEM. NÃO gere Stories similares ou duplicadas.
+  Gere APENAS Stories NOVAS que complementem as existentes e cubram funcionalidades ainda não abordadas.
+  {% endif %}
+
+  {% if wiki_context_text %}
+  CONTEXTO DA WIKI DO PROJETO:
+  {{ wiki_context_text }}
+
+  Use este contexto da wiki para gerar Stories mais relevantes e alinhadas com a documentação do projeto.
   {% endif %}
 
   Retorne 3-7 Stories como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.

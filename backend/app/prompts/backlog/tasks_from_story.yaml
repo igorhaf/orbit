@@ -25,6 +25,9 @@ variables:
     - semantic_map_text
     - rag_context
     - business_rules_text
+    - existing_children_text
+    - wiki_context_text
+    - full_hierarchy_text
 
 components:
   - semantic_methodology
@@ -137,6 +140,26 @@ user_prompt: |
   {% if business_rules_text %}
   6. IMPORTANTE: Os critérios de aceitação de cada Task DEVEM validar as regras de negócio aplicáveis
   7. Se uma regra diz "senha mínimo 8 caracteres", crie AC: "AC1: Validar que D1 (senha) tenha mínimo 8 caracteres"
+  {% endif %}
+
+  {% if full_hierarchy_text %}
+  HIERARQUIA COMPLETA:
+  {{ full_hierarchy_text }}
+  {% endif %}
+
+  {% if existing_children_text %}
+  TASKS JÁ EXISTENTES NESTA STORY (NÃO DUPLICAR):
+  {{ existing_children_text }}
+
+  ATENÇÃO: As Tasks acima JÁ EXISTEM. NÃO gere Tasks similares ou duplicadas.
+  Gere APENAS Tasks NOVAS que complementem as existentes e cubram aspectos ainda não implementados.
+  {% endif %}
+
+  {% if wiki_context_text %}
+  CONTEXTO DA WIKI DO PROJETO:
+  {{ wiki_context_text }}
+
+  Use este contexto da wiki para gerar Tasks mais relevantes e tecnicamente precisas.
   {% endif %}
 
   Retorne 3-10 Tasks como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.

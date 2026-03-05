@@ -28,6 +28,94 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
+def _build_existing_children_text(db: "Session", parent_id: UUID) -> str:
+    """Build text listing existing children of a card for dedup context."""
+    children = db.query(Task).filter(Task.parent_id == parent_id).order_by(Task.order).all()
+    if not children:
+        return ""
+    lines = []
+    for c in children:
+        status = c.workflow_state or "unknown"
+        desc_preview = (c.description or "")[:150].replace("\n", " ")
+        lines.append(f"- [{status.upper()}] {c.title}: {desc_preview}")
+    return "\n".join(lines)
+
+
+def _build_full_hierarchy_text(db: "Session", task: Task) -> str:
+    """Build full hierarchy text from project root down to the current card."""
+    parts = []
+    # Walk up to collect ancestors
+    ancestors = []
+    current = task
+    while current.parent_id:
+        parent = db.query(Task).filter(Task.id == current.parent_id).first()
+        if not parent:
+            break
+        ancestors.append(parent)
+        current = parent
+
+    ancestors.reverse()
+    indent = 0
+    for a in ancestors:
+        prefix = "  " * indent
+        parts.append(f"{prefix}- [{a.item_type.value.upper()}] {a.title}")
+        indent += 1
+
+    # Current card
+    prefix = "  " * indent
+    parts.append(f"{prefix}- [{task.item_type.value.upper()}] {task.title} (ATUAL)")
+
+    return "\n".join(parts)
+
+
+def _build_wiki_context_text(db: "Session", project: Project, search_terms: str, max_pages: int = 3) -> str:
+    """Find relevant wiki pages and return their content as context."""
+    code_path = getattr(project, "code_path", None)
+    if not code_path:
+        return ""
+
+    try:
+        from app.services.wiki_fs import list_pages
+        all_pages = list_pages(code_path)
+    except Exception as e:
+        logger.warning(f"Could not list wiki pages: {e}")
+        return ""
+
+    if not all_pages:
+        return ""
+
+    # Score pages by keyword overlap with search terms
+    search_lower = search_terms.lower()
+    search_words = set(w for w in search_lower.split() if len(w) > 3)
+
+    scored = []
+    for page in all_pages:
+        title_lower = (page.title or page.slug).lower()
+        content_lower = (page.content or "")[:2000].lower()
+        score = 0
+        for word in search_words:
+            if word in title_lower:
+                score += 3
+            if word in content_lower:
+                score += 1
+        if score > 0:
+            scored.append((score, page))
+
+    scored.sort(key=lambda x: -x[0])
+    top_pages = scored[:max_pages]
+
+    if not top_pages:
+        return ""
+
+    parts = []
+    for _, page in top_pages:
+        title = page.title or page.slug
+        content = (page.content or "")[:1500]
+        parts.append(f"### Wiki: {title}\n{content}")
+
+    return "\n\n".join(parts)
+
+
 class DraftGeneratorMixin:
     """Mixin providing draft generation and batch processing methods."""
 
@@ -319,6 +407,17 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         except Exception as e:
             logger.warning(f"Could not fetch business rules for stories: {e}")
 
+        # PROMPT #252 - Build context: existing children, hierarchy, wiki
+        existing_children_text = _build_existing_children_text(self.db, epic.id)
+        full_hierarchy_text = _build_full_hierarchy_text(self.db, epic)
+        wiki_search = f"{epic.title} {(epic.description or '')[:200]}"
+        wiki_context_text = _build_wiki_context_text(self.db, project, wiki_search)
+
+        if existing_children_text:
+            logger.info(f"Passing {existing_children_text.count(chr(10))+1} existing children as dedup context")
+        if wiki_context_text:
+            logger.info(f"Injected wiki context ({len(wiki_context_text)} chars) for epic: {epic.title[:40]}")
+
         try:
             # PROMPT #257 - Use PromptLoader with stories_from_epic.yaml
             from app.prompts.loader import get_prompt_loader
@@ -335,6 +434,9 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                     "semantic_map_text": semantic_map_text,
                     "epic_interview_insights": json.dumps(epic.interview_insights, ensure_ascii=False) if epic.interview_insights else "",
                     "business_rules_text": business_rules_text,
+                    "existing_children_text": existing_children_text,
+                    "wiki_context_text": wiki_context_text,
+                    "full_hierarchy_text": full_hierarchy_text,
                     "rag_context": "",
                 }
             )
@@ -608,6 +710,17 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         except Exception as e:
             logger.warning(f"Could not fetch business rules for tasks: {e}")
 
+        # PROMPT #252 - Build context: existing children, hierarchy, wiki
+        existing_children_text = _build_existing_children_text(self.db, story.id)
+        full_hierarchy_text = _build_full_hierarchy_text(self.db, story)
+        wiki_search = f"{epic_title} {story.title} {(story.description or '')[:200]}"
+        wiki_context_text = _build_wiki_context_text(self.db, project, wiki_search)
+
+        if existing_children_text:
+            logger.info(f"Passing {existing_children_text.count(chr(10))+1} existing children as dedup context for story: {story.title[:40]}")
+        if wiki_context_text:
+            logger.info(f"Injected wiki context ({len(wiki_context_text)} chars) for story: {story.title[:40]}")
+
         try:
             # PROMPT #257 - Use PromptLoader with tasks_from_story.yaml
             from app.prompts.loader import get_prompt_loader
@@ -623,6 +736,9 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                     "story_acceptance_criteria": "\n".join(story.acceptance_criteria or []),
                     "semantic_map_text": semantic_map_text,
                     "business_rules_text": business_rules_text,
+                    "existing_children_text": existing_children_text,
+                    "wiki_context_text": wiki_context_text,
+                    "full_hierarchy_text": full_hierarchy_text,
                     "rag_context": "",
                 }
             )
