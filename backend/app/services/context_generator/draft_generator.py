@@ -192,10 +192,17 @@ REGRAS CRÍTICAS:
 3. Se uma feature já existe ([JA EXISTE]), NÃO inclua épico similar ou relacionado
 4. Foque em melhorias, extensões e novas capacidades que o sistema AINDA NÃO TEM
 
+MODO INSIGHTS - GERAÇÃO CRIATIVA:
+Você NÃO é um decompositor mecânico. Pense como um CTO estratégico:
+- Sugira épicos que tragam INSIGHTS NOVOS sobre o que o sistema precisa
+- Considere: observabilidade, segurança, performance, automação, developer experience
+- Proponha módulos que um time junior esqueceria (auditoria, feature flags, A/B testing)
+- Pense em: "O que tornaria este sistema realmente PROFISSIONAL e ESCALÁVEL?"
+
 REGRAS GERAIS:
 1. Cada épico representa um MÓDULO ou ÁREA FUNCIONAL macro do sistema
 2. Use nomes CURTOS e DESCRITIVOS para os épicos (máx 50 caracteres)
-3. A descrição deve ser breve (1-2 frases) explicando o escopo do módulo
+3. A descrição deve ser detalhada (3-5 frases) explicando escopo, valor e impacto
 4. Ordene por prioridade/dependência lógica (fundacionais primeiro)
 
 FORMATO DE RESPOSTA (JSON):
@@ -1073,15 +1080,23 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         stack_info = memory_ctx.get("stack_info", {})
 
         # Build the prompt
-        system_prompt = """Você é um arquiteto de software especialista em decomposição de sistemas.
+        system_prompt = """Você é um CTO estratégico e consultor de produto sênior.
 
 Sua tarefa é analisar o contexto de um projeto existente e sugerir épicos (módulos macro)
-para NOVAS funcionalidades que podem ser desenvolvidas para MELHORAR o sistema.
+que tragam INSIGHTS VALIOSOS e IDEIAS CRIATIVAS para evoluir o sistema.
+
+MODO INSIGHTS:
+Pense como um consultor sênior que analisa o sistema e sugere:
+- Módulos que o time não pensou mas são essenciais (observabilidade, auditoria, chaos testing)
+- Melhorias de arquitetura que escalam (CQRS, event sourcing, cache distribuído)
+- Automações que economizam tempo (CI/CD avançado, auto-scaling, alertas inteligentes)
+- Funcionalidades de produto que diferenciam (analytics, A/B testing, feature flags)
+Cada épico deve ser um INSIGHT que faça o PO pensar "isso é importante".
 
 REGRAS CRÍTICAS:
 1. As funcionalidades listadas JÁ EXISTEM no código - NÃO sugira épicos para elas
-2. Sugira APENAS épicos para funcionalidades NOVAS que agregariam valor
-3. Foque em: integrações, automações, melhorias de UX, relatórios avançados, APIs
+2. Sugira APENAS épicos para funcionalidades NOVAS que agregariam valor REAL
+3. Foque em: observabilidade, segurança, performance, automação, DX, analytics
 4. Sugira entre 5 e 15 épicos, priorizados por valor de negócio
 
 FORMATO DE RESPOSTA (JSON):
@@ -1090,7 +1105,7 @@ FORMATO DE RESPOSTA (JSON):
     "epics": [
         {
             "title": "Título do Épico",
-            "description": "Descrição breve do módulo (1-2 frases)",
+            "description": "Descrição detalhada (3-5 frases) com escopo, valor de negócio e impacto técnico",
             "priority": "high|medium|low",
             "order": 1
         }
@@ -1101,7 +1116,8 @@ FORMATO DE RESPOSTA (JSON):
 IMPORTANTE:
 - Retorne APENAS o JSON, sem texto adicional
 - Prioridades: high (essencial), medium (importante), low (nice-to-have)
-- Ordene por prioridade e dependência lógica"""
+- Ordene por prioridade e dependência lógica
+- Cada description deve ter NO MÍNIMO 200 caracteres"""
 
         # Build user prompt with context
         user_parts = [
@@ -1317,8 +1333,16 @@ IMPORTANTE:
         # Build exclusion list from existing features (from memory scan)
         features_list = "\n".join([f"- [JA EXISTE] {f}" for f in existing_features]) if existing_features else "Nenhuma"
 
-        system_prompt = f"""Você é um Product Owner especialista em decomposição de software.
+        system_prompt = f"""Você é um CTO estratégico e consultor de produto sênior.
 Gere até {epics_per_batch} épicos de software para o projeto.
+
+## MODO INSIGHTS - GERAÇÃO CRIATIVA:
+Você NÃO é um decompositor mecânico. Pense estrategicamente:
+- Sugira épicos que tragam INSIGHTS NOVOS sobre o que o sistema precisa
+- Considere: observabilidade, segurança avançada, performance, automação, DX
+- Proponha módulos que um time junior esqueceria (auditoria, feature flags, chaos testing)
+- Pense em: "O que tornaria este sistema PROFISSIONAL e ESCALÁVEL?"
+- Cada épico deve ser uma ideia que faça o PO pensar "isso é importante, não tinha pensado nisso"
 
 ## REGRAS CRÍTICAS:
 
@@ -1340,7 +1364,7 @@ Gere até {epics_per_batch} épicos de software para o projeto.
     "epics": [
         {{
             "title": "Título claro e conciso",
-            "description": "Descrição detalhada do módulo (3-5 frases cobrindo escopo, objetivo e principais funcionalidades)",
+            "description": "Descrição detalhada do módulo (3-5 frases cobrindo escopo, objetivo, valor de negócio e impacto técnico)",
             "priority": "high|medium|low"
         }}
     ],
@@ -1352,10 +1376,10 @@ Se não houver mais épicos relevantes, retorne os que encontrar com "has_more":
 Retorne lista vazia SOMENTE se realmente não existir nenhum épico novo a sugerir.
 
 IMPORTANTE:
-- Foque em: integrações, automações, melhorias de UX, relatórios, APIs, segurança
+- Foque em: integrações, automações, observabilidade, segurança, performance, developer experience
 - Prioridades: high (essencial), medium (importante), low (nice-to-have)
-- Cada description deve ter NO MÍNIMO 200 caracteres com detalhes do escopo
-- Seja específico e prático"""
+- Cada description deve ter NO MÍNIMO 200 caracteres com detalhes do escopo e VALOR que agrega
+- Seja específico, prático e CRIATIVO - gere insights, não boilerplate"""
 
         # Build user prompt
         user_parts = [f"## Projeto: {project.name}"]
