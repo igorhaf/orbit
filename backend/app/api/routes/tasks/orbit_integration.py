@@ -898,6 +898,34 @@ async def _process_semantic_prompt_async(
         task.prompt_edited_by = "ai"
         task.created_by_ai_model = ai_model
 
+        # 8b. Extract acceptance criteria from prompt and save to card
+        # Only fill if no human-edited criteria exist (REGRA #0)
+        if not task.acceptance_criteria or len(task.acceptance_criteria) == 0:
+            extracted_acs = []
+            in_ac_section = False
+            for line in prompt_text.split("\n"):
+                stripped = line.strip()
+                # Detect start of acceptance criteria section
+                if stripped.upper().startswith("CRITERIOS DE ACEITACAO") or stripped.upper().startswith("CRITÉRIOS DE ACEITAÇÃO"):
+                    in_ac_section = True
+                    continue
+                # Detect end (next section header — all caps line without numbering)
+                if in_ac_section and stripped and not stripped[0].isdigit() and not stripped.startswith("Given") and not stripped.startswith("-") and stripped == stripped.upper() and len(stripped) > 3:
+                    break
+                # Extract numbered criteria
+                if in_ac_section and stripped:
+                    import re
+                    ac_match = re.match(r'^\d+[\.\)]\s*(.+)', stripped)
+                    if ac_match:
+                        extracted_acs.append(ac_match.group(1).strip())
+                    elif stripped.startswith("- "):
+                        extracted_acs.append(stripped[2:].strip())
+                    elif stripped.startswith("Given ") or stripped.startswith("Given:"):
+                        extracted_acs.append(stripped)
+            if extracted_acs:
+                task.acceptance_criteria = extracted_acs
+                logger.info(f"Extracted {len(extracted_acs)} acceptance criteria for card {task_id}")
+
         # 9. Create Prompt record (visible in /prompts page)
         job_manager.update_progress(job_id, 90.0, "Registrando no log de prompts...")
         prompt_record = Prompt(

@@ -54,15 +54,17 @@ system_prompt: |
   - Padroes: [padroes de codigo/arquitetura a seguir]
 
   CRITERIOS DE ACEITACAO
-  1. [Criterio verificavel]
-  2. [Criterio verificavel]
+  1. Given [pre-condicao] When [acao do usuario/sistema] Then [resultado verificavel]
+  2. Given [pre-condicao] When [acao do usuario/sistema] Then [resultado verificavel]
   3. [...]
+  (Minimo 3, maximo 8 criterios. TODOS devem seguir o formato Given/When/Then)
 
   REGRAS:
   - Cada secao deve conter informacao CONCRETA extraida dos dados fornecidos
   - Se nao houver dados para uma secao, inclua a secao com "[Nao disponivel]"
   - ARQUIVOS E COMPONENTES: infira caminhos provaveis a partir da stack e contexto
   - REQUISITOS TECNICOS: extraia de regras de negocio e wiki, nao invente
+  - CRITERIOS DE ACEITACAO: gere criterios CONCRETOS e verificaveis no formato Given/When/Then
   - Minimo 800 caracteres. Maximo 5000 caracteres
   - Escreva em portugues. Sem emojis
   - Responda APENAS com o texto do prompt estruturado (sem JSON, sem code blocks)
