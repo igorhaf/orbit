@@ -962,13 +962,6 @@ async def update_project(
     # Update only provided fields
     update_data = project_update.model_dump(exclude_unset=True)
 
-    # Debug logging
-    print(f"🔧 PATCH /projects/{project.id}")
-    print(f"📦 Update data keys: {list(update_data.keys())}")
-    if 'description' in update_data:
-        desc_preview = update_data['description'][:100] if update_data['description'] else 'None'
-        print(f"📝 Description preview: {desc_preview}...")
-
     for field, value in update_data.items():
         setattr(project, field, value)
 

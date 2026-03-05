@@ -270,10 +270,8 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
       // Run card inference first
       const currentInterview = cardInterviews.find(i => i.id === selectedInterviewId);
       if (currentInterview?.interview_mode === 'card_focused') {
-        console.log('Running card inference for task:', item.id);
         try {
           await tasksApi.runCardInference(item.id, selectedInterviewId);
-          console.log('Card inference completed');
         } catch (inferenceError) {
           console.error('Card inference failed, continuing with completion:', inferenceError);
         }
@@ -354,7 +352,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
   const handleApprove = async () => {
     try {
       const result = await tasksApi.activateSuggestedEpic(item.id);
-      console.log('Item activation started:', item.title);
 
       // PROMPT #128 - Register job in notification system
       if (result.job_id) {
@@ -376,7 +373,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
         if (childrenCount > 0) {
           const childType = item.item_type === 'epic' ? 'stories' :
                             item.item_type === 'story' ? 'tasks' : 'items';
-          console.log(`Generated ${childrenCount} draft ${childType}`);
           showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
         }
       }
@@ -393,7 +389,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     setIsRejecting(true);
     try {
       await tasksApi.rejectSuggestedEpic(item.id);
-      console.log('Item rejected and deleted:', item.title);
       onClose();
       if (onUpdate) onUpdate();
     } catch (error: any) {
@@ -484,7 +479,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     setIsSavingDescription(true);
     try {
       await tasksApi.update(item.id, { description: editedDescription });
-      console.log('Description saved:', item.title);
       setIsEditingDescription(false);
       if (onUpdate) onUpdate();
     } catch (error: any) {
@@ -690,7 +684,6 @@ export default function ItemDetailPanel({ item, onClose, onUpdate, onNavigateToI
     setCreatingInterview(true);
     try {
       const interview = await tasksApi.createInterview(item.id);
-      console.log('Created sub-interview:', interview);
 
       // Navigate to interview page
       window.location.href = `/projects/${item.project_id}/interviews/${interview.id}`;

@@ -305,7 +305,6 @@ BUSINESS_RULES = [
     {"rule_text": "System comment is auto-created when actual token usage exceeds budget", "rule_type": "workflow", "source_file": "backend/app/services/task_execution/budget_manager.py", "domain": "Token Budget Management"},
 
     # ========== DOMAIN: Prompt Structure & Compression (6 rules) ==========
-    {"rule_text": "Every prompt_generation call must follow 4-section structure: [SYSTEM] role/methodology, [TASK] what to generate, [CONTEXT] parent+RAG+rules deduped, [OUTPUT SCHEMA] expected JSON format", "rule_type": "domain", "source_file": "backend/app/services/prompt_structure_normalizer.py", "domain": "Prompt Structure & Compression"},
     {"rule_text": "Parent context summarization varies by hierarchy level: Epic=none, Story=1500 chars, Task=1000+Epic title only, Subtask=500 chars", "rule_type": "domain", "source_file": "backend/app/services/prompt_context_compressor.py", "domain": "Prompt Structure & Compression"},
     {"rule_text": "Semantic map deduplication via delta computation: only identifiers NOT present in parent/grandparent are included in child prompts", "rule_type": "workflow", "source_file": "backend/app/services/prompt_context_compressor.py", "domain": "Prompt Structure & Compression"},
     {"rule_text": "Business rules injection varies by level: Epic=full 15 rules, Story=filtered top-5 relevant, Task/Subtask=reference only", "rule_type": "domain", "source_file": "backend/app/services/prompt_context_compressor.py", "domain": "Prompt Structure & Compression"},
@@ -435,18 +434,6 @@ BUSINESS_RULES = [
     {"rule_text": "Max cards per cycle loaded from contract YAML (default 10)", "rule_type": "constraint", "source_file": "backend/app/contracts/business/generation_counts.yaml", "domain": "Watchdog Operational Rules"},
     {"rule_text": "Max 2 enrichments per cycle when idle", "rule_type": "constraint", "source_file": "backend/app/contracts/business/generation_counts.yaml", "domain": "Watchdog Operational Rules"},
     {"rule_text": "Shutdown detection via 2-second sleep chunks: breaks long sleeps into checkable intervals", "rule_type": "domain", "source_file": "backend/app/services/watchdog.py", "domain": "Watchdog Operational Rules"},
-
-    # ========== DOMAIN: Pipeline Card Generation (5 rules) ==========
-    {"rule_text": "Max 5 stories per domain per batch during incremental card generation", "rule_type": "constraint", "source_file": "backend/app/services/pipeline_cards.py", "domain": "Pipeline Card Generation"},
-    {"rule_text": "90% similarity threshold for duplicate card detection during pipeline processing", "rule_type": "constraint", "source_file": "backend/app/services/pipeline_cards.py", "domain": "Pipeline Card Generation"},
-    {"rule_text": "Max 15 new rules per batch after similarity filtering", "rule_type": "constraint", "source_file": "backend/app/services/pipeline_cards.py", "domain": "Pipeline Card Generation"},
-    {"rule_text": "Domain classification is stack-agnostic: no framework assumptions in domain grouping", "rule_type": "domain", "source_file": "backend/app/services/pipeline_cards.py", "domain": "Pipeline Card Generation"},
-    {"rule_text": "Story titles minimum 10 characters", "rule_type": "validation", "source_file": "backend/app/services/pipeline_cards.py", "domain": "Pipeline Card Generation"},
-
-    # ========== DOMAIN: Pipeline Wiki Generation (3 rules) ==========
-    {"rule_text": "Max 3 domains processed per batch for wiki page generation", "rule_type": "constraint", "source_file": "backend/app/services/pipeline_wiki.py", "domain": "Pipeline Wiki Generation"},
-    {"rule_text": "If first AI generation fails validation, retry once with corrective prompt; if second attempt fails, use fallback template with 6 skeleton sections", "rule_type": "workflow", "source_file": "backend/app/services/pipeline_wiki.py", "domain": "Pipeline Wiki Generation"},
-    {"rule_text": "Wiki fallback page has 6 mandatory skeleton sections: Visao Geral, Regras de Negocio, Fluxos e Processos, Entidades Envolvidas, Restricoes e Validacoes, Cenarios de Uso", "rule_type": "domain", "source_file": "backend/app/services/pipeline_wiki.py", "domain": "Pipeline Wiki Generation"},
 
     # ========== DOMAIN: Batch Execution & Dependencies (3 rules) ==========
     {"rule_text": "Topological sort resolves task dependencies; max iterations capped at 2x task count to prevent infinite loops", "rule_type": "constraint", "source_file": "backend/app/services/task_execution/batch_executor.py", "domain": "Batch Execution & Dependencies"},

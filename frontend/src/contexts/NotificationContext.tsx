@@ -287,14 +287,12 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
           epics: data.epics
         }
       }));
-      console.log(`📦 Epic batch ${data.batch_number}/${data.total_batches}: ${data.epics_count} epics`);
       return;
     }
 
     if (!data?.job_id) {
       // Handle non-job events (pong, etc.)
       if (event === 'pong') return;
-      console.log('WebSocket event without job_id:', event);
       return;
     }
 
@@ -436,8 +434,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       ws.onopen = () => {
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
-        console.log('🔔 Notification WebSocket connected');
-
         // PROMPT #262 - Reconcile jobs on reconnect to remove ghost notifications
         reconcileActiveJobs();
 
@@ -476,7 +472,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         if (reconnectAttemptsRef.current < maxAttempts) {
           const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
           reconnectAttemptsRef.current++;
-          console.log(`🔄 Reconnecting in ${delay}ms (attempt ${reconnectAttemptsRef.current})`);
           reconnectTimeoutRef.current = setTimeout(connect, delay);
         } else {
           console.error('Max reconnection attempts reached');

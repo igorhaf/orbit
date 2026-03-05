@@ -483,7 +483,6 @@ export default function BacklogListView({
   const handleActivateItem = async (item: BacklogItem) => {
     try {
       const result = await tasksApi.activateSuggestedEpic(item.id);
-      console.log('✅ Item activation started:', item.title);
 
       // PROMPT #128 - Register job in notification system
       if (result.job_id) {
@@ -520,7 +519,6 @@ export default function BacklogListView({
         setRejectingId(item.id);
         try {
           await tasksApi.rejectSuggestedEpic(item.id);
-          console.log('❌ Item rejected:', item.title);
           fetchBacklog();
         } catch (error: any) {
           console.error('❌ Failed to reject item:', error);

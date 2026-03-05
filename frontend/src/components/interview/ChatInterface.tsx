@@ -51,11 +51,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
   // PROMPT #82 - Prevent double start in React StrictMode
   const startingInterviewRef = useRef(false);
 
-  // Debug: Log selectedOptions changes
-  useEffect(() => {
-    console.log('ChatInterface - selectedOptions changed:', selectedOptions);
-  }, [selectedOptions]);
-
   // PROMPT #57 - Track pre-filled values for title/description questions
   const [prefilledValue, setPrefilledValue] = useState<string | null>(null);
   const [isProjectInfoQuestion, setIsProjectInfoQuestion] = useState(false);
@@ -103,8 +98,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
   // PROMPT #65 - Stable callbacks for send message polling (prevents re-renders)
   const handleSendMessageComplete = useCallback((result: any) => {
-    console.log('Send message job completed:', result);
-
     // PROMPT #65 - Clear from localStorage on completion
     localStorage.removeItem(`sendMessageJob_${interviewId}`);
 
@@ -112,7 +105,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     const isFallback = result?.usage?.fallback === true ||
                        result?.message?.model === 'system/fallback';
     if (isFallback) {
-      console.log('Fallback mode detected:', result?.usage?.error);
       setFallbackWarning({
         message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
         error: result?.usage?.error
@@ -148,8 +140,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
   // PROMPT #65 - Stable callbacks for generate prompts polling (prevents re-renders)
   const handleGeneratePromptsComplete = useCallback((result: any) => {
-    console.log('Generate prompts job completed:', result);
-
     // PROMPT #65 - Clear from localStorage on completion
     localStorage.removeItem(`generateJob_${interviewId}`);
 
@@ -200,17 +190,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     onError: handleGeneratePromptsError,
   });
 
-  // PROMPT #65 - Debug: Log isGeneratingPrompts changes
-  useEffect(() => {
-    console.log('isGeneratingPrompts changed:', isGeneratingPrompts);
-    console.log('generatePromptsJobId:', generatePromptsJobId);
-    console.log('generatePromptsJob:', generatePromptsJob);
-  }, [isGeneratingPrompts, generatePromptsJobId, generatePromptsJob]);
-
   // PROMPT #65 - Stable callbacks for provisioning polling (prevents re-renders)
   const handleProvisioningComplete = useCallback((result: any) => {
-    console.log('Provisioning job completed:', result);
-
     // PROMPT #65 - Clear from localStorage on completion
     localStorage.removeItem(`provisioningJob_${interviewId}`);
 
@@ -265,21 +246,16 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       const savedSendMessageJobId = localStorage.getItem(`sendMessageJob_${interviewId}`);
 
       if (savedGenerateJobId) {
-        console.log('Restoring generatePromptsJobId from localStorage:', savedGenerateJobId);
         setGeneratePromptsJobId(savedGenerateJobId);
       }
 
       if (savedProvisioningJobId) {
-        console.log('Restoring provisioningJobId from localStorage:', savedProvisioningJobId);
         setProvisioningJobId(savedProvisioningJobId);
       }
 
       if (savedSendMessageJobId) {
-        console.log('Restoring sendMessageJobId from localStorage:', savedSendMessageJobId);
         setSendMessageJobId(savedSendMessageJobId);
       }
-
-      console.log('Component mounted, job polling active');
     } catch (error) {
       console.error('Failed to check pending jobs:', error);
     }
@@ -317,11 +293,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
     // Only pre-fill if last message is from assistant with prefilled_value
     if (lastMessage?.role === 'assistant' && lastMessage.prefilled_value) {
-      console.log('Detected prefilled question:', {
-        questionNumber: lastMessage.question_number,
-        prefilledValue: lastMessage.prefilled_value
-      });
-
       setMessage(lastMessage.prefilled_value);
       setPrefilledValue(lastMessage.prefilled_value);
       // Only context interviews have project info in Q1 (title) and Q2 (description).
@@ -344,18 +315,14 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     setLoading(true);
     setNotFound(false);
     try {
-      console.log('Loading interview:', interviewId);
       const response = await interviewsApi.get(interviewId);
       const interviewData = response.data || response;
-      console.log('Interview loaded:', interviewData);
       setInterview(interviewData || null);
 
       // Se não tem mensagens, iniciar automaticamente com IA
       const hasMessages = interviewData?.conversation_data && interviewData.conversation_data.length > 0;
-      console.log('Has messages:', hasMessages, 'Count:', interviewData?.conversation_data?.length);
 
       if (!hasMessages && !startingInterviewRef.current) {
-        console.log('No messages found, auto-starting interview with AI...');
         startingInterviewRef.current = true;
         await startInterviewWithAI();
       }
@@ -365,7 +332,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
       // Check if it's a 404 error (interview not found)
       if (error.response?.status === 404) {
-        console.log('Interview not found (404)');
         setNotFound(true);
       } else {
         // For other errors, show error dialog
@@ -384,22 +350,16 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
   const startInterviewWithAI = async () => {
     // PROMPT #82 - Double-check guard (React StrictMode protection)
     if (initializing) {
-      console.log('Already initializing, skipping duplicate start...');
       return;
     }
 
     setInitializing(true);
     try {
-      console.log('Starting interview with AI...');
-      console.log('Interview ID:', interviewId);
-
       const startResponse = await interviewsApi.start(interviewId);
-      console.log('Start response:', startResponse);
 
       // PROMPT #81 - Detect fallback on start
       const startData = startResponse.data || startResponse;
       if (startData?.model === 'system/fallback' || startData?.message?.model === 'system/fallback') {
-        console.log('Fallback mode detected on start');
         setFallbackWarning({
           message: 'A IA está temporariamente indisponível. O sistema está usando respostas de fallback.',
           error: 'API indisponível no momento'
@@ -407,11 +367,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       }
 
       // Reload to get initial AI message
-      console.log('Reloading interview to get AI response...');
       const response = await interviewsApi.get(interviewId);
       const data = response.data || response;
-      console.log('Reloaded interview data:', data);
-      console.log('Conversation messages:', data?.conversation_data?.length);
 
       // PROMPT #81 - Check if first message uses fallback
       const firstMessage = data?.conversation_data?.[0];
@@ -423,16 +380,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       }
 
       setInterview(data || null);
-
-      console.log('Interview started successfully!');
     } catch (error: any) {
       console.error('Failed to start interview with AI:', error);
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response,
-        status: error.response?.status,
-        data: error.response?.data
-      });
 
       // PROMPT #56 - Enhanced error reporting
       const errorMessage = error.response?.data?.detail || error.message || 'Erro desconhecido';
@@ -468,12 +417,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     try {
       // PROMPT #57 - If user edited title/description, update project first
       if (isProjectInfoQuestion && prefilledValue !== null && userMessage !== prefilledValue) {
-        console.log('User edited project info, updating project...', {
-          questionNumber: currentQuestionNumber,
-          original: prefilledValue,
-          edited: userMessage
-        });
-
         const updateData: { title?: string; description?: string } = {};
 
         if (currentQuestionNumber === 1) {
@@ -484,7 +427,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
         try {
           await interviewsApi.updateProjectInfo(interviewId, updateData);
-          console.log('Project info updated successfully');
         } catch (updateError: any) {
           console.error('Failed to update project info:', updateError);
           // Continue anyway - we'll still send the message
@@ -492,7 +434,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       }
 
       // PROMPT #65 - Enviar mensagem ASYNC (não bloqueia UI)
-      console.log('Sending message async...');
       const response = await interviewsApi.sendMessageAsync(interviewId, {
         content: userMessage || optionsToSend.join(', '),
         selected_options: optionsToSend.length > 0 ? optionsToSend : undefined
@@ -500,8 +441,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
       const data = response.data || response;
       const jobId = data.job_id;
-
-      console.log('Message job created:', jobId);
 
       // PROMPT #65 - Save to localStorage (survives Fast Refresh)
       localStorage.setItem(`sendMessageJob_${interviewId}`, jobId);
@@ -544,11 +483,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
     // Join labels with comma and send as message content
     const content = validLabels.join(', ');
 
-    // DEBUG: Log what's being sent to backend
-    console.log('ChatInterface - Sending option selection to backend:');
-    console.log('  - Content:', content);
-    console.log('  - Selected Options:', validLabels);
-
     // Clear any existing text in the input and selected options
     setMessage('');
     setSelectedOptions([]);
@@ -560,8 +494,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         content: content,
         selected_options: validLabels
       });
-
-      console.log('ChatInterface - Message sent successfully');
 
       // Reload to get AI response
       const response = await interviewsApi.get(interviewId);
@@ -605,12 +537,9 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
     try {
       // PROMPT #65 - Save stack ASYNC (non-blocking provisioning)
-      console.log('Stack detected, saving async:', stack);
       const response = await interviewsApi.saveStackAsync(interviewId, stack);
       const data = response.data || response;
       const jobId = data.job_id;
-
-      console.log('Stack saved, provisioning job created:', jobId);
 
       // PROMPT #65 - Save to localStorage (survives Fast Refresh)
       localStorage.setItem(`provisioningJob_${interviewId}`, jobId);
@@ -647,10 +576,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
         try {
           // PROMPT #131 - Run card inference if in card_focused mode
           if (isCardInference && parentTaskId) {
-            console.log('Running card inference for task:', parentTaskId);
             try {
               await tasksApi.runCardInference(parentTaskId, interviewId);
-              console.log('Card inference completed');
             } catch (inferenceError) {
               console.error('Card inference failed, continuing with completion:', inferenceError);
               // Continue even if inference fails
@@ -696,10 +623,8 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
           // PROMPT #109 - Delete project if cancelling context interview
           if (isContextInterview && interview?.project_id) {
-            console.log('Deleting project due to context interview cancellation:', interview.project_id);
             try {
               await projectsApi.delete(interview.project_id);
-              console.log('Project deleted successfully');
               setConfirmDialog(prev => ({ ...prev, open: false, isLoading: false }));
               // Redirect to projects list
               router.push('/projects');
@@ -752,8 +677,6 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
 
     try {
       const projectId = interview.project_id;
-      console.log('Generating Epic from interview...');
-
       // Step 1: Generate Epic suggestion
       const generateResponse = await backlogApi.generateEpic(interviewId, projectId);
       const data = generateResponse.data || generateResponse;
@@ -763,13 +686,10 @@ export function ChatInterface({ interviewId, onStatusChange, onComplete, intervi
       }
 
       const epicSuggestion = data.suggestions[0];
-      console.log('Epic suggestion generated:', epicSuggestion.title);
 
       // Step 2: Auto-approve and create Epic
       const approveResponse = await backlogApi.approveEpic(epicSuggestion, projectId, interviewId);
       const epic = approveResponse.data || approveResponse;
-
-      console.log('Epic created:', epic.id, epic.title);
 
       // Show success modal
       setEpicResult({ title: epic.title });

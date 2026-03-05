@@ -110,8 +110,6 @@ export function TaskExecutionChat({ sessionId, taskId, onClose }: Props) {
       // 1. Generate commit automatically using AI (Gemini)
       const commitResponse = await commitsApi.autoGenerate(sessionId);
 
-      console.log('Commit generated:', commitResponse.data);
-
       // 2. Mark task as completed
       await tasksApi.update(taskId, { status: 'done' });
 

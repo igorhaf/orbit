@@ -58,7 +58,6 @@ export function parseMessage(content: string): ParsedMessage {
 
   // Split into lines and clean (using normalized content)
   const lines = normalizedContent.split('\n').map(line => line.trimEnd()); // Keep leading spaces for now
-  console.log('MessageParser: Total lines:', lines.length);
 
   const questionLines: string[] = [];
   const optionLines: string[] = [];
@@ -81,7 +80,6 @@ export function parseMessage(content: string): ParsedMessage {
         trimmed.toUpperCase() === 'OPTIONS' ||
         trimmed.toUpperCase() === 'SELECT:' ||
         trimmed.toUpperCase() === 'CHOOSE:') {
-      console.log('MessageParser: Skipping header line:', trimmed);
       foundOptions = true; // Start looking for options after this
       continue;
     }
@@ -96,25 +94,19 @@ export function parseMessage(content: string): ParsedMessage {
     const isIndicatorLine = /[\[\]]/.test(trimmed);
 
     if ((startsWithCheckbox || startsWithRadio || startsWithDash) && !isIndicatorLine) {
-      console.log('MessageParser: Found option line:', trimmed);
       foundOptions = true;
       optionLines.push(trimmed);
     } else if (!foundOptions) {
       // Lines before options are part of the question
       questionLines.push(line);
     } else if (isIndicatorLine) {
-      console.log('MessageParser: Skipping indicator line:', trimmed);
       // Indicator lines are ignored (not added to question or options)
     }
     // Lines after options are ignored
   }
 
-  console.log('MessageParser: Question lines:', questionLines.length);
-  console.log('MessageParser: Option lines:', optionLines.length);
-
   // If no option lines found, return as plain text
   if (optionLines.length === 0) {
-    console.log('MessageParser: No option lines found, returning as plain text');
     return { question: normalizedContent, hasOptions: false };
   }
 
@@ -125,8 +117,6 @@ export function parseMessage(content: string): ParsedMessage {
     let label = line
       .replace(/^[\s]*[\u2610\u2611\u2612\u2713\u2714\u2715\u2716☐☑□■▪▫\u25CB\u25CF\u25C9\u25C8○●◯◉\-=][\s]*/, '')
       .trim();
-
-    console.log('MessageParser: Option', index, '- Label:', label);
 
     // Generate clean value from label
     const value = label
@@ -150,9 +140,6 @@ export function parseMessage(content: string): ParsedMessage {
     .replace(/\n*SELECT:\s*\n*/gi, '\n')   // Remove SELECT: header
     .trim();
 
-  console.log('MessageParser: Final question:', question);
-  console.log('MessageParser: Final choices:', choices.length, 'options');
-
   // PROMPT #143 - All options are now multiple choice
   const result = {
     question: question,
@@ -162,8 +149,6 @@ export function parseMessage(content: string): ParsedMessage {
     },
     hasOptions: true
   };
-
-  console.log('MessageParser: Result:', JSON.stringify(result, null, 2));
 
   return result;
 }

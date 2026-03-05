@@ -35,9 +35,6 @@ export type { SelectProps } from './Select';
 
 export { Label } from './Label';
 
-export { Checkbox } from './Checkbox';
-export type { CheckboxProps } from './Checkbox';
-
 export { JobProgressBar } from './JobProgressBar'; // PROMPT #65 - Async Job System
 
 export { FolderPicker } from './FolderPicker'; // PROMPT #111 - Folder picker for project creation
@@ -54,4 +51,3 @@ export type { MarkdownEditorProps } from './MarkdownEditor';
 export { NotificationBell } from './NotificationBell'; // PROMPT #128 - Background job notifications
 
 export { JobIndicator, JobIndicatorBadge } from './JobIndicator'; // PROMPT #162 - Job indicator badges
-export type { } from './JobIndicator';

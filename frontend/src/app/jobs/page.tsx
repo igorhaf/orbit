@@ -350,7 +350,6 @@ export default function JobsPage() {
 
         ws.onopen = () => {
           setIsConnected(true);
-          console.log('🔔 Job Queue WebSocket connected');
         };
 
         ws.onmessage = (event) => {
@@ -589,8 +588,6 @@ export default function JobsPage() {
 
     try {
       const result = await jobsApi.cleanup(days);
-      // Show success in a toast-like notification instead of crude alert
-      console.log('Cleanup result:', result.message);
       fetchJobs();
       fetchStats();
     } catch (error) {

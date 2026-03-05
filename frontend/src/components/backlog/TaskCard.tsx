@@ -122,7 +122,6 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
     setCreatingInterview(true);
     try {
       const interview = await tasksApi.createInterview(task.id);
-      console.log('✅ Created sub-interview:', interview);
 
       // Navigate to interview page
       router.push(`/projects/${task.project_id}/interviews/${interview.id}`);
@@ -141,7 +140,6 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
   const handleActivateEpic = async () => {
     try {
       const result = await tasksApi.activateSuggestedEpic(task.id);
-      console.log('✅ Item activation started:', result);
 
       // PROMPT #128 - Register job in notification system
       if (result.job_id) {
@@ -163,7 +161,6 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
         if (childrenCount > 0) {
           const childType = task.item_type === 'epic' ? 'stories' :
                             task.item_type === 'story' ? 'tasks' : 'items';
-          console.log(`📝 Generated ${childrenCount} draft ${childType}`);
           showSuccess(`Item ativado! ${childrenCount} ${childType} foram geradas como drafts.`);
         }
       }
@@ -187,7 +184,6 @@ export function TaskCard({ task, onUpdate, onClick, showInterviewButtons = true 
     setRejectingEpic(true);
     try {
       await tasksApi.rejectSuggestedEpic(task.id);
-      console.log('❌ Epic rejected and deleted');
 
       if (onUpdate) {
         onUpdate();

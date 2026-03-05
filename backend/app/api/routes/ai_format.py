@@ -3,10 +3,13 @@ AI Format Routes
 Endpoints for AI-powered text formatting
 """
 
+import logging
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.ai_model import AIModel, AIModelUsageType
@@ -85,7 +88,7 @@ async def format_to_markdown(
             )
 
     except Exception as e:
-        print(f"Error formatting to Markdown with AI: {e}")
+        logger.warning(f"Error formatting to Markdown with AI: {e}")
 
         # Fallback to simple formatting
         return FormatMarkdownResponse(

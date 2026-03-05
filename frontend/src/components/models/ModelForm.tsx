@@ -54,13 +54,6 @@ export const ModelForm: React.FC<ModelFormProps> = ({
   // Update form data when model prop changes (e.g., when data loads)
   React.useEffect(() => {
     if (model) {
-      console.log('🔍 ModelForm: Updating form data with model:', {
-        modelId: model.id,
-        hasApiKey: !!model.api_key,
-        apiKeyLength: model.api_key?.length || 0,
-        apiKeyPreview: model.api_key ? `${model.api_key.substring(0, 10)}...` : 'EMPTY'
-      });
-
       setFormData({
         name: model.name,
         provider: model.provider,
@@ -70,9 +63,6 @@ export const ModelForm: React.FC<ModelFormProps> = ({
         config: model.config || {},
       });
 
-      console.log('✅ ModelForm: Form data updated');
-    } else {
-      console.log('⚠️ ModelForm: No model provided');
     }
   }, [model]);
 
@@ -215,14 +205,6 @@ export const ModelForm: React.FC<ModelFormProps> = ({
             <Label htmlFor="api_key">
               Chave da API {!model && '*'}
             </Label>
-            {(() => {
-              console.log('🎨 Rendering ApiKeyInput with value:', {
-                hasValue: !!formData.api_key,
-                valueLength: formData.api_key?.length || 0,
-                valuePreview: formData.api_key ? `${formData.api_key.substring(0, 10)}...` : 'EMPTY'
-              });
-              return null;
-            })()}
             <ApiKeyInput
               value={formData.api_key}
               onChange={(value) => setFormData({ ...formData, api_key: value })}

@@ -80,12 +80,6 @@ export function MessageBubble({
   const isSingleChoice = effectiveOptions?.type === 'single';
   const isMultipleChoice = effectiveOptions?.type === 'multiple';
 
-  // DEBUG: Log which options are being used
-  if (hasOptions && !isUser) {
-    console.log('🔍 MessageBubble - Options source:', message.options ? 'message.options (structured)' : 'parsedContent.options (parsed)');
-    console.log('🔍 MessageBubble - Effective options:', effectiveOptions);
-  }
-
   // Determine display content: use parsed question if we parsed options, otherwise use full content
   const displayContent = parsedContent.hasOptions ? parsedContent.question : message.content;
 
@@ -107,11 +101,6 @@ export function MessageBubble({
       const selectedLabels = selectedOptions
         .map(id => effectiveOptions.choices.find(choice => choice.id === id)?.label)
         .filter(Boolean) as string[];
-
-      // DEBUG: Log what's being submitted
-      console.log('🔍 MessageBubble - Submitting options:');
-      console.log('  - Selected IDs:', selectedOptions);
-      console.log('  - Selected Labels:', selectedLabels);
 
       // Mark as submitted BEFORE calling onOptionSubmit to prevent double-submit
       setSubmitted(true);

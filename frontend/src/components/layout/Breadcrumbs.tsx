@@ -44,7 +44,6 @@ export const Breadcrumbs: React.FC = () => {
     'projects': 'Projetos',
     'interviews': 'Entrevistas',
     'settings': 'Configurações',
-    'debug': 'Debug',
     'new': 'Novo',
     'edit': 'Editar',
     'generate': 'Gerar',

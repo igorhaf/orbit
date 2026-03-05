@@ -160,7 +160,6 @@ export default function ProjectDetailsPage() {
   const [epicCount, setEpicCount] = useState(10);
 
   const loadProjectData = useCallback(async () => {
-    console.log('📋 Loading project data for ID:', projectId);
     try {
       // PROMPT #277 - Use Promise.allSettled to prevent tasks failure from blocking project load
       const [projectResult, tasksResult] = await Promise.allSettled([
@@ -376,8 +375,6 @@ export default function ProjectDetailsPage() {
       // Only update if this event is for the current project
       if (eventProjectId !== projectId) return;
 
-      console.log(`📦 Received epic batch ${batchNumber}/${totalBatches}: ${epics?.length || 0} epics`);
-
       // Add new epics to tasks state incrementally
       if (epics && Array.isArray(epics)) {
         setTasks(prevTasks => {
@@ -486,7 +483,6 @@ export default function ProjectDetailsPage() {
 
   // Format plain text to Markdown using AI
   const formatDescriptionToMarkdown = useCallback(async (text: string) => {
-    console.log('🚀 Starting markdown formatting...');
     setIsFormattingDescription(true);
     try {
       const response = await fetch('/api/format-markdown', {
@@ -497,7 +493,6 @@ export default function ProjectDetailsPage() {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Formatting successful, saving to database...');
         setEditedDescription(data.markdown);
 
         // Auto-save formatted description
@@ -505,7 +500,6 @@ export default function ProjectDetailsPage() {
           description: data.markdown,
         });
 
-        console.log('✅ Saved to database, reloading project data...');
         // Reload project data
         await loadProjectData();
       } else {
@@ -523,17 +517,8 @@ export default function ProjectDetailsPage() {
 
   // Format description to Markdown if needed
   useEffect(() => {
-    console.log('🔄 Format effect running...', {
-      hasDescription: !!project?.description,
-      isFormatting: isFormattingDescription,
-      hasEdited: !!editedDescription,
-      isEditing: isEditingDescription,
-      skipAutoFormat: skipAutoFormatRef.current,
-    });
-
     // PROMPT #241 fix - Skip auto-format when description was just set by AI operation
     if (skipAutoFormatRef.current) {
-      console.log('⏭️ Skipping auto-format (AI operation just completed)');
       skipAutoFormatRef.current = false;
       return;
     }
@@ -541,13 +526,10 @@ export default function ProjectDetailsPage() {
     // Don't auto-format while user is manually editing
     if (project?.description && !isFormattingDescription && !editedDescription && !isEditingDescription) {
       const isMarkdown = checkIfMarkdown(project.description);
-      console.log('🔍 Checking if description is Markdown:', isMarkdown);
 
       if (!isMarkdown) {
-        console.log('📝 Description is plain text, formatting to Markdown...');
         formatDescriptionToMarkdown(project.description);
       } else {
-        console.log('✅ Description is already Markdown');
         setEditedDescription(project.description);
       }
     }
