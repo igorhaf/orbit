@@ -18,7 +18,6 @@ const navigation = [
   { name: 'Custos', href: '/analytics/costs' },
   { name: 'Prompts', href: '/prompts' },
   { name: 'AI Studio', href: '/ai-flow' },
-  { name: 'RAG', href: '/rag' },
   { name: 'Jobs', href: '/jobs' },
 ];
 

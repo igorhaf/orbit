@@ -10,7 +10,7 @@ import { Layout } from '@/components/layout/Layout';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { analyticsApi } from '@/lib/api';
+import { analyticsApi, knowledgeApi } from '@/lib/api';
 import { useExchangeRate } from '@/hooks/useExchangeRate';
 import type {
   CostAnalyticsResponse,
@@ -18,6 +18,32 @@ import type {
   AIExecutionStats,
   RagStats,
 } from '@/lib/api/analytics';
+
+interface ProjectStats {
+  project_id: string;
+  project_name: string;
+  total_documents: number;
+  code_files: number;
+  cards: number;
+  business_rules: number;
+  interview_answers: number;
+  project_context: number;
+  documents: number;
+}
+
+interface ProjectsStatsResponse {
+  success: boolean;
+  projects: ProjectStats[];
+  totals: {
+    total_documents: number;
+    code_files: number;
+    cards: number;
+    business_rules: number;
+    interview_answers: number;
+    project_context: number;
+    documents: number;
+  };
+}
 
 const formatNumber = (num: number) => new Intl.NumberFormat('pt-BR').format(num);
 
@@ -52,6 +78,7 @@ export default function TokensPage() {
   const [cacheStats, setCacheStats] = useState<CacheStatsResponse | null>(null);
   const [execStats, setExecStats] = useState<AIExecutionStats | null>(null);
   const [ragStats, setRagStats] = useState<RagStats | null>(null);
+  const [projectsStats, setProjectsStats] = useState<ProjectsStatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [dateRange, setDateRange] = useState(7);
   const { rate: usdBrlRate } = useExchangeRate();
@@ -68,16 +95,18 @@ export default function TokensPage() {
     setLoading(true);
     try {
       const dateParams = getDateParams();
-      const [analyticsData, cacheData, execData, ragData] = await Promise.all([
+      const [analyticsData, cacheData, execData, ragData, projData] = await Promise.all([
         analyticsApi.getCostAnalytics(dateParams),
         analyticsApi.getCacheStats(),
         analyticsApi.getExecutionStats(dateParams),
         analyticsApi.getRagStats(dateParams),
+        knowledgeApi.getProjectsStats(),
       ]);
       setAnalytics(analyticsData);
       setCacheStats(cacheData);
       setExecStats(execData);
       setRagStats(ragData);
+      if (projData.success) setProjectsStats(projData);
     } catch (error) {
       console.error('Error fetching analytics:', error);
     } finally {
@@ -461,6 +490,62 @@ export default function TokensPage() {
                       )}
                     </>
                   )}
+                </div>
+              </Card>
+            )}
+
+            {/* Base de Conhecimento RAG — projects comparison */}
+            {projectsStats && projectsStats.projects.length > 0 && (
+              <Card>
+                <div className="p-6">
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">
+                    Base de Conhecimento RAG
+                    <span className="text-sm font-normal text-gray-400 ml-2">({projectsStats.projects.length} projetos)</span>
+                  </h2>
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead>
+                        <tr>
+                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Projeto</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Codigo</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Cards</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Regras</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Respostas</th>
+                          <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Docs</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {projectsStats.projects.map((p) => (
+                          <tr key={p.project_id} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.project_name}</td>
+                            <td className="px-4 py-3 text-right text-sm font-bold text-purple-700">{formatNumber(p.total_documents)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-blue-600">{formatNumber(p.code_files)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-green-600">{formatNumber(p.cards)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-orange-600">{formatNumber(p.business_rules)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-yellow-600">{formatNumber(p.interview_answers)}</td>
+                            <td className="px-4 py-3 text-right text-sm text-gray-600">{formatNumber(p.documents)}</td>
+                          </tr>
+                        ))}
+                        <tr className="bg-gray-50 font-semibold">
+                          <td className="px-4 py-3 text-sm text-gray-900">TOTAL</td>
+                          <td className="px-4 py-3 text-right text-sm text-purple-700">{formatNumber(projectsStats.totals.total_documents)}</td>
+                          <td className="px-4 py-3 text-right text-sm text-blue-600">{formatNumber(projectsStats.totals.code_files)}</td>
+                          <td className="px-4 py-3 text-right text-sm text-green-600">{formatNumber(projectsStats.totals.cards)}</td>
+                          <td className="px-4 py-3 text-right text-sm text-orange-600">{formatNumber(projectsStats.totals.business_rules)}</td>
+                          <td className="px-4 py-3 text-right text-sm text-yellow-600">{formatNumber(projectsStats.totals.interview_answers)}</td>
+                          <td className="px-4 py-3 text-right text-sm text-gray-600">{formatNumber(projectsStats.totals.documents)}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-4 text-xs text-gray-400">
+                    <span>Codigo = Arquivos indexados</span>
+                    <span>Cards = Epicos, Stories, Tasks, Subtasks</span>
+                    <span>Regras = Regras de negocio</span>
+                    <span>Respostas = Entrevistas</span>
+                    <span>Docs = Documentos enviados</span>
+                  </div>
                 </div>
               </Card>
             )}
