@@ -1,12 +1,12 @@
 # Prompt: Generate Project Description from Title
-# Simple, fast generation — no project context needed
+# Uses project context when available to avoid generic/random output
 
 name: generate_description
-version: 2
+version: 3
 category: projects
-description: Gera uma descrição curta para um projeto de software a partir do título
+description: Gera uma descrição curta para um projeto de software a partir do título e contexto disponível
 usage_type: general
-estimated_tokens: 300
+estimated_tokens: 350
 tags:
   - project
   - description
@@ -15,7 +15,8 @@ tags:
 variables:
   required:
     - title
-  optional: []
+  optional:
+    - project_context
 
 components: []
 
@@ -27,8 +28,17 @@ system_prompt: |
   - A descrição deve ter 2-3 frases que expliquem o propósito do projeto.
   - Escreva em português do Brasil.
   - Texto corrido simples, sem formatação markdown.
+  - Se houver contexto do projeto disponível, use-o para gerar uma descrição precisa e relevante.
+  - NUNCA invente funcionalidades que não estejam no contexto fornecido.
 
 user_prompt: |
   O projeto se chama "{{ title }}".
 
+  {% if project_context %}
+  Contexto do projeto:
+  {{ project_context }}
+
+  Com base neste contexto, gere uma descrição objetiva (2-3 frases) que explique o propósito real do projeto. Não repita o nome do projeto no texto.
+  {% else %}
   Gere uma descrição curta (2-3 frases) explicando o propósito deste projeto. Não repita o nome do projeto no texto.
+  {% endif %}

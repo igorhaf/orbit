@@ -1027,6 +1027,30 @@ async def _process_description_async(
         if current_description:
             variables["current_description"] = current_description
 
+        # Inject project context when project_id is available
+        if project_id:
+            try:
+                pid = UUID(project_id) if isinstance(project_id, str) else project_id
+                proj = db.query(Project).filter(Project.id == pid).first()
+                if proj:
+                    context_parts = []
+                    if proj.context_human:
+                        context_parts.append(proj.context_human)
+                    if proj.initial_memory_context and isinstance(proj.initial_memory_context, dict):
+                        mem = proj.initial_memory_context
+                        if mem.get("scan_summary"):
+                            context_parts.append(str(mem["scan_summary"]))
+                        if mem.get("key_features"):
+                            features = mem["key_features"]
+                            if isinstance(features, list):
+                                context_parts.append("Funcionalidades: " + ", ".join(str(f) for f in features[:6]))
+                            elif isinstance(features, str):
+                                context_parts.append("Funcionalidades: " + features)
+                    if context_parts:
+                        variables["project_context"] = "\n\n".join(context_parts)
+            except Exception:
+                pass
+
         # PROMPT #243 - Include pinned fragments in prompt variables
         if pinned_fragments:
             variables["pinned_fragments"] = "\n".join(f"- \"{f}\"" for f in pinned_fragments)
