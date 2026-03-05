@@ -83,7 +83,7 @@ export default function CostsPage() {
       // Fixed 30-day window for daily trend chart
       const trendEnd = new Date();
       const trendStart = new Date();
-      trendStart.setDate(trendStart.getDate() - 30);
+      trendStart.setDate(trendStart.getDate() - 15);
       const trendParams = { start_date: trendStart.toISOString(), end_date: trendEnd.toISOString() };
 
       const [analyticsData, trend30d, cacheData, execData] = await Promise.all([
@@ -129,7 +129,7 @@ export default function CostsPage() {
     const raw = trendData?.daily_costs || [];
     const byDate = new Map(raw.map((d) => [d.date, d]));
     const days = [];
-    for (let i = 29; i >= 0; i--) {
+    for (let i = 14; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const key = d.toISOString().slice(0, 10);
@@ -346,7 +346,7 @@ export default function CostsPage() {
             {dailyCosts.length > 0 && (
               <Card>
                 <div className="p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Tendencia de Custos Diarios <span className="text-sm font-normal text-gray-400">(ultimos 30 dias)</span></h2>
+                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Tendencia de Custos Diarios <span className="text-sm font-normal text-gray-400">(ultimos 15 dias)</span></h2>
                   <div className="flex items-end gap-1" style={{ height: '180px' }}>
                     {dailyCosts.map((day) => {
                       const heightPct = (day.total_cost / maxDailyCost) * 100;
