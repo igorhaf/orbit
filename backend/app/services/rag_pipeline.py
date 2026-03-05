@@ -847,6 +847,7 @@ class RagPipelineService:
                 entity=rule.get("entity"),
                 evidence=rule.get("evidence"),
                 domain=rule.get("domain"),
+                fully_coded=True,
             )
             stored += 1
         return stored

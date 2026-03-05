@@ -1131,6 +1131,7 @@ class RAGService:
         entity: Optional[str] = None,
         evidence: Optional[str] = None,
         domain: Optional[str] = None,
+        fully_coded: bool = True,
     ) -> UUID:
         """
         Store a single business rule in RAG with rich metadata.
@@ -1176,7 +1177,8 @@ class RAGService:
             "type": "business_rule",
             "source": source,
             "rule_type": rule_type or "general",
-            "priority": priority
+            "priority": priority,
+            "fully_coded": fully_coded,
         }
 
         if source_file:

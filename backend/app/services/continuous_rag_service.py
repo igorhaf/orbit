@@ -662,7 +662,8 @@ class ContinuousRAGService:
                     source="continuous_scan",
                     source_file=state.file_path,
                     rule_type=rule.get("rule_type", "general"),
-                    priority="normal" if rule.get("confidence") != "high" else "high"
+                    priority="normal" if rule.get("confidence") != "high" else "high",
+                    fully_coded=True,
                 )
                 new_doc_ids.append(str(doc_id))
 

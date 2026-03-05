@@ -144,7 +144,9 @@ class BusinessRulesMixin:
                 for i in range(len(ignore_paths))
             )
             query = f"""
-                SELECT content, metadata->>'source_file' as source_file FROM rag_documents
+                SELECT content, metadata->>'source_file' as source_file,
+                       COALESCE((metadata->>'fully_coded')::boolean, true) as fully_coded
+                FROM rag_documents
                 WHERE project_id = :pid
                 AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')
                 {where_clauses}
@@ -157,7 +159,9 @@ class BusinessRulesMixin:
             logger.info(f"📁 RAG query excludes {len(ignore_paths)} ignored paths: {ignore_paths}")
         else:
             rag_result = self.db.execute(sql_text("""
-                SELECT content, metadata->>'source_file' as source_file FROM rag_documents
+                SELECT content, metadata->>'source_file' as source_file,
+                       COALESCE((metadata->>'fully_coded')::boolean, true) as fully_coded
+                FROM rag_documents
                 WHERE project_id = :pid
                 AND (metadata->>'type' = 'business_rule' OR metadata->>'content_type' = 'business_rule')
                 ORDER BY created_at
@@ -165,13 +169,16 @@ class BusinessRulesMixin:
 
         # PROMPT #242 - Format rules with source_file context for better AI classification
         rag_rules = []
+        rag_rules_fully_coded = []  # Track fully_coded flag per rule
         for row in rag_result:
             content = row[0]
             source = row[1] if len(row) > 1 and row[1] else None
+            fully_coded = row[2] if len(row) > 2 else True
             if source:
                 rag_rules.append(f"[{source}] {content}")
             else:
                 rag_rules.append(content)
+            rag_rules_fully_coded.append(bool(fully_coded))
 
         # Fallback to initial_memory_context if RAG has no rules
         if not rag_rules:
@@ -182,6 +189,8 @@ class BusinessRulesMixin:
                 return []
 
         business_rules = rag_rules
+        # Determine if all rules come from code (fully_coded) or some from docs
+        all_rules_fully_coded = all(rag_rules_fully_coded) if rag_rules_fully_coded else True
 
         # PROMPT #291 - Delete existing business_rule/from_rag cards before regenerating
         # This allows re-running with updated RAG data.
@@ -207,14 +216,14 @@ class BusinessRulesMixin:
 
         if hierarchy:
             # Create cards recursively from AI-classified hierarchy
-            saved_cards = self._create_hierarchy_cards(project_id, hierarchy)
+            saved_cards = self._create_hierarchy_cards(project_id, hierarchy, all_rules_fully_coded)
             self.db.commit()
             logger.info(f"Generated {len(saved_cards)} hierarchical business rule cards")
             return saved_cards
 
         # Fallback: flat structure (original PROMPT #120 behavior)
         logger.warning("Hierarchical classification failed, using flat structure")
-        cards = self._create_flat_business_rule_cards(project_id, business_rules)
+        cards = self._create_flat_business_rule_cards(project_id, business_rules, all_rules_fully_coded)
         return cards
 
     async def _classify_rules_hierarchy(
@@ -378,6 +387,7 @@ class BusinessRulesMixin:
         self,
         project_id: UUID,
         nodes: List[Dict],
+        all_rules_fully_coded: bool = True,
     ) -> List[Dict]:
         """
         PROMPT #240 - Create rigid 3-level card hierarchy from AI-classified nodes.
@@ -404,6 +414,7 @@ class BusinessRulesMixin:
 
         now = datetime.utcnow()
         saved_cards = []
+        wf_state = "closed" if all_rules_fully_coded else "open"
 
         for epic_idx, epic_node in enumerate(nodes):
             epic_title = (epic_node.get("title") or "Sem titulo")[:200]
@@ -442,13 +453,14 @@ class BusinessRulesMixin:
                 status=TaskStatus.BACKLOG,
                 order=epic_idx,
                 labels=["from_rag"],
-                workflow_state="closed",
+                workflow_state=wf_state,
                 reporter="system",
                 description_edited_by="ai",
                 prompt_edited_by="ai",
                 interview_insights={
                     "semantic_map": epic_sm,
                     "source": "rag_business_rules",
+                    "fully_coded": all_rules_fully_coded,
                 },
                 created_at=now,
                 updated_at=now,
@@ -459,7 +471,7 @@ class BusinessRulesMixin:
                                    domain=epic_title, rules=all_epic_rules[:10])
             saved_cards.append({
                 "id": str(epic_id), "title": epic_title,
-                "item_type": "epic", "workflow_state": "open", "depth": 0,
+                "item_type": "epic", "workflow_state": wf_state, "depth": 0,
             })
             logger.info(f"EPIC {epic_idx}: {epic_title}")
 
@@ -488,7 +500,7 @@ class BusinessRulesMixin:
                     status=TaskStatus.BACKLOG,
                     order=story_idx,
                     labels=["from_rag"],
-                    workflow_state="closed",
+                    workflow_state=wf_state,
                     reporter="system",
                     description_edited_by="ai",
                     prompt_edited_by="ai",
@@ -496,6 +508,7 @@ class BusinessRulesMixin:
                         "semantic_map": story_sm,
                         "derived_from": str(epic_id),
                         "source": "rag_business_rules",
+                        "fully_coded": all_rules_fully_coded,
                     },
                     created_at=now,
                     updated_at=now,
@@ -507,7 +520,7 @@ class BusinessRulesMixin:
                                        rules=story_rules)
                 saved_cards.append({
                     "id": str(story_id), "title": story_title,
-                    "item_type": "story", "workflow_state": "open", "depth": 1,
+                    "item_type": "story", "workflow_state": wf_state, "depth": 1,
                 })
 
                 # --- CREATE TASKS (group rules into tasks of RULES_PER_TASK) ---
@@ -539,7 +552,7 @@ class BusinessRulesMixin:
                         status=TaskStatus.BACKLOG,
                         order=task_idx,
                         labels=["from_rag"],
-                        workflow_state="closed",
+                        workflow_state=wf_state,
                         reporter="system",
                         description_edited_by="ai",
                         prompt_edited_by="ai",
@@ -547,6 +560,7 @@ class BusinessRulesMixin:
                             "semantic_map": task_sm,
                             "derived_from": str(story_id),
                             "source": "rag_business_rules",
+                            "fully_coded": all_rules_fully_coded,
                         },
                         created_at=now,
                         updated_at=now,
@@ -557,7 +571,7 @@ class BusinessRulesMixin:
                                            parent_title=story_title, rules=task_rules)
                     saved_cards.append({
                         "id": str(task_id), "title": task_title,
-                        "item_type": "task", "workflow_state": "open", "depth": 2,
+                        "item_type": "task", "workflow_state": wf_state, "depth": 2,
                     })
 
                 logger.info(f"  STORY {story_idx}: {story_title} ({len(story_rules)} rules)")
@@ -567,7 +581,8 @@ class BusinessRulesMixin:
     def _create_flat_business_rule_cards(
         self,
         project_id: UUID,
-        business_rules: List[str]
+        business_rules: List[str],
+        all_rules_fully_coded: bool = True,
     ) -> List[Dict]:
         """
         PROMPT #240 - Flat fallback with 3-level rigid structure.
@@ -576,6 +591,7 @@ class BusinessRulesMixin:
         now = datetime.utcnow()
         RULES_PER_STORY = 10
         RULES_PER_TASK = 3
+        wf_state = "closed" if all_rules_fully_coded else "open"
 
         epic_sm = {"N1": "Regras de Negocio", "P1": "Documentacao de regras"}
 
@@ -600,11 +616,11 @@ class BusinessRulesMixin:
             priority=PriorityLevel.HIGH,
             order=0,
             labels=["from_rag"],
-            workflow_state="closed",
+            workflow_state=wf_state,
             reporter="system",
             description_edited_by="ai",
             prompt_edited_by="ai",
-            interview_insights={"semantic_map": epic_sm, "source": "rag_business_rules"},
+            interview_insights={"semantic_map": epic_sm, "source": "rag_business_rules", "fully_coded": all_rules_fully_coded},
             created_at=now,
             updated_at=now,
         )
@@ -612,7 +628,7 @@ class BusinessRulesMixin:
         self.db.flush()
         _normalize_card_inline(self.db, str(epic_id), "epic", epic_card.title,
                                domain="Regras de Negocio", rules=business_rules[:10])
-        saved_cards = [{"id": str(epic_id), "title": epic_card.title, "item_type": "epic", "workflow_state": "open", "depth": 0}]
+        saved_cards = [{"id": str(epic_id), "title": epic_card.title, "item_type": "epic", "workflow_state": wf_state, "depth": 0}]
 
         # --- STORIES (batches of RULES_PER_STORY) ---
         num_stories = max(1, math.ceil(len(business_rules) / RULES_PER_STORY))
@@ -631,16 +647,16 @@ class BusinessRulesMixin:
                 acceptance_criteria=_make_acceptance_criteria(story_rules),
                 story_points=5, priority=PriorityLevel.HIGH,
                 status=TaskStatus.BACKLOG, order=story_idx,
-                labels=["from_rag"], workflow_state="closed", reporter="system",
+                labels=["from_rag"], workflow_state=wf_state, reporter="system",
                 description_edited_by="ai", prompt_edited_by="ai",
-                interview_insights={"semantic_map": story_sm, "derived_from": str(epic_id), "source": "rag_business_rules"},
+                interview_insights={"semantic_map": story_sm, "derived_from": str(epic_id), "source": "rag_business_rules", "fully_coded": all_rules_fully_coded},
                 created_at=now, updated_at=now,
             )
             self.db.add(story_card)
             self.db.flush()
             _normalize_card_inline(self.db, str(story_id), "story", story_title,
                                    parent_title=epic_card.title, rules=story_rules)
-            saved_cards.append({"id": str(story_id), "title": story_title, "item_type": "story", "workflow_state": "open", "depth": 1})
+            saved_cards.append({"id": str(story_id), "title": story_title, "item_type": "story", "workflow_state": wf_state, "depth": 1})
 
             # --- TASKS (group rules) ---
             num_tasks = max(1, math.ceil(len(story_rules) / RULES_PER_TASK))
@@ -659,16 +675,16 @@ class BusinessRulesMixin:
                     acceptance_criteria=_make_acceptance_criteria(task_rules),
                     story_points=3, priority=PriorityLevel.MEDIUM,
                     status=TaskStatus.BACKLOG, order=task_idx,
-                    labels=["from_rag"], workflow_state="closed", reporter="system",
+                    labels=["from_rag"], workflow_state=wf_state, reporter="system",
                     description_edited_by="ai", prompt_edited_by="ai",
-                    interview_insights={"semantic_map": task_sm, "derived_from": str(story_id), "source": "rag_business_rules"},
+                    interview_insights={"semantic_map": task_sm, "derived_from": str(story_id), "source": "rag_business_rules", "fully_coded": all_rules_fully_coded},
                     created_at=now, updated_at=now,
                 )
                 self.db.add(task_card)
                 self.db.flush()
                 _normalize_card_inline(self.db, str(task_id), "task", task_title,
                                        parent_title=story_title, rules=task_rules)
-                saved_cards.append({"id": str(task_id), "title": task_title, "item_type": "task", "workflow_state": "open", "depth": 2})
+                saved_cards.append({"id": str(task_id), "title": task_title, "item_type": "task", "workflow_state": wf_state, "depth": 2})
 
         self.db.commit()
         logger.info(f"Generated {len(saved_cards)} flat 3-level business rule cards (fallback)")

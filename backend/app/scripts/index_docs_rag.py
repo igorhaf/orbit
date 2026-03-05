@@ -319,7 +319,8 @@ def run_indexer(project_id: UUID, docs_dir: Path, dry_run: bool = False):
                         source="document",
                         source_file=f"satellite/docs/{rule['source_file']}",
                         rule_type=rule['rule_type'],
-                        priority=rule['priority']
+                        priority=rule['priority'],
+                        fully_coded=False,
                     )
                     rules_created += 1
 
