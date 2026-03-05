@@ -515,12 +515,10 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                     "existing_children_text": existing_children_text,
                     "wiki_context_text": wiki_context_text,
                     "full_hierarchy_text": full_hierarchy_text,
+                    "count": count,
                     "rag_context": "",
                 }
             )
-
-            # Append count instruction to user prompt
-            user_prompt += f"\n\nGere exatamente {count} Stories como array JSON."
 
             orchestrator = AIOrchestrator(self.db)
             response = await orchestrator.execute(
@@ -825,11 +823,10 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
                     "existing_children_text": existing_children_text,
                     "wiki_context_text": wiki_context_text,
                     "full_hierarchy_text": full_hierarchy_text,
+                    "count": count,
                     "rag_context": "",
                 }
             )
-
-            user_prompt += f"\n\nGere exatamente {count} Tasks como array JSON."
 
             orchestrator = AIOrchestrator(self.db)
             response = await orchestrator.execute(

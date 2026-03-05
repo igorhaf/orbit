@@ -22,6 +22,7 @@ variables:
     - epic_priority
     - epic_acceptance_criteria
   optional:
+    - count
     - semantic_map_text
     - epic_interview_insights
     - rag_context
@@ -58,7 +59,7 @@ system_prompt: |
 
   Sua tarefa:
   1. Analise o Epic e seu contexto completo (hierarquia, wiki, regras)
-  2. Gere 3-7 STORIES que tragam INSIGHTS e cubram aspectos não óbvios
+  2. Gere EXATAMENTE {{ count }} STORIES que tragam INSIGHTS e cubram aspectos não óbvios
   3. Cada Story deve ter seu próprio Mapa Semântico (reutilizando identificadores do Epic + novos se necessário)
   4. Cada Story deve ser entregável de forma independente
   5. Cada Story deve entregar valor REAL ao usuário (não apenas boilerplate)
@@ -184,7 +185,7 @@ user_prompt: |
   Use este contexto da wiki para gerar Stories mais relevantes e alinhadas com a documentação do projeto.
   {% endif %}
 
-  Retorne 3-7 Stories como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.
+  Retorne EXATAMENTE {{ count }} Stories como array JSON seguindo EXATAMENTE o schema fornecido no system prompt.
 
   LEMBRE-SE:
   - TODO O CONTEÚDO DEVE SER EM PORTUGUÊS
