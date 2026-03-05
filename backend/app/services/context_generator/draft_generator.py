@@ -727,16 +727,15 @@ Se todas as principais features já existem, retorne uma lista com poucos ou nen
         return created_tasks
 
     def _generate_fallback_task_titles(self, story: Task) -> List[str]:
-        """Generate fallback task titles when AI fails."""
+        """Generate fallback task titles when AI fails.
+        Uses story title as context to create meaningful tasks instead of generic ones."""
         base_title = story.title[:50] if story.title else "funcionalidade"
         return [
-            "Criar modelo de dados e migrations",
-            "Implementar endpoints da API REST",
-            "Criar componentes de UI",
-            "Implementar validações e regras de negócio",
-            "Escrever testes unitários",
-            "Implementar integração com serviços",
-            "Documentar implementação"
+            f"Modelagem de dados para {base_title}",
+            f"API endpoints para {base_title}",
+            f"Interface frontend para {base_title}",
+            f"Validações e regras de {base_title}",
+            f"Testes para {base_title}",
         ]
 
     async def generate_cards_from_memory(
