@@ -12,9 +12,9 @@ import sys
 DB = "dbname=orbit user=orbit password=orbit_password host=localhost"
 PROJECT_ID = "7cc16429-1a4e-44a1-873c-dfa0368625c8"
 API_BASE = "http://localhost:8000"
-BATCH_SIZE = 5
-POLL_INTERVAL = 3   # seconds between polls
-JOB_TIMEOUT = 120   # seconds max wait per job
+BATCH_SIZE = 3
+POLL_INTERVAL = 5   # seconds between polls
+JOB_TIMEOUT = 360   # seconds max wait per job
 
 
 def get_job_status(job_id: str) -> dict:
