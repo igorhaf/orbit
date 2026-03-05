@@ -53,6 +53,9 @@ export const Breadcrumbs: React.FC = () => {
     'wiki': 'Wiki',
     'execute': 'Executar',
     'models': 'Modelos',
+    'analytics': 'Analytics',
+    'tokens': 'Tokens & Desempenho',
+    'costs': 'Custos Financeiros',
   };
 
   // Labels for UUID segments based on parent context

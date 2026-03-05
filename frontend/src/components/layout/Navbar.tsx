@@ -14,7 +14,8 @@ import { NotificationBell } from '@/components/ui/NotificationBell';
 
 const navigation = [
   { name: 'Projetos', href: '/' },
-  { name: 'Painel', href: '/dashboard' },
+  { name: 'Tokens', href: '/analytics/tokens' },
+  { name: 'Custos', href: '/analytics/costs' },
   { name: 'Prompts', href: '/prompts' },
   { name: 'AI Studio', href: '/ai-flow' },
   { name: 'RAG', href: '/rag' },

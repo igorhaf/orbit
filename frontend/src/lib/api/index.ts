@@ -17,3 +17,4 @@ export { knowledgeApi, ragApi } from './knowledge';
 export { wikiApi } from './wiki';
 export { commitsApi } from './commits';
 export { settingsApi, analyzersApi, chatSessionsApi, promptQueueApi, projectChatsApi } from './misc';
+export { analyticsApi } from './analytics';
