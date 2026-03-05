@@ -1217,7 +1217,7 @@ Return ONLY valid JSON in this format:
             labels=task_data.get("labels", [task_type]),
             interview_insights=task_data.get("interview_insights", {}),
             status="backlog",
-            workflow_state="open",
+            workflow_state="closed",
             reporter="system"
         )
 

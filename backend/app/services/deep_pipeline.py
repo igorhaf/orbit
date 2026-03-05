@@ -1520,6 +1520,7 @@ class DeepPipelineService:
                 story_points=epic.get("story_points", 13),
                 labels=epic.get("labels", []),
                 acceptance_criteria=epic.get("acceptance_criteria", []),
+                workflow_state="closed",
             )
             self.db.add(task)
             self.db.flush()
@@ -1593,6 +1594,7 @@ class DeepPipelineService:
                 parent_id=parent.id if parent else None,
                 labels=story.get("labels", []),
                 acceptance_criteria=story.get("acceptance_criteria", []),
+                workflow_state="closed",
             )
             self.db.add(task)
             self.db.flush()
@@ -1666,6 +1668,7 @@ class DeepPipelineService:
                 parent_id=parent.id if parent else None,
                 labels=t.get("labels", []),
                 acceptance_criteria=t.get("acceptance_criteria", []),
+                workflow_state="closed",
             )
             self.db.add(task)
             self.db.flush()

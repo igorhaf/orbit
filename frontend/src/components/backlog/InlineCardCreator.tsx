@@ -132,7 +132,7 @@ export default function InlineCardCreator({
         title: trimmedTitle,
         item_type: itemType,
         parent_id: parentId || undefined,
-        workflow_state: 'open',
+        workflow_state: 'closed',
       });
       onCreated(result);
     } catch (err) {

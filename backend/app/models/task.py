@@ -172,7 +172,7 @@ class Task(Base):
     components = Column(JSON, nullable=True, default=list)  # ["Authentication", "API"]
 
     # Workflow
-    workflow_state = Column(String(50), default="open", nullable=False)  # open/in_progress/resolved/closed
+    workflow_state = Column(String(50), default="closed", nullable=False)  # open/in_progress/resolved/closed
     resolution = Column(
         SQLEnum(ResolutionType, name="resolution_type", values_callable=lambda x: [e.value for e in x]),
         nullable=True

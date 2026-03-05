@@ -1434,7 +1434,7 @@ class RagPipelineService:
                 description=card["description"],
                 item_type=card["item_type"],
                 project_id=project_id,
-                workflow_state="open",
+                workflow_state="closed",
                 reporter="pipeline_phase3",
                 story_points=card["story_points"],
                 priority=card["priority"],

@@ -404,6 +404,7 @@ class MetaPromptProcessor:
             acceptance_criteria=epic_data.get("acceptance_criteria", []),
             labels=epic_data.get("labels", []),
             status=TaskStatus.TODO,
+            workflow_state="closed",
             created_from_interview_id=interview_id
         )
 
@@ -432,7 +433,8 @@ class MetaPromptProcessor:
             priority=self._parse_priority(story_data.get("priority", "medium")),
             acceptance_criteria=story_data.get("acceptance_criteria", []),
             labels=story_data.get("labels", []),
-            status=TaskStatus.TODO
+            status=TaskStatus.TODO,
+            workflow_state="closed"
         )
 
         self.db.add(story)
@@ -460,7 +462,8 @@ class MetaPromptProcessor:
             priority=self._parse_priority(task_data.get("priority", "medium")),
             acceptance_criteria=task_data.get("acceptance_criteria", []),
             generated_prompt=task_data.get("generated_prompt"),  # Atomic prompt!
-            status=TaskStatus.TODO
+            status=TaskStatus.TODO,
+            workflow_state="closed"
         )
 
         self.db.add(task)
