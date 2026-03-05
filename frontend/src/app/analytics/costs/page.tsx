@@ -353,17 +353,18 @@ export default function CostsPage() {
                       return (
                         <div key={day.date} className="group relative flex-1 flex flex-col items-center justify-end h-full min-w-0">
                           <div
-                            className="w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-sm cursor-pointer hover:from-blue-700 hover:to-blue-500 transition-colors"
+                            className="relative w-full bg-gradient-to-t from-blue-600 to-blue-400 rounded-t-sm cursor-pointer hover:from-blue-700 hover:to-blue-500 transition-colors"
                             style={{ height: `${Math.max(heightPct, 2)}%` }}
-                          />
-                          {/* Tooltip */}
-                          <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 pointer-events-none">
-                            <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
-                              <div className="font-semibold">{formatShortDate(day.date)}</div>
-                              <div>{formatCost(day.total_cost)}</div>
-                              <div className="text-gray-300">{formatNumber(day.execution_count)} exec</div>
+                          >
+                            {/* Tooltip — positioned at the top of the bar */}
+                            <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 hidden group-hover:block z-10 pointer-events-none">
+                              <div className="bg-gray-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg">
+                                <div className="font-semibold">{formatShortDate(day.date)}</div>
+                                <div>{formatCost(day.total_cost)}</div>
+                                <div className="text-gray-300">{formatNumber(day.execution_count)} exec</div>
+                              </div>
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
                             </div>
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
                           </div>
                         </div>
                       );
