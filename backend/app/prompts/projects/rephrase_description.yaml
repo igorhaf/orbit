@@ -1,12 +1,12 @@
 # Prompt: Rephrase/Reformulate Project Description
-# Rewrites the description with different wording but similar length and meaning
+# Rewrites with different wording — business rules ensure accuracy is maintained
 
 name: rephrase_description
-version: 2
+version: 3
 category: projects
-description: Reformula a descrição existente de um projeto, mantendo tamanho e sentido semelhantes
+description: Reformula a descrição existente mantendo tamanho e sentido, alinhado às regras de negócio
 usage_type: general
-estimated_tokens: 500
+estimated_tokens: 550
 tags:
   - project
   - description
@@ -17,6 +17,8 @@ variables:
     - title
     - current_description
   optional:
+    - business_rules
+    - project_context
     - pinned_fragments
 
 components: []
@@ -27,8 +29,9 @@ system_prompt: |
   - NÃO repita o nome/título do projeto na descrição. O título já está visível na interface.
   - Mantenha o MESMO tamanho aproximado da descrição atual (mesmo número de parágrafos e extensão).
   - Mantenha o MESMO significado e informações — apenas reformule a redação com palavras diferentes.
+  - Se houver regras de negócio, use-as para corrigir ou melhorar imprecisões na descrição atual.
   - Se a descrição original usa formatação Markdown, mantenha o mesmo nível de formatação.
-  - Melhore a clareza e fluidez do texto, mas sem adicionar nem remover informações.
+  - Melhore a clareza e fluidez do texto, mas sem adicionar nem remover informações relevantes.
   - Escreva em português do Brasil.
   {% if pinned_fragments %}
   - REGRA — TRECHOS FIXADOS:
@@ -52,10 +55,19 @@ system_prompt: |
 user_prompt: |
   O projeto se chama "{{ title }}".
   Descrição atual: "{{ current_description }}"
+  {% if business_rules %}
+
+  Regras de negócio do projeto (use para garantir precisão na reformulação):
+  {{ business_rules }}
+  {% elif project_context %}
+
+  Contexto do projeto:
+  {{ project_context }}
+  {% endif %}
   {% if pinned_fragments %}
 
   TRECHOS FIXADOS (manter significado, pode ajustar redação):
   {{ pinned_fragments }}
   {% endif %}
 
-  Reformule esta descrição usando palavras diferentes, mantendo o mesmo tamanho, estrutura e significado. Melhore a clareza e fluidez. Não repita o nome do projeto.
+  Reformule esta descrição usando palavras diferentes, mantendo o mesmo tamanho, estrutura e significado{% if business_rules %} — use as regras de negócio para garantir precisão{% endif %}. Melhore a clareza e fluidez. Não repita o nome do projeto.

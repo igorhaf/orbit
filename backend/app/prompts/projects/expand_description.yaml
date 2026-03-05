@@ -1,12 +1,12 @@
 # Prompt: Expand/Detail Project Description
-# Takes an existing description and adds more detail with progressive markdown
+# Expands based on business rules first, then existing description
 
 name: expand_description
-version: 4
+version: 5
 category: projects
-description: Expande e detalha a descrição existente de um projeto de software
+description: Expande e detalha a descrição existente de um projeto, priorizando regras de negócio
 usage_type: general
-estimated_tokens: 500
+estimated_tokens: 600
 tags:
   - project
   - description
@@ -17,6 +17,8 @@ variables:
     - title
     - current_description
   optional:
+    - business_rules
+    - project_context
     - pinned_fragments
 
 components: []
@@ -26,6 +28,8 @@ system_prompt: |
   REGRAS:
   - NÃO repita o nome/título do projeto na descrição. O título já está visível na interface.
   - Mantenha o sentido original e adicione contexto, funcionalidades, público-alvo ou benefícios.
+  - Se houver regras de negócio disponíveis, use-as como fonte primária para enriquecer a descrição.
+  - NUNCA invente funcionalidades que não estejam nas regras de negócio ou no contexto fornecido.
   - Use formatação Markdown para tornar o texto mais legível e agradável:
     - Use **negrito** para termos importantes
     - Use listas com marcadores (- item) para enumerar funcionalidades ou benefícios
@@ -54,10 +58,19 @@ system_prompt: |
 user_prompt: |
   O projeto se chama "{{ title }}".
   Descrição atual: "{{ current_description }}"
+  {% if business_rules %}
+
+  Regras de negócio do projeto (use como fonte principal para expandir):
+  {{ business_rules }}
+  {% elif project_context %}
+
+  Contexto do projeto:
+  {{ project_context }}
+  {% endif %}
   {% if pinned_fragments %}
 
   TRECHOS FIXADOS (manter significado, pode ajustar redação):
   {{ pinned_fragments }}
   {% endif %}
 
-  Expanda esta descrição adicionando mais detalhes sobre propósito, funcionalidades e benefícios. Use formatação Markdown para deixar o texto bem estruturado e agradável de ler. Não repita o nome do projeto.
+  Expanda esta descrição adicionando mais detalhes sobre propósito, funcionalidades e benefícios{% if business_rules %}, baseando-se nas regras de negócio fornecidas{% endif %}. Use formatação Markdown para deixar o texto bem estruturado e agradável de ler. Não repita o nome do projeto.

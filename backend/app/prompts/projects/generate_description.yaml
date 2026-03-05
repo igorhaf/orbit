@@ -1,12 +1,12 @@
 # Prompt: Generate Project Description from Title
-# Uses project context when available to avoid generic/random output
+# Primary source: business rules from RAG. Fallback: project context. Last resort: title only.
 
 name: generate_description
-version: 3
+version: 4
 category: projects
-description: Gera uma descrição curta para um projeto de software a partir do título e contexto disponível
+description: Gera descrição do projeto priorizando regras de negócio, depois contexto, depois título
 usage_type: general
-estimated_tokens: 350
+estimated_tokens: 400
 tags:
   - project
   - description
@@ -16,6 +16,7 @@ variables:
   required:
     - title
   optional:
+    - business_rules
     - project_context
 
 components: []
@@ -28,17 +29,22 @@ system_prompt: |
   - A descrição deve ter 2-3 frases que expliquem o propósito do projeto.
   - Escreva em português do Brasil.
   - Texto corrido simples, sem formatação markdown.
-  - Se houver contexto do projeto disponível, use-o para gerar uma descrição precisa e relevante.
-  - NUNCA invente funcionalidades que não estejam no contexto fornecido.
+  - Se houver regras de negócio ou contexto disponíveis, baseie-se EXCLUSIVAMENTE neles.
+  - NUNCA invente funcionalidades que não estejam nas informações fornecidas.
 
 user_prompt: |
   O projeto se chama "{{ title }}".
 
-  {% if project_context %}
+  {% if business_rules %}
+  Regras de negócio do projeto:
+  {{ business_rules }}
+
+  Com base nestas regras de negócio, gere uma descrição objetiva (2-3 frases) que capture o propósito real e as principais funcionalidades do projeto. Não repita o nome do projeto.
+  {% elif project_context %}
   Contexto do projeto:
   {{ project_context }}
 
-  Com base neste contexto, gere uma descrição objetiva (2-3 frases) que explique o propósito real do projeto. Não repita o nome do projeto no texto.
+  Com base neste contexto, gere uma descrição objetiva (2-3 frases) que explique o propósito real do projeto. Não repita o nome do projeto.
   {% else %}
   Gere uma descrição curta (2-3 frases) explicando o propósito deste projeto. Não repita o nome do projeto no texto.
   {% endif %}

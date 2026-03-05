@@ -1,12 +1,12 @@
 # Prompt: Summarize/Condense Project Description
-# Takes an existing description and makes it more concise
+# Summarizes preserving the most important aspects per business rules
 
 name: summarize_description
-version: 4
+version: 5
 category: projects
-description: Resume e condensa a descrição existente de um projeto de software
+description: Resume e condensa a descrição existente, priorizando o que é mais relevante nas regras de negócio
 usage_type: general
-estimated_tokens: 300
+estimated_tokens: 350
 tags:
   - project
   - description
@@ -17,6 +17,8 @@ variables:
     - title
     - current_description
   optional:
+    - business_rules
+    - project_context
     - pinned_fragments
 
 components: []
@@ -26,6 +28,7 @@ system_prompt: |
   REGRAS:
   - NÃO repita o nome/título do projeto na descrição. O título já está visível na interface.
   - Mantenha apenas a essência do projeto, removendo detalhes secundários.
+  - Se houver regras de negócio, priorize os aspectos mais centrais delas no resumo.
   - A descrição resumida deve ter 1-2 frases curtas.
   - Texto corrido simples, sem formatação markdown (é um resumo curto).
   - Escreva em português do Brasil.
@@ -51,10 +54,19 @@ system_prompt: |
 user_prompt: |
   O projeto se chama "{{ title }}".
   Descrição atual: "{{ current_description }}"
+  {% if business_rules %}
+
+  Regras de negócio do projeto (use para identificar o que é mais essencial):
+  {{ business_rules }}
+  {% elif project_context %}
+
+  Contexto do projeto:
+  {{ project_context }}
+  {% endif %}
   {% if pinned_fragments %}
 
   TRECHOS FIXADOS (manter significado, pode ajustar redação):
   {{ pinned_fragments }}
   {% endif %}
 
-  Resuma esta descrição em 1-2 frases curtas e objetivas, mantendo apenas a essência. Não repita o nome do projeto.
+  Resuma esta descrição em 1-2 frases curtas e objetivas, mantendo apenas a essência{% if business_rules %} mais importante conforme as regras de negócio{% endif %}. Não repita o nome do projeto.
